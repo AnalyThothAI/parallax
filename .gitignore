@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.log
+_run_*.py
+browser_data/
+monitor_running.png
+.env
+events.sqlite3*
+data/
+logs/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.swp

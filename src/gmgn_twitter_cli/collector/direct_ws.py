@@ -1,0 +1,163 @@
+import asyncio
+import inspect
+import json
+import time
+import uuid
+from collections.abc import Awaitable, Callable
+from typing import Any
+from urllib.parse import urlencode
+
+import websockets
+from loguru import logger
+
+GMGN_WS_ENDPOINT = "wss://gmgn.ai/ws"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+)
+
+
+def build_gmgn_ws_url(
+    app_version: str,
+    *,
+    device_id: str | None = None,
+    fp_did: str | None = None,
+    client_uuid: str | None = None,
+    app_lang: str = "zh-CN",
+    timezone_name: str = "Asia/Shanghai",
+    timezone_offset: int = 28800,
+    worker: int = 0,
+    reconnect: int = 0,
+) -> str:
+    device_id = device_id or str(uuid.uuid4())
+    fp_did = fp_did or str(uuid.uuid4())
+    client_uuid = client_uuid or str(uuid.uuid4())
+    params = {
+        "device_id": device_id,
+        "fp_did": fp_did,
+        "client_id": f"gmgn_web_{app_version}",
+        "from_app": "gmgn",
+        "app_ver": app_version,
+        "tz_name": timezone_name,
+        "tz_offset": str(timezone_offset),
+        "app_lang": app_lang,
+        "os": "web",
+        "worker": str(worker),
+        "uuid": client_uuid,
+        "reconnect": str(reconnect),
+    }
+    return f"{GMGN_WS_ENDPOINT}?{urlencode(params)}"
+
+
+def build_subscribe_message(
+    channel: str,
+    data: list[dict[str, Any]],
+    *,
+    subscription_id: str | None = None,
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "action": "subscribe",
+        "channel": channel.split(":", 1)[0],
+        "f": "w",
+        "id": subscription_id or str(uuid.uuid4()),
+        "data": data,
+    }
+    if access_token:
+        payload["access_token"] = access_token
+    return payload
+
+
+def build_heartbeat_message(*, client_ts: int | None = None) -> dict[str, int | str]:
+    return {
+        "action": "heartbeat",
+        "client_ts": client_ts if client_ts is not None else int(time.time() * 1000),
+    }
+
+
+class DirectGmgnWebSocketClient:
+    """Anonymous GMGN upstream WebSocket client.
+
+    This mirrors GMGN web's public subscription protocol without running a
+    browser in the service hot path.
+    """
+
+    def __init__(
+        self,
+        *,
+        app_version: str,
+        channels: list[str],
+        chains: list[str],
+        on_frame: Callable[[str], Any | Awaitable[Any]],
+        proxy: str | None = None,
+        reconnect_delay: float = 3,
+        heartbeat_interval: float = 25,
+        user_agent: str = DEFAULT_USER_AGENT,
+    ):
+        self.app_version = app_version
+        self.channels = channels
+        self.chains = [item for item in chains if item]
+        self.on_frame = on_frame
+        self.proxy = proxy
+        self.reconnect_delay = reconnect_delay
+        self.heartbeat_interval = heartbeat_interval
+        self.user_agent = user_agent
+
+    async def run(self) -> None:
+        reconnect_count = 0
+        while True:
+            try:
+                await self._run_once(reconnect_count=reconnect_count)
+                reconnect_count += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                reconnect_count += 1
+                logger.error(f"❌ GMGN 直连 WS 断开: {exc}")
+
+            await asyncio.sleep(self.reconnect_delay)
+
+    async def _run_once(self, *, reconnect_count: int = 0) -> None:
+        ws_url = build_gmgn_ws_url(
+            self.app_version,
+            reconnect=1 if reconnect_count else 0,
+        )
+        headers = {"User-Agent": self.user_agent}
+        connect_kwargs = {
+            "origin": "https://gmgn.ai",
+            "additional_headers": headers,
+            "ping_interval": 20,
+            "ping_timeout": 20,
+            "open_timeout": 15,
+            "proxy": self.proxy,
+        }
+
+        async with websockets.connect(ws_url, **connect_kwargs) as websocket:
+            logger.success(
+                f"GMGN 直连 WS 已连接，匿名订阅频道: {', '.join(self.channels)}"
+            )
+            await self._subscribe_all(websocket)
+            heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
+            try:
+                async for frame in websocket:
+                    result = self.on_frame(frame)
+                    if inspect.isawaitable(result):
+                        await result
+            finally:
+                heartbeat_task.cancel()
+                await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+    async def _subscribe_all(self, websocket) -> None:
+        data = [{"chain": chain} for chain in self.chains]
+        for channel in self.channels:
+            message = build_subscribe_message(channel, data)
+            await websocket.send(
+                json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+            )
+            logger.info(f"📡 已订阅 GMGN 匿名频道: {channel} chains={','.join(self.chains)}")
+
+    async def _heartbeat_loop(self, websocket) -> None:
+        while True:
+            await asyncio.sleep(self.heartbeat_interval)
+            message = build_heartbeat_message()
+            await websocket.send(json.dumps(message, separators=(",", ":")))
