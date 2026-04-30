@@ -12,10 +12,10 @@ sync: ## install dependencies
 	@uv sync
 
 test: ## run tests
-	@uv run pytest
+	@uv run python -m pytest
 
 lint: ## run ruff
-	@uv run ruff check .
+	@uv run python -m ruff check .
 
 compile: ## compile Python files
 	@uv run python -m compileall src tests
