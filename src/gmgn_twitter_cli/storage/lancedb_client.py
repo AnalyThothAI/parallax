@@ -148,7 +148,11 @@ class LanceDbClient:
         return rows
 
     def count_where(self, table_name: str, *, where: str | None = None) -> int:
-        return len(self.query_where(table_name, where=where))
+        with self._table_lock(table_name):
+            table = self._open_table(table_name)
+            if where and where.strip():
+                return int(table.count_rows(where.strip()))
+            return int(table.count_rows())
 
     def create_scalar_index(
         self,
