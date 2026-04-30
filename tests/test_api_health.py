@@ -1,11 +1,11 @@
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_cli.api.app import create_app
-from gmgn_twitter_cli.settings import Settings
+from gmgn_twitter_intel.api.app import create_app
+from gmgn_twitter_intel.settings import Settings
 
 
 def test_healthz_and_readyz_return_status(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("GMGN_TWITTER_HOME", str(tmp_path / "app-home"))
     app = create_app(
         settings=Settings(
             handles=("toly",),

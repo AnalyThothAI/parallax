@@ -35,7 +35,7 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
         runtime = _build_runtime(resolved_settings, start_collector=start_collector)
         app.state.service = runtime
         logger.info(
-            "Starting GMGN Twitter CLI | "
+            "Starting GMGN Twitter Intel | "
             f"handles={','.join(resolved_settings.handles) or 'all'} "
             f"channels={','.join(resolved_settings.upstream_channels)} "
             f"lancedb={resolved_settings.lancedb_path}"
@@ -45,7 +45,7 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
         finally:
             await _stop_runtime(runtime)
 
-    app = FastAPI(title="GMGN Twitter CLI", lifespan=lifespan)
+    app = FastAPI(title="GMGN Twitter Intel", lifespan=lifespan)
 
     @app.get("/healthz", response_class=PlainTextResponse)
     async def healthz() -> str:

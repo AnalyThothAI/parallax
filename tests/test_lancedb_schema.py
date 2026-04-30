@@ -1,4 +1,4 @@
-from gmgn_twitter_cli.storage.lancedb_schema import table_schema
+from gmgn_twitter_intel.storage.lancedb_schema import table_schema
 
 
 def test_twitter_events_schema_has_fixed_embedding_vector():

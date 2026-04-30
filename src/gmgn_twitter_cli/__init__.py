@@ -1,1 +1,0 @@
-"""GMGN Twitter CLI service."""

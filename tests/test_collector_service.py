@@ -2,7 +2,7 @@ import asyncio
 import json
 import unittest
 
-from gmgn_twitter_cli.collector.service import CollectorService
+from gmgn_twitter_intel.collector.service import CollectorService
 
 
 class MemoryStore:

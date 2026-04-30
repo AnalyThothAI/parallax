@@ -25,7 +25,7 @@ from .storage.tweet_repository import TweetRepository
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="gmgn-twitter-cli")
+    parser = argparse.ArgumentParser(prog="gmgn-twitter-intel")
     subcommands = parser.add_subparsers(dest="command")
 
     serve = subcommands.add_parser("serve", help="run the collector service")
@@ -130,7 +130,9 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "ws_token_configured": bool(settings.ws_token),
                     },
                     "store": {
+                        "app_home": str(settings.app_home),
                         "lancedb_path": str(settings.lancedb_path),
+                        "log_file": str(settings.log_file),
                         "embedding_dim": settings.embedding_dim,
                     },
                     "providers": {

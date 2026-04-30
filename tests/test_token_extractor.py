@@ -1,4 +1,4 @@
-from gmgn_twitter_cli.pipeline.token_extractor import extract_token_entities
+from gmgn_twitter_intel.pipeline.token_extractor import extract_token_entities
 
 
 def test_extract_token_entities_resolves_valid_evm_ca_and_cashtag():

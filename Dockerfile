@@ -2,8 +2,7 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    UV_LINK_MODE=copy \
-    XDG_STATE_HOME=/data/state
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
@@ -18,4 +17,4 @@ ENV PATH="/app/.venv/bin:${PATH}"
 
 EXPOSE 8765
 
-CMD ["gmgn-twitter-cli", "serve"]
+CMD ["gmgn-twitter-intel", "serve"]

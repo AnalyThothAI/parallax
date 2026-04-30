@@ -50,7 +50,7 @@ The hard cut is intentional:
 ## Target Directory Structure
 
 ```text
-src/gmgn_twitter_cli/
+src/gmgn_twitter_intel/
   api/
     app.py                      # FastAPI app, health/readiness, runtime lifecycle
     ws.py                       # Authenticated WebSocket replay/live push
@@ -108,8 +108,8 @@ src/gmgn_twitter_cli/
 Files to delete:
 
 ```text
-src/gmgn_twitter_cli/store/sqlite.py
-src/gmgn_twitter_cli/store/__init__.py
+src/gmgn_twitter_intel/store/sqlite.py
+src/gmgn_twitter_intel/store/__init__.py
 tests/test_event_store.py
 ```
 
@@ -279,10 +279,10 @@ Responsibilities:
 Commands:
 
 ```bash
-uv run gmgn-twitter-cli ops reprocess-entities --since-hours 24
-uv run gmgn-twitter-cli ops rebuild-indexes
-uv run gmgn-twitter-cli ops backfill-embeddings --since-hours 24 --limit 10000
-uv run gmgn-twitter-cli enrich --unresolved --limit 50
+uv run gmgn-twitter-intel ops reprocess-entities --since-hours 24
+uv run gmgn-twitter-intel ops rebuild-indexes
+uv run gmgn-twitter-intel ops backfill-embeddings --since-hours 24 --limit 10000
+uv run gmgn-twitter-intel enrich --unresolved --limit 50
 ```
 
 ### Tier 3: LLM Path, Strictly Gated
@@ -906,7 +906,7 @@ Rules:
 Add:
 
 ```env
-LANCEDB_PATH=~/.local/state/gmgn-twitter-cli/twitter_intel.lancedb
+LANCEDB_PATH=~/.gmgn-twitter-intel/twitter_intel.lancedb
 EMBEDDING_BACKEND=ollama
 EMBEDDING_BASE_URL=http://127.0.0.1:11434
 EMBEDDING_MODEL=bge-m3
@@ -964,31 +964,31 @@ RAW_FRAME_RETENTION_DAYS=7
 Keep:
 
 ```bash
-uv run gmgn-twitter-cli serve
-uv run gmgn-twitter-cli service install/start/stop/status/logs/uninstall
+uv run gmgn-twitter-intel serve
+make docker-up / make docker-status / make docker-logs / make docker-down
 ```
 
 Change:
 
 ```bash
-uv run gmgn-twitter-cli recent --limit 20
-uv run gmgn-twitter-cli recent --handles toly,elonmusk --limit 20
-uv run gmgn-twitter-cli recent --ca <contract-address> --chain solana --limit 50
-uv run gmgn-twitter-cli recent --symbol TICKER --limit 50
+uv run gmgn-twitter-intel recent --limit 20
+uv run gmgn-twitter-intel recent --handles toly,elonmusk --limit 20
+uv run gmgn-twitter-intel recent --ca <contract-address> --chain solana --limit 50
+uv run gmgn-twitter-intel recent --symbol TICKER --limit 50
 ```
 
 Add:
 
 ```bash
-uv run gmgn-twitter-cli search "natural language query" --limit 20
-uv run gmgn-twitter-cli search --ca <contract-address> --chain solana --q "listing whale buy" --limit 20
-uv run gmgn-twitter-cli resolve-token --ca <contract-address> --chain solana
-uv run gmgn-twitter-cli resolve-token --symbol TICKER
-uv run gmgn-twitter-cli mindshare --ca <contract-address> --chain solana --window 1h
-uv run gmgn-twitter-cli mindshare --symbol TICKER --window 24h
-uv run gmgn-twitter-cli enrich --unresolved --limit 50
-uv run gmgn-twitter-cli ops rebuild-indexes
-uv run gmgn-twitter-cli ops reprocess-entities --since-hours 24
+uv run gmgn-twitter-intel search "natural language query" --limit 20
+uv run gmgn-twitter-intel search --ca <contract-address> --chain solana --q "listing whale buy" --limit 20
+uv run gmgn-twitter-intel resolve-token --ca <contract-address> --chain solana
+uv run gmgn-twitter-intel resolve-token --symbol TICKER
+uv run gmgn-twitter-intel mindshare --ca <contract-address> --chain solana --window 1h
+uv run gmgn-twitter-intel mindshare --symbol TICKER --window 24h
+uv run gmgn-twitter-intel enrich --unresolved --limit 50
+uv run gmgn-twitter-intel ops rebuild-indexes
+uv run gmgn-twitter-intel ops reprocess-entities --since-hours 24
 ```
 
 ## WebSocket Surface
@@ -1030,19 +1030,19 @@ Server behavior:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_cli/storage/lancedb_client.py`
-- Create: `src/gmgn_twitter_cli/storage/lancedb_schema.py`
-- Create: `src/gmgn_twitter_cli/storage/index_maintenance.py`
-- Create: `src/gmgn_twitter_cli/storage/runtime_bootstrap.py`
-- Create: `src/gmgn_twitter_cli/storage/tweet_repository.py`
-- Create: `src/gmgn_twitter_cli/runtime/background_loops.py`
-- Modify: `src/gmgn_twitter_cli/settings.py`
-- Modify: `src/gmgn_twitter_cli/api/app.py`
-- Modify: `src/gmgn_twitter_cli/api/ws.py`
-- Modify: `src/gmgn_twitter_cli/collector/service.py`
-- Modify: `src/gmgn_twitter_cli/cli.py`
-- Delete: `src/gmgn_twitter_cli/store/sqlite.py`
-- Delete: `src/gmgn_twitter_cli/store/__init__.py`
+- Create: `src/gmgn_twitter_intel/storage/lancedb_client.py`
+- Create: `src/gmgn_twitter_intel/storage/lancedb_schema.py`
+- Create: `src/gmgn_twitter_intel/storage/index_maintenance.py`
+- Create: `src/gmgn_twitter_intel/storage/runtime_bootstrap.py`
+- Create: `src/gmgn_twitter_intel/storage/tweet_repository.py`
+- Create: `src/gmgn_twitter_intel/runtime/background_loops.py`
+- Modify: `src/gmgn_twitter_intel/settings.py`
+- Modify: `src/gmgn_twitter_intel/api/app.py`
+- Modify: `src/gmgn_twitter_intel/api/ws.py`
+- Modify: `src/gmgn_twitter_intel/collector/service.py`
+- Modify: `src/gmgn_twitter_intel/cli.py`
+- Delete: `src/gmgn_twitter_intel/store/sqlite.py`
+- Delete: `src/gmgn_twitter_intel/store/__init__.py`
 
 Steps:
 
@@ -1080,12 +1080,12 @@ Exit criteria:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_cli/pipeline/tweet_identity.py`
-- Create: `src/gmgn_twitter_cli/pipeline/tweet_text.py`
-- Create: `src/gmgn_twitter_cli/pipeline/processing_policy.py`
-- Modify: `src/gmgn_twitter_cli/storage/lancedb_schema.py`
-- Modify: `src/gmgn_twitter_cli/storage/tweet_repository.py`
-- Modify: `src/gmgn_twitter_cli/collector/service.py`
+- Create: `src/gmgn_twitter_intel/pipeline/tweet_identity.py`
+- Create: `src/gmgn_twitter_intel/pipeline/tweet_text.py`
+- Create: `src/gmgn_twitter_intel/pipeline/processing_policy.py`
+- Modify: `src/gmgn_twitter_intel/storage/lancedb_schema.py`
+- Modify: `src/gmgn_twitter_intel/storage/tweet_repository.py`
+- Modify: `src/gmgn_twitter_intel/collector/service.py`
 - Test: `tests/test_tweet_identity.py`
 - Test: `tests/test_tweet_text.py`
 - Test: `tests/test_tweet_repository.py`
@@ -1120,15 +1120,15 @@ Exit criteria:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_cli/pipeline/entity_extraction.py`
-- Create: `src/gmgn_twitter_cli/pipeline/token_resolution.py`
-- Create: `src/gmgn_twitter_cli/providers/dexscreener.py`
-- Create: `src/gmgn_twitter_cli/providers/coingecko.py`
-- Create: `src/gmgn_twitter_cli/providers/jupiter.py`
-- Create: `src/gmgn_twitter_cli/storage/token_repository.py`
-- Modify: `src/gmgn_twitter_cli/storage/tweet_repository.py`
-- Modify: `src/gmgn_twitter_cli/storage/lancedb_schema.py`
-- Modify: `src/gmgn_twitter_cli/collector/service.py`
+- Create: `src/gmgn_twitter_intel/pipeline/entity_extraction.py`
+- Create: `src/gmgn_twitter_intel/pipeline/token_resolution.py`
+- Create: `src/gmgn_twitter_intel/providers/dexscreener.py`
+- Create: `src/gmgn_twitter_intel/providers/coingecko.py`
+- Create: `src/gmgn_twitter_intel/providers/jupiter.py`
+- Create: `src/gmgn_twitter_intel/storage/token_repository.py`
+- Modify: `src/gmgn_twitter_intel/storage/tweet_repository.py`
+- Modify: `src/gmgn_twitter_intel/storage/lancedb_schema.py`
+- Modify: `src/gmgn_twitter_intel/collector/service.py`
 - Test: `tests/test_entity_extraction.py`
 - Test: `tests/test_token_resolution.py`
 
@@ -1166,13 +1166,13 @@ Exit criteria:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_cli/pipeline/embedding.py`
-- Create: `src/gmgn_twitter_cli/retrieval/query_parser.py`
-- Create: `src/gmgn_twitter_cli/retrieval/search_service.py`
-- Create: `src/gmgn_twitter_cli/retrieval/ranking.py`
-- Modify: `src/gmgn_twitter_cli/storage/lancedb_schema.py`
-- Modify: `src/gmgn_twitter_cli/storage/index_maintenance.py`
-- Modify: `src/gmgn_twitter_cli/cli.py`
+- Create: `src/gmgn_twitter_intel/pipeline/embedding.py`
+- Create: `src/gmgn_twitter_intel/retrieval/query_parser.py`
+- Create: `src/gmgn_twitter_intel/retrieval/search_service.py`
+- Create: `src/gmgn_twitter_intel/retrieval/ranking.py`
+- Modify: `src/gmgn_twitter_intel/storage/lancedb_schema.py`
+- Modify: `src/gmgn_twitter_intel/storage/index_maintenance.py`
+- Modify: `src/gmgn_twitter_intel/cli.py`
 - Test: `tests/test_search_service.py`
 
 Steps:
@@ -1210,11 +1210,11 @@ Exit criteria:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_cli/pipeline/social_windows.py`
-- Create: `src/gmgn_twitter_cli/retrieval/mindshare_service.py`
-- Create: `src/gmgn_twitter_cli/storage/social_repository.py`
-- Modify: `src/gmgn_twitter_cli/storage/lancedb_schema.py`
-- Modify: `src/gmgn_twitter_cli/cli.py`
+- Create: `src/gmgn_twitter_intel/pipeline/social_windows.py`
+- Create: `src/gmgn_twitter_intel/retrieval/mindshare_service.py`
+- Create: `src/gmgn_twitter_intel/storage/social_repository.py`
+- Modify: `src/gmgn_twitter_intel/storage/lancedb_schema.py`
+- Modify: `src/gmgn_twitter_intel/cli.py`
 - Test: `tests/test_mindshare_service.py`
 
 Steps:
@@ -1246,8 +1246,8 @@ Exit criteria:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_cli/pipeline/social_windows.py`
-- Modify: `src/gmgn_twitter_cli/settings.py`
+- Modify: `src/gmgn_twitter_intel/pipeline/social_windows.py`
+- Modify: `src/gmgn_twitter_intel/settings.py`
 - Test: `tests/test_mindshare_service.py`
 
 Steps:
@@ -1276,10 +1276,10 @@ Exit criteria:
 
 **Files:**
 
-- Create: `src/gmgn_twitter_cli/pipeline/llm_enrichment.py`
-- Create: `src/gmgn_twitter_cli/storage/llm_repository.py`
-- Modify: `src/gmgn_twitter_cli/storage/lancedb_schema.py`
-- Modify: `src/gmgn_twitter_cli/cli.py`
+- Create: `src/gmgn_twitter_intel/pipeline/llm_enrichment.py`
+- Create: `src/gmgn_twitter_intel/storage/llm_repository.py`
+- Modify: `src/gmgn_twitter_intel/storage/lancedb_schema.py`
+- Modify: `src/gmgn_twitter_intel/cli.py`
 - Test: `tests/test_llm_enrichment.py`
 
 Steps:
@@ -1309,9 +1309,9 @@ Exit criteria:
 
 **Files:**
 
-- Modify: `src/gmgn_twitter_cli/api/ws.py`
-- Modify: `src/gmgn_twitter_cli/retrieval/query_parser.py`
-- Modify: `src/gmgn_twitter_cli/retrieval/search_service.py`
+- Modify: `src/gmgn_twitter_intel/api/ws.py`
+- Modify: `src/gmgn_twitter_intel/retrieval/query_parser.py`
+- Modify: `src/gmgn_twitter_intel/retrieval/search_service.py`
 - Test: `tests/test_api_websocket.py`
 
 Steps:
@@ -1343,8 +1343,7 @@ Exit criteria:
 
 - Modify: `README.md`
 - Modify: `.env.example`
-- Modify: `deploy/systemd/gmgn-twitter-cli.service`
-- Modify: `deploy/macos/install_launchd.sh` if config paths change
+- Docker-only long-running runtime; no systemd or macOS LaunchAgent files.
 - Modify: `AGENTS.md` if architecture notes need updating
 
 Steps:
@@ -1432,12 +1431,12 @@ uv run python -m compileall src tests
 Manual smoke:
 
 ```bash
-uv run gmgn-twitter-cli serve
+uv run gmgn-twitter-intel serve
 curl http://127.0.0.1:8765/healthz
 curl http://127.0.0.1:8765/readyz
-uv run gmgn-twitter-cli recent --limit 5
-uv run gmgn-twitter-cli search "listing whale buy" --limit 5
-uv run gmgn-twitter-cli resolve-token --symbol SOL
+uv run gmgn-twitter-intel recent --limit 5
+uv run gmgn-twitter-intel search "listing whale buy" --limit 5
+uv run gmgn-twitter-intel resolve-token --symbol SOL
 ```
 
 ## Rollout Strategy
@@ -1462,7 +1461,7 @@ Rollback:
 The migration is complete when:
 
 - No runtime code imports `sqlite3`.
-- No runtime code imports `gmgn_twitter_cli.store.sqlite`.
+- No runtime code imports `gmgn_twitter_intel.store.sqlite`.
 - `serve` starts from a clean LanceDB path.
 - `/ws` auth, replay, and live push work from LanceDB.
 - `recent --ca` returns exact CA matches.

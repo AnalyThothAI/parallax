@@ -6,10 +6,10 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from gmgn_twitter_cli.cli import main
-from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
-from gmgn_twitter_cli.storage.tweet_repository import TweetRepository
+from gmgn_twitter_intel.cli import main
+from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_intel.storage.tweet_repository import TweetRepository
 
 
 def make_event(
@@ -47,7 +47,7 @@ class CliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             stdout = io.StringIO()
             original_env = {
-                "XDG_STATE_HOME": str(Path(tmpdir) / "state"),
+                "GMGN_TWITTER_HOME": str(Path(tmpdir) / "app-home"),
                 "WS_TOKEN": "secret",
                 "MONITOR_HANDLES": " @Toly, traderpow,toly ",
                 "EMBEDDING_DIM": "8",
@@ -180,13 +180,13 @@ class CliTests(unittest.TestCase):
 
 
 def test_recent_defaults_to_runtime_event_store(tmp_path, monkeypatch):
-    state_home = tmp_path / "state"
-    store_path = state_home / "gmgn-twitter-cli" / "twitter_intel.lancedb"
+    app_home = tmp_path / "app-home"
+    store_path = app_home / "twitter_intel.lancedb"
     repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
     repo.insert_event(make_event("configured-event"))
     repo.mark_event_matched(make_event("configured-event"))
     repo.close()
-    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+    monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
     monkeypatch.setenv("WS_TOKEN", "secret")
     monkeypatch.setenv("MONITOR_HANDLES", "toly")
     monkeypatch.setenv("EMBEDDING_DIM", "8")

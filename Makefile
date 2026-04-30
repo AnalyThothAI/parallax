@@ -1,7 +1,7 @@
-DATA_DIR ?= $(HOME)/.local/state/gmgn-twitter-cli
+APP_HOME ?= $(HOME)/.gmgn-twitter-intel
 
-GMGN := uv run gmgn-twitter-cli
-COMPOSE_ENV := GMGN_TWITTER_DATA_DIR=$(DATA_DIR)
+GMGN := uv run gmgn-twitter-intel
+COMPOSE_ENV := GMGN_TWITTER_HOME=$(APP_HOME)
 
 .PHONY: help sync test lint compile check config serve status recent search-pepe embed docker-up docker-status docker-logs docker-down docker-shell clean
 
@@ -39,20 +39,21 @@ embed: ## process pending embeddings
 	@$(GMGN) embed --limit 100
 
 docker-up: ## build and start container service
-	@$(COMPOSE_ENV) docker compose up -d --build gmgn-twitter-cli
+	@$(COMPOSE_ENV) docker compose up -d --build app
 
 docker-status: ## show container and readiness
 	@$(COMPOSE_ENV) docker compose ps
 	@curl -fsS http://127.0.0.1:8765/readyz || true
 
 docker-logs: ## tail container logs
-	@$(COMPOSE_ENV) docker compose logs -f --tail=100 gmgn-twitter-cli
+	@$(COMPOSE_ENV) docker compose logs -f --tail=100 app
 
 docker-down: ## stop container service
 	@$(COMPOSE_ENV) docker compose down
 
 docker-shell: ## open shell in container
-	@$(COMPOSE_ENV) docker compose exec gmgn-twitter-cli /bin/sh
+	@$(COMPOSE_ENV) docker compose exec app /bin/sh
 
 clean: ## remove local test/cache artifacts
 	@rm -rf .pytest_cache .ruff_cache __pycache__
+	@find src tests -type d -name __pycache__ -prune -exec rm -rf {} +

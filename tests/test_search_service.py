@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_cli.pipeline.embedding import HashEmbeddingBackend, embed_pending_tweets
-from gmgn_twitter_cli.retrieval.search_service import SearchService
-from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
-from gmgn_twitter_cli.storage.tweet_repository import TweetRepository
+from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.pipeline.embedding import HashEmbeddingBackend, embed_pending_tweets
+from gmgn_twitter_intel.retrieval.search_service import SearchService
+from gmgn_twitter_intel.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_intel.storage.tweet_repository import TweetRepository
 
 
 def make_event(event_id: str, text: str, received_at_ms: int = 1000) -> TwitterEvent:

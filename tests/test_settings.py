@@ -1,7 +1,7 @@
 import os
 import unittest
 
-from gmgn_twitter_cli.settings import load_settings
+from gmgn_twitter_intel.settings import load_settings
 
 
 class SettingsTests(unittest.TestCase):
@@ -34,8 +34,8 @@ class SettingsTests(unittest.TestCase):
 
 
 def test_runtime_paths_use_lancedb_and_ignore_old_sqlite_configuration(tmp_path, monkeypatch):
-    state_home = tmp_path / "state"
-    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+    app_home = tmp_path / "app-home"
+    monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
 
     settings = load_settings(
         {
@@ -46,8 +46,8 @@ def test_runtime_paths_use_lancedb_and_ignore_old_sqlite_configuration(tmp_path,
         }
     )
 
-    assert settings.lancedb_path == state_home / "gmgn-twitter-cli" / "twitter_intel.lancedb"
-    assert settings.log_file == state_home / "gmgn-twitter-cli" / "gmgn-twitter-cli.log"
+    assert settings.lancedb_path == app_home / "twitter_intel.lancedb"
+    assert settings.log_file == app_home / "logs" / "gmgn-twitter-intel.log"
 
 
 def test_lancedb_path_can_be_explicitly_configured(tmp_path):

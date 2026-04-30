@@ -1,6 +1,6 @@
 import unittest
 
-from gmgn_twitter_cli.collector.normalizer import normalize_gmgn_payload
+from gmgn_twitter_intel.collector.normalizer import normalize_gmgn_payload
 
 
 class EventNormalizerTests(unittest.TestCase):

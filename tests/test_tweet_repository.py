@@ -2,9 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
-from gmgn_twitter_cli.storage.tweet_repository import TweetRepository
+from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_intel.storage.tweet_repository import TweetRepository
 
 
 def make_event(

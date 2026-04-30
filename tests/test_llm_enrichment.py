@@ -1,8 +1,8 @@
 import json
 
-from gmgn_twitter_cli.pipeline.llm_enrichment import LlmEnrichmentService
-from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
-from gmgn_twitter_cli.storage.llm_repository import LlmRepository
+from gmgn_twitter_intel.pipeline.llm_enrichment import LlmEnrichmentService
+from gmgn_twitter_intel.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_intel.storage.llm_repository import LlmRepository
 
 
 class FakeLlmClient:

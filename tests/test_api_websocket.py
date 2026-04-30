@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_cli.api.app import create_app
-from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_cli.settings import Settings
+from gmgn_twitter_intel.api.app import create_app
+from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.settings import Settings
 
 
 def make_settings() -> Settings:
@@ -42,7 +42,7 @@ def make_event(event_id: str, handle: str, text: str | None = None) -> TwitterEv
 
 
 def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("GMGN_TWITTER_HOME", str(tmp_path / "app-home"))
     app = create_app(settings=make_settings(), start_collector=False)
 
     with TestClient(app) as client:
@@ -65,7 +65,7 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatc
 
 
 def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("GMGN_TWITTER_HOME", str(tmp_path / "app-home"))
     app = create_app(settings=make_settings(), start_collector=False)
 
     with TestClient(app) as client:

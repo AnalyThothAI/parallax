@@ -1,5 +1,7 @@
+name: gmgn-twitter-intel
+
 services:
-  gmgn-twitter-cli:
+  app:
     build: .
     restart: unless-stopped
     env_file:
@@ -7,12 +9,11 @@ services:
     environment:
       API_HOST: 0.0.0.0
       API_PORT: 8765
-      XDG_STATE_HOME: /data/state
-      LANCEDB_PATH: /data/twitter_intel.lancedb
+      GMGN_TWITTER_HOME: /data
     ports:
       - "${API_PORT:-8765}:8765"
     volumes:
-      - ${GMGN_TWITTER_DATA_DIR:-${HOME}/.local/state/gmgn-twitter-cli}:/data
+      - ${GMGN_TWITTER_HOME:-${HOME}/.gmgn-twitter-intel}:/data
     healthcheck:
       test:
         [

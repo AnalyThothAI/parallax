@@ -515,7 +515,7 @@ wheels = [
 ]
 
 [[package]]
-name = "gmgn-twitter-cli"
+name = "gmgn-twitter-intel"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

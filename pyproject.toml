@@ -1,7 +1,7 @@
 [project]
-name = "gmgn-twitter-cli"
+name = "gmgn-twitter-intel"
 version = "0.1.0"
-description = "CLI service for GMGN anonymous Twitter signals with LanceDB replay and public WebSocket API."
+description = "Token-first GMGN Twitter intelligence service with LanceDB search, WebSocket replay, and social metrics."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -30,14 +30,14 @@ dev = [
 ]
 
 [project.scripts]
-gmgn-twitter-cli = "gmgn_twitter_cli.cli:main"
+gmgn-twitter-intel = "gmgn_twitter_intel.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gmgn_twitter_cli"]
+packages = ["src/gmgn_twitter_intel"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

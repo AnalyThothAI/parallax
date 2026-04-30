@@ -1,8 +1,8 @@
-from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_cli.retrieval.mindshare_service import MindshareService
-from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
-from gmgn_twitter_cli.storage.social_repository import SocialRepository
-from gmgn_twitter_cli.storage.tweet_repository import TweetRepository
+from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.retrieval.mindshare_service import MindshareService
+from gmgn_twitter_intel.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_intel.storage.social_repository import SocialRepository
+from gmgn_twitter_intel.storage.tweet_repository import TweetRepository
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 DOGE = "0xba2ae424d960c26247dd6c32edc70b295c744c43"

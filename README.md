@@ -1,4 +1,4 @@
-# GMGN Twitter CLI
+# GMGN Twitter Intel
 
 监听 GMGN 匿名公共 Twitter WebSocket，把可解析推文写入 LanceDB，并提供本地 `/ws` 实时推送、HTTP 健康检查和 JSON CLI 查询。
 
@@ -62,13 +62,13 @@ make check
 本地前台默认使用：
 
 ```text
-~/.local/state/gmgn-twitter-cli/twitter_intel.lancedb
+~/.gmgn-twitter-intel/twitter_intel.lancedb
 ```
 
 Docker Compose 默认挂载：
 
 ```text
-宿主机: ${GMGN_TWITTER_DATA_DIR:-$HOME/.local/state/gmgn-twitter-cli}
+宿主机: ${GMGN_TWITTER_HOME:-$HOME/.gmgn-twitter-intel}
 容器内: /data
 LanceDB: /data/twitter_intel.lancedb
 ```
@@ -76,19 +76,19 @@ LanceDB: /data/twitter_intel.lancedb
 所以默认情况下，本地前台和 Docker 会读写同一个宿主机目录：
 
 ```text
-$HOME/.local/state/gmgn-twitter-cli/twitter_intel.lancedb
+$HOME/.gmgn-twitter-intel/twitter_intel.lancedb
 ```
 
 想换目录：
 
 ```bash
-make docker-up DATA_DIR=/absolute/path/to/gmgn-twitter-data
+make docker-up APP_HOME=/absolute/path/to/gmgn-twitter-intel
 ```
 
 或者在普通 CLI 中设置：
 
 ```bash
-LANCEDB_PATH=/absolute/path/to/twitter_intel.lancedb uv run gmgn-twitter-cli serve
+LANCEDB_PATH=/absolute/path/to/twitter_intel.lancedb uv run gmgn-twitter-intel serve
 ```
 
 `EMBEDDING_DIM` 会决定 LanceDB 向量列维度，已有库不建议改维度。
@@ -102,7 +102,8 @@ LANCEDB_PATH=/absolute/path/to/twitter_intel.lancedb uv run gmgn-twitter-cli ser
 | `API_HOST` | API 监听地址 | `0.0.0.0` |
 | `API_PORT` | API 端口 | `8765` |
 | `REPLAY_LIMIT` | WebSocket replay 默认条数 | `100` |
-| `LANCEDB_PATH` | LanceDB 目录 | `~/.local/state/gmgn-twitter-cli/twitter_intel.lancedb` |
+| `GMGN_TWITTER_HOME` | 运行数据根目录 | `~/.gmgn-twitter-intel` |
+| `LANCEDB_PATH` | LanceDB 目录 | `~/.gmgn-twitter-intel/twitter_intel.lancedb` |
 | `EMBEDDING_DIM` | LanceDB embedding 固定维度 | `1024` |
 | `SENTIMENT_BACKEND` | mindshare sentiment 后端 | `none` |
 | `LLM_MODEL` | `enrich` 使用的 LiteLLM 模型 | 空 |
@@ -168,15 +169,15 @@ asyncio.run(main())
 所有查询命令输出 JSON，适合下游用 subprocess 调用。
 
 ```bash
-uv run gmgn-twitter-cli config
-uv run gmgn-twitter-cli recent --limit 20
-uv run gmgn-twitter-cli search --symbol PEPE --limit 20
-uv run gmgn-twitter-cli search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
-uv run gmgn-twitter-cli search "whale listing rumor" --limit 20
-uv run gmgn-twitter-cli mindshare --symbol PEPE --window 24h
-uv run gmgn-twitter-cli embed --limit 100
-uv run gmgn-twitter-cli ops reprocess-entities --limit 1000
-uv run gmgn-twitter-cli ops rebuild-indexes
+uv run gmgn-twitter-intel config
+uv run gmgn-twitter-intel recent --limit 20
+uv run gmgn-twitter-intel search --symbol PEPE --limit 20
+uv run gmgn-twitter-intel search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
+uv run gmgn-twitter-intel search "whale listing rumor" --limit 20
+uv run gmgn-twitter-intel mindshare --symbol PEPE --window 24h
+uv run gmgn-twitter-intel embed --limit 100
+uv run gmgn-twitter-intel ops reprocess-entities --limit 1000
+uv run gmgn-twitter-intel ops rebuild-indexes
 ```
 
 `search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。只有手写 `"$PEPE"` 时，zsh/bash 会先把 `$PEPE` 当环境变量展开；普通文本、CA、`PEPE`、`--symbol PEPE` 都没有这个问题。

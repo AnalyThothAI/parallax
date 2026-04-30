@@ -1,4 +1,4 @@
-from gmgn_twitter_cli.pipeline.tweet_text import build_text_projection
+from gmgn_twitter_intel.pipeline.tweet_text import build_text_projection
 
 
 def test_text_projection_preserves_display_text_and_builds_search_text():

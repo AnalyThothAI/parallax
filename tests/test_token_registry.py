@@ -1,6 +1,6 @@
-from gmgn_twitter_cli.pipeline.token_registry import TokenRegistryEntry, TokenResolver
-from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
-from gmgn_twitter_cli.storage.token_registry_repository import TokenRegistryRepository
+from gmgn_twitter_intel.pipeline.token_registry import TokenRegistryEntry, TokenResolver
+from gmgn_twitter_intel.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_intel.storage.token_registry_repository import TokenRegistryRepository
 
 
 class FakeProvider:

@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .runtime_paths import app_log_path, lancedb_path
+from .runtime_paths import app_home, app_log_path, lancedb_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8765, validation_alias="API_PORT")
     ws_heartbeat_interval: int = Field(default=30, validation_alias="WS_HEARTBEAT_INTERVAL")
     replay_limit: int = Field(default=100, validation_alias="REPLAY_LIMIT")
+    app_home_override: Path | None = Field(default=None, validation_alias="GMGN_TWITTER_HOME")
     lancedb_path_override: Path | None = Field(default=None, validation_alias="LANCEDB_PATH")
     embedding_dim: int = Field(default=1024, validation_alias="EMBEDDING_DIM")
     sentiment_backend: str = Field(default="none", validation_alias="SENTIMENT_BACKEND")
@@ -42,12 +43,16 @@ class Settings(BaseSettings):
     upstream_heartbeat_interval: float = Field(default=25.0, validation_alias="UPSTREAM_HEARTBEAT_INTERVAL")
 
     @property
+    def app_home(self) -> Path:
+        return app_home(self.app_home_override)
+
+    @property
     def lancedb_path(self) -> Path:
-        return self.lancedb_path_override or lancedb_path()
+        return self.lancedb_path_override or lancedb_path(self.app_home_override)
 
     @property
     def log_file(self) -> Path:
-        return app_log_path()
+        return app_log_path(self.app_home_override)
 
     @field_validator("handles", mode="before")
     @classmethod
@@ -66,6 +71,15 @@ class Settings(BaseSettings):
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         values = tuple(_split_values(value))
         return values
+
+    @field_validator("app_home_override", "lancedb_path_override", mode="before")
+    @classmethod
+    def parse_optional_path(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        if str(value).strip() == "":
+            return None
+        return value
 
     @field_validator("ws_token")
     @classmethod

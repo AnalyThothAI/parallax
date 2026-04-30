@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
-from gmgn_twitter_cli.collector.direct_ws import (
+from gmgn_twitter_intel.collector.direct_ws import (
     DirectGmgnWebSocketClient,
     build_gmgn_ws_url,
     build_heartbeat_message,
