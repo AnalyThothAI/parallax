@@ -57,6 +57,19 @@ make docker-down
 make check
 ```
 
+把当前 checkout 安装或更新成全局 CLI：
+
+```bash
+make install
+gmgn-twitter-intel config
+```
+
+如果安装后 shell 找不到 `gmgn-twitter-intel`，先运行一次：
+
+```bash
+make tool-path
+```
+
 ## 数据目录
 
 本地前台默认使用：
@@ -167,6 +180,8 @@ asyncio.run(main())
 ## CLI
 
 所有查询命令输出 JSON，适合下游用 subprocess 调用。
+
+开发时可以继续用 `uv run` 调用仓库内环境；如果已经执行过 `make install`，也可以直接用全局 `gmgn-twitter-intel` 命令。
 
 ```bash
 uv run gmgn-twitter-intel config

@@ -40,6 +40,17 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "compose.yaml").is_file()
 
 
+def test_makefile_exposes_global_cli_install_targets():
+    makefile = (ROOT / "Makefile").read_text()
+
+    assert "install: ## install or update the global CLI with uv tool" in makefile
+    assert "\t@uv tool install --force --reinstall ." in makefile
+    assert "uninstall: ## uninstall the global CLI installed by uv tool" in makefile
+    assert "\t@uv tool uninstall gmgn-twitter-intel" in makefile
+    assert "tool-path: ## ensure uv tool executables are on PATH" in makefile
+    assert "\t@uv tool update-shell" in makefile
+
+
 def test_legacy_root_runtime_files_are_removed():
     assert not (ROOT / "gmgn_twitter_monitor.py").exists()
     assert not (ROOT / "gmgn-twitter-monitor.service").exists()

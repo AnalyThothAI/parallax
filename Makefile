@@ -3,13 +3,22 @@ APP_HOME ?= $(HOME)/.gmgn-twitter-intel
 GMGN := uv run gmgn-twitter-intel
 COMPOSE_ENV := GMGN_TWITTER_HOME=$(APP_HOME)
 
-.PHONY: help sync test lint compile check config serve status recent search-pepe embed docker-up docker-status docker-logs docker-down docker-shell clean
+.PHONY: help sync install uninstall tool-path test lint compile check config serve status recent search-pepe embed docker-up docker-status docker-logs docker-down docker-shell clean
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 sync: ## install dependencies
 	@uv sync
+
+install: ## install or update the global CLI with uv tool
+	@uv tool install --force --reinstall .
+
+uninstall: ## uninstall the global CLI installed by uv tool
+	@uv tool uninstall gmgn-twitter-intel
+
+tool-path: ## ensure uv tool executables are on PATH
+	@uv tool update-shell
 
 test: ## run tests
 	@uv run python -m pytest
