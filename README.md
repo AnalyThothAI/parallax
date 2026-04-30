@@ -155,6 +155,28 @@ ws://127.0.0.1:8765/ws
 {"type":"event","event":{"event_id":"...","source":{"coverage":"public_stream","channel":"twitter_monitor_basic"},"author":{"handle":"toly"},"content":{"text":"..."}}}
 ```
 
+Python 客户端示例：
+
+```python
+import asyncio
+import json
+import websockets
+
+async def main():
+    async with websockets.connect("ws://127.0.0.1:8765/ws", proxy=None) as ws:
+        await ws.send(json.dumps({"type": "auth", "token": "replace-with-a-strong-token"}))
+        print(await ws.recv())  # {"type":"ready"}
+        await ws.send(json.dumps({"type": "subscribe", "symbols": ["PEPE"], "replay": 20}))
+        async for message in ws:
+            payload = json.loads(message)
+            if payload["type"] == "event":
+                print(payload["event"])
+
+asyncio.run(main())
+```
+
+如果本机设置了代理环境变量，`websockets` 新版本可能会默认尝试代理本地连接；本地直连建议显式传 `proxy=None`。
+
 健康检查：
 
 ```bash
