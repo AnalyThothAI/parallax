@@ -34,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default=None, help="override API bind host")
     serve.add_argument("--port", type=int, default=None, help="override API bind port")
 
+    subcommands.add_parser("config", help="print effective runtime configuration")
+
     recent = subcommands.add_parser("recent", help="print recent stored events")
     recent.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
     recent.add_argument("--limit", type=int, default=20)
@@ -119,6 +121,39 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             log_config=None,
             ws_ping_interval=settings.ws_heartbeat_interval,
             ws_ping_timeout=settings.ws_heartbeat_interval * 2,
+        )
+        return 0
+
+    if command == "config":
+        settings = load_settings()
+        _emit(
+            {
+                "ok": True,
+                "data": {
+                    "handles": list(settings.handles),
+                    "handle_count": len(settings.handles),
+                    "api": {
+                        "host": settings.api_host,
+                        "port": settings.api_port,
+                        "replay_limit": settings.replay_limit,
+                        "ws_token_configured": bool(settings.ws_token),
+                    },
+                    "store": {
+                        "lancedb_path": str(settings.lancedb_path),
+                        "embedding_dim": settings.embedding_dim,
+                    },
+                    "providers": {
+                        "embedding": "hash",
+                        "sentiment": settings.sentiment_backend,
+                        "llm_model_configured": bool(settings.llm_model),
+                    },
+                    "upstream": {
+                        "channels": list(settings.upstream_channels),
+                        "chains": list(settings.upstream_chains),
+                    },
+                },
+            },
+            stdout,
         )
         return 0
 

@@ -4,6 +4,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from gmgn_twitter_cli.cli import main
 from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
@@ -38,6 +39,26 @@ def make_event(event_id: str, received_at_ms: int = 1000) -> TwitterEvent:
 
 
 class CliTests(unittest.TestCase):
+    def test_config_prints_effective_runtime_settings(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stdout = io.StringIO()
+            original_env = {
+                "XDG_STATE_HOME": str(Path(tmpdir) / "state"),
+                "WS_TOKEN": "secret",
+                "MONITOR_HANDLES": " @Toly, traderpow,toly ",
+                "EMBEDDING_DIM": "8",
+            }
+            with patch.dict("os.environ", original_env, clear=False):
+                exit_code = main(["config"], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["handles"], ["toly", "traderpow"])
+        self.assertEqual(payload["data"]["handle_count"], 2)
+        self.assertEqual(payload["data"]["store"]["embedding_dim"], 8)
+        self.assertTrue(payload["data"]["api"]["ws_token_configured"])
+
     def test_recent_prints_json_envelope_from_lancedb_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store_path = Path(tmpdir) / "twitter_intel.lancedb"
