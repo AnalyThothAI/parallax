@@ -194,7 +194,7 @@ uv run gmgn-twitter-cli recent --symbol PEPE --limit 20
 
 # CA / symbol / handle / 文本混合检索
 uv run gmgn-twitter-cli search "whale listing rumor" --limit 20
-uv run gmgn-twitter-cli search "$PEPE" --limit 20
+uv run gmgn-twitter-cli search '$PEPE' --limit 20
 uv run gmgn-twitter-cli search "0x6982508145454ce325ddbe47a25d4ec3d2311933" --limit 20
 
 # social mindshare
@@ -215,6 +215,46 @@ uv run gmgn-twitter-cli ops rebuild-indexes
 ```
 
 CLI 目前只新增 `config` 这个必要能力。其余能力先保持 KISS：实时消费走 `/ws`，历史和运维走 JSON CLI。等真实外部程序需要时，再加 `export ndjson`、`backfill` 或 `watch` 这类批处理/流式客户端命令。
+
+在 shell 里查询 cashtag 要注意引号：`"$PEPE"` 会被 zsh/bash 当成环境变量展开；如果环境变量 `PEPE` 不存在，CLI 收到的是空字符串。推荐用单引号或转义：
+
+```bash
+uv run gmgn-twitter-cli search '$PEPE' --limit 20
+uv run gmgn-twitter-cli search "\$PEPE" --limit 20
+```
+
+`search` 输出是结构化 JSON。`data.items` 永远是 list，空结果就是 `[]`：
+
+```json
+{
+  "ok": true,
+  "data": {
+    "query": {"kind": "symbol", "text": "$PEPE", "symbol": "PEPE"},
+    "result_count": 0,
+    "items": [],
+    "candidates": []
+  },
+  "error": null
+}
+```
+
+有结果时，`items` 中每项包含 `match_type`、`score` 和标准化后的 `event`：
+
+```json
+{
+  "event": {
+    "event_id": "...",
+    "author": {"handle": "toly"},
+    "content": {"text": "..."},
+    "source": {"coverage": "public_stream", "channel": "twitter_monitor_token"},
+    "canonical_url": "https://x.com/toly/status/...",
+    "token_resolution_status": "resolved",
+    "embedding_status": "embedded"
+  },
+  "match_type": "exact_ca",
+  "score": 100.0
+}
+```
 
 ## 开发
 

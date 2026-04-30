@@ -202,7 +202,12 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         _emit(
             {
                 "ok": results.ok,
-                "data": {"items": results.items, "candidates": results.candidates},
+                "data": {
+                    "query": results.query,
+                    "result_count": len(results.items),
+                    "items": results.items,
+                    "candidates": results.candidates,
+                },
                 "error": results.error,
             },
             stdout,

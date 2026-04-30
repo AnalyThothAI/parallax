@@ -55,6 +55,12 @@ def test_search_exact_ca_ranks_above_semantic_matches(tmp_path):
     )
 
     assert results.ok
+    assert results.query == {
+        "kind": "ca",
+        "text": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "ca": "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+        "chain": "eth",
+    }
     assert results.items[0]["event"]["event_id"] == "event-ca"
     assert results.items[0]["match_type"] == "exact_ca"
     repo.close()
@@ -67,6 +73,7 @@ def test_search_returns_tokenless_tweets_for_semantic_text(tmp_path):
     results = SearchService(repo, HashEmbeddingBackend(dimension=16)).search("whale listing rumor", limit=5)
 
     assert results.ok
+    assert results.query == {"kind": "text", "text": "whale listing rumor"}
     assert results.items[0]["event"]["event_id"] == "event-tokenless"
     assert results.items[0]["event"]["token_resolution_status"] == "no_token"
     repo.close()
