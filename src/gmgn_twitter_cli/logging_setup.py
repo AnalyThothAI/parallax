@@ -11,9 +11,11 @@ FILE_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}"
 
 def setup_logging(log_file: Path | str = "twitter_monitor.log"):
     logger.remove()
+    log_path = Path(log_file)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     logger.add(
-        log_file,
+        log_path,
         rotation="10 MB",
         retention="7 days",
         level="INFO",

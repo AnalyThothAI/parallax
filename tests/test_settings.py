@@ -1,21 +1,17 @@
 import os
-import tempfile
 import unittest
-from pathlib import Path
 
 from gmgn_twitter_cli.settings import load_settings
 
 
 class SettingsTests(unittest.TestCase):
     def test_load_settings_accepts_only_handle_list_as_public_subscription(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            settings = load_settings(
-                {
-                    "MONITOR_HANDLES": " @toly, CryptoDevinL,heyibinance ",
-                    "WS_TOKEN": "secret",
-                    "EVENT_DB_PATH": str(Path(tmpdir) / "events.sqlite3"),
-                }
-            )
+        settings = load_settings(
+            {
+                "MONITOR_HANDLES": " @toly, CryptoDevinL,heyibinance ",
+                "WS_TOKEN": "secret",
+            }
+        )
 
         self.assertEqual(settings.handles, ("toly", "cryptodevinl", "heyibinance"))
         self.assertEqual(settings.api_host, "0.0.0.0")
@@ -36,6 +32,23 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(settings.handles, ("elonmusk",))
         finally:
             self.assertEqual(os.environ, original)
+
+
+def test_runtime_paths_are_not_user_configured(tmp_path, monkeypatch):
+    state_home = tmp_path / "state"
+    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
+
+    settings = load_settings(
+        {
+            "MONITOR_HANDLES": "toly",
+            "WS_TOKEN": "secret",
+            "EVENT_DB_PATH": str(tmp_path / "ignored.sqlite3"),
+            "LOG_FILE": str(tmp_path / "ignored.log"),
+        }
+    )
+
+    assert settings.event_db_path == state_home / "gmgn-twitter-cli" / "events.sqlite3"
+    assert settings.log_file == state_home / "gmgn-twitter-cli" / "gmgn-twitter-cli.log"
 
 
 if __name__ == "__main__":

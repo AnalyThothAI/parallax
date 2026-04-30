@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_cli.api.app import create_app
@@ -7,11 +5,10 @@ from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_cli.settings import Settings
 
 
-def make_settings(tmp_path: Path) -> Settings:
+def make_settings() -> Settings:
     return Settings(
-        MONITOR_HANDLES="toly,elonmusk",
-        WS_TOKEN="secret",
-        EVENT_DB_PATH=str(tmp_path / "events.sqlite3"),
+        handles=("toly", "elonmusk"),
+        ws_token="secret",
     )
 
 
@@ -41,8 +38,9 @@ def make_event(event_id: str, handle: str) -> TwitterEvent:
     )
 
 
-def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    app = create_app(settings=make_settings(), start_collector=False)
 
     with TestClient(app) as client:
         client.app.state.service.store.insert_observed_event(make_event("event-1", "toly"))

@@ -1,218 +1,130 @@
 # GMGN Twitter CLI
 
-Production-oriented collector for GMGN anonymous public Twitter signals.
+监听 GMGN 公共 Twitter 信号，按 Twitter handle 订阅，提供本地 WebSocket 推送和 SQLite 回放。
 
-Users configure only a Twitter handle list. The service consumes GMGN public WebSocket channels, normalizes public events into SQLite, derives matched events for the configured handles, and exposes replay plus live delivery through an authenticated WebSocket API.
-
-## Architecture
+## 核心概念
 
 ```text
-GMGN anonymous WebSocket
-        |
-        v
-collector/direct_ws.py
-        |
-        v
-collector/service.py
-  - frame parsing
-  - cp=0/cp=1 snapshot gate
-  - handle matching
-        |
-        +--> store/sqlite.py
-        |
-        +--> api/ws.py
+GMGN 公共 WS
+  -> 解析标准事件
+  -> observed_events  先存所有可解析公共事件
+  -> matched_events   再存命中订阅 handle 的事件
+  -> /ws 推送与 replay
 ```
 
-FastAPI owns the production process:
+- 用户只配置 `MONITOR_HANDLES`，不要配置 chain。
+- `twitter_monitor_basic` 和 `twitter_monitor_token` 是上游公共频道，会一起监听。
+- `observed_events` 用来保留最近公共流，方便新增 handle 后回填。
+- `matched_events` 用来给外部 WS replay 和 `recent` 查询。
+- 这是 GMGN 匿名公共流过滤，不等于完整 Twitter firehose。
 
-- `src/gmgn_twitter_cli/api/app.py`: ASGI app, `/healthz`, `/readyz`, `/ws`, lifespan background tasks.
-- `src/gmgn_twitter_cli/collector/direct_ws.py`: GMGN upstream WebSocket protocol adapter.
-- `src/gmgn_twitter_cli/collector/normalizer.py`: raw GMGN payload to stable `TwitterEvent`.
-- `src/gmgn_twitter_cli/collector/service.py`: collector pipeline and `cp=0/cp=1` deduplication.
-- `src/gmgn_twitter_cli/store/sqlite.py`: SQLite WAL `observed_events` and `matched_events` journals.
-- `src/gmgn_twitter_cli/settings.py`: pydantic-settings based environment loader.
-- `src/gmgn_twitter_cli/cli.py`: `serve` and `recent` commands.
-
-Legacy Playwright login, Telegram formatting, browser state, and root script entrypoints are intentionally removed.
-
-## Setup
+## 快速启动
 
 ```bash
 uv sync
 cp .env.example .env
 ```
 
-Required setting:
+编辑 `.env`：
 
 ```env
 WS_TOKEN=replace-with-a-strong-token
 MONITOR_HANDLES=toly,elonmusk,cz_binance
 ```
 
-Run the CLI service:
+前台运行：
 
 ```bash
 uv run gmgn-twitter-cli serve
 ```
 
-Equivalent module entrypoint:
+macOS 后台运行：
 
 ```bash
-uv run python -m gmgn_twitter_cli serve
+uv run gmgn-twitter-cli service install --start
 ```
 
-## Configuration
+后台状态与日志：
 
-Public configuration:
+```bash
+uv run gmgn-twitter-cli service status
+uv run gmgn-twitter-cli service logs --lines 80
+uv run gmgn-twitter-cli service stop
+```
 
-| Variable | Purpose |
-|---|---|
-| `WS_TOKEN` | Required token for `/ws` clients |
-| `API_HOST` | FastAPI bind host, default `0.0.0.0` |
-| `API_PORT` | FastAPI bind port, default `8765` |
-| `MONITOR_HANDLES` | Comma-separated Twitter handles to publish |
-| `EVENT_DB_PATH` | SQLite event journal path, default `data/events.sqlite3` |
-| `REPLAY_LIMIT` | Default replay count per subscription |
-| `OBSERVED_RETENTION_DAYS` | Retention for all parsed public-stream events, default `7` |
-| `MATCHED_RETENTION_DAYS` | Retention for matched replay events, default `180` |
-| `LOG_FILE` | Loguru rotating file path |
+## 常用配置
 
-Internal collector strategy:
+| 变量 | 说明 | 默认 |
+|---|---|---|
+| `WS_TOKEN` | 下游 WebSocket 鉴权 token | 必填 |
+| `MONITOR_HANDLES` | 订阅的 Twitter handle，逗号分隔 | 空 |
+| `API_HOST` | 本地 API 监听地址 | `0.0.0.0` |
+| `API_PORT` | 本地 API 端口 | `8765` |
+| `OBSERVED_RETENTION_DAYS` | 公共流保留天数 | `7` |
+| `MATCHED_RETENTION_DAYS` | 命中事件保留天数 | `180` |
 
-| Variable | Purpose |
-|---|---|
-| `UPSTREAM_CHAINS` | GMGN coverage hint, default `sol,eth,base,bsc` |
-| `UPSTREAM_CHANNELS` | GMGN channels, default `twitter_monitor_basic,twitter_monitor_token` |
-| `GMGN_WS_APP_VERSION` | GMGN web client version string |
-| `GMGN_WS_PROXY` | Optional upstream proxy |
-| `UPSTREAM_RECONNECT_DELAY` | Upstream reconnect delay seconds |
-| `UPSTREAM_HEARTBEAT_INTERVAL` | Upstream heartbeat interval seconds |
+上游默认：
 
-`UPSTREAM_CHAINS` is not a user subscription concept. External users pass handles only.
+```env
+UPSTREAM_CHANNELS=twitter_monitor_basic,twitter_monitor_token
+UPSTREAM_CHAINS=sol,eth,base,bsc
+```
 
-## WebSocket API
+`UPSTREAM_CHAINS` 是 GMGN 上游覆盖参数，不是外部订阅概念。
 
-Connect to:
+## WebSocket 使用
+
+连接：
 
 ```text
 ws://127.0.0.1:8765/ws
 ```
 
-Authenticate first:
+第一条消息必须鉴权：
 
 ```json
 {"type":"auth","token":"replace-with-a-strong-token"}
 ```
 
-Then subscribe:
+订阅并拉最近历史：
 
 ```json
-{"type":"subscribe","handles":["toly","elonmusk"],"replay":20}
+{"type":"subscribe","handles":["toly","elonmusk"],"replay":100}
 ```
 
-The server replies with:
+事件格式：
 
 ```json
-{"type":"ready"}
+{"type":"event","event":{"event_id":"...","source":{"channel":"twitter_monitor_basic"},"author":{"handle":"toly"},"content":{"text":"..."}}}
 ```
 
-Events are sent as:
+## 查询历史
 
-```json
-{"type":"event","event":{"event_id":"gmgn:twitter_monitor_basic:...","source":{"coverage":"public_stream"},"author":{"handle":"toly"},"content":{"text":"..."}}}
-```
-
-`coverage=public_stream` means events are filtered from GMGN's anonymous public stream. It is not a full Twitter firehose guarantee.
-
-## SQLite Replay
-
-The store uses WAL mode and has two tables:
-
-- `observed_events`: every GMGN public event that can be parsed and normalized, before handle filtering.
-- `matched_events`: events that match `MONITOR_HANDLES`; this is the table used by `/ws` replay and `recent`.
-
-When the service starts, it backfills `matched_events` from retained `observed_events` for the current handle list. That means adding a new handle can recover recent history as long as the event is still inside `OBSERVED_RETENTION_DAYS`.
-
-Query recent matched events:
+查命中订阅的历史事件：
 
 ```bash
 uv run gmgn-twitter-cli recent --limit 20
 uv run gmgn-twitter-cli recent --handles toly,elonmusk --limit 20
 ```
 
-## Health
+SQLite 固定在 `~/.local/state/gmgn-twitter-cli/events.sqlite3`，前台 CLI 和 macOS 后台服务读取同一个库。
 
-FastAPI exposes probes on the same port:
+服务启动时会从 `observed_events` 回填当前 `MONITOR_HANDLES` 到 `matched_events`。因此新增 handle 后重启服务，可以补到最近 `OBSERVED_RETENTION_DAYS` 内的历史。
+
+## 健康检查
 
 ```bash
 curl http://127.0.0.1:8765/healthz
 curl http://127.0.0.1:8765/readyz
 ```
 
-`/readyz` includes collector counters, `store_counts.observed_events`, and `store_counts.matched_events`.
+`/readyz` 会返回采集计数和库内计数，例如：
 
-## Production
-
-Install and start with systemd:
-
-```bash
-uv sync --frozen
-sudo ln -sf "$(pwd)/deploy/systemd/gmgn-twitter-cli.service" /etc/systemd/system/gmgn-twitter-cli.service
-sudo systemctl daemon-reload
-sudo systemctl enable gmgn-twitter-cli
-sudo systemctl start gmgn-twitter-cli
+```json
+{"collector":{"frames_received":100},"store_counts":{"observed_events":80,"matched_events":3}}
 ```
 
-Inspect:
-
-```bash
-sudo systemctl status gmgn-twitter-cli --no-pager -l
-sudo journalctl -u gmgn-twitter-cli -f
-```
-
-Run one ASGI worker. Multiple workers would start duplicate collectors unless the collector and public API are split into separate processes.
-
-For public TLS, put Nginx or Caddy in front of `http://127.0.0.1:8765`; a sample Nginx config is in `deploy/nginx/gmgn-twitter-cli.conf`.
-
-## macOS LaunchAgent
-
-Recommended lifecycle commands:
-
-```bash
-uv run gmgn-twitter-cli service install --start
-uv run gmgn-twitter-cli service status
-uv run gmgn-twitter-cli service logs --lines 80
-uv run gmgn-twitter-cli service restart
-uv run gmgn-twitter-cli service stop
-```
-
-The legacy shell entrypoint is now only a thin wrapper around the CLI:
-
-```bash
-./deploy/macos/install_launchd.sh
-```
-
-The installer copies the app to `~/.local/share/gmgn-twitter-cli/app` and runs launchd from there. This avoids macOS privacy restrictions that can block background agents from reading projects under `~/Documents`. Existing `.env` in the install directory is preserved; on first install, the CLI copies the current repo `.env` when present.
-
-Inspect:
-
-```bash
-launchctl print gui/$(id -u)/com.local.gmgn-twitter-cli
-tail -f logs/launchd.stderr.log
-curl http://127.0.0.1:8765/healthz
-```
-
-Stop the LaunchAgent:
-
-```bash
-uv run gmgn-twitter-cli service stop
-```
-
-## MCP
-
-MCP is not the event push path. FastMCP is useful as an optional control/query plane for tools like `get_recent_events`, `get_status`, or `update_handles`, but MCP is client-session oriented and should not be used as a reliable real-time WebSocket subscription or out-of-band wakeup mechanism. Keep `/ws` for live market signals.
-
-## Development
+## 开发命令
 
 ```bash
 uv run pytest

@@ -4,9 +4,11 @@ import os
 import plistlib
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
+
+from .runtime_paths import runtime_state_dir
 
 SERVICE_LABEL = "com.local.gmgn-twitter-cli"
 DEFAULT_INSTALL_DIR = Path.home() / ".local" / "share" / "gmgn-twitter-cli" / "app"
@@ -16,15 +18,16 @@ DEFAULT_INSTALL_DIR = Path.home() / ".local" / "share" / "gmgn-twitter-cli" / "a
 class ServicePaths:
     project_dir: Path
     install_dir: Path = DEFAULT_INSTALL_DIR
+    state_dir: Path = field(default_factory=runtime_state_dir)
     plist_path: Path = Path.home() / "Library" / "LaunchAgents" / f"{SERVICE_LABEL}.plist"
 
     @property
     def log_dir(self) -> Path:
-        return self.install_dir / "logs"
+        return self.state_dir / "launchd"
 
     @property
     def data_dir(self) -> Path:
-        return self.install_dir / "data"
+        return self.state_dir
 
 
 class MacLaunchAgentService:
@@ -47,7 +50,8 @@ class MacLaunchAgentService:
             self.start()
 
     def start(self) -> None:
-        self._run(["launchctl", "bootout", f"gui/{self.uid}", str(self.paths.plist_path)], check=False)
+        if self._is_loaded():
+            self._run(["launchctl", "bootout", f"gui/{self.uid}", str(self.paths.plist_path)])
         self._run(["launchctl", "bootstrap", f"gui/{self.uid}", str(self.paths.plist_path)])
         self._run(["launchctl", "enable", f"gui/{self.uid}/{self.label}"])
         self._run(["launchctl", "kickstart", "-k", f"gui/{self.uid}/{self.label}"])
@@ -55,7 +59,10 @@ class MacLaunchAgentService:
         self._emit("Health: curl http://127.0.0.1:8765/healthz")
 
     def stop(self) -> None:
-        self._run(["launchctl", "bootout", f"gui/{self.uid}", str(self.paths.plist_path)], check=False)
+        if not self._is_loaded():
+            self._emit(f"Already stopped {self.label}")
+            return
+        self._run(["launchctl", "bootout", f"gui/{self.uid}", str(self.paths.plist_path)])
         self._emit(f"Stopped {self.label}")
 
     def restart(self) -> None:
@@ -64,6 +71,11 @@ class MacLaunchAgentService:
 
     def status(self) -> int:
         return self._run(["launchctl", "print", f"gui/{self.uid}/{self.label}"], check=False).returncode
+
+    def _is_loaded(self) -> bool:
+        return (
+            self._run(["launchctl", "print", f"gui/{self.uid}/{self.label}"], check=False, quiet=True).returncode == 0
+        )
 
     def logs(self, *, lines: int) -> None:
         for path in (self.paths.log_dir / "launchd.stderr.log", self.paths.log_dir / "launchd.stdout.log"):
@@ -168,8 +180,17 @@ class MacLaunchAgentService:
         if shutil.which("uv") is None:
             raise RuntimeError("uv is required. Install it first: https://docs.astral.sh/uv/")
 
-    def _run(self, command: list[str], *, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
-        return subprocess.run(command, cwd=cwd, check=check, text=True)
+    def _run(
+        self,
+        command: list[str],
+        *,
+        cwd: Path | None = None,
+        check: bool = True,
+        quiet: bool = False,
+    ) -> subprocess.CompletedProcess:
+        stdout = subprocess.DEVNULL if quiet else None
+        stderr = subprocess.DEVNULL if quiet else None
+        return subprocess.run(command, cwd=cwd, check=check, text=True, stdout=stdout, stderr=stderr)
 
     def _emit(self, message: str) -> None:
         if self.stdout is None:

@@ -7,7 +7,8 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from .runtime_paths import app_log_path, event_db_path
+
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
 DEFAULT_GMGN_APP_VERSION = "20260429-12894-ccec416"
@@ -27,11 +28,9 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
     api_port: int = Field(default=8765, validation_alias="API_PORT")
     ws_heartbeat_interval: int = Field(default=30, validation_alias="WS_HEARTBEAT_INTERVAL")
-    event_db_path: Path = Field(default=PROJECT_ROOT / "data" / "events.sqlite3", validation_alias="EVENT_DB_PATH")
     replay_limit: int = Field(default=100, validation_alias="REPLAY_LIMIT")
     observed_retention_days: int = Field(default=7, validation_alias="OBSERVED_RETENTION_DAYS")
     matched_retention_days: int = Field(default=180, validation_alias="MATCHED_RETENTION_DAYS")
-    log_file: Path = Field(default=PROJECT_ROOT / "logs" / "gmgn-twitter-cli.log", validation_alias="LOG_FILE")
 
     upstream_chains: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHAINS, validation_alias="UPSTREAM_CHAINS")
     upstream_channels: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHANNELS, validation_alias="UPSTREAM_CHANNELS")
@@ -39,6 +38,14 @@ class Settings(BaseSettings):
     upstream_proxy: str | None = Field(default=None, validation_alias="GMGN_WS_PROXY")
     upstream_reconnect_delay: float = Field(default=3.0, validation_alias="UPSTREAM_RECONNECT_DELAY")
     upstream_heartbeat_interval: float = Field(default=25.0, validation_alias="UPSTREAM_HEARTBEAT_INTERVAL")
+
+    @property
+    def event_db_path(self) -> Path:
+        return event_db_path()
+
+    @property
+    def log_file(self) -> Path:
+        return app_log_path()
 
     @field_validator("handles", mode="before")
     @classmethod

@@ -53,15 +53,16 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["data"]["events"][0]["event_id"], "event-1")
 
 
-def test_recent_defaults_to_configured_event_store(tmp_path, monkeypatch):
-    db_path = tmp_path / "configured.sqlite3"
+def test_recent_defaults_to_runtime_event_store(tmp_path, monkeypatch):
+    state_home = tmp_path / "state"
+    db_path = state_home / "gmgn-twitter-cli" / "events.sqlite3"
     store = EventStore(db_path)
     store.insert_observed_event(make_event("configured-event"))
     store.insert_matched_event(make_event("configured-event"))
     store.close()
+    monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
     monkeypatch.setenv("WS_TOKEN", "secret")
     monkeypatch.setenv("MONITOR_HANDLES", "toly")
-    monkeypatch.setenv("EVENT_DB_PATH", str(db_path))
     stdout = io.StringIO()
 
     exit_code = main(["recent", "--limit", "5"], stdout=stdout)
