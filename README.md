@@ -1,80 +1,48 @@
 # GMGN Twitter CLI
 
-监听 GMGN 匿名公共 Twitter WebSocket，按 Twitter handle 过滤命中事件，落库到 LanceDB，并提供 WebSocket 推送、历史查询、token 检索和 social mindshare 计算。
+监听 GMGN 匿名公共 Twitter WebSocket，把可解析推文写入 LanceDB，并提供本地 `/ws` 实时推送、HTTP 健康检查和 JSON CLI 查询。
 
-## 三层概念
+## 运行模型
 
-| 层 | 是什么 | 谁使用 |
-|---|---|---|
-| 上游公共频道 | `twitter_monitor_basic`、`twitter_monitor_token`，由 collector 连接 GMGN 匿名公共流 | 本服务内部使用 |
-| 本地监控配置 | `MONITOR_HANDLES`，决定哪些作者事件算命中、实时推送、默认 replay | 部署者配置 |
-| 对外接口 | 本服务暴露的 `/ws`、`/healthz`、`/readyz`、JSON CLI | 其他程序调用 |
+- `make serve`：本地前台运行，适合开发和排查。
+- `make docker-up`：Docker 运行，适合长期跑。
+- 不再提供 macOS LaunchAgent、systemd 或任何系统自启动命令。
+- 外部程序只调用本服务的 `/ws`、`/readyz` 或 JSON CLI，不直接调用 GMGN 公共频道。
 
-外部程序不调用 GMGN 公共频道，也不传 `UPSTREAM_CHANNELS`。外部程序只调用本服务的 `/ws` 或 CLI。
-
-## 存储和处理范围
-
-- 上游公共频道进入的是同一条存储链路：所有可解析公共事件都会写入 LanceDB `twitter_events`。
-- 写入时统一做去重、文本清洗、URL/cashtag/hashtag/mention/CA 抽取、token entity 落库和 embedding 状态标记。
-- `MONITOR_HANDLES` 不是另一套存储；它只是命中筛选。命中的事件会在同一行设置 `matched_at_ms`，并进入实时 `/ws` 推送和默认历史 replay。
-- 没有解析出 token 的推文仍会保存、清洗、embedding、语义检索，但不会进入某个 token/CA 的 mindshare 分子。
-- `coverage=public_stream` 只代表 GMGN 匿名公共流覆盖，不等于完整 Twitter firehose。
-
-## 数据流
+数据流：
 
 ```text
 GMGN public WS
-  -> parse/normalize Twitter event
-  -> LanceDB twitter_events                 all parseable public events
-  -> clean text / entities / embedding flag same processing path
-  -> handle match by MONITOR_HANDLES
-      -> matched_at_ms > 0
-      -> /ws live push + default replay
-  -> search / mindshare / LLM enrich / ops
+  -> normalize tweet
+  -> LanceDB twitter_events
+  -> text cleanup / entity extraction / embedding status
+  -> MONITOR_HANDLES match
+  -> /ws live push + replay
+  -> CLI search / mindshare / ops
 ```
 
-## 快速启动
+## 快速开始
 
 ```bash
 make sync
 cp .env.example .env
+make config
 ```
 
-`.env` 示例：
+`.env` 至少配置：
 
 ```env
 WS_TOKEN=replace-with-a-strong-token
 MONITOR_HANDLES=toly,traderpow,theunipcs,dotyyds1234,brc20niubi,jessepollak,cz_binance,heyibinance,elonmusk,cookerflips,himgajria,cryptodevinl,spidercrypto0x
 ```
 
-确认 handles 被正确读取：
-
-```bash
-make config
-```
-
-输出结构类似，实际 `handles` 会是你的完整列表：
-
-```json
-{"ok":true,"data":{"handles":["toly","traderpow"],"handle_count":2}}
-```
-
-前台运行：
+本地前台运行：
 
 ```bash
 make serve
 ```
 
-macOS 后台运行：
-
-```bash
-make service-install
-make service-status
-make logs
-make service-stop
-```
-
-Docker 后台运行：
+Docker 运行：
 
 ```bash
 make docker-up
@@ -83,21 +51,63 @@ make docker-logs
 make docker-down
 ```
 
+完整检查：
+
+```bash
+make check
+```
+
+## 数据目录
+
+本地前台默认使用：
+
+```text
+~/.local/state/gmgn-twitter-cli/twitter_intel.lancedb
+```
+
+Docker Compose 默认挂载：
+
+```text
+宿主机: ${GMGN_TWITTER_DATA_DIR:-$HOME/.local/state/gmgn-twitter-cli}
+容器内: /data
+LanceDB: /data/twitter_intel.lancedb
+```
+
+所以默认情况下，本地前台和 Docker 会读写同一个宿主机目录：
+
+```text
+$HOME/.local/state/gmgn-twitter-cli/twitter_intel.lancedb
+```
+
+想换目录：
+
+```bash
+make docker-up DATA_DIR=/absolute/path/to/gmgn-twitter-data
+```
+
+或者在普通 CLI 中设置：
+
+```bash
+LANCEDB_PATH=/absolute/path/to/twitter_intel.lancedb uv run gmgn-twitter-cli serve
+```
+
+`EMBEDDING_DIM` 会决定 LanceDB 向量列维度，已有库不建议改维度。
+
 ## 配置
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
 | `WS_TOKEN` | 下游 WebSocket 鉴权 token | 必填 |
-| `MONITOR_HANDLES` | 需要监控的 Twitter handle，逗号分隔 | 空 |
-| `API_HOST` | 本地 API 监听地址 | `0.0.0.0` |
-| `API_PORT` | 本地 API 端口 | `8765` |
-| `REPLAY_LIMIT` | WebSocket 默认 replay 条数 | `100` |
+| `MONITOR_HANDLES` | 需要实时命中的 Twitter handle，逗号分隔 | 空 |
+| `API_HOST` | API 监听地址 | `0.0.0.0` |
+| `API_PORT` | API 端口 | `8765` |
+| `REPLAY_LIMIT` | WebSocket replay 默认条数 | `100` |
 | `LANCEDB_PATH` | LanceDB 目录 | `~/.local/state/gmgn-twitter-cli/twitter_intel.lancedb` |
-| `EMBEDDING_DIM` | LanceDB 固定向量维度 | `1024` |
+| `EMBEDDING_DIM` | LanceDB embedding 固定维度 | `1024` |
 | `SENTIMENT_BACKEND` | mindshare sentiment 后端 | `none` |
 | `LLM_MODEL` | `enrich` 使用的 LiteLLM 模型 | 空 |
 
-内部 collector 参数：
+内部 collector 参数一般不需要改：
 
 ```env
 UPSTREAM_CHANNELS=twitter_monitor_basic,twitter_monitor_token
@@ -106,78 +116,36 @@ GMGN_WS_APP_VERSION=20260429-12894-ccec416
 GMGN_WS_PROXY=
 ```
 
-一般不需要改。`EMBEDDING_DIM` 会决定 LanceDB 向量列结构，修改维度需要新建或重建 LanceDB 目录。
+## 外部调用
 
-## Makefile
+健康检查：
 
-常用入口保持少量高频命令：
+```bash
+curl http://127.0.0.1:8765/healthz
+curl http://127.0.0.1:8765/readyz
+```
 
-- `make sync` / `make check`：安装依赖与完整测试。
-- `make config`：查看生效 handles、LanceDB 路径、provider 状态。
-- `make serve`：本地前台运行 collector + API。
-- `make service-install` / `make service-status` / `make logs` / `make service-stop`：macOS LaunchAgent 生命周期。
-- `make docker-up` / `make docker-status` / `make docker-logs` / `make docker-down`：Docker 容器生命周期。
-- `make recent` / `make search-pepe` / `make embed`：常用查询和后台处理。
-
-Docker Compose 会读取项目 `.env`，把 `${GMGN_TWITTER_DATA_DIR:-$HOME/.local/state/gmgn-twitter-cli}` 挂到容器 `/data`，容器内 LanceDB 固定为 `/data/twitter_intel.lancedb`。
-
-## 其他程序怎么使用
-
-推荐生产实时接入 `/ws`；CLI 适合脚本、排查、离线任务。
-
-外部程序可调用的只有这些本服务接口：
-
-| 场景 | 调用什么 | 数据范围 |
-|---|---|---|
-| 实时消费 | `ws://127.0.0.1:8765/ws` | 已命中 `MONITOR_HANDLES` 的事件，再按客户端订阅条件过滤 |
-| 服务健康和状态 | `GET /healthz`、`GET /readyz` | 服务状态、生效 handles、store 计数、backlog |
-| 本地批处理查询 | `uv run gmgn-twitter-cli ...` | JSON 输出，适合其他程序用 subprocess 调用 |
-
-当前 `/ws` 的 token 订阅是在 matched 事件集合里过滤。也就是说，`cas`/`symbols` 会返回命中 `MONITOR_HANDLES` 且包含该 token 的事件；它不是 GMGN 公共流全量 token 推送。
-
-连接：
+WebSocket：
 
 ```text
 ws://127.0.0.1:8765/ws
 ```
 
-第一条消息必须鉴权：
+第一条消息鉴权：
 
 ```json
 {"type":"auth","token":"replace-with-a-strong-token"}
 ```
 
-按 handle 订阅：
+订阅：
 
 ```json
-{"type":"subscribe","handles":["toly","elonmusk"],"replay":100}
+{"type":"subscribe","handles":["toly"],"replay":20}
+{"type":"subscribe","cas":[{"chain":"eth","ca":"0x6982508145454ce325ddbe47a25d4ec3d2311933"}],"replay":20}
+{"type":"subscribe","symbols":["PEPE"],"replay":20}
 ```
 
-按 CA 订阅：
-
-```json
-{"type":"subscribe","cas":[{"chain":"eth","ca":"0x6982508145454ce325ddbe47a25d4ec3d2311933"}],"replay":100}
-```
-
-按 symbol 订阅：
-
-```json
-{"type":"subscribe","symbols":["PEPE"],"replay":100}
-```
-
-`tokens` 是 `symbols` 的兼容别名：
-
-```json
-{"type":"subscribe","tokens":["PEPE"],"replay":100}
-```
-
-事件格式：
-
-```json
-{"type":"event","event":{"event_id":"...","source":{"coverage":"public_stream","channel":"twitter_monitor_basic"},"author":{"handle":"toly"},"content":{"text":"..."}}}
-```
-
-Python 客户端示例：
+Python 客户端如果本机有代理环境变量，建议 `proxy=None`：
 
 ```python
 import asyncio
@@ -187,91 +155,33 @@ import websockets
 async def main():
     async with websockets.connect("ws://127.0.0.1:8765/ws", proxy=None) as ws:
         await ws.send(json.dumps({"type": "auth", "token": "replace-with-a-strong-token"}))
-        print(await ws.recv())  # {"type":"ready"}
+        print(await ws.recv())
         await ws.send(json.dumps({"type": "subscribe", "symbols": ["PEPE"], "replay": 20}))
         async for message in ws:
-            payload = json.loads(message)
-            if payload["type"] == "event":
-                print(payload["event"])
+            print(json.loads(message))
 
 asyncio.run(main())
 ```
 
-如果本机设置了代理环境变量，`websockets` 新版本可能会默认尝试代理本地连接；本地直连建议显式传 `proxy=None`。
+## CLI
 
-健康检查：
-
-```bash
-curl http://127.0.0.1:8765/healthz
-curl http://127.0.0.1:8765/readyz
-```
-
-`/readyz` 会返回生效 handles、LanceDB 路径、采集计数、库内计数、entity backlog 和 embedding backlog。
-
-## 各能力的数据范围
-
-| 能力 | 范围 |
-|---|---|
-| 事件入库 | 所有可解析 GMGN 公共事件 |
-| 清洗/实体抽取/embedding pending | 所有入库事件 |
-| `/ws` live/replay | 命中 `MONITOR_HANDLES` 的事件；客户端 `handles`、`cas`、`symbols` 只是在这个集合上继续过滤 |
-| `recent` | 命中 `MONITOR_HANDLES` 的历史事件 |
-| `search` | 默认查所有已入库公共事件；加 `--scope matched` 时只查命中 `MONITOR_HANDLES` 的事件 |
-| `mindshare` | 所有已入库且能解析到 resolved CA 的公共事件 |
-| `enrich --unresolved` | 命中 `MONITOR_HANDLES` 且 unresolved 的事件 |
-
-## CLI 能力
-
-所有查询类命令都输出 JSON，方便其他程序调用。
+所有查询命令输出 JSON，适合下游用 subprocess 调用。
 
 ```bash
-# 查看脱敏后的生效配置
 uv run gmgn-twitter-cli config
-
-# 最近命中事件
 uv run gmgn-twitter-cli recent --limit 20
-uv run gmgn-twitter-cli recent --handles toly,elonmusk --limit 20
-
-# 按 token 查询
-uv run gmgn-twitter-cli recent --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --chain eth --limit 20
-uv run gmgn-twitter-cli recent --symbol PEPE --limit 20
-
-# CA / symbol / handle / 文本混合检索
-uv run gmgn-twitter-cli search "whale listing rumor" --limit 20
-uv run gmgn-twitter-cli search '$PEPE' --limit 20
 uv run gmgn-twitter-cli search --symbol PEPE --limit 20
-uv run gmgn-twitter-cli search "0x6982508145454ce325ddbe47a25d4ec3d2311933" --limit 20
 uv run gmgn-twitter-cli search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
-uv run gmgn-twitter-cli search '$PEPE' --scope matched --limit 20
-
-# social mindshare
-uv run gmgn-twitter-cli mindshare --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --chain eth --window 1h
+uv run gmgn-twitter-cli search "whale listing rumor" --limit 20
 uv run gmgn-twitter-cli mindshare --symbol PEPE --window 24h
-
-# 低成本后台处理
 uv run gmgn-twitter-cli embed --limit 100
-uv run gmgn-twitter-cli resolve-token --symbol PEPE
-
-# LLM 富化，只对指定范围跑
-uv run gmgn-twitter-cli enrich --unresolved --limit 20
-uv run gmgn-twitter-cli enrich --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --chain eth --limit 20
-
-# 运维
 uv run gmgn-twitter-cli ops reprocess-entities --limit 1000
 uv run gmgn-twitter-cli ops rebuild-indexes
 ```
 
-实时消费走 `/ws`，历史和运维走 JSON CLI。等真实外部程序需要时，再加 `export ndjson`、`backfill` 或 `watch` 这类批处理/流式客户端命令。
+`search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。只有手写 `"$PEPE"` 时，zsh/bash 会先把 `$PEPE` 当环境变量展开；普通文本、CA、`PEPE`、`--symbol PEPE` 都没有这个问题。
 
-在 shell 里查询 cashtag 要注意引号：`"$PEPE"` 会被 zsh/bash 当成环境变量展开；如果环境变量 `PEPE` 不存在，CLI 收到的是空字符串。这不是本程序要求环境变量，只是 shell 对 `$` 的标准语法。普通文本、CA、`PEPE`、`--symbol PEPE` 都不会有这个问题。推荐直接用 `--symbol`，或者对 `$PEPE` 用单引号/转义：
-
-```bash
-uv run gmgn-twitter-cli search --symbol PEPE --limit 20
-uv run gmgn-twitter-cli search '$PEPE' --limit 20
-uv run gmgn-twitter-cli search "\$PEPE" --limit 20
-```
-
-`search` 输出是结构化 JSON。`data.items` 永远是 list，空结果就是 `[]`：
+`search` 输出形态：
 
 ```json
 {
@@ -286,26 +196,17 @@ uv run gmgn-twitter-cli search "\$PEPE" --limit 20
 }
 ```
 
-有结果时，`items` 中每项包含 `match_type`、`score` 和标准化后的 `event`：
+有结果时 `items` 中每项包含：
 
 ```json
-{
-  "event": {
-    "event_id": "...",
-    "author": {"handle": "toly"},
-    "content": {"text": "..."},
-    "source": {"coverage": "public_stream", "channel": "twitter_monitor_token"},
-    "canonical_url": "https://x.com/toly/status/...",
-    "token_resolution_status": "resolved",
-    "embedding_status": "embedded"
-  },
-  "match_type": "exact_ca",
-  "score": 100.0
-}
+{"event": {"event_id": "...", "author": {"handle": "..."}, "content": {"text": "..."}}, "match_type": "exact_ca", "score": 100.0}
 ```
 
-## 开发
+## 范围边界
 
-```bash
-make check
-```
+- 所有可解析公共事件都会入库。
+- `MONITOR_HANDLES` 只决定哪些事件进入实时 `/ws` 推送和默认 replay。
+- `search` 默认查所有已入库公共事件；`--scope matched` 只查命中 `MONITOR_HANDLES` 的事件。
+- `recent` 只返回命中 `MONITOR_HANDLES` 的历史事件。
+- 没解析出 token 的推文仍会保存、清洗、embedding、语义检索，但不会进入某个 token/CA 的 mindshare 分子。
+- `coverage=public_stream` 代表 GMGN 匿名公共流覆盖，不是完整 Twitter firehose。

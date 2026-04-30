@@ -27,6 +27,7 @@ Query stored events:
 
 ```bash
 uv run gmgn-twitter-cli recent --limit 20
+uv run gmgn-twitter-cli search --symbol PEPE --limit 20
 ```
 
 ## Architecture
@@ -65,7 +66,7 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - `src/gmgn_twitter_cli/storage/tweet_repository.py`: Twitter event repository over LanceDB.
 - `src/gmgn_twitter_cli/storage/social_repository.py`: token social window persistence.
 - `src/gmgn_twitter_cli/storage/llm_repository.py`: LLM run and extraction audit persistence.
-- `src/gmgn_twitter_cli/cli.py`: `serve` and `recent` commands.
+- `src/gmgn_twitter_cli/cli.py`: `serve`, query, enrichment, and ops commands.
 
 ## Runtime Notes
 
@@ -73,11 +74,9 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - Public clients subscribe with `{"type":"subscribe","handles":["toly"],"replay":20}`.
 - `coverage=public_stream` means events are filtered from GMGN's anonymous public stream; it is not a full Twitter firehose guarantee.
 - Run one ASGI worker unless the collector and API are split into separate processes.
-- Systemd unit lives at `deploy/systemd/gmgn-twitter-cli.service`.
-- macOS lifecycle is managed by `gmgn-twitter-cli service install/start/stop/status/logs/uninstall`.
-- `deploy/macos/install_launchd.sh` is only a thin compatibility wrapper around `gmgn-twitter-cli service install --start`.
-- macOS LaunchAgent runs from `~/.local/share/gmgn-twitter-cli/app` to avoid `~/Documents` privacy restrictions.
-- Runtime artifacts should live under ignored `data/` and `logs/`.
+- There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
+- Docker Compose mounts `${GMGN_TWITTER_DATA_DIR:-$HOME/.local/state/gmgn-twitter-cli}` to `/data`; container LanceDB is `/data/twitter_intel.lancedb`.
+- Local foreground default LanceDB is `~/.local/state/gmgn-twitter-cli/twitter_intel.lancedb`.
 
 ## MCP
 

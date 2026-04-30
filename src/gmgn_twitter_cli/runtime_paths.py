@@ -19,7 +19,3 @@ def lancedb_path() -> Path:
 
 def app_log_path() -> Path:
     return runtime_state_dir() / "gmgn-twitter-cli.log"
-
-
-def launchd_log_dir() -> Path:
-    return runtime_state_dir() / "launchd"

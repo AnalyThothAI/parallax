@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import platform
 import sys
 from pathlib import Path
 from typing import TextIO
@@ -16,7 +15,6 @@ from .pipeline.llm_enrichment import LiteLlmJsonClient, LlmEnrichmentService
 from .pipeline.token_registry import DexScreenerProvider, TokenResolver
 from .retrieval.mindshare_service import MindshareService
 from .retrieval.search_service import SearchService
-from .service_control import DEFAULT_INSTALL_DIR, MacLaunchAgentService, ServicePaths
 from .settings import load_settings
 from .storage.index_maintenance import ensure_core_indexes
 from .storage.lancedb_client import build_lancedb_client
@@ -93,23 +91,6 @@ def build_parser() -> argparse.ArgumentParser:
     reprocess_entities = ops_subcommands.add_parser("reprocess-entities", help="re-run cheap entity extraction")
     reprocess_entities.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
     reprocess_entities.add_argument("--limit", type=int, default=1000)
-
-    service = subcommands.add_parser("service", help="manage the background service")
-    service_subcommands = service.add_subparsers(dest="service_command", required=True)
-
-    install = service_subcommands.add_parser("install", help="install the macOS LaunchAgent")
-    install.add_argument("--install-dir", type=Path, default=DEFAULT_INSTALL_DIR)
-    install.add_argument("--start", action="store_true", default=True)
-    install.add_argument("--no-start", action="store_false", dest="start")
-
-    service_subcommands.add_parser("start", help="start the macOS LaunchAgent")
-    service_subcommands.add_parser("stop", help="stop the macOS LaunchAgent")
-    service_subcommands.add_parser("restart", help="restart the macOS LaunchAgent")
-    service_subcommands.add_parser("status", help="print launchd status")
-    logs = service_subcommands.add_parser("logs", help="print recent launchd logs")
-    logs.add_argument("--lines", type=int, default=80)
-    uninstall = service_subcommands.add_parser("uninstall", help="remove the macOS LaunchAgent")
-    uninstall.add_argument("--remove-files", action="store_true")
 
     return parser
 
@@ -336,9 +317,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             repo.close()
         return 2
 
-    if command == "service":
-        return _run_service_command(args, stdout)
-
     parser.error(f"unknown command: {command}")
     return 2
 
@@ -355,36 +333,3 @@ def _search_query(args: argparse.Namespace) -> str:
     if args.handle:
         return f"@{args.handle.strip().lstrip('@')}"
     return args.query
-
-
-def _run_service_command(args: argparse.Namespace, stdout: TextIO) -> int:
-    if platform.system() != "Darwin":
-        stdout.write("service commands currently support macOS launchd only\n")
-        return 2
-
-    install_dir = getattr(args, "install_dir", DEFAULT_INSTALL_DIR)
-    service = MacLaunchAgentService(
-        paths=ServicePaths(project_dir=Path.cwd(), install_dir=install_dir),
-        stdout=stdout,
-    )
-    if args.service_command == "install":
-        service.install(start=args.start)
-        return 0
-    if args.service_command == "start":
-        service.start()
-        return 0
-    if args.service_command == "stop":
-        service.stop()
-        return 0
-    if args.service_command == "restart":
-        service.restart()
-        return 0
-    if args.service_command == "status":
-        return service.status()
-    if args.service_command == "logs":
-        service.logs(lines=args.lines)
-        return 0
-    if args.service_command == "uninstall":
-        service.uninstall(remove_files=args.remove_files)
-        return 0
-    return 2

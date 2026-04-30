@@ -54,12 +54,16 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
     @app.get("/readyz")
     async def readyz() -> dict:
         runtime = app.state.service
-        health_counts = runtime.store.health_counts()
+        health_counts = await asyncio.to_thread(runtime.store.health_counts)
         return {
             "collector": runtime.collector.status.to_dict(),
             "handles": list(runtime.settings.handles),
             "store": str(runtime.settings.lancedb_path),
-            "store_counts": runtime.store.event_counts(),
+            "store_counts": {
+                "twitter_events": health_counts["twitter_events"],
+                "matched_twitter_events": health_counts["matched_twitter_events"],
+                "tweet_entities": health_counts["tweet_entities"],
+            },
             "entity_backlog": {
                 "unresolved_entities": health_counts["unresolved_entities"],
             },

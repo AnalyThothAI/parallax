@@ -135,7 +135,7 @@ class CollectorService:
     async def _process_item(self, channel: str, item: dict[str, Any], received_at_ms: int) -> None:
         payload = {"channel": channel, "data": [item]}
         for event in normalize_gmgn_payload(payload, received_at_ms=received_at_ms):
-            if self.store.insert_event(event):
+            if await asyncio.to_thread(self.store.insert_event, event):
                 self.status.twitter_events += 1
                 self.status.last_event_at_ms = received_at_ms
             else:
@@ -143,7 +143,7 @@ class CollectorService:
 
             if not event_matches_handles(event, self.handles):
                 continue
-            if not self.store.mark_event_matched(event):
+            if not await asyncio.to_thread(self.store.mark_event_matched, event):
                 self.status.duplicate_matched_twitter_events += 1
                 continue
             self.status.last_matched_event_at_ms = received_at_ms

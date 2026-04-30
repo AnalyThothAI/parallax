@@ -19,9 +19,9 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3).read()",
+          "import socket; s = socket.create_connection(('127.0.0.1', 8765), 10); s.close()",
         ]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
