@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .runtime_paths import app_log_path, event_db_path
+from .runtime_paths import app_log_path, lancedb_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
@@ -29,8 +29,10 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8765, validation_alias="API_PORT")
     ws_heartbeat_interval: int = Field(default=30, validation_alias="WS_HEARTBEAT_INTERVAL")
     replay_limit: int = Field(default=100, validation_alias="REPLAY_LIMIT")
-    observed_retention_days: int = Field(default=7, validation_alias="OBSERVED_RETENTION_DAYS")
-    matched_retention_days: int = Field(default=180, validation_alias="MATCHED_RETENTION_DAYS")
+    lancedb_path_override: Path | None = Field(default=None, validation_alias="LANCEDB_PATH")
+    embedding_dim: int = Field(default=1024, validation_alias="EMBEDDING_DIM")
+    sentiment_backend: str = Field(default="none", validation_alias="SENTIMENT_BACKEND")
+    llm_model: str | None = Field(default=None, validation_alias="LLM_MODEL")
 
     upstream_chains: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHAINS, validation_alias="UPSTREAM_CHAINS")
     upstream_channels: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHANNELS, validation_alias="UPSTREAM_CHANNELS")
@@ -40,8 +42,8 @@ class Settings(BaseSettings):
     upstream_heartbeat_interval: float = Field(default=25.0, validation_alias="UPSTREAM_HEARTBEAT_INTERVAL")
 
     @property
-    def event_db_path(self) -> Path:
-        return event_db_path()
+    def lancedb_path(self) -> Path:
+        return self.lancedb_path_override or lancedb_path()
 
     @property
     def log_file(self) -> Path:
@@ -81,6 +83,14 @@ class Settings(BaseSettings):
         normalized = str(value).strip()
         if normalized.lower() in {"", "none", "false", "off", "direct"}:
             return None
+        return normalized
+
+    @field_validator("sentiment_backend")
+    @classmethod
+    def validate_sentiment_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"none", "tweetnlp", "cardiff"}:
+            raise ValueError("SENTIMENT_BACKEND must be one of: none, tweetnlp, cardiff")
         return normalized
 
 

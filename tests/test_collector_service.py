@@ -7,15 +7,15 @@ from gmgn_twitter_cli.collector.service import CollectorService
 
 class MemoryStore:
     def __init__(self):
-        self.observed_events = []
-        self.matched_events = []
+        self.twitter_events = []
+        self.matched_twitter_events = []
 
-    def insert_observed_event(self, event):
-        self.observed_events.append(event)
+    def insert_event(self, event):
+        self.twitter_events.append(event)
         return True
 
-    def insert_matched_event(self, event):
-        self.matched_events.append(event)
+    def mark_event_matched(self, event):
+        self.matched_twitter_events.append(event)
         return True
 
 
@@ -64,8 +64,8 @@ class CollectorServiceTests(unittest.TestCase):
 
             await service.handle_frame(frame, received_at_ms=1234)
 
-            self.assertEqual([event.author.handle for event in store.observed_events], ["random", "toly"])
-            self.assertEqual([event.author.handle for event in store.matched_events], ["toly"])
+            self.assertEqual([event.author.handle for event in store.twitter_events], ["random", "toly"])
+            self.assertEqual([event.author.handle for event in store.matched_twitter_events], ["toly"])
             self.assertEqual([event.event_id for event in publisher.events], ["gmgn:twitter_monitor_basic:keep"])
 
         asyncio.run(scenario())
@@ -116,10 +116,10 @@ class CollectorServiceTests(unittest.TestCase):
             await service.handle_frame(complete, received_at_ms=1010)
             await asyncio.sleep(0.06)
 
-            self.assertEqual(len(store.observed_events), 1)
-            self.assertEqual(len(store.matched_events), 1)
-            self.assertEqual(store.observed_events[0].content.text, "complete")
-            self.assertEqual(store.matched_events[0].content.text, "complete")
+            self.assertEqual(len(store.twitter_events), 1)
+            self.assertEqual(len(store.matched_twitter_events), 1)
+            self.assertEqual(store.twitter_events[0].content.text, "complete")
+            self.assertEqual(store.matched_twitter_events[0].content.text, "complete")
 
         asyncio.run(scenario())
 

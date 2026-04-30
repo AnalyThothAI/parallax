@@ -12,10 +12,10 @@ from .normalizer import normalize_gmgn_payload, parse_gmgn_frame
 from .subscriptions import event_matches_handles, normalize_handles
 
 
-class EventStoreProtocol(Protocol):
-    def insert_observed_event(self, event: TwitterEvent) -> bool: ...
+class TweetStoreProtocol(Protocol):
+    def insert_event(self, event: TwitterEvent) -> bool: ...
 
-    def insert_matched_event(self, event: TwitterEvent) -> bool: ...
+    def mark_event_matched(self, event: TwitterEvent) -> bool: ...
 
 
 class EventPublisherProtocol(Protocol):
@@ -30,14 +30,14 @@ class UpstreamClientProtocol(Protocol):
 class CollectorStatus:
     started_at_ms: int
     last_frame_at_ms: int | None = None
-    last_observed_event_at_ms: int | None = None
+    last_event_at_ms: int | None = None
     last_matched_event_at_ms: int | None = None
     frames_received: int = 0
-    observed_events: int = 0
-    matched_events: int = 0
+    twitter_events: int = 0
+    matched_twitter_events: int = 0
     events_published: int = 0
-    duplicate_observed_events: int = 0
-    duplicate_matched_events: int = 0
+    duplicate_twitter_events: int = 0
+    duplicate_matched_twitter_events: int = 0
     parse_errors: int = 0
 
     def to_dict(self) -> dict[str, int | None]:
@@ -49,7 +49,7 @@ class CollectorService:
         self,
         *,
         handles: tuple[str, ...],
-        store: EventStoreProtocol,
+        store: TweetStoreProtocol,
         publisher: EventPublisherProtocol,
         upstream_client: UpstreamClientProtocol | None,
         snapshot_timeout: float = 0.5,
@@ -135,19 +135,19 @@ class CollectorService:
     async def _process_item(self, channel: str, item: dict[str, Any], received_at_ms: int) -> None:
         payload = {"channel": channel, "data": [item]}
         for event in normalize_gmgn_payload(payload, received_at_ms=received_at_ms):
-            if self.store.insert_observed_event(event):
-                self.status.observed_events += 1
-                self.status.last_observed_event_at_ms = received_at_ms
+            if self.store.insert_event(event):
+                self.status.twitter_events += 1
+                self.status.last_event_at_ms = received_at_ms
             else:
-                self.status.duplicate_observed_events += 1
+                self.status.duplicate_twitter_events += 1
 
             if not event_matches_handles(event, self.handles):
                 continue
-            if not self.store.insert_matched_event(event):
-                self.status.duplicate_matched_events += 1
+            if not self.store.mark_event_matched(event):
+                self.status.duplicate_matched_twitter_events += 1
                 continue
             self.status.last_matched_event_at_ms = received_at_ms
-            self.status.matched_events += 1
+            self.status.matched_twitter_events += 1
             self.status.events_published += 1
             await self.publisher.publish(event)
 

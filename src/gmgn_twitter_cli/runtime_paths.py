@@ -13,8 +13,8 @@ def runtime_state_dir() -> Path:
     return Path.home() / ".local" / "state" / APP_NAME
 
 
-def event_db_path() -> Path:
-    return runtime_state_dir() / "events.sqlite3"
+def lancedb_path() -> Path:
+    return runtime_state_dir() / "twitter_intel.lancedb"
 
 
 def app_log_path() -> Path:

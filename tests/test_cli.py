@@ -1,15 +1,17 @@
 import io
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
 from gmgn_twitter_cli.cli import main
 from gmgn_twitter_cli.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_cli.store.sqlite import EventStore
+from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
+from gmgn_twitter_cli.storage.tweet_repository import TweetRepository
 
 
-def make_event(event_id: str) -> TwitterEvent:
+def make_event(event_id: str, received_at_ms: int = 1000) -> TwitterEvent:
     return TwitterEvent(
         event_id=event_id,
         source=Source(
@@ -22,10 +24,10 @@ def make_event(event_id: str) -> TwitterEvent:
         original_action=None,
         tweet_id=event_id,
         internal_id=event_id,
-        timestamp=1,
-        received_at_ms=1000,
+        timestamp=received_at_ms // 1000,
+        received_at_ms=received_at_ms,
         author=Author(handle="toly", name="toly", avatar=None, followers=None, tags=[]),
-        content=Content(text="hello", media=[]),
+        content=Content(text="hello 0x6982508145454ce325ddbe47a25d4ec3d2311933", media=[]),
         reference=None,
         unfollow_target=None,
         avatar_change=None,
@@ -36,33 +38,110 @@ def make_event(event_id: str) -> TwitterEvent:
 
 
 class CliTests(unittest.TestCase):
-    def test_recent_prints_json_envelope_from_sqlite_store(self):
+    def test_recent_prints_json_envelope_from_lancedb_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "events.sqlite3"
-            store = EventStore(db_path)
-            store.insert_observed_event(make_event("event-1"))
-            store.insert_matched_event(make_event("event-1"))
-            store.close()
+            store_path = Path(tmpdir) / "twitter_intel.lancedb"
+            repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+            event = make_event("event-1", received_at_ms=int(time.time() * 1000))
+            repo.insert_event(event)
+            repo.mark_event_matched(event)
+            repo.close()
             stdout = io.StringIO()
 
-            exit_code = main(["recent", "--db", str(db_path), "--limit", "5"], stdout=stdout)
+            exit_code = main(
+                [
+                    "recent",
+                    "--store",
+                    str(store_path),
+                    "--ca",
+                    "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    "--limit",
+                    "5",
+                ],
+                stdout=stdout,
+            )
 
         payload = json.loads(stdout.getvalue())
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["events"][0]["event_id"], "event-1")
 
+    def test_mindshare_prints_token_metrics_from_lancedb_store(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_path = Path(tmpdir) / "twitter_intel.lancedb"
+            repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+            event = make_event("event-1", received_at_ms=int(time.time() * 1000))
+            repo.insert_event(event)
+            repo.mark_event_matched(event)
+            repo.close()
+            stdout = io.StringIO()
+
+            exit_code = main(
+                [
+                    "mindshare",
+                    "--store",
+                    str(store_path),
+                    "--ca",
+                    "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    "--chain",
+                    "eth",
+                    "--window",
+                    "24h",
+                ],
+                stdout=stdout,
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["mention_count"], 1)
+
+    def test_ops_reprocess_entities_reports_processed_rows(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_path = Path(tmpdir) / "twitter_intel.lancedb"
+            repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+            event = make_event("event-1", received_at_ms=int(time.time() * 1000))
+            repo.insert_event(event)
+            repo.mark_event_matched(event)
+            repo.close()
+            stdout = io.StringIO()
+
+            exit_code = main(["ops", "reprocess-entities", "--store", str(store_path), "--limit", "10"], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["processed"], 1)
+
+    def test_embed_infers_existing_store_embedding_dimension(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_path = Path(tmpdir) / "twitter_intel.lancedb"
+            repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+            event = make_event("event-1", received_at_ms=int(time.time() * 1000))
+            repo.insert_event(event)
+            repo.mark_event_matched(event)
+            repo.close()
+            stdout = io.StringIO()
+
+            exit_code = main(["embed", "--store", str(store_path), "--limit", "10"], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["processed"], 1)
+
 
 def test_recent_defaults_to_runtime_event_store(tmp_path, monkeypatch):
     state_home = tmp_path / "state"
-    db_path = state_home / "gmgn-twitter-cli" / "events.sqlite3"
-    store = EventStore(db_path)
-    store.insert_observed_event(make_event("configured-event"))
-    store.insert_matched_event(make_event("configured-event"))
-    store.close()
+    store_path = state_home / "gmgn-twitter-cli" / "twitter_intel.lancedb"
+    repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+    repo.insert_event(make_event("configured-event"))
+    repo.mark_event_matched(make_event("configured-event"))
+    repo.close()
     monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
     monkeypatch.setenv("WS_TOKEN", "secret")
     monkeypatch.setenv("MONITOR_HANDLES", "toly")
+    monkeypatch.setenv("EMBEDDING_DIM", "8")
     stdout = io.StringIO()
 
     exit_code = main(["recent", "--limit", "5"], stdout=stdout)
