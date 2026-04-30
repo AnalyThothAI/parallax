@@ -129,11 +129,19 @@ class MacLaunchAgentService:
         self.paths.install_dir.mkdir(parents=True, exist_ok=True)
         if self.paths.project_dir.resolve() == self.paths.install_dir.resolve():
             return
+        self._remove_legacy_generated_paths()
         self._run(self._rsync_command())
         source_env = self.paths.project_dir / ".env"
         install_env = self.paths.install_dir / ".env"
         if source_env.exists() and not install_env.exists():
             shutil.copy2(source_env, install_env)
+
+    def _remove_legacy_generated_paths(self) -> None:
+        source_store = self.paths.project_dir / "src" / "gmgn_twitter_cli" / "store"
+        install_store = self.paths.install_dir / "src" / "gmgn_twitter_cli" / "store"
+        if source_store.exists() or not install_store.exists():
+            return
+        shutil.rmtree(install_store)
 
     def _ensure_runtime_files(self) -> None:
         self.paths.plist_path.parent.mkdir(parents=True, exist_ok=True)
