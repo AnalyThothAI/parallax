@@ -45,9 +45,13 @@ def build_parser() -> argparse.ArgumentParser:
     recent.add_argument("--symbol", default="", help="filter by cashtag symbol")
 
     search = subcommands.add_parser("search", help="search stored tweets by CA, symbol, handle, or text")
-    search.add_argument("query")
+    search.add_argument("query", nargs="?", default="")
     search.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
     search.add_argument("--limit", type=int, default=20)
+    search.add_argument("--symbol", default="", help="search by token symbol without shell cashtag escaping")
+    search.add_argument("--ca", default="", help="search by token contract address")
+    search.add_argument("--chain", default="", help="chain for --ca")
+    search.add_argument("--handle", default="", help="search by Twitter handle")
     search.add_argument(
         "--scope",
         choices=("all", "matched"),
@@ -193,14 +197,15 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         embedding_dim = settings.embedding_dim if settings else None
         repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=embedding_dim))
         try:
-            parsed = args.query.strip().lstrip("$").upper()
-            if parsed and args.query.strip().startswith("$"):
+            query = _search_query(args)
+            parsed = query.strip().lstrip("$").upper()
+            if parsed and query.strip().startswith("$"):
                 candidates = repo.symbol_ca_candidates(parsed)
                 if len(candidates) > 1:
                     _emit({"ok": False, "error": "ambiguous_symbol", "data": {"candidates": candidates}}, stdout)
                     return 1
             results = SearchService(repo, HashEmbeddingBackend(dimension=repo.client.embedding_dim)).search(
-                args.query,
+                query,
                 limit=args.limit,
                 scope=args.scope,
             )
@@ -340,6 +345,16 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
 def _emit(payload: dict, stdout: TextIO) -> None:
     stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def _search_query(args: argparse.Namespace) -> str:
+    if args.ca:
+        return args.ca
+    if args.symbol:
+        return f"${args.symbol.strip().lstrip('$')}"
+    if args.handle:
+        return f"@{args.handle.strip().lstrip('@')}"
+    return args.query
 
 
 def _run_service_command(args: argparse.Namespace, stdout: TextIO) -> int:

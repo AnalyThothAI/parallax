@@ -12,7 +12,11 @@ from gmgn_twitter_cli.storage.lancedb_client import build_lancedb_client
 from gmgn_twitter_cli.storage.tweet_repository import TweetRepository
 
 
-def make_event(event_id: str, received_at_ms: int = 1000) -> TwitterEvent:
+def make_event(
+    event_id: str,
+    received_at_ms: int = 1000,
+    text: str = "hello 0x6982508145454ce325ddbe47a25d4ec3d2311933",
+) -> TwitterEvent:
     return TwitterEvent(
         event_id=event_id,
         source=Source(
@@ -28,7 +32,7 @@ def make_event(event_id: str, received_at_ms: int = 1000) -> TwitterEvent:
         timestamp=received_at_ms // 1000,
         received_at_ms=received_at_ms,
         author=Author(handle="toly", name="toly", avatar=None, followers=None, tags=[]),
-        content=Content(text="hello 0x6982508145454ce325ddbe47a25d4ec3d2311933", media=[]),
+        content=Content(text=text, media=[]),
         reference=None,
         unfollow_target=None,
         avatar_change=None,
@@ -150,6 +154,29 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["processed"], 1)
+
+    def test_search_accepts_explicit_symbol_flag(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_path = Path(tmpdir) / "twitter_intel.lancedb"
+            repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+            event = make_event(
+                "event-1",
+                received_at_ms=int(time.time() * 1000),
+                text="$PEPE 0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            )
+            repo.insert_event(event)
+            repo.mark_event_matched(event)
+            repo.close()
+            stdout = io.StringIO()
+
+            exit_code = main(["search", "--store", str(store_path), "--symbol", "PEPE"], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["query"]["kind"], "symbol")
+        self.assertEqual(payload["data"]["query"]["symbol"], "PEPE")
+        self.assertEqual(payload["data"]["items"][0]["event"]["event_id"], "event-1")
 
 
 def test_recent_defaults_to_runtime_event_store(tmp_path, monkeypatch):

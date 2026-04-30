@@ -36,7 +36,7 @@ GMGN public WS
 ## 快速启动
 
 ```bash
-uv sync
+make sync
 cp .env.example .env
 ```
 
@@ -50,7 +50,7 @@ MONITOR_HANDLES=toly,traderpow,theunipcs,dotyyds1234,brc20niubi,jessepollak,cz_b
 确认 handles 被正确读取：
 
 ```bash
-uv run gmgn-twitter-cli config
+make config
 ```
 
 输出结构类似，实际 `handles` 会是你的完整列表：
@@ -62,16 +62,25 @@ uv run gmgn-twitter-cli config
 前台运行：
 
 ```bash
-uv run gmgn-twitter-cli serve
+make serve
 ```
 
 macOS 后台运行：
 
 ```bash
-uv run gmgn-twitter-cli service install --start
-uv run gmgn-twitter-cli service status
-uv run gmgn-twitter-cli service logs --lines 80
-uv run gmgn-twitter-cli service stop
+make service-install
+make service-status
+make logs
+make service-stop
+```
+
+Docker 后台运行：
+
+```bash
+make docker-up
+make docker-status
+make docker-logs
+make docker-down
 ```
 
 ## 配置
@@ -98,6 +107,19 @@ GMGN_WS_PROXY=
 ```
 
 一般不需要改。`EMBEDDING_DIM` 会决定 LanceDB 向量列结构，修改维度需要新建或重建 LanceDB 目录。
+
+## Makefile
+
+常用入口保持少量高频命令：
+
+- `make sync` / `make check`：安装依赖与完整测试。
+- `make config`：查看生效 handles、LanceDB 路径、provider 状态。
+- `make serve`：本地前台运行 collector + API。
+- `make service-install` / `make service-status` / `make logs` / `make service-stop`：macOS LaunchAgent 生命周期。
+- `make docker-up` / `make docker-status` / `make docker-logs` / `make docker-down`：Docker 容器生命周期。
+- `make recent` / `make search-pepe` / `make embed`：常用查询和后台处理。
+
+Docker Compose 会读取项目 `.env`，把 `${GMGN_TWITTER_DATA_DIR:-$HOME/.local/state/gmgn-twitter-cli}` 挂到容器 `/data`，容器内 LanceDB 固定为 `/data/twitter_intel.lancedb`。
 
 ## 其他程序怎么使用
 
@@ -217,7 +239,9 @@ uv run gmgn-twitter-cli recent --symbol PEPE --limit 20
 # CA / symbol / handle / 文本混合检索
 uv run gmgn-twitter-cli search "whale listing rumor" --limit 20
 uv run gmgn-twitter-cli search '$PEPE' --limit 20
+uv run gmgn-twitter-cli search --symbol PEPE --limit 20
 uv run gmgn-twitter-cli search "0x6982508145454ce325ddbe47a25d4ec3d2311933" --limit 20
+uv run gmgn-twitter-cli search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
 uv run gmgn-twitter-cli search '$PEPE' --scope matched --limit 20
 
 # social mindshare
@@ -237,11 +261,12 @@ uv run gmgn-twitter-cli ops reprocess-entities --limit 1000
 uv run gmgn-twitter-cli ops rebuild-indexes
 ```
 
-CLI 目前只新增 `config` 这个必要能力。其余能力先保持 KISS：实时消费走 `/ws`，历史和运维走 JSON CLI。等真实外部程序需要时，再加 `export ndjson`、`backfill` 或 `watch` 这类批处理/流式客户端命令。
+实时消费走 `/ws`，历史和运维走 JSON CLI。等真实外部程序需要时，再加 `export ndjson`、`backfill` 或 `watch` 这类批处理/流式客户端命令。
 
-在 shell 里查询 cashtag 要注意引号：`"$PEPE"` 会被 zsh/bash 当成环境变量展开；如果环境变量 `PEPE` 不存在，CLI 收到的是空字符串。推荐用单引号或转义：
+在 shell 里查询 cashtag 要注意引号：`"$PEPE"` 会被 zsh/bash 当成环境变量展开；如果环境变量 `PEPE` 不存在，CLI 收到的是空字符串。这不是本程序要求环境变量，只是 shell 对 `$` 的标准语法。普通文本、CA、`PEPE`、`--symbol PEPE` 都不会有这个问题。推荐直接用 `--symbol`，或者对 `$PEPE` 用单引号/转义：
 
 ```bash
+uv run gmgn-twitter-cli search --symbol PEPE --limit 20
 uv run gmgn-twitter-cli search '$PEPE' --limit 20
 uv run gmgn-twitter-cli search "\$PEPE" --limit 20
 ```
@@ -282,7 +307,5 @@ uv run gmgn-twitter-cli search "\$PEPE" --limit 20
 ## 开发
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run python -m compileall src tests
+make check
 ```
