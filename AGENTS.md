@@ -33,14 +33,14 @@ uv run gmgn-twitter-cli recent --limit 20
 
 This is a standard `uv` project using `src/gmgn_twitter_cli`.
 
-The CLI service consumes GMGN anonymous public Twitter WebSocket channels, normalizes events into `observed_events`, derives handle-filtered `matched_events`, and exposes an authenticated FastAPI WebSocket API at `/ws`.
+The CLI service consumes GMGN anonymous public Twitter WebSocket channels, normalizes events into the LanceDB `twitter_events` fact table, marks handle-filtered rows for replay, and exposes an authenticated FastAPI WebSocket API at `/ws`.
 
 The public configuration surface is intentionally small:
 
 - `MONITOR_HANDLES`: comma-separated Twitter handles.
 - `WS_TOKEN`: public WebSocket API token.
 - `API_HOST` / `API_PORT`: FastAPI bind address.
-- SQLite observed/matched retention settings.
+- `LANCEDB_PATH` / `EMBEDDING_DIM`: LanceDB runtime store settings.
 
 GMGN chains, channels, app versions, and protocol frames are internal collector strategy, not user-facing subscription concepts.
 
@@ -52,7 +52,19 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - `src/gmgn_twitter_cli/collector/direct_ws.py`: GMGN upstream WebSocket adapter.
 - `src/gmgn_twitter_cli/collector/normalizer.py`: raw frame parsing and stable event normalization.
 - `src/gmgn_twitter_cli/collector/service.py`: collector pipeline, `cp=0/cp=1` snapshot gate, handle matching, store-first publish.
-- `src/gmgn_twitter_cli/store/sqlite.py`: SQLite WAL `observed_events` and `matched_events` journals.
+- `src/gmgn_twitter_cli/pipeline/tweet_text.py`: tweet text projection, URL/cashtag/hashtag/mention extraction.
+- `src/gmgn_twitter_cli/pipeline/token_extractor.py`: cheap EVM/Solana CA and cashtag entity extraction.
+- `src/gmgn_twitter_cli/pipeline/processing_policy.py`: local gating status for embeddings and token processing.
+- `src/gmgn_twitter_cli/pipeline/embedding.py`: hash and HTTP embedding backends plus pending embedding processing.
+- `src/gmgn_twitter_cli/pipeline/social_windows.py`: social window parsing and bounds.
+- `src/gmgn_twitter_cli/pipeline/llm_enrichment.py`: evidence-bound LiteLLM JSON enrichment with quote validation.
+- `src/gmgn_twitter_cli/retrieval/search_service.py`: exact CA/symbol/handle and hybrid text retrieval.
+- `src/gmgn_twitter_cli/retrieval/mindshare_service.py`: token social metrics over resolved entities.
+- `src/gmgn_twitter_cli/storage/lancedb_client.py`: LanceDB table client and query/index helpers.
+- `src/gmgn_twitter_cli/storage/lancedb_schema.py`: LanceDB `raw_frames` and `twitter_events` schemas.
+- `src/gmgn_twitter_cli/storage/tweet_repository.py`: Twitter event repository over LanceDB.
+- `src/gmgn_twitter_cli/storage/social_repository.py`: token social window persistence.
+- `src/gmgn_twitter_cli/storage/llm_repository.py`: LLM run and extraction audit persistence.
 - `src/gmgn_twitter_cli/cli.py`: `serve` and `recent` commands.
 
 ## Runtime Notes

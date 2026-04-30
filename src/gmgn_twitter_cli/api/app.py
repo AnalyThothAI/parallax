@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -12,20 +11,20 @@ from loguru import logger
 
 from ..collector.direct_ws import DirectGmgnWebSocketClient
 from ..collector.service import CollectorService
-from ..collector.subscriptions import normalize_handles
 from ..settings import Settings, load_settings
-from ..store.sqlite import EventStore
+from ..storage.lancedb_client import build_lancedb_client
+from ..storage.runtime_bootstrap import bootstrap_lancedb
+from ..storage.tweet_repository import TweetRepository
 from .ws import PublicWebSocketHub
 
 
 @dataclass(slots=True)
 class CliRuntime:
     settings: Settings
-    store: EventStore
+    store: TweetRepository
     hub: PublicWebSocketHub
     collector: CollectorService
     collector_task: asyncio.Task | None = None
-    retention_task: asyncio.Task | None = None
 
 
 def create_app(settings: Settings | None = None, *, start_collector: bool = True) -> FastAPI:
@@ -39,7 +38,7 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
             "Starting GMGN Twitter CLI | "
             f"handles={','.join(resolved_settings.handles) or 'all'} "
             f"channels={','.join(resolved_settings.upstream_channels)} "
-            f"db={resolved_settings.event_db_path}"
+            f"lancedb={resolved_settings.lancedb_path}"
         )
         try:
             yield
@@ -55,11 +54,22 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
     @app.get("/readyz")
     async def readyz() -> dict:
         runtime = app.state.service
+        health_counts = runtime.store.health_counts()
         return {
             "collector": runtime.collector.status.to_dict(),
             "handles": list(runtime.settings.handles),
-            "store": str(runtime.settings.event_db_path),
+            "store": str(runtime.settings.lancedb_path),
             "store_counts": runtime.store.event_counts(),
+            "entity_backlog": {
+                "unresolved_entities": health_counts["unresolved_entities"],
+            },
+            "embedding_backlog": {
+                "pending": health_counts["pending_embeddings"],
+            },
+            "provider_status": {
+                "embedding": "hash",
+                "sentiment": runtime.settings.sentiment_backend,
+            },
         }
 
     @app.websocket("/ws")
@@ -70,10 +80,9 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
 
 
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
-    store = EventStore(settings.event_db_path)
-    backfilled = store.backfill_matches(handles=normalize_handles(settings.handles))
-    if backfilled:
-        logger.info(f"Backfilled {backfilled} matched events from observed store")
+    client = build_lancedb_client(settings.lancedb_path, embedding_dim=settings.embedding_dim)
+    bootstrap_lancedb(client)
+    store = TweetRepository(client)
     hub = PublicWebSocketHub(token=settings.ws_token, store=store, default_replay_limit=settings.replay_limit)
     collector = CollectorService(
         handles=settings.handles,
@@ -94,40 +103,14 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         )
         collector.upstream_client = upstream
         runtime.collector_task = asyncio.create_task(collector.run())
-    runtime.retention_task = asyncio.create_task(
-        _retention_loop(
-            store,
-            observed_retention_days=settings.observed_retention_days,
-            matched_retention_days=settings.matched_retention_days,
-        )
-    )
     return runtime
 
 
 async def _stop_runtime(runtime: CliRuntime) -> None:
-    tasks = [task for task in (runtime.collector_task, runtime.retention_task) if task is not None]
+    tasks = [task for task in (runtime.collector_task,) if task is not None]
     for task in tasks:
         task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     await runtime.collector.stop()
     runtime.store.close()
-
-
-async def _retention_loop(
-    store: EventStore,
-    *,
-    observed_retention_days: int,
-    matched_retention_days: int,
-) -> None:
-    while True:
-        now_ms = int(time.time() * 1000)
-        observed_cutoff_ms = now_ms - observed_retention_days * 24 * 60 * 60 * 1000
-        matched_cutoff_ms = now_ms - matched_retention_days * 24 * 60 * 60 * 1000
-        observed_deleted = store.prune_observed_older_than(observed_cutoff_ms)
-        matched_deleted = store.prune_matched_older_than(matched_cutoff_ms)
-        if observed_deleted or matched_deleted:
-            logger.info(
-                f"Pruned SQLite events | observed={observed_deleted} matched={matched_deleted}"
-            )
-        await asyncio.sleep(3600)

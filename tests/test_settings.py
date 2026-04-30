@@ -16,8 +16,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.handles, ("toly", "cryptodevinl", "heyibinance"))
         self.assertEqual(settings.api_host, "0.0.0.0")
         self.assertEqual(settings.api_port, 8765)
-        self.assertEqual(settings.observed_retention_days, 7)
-        self.assertEqual(settings.matched_retention_days, 180)
+        self.assertEqual(settings.embedding_dim, 1024)
         self.assertEqual(settings.upstream_chains, ("sol", "eth", "base", "bsc"))
         self.assertEqual(settings.upstream_channels, ("twitter_monitor_basic", "twitter_monitor_token"))
 
@@ -34,7 +33,7 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(os.environ, original)
 
 
-def test_runtime_paths_are_not_user_configured(tmp_path, monkeypatch):
+def test_runtime_paths_use_lancedb_and_ignore_old_sqlite_configuration(tmp_path, monkeypatch):
     state_home = tmp_path / "state"
     monkeypatch.setenv("XDG_STATE_HOME", str(state_home))
 
@@ -47,8 +46,22 @@ def test_runtime_paths_are_not_user_configured(tmp_path, monkeypatch):
         }
     )
 
-    assert settings.event_db_path == state_home / "gmgn-twitter-cli" / "events.sqlite3"
+    assert settings.lancedb_path == state_home / "gmgn-twitter-cli" / "twitter_intel.lancedb"
     assert settings.log_file == state_home / "gmgn-twitter-cli" / "gmgn-twitter-cli.log"
+
+
+def test_lancedb_path_can_be_explicitly_configured(tmp_path):
+    configured_path = tmp_path / "custom.lancedb"
+
+    settings = load_settings(
+        {
+            "MONITOR_HANDLES": "toly",
+            "WS_TOKEN": "secret",
+            "LANCEDB_PATH": str(configured_path),
+        }
+    )
+
+    assert settings.lancedb_path == configured_path
 
 
 if __name__ == "__main__":

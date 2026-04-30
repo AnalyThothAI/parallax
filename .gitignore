@@ -8,7 +8,7 @@ _run_*.py
 browser_data/
 monitor_running.png
 .env
-events.sqlite3*
+*.lancedb/
 data/
 logs/
 
