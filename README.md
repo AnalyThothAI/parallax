@@ -2,12 +2,21 @@
 
 监听 GMGN 匿名公共 Twitter WebSocket，按 Twitter handle 过滤命中事件，落库到 LanceDB，并提供 WebSocket 推送、历史查询、token 检索和 social mindshare 计算。
 
-## 当前边界
+## 三层概念
 
-- 对外订阅配置只有 `MONITOR_HANDLES`；代码内生效字段是 `settings.handles`，没有 `monitor_handlers` 这个配置名。
-- `MONITOR_HANDLES` 会自动去掉 `@`、转小写、去重。
-- 上游固定监听 `twitter_monitor_basic` 和 `twitter_monitor_token`，默认覆盖 `sol,eth,base,bsc`；这些是 collector 策略，不是外部订阅 API。
-- 所有可解析公共事件进入 LanceDB `twitter_events`；命中 handle 后同一行标记 `matched_at_ms`，并推送到 `/ws`。
+| 层 | 是什么 | 谁使用 |
+|---|---|---|
+| 上游公共频道 | `twitter_monitor_basic`、`twitter_monitor_token`，由 collector 连接 GMGN 匿名公共流 | 本服务内部使用 |
+| 本地监控配置 | `MONITOR_HANDLES`，决定哪些作者事件算命中、实时推送、默认 replay | 部署者配置 |
+| 对外接口 | 本服务暴露的 `/ws`、`/healthz`、`/readyz`、JSON CLI | 其他程序调用 |
+
+外部程序不调用 GMGN 公共频道，也不传 `UPSTREAM_CHANNELS`。外部程序只调用本服务的 `/ws` 或 CLI。
+
+## 存储和处理范围
+
+- 上游公共频道进入的是同一条存储链路：所有可解析公共事件都会写入 LanceDB `twitter_events`。
+- 写入时统一做去重、文本清洗、URL/cashtag/hashtag/mention/CA 抽取、token entity 落库和 embedding 状态标记。
+- `MONITOR_HANDLES` 不是另一套存储；它只是命中筛选。命中的事件会在同一行设置 `matched_at_ms`，并进入实时 `/ws` 推送和默认历史 replay。
 - 没有解析出 token 的推文仍会保存、清洗、embedding、语义检索，但不会进入某个 token/CA 的 mindshare 分子。
 - `coverage=public_stream` 只代表 GMGN 匿名公共流覆盖，不等于完整 Twitter firehose。
 
@@ -16,10 +25,11 @@
 ```text
 GMGN public WS
   -> parse/normalize Twitter event
-  -> clean text / extract url, cashtag, hashtag, mention, CA
-  -> LanceDB twitter_events
-  -> handle match
-  -> WebSocket live push + replay
+  -> LanceDB twitter_events                 all parseable public events
+  -> clean text / entities / embedding flag same processing path
+  -> handle match by MONITOR_HANDLES
+      -> matched_at_ms > 0
+      -> /ws live push + default replay
   -> search / mindshare / LLM enrich / ops
 ```
 
@@ -91,7 +101,17 @@ GMGN_WS_PROXY=
 
 ## 其他程序怎么使用
 
-推荐生产接入 `/ws`，因为它是实时推送 API；CLI 适合脚本、排查、离线任务。
+推荐生产实时接入 `/ws`；CLI 适合脚本、排查、离线任务。
+
+外部程序可调用的只有这些本服务接口：
+
+| 场景 | 调用什么 | 数据范围 |
+|---|---|---|
+| 实时消费 | `ws://127.0.0.1:8765/ws` | 已命中 `MONITOR_HANDLES` 的事件，再按客户端订阅条件过滤 |
+| 服务健康和状态 | `GET /healthz`、`GET /readyz` | 服务状态、生效 handles、store 计数、backlog |
+| 本地批处理查询 | `uv run gmgn-twitter-cli ...` | JSON 输出，适合其他程序用 subprocess 调用 |
+
+当前 `/ws` 的 token 订阅是在 matched 事件集合里过滤。也就是说，`cas`/`symbols` 会返回命中 `MONITOR_HANDLES` 且包含该 token 的事件；它不是 GMGN 公共流全量 token 推送。
 
 连接：
 
@@ -143,6 +163,18 @@ curl http://127.0.0.1:8765/readyz
 ```
 
 `/readyz` 会返回生效 handles、LanceDB 路径、采集计数、库内计数、entity backlog 和 embedding backlog。
+
+## 各能力的数据范围
+
+| 能力 | 范围 |
+|---|---|
+| 事件入库 | 所有可解析 GMGN 公共事件 |
+| 清洗/实体抽取/embedding pending | 所有入库事件 |
+| `/ws` live/replay | 命中 `MONITOR_HANDLES` 的事件；客户端 `handles`、`cas`、`symbols` 只是在这个集合上继续过滤 |
+| `recent` | 命中 `MONITOR_HANDLES` 的历史事件 |
+| `search` | 命中 `MONITOR_HANDLES` 的历史事件 |
+| `mindshare` | 所有已入库且能解析到 resolved CA 的公共事件 |
+| `enrich --unresolved` | 命中 `MONITOR_HANDLES` 且 unresolved 的事件 |
 
 ## CLI 能力
 
