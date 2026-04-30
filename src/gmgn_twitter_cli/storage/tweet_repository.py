@@ -90,6 +90,7 @@ class TweetRepository:
         ca: str | None = None,
         chain: str | None = None,
         symbol: str | None = None,
+        matched_only: bool = True,
     ) -> list[dict[str, Any]]:
         if limit <= 0:
             return []
@@ -100,7 +101,7 @@ class TweetRepository:
         if event_ids is None:
             rows = self.client.query_where(
                 "twitter_events",
-                where="matched_at_ms > 0",
+                where="matched_at_ms > 0" if matched_only else None,
                 order_by="received_at_ms",
                 descending=True,
             )
@@ -108,7 +109,7 @@ class TweetRepository:
             rows = [
                 row
                 for row in self.client.query_in("twitter_events", column="event_id", values=sorted(event_ids))
-                if int(row.get("matched_at_ms") or 0) > 0
+                if not matched_only or int(row.get("matched_at_ms") or 0) > 0
             ]
             rows.sort(key=lambda item: item.get("received_at_ms") or 0, reverse=True)
         events: list[dict[str, Any]] = []
@@ -139,6 +140,10 @@ class TweetRepository:
 
     def matched_event_rows(self) -> list[dict[str, Any]]:
         return self.client.query_where("twitter_events", where="matched_at_ms > 0")
+
+    def search_event_rows(self, *, matched_only: bool) -> list[dict[str, Any]]:
+        where = "matched_at_ms > 0" if matched_only else None
+        return self.client.query_where("twitter_events", where=where)
 
     def pending_embedding_rows(self, *, limit: int) -> list[dict[str, Any]]:
         rows = self.client.query_where(

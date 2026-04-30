@@ -58,6 +58,7 @@ def test_search_exact_ca_ranks_above_semantic_matches(tmp_path):
     assert results.query == {
         "kind": "ca",
         "text": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "scope": "all",
         "ca": "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
         "chain": "eth",
     }
@@ -73,9 +74,30 @@ def test_search_returns_tokenless_tweets_for_semantic_text(tmp_path):
     results = SearchService(repo, HashEmbeddingBackend(dimension=16)).search("whale listing rumor", limit=5)
 
     assert results.ok
-    assert results.query == {"kind": "text", "text": "whale listing rumor"}
+    assert results.query == {"kind": "text", "text": "whale listing rumor", "scope": "all"}
     assert results.items[0]["event"]["event_id"] == "event-tokenless"
     assert results.items[0]["event"]["token_resolution_status"] == "no_token"
+    repo.close()
+
+
+def test_search_defaults_to_all_events_and_can_scope_to_matched_only(tmp_path):
+    repo = TweetRepository(build_lancedb_client(tmp_path / "twitter_intel.lancedb", embedding_dim=16))
+    repo.insert_event(make_event("public-ca", "$PEPE 0x6982508145454ce325ddbe47a25d4ec3d2311933", 3000))
+
+    all_results = SearchService(repo, HashEmbeddingBackend(dimension=16)).search(
+        "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        limit=5,
+    )
+    matched_results = SearchService(repo, HashEmbeddingBackend(dimension=16)).search(
+        "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        limit=5,
+        scope="matched",
+    )
+
+    assert all_results.items[0]["event"]["event_id"] == "public-ca"
+    assert all_results.query["scope"] == "all"
+    assert matched_results.items == []
+    assert matched_results.query["scope"] == "matched"
     repo.close()
 
 

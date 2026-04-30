@@ -194,7 +194,7 @@ curl http://127.0.0.1:8765/readyz
 | 清洗/实体抽取/embedding pending | 所有入库事件 |
 | `/ws` live/replay | 命中 `MONITOR_HANDLES` 的事件；客户端 `handles`、`cas`、`symbols` 只是在这个集合上继续过滤 |
 | `recent` | 命中 `MONITOR_HANDLES` 的历史事件 |
-| `search` | 命中 `MONITOR_HANDLES` 的历史事件 |
+| `search` | 默认查所有已入库公共事件；加 `--scope matched` 时只查命中 `MONITOR_HANDLES` 的事件 |
 | `mindshare` | 所有已入库且能解析到 resolved CA 的公共事件 |
 | `enrich --unresolved` | 命中 `MONITOR_HANDLES` 且 unresolved 的事件 |
 
@@ -218,6 +218,7 @@ uv run gmgn-twitter-cli recent --symbol PEPE --limit 20
 uv run gmgn-twitter-cli search "whale listing rumor" --limit 20
 uv run gmgn-twitter-cli search '$PEPE' --limit 20
 uv run gmgn-twitter-cli search "0x6982508145454ce325ddbe47a25d4ec3d2311933" --limit 20
+uv run gmgn-twitter-cli search '$PEPE' --scope matched --limit 20
 
 # social mindshare
 uv run gmgn-twitter-cli mindshare --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --chain eth --window 1h
@@ -251,7 +252,7 @@ uv run gmgn-twitter-cli search "\$PEPE" --limit 20
 {
   "ok": true,
   "data": {
-    "query": {"kind": "symbol", "text": "$PEPE", "symbol": "PEPE"},
+    "query": {"kind": "symbol", "text": "$PEPE", "scope": "all", "symbol": "PEPE"},
     "result_count": 0,
     "items": [],
     "candidates": []

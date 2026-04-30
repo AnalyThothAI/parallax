@@ -48,6 +48,12 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("query")
     search.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
     search.add_argument("--limit", type=int, default=20)
+    search.add_argument(
+        "--scope",
+        choices=("all", "matched"),
+        default="all",
+        help="search all stored events or matched events only",
+    )
 
     embed = subcommands.add_parser("embed", help="process pending tweet embeddings")
     embed.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
@@ -196,6 +202,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             results = SearchService(repo, HashEmbeddingBackend(dimension=repo.client.embedding_dim)).search(
                 args.query,
                 limit=args.limit,
+                scope=args.scope,
             )
         finally:
             repo.close()
