@@ -10,6 +10,13 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: 8765
       GMGN_TWITTER_HOME: /data
+      OMP_NUM_THREADS: 1
+      OPENBLAS_NUM_THREADS: 1
+      MKL_NUM_THREADS: 1
+      NUMEXPR_NUM_THREADS: 1
+      RAYON_NUM_THREADS: 1
+      LANCE_CPU_THREADS: 1
+      LANCE_IO_THREADS: 1
     ports:
       - "${API_PORT:-8765}:8765"
     volumes:

@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -62,6 +63,27 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["data"]["handle_count"], 2)
         self.assertEqual(payload["data"]["store"]["embedding_dim"], 8)
         self.assertTrue(payload["data"]["api"]["ws_token_configured"])
+
+    def test_config_prints_defaults_without_ws_token(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            stdout = io.StringIO()
+            original_env = {
+                "HOME": tmpdir,
+                "GMGN_TWITTER_HOME": str(Path(tmpdir) / "app-home"),
+            }
+            previous_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                with patch.dict("os.environ", original_env, clear=True):
+                    exit_code = main(["config"], stdout=stdout)
+            finally:
+                os.chdir(previous_cwd)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertFalse(payload["data"]["api"]["ws_token_configured"])
+        self.assertEqual(payload["data"]["handles"], [])
 
     def test_recent_prints_json_envelope_from_lancedb_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -138,6 +160,34 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["processed"], 1)
 
+    def test_ops_reclassify_processing_reports_changed_rows(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store_path = Path(tmpdir) / "twitter_intel.lancedb"
+            repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+            event = make_event(
+                "event-1",
+                received_at_ms=int(time.time() * 1000),
+                text="North Korea faces severe drought according to state media",
+            )
+            repo.insert_event(event)
+            row = repo.client.get_one("twitter_events", event_id="event-1")
+            row["embedding_status"] = "pending"
+            repo.client.upsert("twitter_events", key_fields=("event_id",), row=row)
+            repo.close()
+            stdout = io.StringIO()
+
+            exit_code = main(
+                ["ops", "reclassify-processing", "--store", str(store_path), "--limit", "10"],
+                stdout=stdout,
+            )
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["data"]["processed"], 1)
+        self.assertEqual(payload["data"]["changed"], 1)
+        self.assertEqual(payload["data"]["embedding_status"], {"skipped": 1})
+
     def test_embed_infers_existing_store_embedding_dimension(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             store_path = Path(tmpdir) / "twitter_intel.lancedb"
@@ -188,6 +238,26 @@ def test_recent_defaults_to_runtime_event_store(tmp_path, monkeypatch):
     repo.close()
     monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
     monkeypatch.setenv("WS_TOKEN", "secret")
+    monkeypatch.setenv("MONITOR_HANDLES", "toly")
+    monkeypatch.setenv("EMBEDDING_DIM", "8")
+    stdout = io.StringIO()
+
+    exit_code = main(["recent", "--limit", "5"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["data"]["events"][0]["event_id"] == "configured-event"
+
+
+def test_recent_defaults_to_runtime_event_store_without_ws_token(tmp_path, monkeypatch):
+    app_home = tmp_path / "app-home"
+    store_path = app_home / "twitter_intel.lancedb"
+    repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=8))
+    repo.insert_event(make_event("configured-event"))
+    repo.mark_event_matched(make_event("configured-event"))
+    repo.close()
+    monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
+    monkeypatch.delenv("WS_TOKEN", raising=False)
     monkeypatch.setenv("MONITOR_HANDLES", "toly")
     monkeypatch.setenv("EMBEDDING_DIM", "8")
     stdout = io.StringIO()

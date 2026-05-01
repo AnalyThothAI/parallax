@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )
 
     handles: tuple[str, ...] = Field(default_factory=tuple, validation_alias="MONITOR_HANDLES")
-    ws_token: str = Field(validation_alias="WS_TOKEN")
+    ws_token: str | None = Field(default=None, validation_alias="WS_TOKEN")
     api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
     api_port: int = Field(default=8765, validation_alias="API_PORT")
     ws_heartbeat_interval: int = Field(default=30, validation_alias="WS_HEARTBEAT_INTERVAL")
@@ -81,13 +81,13 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("ws_token")
+    @field_validator("ws_token", mode="before")
     @classmethod
-    def require_ws_token(cls, value: str) -> str:
-        token = value.strip()
-        if not token:
-            raise ValueError("WS_TOKEN is required")
-        return token
+    def parse_optional_ws_token(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        token = str(value).strip()
+        return token or None
 
     @field_validator("upstream_proxy", mode="before")
     @classmethod
@@ -108,10 +108,21 @@ class Settings(BaseSettings):
         return normalized
 
 
-def load_settings(env: Mapping[str, str] | None = None) -> Settings:
-    if env is None:
-        return Settings()
-    return Settings(_env_file=None, **dict(env))
+def load_settings(env: Mapping[str, str] | None = None, *, require_ws_token: bool = True) -> Settings:
+    settings = Settings(_env_file=_settings_env_files()) if env is None else Settings(_env_file=None, **dict(env))
+    if require_ws_token and not settings.ws_token:
+        raise ValueError("WS_TOKEN is required")
+    return settings
+
+
+def _settings_env_files() -> tuple[Path, ...]:
+    paths = (app_home() / ".env", Path.cwd() / ".env")
+    unique_paths = []
+    for path in paths:
+        expanded = path.expanduser()
+        if expanded not in unique_paths:
+            unique_paths.append(expanded)
+    return tuple(unique_paths)
 
 
 def _split_values(value: Any) -> list[str]:

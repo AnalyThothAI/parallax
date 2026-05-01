@@ -64,5 +64,47 @@ def test_lancedb_path_can_be_explicitly_configured(tmp_path):
     assert settings.lancedb_path == configured_path
 
 
+def test_load_settings_can_skip_ws_token_for_read_only_cli():
+    settings = load_settings({"MONITOR_HANDLES": "toly"}, require_ws_token=False)
+
+    assert settings.handles == ("toly",)
+    assert settings.ws_token is None
+
+
+def test_load_settings_reads_default_app_home_env_file(tmp_path, monkeypatch):
+    app_home = tmp_path / ".gmgn-twitter-intel"
+    app_home.mkdir()
+    (app_home / ".env").write_text(
+        "WS_TOKEN=secret-from-home\nMONITOR_HANDLES=toly,traderpow\nEMBEDDING_DIM=8\n",
+        encoding="utf-8",
+    )
+    workdir = tmp_path / "elsewhere"
+    workdir.mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(workdir)
+
+    settings = load_settings()
+
+    assert settings.ws_token == "secret-from-home"
+    assert settings.handles == ("toly", "traderpow")
+    assert settings.embedding_dim == 8
+
+
+def test_load_settings_prefers_current_env_file_over_default_app_home_env_file(tmp_path, monkeypatch):
+    app_home = tmp_path / ".gmgn-twitter-intel"
+    app_home.mkdir()
+    (app_home / ".env").write_text("WS_TOKEN=home-secret\nMONITOR_HANDLES=home\n", encoding="utf-8")
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    (workdir / ".env").write_text("WS_TOKEN=local-secret\nMONITOR_HANDLES=local\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(workdir)
+
+    settings = load_settings()
+
+    assert settings.ws_token == "local-secret"
+    assert settings.handles == ("local",)
+
+
 if __name__ == "__main__":
     unittest.main()

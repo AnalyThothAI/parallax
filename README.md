@@ -70,6 +70,14 @@ gmgn-twitter-intel config
 make tool-path
 ```
 
+全局 CLI 会读取当前目录的 `.env`，也会读取默认运行目录：
+
+```text
+~/.gmgn-twitter-intel/.env
+```
+
+所以如果希望在任意目录直接运行 `gmgn-twitter-intel serve`，可以把运行配置放到 `~/.gmgn-twitter-intel/.env`。`config` 和本地查询命令可以在没有 `WS_TOKEN` 时运行；启动 `/ws` 服务仍需要配置 `WS_TOKEN`。
+
 ## 数据目录
 
 本地前台默认使用：
@@ -110,7 +118,7 @@ LANCEDB_PATH=/absolute/path/to/twitter_intel.lancedb uv run gmgn-twitter-intel s
 
 | 变量 | 说明 | 默认 |
 |---|---|---|
-| `WS_TOKEN` | 下游 WebSocket 鉴权 token | 必填 |
+| `WS_TOKEN` | 下游 WebSocket 鉴权 token，启动 `/ws` 服务时必填 | 必填 |
 | `MONITOR_HANDLES` | 需要实时命中的 Twitter handle，逗号分隔 | 空 |
 | `API_HOST` | API 监听地址 | `0.0.0.0` |
 | `API_PORT` | API 端口 | `8765` |
@@ -191,6 +199,7 @@ uv run gmgn-twitter-intel search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933
 uv run gmgn-twitter-intel search "whale listing rumor" --limit 20
 uv run gmgn-twitter-intel mindshare --symbol PEPE --window 24h
 uv run gmgn-twitter-intel embed --limit 100
+uv run gmgn-twitter-intel ops reclassify-processing --dry-run --limit 1000
 uv run gmgn-twitter-intel ops reprocess-entities --limit 1000
 uv run gmgn-twitter-intel ops rebuild-indexes
 ```
@@ -224,5 +233,5 @@ uv run gmgn-twitter-intel ops rebuild-indexes
 - `MONITOR_HANDLES` 只决定哪些事件进入实时 `/ws` 推送和默认 replay。
 - `search` 默认查所有已入库公共事件；`--scope matched` 只查命中 `MONITOR_HANDLES` 的事件。
 - `recent` 只返回命中 `MONITOR_HANDLES` 的历史事件。
-- 没解析出 token 的推文仍会保存、清洗、embedding、语义检索，但不会进入某个 token/CA 的 mindshare 分子。
+- 没解析出 token 的推文仍会保存、清洗；只有命中监控 handle、或带有明确 crypto 语义信号的 tokenless 内容才进入 embedding 队列。
 - `coverage=public_stream` 代表 GMGN 匿名公共流覆盖，不是完整 Twitter firehose。

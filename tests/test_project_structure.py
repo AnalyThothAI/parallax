@@ -51,6 +51,18 @@ def test_makefile_exposes_global_cli_install_targets():
     assert "\t@uv tool update-shell" in makefile
 
 
+def test_compose_limits_native_thread_pools_for_collector_runtime():
+    compose = (ROOT / "compose.yaml").read_text()
+
+    assert "OMP_NUM_THREADS: 1" in compose
+    assert "OPENBLAS_NUM_THREADS: 1" in compose
+    assert "MKL_NUM_THREADS: 1" in compose
+    assert "NUMEXPR_NUM_THREADS: 1" in compose
+    assert "RAYON_NUM_THREADS: 1" in compose
+    assert "LANCE_CPU_THREADS: 1" in compose
+    assert "LANCE_IO_THREADS: 1" in compose
+
+
 def test_legacy_root_runtime_files_are_removed():
     assert not (ROOT / "gmgn_twitter_monitor.py").exists()
     assert not (ROOT / "gmgn-twitter-monitor.service").exists()

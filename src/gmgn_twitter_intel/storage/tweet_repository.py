@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections import Counter
 from typing import Any
 
 from ..models import TwitterEvent
@@ -183,6 +184,47 @@ class TweetRepository:
             processed += 1
         return processed
 
+    def reclassify_processing(self, *, limit: int, dry_run: bool = False) -> dict[str, Any]:
+        rows = self.client.query_where(
+            "twitter_events",
+            where="embedding_status = 'pending'",
+            order_by="processing_priority",
+            descending=True,
+            limit=limit,
+        )
+        now_ms = _now_ms()
+        status_counts: Counter[str] = Counter()
+        token_counts: Counter[str] = Counter()
+        changed_rows: list[dict[str, Any]] = []
+        changed = 0
+        for row in rows:
+            decision = _decision_from_row(row)
+            status_counts[decision.embedding_status] += 1
+            token_counts[decision.token_resolution_status] += 1
+            updates = {
+                "token_resolution_status": decision.token_resolution_status,
+                "processing_priority": decision.processing_priority,
+                "quality_flags_json": _json(decision.quality_flags),
+                "embedding_status": decision.embedding_status,
+            }
+            if all(row.get(key) == value for key, value in updates.items()):
+                continue
+            changed += 1
+            if dry_run:
+                continue
+            row.update(updates)
+            row["updated_at_ms"] = now_ms
+            changed_rows.append(row)
+        if changed_rows:
+            self.client.upsert_many("twitter_events", key_fields=("event_id",), rows=changed_rows)
+        return {
+            "processed": len(rows),
+            "changed": changed,
+            "dry_run": dry_run,
+            "embedding_status": dict(sorted(status_counts.items())),
+            "token_resolution_status": dict(sorted(token_counts.items())),
+        }
+
     def symbol_ca_candidates(self, symbol: str) -> list[dict[str, str | None]]:
         normalized_symbol = symbol.strip().lstrip("$").upper()
         symbol_rows = self.client.query_where(
@@ -257,7 +299,7 @@ def _event_row(
     event_dict = event.to_dict()
     projection = _projection_for_event(event)
     entities = _entities_from_projection(projection)
-    decision = decide_processing(projection, entities)
+    decision = decide_processing(projection, entities, matched=is_matched)
     return {
         "event_id": event.event_id,
         "logical_dedup_key": logical_dedup_key(event),
@@ -406,6 +448,15 @@ def _entities_for_event(event: TwitterEvent) -> list[TokenEntity]:
 
 def _entities_from_projection(projection) -> list[TokenEntity]:
     return extract_token_entities(projection.embedding_text or projection.text_raw)
+
+
+def _decision_from_row(row: dict[str, Any]):
+    projection = build_text_projection(row.get("text"), reference_text=_reference_text_from_row(row))
+    return decide_processing(
+        projection,
+        _entities_from_projection(projection),
+        matched=bool(row.get("is_matched")) or int(row.get("matched_at_ms") or 0) > 0,
+    )
 
 
 def _entity_row(event_id: str, entity: TokenEntity, *, created_at_ms: int) -> dict[str, Any]:

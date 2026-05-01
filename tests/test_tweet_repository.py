@@ -128,6 +128,29 @@ class TweetRepositoryTests(unittest.TestCase):
         self.assertEqual(recent[0]["cashtags"], ["PEPE"])
         self.assertEqual(counts["tweet_entities"], 2)
 
+    def test_reclassify_processing_skips_existing_off_topic_pending_rows(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = TweetRepository(build_lancedb_client(Path(tmpdir) / "twitter_intel.lancedb", embedding_dim=8))
+            repo.insert_event(
+                make_event("event-1", "news", 1000, text="North Korea faces severe drought according to state media")
+            )
+            row = repo.client.get_one("twitter_events", event_id="event-1")
+            row["embedding_status"] = "pending"
+            repo.client.upsert("twitter_events", key_fields=("event_id",), row=row)
+
+            dry_run = repo.reclassify_processing(limit=10, dry_run=True)
+            pending_after_dry_run = repo.client.count_where("twitter_events", where="embedding_status = 'pending'")
+            applied = repo.reclassify_processing(limit=10, dry_run=False)
+            updated = repo.client.get_one("twitter_events", event_id="event-1")
+            repo.close()
+
+        self.assertEqual(dry_run["processed"], 1)
+        self.assertEqual(dry_run["changed"], 1)
+        self.assertEqual(pending_after_dry_run, 1)
+        self.assertEqual(applied["changed"], 1)
+        self.assertEqual(updated["embedding_status"], "skipped")
+        self.assertIn("off_topic", updated["quality_flags_json"])
+
 
 if __name__ == "__main__":
     unittest.main()

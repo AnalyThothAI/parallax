@@ -97,6 +97,23 @@ class LanceDbClient:
                 .execute(_rows_to_arrow_payload([normalized], schema=schema))
             )
 
+    def upsert_many(self, table_name: str, *, key_fields: tuple[str, ...], rows: list[Row]) -> None:
+        if not key_fields:
+            raise ValueError("key_fields is required")
+        if not rows:
+            return
+        schema = self.table_schema(table_name)
+        normalized = [_normalize_row(row, schema=schema) for row in rows]
+        with self._table_lock(table_name):
+            table = self._open_table(table_name)
+            key = key_fields[0] if len(key_fields) == 1 else list(key_fields)
+            (
+                table.merge_insert(key)
+                .when_matched_update_all()
+                .when_not_matched_insert_all()
+                .execute(_rows_to_arrow_payload(normalized, schema=schema))
+            )
+
     def get_one(self, table_name: str, **filters: Any) -> Row | None:
         with self._table_lock(table_name):
             table = self._open_table(table_name)

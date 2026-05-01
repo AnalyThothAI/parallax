@@ -91,6 +91,13 @@ def build_parser() -> argparse.ArgumentParser:
     reprocess_entities = ops_subcommands.add_parser("reprocess-entities", help="re-run cheap entity extraction")
     reprocess_entities.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
     reprocess_entities.add_argument("--limit", type=int, default=1000)
+    reclassify_processing = ops_subcommands.add_parser(
+        "reclassify-processing",
+        help="re-run local embedding gate for pending rows",
+    )
+    reclassify_processing.add_argument("--store", type=Path, default=None, help="override LanceDB store path")
+    reclassify_processing.add_argument("--limit", type=int, default=1000)
+    reclassify_processing.add_argument("--dry-run", action="store_true")
 
     return parser
 
@@ -116,7 +123,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0
 
     if command == "config":
-        settings = load_settings()
+        settings = load_settings(require_ws_token=False)
         _emit(
             {
                 "ok": True,
@@ -152,7 +159,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     if command == "recent":
         handles = {item.strip().lstrip("@").lower() for item in args.handles.split(",") if item.strip()}
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         store = TweetRepository(build_lancedb_client(store_path, embedding_dim=embedding_dim))
@@ -175,7 +182,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0
 
     if command == "search":
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=embedding_dim))
@@ -210,7 +217,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0 if results.ok else 1
 
     if command == "embed":
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=embedding_dim))
@@ -226,7 +233,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0
 
     if command == "mindshare":
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         sentiment_backend = settings.sentiment_backend if settings else "none"
@@ -248,7 +255,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0 if result.get("ok") else 1
 
     if command == "enrich":
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         model = args.model or (settings.llm_model if settings else None)
@@ -283,7 +290,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0 if run["status"] == "succeeded" else 1
 
     if command == "resolve-token":
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         registry_repo = TokenRegistryRepository(build_lancedb_client(store_path, embedding_dim=embedding_dim))
@@ -302,7 +309,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0 if result["status"] == "resolved" else 1
 
     if command == "ops":
-        settings = None if args.store else load_settings()
+        settings = None if args.store else load_settings(require_ws_token=False)
         store_path = args.store or settings.lancedb_path
         embedding_dim = settings.embedding_dim if settings else None
         repo = TweetRepository(build_lancedb_client(store_path, embedding_dim=embedding_dim))
@@ -314,6 +321,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             if args.ops_command == "reprocess-entities":
                 processed = repo.reprocess_entities(limit=args.limit)
                 _emit({"ok": True, "data": {"processed": processed}}, stdout)
+                return 0
+            if args.ops_command == "reclassify-processing":
+                result = repo.reclassify_processing(limit=args.limit, dry_run=args.dry_run)
+                _emit({"ok": True, "data": result}, stdout)
                 return 0
         finally:
             repo.close()
