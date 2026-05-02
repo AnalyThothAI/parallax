@@ -100,11 +100,46 @@ def test_raw_frame_insert_is_idempotent_by_payload_hash(tmp_path):
             received_at_ms=1_001,
             raw_payload_json='{"a":1}',
         )
+        assert not conn.in_transaction
         counts = evidence.counts()
     finally:
         conn.close()
 
     assert counts["raw_frames"] == 1
+
+
+def test_duplicate_raw_frame_does_not_poison_next_ingest_transaction(tmp_path):
+    from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+
+    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    try:
+        ingest = IngestService(
+            evidence=evidence,
+            entities=entity_repo,
+            signals=signal_repo,
+            watch_keywords=("mainnet",),
+        )
+        assert ingest.insert_raw_frame(
+            source="gmgn",
+            channel="twitter_monitor_basic",
+            received_at_ms=1_000,
+            raw_payload_json='{"duplicate":true}',
+        )
+        assert not ingest.insert_raw_frame(
+            source="gmgn",
+            channel="twitter_monitor_basic",
+            received_at_ms=1_001,
+            raw_payload_json='{"duplicate":true}',
+        )
+
+        result = ingest.ingest_event(make_event("event-after-duplicate-raw"), is_watched=True)
+        counts = evidence.counts()
+    finally:
+        conn.close()
+
+    assert result.inserted is True
+    assert counts["raw_frames"] == 1
+    assert counts["events"] == 1
 
 
 def test_entity_repository_persists_exact_token_and_keyword_entities(tmp_path):

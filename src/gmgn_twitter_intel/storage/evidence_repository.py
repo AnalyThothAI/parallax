@@ -41,6 +41,7 @@ class EvidenceRepository:
             )
             self.conn.commit()
         except sqlite3.IntegrityError:
+            self.conn.rollback()
             return False
         return True
 
