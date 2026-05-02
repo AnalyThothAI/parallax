@@ -16,9 +16,11 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.handles, ("toly", "cryptodevinl", "heyibinance"))
         self.assertEqual(settings.api_host, "0.0.0.0")
         self.assertEqual(settings.api_port, 8765)
-        self.assertEqual(settings.embedding_dim, 1024)
+        self.assertEqual(settings.watch_keywords, ())
         self.assertEqual(settings.upstream_chains, ("sol", "eth", "base", "bsc"))
         self.assertEqual(settings.upstream_channels, ("twitter_monitor_basic", "twitter_monitor_token"))
+        self.assertEqual(settings.upstream_idle_timeout, 90.0)
+        self.assertEqual(settings.collector_stale_timeout, 180.0)
 
     def test_load_settings_rejects_missing_ws_token(self):
         with self.assertRaises(ValueError):
@@ -33,7 +35,7 @@ class SettingsTests(unittest.TestCase):
             self.assertEqual(os.environ, original)
 
 
-def test_runtime_paths_use_lancedb_and_ignore_old_sqlite_configuration(tmp_path, monkeypatch):
+def test_runtime_paths_use_sqlite_and_ignore_old_store_configuration(tmp_path, monkeypatch):
     app_home = tmp_path / "app-home"
     monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
 
@@ -41,27 +43,29 @@ def test_runtime_paths_use_lancedb_and_ignore_old_sqlite_configuration(tmp_path,
         {
             "MONITOR_HANDLES": "toly",
             "WS_TOKEN": "secret",
-            "EVENT_DB_PATH": str(tmp_path / "ignored.sqlite3"),
+            "LANCE" + "DB_PATH": str(tmp_path / "ignored.store"),
             "LOG_FILE": str(tmp_path / "ignored.log"),
         }
     )
 
-    assert settings.lancedb_path == app_home / "twitter_intel.lancedb"
+    assert settings.sqlite_path == app_home / "twitter_intel.sqlite3"
     assert settings.log_file == app_home / "logs" / "gmgn-twitter-intel.log"
 
 
-def test_lancedb_path_can_be_explicitly_configured(tmp_path):
-    configured_path = tmp_path / "custom.lancedb"
+def test_sqlite_path_and_watch_keywords_can_be_explicitly_configured(tmp_path):
+    configured_path = tmp_path / "custom.sqlite3"
 
     settings = load_settings(
         {
             "MONITOR_HANDLES": "toly",
             "WS_TOKEN": "secret",
-            "LANCEDB_PATH": str(configured_path),
+            "SQLITE_PATH": str(configured_path),
+            "WATCH_KEYWORDS": " listing,airdrop,Mainnet,listing ",
         }
     )
 
-    assert settings.lancedb_path == configured_path
+    assert settings.sqlite_path == configured_path
+    assert settings.watch_keywords == ("listing", "airdrop", "mainnet")
 
 
 def test_load_settings_can_skip_ws_token_for_read_only_cli():
@@ -75,7 +79,7 @@ def test_load_settings_reads_default_app_home_env_file(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
     app_home.mkdir()
     (app_home / ".env").write_text(
-        "WS_TOKEN=secret-from-home\nMONITOR_HANDLES=toly,traderpow\nEMBEDDING_DIM=8\n",
+        "WS_TOKEN=secret-from-home\nMONITOR_HANDLES=toly,traderpow\nWATCH_KEYWORDS=listing,airdrop\n",
         encoding="utf-8",
     )
     workdir = tmp_path / "elsewhere"
@@ -87,7 +91,7 @@ def test_load_settings_reads_default_app_home_env_file(tmp_path, monkeypatch):
 
     assert settings.ws_token == "secret-from-home"
     assert settings.handles == ("toly", "traderpow")
-    assert settings.embedding_dim == 8
+    assert settings.watch_keywords == ("listing", "airdrop")
 
 
 def test_load_settings_prefers_current_env_file_over_default_app_home_env_file(tmp_path, monkeypatch):

@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from .runtime_paths import app_home, app_log_path, lancedb_path
+from .runtime_paths import app_home, app_log_path, sqlite_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
@@ -30,10 +30,8 @@ class Settings(BaseSettings):
     ws_heartbeat_interval: int = Field(default=30, validation_alias="WS_HEARTBEAT_INTERVAL")
     replay_limit: int = Field(default=100, validation_alias="REPLAY_LIMIT")
     app_home_override: Path | None = Field(default=None, validation_alias="GMGN_TWITTER_HOME")
-    lancedb_path_override: Path | None = Field(default=None, validation_alias="LANCEDB_PATH")
-    embedding_dim: int = Field(default=1024, validation_alias="EMBEDDING_DIM")
-    sentiment_backend: str = Field(default="none", validation_alias="SENTIMENT_BACKEND")
-    llm_model: str | None = Field(default=None, validation_alias="LLM_MODEL")
+    sqlite_path_override: Path | None = Field(default=None, validation_alias="SQLITE_PATH")
+    watch_keywords: tuple[str, ...] = Field(default_factory=tuple, validation_alias="WATCH_KEYWORDS")
 
     upstream_chains: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHAINS, validation_alias="UPSTREAM_CHAINS")
     upstream_channels: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHANNELS, validation_alias="UPSTREAM_CHANNELS")
@@ -41,14 +39,17 @@ class Settings(BaseSettings):
     upstream_proxy: str | None = Field(default=None, validation_alias="GMGN_WS_PROXY")
     upstream_reconnect_delay: float = Field(default=3.0, validation_alias="UPSTREAM_RECONNECT_DELAY")
     upstream_heartbeat_interval: float = Field(default=25.0, validation_alias="UPSTREAM_HEARTBEAT_INTERVAL")
+    upstream_idle_timeout: float = Field(default=90.0, validation_alias="UPSTREAM_IDLE_TIMEOUT")
+    collector_watchdog_interval: float = Field(default=30.0, validation_alias="COLLECTOR_WATCHDOG_INTERVAL")
+    collector_stale_timeout: float = Field(default=180.0, validation_alias="COLLECTOR_STALE_TIMEOUT")
 
     @property
     def app_home(self) -> Path:
         return app_home(self.app_home_override)
 
     @property
-    def lancedb_path(self) -> Path:
-        return self.lancedb_path_override or lancedb_path(self.app_home_override)
+    def sqlite_path(self) -> Path:
+        return self.sqlite_path_override or sqlite_path(self.app_home_override)
 
     @property
     def log_file(self) -> Path:
@@ -72,7 +73,19 @@ class Settings(BaseSettings):
         values = tuple(_split_values(value))
         return values
 
-    @field_validator("app_home_override", "lancedb_path_override", mode="before")
+    @field_validator("watch_keywords", mode="before")
+    @classmethod
+    def parse_watch_keywords(cls, value: Any) -> tuple[str, ...]:
+        keywords = []
+        seen = set()
+        for item in _split_values(value):
+            keyword = item.strip().lower()
+            if keyword and keyword not in seen:
+                keywords.append(keyword)
+                seen.add(keyword)
+        return tuple(keywords)
+
+    @field_validator("app_home_override", "sqlite_path_override", mode="before")
     @classmethod
     def parse_optional_path(cls, value: Any) -> Any:
         if value is None:
@@ -98,15 +111,6 @@ class Settings(BaseSettings):
         if normalized.lower() in {"", "none", "false", "off", "direct"}:
             return None
         return normalized
-
-    @field_validator("sentiment_backend")
-    @classmethod
-    def validate_sentiment_backend(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"none", "tweetnlp", "cardiff"}:
-            raise ValueError("SENTIMENT_BACKEND must be one of: none, tweetnlp, cardiff")
-        return normalized
-
 
 def load_settings(env: Mapping[str, str] | None = None, *, require_ws_token: bool = True) -> Settings:
     settings = Settings(_env_file=_settings_env_files()) if env is None else Settings(_env_file=None, **dict(env))

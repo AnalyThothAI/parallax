@@ -1,0 +1,43 @@
+from gmgn_twitter_intel.pipeline.entity_extractor import extract_entities
+from gmgn_twitter_intel.pipeline.signal_builder import SignalBuilder
+from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
+from gmgn_twitter_intel.retrieval.search_service import SearchService
+from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
+from tests.test_sqlite_repositories import make_event, open_repositories
+
+
+def seed_event(tmp_path):
+    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    event = make_event(text="$PEPE base stablecoin mainnet 0x6982508145454ce325ddbe47a25d4ec3d2311933")
+    evidence.insert_event(event, is_watched=True)
+    entities = extract_entities(event.content.text, watch_keywords=("mainnet",))
+    entity_repo.insert_event_entities(event, entities, is_watched=True)
+    SignalBuilder(signal_repo).build_for_event(event, entities, is_watched=True)
+    return conn, evidence, entity_repo, signal_repo
+
+
+def test_search_service_uses_exact_entities_and_fts(tmp_path):
+    conn, evidence, entity_repo, _ = seed_event(tmp_path)
+    try:
+        service = SearchService(evidence=evidence, entities=entity_repo)
+        by_ca = service.search("0x6982508145454ce325ddbe47a25d4ec3d2311933", limit=10)
+        by_symbol = service.search("$PEPE", limit=10)
+        by_text = service.search("stablecoin", limit=10)
+    finally:
+        conn.close()
+
+    assert by_ca.items[0]["match_type"] == "exact_ca"
+    assert by_symbol.items[0]["match_type"] == "exact_symbol"
+    assert by_text.items[0]["match_type"] == "fts"
+
+
+def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
+    conn, _, _, signal_repo = seed_event(tmp_path)
+    try:
+        token_flow = TokenFlowService(signal_repo).token_flow(window="5m", limit=10)
+        alerts = AccountAlertService(signal_repo).account_alerts(window="24h", limit=10, handles={"toly"})
+    finally:
+        conn.close()
+
+    assert token_flow[0]["mention_count"] == 1
+    assert {alert["alert_type"] for alert in alerts} == {"account_token", "account_keyword"}

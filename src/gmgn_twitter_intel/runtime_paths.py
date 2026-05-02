@@ -16,8 +16,8 @@ def app_home(path_override: str | Path | None = None) -> Path:
     return Path.home() / ".gmgn-twitter-intel"
 
 
-def lancedb_path(app_home_override: str | Path | None = None) -> Path:
-    return app_home(app_home_override) / "twitter_intel.lancedb"
+def sqlite_path(app_home_override: str | Path | None = None) -> Path:
+    return app_home(app_home_override) / "twitter_intel.sqlite3"
 
 
 def app_log_path(app_home_override: str | Path | None = None) -> Path:

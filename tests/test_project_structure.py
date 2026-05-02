@@ -19,21 +19,20 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "src" / "gmgn_twitter_intel" / "api" / "app.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "collector" / "service.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "tweet_text.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_extractor.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_registry.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "processing_policy.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "embedding.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "llm_enrichment.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "entity_extractor.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "ingest_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "signal_builder.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "search_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "mindshare_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "lancedb_client.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "index_maintenance.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "runtime_bootstrap.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "tweet_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "social_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "token_registry_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "llm_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "runtime" / "background_loops.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_flow_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "account_alert_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_client.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_schema.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "evidence_repository.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "entity_repository.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "signal_repository.py").is_file()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / ("lance" + "db_client.py")).exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / ("embed" + "ding.py")).exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / ("llm" + "_enrichment.py")).exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "store" / "sqlite.py").exists()
     assert (ROOT / "Makefile").is_file()
     assert (ROOT / "Dockerfile").is_file()
@@ -51,16 +50,16 @@ def test_makefile_exposes_global_cli_install_targets():
     assert "\t@uv tool update-shell" in makefile
 
 
-def test_compose_limits_native_thread_pools_for_collector_runtime():
+def test_compose_uses_sqlite_runtime_without_lance_thread_pools():
     compose = (ROOT / "compose.yaml").read_text()
 
     assert "OMP_NUM_THREADS: 1" in compose
     assert "OPENBLAS_NUM_THREADS: 1" in compose
     assert "MKL_NUM_THREADS: 1" in compose
     assert "NUMEXPR_NUM_THREADS: 1" in compose
-    assert "RAYON_NUM_THREADS: 1" in compose
-    assert "LANCE_CPU_THREADS: 1" in compose
-    assert "LANCE_IO_THREADS: 1" in compose
+    assert "SQLITE_PATH: /data/twitter_intel.sqlite3" in compose
+    assert ("LANCE" + "_") not in compose
+    assert ("RAYON" + "_") not in compose
 
 
 def test_legacy_root_runtime_files_are_removed():

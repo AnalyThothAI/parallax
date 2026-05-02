@@ -3,28 +3,31 @@ import json
 import unittest
 
 from gmgn_twitter_intel.collector.service import CollectorService
+from gmgn_twitter_intel.pipeline.ingest_service import IngestedEvent
 
 
 class MemoryStore:
     def __init__(self):
         self.twitter_events = []
-        self.matched_twitter_events = []
+        self.raw_frames = []
+        self.watched_flags = []
 
-    def insert_event(self, event):
+    def insert_raw_frame(self, **kwargs):
+        self.raw_frames.append(kwargs)
+        return True
+
+    def ingest_event(self, event, *, is_watched):
         self.twitter_events.append(event)
-        return True
-
-    def mark_event_matched(self, event):
-        self.matched_twitter_events.append(event)
-        return True
+        self.watched_flags.append(is_watched)
+        return IngestedEvent(event=event, entities=[], alerts=[], inserted=True)
 
 
 class MemoryPublisher:
     def __init__(self):
-        self.events = []
+        self.payloads = []
 
-    async def publish(self, event):
-        self.events.append(event)
+    async def publish(self, payload):
+        self.payloads.append(payload)
 
 
 class CollectorServiceTests(unittest.TestCase):
@@ -65,8 +68,12 @@ class CollectorServiceTests(unittest.TestCase):
             await service.handle_frame(frame, received_at_ms=1234)
 
             self.assertEqual([event.author.handle for event in store.twitter_events], ["random", "toly"])
-            self.assertEqual([event.author.handle for event in store.matched_twitter_events], ["toly"])
-            self.assertEqual([event.event_id for event in publisher.events], ["gmgn:twitter_monitor_basic:keep"])
+            self.assertEqual(store.watched_flags, [False, True])
+            self.assertEqual(
+                [payload["event"]["event_id"] for payload in publisher.payloads],
+                ["gmgn:twitter_monitor_basic:keep"],
+            )
+            self.assertEqual(store.raw_frames[0]["channel"], "twitter_monitor_basic")
 
         asyncio.run(scenario())
 
@@ -117,9 +124,8 @@ class CollectorServiceTests(unittest.TestCase):
             await asyncio.sleep(0.06)
 
             self.assertEqual(len(store.twitter_events), 1)
-            self.assertEqual(len(store.matched_twitter_events), 1)
             self.assertEqual(store.twitter_events[0].content.text, "complete")
-            self.assertEqual(store.matched_twitter_events[0].content.text, "complete")
+            self.assertEqual(store.watched_flags, [True])
 
         asyncio.run(scenario())
 

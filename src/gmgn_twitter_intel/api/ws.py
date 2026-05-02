@@ -8,10 +8,8 @@ from typing import Any
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from ..collector.subscriptions import event_matches_handles, normalize_handles
-from ..models import TwitterEvent
-from ..pipeline.token_extractor import normalize_ca
-from ..storage.tweet_repository import TweetRepository
+from ..collector.subscriptions import normalize_handles
+from ..pipeline.entity_extractor import normalize_ca
 
 
 @dataclass(eq=False)
@@ -23,24 +21,25 @@ class ClientSubscription:
 
 
 class PublicWebSocketHub:
-    def __init__(self, *, token: str, store: TweetRepository, default_replay_limit: int = 100):
+    def __init__(self, *, token: str, evidence, entities, signals, default_replay_limit: int = 100):
         self.token = token
-        self.store = store
+        self.evidence = evidence
+        self.entities = entities
+        self.signals = signals
         self.default_replay_limit = default_replay_limit
         self._clients: set[ClientSubscription] = set()
 
-    async def publish(self, event: TwitterEvent) -> None:
+    async def publish(self, payload: dict[str, Any]) -> None:
         if not self._clients:
             return
 
-        event_payload = event.to_dict()
-        payload = _json_message({"type": "event", "event": event_payload})
+        message = _json_message(payload)
         stale_clients = []
         for client in list(self._clients):
-            if not self._event_matches_subscription(event, client):
+            if not self._payload_matches_subscription(payload, client):
                 continue
             try:
-                await client.websocket.send_text(payload)
+                await client.websocket.send_text(message)
             except WebSocketDisconnect:
                 stale_clients.append(client)
             except RuntimeError:
@@ -94,48 +93,51 @@ class PublicWebSocketHub:
             await client.websocket.send_text(_json_message({"type": "error", "code": "invalid_ca"}))
             return
         client.symbols = _normalize_symbols(message.get("symbols") or message.get("tokens") or [])
-        for symbol in client.symbols:
-            candidates = self.store.symbol_ca_candidates(symbol)
-            if len(candidates) > 1:
-                await client.websocket.send_text(
-                    _json_message({"type": "error", "code": "ambiguous_symbol", "candidates": candidates})
-                )
-                return
         replay_limit = _replay_limit(message.get("replay"), self.default_replay_limit)
         replay_events = self._replay_events(client, replay_limit)
-        for event in reversed(replay_events):
-            await client.websocket.send_text(_json_message({"type": "event", "event": event}))
+        for payload in reversed(replay_events):
+            await client.websocket.send_text(_json_message(payload))
 
     def _replay_events(self, client: ClientSubscription, limit: int) -> list[dict[str, Any]]:
         collected: dict[str, dict[str, Any]] = {}
         if client.cas or client.symbols:
             for chain, ca in client.cas:
-                for event in self.store.recent_events(limit=limit, ca=ca, chain=chain):
-                    collected[event["event_id"]] = event
+                for event in self.evidence.recent_events(limit=limit, ca=ca, chain=chain):
+                    collected[event["event_id"]] = self._payload_for_event(event)
             for symbol in client.symbols:
-                for event in self.store.recent_events(limit=limit, symbol=symbol):
-                    collected[event["event_id"]] = event
-            events = list(collected.values())
-            events.sort(key=lambda item: item.get("received_at_ms") or 0, reverse=True)
-            return events[:limit]
-        return self.store.recent_events(limit=limit, handles=client.handles)
+                for event in self.evidence.recent_events(limit=limit, symbol=symbol):
+                    collected[event["event_id"]] = self._payload_for_event(event)
+            payloads = list(collected.values())
+            payloads.sort(key=lambda item: item["event"].get("received_at_ms") or 0, reverse=True)
+            return payloads[:limit]
+        return [
+            self._payload_for_event(event)
+            for event in self.evidence.recent_events(limit=limit, handles=client.handles)
+        ]
 
-    def _event_matches_subscription(self, event: TwitterEvent, client: ClientSubscription) -> bool:
+    def _payload_matches_subscription(self, payload: dict[str, Any], client: ClientSubscription) -> bool:
         has_token_filters = bool(client.cas or client.symbols)
-        if client.handles and event_matches_handles(event, client.handles):
+        if client.handles and _event_handle(payload.get("event")) in client.handles:
             return True
         if not has_token_filters:
-            return event_matches_handles(event, client.handles)
-        rows = self.store.client.query_where(
-            "tweet_entities",
-            where=f"event_id = '{_sql_literal(event.event_id)}'",
-        )
-        for row in rows:
-            if row.get("entity_type") == "ca" and (row.get("chain"), row.get("normalized_value")) in client.cas:
+            return not client.handles
+        for entity in payload.get("entities") or []:
+            ca_key = (entity.get("chain"), entity.get("normalized_value"))
+            if entity.get("entity_type") == "ca" and ca_key in client.cas:
                 return True
-            if row.get("entity_type") == "symbol" and str(row.get("normalized_value") or "").upper() in client.symbols:
+            symbol = str(entity.get("normalized_value") or "").upper()
+            if entity.get("entity_type") == "symbol" and symbol in client.symbols:
                 return True
         return False
+
+    def _payload_for_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        event_id = str(event["event_id"])
+        return {
+            "type": "event",
+            "event": event,
+            "entities": self.entities.entities_for_event(event_id),
+            "alerts": self.signals.alerts_for_event(event_id),
+        }
 
 
 def _json_message(message: dict[str, Any]) -> str:
@@ -179,8 +181,15 @@ def _normalize_symbols(raw: Any) -> set[str]:
     return symbols
 
 
-def _sql_literal(value: str) -> str:
-    return value.replace("'", "''")
+def _event_handle(event: Any) -> str | None:
+    if not isinstance(event, dict):
+        return None
+    if event.get("author_handle"):
+        return str(event["author_handle"]).lower()
+    author = event.get("author")
+    if isinstance(author, dict) and author.get("handle"):
+        return str(author["handle"]).lower()
+    return None
 
 
 async def _close_if_connected(websocket: WebSocket, *, code: int, reason: str) -> None:

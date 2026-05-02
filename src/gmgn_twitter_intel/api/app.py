@@ -1,30 +1,43 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from loguru import logger
 
 from ..collector.direct_ws import DirectGmgnWebSocketClient
 from ..collector.service import CollectorService
+from ..pipeline.ingest_service import IngestService
 from ..settings import Settings, load_settings
-from ..storage.lancedb_client import build_lancedb_client
-from ..storage.runtime_bootstrap import bootstrap_lancedb
-from ..storage.tweet_repository import TweetRepository
+from ..storage.entity_repository import EntityRepository
+from ..storage.evidence_repository import EvidenceRepository
+from ..storage.signal_repository import SignalRepository
+from ..storage.sqlite_client import connect_sqlite
+from ..storage.sqlite_schema import migrate
 from .ws import PublicWebSocketHub
 
 
 @dataclass(slots=True)
 class CliRuntime:
     settings: Settings
-    store: TweetRepository
+    evidence: EvidenceRepository
+    entities: EntityRepository
+    signals: SignalRepository
+    read_evidence: EvidenceRepository
+    read_entities: EntityRepository
+    read_signals: SignalRepository
+    ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
+    start_collector: bool
     collector_task: asyncio.Task | None = None
+    supervisor_task: asyncio.Task | None = None
 
 
 def create_app(settings: Settings | None = None, *, start_collector: bool = True) -> FastAPI:
@@ -38,7 +51,7 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
             "Starting GMGN Twitter Intel | "
             f"handles={','.join(resolved_settings.handles) or 'all'} "
             f"channels={','.join(resolved_settings.upstream_channels)} "
-            f"lancedb={resolved_settings.lancedb_path}"
+            f"sqlite={resolved_settings.sqlite_path}"
         )
         try:
             yield
@@ -52,17 +65,10 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
         return "ok\n"
 
     @app.get("/readyz")
-    async def readyz() -> dict:
+    async def readyz() -> JSONResponse:
         runtime = app.state.service
-        return {
-            "collector": runtime.collector.status.to_dict(),
-            "handles": list(runtime.settings.handles),
-            "store": str(runtime.settings.lancedb_path),
-            "provider_status": {
-                "embedding": "hash",
-                "sentiment": runtime.settings.sentiment_backend,
-            },
-        }
+        payload, status_code = _readiness_payload(runtime)
+        return JSONResponse(payload, status_code=status_code)
 
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket) -> None:
@@ -74,17 +80,47 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     if not settings.ws_token:
         raise ValueError("WS_TOKEN is required")
-    client = build_lancedb_client(settings.lancedb_path, embedding_dim=settings.embedding_dim)
-    bootstrap_lancedb(client)
-    store = TweetRepository(client)
-    hub = PublicWebSocketHub(token=settings.ws_token, store=store, default_replay_limit=settings.replay_limit)
+    conn = connect_sqlite(settings.sqlite_path, read_only=False)
+    migrate(conn)
+    read_conn = connect_sqlite(settings.sqlite_path, read_only=True)
+    evidence = EvidenceRepository(conn)
+    entities = EntityRepository(conn)
+    signals = SignalRepository(conn)
+    read_evidence = EvidenceRepository(read_conn)
+    read_entities = EntityRepository(read_conn)
+    read_signals = SignalRepository(read_conn)
+    ingest = IngestService(
+        evidence=evidence,
+        entities=entities,
+        signals=signals,
+        watch_keywords=settings.watch_keywords,
+    )
+    hub = PublicWebSocketHub(
+        token=settings.ws_token,
+        evidence=read_evidence,
+        entities=read_entities,
+        signals=read_signals,
+        default_replay_limit=settings.replay_limit,
+    )
     collector = CollectorService(
         handles=settings.handles,
-        store=store,
+        store=ingest,
         publisher=hub,
         upstream_client=None,
     )
-    runtime = CliRuntime(settings=settings, store=store, hub=hub, collector=collector)
+    runtime = CliRuntime(
+        settings=settings,
+        evidence=evidence,
+        entities=entities,
+        signals=signals,
+        read_evidence=read_evidence,
+        read_entities=read_entities,
+        read_signals=read_signals,
+        ingest=ingest,
+        hub=hub,
+        collector=collector,
+        start_collector=start_collector,
+    )
     if start_collector:
         upstream = DirectGmgnWebSocketClient(
             app_version=settings.upstream_app_version,
@@ -93,18 +129,78 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             proxy=settings.upstream_proxy,
             reconnect_delay=settings.upstream_reconnect_delay,
             heartbeat_interval=settings.upstream_heartbeat_interval,
+            idle_timeout=settings.upstream_idle_timeout,
             on_frame=collector.handle_frame,
         )
         collector.upstream_client = upstream
         runtime.collector_task = asyncio.create_task(collector.run())
+        runtime.supervisor_task = asyncio.create_task(_supervise_runtime(runtime))
     return runtime
 
 
 async def _stop_runtime(runtime: CliRuntime) -> None:
-    tasks = [task for task in (runtime.collector_task,) if task is not None]
+    tasks = [task for task in (runtime.supervisor_task, runtime.collector_task) if task is not None]
     for task in tasks:
         task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     await runtime.collector.stop()
-    runtime.store.close()
+    runtime.evidence.close()
+    runtime.read_evidence.close()
+
+
+def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:
+    now_ms = now_ms if now_ms is not None else _now_ms()
+    collector_status = runtime.collector.status.to_dict()
+    reasons = _collector_unhealthy_reasons(runtime, now_ms=now_ms)
+    payload = {
+        "ok": not reasons,
+        "reasons": reasons,
+        "collector": collector_status,
+        "handles": list(runtime.settings.handles),
+        "store": str(runtime.settings.sqlite_path),
+        "db": {"write_probe": _db_write_probe(runtime)},
+    }
+    return payload, 503 if reasons else 200
+
+
+def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str]:
+    if not runtime.start_collector:
+        return []
+
+    task = runtime.collector_task
+    if task is None:
+        return ["collector_not_started"]
+    if task.done():
+        return ["collector_task_stopped"]
+
+    status = runtime.collector.status
+    stale_ms = int(runtime.settings.collector_stale_timeout * 1000)
+    if status.last_frame_at_ms is None:
+        age_ms = now_ms - int(status.started_at_ms)
+        return ["no_upstream_frames"] if age_ms > stale_ms else []
+
+    frame_age_ms = now_ms - int(status.last_frame_at_ms)
+    return ["stale_upstream_frames"] if frame_age_ms > stale_ms else []
+
+
+def _db_write_probe(runtime: CliRuntime) -> bool:
+    try:
+        return runtime.evidence.db_write_probe()
+    except Exception:
+        return False
+
+
+async def _supervise_runtime(runtime: CliRuntime) -> None:
+    interval = max(1.0, float(runtime.settings.collector_watchdog_interval))
+    while True:
+        await asyncio.sleep(interval)
+        payload, status_code = _readiness_payload(runtime)
+        if status_code < 500:
+            continue
+        logger.error(f"Collector watchdog exiting unhealthy process: reasons={payload['reasons']}")
+        os._exit(1)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)

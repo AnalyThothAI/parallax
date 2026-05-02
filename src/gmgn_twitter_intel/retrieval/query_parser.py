@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..pipeline.token_extractor import normalize_ca
+from ..pipeline.entity_extractor import normalize_ca
 
 
 @dataclass(frozen=True, slots=True)

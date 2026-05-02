@@ -46,8 +46,7 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatc
     app = create_app(settings=make_settings(), start_collector=False)
 
     with TestClient(app) as client:
-        client.app.state.service.store.insert_event(make_event("event-1", "toly"))
-        client.app.state.service.store.mark_event_matched(make_event("event-1", "toly"))
+        client.app.state.service.ingest.ingest_event(make_event("event-1", "toly"), is_watched=True)
 
         with client.websocket_connect("/ws") as ws:
             ws.send_json({"type": "auth", "token": "secret"})
@@ -57,9 +56,13 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatc
             replay = ws.receive_json()
             assert replay["type"] == "event"
             assert replay["event"]["event_id"] == "event-1"
+            assert "entities" in replay
+            assert "alerts" in replay
 
-            client.portal.call(client.app.state.service.hub.publish, make_event("event-2", "elonmusk"))
-            client.portal.call(client.app.state.service.hub.publish, make_event("event-3", "toly"))
+            ignored = _ingest_payload(client, make_event("event-2", "elonmusk"), is_watched=True)
+            matched = _ingest_payload(client, make_event("event-3", "toly"), is_watched=True)
+            client.portal.call(client.app.state.service.hub.publish, ignored)
+            client.portal.call(client.app.state.service.hub.publish, matched)
             live = ws.receive_json()
             assert live["event"]["event_id"] == "event-3"
 
@@ -70,8 +73,7 @@ def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path, monk
 
     with TestClient(app) as client:
         replay_event = make_event("event-ca-replay", "toly", text=f"$PEPE replay {PEPE}")
-        client.app.state.service.store.insert_event(replay_event)
-        client.app.state.service.store.mark_event_matched(replay_event)
+        client.app.state.service.ingest.ingest_event(replay_event, is_watched=True)
 
         with client.websocket_connect("/ws") as ws:
             ws.send_json({"type": "auth", "token": "secret"})
@@ -81,14 +83,23 @@ def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path, monk
             replay = ws.receive_json()
             assert replay["type"] == "event"
             assert replay["event"]["event_id"] == "event-ca-replay"
+            assert replay["entities"][0]["entity_type"] in {"symbol", "ca"}
 
             ignored = make_event("event-ignore", "toly", text="no token")
             matched = make_event("event-ca-live", "elonmusk", text=f"$PEPE live {PEPE}")
-            client.app.state.service.store.insert_event(ignored)
-            client.app.state.service.store.mark_event_matched(ignored)
-            client.app.state.service.store.insert_event(matched)
-            client.app.state.service.store.mark_event_matched(matched)
-            client.portal.call(client.app.state.service.hub.publish, ignored)
-            client.portal.call(client.app.state.service.hub.publish, matched)
+            ignored_payload = _ingest_payload(client, ignored, is_watched=True)
+            matched_payload = _ingest_payload(client, matched, is_watched=True)
+            client.portal.call(client.app.state.service.hub.publish, ignored_payload)
+            client.portal.call(client.app.state.service.hub.publish, matched_payload)
             live = ws.receive_json()
             assert live["event"]["event_id"] == "event-ca-live"
+
+
+def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
+    result = client.app.state.service.ingest.ingest_event(event, is_watched=is_watched)
+    return {
+        "type": "event",
+        "event": event.to_dict(),
+        "entities": result.entities,
+        "alerts": result.alerts,
+    }

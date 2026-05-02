@@ -1,1 +1,1 @@
-"""LanceDB-backed storage for Twitter intelligence."""
+"""SQLite-backed storage for Twitter intelligence."""

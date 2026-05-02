@@ -14,7 +14,7 @@ MENTION_RE = re.compile(r"(?<![A-Za-z0-9_])@([A-Za-z0-9_]{1,20})")
 class TextProjection:
     text_raw: str | None
     text_clean: str | None
-    embedding_text: str | None
+    search_text: str | None
     urls: list[str]
     cashtags: list[str]
     hashtags: list[str]
@@ -26,11 +26,11 @@ def build_text_projection(text: str | None, *, reference_text: str | None = None
     clean = _clean_text(raw)
     reference_clean = _clean_text(reference_text)
     parts = [part for part in (clean, reference_clean) if part]
-    embedding_text = "\n".join(parts) if parts else None
+    search_text = "\n".join(parts) if parts else None
     return TextProjection(
         text_raw=raw,
         text_clean=clean,
-        embedding_text=embedding_text,
+        search_text=search_text,
         urls=_extract_urls(raw),
         cashtags=extract_cashtags(raw),
         hashtags=_unique(HASHTAG_RE.findall(raw or "")),

@@ -17,6 +17,10 @@ DEFAULT_USER_AGENT = (
 )
 
 
+class UpstreamIdleTimeoutError(TimeoutError):
+    pass
+
+
 def build_gmgn_ws_url(
     app_version: str,
     *,
@@ -92,6 +96,7 @@ class DirectGmgnWebSocketClient:
         proxy: str | None = None,
         reconnect_delay: float = 3,
         heartbeat_interval: float = 25,
+        idle_timeout: float = 90,
         user_agent: str = DEFAULT_USER_AGENT,
     ):
         self.app_version = app_version
@@ -101,6 +106,7 @@ class DirectGmgnWebSocketClient:
         self.proxy = proxy
         self.reconnect_delay = reconnect_delay
         self.heartbeat_interval = heartbeat_interval
+        self.idle_timeout = idle_timeout
         self.user_agent = user_agent
 
     async def run(self) -> None:
@@ -139,13 +145,22 @@ class DirectGmgnWebSocketClient:
             await self._subscribe_all(websocket)
             heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
             try:
-                async for frame in websocket:
-                    result = self.on_frame(frame)
-                    if inspect.isawaitable(result):
-                        await result
+                await self._receive_frames(websocket)
             finally:
                 heartbeat_task.cancel()
                 await asyncio.gather(heartbeat_task, return_exceptions=True)
+
+    async def _receive_frames(self, websocket) -> None:
+        while True:
+            try:
+                frame = await asyncio.wait_for(websocket.recv(), timeout=self.idle_timeout)
+            except TimeoutError as exc:
+                raise UpstreamIdleTimeoutError(
+                    f"no upstream frame received for {self.idle_timeout:g}s"
+                ) from exc
+            result = self.on_frame(frame)
+            if inspect.isawaitable(result):
+                await result
 
     async def _subscribe_all(self, websocket) -> None:
         data = [{"chain": chain} for chain in self.chains]

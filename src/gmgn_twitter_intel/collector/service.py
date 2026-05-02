@@ -8,18 +8,19 @@ from typing import Any, Protocol
 from loguru import logger
 
 from ..models import TwitterEvent
+from ..pipeline.ingest_service import IngestedEvent
 from .normalizer import normalize_gmgn_payload, parse_gmgn_frame
 from .subscriptions import event_matches_handles, normalize_handles
 
 
-class TweetStoreProtocol(Protocol):
-    def insert_event(self, event: TwitterEvent) -> bool: ...
+class IngestStoreProtocol(Protocol):
+    def insert_raw_frame(self, **kwargs) -> bool: ...
 
-    def mark_event_matched(self, event: TwitterEvent) -> bool: ...
+    def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent: ...
 
 
 class EventPublisherProtocol(Protocol):
-    async def publish(self, event: TwitterEvent) -> None: ...
+    async def publish(self, payload: dict[str, Any]) -> None: ...
 
 
 class UpstreamClientProtocol(Protocol):
@@ -49,7 +50,7 @@ class CollectorService:
         self,
         *,
         handles: tuple[str, ...],
-        store: TweetStoreProtocol,
+        store: IngestStoreProtocol,
         publisher: EventPublisherProtocol,
         upstream_client: UpstreamClientProtocol | None,
         snapshot_timeout: float = 0.5,
@@ -91,6 +92,13 @@ class CollectorService:
             return
 
         channel = parsed["channel"]
+        await asyncio.to_thread(
+            self.store.insert_raw_frame,
+            source="gmgn",
+            channel=channel,
+            received_at_ms=received_at_ms,
+            raw_payload_json=frame_data if isinstance(frame_data, str) else str(frame_data),
+        )
         for item in parsed["data"]:
             if not isinstance(item, dict):
                 continue
@@ -135,21 +143,30 @@ class CollectorService:
     async def _process_item(self, channel: str, item: dict[str, Any], received_at_ms: int) -> None:
         payload = {"channel": channel, "data": [item]}
         for event in normalize_gmgn_payload(payload, received_at_ms=received_at_ms):
-            if await asyncio.to_thread(self.store.insert_event, event):
+            is_watched = event_matches_handles(event, self.handles)
+            ingested = await asyncio.to_thread(self.store.ingest_event, event, is_watched=is_watched)
+            if ingested.inserted:
                 self.status.twitter_events += 1
                 self.status.last_event_at_ms = received_at_ms
             else:
                 self.status.duplicate_twitter_events += 1
 
-            if not event_matches_handles(event, self.handles):
+            if not is_watched:
                 continue
-            if not await asyncio.to_thread(self.store.mark_event_matched, event):
+            if not ingested.inserted:
                 self.status.duplicate_matched_twitter_events += 1
                 continue
             self.status.last_matched_event_at_ms = received_at_ms
             self.status.matched_twitter_events += 1
             self.status.events_published += 1
-            await self.publisher.publish(event)
+            await self.publisher.publish(
+                {
+                    "type": "event",
+                    "event": event.to_dict(),
+                    "entities": ingested.entities,
+                    "alerts": ingested.alerts,
+                }
+            )
 
 
 def _now_ms() -> int:

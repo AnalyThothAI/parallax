@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 from gmgn_twitter_intel.collector.direct_ws import (
     DirectGmgnWebSocketClient,
+    UpstreamIdleTimeoutError,
     build_gmgn_ws_url,
     build_heartbeat_message,
     build_subscribe_message,
@@ -84,6 +85,26 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
             sent["data"],
             [{"chain": "sol"}, {"chain": "eth"}, {"chain": "base"}, {"chain": "bsc"}],
         )
+
+    def test_direct_client_times_out_silent_upstream_connections(self):
+        class SilentWebSocket:
+            async def recv(self):
+                import asyncio
+
+                await asyncio.sleep(60)
+
+        client = DirectGmgnWebSocketClient(
+            app_version="20260429-12894-ccec416",
+            channels=["twitter_monitor_basic"],
+            chains=["sol"],
+            on_frame=lambda _: None,
+            idle_timeout=0.01,
+        )
+
+        import asyncio
+
+        with self.assertRaises(UpstreamIdleTimeoutError):
+            asyncio.run(client._receive_frames(SilentWebSocket()))
 
 
 if __name__ == "__main__":

@@ -1,1 +1,1 @@
-"""Retrieval services over LanceDB tweet intelligence."""
+"""Retrieval services over SQLite tweet intelligence."""
