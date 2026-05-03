@@ -136,18 +136,42 @@ export type TokenFlowItem = {
     mention_delta: number;
     mention_delta_pct?: number | null;
     z_score?: number | null;
+    new_burst_score?: number | null;
     stream_dominance: number;
     baseline_status: "ready" | "insufficient_history" | string;
     baseline_sample_count: number;
   };
-  sources: {
-    unique_authors: number;
-    watched_authors: number;
-    weighted_reach?: number | null;
+  baseline: {
+    baseline_status: "ready" | "insufficient_history" | string;
+    sample_count: number;
+    zero_slot_count: number;
+    ewma_mean?: number | null;
+    ewma_stddev?: number | null;
+    simple_mean?: number | null;
+    z_score?: number | null;
+    new_burst_score?: number | null;
+  };
+  diffusion: {
+    score: number;
+    status: "healthy" | "thin" | "concentrated" | "repeated" | "shill_risk" | string;
+    independent_authors: number;
+    effective_authors: number;
     top_author_share: number;
+    duplicate_text_share: number;
+    repeated_cluster_count: number;
+    shill_author_count: number;
     top_authors?: Array<{ handle?: string | null; count?: number; followers?: number | null; watched_count?: number }>;
-    source_quality_score: number;
-    source_quality_reasons: string[];
+    reasons: string[];
+    risks: string[];
+  };
+  watch: {
+    status: "direct_watch" | "seed_linked" | "public_only" | string;
+    direct_mentions: number;
+    direct_authors: number;
+    seed_link_count: number;
+    top_seed?: Record<string, unknown> | null;
+    reasons: string[];
+    risks: string[];
   };
   fresh: {
     latest_evidence_age_ms?: number | null;
@@ -169,6 +193,7 @@ export type TokenFlowItem = {
 
 export type TokenEvidence = {
   event_id?: string;
+  evidence_type?: string;
   score?: number;
   handle?: string | null;
   text?: string | null;

@@ -173,7 +173,7 @@ def test_entity_repository_persists_exact_token_entities(tmp_path):
     assert symbol_rows[0]["event_id"] == "event-1"
 
 
-def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
+def test_signal_builder_materializes_account_alerts_and_token_mentions(tmp_path):
     conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
     try:
         event = make_event()
@@ -183,17 +183,58 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
 
         result = build_token_signals(conn, event, entities, signal_repo, is_watched=True)
         alerts = signal_repo.account_alerts(window_ms=86_400_000, now_ms=event.received_at_ms + 1, limit=10)
-        token_flow = signal_repo.token_flow(window="5m", limit=10)
+        token_flow = signal_repo.token_flow(window="5m", limit=10, now_ms=event.received_at_ms + 1)
+        token_window_table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'token_windows'"
+        ).fetchone()
     finally:
         conn.close()
 
     assert {alert["alert_type"] for alert in result.alerts} == {"account_token"}
     assert {alert["alert_type"] for alert in alerts} == {"account_token"}
+    assert token_window_table is None
     assert token_flow[0]["identity_key"].startswith("token:evm_unknown:")
     assert token_flow[0]["mention_count"] == 1
 
 
-def test_token_windows_materialize_bucket_mindshare(tmp_path):
+def test_account_token_first_seen_uses_raw_token_mentions(tmp_path):
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
+    try:
+        first = make_event("event-pepe-first", text="$PEPE first", received_at_ms=1_700_000_000_000)
+        second = make_event("event-pepe-second", text="$PEPE second", received_at_ms=1_700_000_060_000)
+        alerts_by_event = {}
+        for event in [first, second]:
+            evidence.insert_event(event, is_watched=True)
+            entities = extract_entities(event.content.text)
+            entity_repo.insert_event_entities(event, entities, is_watched=True)
+            build_token_signals(conn, event, entities, signal_repo, is_watched=True)
+            alerts_by_event[event.event_id] = signal_repo.alerts_for_event(event.event_id)
+    finally:
+        conn.close()
+
+    assert alerts_by_event["event-pepe-first"][0]["is_first_seen_global"] == 1
+    assert alerts_by_event["event-pepe-first"][0]["is_first_seen_by_author"] == 1
+    assert alerts_by_event["event-pepe-second"][0]["is_first_seen_global"] == 0
+    assert alerts_by_event["event-pepe-second"][0]["is_first_seen_by_author"] == 0
+
+
+def test_signal_repository_token_flow_omitted_now_ms_does_not_return_stale_rows(tmp_path):
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
+    try:
+        event = make_event("event-stale-token", text="$PEPE stale", received_at_ms=1_700_000_000_000)
+        evidence.insert_event(event, is_watched=True)
+        entities = extract_entities(event.content.text)
+        entity_repo.insert_event_entities(event, entities, is_watched=True)
+        build_token_signals(conn, event, entities, signal_repo, is_watched=True)
+
+        token_flow = signal_repo.token_flow(window="5m", limit=10)
+    finally:
+        conn.close()
+
+    assert token_flow == []
+
+
+def test_token_flow_computes_rolling_mindshare_from_mentions(tmp_path):
     conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
     try:
         base_ms = 1_700_000_000_000
@@ -216,7 +257,7 @@ def test_token_windows_materialize_bucket_mindshare(tmp_path):
             entity_repo.insert_event_entities(event, entities, is_watched=is_watched)
             build_token_signals(conn, event, entities, signal_repo, is_watched=is_watched)
 
-        token_flow = signal_repo.token_flow(window="5m", limit=10)
+        token_flow = signal_repo.token_flow(window="5m", limit=10, now_ms=base_ms + 5 * 60_000)
     finally:
         conn.close()
 
@@ -250,8 +291,13 @@ def test_token_flow_can_filter_to_watched_mentions(tmp_path):
             entity_repo.insert_event_entities(event, entities, is_watched=is_watched)
             build_token_signals(conn, event, entities, signal_repo, is_watched=is_watched)
 
-        all_flow = signal_repo.token_flow(window="5m", limit=10)
-        watched_flow = signal_repo.token_flow(window="5m", limit=10, watched_only=True)
+        all_flow = signal_repo.token_flow(window="5m", limit=10, now_ms=base_ms + 5 * 60_000)
+        watched_flow = signal_repo.token_flow(
+            window="5m",
+            limit=10,
+            watched_only=True,
+            now_ms=base_ms + 5 * 60_000,
+        )
     finally:
         conn.close()
 

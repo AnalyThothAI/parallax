@@ -103,8 +103,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
-    rebuild_windows = ops_subcommands.add_parser("rebuild-windows", help="rebuild materialized windows from entities")
-    rebuild_windows.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="5m")
     rebuild_narrative_links = ops_subcommands.add_parser(
         "rebuild-narrative-links",
         help="rebuild watched-handle narrative token links from existing seeds",
@@ -229,7 +227,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "token-flow":
-            items = TokenFlowService(signals=signals, tokens=tokens).token_flow(window=args.window, limit=args.limit)
+            items = TokenFlowService(signals=signals, tokens=tokens, enrichment=enrichment).token_flow(
+                window=args.window,
+                limit=args.limit,
+            )
             _emit(
                 {"ok": True, "data": {"window": args.window, "items": items}},
                 stdout,
@@ -298,20 +299,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 limit=args.limit,
             )
             _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "rebuild-windows":
-            rebuilt = signals.rebuild_windows(window=args.window)
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "window": args.window,
-                        "rebuilt": rebuilt,
-                    },
-                },
-                stdout,
-            )
             return 0
 
         if command == "ops" and args.ops_command == "rebuild-narrative-links":

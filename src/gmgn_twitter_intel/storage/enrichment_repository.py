@@ -448,6 +448,81 @@ class EnrichmentRepository:
         ).fetchall()
         return [_decode_link(dict(row)) for row in rows]
 
+    def seed_links_for_token(
+        self,
+        identity_key: str | None,
+        token_id: str | None,
+        chain: str | None,
+        address: str | None,
+        symbol: str | None,
+        since_ms: int,
+        limit: int = 5,
+    ) -> list[dict[str, Any]]:
+        max_rows = max(0, int(limit))
+        if max_rows == 0:
+            return []
+
+        links: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for where_clause, params in _seed_link_match_queries(
+            identity_key=identity_key,
+            token_id=token_id,
+            chain=chain,
+            address=address,
+            symbol=symbol,
+        ):
+            if len(links) >= max_rows:
+                break
+            rows = self._seed_link_rows(
+                where_clause=where_clause,
+                params=params,
+                since_ms=since_ms,
+                limit=max_rows - len(links),
+            )
+            for row in rows:
+                link_id = str(row["link_id"])
+                if link_id in seen:
+                    continue
+                seen.add(link_id)
+                links.append(_decode_frontier_row(dict(row)))
+        return links
+
+    def _seed_link_rows(
+        self,
+        *,
+        where_clause: str,
+        params: list[Any],
+        since_ms: int,
+        limit: int,
+    ) -> list[sqlite3.Row]:
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              ntl.*,
+              ns.author_handle AS seed_author_handle,
+              ns.evidence AS seed_evidence,
+              ns.summary AS seed_summary,
+              ns.received_at_ms AS seed_received_at_ms,
+              ns.seed_family AS seed_family,
+              ns.seed_terms_json AS seed_terms_json,
+              ns.market_interpretation AS market_interpretation
+            FROM narrative_token_links ntl
+            JOIN narrative_seeds ns ON ns.seed_id = ntl.seed_id
+            WHERE {where_clause}
+              AND ns.received_at_ms >= ?
+              AND ntl.updated_at_ms >= ?
+            ORDER BY
+              ntl.decision = 'driver' DESC,
+              ntl.tradeability_score DESC,
+              ntl.token_link_score DESC,
+              ns.received_at_ms DESC,
+              ntl.updated_at_ms DESC
+            LIMIT ?
+            """,
+            (*params, int(since_ms), int(since_ms), max(0, int(limit))),
+        ).fetchall()
+        return rows
+
     def attention_frontier(self, *, window: str, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -768,6 +843,26 @@ def _apply_window_increment(
     )
     row["top_authors_json"] = _json(sorted_authors[:20])
     row["top_events_json"] = _json(top_events)
+
+
+def _seed_link_match_queries(
+    *,
+    identity_key: str | None,
+    token_id: str | None,
+    chain: str | None,
+    address: str | None,
+    symbol: str | None,
+) -> list[tuple[str, list[Any]]]:
+    fields: list[tuple[str, list[Any]]] = []
+    if identity_key:
+        fields.append(("ntl.token_identity_key = ?", [str(identity_key)]))
+    if token_id:
+        fields.append(("ntl.token_id = ?", [str(token_id)]))
+    if chain and address:
+        fields.append(("ntl.chain = ? AND lower(ntl.address) = ?", [str(chain).lower(), str(address).lower()]))
+    if not fields and symbol:
+        fields.append(("ntl.symbol = ?", [str(symbol).upper()]))
+    return fields
 
 
 def _decode_json_fields(row: dict[str, Any]) -> dict[str, Any]:

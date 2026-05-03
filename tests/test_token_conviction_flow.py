@@ -36,6 +36,41 @@ def open_runtime(tmp_path):
     return conn, ingest, evidence, entities, signals, tokens
 
 
+def gmgn_token_event(
+    event_id: str,
+    *,
+    received_at_ms: int,
+    author_handle: str,
+    text: str,
+    price: str = "1.0",
+    previous_price: str | None = None,
+    market_cap: str = "60490.341996",
+):
+    snapshot = parse_gmgn_token_payload(
+        {
+            "tt": "ca",
+            "t": {
+                "a": "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+                "c": "eth",
+                "mc": market_cap,
+                "p": price,
+                "p1": previous_price,
+                "s": "DOG",
+            },
+        }
+    )
+    return replace(
+        make_event(event_id, author_handle=author_handle, text=text, received_at_ms=received_at_ms),
+        source=Source(
+            provider="gmgn",
+            transport="direct_ws",
+            coverage="public_stream",
+            channel="twitter_monitor_token",
+        ),
+        token_snapshot=snapshot,
+    )
+
+
 def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
     conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
     try:
@@ -74,7 +109,11 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
         ingest.ingest_event(gmgn_event, is_watched=True)
         ingest.ingest_event(symbol_event, is_watched=False)
 
-        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(window="5m", limit=10)[0]
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=base_ms + 5 * 60_000,
+        )[0]
     finally:
         conn.close()
 
@@ -86,23 +125,144 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
         "address": "0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416",
         "symbol": "DOG",
     }
-    assert set(item) == {"identity", "market", "flow", "sources", "fresh", "signal", "evidence_best", "evidence"}
+    assert set(item) == {
+        "identity",
+        "market",
+        "flow",
+        "baseline",
+        "diffusion",
+        "fresh",
+        "watch",
+        "signal",
+        "evidence_best",
+        "evidence",
+    }
     assert item["flow"]["mentions"] == 2
     assert item["flow"]["watched_mentions"] == 1
     assert item["flow"]["previous_mentions"] == 0
     assert item["flow"]["baseline_status"] == "insufficient_history"
-    assert item["sources"]["unique_authors"] == 2
-    assert item["sources"]["watched_authors"] == 1
-    assert item["sources"]["top_author_share"] == 0.5
+    assert item["watch"]["status"] == "direct_watch"
+    assert item["watch"]["direct_mentions"] == 1
+    assert item["watch"]["direct_authors"] == 1
+    assert item["diffusion"]["status"] == "healthy"
+    assert item["diffusion"]["independent_authors"] == 2
+    assert item["diffusion"]["top_author_share"] == 0.5
     assert item["market"]["market_status"] == "fresh"
     assert item["market"]["price"] == 0.0000000001437884
     assert item["market"]["price_change_window_pct"] == -0.073198177366
     assert item["market"]["price_change_status"] == "snapshot_previous"
-    assert item["signal"]["decision"] == "watch"
-    assert "watched_evidence" in item["signal"]["reasons"]
+    assert item["signal"]["decision"] == "driver"
+    assert "direct_watch" in item["signal"]["reasons"]
     assert item["evidence_best"]["event_id"] == "event-dog-1"
+    assert item["evidence_best"]["evidence_type"] == "gmgn_token_payload"
+    assert "structured_token_payload" in item["evidence_best"]["reasons"]
     assert item["evidence_best"]["score"] > 0
     assert item["evidence"][0]["event_id"] == "event-dog-1"
+    assert {event["evidence_type"] for event in item["evidence"]} == {"gmgn_token_payload", "cashtag"}
+
+
+def test_signal_driver_uses_rolling_acceleration_healthy_diffusion_and_fresh_market(tmp_path):
+    conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        now_ms = base_ms + 10 * 60_000
+        ingest.ingest_event(
+            gmgn_token_event(
+                "event-dog-previous",
+                received_at_ms=base_ms + 60_000,
+                author_handle="early",
+                text="$DOG early",
+            ),
+            is_watched=False,
+        )
+        for index, handle in enumerate(["watcher", "second", "third"]):
+            ingest.ingest_event(
+                gmgn_token_event(
+                    f"event-dog-current-{index}",
+                    received_at_ms=base_ms + 6 * 60_000 + index * 10_000,
+                    author_handle=handle,
+                    text=f"$DOG current acceleration {index}",
+                    price=str(1.0 + index / 10),
+                ),
+                is_watched=index == 0,
+            )
+
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=now_ms,
+        )[0]
+    finally:
+        conn.close()
+
+    assert item["flow"]["mentions"] == 3
+    assert item["flow"]["previous_mentions"] == 1
+    assert item["diffusion"]["status"] == "healthy"
+    assert item["watch"]["status"] == "direct_watch"
+    assert item["market"]["market_status"] == "fresh"
+    assert item["signal"]["decision"] == "driver"
+    assert "rolling_social_acceleration" in item["signal"]["reasons"]
+    assert "direct_watch" in item["signal"]["reasons"]
+
+
+def test_repeated_diffusion_discards_even_with_fresh_market(tmp_path):
+    conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        now_ms = base_ms + 5 * 60_000
+        for index, handle in enumerate(["a", "b", "c"]):
+            ingest.ingest_event(
+                gmgn_token_event(
+                    f"event-dog-repeated-{index}",
+                    received_at_ms=base_ms + 60_000 + index * 10_000,
+                    author_handle=handle,
+                    text="$DOG breakout now",
+                ),
+                is_watched=index == 0,
+            )
+
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=now_ms,
+        )[0]
+    finally:
+        conn.close()
+
+    assert item["market"]["market_status"] == "fresh"
+    assert item["diffusion"]["status"] == "repeated"
+    assert item["signal"]["decision"] == "discard"
+    assert "repeated_text_cluster" in item["signal"]["risks"]
+
+
+def test_public_only_watch_is_a_risk_not_a_discard_when_market_and_diffusion_are_healthy(tmp_path):
+    conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        for index, handle in enumerate(["a", "b"]):
+            ingest.ingest_event(
+                gmgn_token_event(
+                    f"event-dog-public-{index}",
+                    received_at_ms=base_ms + 60_000 + index * 10_000,
+                    author_handle=handle,
+                    text=f"$DOG public organic {index}",
+                ),
+                is_watched=False,
+            )
+
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=base_ms + 5 * 60_000,
+        )[0]
+    finally:
+        conn.close()
+
+    assert item["watch"]["status"] == "public_only"
+    assert item["diffusion"]["status"] == "healthy"
+    assert item["market"]["market_status"] == "fresh"
+    assert item["signal"]["decision"] != "discard"
+    assert "no_watched_confirmation" in item["signal"]["risks"]
 
 
 def test_token_flow_returns_one_current_row_per_token_identity(tmp_path):
@@ -189,8 +349,8 @@ def test_token_flow_merges_unique_symbol_mentions_after_token_resolution(tmp_pat
     assert len(items) == 1
     assert items[0]["identity"]["identity_key"] == "token:eth:0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
     assert items[0]["flow"]["mentions"] == 2
-    assert items[0]["sources"]["unique_authors"] == 2
-    assert items[0]["sources"]["watched_authors"] == 1
+    assert items[0]["diffusion"]["independent_authors"] == 2
+    assert sum(int(author["watched_count"]) for author in items[0]["diffusion"]["top_authors"]) == 1
 
 
 def test_token_flow_price_delta_uses_window_snapshots_not_payload_previous_price(tmp_path):
@@ -229,7 +389,11 @@ def test_token_flow_price_delta_uses_window_snapshots_not_payload_previous_price
             )
             ingest.ingest_event(event, is_watched=True)
 
-        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(window="5m", limit=10)[0]
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=current_start_ms + window_ms,
+        )[0]
     finally:
         conn.close()
 
@@ -290,7 +454,11 @@ def test_token_flow_missing_market_forces_discard_signal(tmp_path):
             received_at_ms=1_700_000_000_000,
         )
         ingest.ingest_event(event, is_watched=True)
-        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(window="5m", limit=10)[0]
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=1_700_000_000_000 + 5 * 60_000,
+        )[0]
     finally:
         conn.close()
 
@@ -299,6 +467,7 @@ def test_token_flow_missing_market_forces_discard_signal(tmp_path):
     assert item["signal"]["decision"] == "discard"
     assert "market_missing" in item["signal"]["risks"]
     assert "unresolved_symbol" in item["signal"]["risks"]
+    assert "symbol_only_no_market_identity" in item["signal"]["risks"]
 
 
 def test_token_flow_penalizes_single_author_concentration(tmp_path):
@@ -323,7 +492,7 @@ def test_token_flow_penalizes_single_author_concentration(tmp_path):
                 make_event(
                     f"event-dog-concentrated-{index}",
                     author_handle="singlevoice",
-                    text="$DOG push",
+                    text=f"$DOG push {index}",
                     received_at_ms=base_ms + index * 1_000,
                     is_watched=False,
                 ),
@@ -337,12 +506,17 @@ def test_token_flow_penalizes_single_author_concentration(tmp_path):
             )
             ingest.ingest_event(event, is_watched=False)
 
-        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(window="5m", limit=10)[0]
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=base_ms + 5 * 60_000,
+        )[0]
     finally:
         conn.close()
 
-    assert item["sources"]["top_author_share"] == 1.0
-    assert "author_concentration_high" in item["sources"]["source_quality_reasons"]
+    assert item["diffusion"]["top_author_share"] == 1.0
+    assert item["diffusion"]["status"] == "concentrated"
+    assert "author_concentration_high" in item["diffusion"]["risks"]
     assert item["signal"]["decision"] != "driver"
     assert "author_concentration_high" in item["signal"]["risks"]
 

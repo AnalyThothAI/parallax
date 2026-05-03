@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
+CREATE INDEX IF NOT EXISTS idx_tokens_lower_address ON tokens(lower(address));
 
 CREATE TABLE IF NOT EXISTS token_aliases (
   alias_id TEXT PRIMARY KEY,
@@ -133,6 +134,7 @@ CREATE TABLE IF NOT EXISTS token_aliases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_token_aliases_symbol ON token_aliases(symbol);
+CREATE INDEX IF NOT EXISTS idx_token_aliases_token_id ON token_aliases(token_id);
 
 CREATE TABLE IF NOT EXISTS token_market_snapshots (
   snapshot_id TEXT PRIMARY KEY,
@@ -195,34 +197,14 @@ CREATE INDEX IF NOT EXISTS idx_event_token_mentions_received
   ON event_token_mentions(received_at_ms);
 CREATE INDEX IF NOT EXISTS idx_event_token_mentions_identity_received
   ON event_token_mentions(identity_key, received_at_ms);
-
-CREATE TABLE IF NOT EXISTS token_windows (
-  window_id TEXT PRIMARY KEY,
-  identity_key TEXT NOT NULL,
-  token_id TEXT,
-  identity_status TEXT NOT NULL,
-  chain TEXT,
-  address TEXT,
-  symbol TEXT NOT NULL,
-  window TEXT NOT NULL,
-  window_start_ms INTEGER NOT NULL,
-  window_end_ms INTEGER NOT NULL,
-  mention_count INTEGER NOT NULL,
-  watched_mention_count INTEGER NOT NULL,
-  unique_author_count INTEGER NOT NULL,
-  weighted_reach REAL NOT NULL,
-  market_mindshare REAL NOT NULL,
-  watched_mindshare REAL NOT NULL,
-  velocity REAL NOT NULL,
-  top_authors_json TEXT NOT NULL DEFAULT '[]',
-  top_events_json TEXT NOT NULL DEFAULT '[]',
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_token_windows_entity_window_start
-  ON token_windows(identity_key, window, window_start_ms);
-CREATE INDEX IF NOT EXISTS idx_token_windows_window_end ON token_windows(window, window_end_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_mentions_token_received
+  ON event_token_mentions(token_id, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_mentions_symbol_received
+  ON event_token_mentions(symbol, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_mentions_address_received
+  ON event_token_mentions(lower(address), received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_mentions_identity_author_received
+  ON event_token_mentions(identity_key, author_handle, received_at_ms);
 
 CREATE TABLE IF NOT EXISTS enrichment_jobs (
   job_id TEXT PRIMARY KEY,
@@ -428,14 +410,21 @@ CREATE INDEX IF NOT EXISTS idx_narrative_token_links_label_decision
   ON narrative_token_links(narrative_label, decision, updated_at_ms);
 CREATE INDEX IF NOT EXISTS idx_narrative_token_links_token
   ON narrative_token_links(token_identity_key, updated_at_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_token_links_token_id_updated
+  ON narrative_token_links(token_id, updated_at_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_token_links_chain_address_updated
+  ON narrative_token_links(chain, lower(address), updated_at_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_token_links_symbol_updated
+  ON narrative_token_links(symbol, updated_at_ms);
 """
 
 def migrate(conn: sqlite3.Connection) -> None:
     ensure_fts5_available(conn)
     conn.executescript(SCHEMA_SQL)
+    conn.execute("DROP TABLE IF EXISTS token_windows")
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
-        (SCHEMA_VERSION, "watched_handle_narrative_token_linking", _now_ms()),
+        (SCHEMA_VERSION, "rolling_token_radar", _now_ms()),
     )
     conn.commit()
 

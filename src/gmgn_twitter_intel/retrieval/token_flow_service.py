@@ -1,27 +1,36 @@
 from __future__ import annotations
 
 import time
-from statistics import mean, pstdev
 from typing import Any
 
-from .token_signal_scoring import evidence_score, signal_block, source_quality, top_author_share
+from .diffusion_health import diffusion_health
+from .rolling_token_flow import RollingTokenFlow
+from .token_baseline import token_baseline
+from .token_signal_scoring import evidence_score, signal_block
 
-BASELINE_LIMITS = {
-    "1m": 60,
-    "5m": 24,
-    "1h": 48,
-    "24h": 14,
-}
 FRESH_MARKET_MS = 30 * 60_000
 
 
 class TokenFlowService:
-    def __init__(self, *, signals, tokens):
+    def __init__(self, *, signals, tokens, enrichment=None):
         self.signals = signals
         self.tokens = tokens
+        self.enrichment = enrichment
 
-    def token_flow(self, *, window: str, limit: int = 20, scope: str = "all") -> list[dict[str, Any]]:
-        rows = self.signals.token_flow(window=window, limit=limit, watched_only=scope == "matched")
+    def token_flow(
+        self,
+        *,
+        window: str,
+        limit: int = 20,
+        scope: str = "all",
+        now_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        rows = RollingTokenFlow(self.signals.conn).token_flow(
+            window=window,
+            limit=limit,
+            watched_only=scope == "matched",
+            now_ms=now_ms,
+        )
         return [self._token_flow_item(row, window=window) for row in rows]
 
     def _token_flow_item(self, row: dict[str, Any], *, window: str) -> dict[str, Any]:
@@ -29,23 +38,27 @@ class TokenFlowService:
         baseline = self._baseline_block(row, window=window)
         market = self._market_block(row)
         flow = self._flow_block(row, baseline=baseline)
-        sources = self._sources_block(row)
+        diffusion = self._diffusion_block(row)
         fresh = self._fresh_block(row, market=market)
-        evidence = self._evidence_items(row, sources=sources, market=market)
+        watch = self._watch_block(row)
+        evidence = self._evidence_items(row, diffusion=diffusion, market=market)
         evidence_best = evidence[0] if evidence else None
         signal = signal_block(
             row,
             market=market,
             flow=flow,
-            sources=sources,
+            diffusion=diffusion,
+            watch=watch,
             evidence_best=evidence_best,
         )
         return {
             "identity": self._identity_block(row, token),
             "market": market,
             "flow": flow,
-            "sources": sources,
+            "baseline": baseline,
+            "diffusion": diffusion,
             "fresh": fresh,
+            "watch": watch,
             "signal": signal,
             "evidence_best": evidence_best,
             "evidence": evidence,
@@ -62,35 +75,9 @@ class TokenFlowService:
         }
 
     def _baseline_block(self, row: dict[str, Any], *, window: str) -> dict[str, Any]:
-        history = self.signals.token_window_history(
-            identity_key=str(row["identity_key"]),
-            window=window,
-            before_start_ms=int(row["window_start_ms"]),
-            limit=BASELINE_LIMITS.get(window, 24),
-        )
-        counts = [float(item["mention_count"]) for item in history]
-        previous_mentions = int(counts[0]) if counts else 0
-        if len(counts) < 3:
-            return {
-                "baseline_status": "insufficient_history",
-                "sample_count": len(counts),
-                "baseline_mean": None,
-                "baseline_stddev": None,
-                "z_score": None,
-                "previous_mentions": previous_mentions,
-            }
-        baseline_mean = mean(counts)
-        baseline_stddev = pstdev(counts) or 0.0
-        current = float(row["mention_count"])
-        z_score = (current - baseline_mean) / baseline_stddev if baseline_stddev else 0.0
-        return {
-            "baseline_status": "ready",
-            "sample_count": len(counts),
-            "baseline_mean": baseline_mean,
-            "baseline_stddev": baseline_stddev,
-            "z_score": z_score,
-            "previous_mentions": previous_mentions,
-        }
+        if isinstance(row.get("baseline"), dict):
+            return row["baseline"]
+        return token_baseline(slot_counts=[], current_mentions=int(row.get("mention_count") or 0))
 
     def _market_block(self, row: dict[str, Any]) -> dict[str, Any]:
         reference_ms = int(row.get("window_end_ms") or _now_ms())
@@ -144,7 +131,7 @@ class TokenFlowService:
 
     def _flow_block(self, row: dict[str, Any], *, baseline: dict[str, Any]) -> dict[str, Any]:
         mentions = int(row["mention_count"])
-        previous_mentions = int(baseline["previous_mentions"])
+        previous_mentions = int(row.get("previous_mentions") if row.get("previous_mentions") is not None else 0)
         mention_delta = mentions - previous_mentions
         mention_delta_pct = (mention_delta / previous_mentions) if previous_mentions else None
         return {
@@ -157,49 +144,22 @@ class TokenFlowService:
             "mention_delta": mention_delta,
             "mention_delta_pct": mention_delta_pct,
             "z_score": baseline["z_score"],
+            "new_burst_score": baseline["new_burst_score"],
             "stream_dominance": row["market_mindshare"],
             "baseline_status": baseline["baseline_status"],
             "baseline_sample_count": baseline["sample_count"],
         }
 
-    def _sources_block(self, row: dict[str, Any]) -> dict[str, Any]:
-        author_stats = row.get("top_authors")
-        if not isinstance(author_stats, list):
-            author_stats = self.signals.token_window_author_stats(
-                identity_key=str(row["identity_key"]),
-                window_start_ms=int(row["window_start_ms"]),
-                window_end_ms=int(row["window_end_ms"]),
-            )
-        top_authors = [
-            {
-                "handle": item.get("handle"),
-                "count": int(item.get("count") or 0),
-                "followers": int(item.get("followers") or 0),
-                "watched_count": int(item.get("watched_count") or 0),
-            }
-            for item in author_stats
-        ]
-        unique_authors = len(top_authors)
-        watched_authors = sum(1 for item in top_authors if int(item["watched_count"]) > 0)
-        weighted_reach = sum(int(item["followers"]) for item in top_authors)
-        author_share = top_author_share(top_authors, mentions=int(row["mention_count"]))
-        score, reasons = source_quality(
-            identity_status=str(row["identity_status"]),
-            mentions=int(row["mention_count"]),
-            unique_authors=unique_authors,
-            watched_authors=watched_authors,
-            weighted_reach=weighted_reach,
-            top_author_share=author_share,
-        )
-        return {
-            "unique_authors": unique_authors,
-            "watched_authors": watched_authors,
-            "weighted_reach": weighted_reach,
-            "top_author_share": author_share,
-            "top_authors": top_authors[:20],
-            "source_quality_score": score,
-            "source_quality_reasons": reasons,
+    def _diffusion_block(self, row: dict[str, Any]) -> dict[str, Any]:
+        mentions = row.get("events_for_diffusion")
+        if not isinstance(mentions, list):
+            mentions = []
+        watched_author_handles = {
+            str(item.get("author_handle"))
+            for item in mentions
+            if isinstance(item, dict) and item.get("author_handle") and item.get("is_watched")
         }
+        return diffusion_health(mentions=mentions, watched_author_handles=watched_author_handles)
 
     def _fresh_block(self, row: dict[str, Any], *, market: dict[str, Any]) -> dict[str, Any]:
         reference_ms = int(row.get("window_end_ms") or _now_ms())
@@ -223,11 +183,60 @@ class TokenFlowService:
             "is_first_seen_by_watched": _in_window(first_watched_seen_ms, window_start_ms, window_end_ms),
         }
 
+    def _watch_block(self, row: dict[str, Any]) -> dict[str, Any]:
+        direct_mentions = int(row.get("watched_mention_count") or 0)
+        direct_authors = int(row.get("watched_author_count") or 0)
+        seed_links = self._seed_links(row)
+        top_seed = seed_links[0]["seed"] if seed_links else None
+        seed_link_count = len(seed_links)
+        if direct_mentions > 0:
+            return {
+                "status": "direct_watch",
+                "direct_mentions": direct_mentions,
+                "direct_authors": direct_authors,
+                "seed_link_count": seed_link_count,
+                "top_seed": top_seed,
+                "reasons": ["watched_direct_mention"],
+                "risks": [],
+            }
+        if seed_links:
+            return {
+                "status": "seed_linked",
+                "direct_mentions": direct_mentions,
+                "direct_authors": direct_authors,
+                "seed_link_count": seed_link_count,
+                "top_seed": top_seed,
+                "reasons": ["watched_seed_link"],
+                "risks": [],
+            }
+        return {
+            "status": "public_only",
+            "direct_mentions": direct_mentions,
+            "direct_authors": direct_authors,
+            "seed_link_count": 0,
+            "top_seed": None,
+            "reasons": ["public_stream_evidence"],
+            "risks": ["no_watched_confirmation"],
+        }
+
+    def _seed_links(self, row: dict[str, Any]) -> list[dict[str, Any]]:
+        if self.enrichment is None:
+            return []
+        return self.enrichment.seed_links_for_token(
+            identity_key=str(row["identity_key"]),
+            token_id=row.get("token_id"),
+            chain=row.get("chain"),
+            address=row.get("address"),
+            symbol=row.get("symbol"),
+            since_ms=int(row["window_start_ms"]),
+            limit=5,
+        )
+
     def _evidence_items(
         self,
         row: dict[str, Any],
         *,
-        sources: dict[str, Any],
+        diffusion: dict[str, Any],
         market: dict[str, Any],
     ) -> list[dict[str, Any]]:
         reference_ms = int(row.get("window_end_ms") or _now_ms())
@@ -238,13 +247,14 @@ class TokenFlowService:
             score, reasons = evidence_score(
                 event,
                 identity_status=str(row["identity_status"]),
-                sources=sources,
+                diffusion=diffusion,
                 market=market,
                 event_age_ms=_age_ms(reference_ms, _int_or_none(event.get("received_at_ms"))),
             )
             items.append(
                 {
                     "event_id": event.get("event_id"),
+                    "evidence_type": event.get("mention_source") or event.get("source") or "event_token_mention",
                     "score": score,
                     "handle": event.get("author_handle"),
                     "text": event.get("text_clean"),
@@ -253,8 +263,25 @@ class TokenFlowService:
                     "reasons": reasons,
                 }
             )
-        items.sort(key=lambda item: (int(item["score"]), int(item.get("received_at_ms") or 0)), reverse=True)
+        items.sort(
+            key=lambda item: (
+                int(item["score"]),
+                _evidence_type_priority(str(item.get("evidence_type") or "")),
+                int(item.get("received_at_ms") or 0),
+            ),
+            reverse=True,
+        )
         return items
+
+
+def _evidence_type_priority(value: str) -> int:
+    if value == "gmgn_token_payload":
+        return 3
+    if value in {"ca", "regex", "contract_address"} or "ca" in value:
+        return 2
+    if value == "cashtag":
+        return 1
+    return 0
 
 
 def _age_ms(reference_ms: int, value: int | None) -> int | None:

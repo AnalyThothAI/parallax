@@ -661,8 +661,8 @@ function TokenRadarRow({
         <small>{flowDeltaLabel(item)}</small>
       </span>
       <span className="source-cell">
-        <b>{sourceCountLabel(item)}</b>
-        <small>{sourceQualityLabel(item)}</small>
+        <b>{diffusionStatusLabel(item)}</b>
+        <small>{diffusionMetaLabel(item)}</small>
       </span>
       <span className="fresh-cell">
         <b>{formatDuration(item.fresh.latest_evidence_age_ms)}</b>
@@ -819,7 +819,7 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
     return {
       kicker: "token flow",
       title: tokenLabel(item),
-      summary: `${compactNumber(item.flow.mentions)} mentions (${flowDeltaLabel(item)}), ${compactNumber(item.sources.watched_authors)}/${compactNumber(item.sources.unique_authors)} watched sources, market ${item.market.market_status}.`,
+      summary: `${compactNumber(item.flow.mentions)} mentions (${flowDeltaLabel(item)}), diffusion ${item.diffusion.status} across ${compactNumber(item.diffusion.independent_authors)} authors, ${watchStatusLabel(item)}, market ${item.market.market_status}.`,
       score: String(tokenScore(item)),
       badge: item.flow.window,
       facts: [
@@ -828,7 +828,11 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "mcap", value: formatUsdCompact(item.market.market_cap) },
         { label: "delta", value: marketDelta(item) },
         { label: "signal", value: item.signal.decision },
-        { label: "source q", value: compactNumber(item.sources.source_quality_score) },
+        { label: "diffusion", value: `${item.diffusion.status} ${compactNumber(item.diffusion.score)}` },
+        { label: "authors", value: `${compactNumber(item.diffusion.independent_authors)}/${compactNumber(item.diffusion.effective_authors)}` },
+        { label: "top share", value: formatPercentShare(item.diffusion.top_author_share) },
+        { label: "dupes", value: formatPercentShare(item.diffusion.duplicate_text_share) },
+        { label: "watch", value: watchStatusLabel(item) },
         { label: "baseline", value: baselineSignal },
         { label: "market", value: marketSignal },
         { label: "stream share", value: formatPercentShare(item.flow.stream_dominance) },
@@ -943,7 +947,7 @@ function evidenceFromToken(item: TokenFlowItem, searchItems: SearchItem[]) {
     .map((event) => ({
       id: event.event_id ?? "-",
       handle: event.handle ?? "unknown",
-      match: evidenceReasonLabel(event.reasons),
+      match: `${evidenceTypeLabel(event.evidence_type)} · ${evidenceReasonLabel(event.reasons)}`,
       receivedAt: event.received_at_ms,
       text: event.text ?? "",
       url: event.url,
@@ -1035,7 +1039,7 @@ function alertRisks(item: AlertRecord): string[] {
 }
 
 function authorsFromToken(item: TokenFlowItem): string[] {
-  return (item.sources.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
+  return (item.diffusion.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
 }
 
 function tokenDecisionKey(item: TokenFlowItem): string {
@@ -1120,7 +1124,7 @@ function jobSummary(counts?: Record<string, number>): string {
   if (!counts) {
     return "-";
   }
-  return `${counts.pending ?? 0}/${counts.running ?? 0}/${counts.failed ?? 0}`;
+  return `p${counts.pending ?? 0}/r${counts.running ?? 0}/f${counts.failed ?? 0}/d${counts.dead ?? 0}`;
 }
 
 function shortPath(value?: string): string {
@@ -1154,12 +1158,22 @@ function flowDeltaLabel(item: TokenFlowItem): string {
   return "flat";
 }
 
-function sourceQualityLabel(item: TokenFlowItem): string {
-  return `${compactNumber(item.sources.watched_authors)} watch / qual ${compactNumber(item.sources.source_quality_score)}`;
+function diffusionStatusLabel(item: TokenFlowItem): string {
+  return item.diffusion.status.replaceAll("_", " ");
 }
 
-function sourceCountLabel(item: TokenFlowItem): string {
-  return `${compactNumber(item.sources.unique_authors)} src`;
+function diffusionMetaLabel(item: TokenFlowItem): string {
+  return `${watchStatusLabel(item)} · ${compactNumber(item.diffusion.independent_authors)} authors`;
+}
+
+function watchStatusLabel(item: TokenFlowItem): string {
+  if (item.watch.status === "direct_watch") {
+    return `${compactNumber(item.watch.direct_mentions)} direct watch`;
+  }
+  if (item.watch.status === "seed_linked") {
+    return `${compactNumber(item.watch.seed_link_count)} seed link`;
+  }
+  return "public only";
 }
 
 function formatDuration(value: number | null | undefined): string {
@@ -1171,6 +1185,13 @@ function formatDuration(value: number | null | undefined): string {
 
 function evidenceReasonLabel(reasons: string[] | undefined): string {
   return reasons?.[0]?.replaceAll("_", " ") ?? "token evidence";
+}
+
+function evidenceTypeLabel(value?: string): string {
+  if (!value) {
+    return "token evidence";
+  }
+  return value.replaceAll("_", " ");
 }
 
 function marketDelta(item: TokenFlowItem): string {

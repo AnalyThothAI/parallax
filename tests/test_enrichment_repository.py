@@ -179,6 +179,88 @@ def test_narrative_seed_and_link_upserts_are_idempotent(tmp_path):
     assert links[0]["link_confidence"] == 0.8
 
 
+def test_seed_links_for_token_requires_chain_for_address_fallback(tmp_path):
+    conn, _evidence, enrichment, ingest = open_repositories(tmp_path)
+    try:
+        seed_event = make_event("seed-event")
+        linked_event = make_event("linked-event", is_watched=False)
+        ingest.ingest_event(seed_event, is_watched=True)
+        ingest.ingest_event(linked_event, is_watched=False)
+        seed = enrichment.upsert_narrative_seed(
+            event_id="seed-event",
+            narrative_label="same_address",
+            seed_family="test",
+            seed_terms=["same address"],
+            market_interpretation="Address collision test.",
+            stance="neutral",
+            intent="test",
+            confidence=0.9,
+            source_weight=1.0,
+            novelty_status="new_global",
+            received_at_ms=seed_event.received_at_ms,
+            author_handle="toly",
+            evidence="same address",
+            summary="seed summary",
+        )
+        address = "0x1111111111111111111111111111111111111111"
+        enrichment.upsert_narrative_token_link(
+            seed_id=seed["seed_id"],
+            narrative_label="same_address",
+            token_identity_key=f"token:bsc:{address}",
+            token_id=f"token:bsc:{address}",
+            identity_status="resolved_ca",
+            chain="bsc",
+            address=address,
+            symbol="DOG",
+            first_linked_event_id="linked-event",
+            best_evidence_event_id="linked-event",
+            link_reason="seed_term_and_token_mention",
+            matched_terms=["same address"],
+            link_confidence=0.7,
+            lag_ms=1,
+            window="1h",
+            mention_count_after_seed=1,
+            watched_mention_count_after_seed=0,
+            unique_author_count_after_seed=1,
+            weighted_reach_after_seed=100.0,
+            market_cap=1000.0,
+            market_status="fresh",
+            price_change_after_seed_pct=None,
+            seed_score=70,
+            diffusion_score=25,
+            token_link_score=60,
+            tradeability_score=50,
+            decision="watch",
+            reasons=["watched_handle_seed"],
+            risks=[],
+        )
+
+        eth_links = enrichment.seed_links_for_token(
+            identity_key=f"token:eth:{address}",
+            token_id=f"token:eth:{address}",
+            chain="eth",
+            address=address,
+            symbol="DOG",
+            since_ms=seed_event.received_at_ms - 1,
+            limit=5,
+        )
+        bsc_links = enrichment.seed_links_for_token(
+            identity_key=f"token:bsc:{address}",
+            token_id=f"token:bsc:{address}",
+            chain="bsc",
+            address=address,
+            symbol="DOG",
+            since_ms=seed_event.received_at_ms - 1,
+            limit=5,
+        )
+    finally:
+        conn.close()
+
+    assert eth_links == []
+    assert len(bsc_links) == 1
+    assert bsc_links[0]["link"]["chain"] == "bsc"
+
+
 def test_watched_ingest_enqueues_one_durable_enrichment_job(tmp_path):
     conn, _, enrichment, ingest = open_repositories(tmp_path)
     try:

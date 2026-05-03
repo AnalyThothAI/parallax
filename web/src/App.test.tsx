@@ -48,7 +48,7 @@ const statusData: StatusData = {
   enrichment: {
     llm_configured: false,
     worker_running: false,
-    job_counts: { pending: 3, running: 0, failed: 0, dead: 0, done: 1 }
+    job_counts: { pending: 3, running: 0, failed: 0, dead: 2, done: 1 }
   }
 };
 
@@ -117,21 +117,45 @@ describe("App cockpit value flow", () => {
                 mention_delta: 3,
                 mention_delta_pct: 3,
                 z_score: null,
+                new_burst_score: 4,
                 stream_dominance: 0.25,
                 baseline_status: "insufficient_history",
                 baseline_sample_count: 0
               },
-              sources: {
-                unique_authors: 2,
-                watched_authors: 1,
-                weighted_reach: 169_125,
+              baseline: {
+                baseline_status: "insufficient_history",
+                sample_count: 0,
+                zero_slot_count: 0,
+                ewma_mean: null,
+                ewma_stddev: null,
+                simple_mean: null,
+                z_score: null,
+                new_burst_score: 4
+              },
+              diffusion: {
+                score: 70,
+                status: "concentrated",
+                independent_authors: 2,
+                effective_authors: 2,
                 top_author_share: 0.75,
+                duplicate_text_share: 0.25,
+                repeated_cluster_count: 0,
+                shill_author_count: 0,
                 top_authors: [
                   { handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 },
                   { handle: "alien19710628", count: 3, followers: 220, watched_count: 0 }
                 ],
-                source_quality_score: 25,
-                source_quality_reasons: ["watched_evidence", "multi_author", "unresolved_symbol"]
+                reasons: ["multi_author", "watched_author_present"],
+                risks: ["author_concentration_high"]
+              },
+              watch: {
+                status: "direct_watch",
+                direct_mentions: 1,
+                direct_authors: 1,
+                seed_link_count: 1,
+                top_seed: null,
+                reasons: ["watched_direct_mention"],
+                risks: []
               },
               fresh: {
                 latest_evidence_age_ms: 290_000,
@@ -149,6 +173,7 @@ describe("App cockpit value flow", () => {
               },
               evidence_best: {
                 event_id: "event-upeg-1",
+                evidence_type: "cashtag",
                 score: 35,
                 handle: "traderpow",
                 received_at_ms: 1_777_746_010_000,
@@ -159,6 +184,7 @@ describe("App cockpit value flow", () => {
               evidence: [
                 {
                   event_id: "event-upeg-1",
+                  evidence_type: "cashtag",
                   score: 35,
                   handle: "traderpow",
                   received_at_ms: 1_777_746_010_000,
@@ -302,7 +328,7 @@ describe("App cockpit value flow", () => {
 	        });
       }
       if (path === "/api/enrichment-jobs") {
-        return ok({ items: [], counts: { pending: 3, running: 0, failed: 0, dead: 0, done: 1 } });
+        return ok({ items: [], counts: { pending: 3, running: 0, failed: 0, dead: 2, done: 1 } });
       }
       if (path === "/api/search") {
         const query = String(options?.params?.q ?? "");
@@ -392,10 +418,11 @@ describe("App cockpit value flow", () => {
     expect(await screen.findByText("Δ")).toBeInTheDocument();
     expect(await screen.findByText("Sources")).toBeInTheDocument();
     expect(await screen.findByText("Signal")).toBeInTheDocument();
+    expect(await screen.findByText("p3/r0/f0/d2")).toBeInTheDocument();
     await screen.findByRole("button", { name: "select token $UPEG" });
     expect(container.querySelector(".direction.flat")?.textContent).toBe("-");
-    expect(container.querySelector(".source-cell b")?.textContent).toBe("2 src");
-    expect(container.querySelector(".source-cell small")?.textContent).toBe("1 watch / qual 25");
+    expect(container.querySelector(".source-cell b")?.textContent).toBe("concentrated");
+    expect(container.querySelector(".source-cell small")?.textContent).toBe("1 direct watch · 2 authors");
     expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
     expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
     expect(await screen.findByLabelText("narrative link ai_agent_upeg")).toBeInTheDocument();
@@ -483,7 +510,7 @@ describe("App cockpit value flow", () => {
 
     expect(await screen.findByDisplayValue("$UPEG")).toBeInTheDocument();
     expect(await screen.findByText("焦点证据")).toBeInTheDocument();
-    expect(await screen.findByText("4 mentions (+3), 1/2 watched sources, market missing.")).toBeInTheDocument();
+    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market missing.")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     });
@@ -495,7 +522,7 @@ describe("App cockpit value flow", () => {
 
     const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
     fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "select token $UPEG" }));
-    expect(await screen.findByText("4 mentions (+3), 1/2 watched sources, market missing.")).toBeInTheDocument();
+    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market missing.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本"), { target: { value: "@traderpow" } });
     fireEvent.click(screen.getByRole("button", { name: "检索" }));

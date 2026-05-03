@@ -122,6 +122,51 @@ def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
     assert [item["identity"]["symbol"] for item in watched_flow.json()["data"]["items"]] == ["PEPE"]
 
 
+def test_api_token_flow_exposes_seed_linked_watch_status(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        seed_event = make_event("seed-event", text="AI agent narrative is accelerating")
+        public_event = make_event("public-token", handle="anon", text="$GROK AI agent momentum")
+        client.app.state.service.ingest.ingest_event(seed_event, is_watched=True)
+        client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
+        seed = client.app.state.service.enrichment.upsert_narrative_seed(
+            event_id="seed-event",
+            narrative_label="ai_agent",
+            seed_family="ai_agent",
+            seed_terms=["ai agent"],
+            market_interpretation="Market may look for AI-agent tokens.",
+            stance="bullish",
+            intent="market_commentary",
+            confidence=0.9,
+            source_weight=0.6,
+            novelty_status="new_global",
+            received_at_ms=seed_event.received_at_ms,
+            author_handle="toly",
+            evidence="AI agent narrative is accelerating",
+            summary="Watched account discussed AI agents.",
+        )
+        NarrativeTokenLinker(
+            evidence=client.app.state.service.evidence,
+            signals=client.app.state.service.signals,
+            enrichment=client.app.state.service.enrichment,
+            tokens=client.app.state.service.tokens,
+        ).link_seed(seed=seed, window="1h")
+
+        response = client.get(
+            "/api/token-flow",
+            params={"window": "1h", "limit": 5, "scope": "all"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    token_item = response.json()["data"]["items"][0]
+    assert token_item["identity"]["symbol"] == "GROK"
+    assert token_item["watch"]["status"] == "seed_linked"
+    assert token_item["watch"]["seed_link_count"] == 1
+    assert token_item["watch"]["top_seed"]["seed_id"] == seed["seed_id"]
+
+
 def test_api_status_exposes_operational_state(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

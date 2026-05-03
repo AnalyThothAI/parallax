@@ -7,13 +7,6 @@ from ..models import TwitterEvent
 from ..storage.signal_repository import SignalRepository
 from .token_identity_resolver import TokenMention
 
-WINDOWS_MS = {
-    "1m": 60_000,
-    "5m": 300_000,
-    "1h": 3_600_000,
-    "24h": 86_400_000,
-}
-
 
 @dataclass(frozen=True, slots=True)
 class SignalBuildResult:
@@ -65,31 +58,4 @@ class SignalBuilder:
                 )
                 if alert:
                     alerts.append(asdict(alert))
-            self._upsert_token_windows(event, mention, is_watched=is_watched)
         return SignalBuildResult(alerts=alerts)
-
-    def _upsert_token_windows(
-        self,
-        event: TwitterEvent,
-        mention: TokenMention,
-        *,
-        is_watched: bool,
-    ) -> None:
-        for window, size_ms in WINDOWS_MS.items():
-            start_ms = (event.received_at_ms // size_ms) * size_ms
-            self.repository.upsert_token_window(
-                identity_key=mention.identity_key,
-                token_id=mention.token_id,
-                identity_status=mention.identity_status,
-                chain=mention.chain,
-                address=mention.address,
-                symbol=mention.symbol,
-                window=window,
-                window_start_ms=start_ms,
-                window_end_ms=start_ms + size_ms,
-                event_id=event.event_id,
-                author_handle=event.author.handle.lower() if event.author.handle else None,
-                author_followers=event.author.followers,
-                is_watched=is_watched,
-                commit=self.commit,
-            )

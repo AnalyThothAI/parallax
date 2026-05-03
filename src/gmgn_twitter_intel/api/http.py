@@ -125,7 +125,11 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
-        items = TokenFlowService(signals=runtime.read_signals, tokens=runtime.read_tokens).token_flow(
+        items = TokenFlowService(
+            signals=runtime.read_signals,
+            tokens=runtime.read_tokens,
+            enrichment=runtime.read_enrichment,
+        ).token_flow(
             window=parsed_window,
             limit=_limit(limit),
             scope=parsed_scope,

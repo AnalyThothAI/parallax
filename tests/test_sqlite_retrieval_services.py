@@ -69,7 +69,14 @@ def test_search_service_ca_does_not_fall_back_to_same_symbol_other_ca(tmp_path):
 def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
     conn, _, _, signal_repo, token_repo = seed_event(tmp_path)
     try:
-        token_flow = TokenFlowService(signals=signal_repo, tokens=token_repo).token_flow(window="5m", limit=10)
+        latest_ms = conn.execute("SELECT MAX(received_at_ms) AS latest_ms FROM event_token_mentions").fetchone()[
+            "latest_ms"
+        ]
+        token_flow = TokenFlowService(signals=signal_repo, tokens=token_repo).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=int(latest_ms) + 1,
+        )
         alerts = AccountAlertService(signal_repo).account_alerts(window="24h", limit=10, handles={"toly"})
     finally:
         conn.close()

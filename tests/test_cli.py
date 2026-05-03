@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import yaml
 
-from gmgn_twitter_intel.cli import main
+from gmgn_twitter_intel.cli import build_parser, main
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.pipeline.llm_enrichment import EnrichmentResult, NarrativeItem, TokenCandidate
@@ -225,6 +225,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
+        self.assertGreaterEqual(lines[2]["data"]["items"][0]["watch"]["seed_link_count"], 1)
         self.assertEqual(lines[2]["data"]["items"][0]["signal"]["decision"], "discard")
         self.assertEqual(lines[3]["data"]["items"][0]["narrative_label"], "solana_scaling")
         self.assertEqual(
@@ -243,34 +244,13 @@ class CliTests(unittest.TestCase):
         parser_help = main(["embed"], stdout=io.StringIO())
 
         self.assertEqual(parser_help, 2)
+        with self.assertRaises(SystemExit) as exc:
+            build_parser().parse_args(["ops", "rebuild-windows"])
+        self.assertEqual(exc.exception.code, 2)
 
     def test_unsupported_narrative_link_windows_are_not_registered(self):
         self.assertEqual(main(["narrative-token-flow", "--seed-id", "seed", "--window", "1m"], stdout=io.StringIO()), 2)
         self.assertEqual(main(["attention-frontier", "--window", "1m"], stdout=io.StringIO()), 2)
-
-    def test_ops_rebuild_windows_reconstructs_materialized_signal_windows(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
-            write_runtime_config(home, db_path=db_path)
-            seed_sqlite(db_path)
-            conn = connect_sqlite(db_path, read_only=False)
-            try:
-                conn.execute("DELETE FROM token_windows")
-                conn.commit()
-            finally:
-                conn.close()
-
-            stdout = io.StringIO()
-            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
-                rebuild_code = main(["ops", "rebuild-windows", "--window", "5m"], stdout=stdout)
-                flow_code = main(["token-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
-
-        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-        self.assertEqual([rebuild_code, flow_code], [0, 0])
-        self.assertNotIn("backfill", lines[0]["data"])
-        self.assertGreater(lines[0]["data"]["rebuilt"], 0)
-        self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 1)
 
     def test_ops_rebuild_narrative_links_reconstructs_seed_links(self):
         with tempfile.TemporaryDirectory() as tmpdir:
