@@ -3,7 +3,6 @@ import json
 import tempfile
 import time
 import unittest
-from dataclasses import replace
 from pathlib import Path
 from threading import RLock
 from unittest.mock import patch
@@ -207,61 +206,9 @@ class CliTests(unittest.TestCase):
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual([rebuild_code, flow_code], [0, 0])
+        self.assertNotIn("backfill", lines[0]["data"])
         self.assertGreater(lines[0]["data"]["rebuilt"], 0)
         self.assertEqual(lines[1]["data"]["items"][0]["social"]["mention_count"], 1)
-
-    def test_ops_rebuild_windows_backfills_historical_gmgn_token_payloads(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
-            write_runtime_config(home, db_path=db_path)
-            conn = connect_sqlite(db_path, read_only=False)
-            try:
-                migrate(conn)
-                token_raw = {
-                    "tw": "description",
-                    "i": "token-payload-event",
-                    "ts": "1700000000000",
-                    "u": {"s": "traderpow", "n": "traderpow", "f": 100},
-                    "p": {"bd": "old bio", "d": "new bio"},
-                    "tt": "ca",
-                    "t": {
-                        "a": "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
-                        "c": "eth",
-                        "mc": "60490.341996",
-                        "p": "0.0000000001437884",
-                        "p1": "0.00000000015514471",
-                        "s": "DOG",
-                    },
-                }
-                event = replace(
-                    make_event("event-historical-token", received_at_ms=1_700_000_000_000, text=None),
-                    source=Source(
-                        provider="gmgn",
-                        transport="direct_ws",
-                        coverage="public_stream",
-                        channel="twitter_monitor_token",
-                    ),
-                    raw=token_raw,
-                )
-                EvidenceRepository(conn).insert_event(event, is_watched=True)
-            finally:
-                conn.close()
-
-            stdout = io.StringIO()
-            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
-                rebuild_code = main(["ops", "rebuild-windows", "--window", "5m"], stdout=stdout)
-                flow_code = main(["token-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
-
-        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-        self.assertEqual([rebuild_code, flow_code], [0, 0])
-        self.assertEqual(lines[0]["data"]["backfill"]["token_payload_events"], 1)
-        self.assertEqual(lines[0]["data"]["backfill"]["mentions_inserted"], 1)
-        item = lines[1]["data"]["items"][0]
-        self.assertEqual(item["identity"]["symbol"], "DOG")
-        self.assertEqual(item["market"]["market_status"], "fresh")
-        self.assertEqual(item["market"]["market_cap"], 60490.341996)
-
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
