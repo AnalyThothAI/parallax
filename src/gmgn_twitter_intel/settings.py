@@ -54,6 +54,35 @@ class LlmConfig(BaseModel):
         return normalized or "https://api.openai.com/v1"
 
 
+class GmgnConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    api_key: str | None = None
+    openapi_base_url: str = "https://openapi.gmgn.ai"
+    timeout_seconds: float = 5.0
+    token_info_cache_ttl_seconds: int = 60
+    evm_candidate_chains: tuple[str, ...] = ("base", "bsc", "eth")
+
+    @field_validator("api_key", mode="before")
+    @classmethod
+    def parse_optional_api_key(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("openapi_base_url", mode="before")
+    @classmethod
+    def parse_openapi_base_url(cls, value: Any) -> str:
+        normalized = str(value or "https://openapi.gmgn.ai").strip().rstrip("/")
+        return normalized or "https://openapi.gmgn.ai"
+
+    @field_validator("evm_candidate_chains", mode="before")
+    @classmethod
+    def parse_chain_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+
 class UpstreamConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -98,6 +127,7 @@ class Settings(BaseModel):
     api: ApiConfig = Field(default_factory=ApiConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
+    gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
     collector: CollectorConfig = Field(default_factory=CollectorConfig)
 
@@ -162,6 +192,30 @@ class Settings(BaseModel):
     @property
     def llm_configured(self) -> bool:
         return bool(self.openai_api_key and self.openai_model)
+
+    @property
+    def gmgn_api_key(self) -> str | None:
+        return self.gmgn.api_key
+
+    @property
+    def gmgn_openapi_base_url(self) -> str:
+        return self.gmgn.openapi_base_url
+
+    @property
+    def gmgn_timeout_seconds(self) -> float:
+        return self.gmgn.timeout_seconds
+
+    @property
+    def gmgn_token_info_cache_ttl_seconds(self) -> int:
+        return self.gmgn.token_info_cache_ttl_seconds
+
+    @property
+    def gmgn_evm_candidate_chains(self) -> tuple[str, ...]:
+        return self.gmgn.evm_candidate_chains
+
+    @property
+    def gmgn_configured(self) -> bool:
+        return bool(self.gmgn_api_key)
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:
@@ -277,6 +331,13 @@ llm:
   openai_base_url: "https://api.openai.com/v1"
   timeout_seconds: 20
   enrichment_poll_interval: 2
+
+gmgn:
+  api_key:
+  openapi_base_url: "https://openapi.gmgn.ai"
+  timeout_seconds: 5
+  token_info_cache_ttl_seconds: 60
+  evm_candidate_chains: ["base", "bsc", "eth"]
 
 upstream:
   chains: ["sol", "eth", "base", "bsc"]

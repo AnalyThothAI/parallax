@@ -1,0 +1,1 @@
+"""GMGN market data adapters."""

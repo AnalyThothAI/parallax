@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from ..market.gmgn_openapi_client import GmgnTokenInfo
 from ..models import TokenSnapshot
 
 
@@ -77,6 +78,64 @@ class TokenRepository:
             chain=snapshot.chain,
             address=snapshot.address,
             symbol=snapshot.symbol,
+            candidate_token_ids=[token_id],
+        )
+
+    def upsert_openapi_token_info(
+        self,
+        *,
+        event_id: str,
+        info: GmgnTokenInfo,
+        received_at_ms: int,
+        source_channel: str,
+        commit: bool = True,
+    ) -> TokenIdentity:
+        token_id = _token_id(info.chain, info.address)
+        now_ms = _now_ms()
+        self.conn.execute(
+            """
+            INSERT INTO tokens(
+              token_id, chain, address, symbol, name, icon_url, identity_status,
+              first_seen_event_id, first_seen_ms, created_at_ms, updated_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, 'resolved_ca', ?, ?, ?, ?)
+            ON CONFLICT(chain, address) DO UPDATE SET
+              symbol = excluded.symbol,
+              name = COALESCE(excluded.name, tokens.name),
+              icon_url = COALESCE(excluded.icon_url, tokens.icon_url),
+              identity_status = 'resolved_ca',
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                token_id,
+                info.chain,
+                info.address,
+                info.symbol,
+                info.name,
+                info.icon_url,
+                event_id,
+                received_at_ms,
+                now_ms,
+                now_ms,
+            ),
+        )
+        self._upsert_openapi_alias(info=info, token_id=token_id, now_ms=now_ms)
+        self._upsert_openapi_market_snapshot(
+            event_id=event_id,
+            token_id=token_id,
+            info=info,
+            received_at_ms=received_at_ms,
+            source_channel=source_channel,
+            now_ms=now_ms,
+        )
+        if commit:
+            self.conn.commit()
+        return TokenIdentity(
+            token_id=token_id,
+            identity_status="resolved_ca",
+            chain=info.chain,
+            address=info.address,
+            symbol=info.symbol,
             candidate_token_ids=[token_id],
         )
 
@@ -246,6 +305,69 @@ class TokenRepository:
                 source_channel,
                 received_at_ms,
                 json.dumps(snapshot.raw, ensure_ascii=False, sort_keys=True),
+                now_ms,
+            ),
+        )
+
+    def _upsert_openapi_alias(self, *, info: GmgnTokenInfo, token_id: str, now_ms: int) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO token_aliases(
+              alias_id, symbol, token_id, chain, address, source, confidence, created_at_ms, updated_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, 'gmgn_openapi_token_info', 1.0, ?, ?)
+            ON CONFLICT(symbol, token_id) DO UPDATE SET
+              chain = excluded.chain,
+              address = excluded.address,
+              confidence = excluded.confidence,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                _alias_id(info.symbol, token_id),
+                info.symbol,
+                token_id,
+                info.chain,
+                info.address,
+                now_ms,
+                now_ms,
+            ),
+        )
+
+    def _upsert_openapi_market_snapshot(
+        self,
+        *,
+        event_id: str,
+        token_id: str,
+        info: GmgnTokenInfo,
+        received_at_ms: int,
+        source_channel: str,
+        now_ms: int,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO token_market_snapshots(
+              snapshot_id, token_id, event_id, price, previous_price, market_cap,
+              source_channel, received_at_ms, raw_json, created_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(token_id, event_id) DO UPDATE SET
+              price = excluded.price,
+              previous_price = excluded.previous_price,
+              market_cap = excluded.market_cap,
+              source_channel = excluded.source_channel,
+              received_at_ms = excluded.received_at_ms,
+              raw_json = excluded.raw_json
+            """,
+            (
+                _snapshot_id(token_id, event_id),
+                token_id,
+                event_id,
+                info.price,
+                info.previous_price,
+                info.market_cap,
+                source_channel,
+                received_at_ms,
+                json.dumps(info.raw, ensure_ascii=False, sort_keys=True),
                 now_ms,
             ),
         )

@@ -16,9 +16,11 @@ from loguru import logger
 
 from ..collector.direct_ws import DirectGmgnWebSocketClient
 from ..collector.service import CollectorService
+from ..market.gmgn_openapi_client import GmgnOpenApiClient
 from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.ingest_service import IngestService
 from ..pipeline.llm_client import OpenAIChatEnrichmentClient
+from ..pipeline.token_market_enricher import TokenMarketEnricher
 from ..settings import Settings, load_settings
 from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
@@ -49,6 +51,7 @@ class CliRuntime:
     collector: CollectorService
     start_collector: bool
     enrichment_worker: EnrichmentWorker | None = None
+    gmgn_client: GmgnOpenApiClient | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
@@ -157,12 +160,23 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     read_tokens = TokenRepository(read_conn)
     read_enrichment = EnrichmentRepository(read_conn)
     write_lock = RLock()
+    gmgn_client = _gmgn_client(settings)
+    token_market_enricher = (
+        TokenMarketEnricher(
+            tokens=tokens,
+            client=gmgn_client,
+            evm_candidate_chains=settings.gmgn_evm_candidate_chains,
+        )
+        if gmgn_client is not None
+        else None
+    )
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
         tokens=tokens,
+        token_market_enricher=token_market_enricher,
         write_lock=write_lock,
     )
     hub = PublicWebSocketHub(
@@ -195,6 +209,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         hub=hub,
         collector=collector,
         start_collector=start_collector,
+        gmgn_client=gmgn_client,
     )
     if settings.llm_configured:
         client = OpenAIChatEnrichmentClient(
@@ -243,8 +258,21 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     await runtime.collector.stop()
+    if runtime.gmgn_client is not None:
+        runtime.gmgn_client.close()
     runtime.evidence.close()
     runtime.read_evidence.close()
+
+
+def _gmgn_client(settings: Settings) -> GmgnOpenApiClient | None:
+    if not settings.gmgn_configured:
+        return None
+    return GmgnOpenApiClient(
+        api_key=settings.gmgn_api_key or "",
+        base_url=settings.gmgn_openapi_base_url,
+        timeout_seconds=settings.gmgn_timeout_seconds,
+        cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
+    )
 
 
 def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:
@@ -262,6 +290,10 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "llm_configured": runtime.settings.llm_configured,
             "worker_running": _task_running(runtime.enrichment_task),
             "job_counts": _enrichment_job_counts(runtime),
+        },
+        "gmgn": {
+            "openapi_configured": runtime.settings.gmgn_configured,
+            "token_info_cache_ttl_seconds": runtime.settings.gmgn_token_info_cache_ttl_seconds,
         },
     }
     return payload, 503 if reasons else 200

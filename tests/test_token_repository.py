@@ -1,4 +1,5 @@
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.market.gmgn_openapi_client import GmgnTokenInfo
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
@@ -77,3 +78,39 @@ def test_token_repository_marks_symbol_ambiguous_when_aliases_conflict(tmp_path)
     assert resolved.identity_status == "ambiguous_symbol"
     assert resolved.token_id is None
     assert len(resolved.candidate_token_ids) == 2
+
+
+def test_token_repository_persists_openapi_token_info_market_snapshot(tmp_path):
+    conn, evidence, repo = open_token_repo(tmp_path)
+    try:
+        evidence.insert_event(make_event("event-1"), is_watched=True)
+        identity = repo.upsert_openapi_token_info(
+            event_id="event-1",
+            info=GmgnTokenInfo(
+                chain="base",
+                address="0x4200000000000000000000000000000000000006",
+                symbol="WETH",
+                name="Wrapped Ether",
+                icon_url="https://example.test/weth.png",
+                price=3200.0,
+                previous_price=None,
+                market_cap=320000000.0,
+                raw={"address": "0x4200000000000000000000000000000000000006", "symbol": "WETH"},
+            ),
+            received_at_ms=1_700_000_000_000,
+            source_channel="gmgn_openapi_token_info",
+            commit=True,
+        )
+        token = repo.get_token(identity.token_id)
+        market = repo.latest_market_snapshot(identity.token_id)
+        aliases = repo.aliases_for_symbol("WETH")
+    finally:
+        conn.close()
+
+    assert identity.token_id == "token:base:0x4200000000000000000000000000000000000006"
+    assert token["symbol"] == "WETH"
+    assert token["name"] == "Wrapped Ether"
+    assert market["price"] == 3200.0
+    assert market["market_cap"] == 320000000.0
+    assert market["source_channel"] == "gmgn_openapi_token_info"
+    assert aliases == [identity.token_id]

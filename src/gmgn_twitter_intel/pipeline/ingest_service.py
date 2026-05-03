@@ -33,6 +33,7 @@ class IngestService:
         signals: SignalRepository,
         enrichment,
         tokens,
+        token_market_enricher=None,
         write_lock: RLock | None = None,
     ):
         self.evidence = evidence
@@ -40,6 +41,7 @@ class IngestService:
         self.signals = signals
         self.enrichment = enrichment
         self.tokens = tokens
+        self.token_market_enricher = token_market_enricher
         self.signal_builder = SignalBuilder(signals, commit=False)
         self.token_resolver = TokenIdentityResolver(tokens)
         self._lock = write_lock or RLock()
@@ -58,6 +60,14 @@ class IngestService:
                     return IngestedEvent(event=event, entities=[], alerts=[], inserted=False)
                 self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
                 token_mentions = self.token_resolver.resolve_event_mentions(event, extracted, commit=False)
+                if self.token_market_enricher is not None:
+                    token_mentions, _ = self.token_market_enricher.resolve_and_enrich_mentions(
+                        event_id=event.event_id,
+                        mentions=token_mentions,
+                        received_at_ms=event.received_at_ms,
+                        source_channel="gmgn_openapi_token_info",
+                        commit=False,
+                    )
                 signal_result = self.signal_builder.build_for_event(
                     event,
                     token_mentions,

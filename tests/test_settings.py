@@ -33,6 +33,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.sqlite_path == tmp_path / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
+    assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
 
@@ -87,6 +88,33 @@ def test_sqlite_path_and_llm_enrichment_can_be_explicitly_configured(tmp_path, m
     assert settings.openai_base_url == "https://example.test/v1"
     assert settings.llm_timeout_seconds == 7
     assert settings.enrichment_poll_interval == 0.5
+
+
+def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "gmgn": {
+                "api_key": "gmgn-test",
+                "openapi_base_url": "https://openapi.example.test/",
+                "timeout_seconds": 3,
+                "token_info_cache_ttl_seconds": 60,
+                "evm_candidate_chains": ["base", "bsc", "eth"],
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.gmgn_configured is True
+    assert settings.gmgn_api_key == "gmgn-test"
+    assert settings.gmgn_openapi_base_url == "https://openapi.example.test"
+    assert settings.gmgn_timeout_seconds == 3
+    assert settings.gmgn_token_info_cache_ttl_seconds == 60
+    assert settings.gmgn_evm_candidate_chains == ("base", "bsc", "eth")
 
 
 def test_load_settings_accepts_config_without_ws_token(tmp_path, monkeypatch):

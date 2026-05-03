@@ -31,6 +31,13 @@ llm:
   timeout_seconds: 20
   enrichment_poll_interval: 2
 
+gmgn:
+  api_key:
+  openapi_base_url: "https://openapi.gmgn.ai"
+  timeout_seconds: 5
+  token_info_cache_ttl_seconds: 60
+  evm_candidate_chains: ["base", "bsc", "eth"]
+
 upstream:
   chains: ["sol", "eth", "base", "bsc"]
   channels: ["twitter_monitor_basic", "twitter_monitor_token"]
