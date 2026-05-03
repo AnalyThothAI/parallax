@@ -5,11 +5,13 @@ from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.settings import Settings
 
 
-def make_settings() -> Settings:
-    return Settings(
+def make_settings(tmp_path) -> Settings:
+    settings = Settings(
         handles=("toly", "elonmusk"),
         ws_token="secret",
     )
+    settings.set_config_dir(tmp_path / "app-home")
+    return settings
 
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
@@ -41,9 +43,8 @@ def make_event(event_id: str, handle: str, text: str | None = None) -> TwitterEv
     )
 
 
-def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatch):
-    monkeypatch.setenv("GMGN_TWITTER_HOME", str(tmp_path / "app-home"))
-    app = create_app(settings=make_settings(), start_collector=False)
+def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         client.app.state.service.ingest.ingest_event(make_event("event-1", "toly"), is_watched=True)
@@ -68,9 +69,8 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatc
             assert live["event"]["event_id"] == "event-3"
 
 
-def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path, monkeypatch):
-    monkeypatch.setenv("GMGN_TWITTER_HOME", str(tmp_path / "app-home"))
-    app = create_app(settings=make_settings(), start_collector=False)
+def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         replay_event = make_event("event-ca-replay", "toly", text=f"$PEPE replay {PEPE}")

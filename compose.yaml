@@ -5,24 +5,10 @@ services:
     build: .
     init: true
     restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      API_HOST: 0.0.0.0
-      API_PORT: 8765
-      GMGN_TWITTER_HOME: /data
-      SQLITE_PATH: /data/twitter_intel.sqlite3
-      OMP_NUM_THREADS: 1
-      OPENBLAS_NUM_THREADS: 1
-      MKL_NUM_THREADS: 1
-      NUMEXPR_NUM_THREADS: 1
-      UPSTREAM_IDLE_TIMEOUT: 30
-      COLLECTOR_WATCHDOG_INTERVAL: 30
-      COLLECTOR_STALE_TIMEOUT: 120
     ports:
-      - "${API_PORT:-8765}:8765"
+      - "8765:8765"
     volumes:
-      - data:/data
+      - ${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel
     healthcheck:
       test:
         [
@@ -35,6 +21,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-
-volumes:
-  data:

@@ -1,67 +1,203 @@
 from __future__ import annotations
 
+import secrets
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import yaml
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
-from .runtime_paths import app_home, app_log_path, sqlite_path
+from .runtime_paths import app_home, app_log_path, config_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
 DEFAULT_GMGN_APP_VERSION = "20260429-12894-ccec416"
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        enable_decoding=False,
-        extra="ignore",
-        populate_by_name=True,
-    )
+class ApiConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    handles: tuple[str, ...] = Field(default_factory=tuple, validation_alias="MONITOR_HANDLES")
-    ws_token: str | None = Field(default=None, validation_alias="WS_TOKEN")
-    api_host: str = Field(default="0.0.0.0", validation_alias="API_HOST")
-    api_port: int = Field(default=8765, validation_alias="API_PORT")
-    ws_heartbeat_interval: int = Field(default=30, validation_alias="WS_HEARTBEAT_INTERVAL")
-    replay_limit: int = Field(default=100, validation_alias="REPLAY_LIMIT")
-    app_home_override: Path | None = Field(default=None, validation_alias="GMGN_TWITTER_HOME")
-    sqlite_path_override: Path | None = Field(default=None, validation_alias="SQLITE_PATH")
-    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
-    openai_model: str | None = Field(default=None, validation_alias="OPENAI_MODEL")
-    openai_base_url: str = Field(default="https://api.openai.com/v1", validation_alias="OPENAI_BASE_URL")
-    llm_timeout_seconds: float = Field(default=20.0, validation_alias="LLM_TIMEOUT_SECONDS")
-    enrichment_poll_interval: float = Field(default=2.0, validation_alias="ENRICHMENT_POLL_INTERVAL")
+    host: str = "0.0.0.0"
+    port: int = 8765
+    heartbeat_interval: int = 30
+    replay_limit: int = 100
 
-    upstream_chains: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHAINS, validation_alias="UPSTREAM_CHAINS")
-    upstream_channels: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHANNELS, validation_alias="UPSTREAM_CHANNELS")
-    upstream_app_version: str = Field(default=DEFAULT_GMGN_APP_VERSION, validation_alias="GMGN_WS_APP_VERSION")
-    upstream_proxy: str | None = Field(default=None, validation_alias="GMGN_WS_PROXY")
-    upstream_reconnect_delay: float = Field(default=3.0, validation_alias="UPSTREAM_RECONNECT_DELAY")
-    upstream_heartbeat_interval: float = Field(default=25.0, validation_alias="UPSTREAM_HEARTBEAT_INTERVAL")
-    upstream_idle_timeout: float = Field(default=90.0, validation_alias="UPSTREAM_IDLE_TIMEOUT")
-    collector_watchdog_interval: float = Field(default=30.0, validation_alias="COLLECTOR_WATCHDOG_INTERVAL")
-    collector_stale_timeout: float = Field(default=180.0, validation_alias="COLLECTOR_STALE_TIMEOUT")
+
+class StorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sqlite_path: str = "twitter_intel.sqlite3"
+
+
+class LlmConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    openai_api_key: str | None = None
+    openai_model: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
+    timeout_seconds: float = 20.0
+    enrichment_poll_interval: float = 2.0
+
+    @field_validator("openai_api_key", "openai_model", mode="before")
+    @classmethod
+    def parse_optional_string(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("openai_base_url", mode="before")
+    @classmethod
+    def parse_openai_base_url(cls, value: Any) -> str:
+        normalized = str(value or "https://api.openai.com/v1").strip().rstrip("/")
+        return normalized or "https://api.openai.com/v1"
+
+
+class UpstreamConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    chains: tuple[str, ...] = DEFAULT_UPSTREAM_CHAINS
+    channels: tuple[str, ...] = DEFAULT_UPSTREAM_CHANNELS
+    app_version: str = DEFAULT_GMGN_APP_VERSION
+    proxy: str | None = None
+    reconnect_delay: float = 3.0
+    heartbeat_interval: float = 25.0
+    idle_timeout: float = 90.0
+
+    @field_validator("chains", "channels", mode="before")
+    @classmethod
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
+
+    @field_validator("proxy", mode="before")
+    @classmethod
+    def parse_optional_proxy(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        if normalized.lower() in {"", "none", "false", "off", "direct"}:
+            return None
+        return normalized
+
+
+class CollectorConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    watchdog_interval: float = 30.0
+    stale_timeout: float = 180.0
+
+
+class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    _config_dir: Path = PrivateAttr(default_factory=app_home)
+
+    ws_token: str | None = None
+    handles: tuple[str, ...] = Field(default_factory=tuple)
+    api: ApiConfig = Field(default_factory=ApiConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+    llm: LlmConfig = Field(default_factory=LlmConfig)
+    upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
+    collector: CollectorConfig = Field(default_factory=CollectorConfig)
+
+    @property
+    def config_dir(self) -> Path:
+        return self._config_dir
+
+    def set_config_dir(self, value: Path) -> None:
+        self._config_dir = value
 
     @property
     def app_home(self) -> Path:
-        return app_home(self.app_home_override)
+        return self.config_dir
 
     @property
     def sqlite_path(self) -> Path:
-        return self.sqlite_path_override or sqlite_path(self.app_home_override)
+        configured = Path(self.storage.sqlite_path).expanduser()
+        if configured.is_absolute():
+            return configured
+        return self.config_dir / configured
 
     @property
     def log_file(self) -> Path:
-        return app_log_path(self.app_home_override)
+        return app_log_path(self.config_dir)
+
+    @property
+    def api_host(self) -> str:
+        return self.api.host
+
+    @property
+    def api_port(self) -> int:
+        return self.api.port
+
+    @property
+    def ws_heartbeat_interval(self) -> int:
+        return self.api.heartbeat_interval
+
+    @property
+    def replay_limit(self) -> int:
+        return self.api.replay_limit
+
+    @property
+    def openai_api_key(self) -> str | None:
+        return self.llm.openai_api_key
+
+    @property
+    def openai_model(self) -> str | None:
+        return self.llm.openai_model
+
+    @property
+    def openai_base_url(self) -> str:
+        return self.llm.openai_base_url
+
+    @property
+    def llm_timeout_seconds(self) -> float:
+        return self.llm.timeout_seconds
+
+    @property
+    def enrichment_poll_interval(self) -> float:
+        return self.llm.enrichment_poll_interval
 
     @property
     def llm_configured(self) -> bool:
         return bool(self.openai_api_key and self.openai_model)
+
+    @property
+    def upstream_chains(self) -> tuple[str, ...]:
+        return self.upstream.chains
+
+    @property
+    def upstream_channels(self) -> tuple[str, ...]:
+        return self.upstream.channels
+
+    @property
+    def upstream_app_version(self) -> str:
+        return self.upstream.app_version
+
+    @property
+    def upstream_proxy(self) -> str | None:
+        return self.upstream.proxy
+
+    @property
+    def upstream_reconnect_delay(self) -> float:
+        return self.upstream.reconnect_delay
+
+    @property
+    def upstream_heartbeat_interval(self) -> float:
+        return self.upstream.heartbeat_interval
+
+    @property
+    def upstream_idle_timeout(self) -> float:
+        return self.upstream.idle_timeout
+
+    @property
+    def collector_watchdog_interval(self) -> float:
+        return self.collector.watchdog_interval
+
+    @property
+    def collector_stale_timeout(self) -> float:
+        return self.collector.stale_timeout
 
     @field_validator("handles", mode="before")
     @classmethod
@@ -75,60 +211,96 @@ class Settings(BaseSettings):
                 seen.add(handle)
         return tuple(handles)
 
-    @field_validator("upstream_chains", "upstream_channels", mode="before")
+    @field_validator("ws_token", mode="before")
     @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        values = tuple(_split_values(value))
-        return values
-
-    @field_validator("app_home_override", "sqlite_path_override", mode="before")
-    @classmethod
-    def parse_optional_path(cls, value: Any) -> Any:
-        if value is None:
-            return None
-        if str(value).strip() == "":
-            return None
-        return value
-
-    @field_validator("ws_token", "openai_api_key", "openai_model", mode="before")
-    @classmethod
-    def parse_optional_string(cls, value: Any) -> str | None:
+    def parse_optional_ws_token(cls, value: Any) -> str | None:
         if value is None:
             return None
         token = str(value).strip()
         return token or None
 
-    @field_validator("openai_base_url", mode="before")
-    @classmethod
-    def parse_openai_base_url(cls, value: Any) -> str:
-        normalized = str(value or "https://api.openai.com/v1").strip().rstrip("/")
-        return normalized or "https://api.openai.com/v1"
 
-    @field_validator("upstream_proxy", mode="before")
-    @classmethod
-    def parse_optional_proxy(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip()
-        if normalized.lower() in {"", "none", "false", "off", "direct"}:
-            return None
-        return normalized
-
-def load_settings(env: Mapping[str, str] | None = None, *, require_ws_token: bool = True) -> Settings:
-    settings = Settings(_env_file=_settings_env_files()) if env is None else Settings(_env_file=None, **dict(env))
+def load_settings(*, require_ws_token: bool = True) -> Settings:
+    path = config_path()
+    if not path.exists():
+        raise FileNotFoundError(f"config.yaml not found at {path}; run `gmgn-twitter-intel init` first")
+    data = _load_yaml_mapping(path)
+    settings = Settings(**data)
+    settings.set_config_dir(path.parent)
     if require_ws_token and not settings.ws_token:
-        raise ValueError("WS_TOKEN is required")
+        raise ValueError("ws_token is required in config.yaml")
     return settings
 
 
-def _settings_env_files() -> tuple[Path, ...]:
-    paths = (app_home() / ".env", Path.cwd() / ".env")
-    unique_paths = []
-    for path in paths:
-        expanded = path.expanduser()
-        if expanded not in unique_paths:
-            unique_paths.append(expanded)
-    return tuple(unique_paths)
+def write_default_config(*, force: bool = False) -> Path:
+    home = app_home()
+    path = config_path(home)
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "logs").mkdir(parents=True, exist_ok=True)
+    if path.exists() and not force:
+        return path
+    path.write_text(default_config_yaml(), encoding="utf-8")
+    return path
+
+
+def default_config_yaml() -> str:
+    token = secrets.token_urlsafe(32)
+    return f"""# GMGN Twitter Intel
+ws_token: "{token}"
+handles:
+  - toly
+  - traderpow
+  - theunipcs
+  - dotyyds1234
+  - brc20niubi
+  - jessepollak
+  - cz_binance
+  - heyibinance
+  - elonmusk
+  - cookerflips
+  - himgajria
+  - cryptodevinl
+  - spidercrypto0x
+
+api:
+  host: "0.0.0.0"
+  port: 8765
+  heartbeat_interval: 30
+  replay_limit: 100
+
+storage:
+  sqlite_path: "twitter_intel.sqlite3"
+
+llm:
+  openai_api_key:
+  openai_model:
+  openai_base_url: "https://api.openai.com/v1"
+  timeout_seconds: 20
+  enrichment_poll_interval: 2
+
+upstream:
+  chains: ["sol", "eth", "base", "bsc"]
+  channels: ["twitter_monitor_basic", "twitter_monitor_token"]
+  app_version: "{DEFAULT_GMGN_APP_VERSION}"
+  proxy:
+  reconnect_delay: 3
+  heartbeat_interval: 25
+  idle_timeout: 90
+
+collector:
+  watchdog_interval: 30
+  stale_timeout: 180
+"""
+
+
+def _load_yaml_mapping(path: Path) -> Mapping[str, Any]:
+    with path.open("r", encoding="utf-8") as config_file:
+        data = yaml.safe_load(config_file)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(f"config.yaml must contain a mapping at {path}")
+    return data
 
 
 def _split_values(value: Any) -> list[str]:

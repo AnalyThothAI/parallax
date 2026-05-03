@@ -51,16 +51,16 @@ def test_makefile_exposes_global_cli_install_targets():
     assert "\t@uv tool uninstall gmgn-twitter-intel" in makefile
     assert "tool-path: ## ensure uv tool executables are on PATH" in makefile
     assert "\t@uv tool update-shell" in makefile
+    assert "init: ## create ~/.gmgn-twitter-intel/config.yaml" in makefile
 
 
-def test_compose_uses_sqlite_runtime_without_lance_thread_pools():
+def test_compose_bind_mounts_local_runtime_home_without_env_config_sources():
     compose = (ROOT / "compose.yaml").read_text()
 
-    assert "OMP_NUM_THREADS: 1" in compose
-    assert "OPENBLAS_NUM_THREADS: 1" in compose
-    assert "MKL_NUM_THREADS: 1" in compose
-    assert "NUMEXPR_NUM_THREADS: 1" in compose
-    assert "SQLITE_PATH: /data/twitter_intel.sqlite3" in compose
+    assert "env_file:" not in compose
+    assert "environment:" not in compose
+    assert "${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel" in compose
+    assert "gmgn-twitter-intel_data" not in compose
     assert ("LANCE" + "_") not in compose
     assert ("RAYON" + "_") not in compose
 

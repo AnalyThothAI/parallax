@@ -14,6 +14,7 @@ uv run python -m compileall src tests
 Run:
 
 ```bash
+uv run gmgn-twitter-intel init
 uv run gmgn-twitter-intel serve
 ```
 
@@ -32,7 +33,7 @@ uv run gmgn-twitter-intel account-narratives --window 24h --limit 50
 
 This repository is a standard `uv + src/` Python service backed by SQLite WAL:
 
-- `src/gmgn_twitter_intel/settings.py`: pydantic-settings config.
+- `src/gmgn_twitter_intel/settings.py`: YAML config loader and typed runtime settings.
 - `src/gmgn_twitter_intel/api/app.py`: FastAPI app, `/healthz`, `/readyz`, `/ws`, lifespan background tasks.
 - `src/gmgn_twitter_intel/api/ws.py`: authenticated public WebSocket hub.
 - `src/gmgn_twitter_intel/collector/direct_ws.py`: GMGN anonymous upstream WebSocket client.
@@ -57,6 +58,7 @@ External users pass handles, symbols, or CAs to this service. GMGN chains/channe
 - Payloads include `event`, `entities`, `alerts`, and `enrichment`.
 - Run one ASGI worker; multiple workers duplicate the upstream collector.
 - There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
-- Docker Compose mounts `${GMGN_TWITTER_HOME:-$HOME/.gmgn-twitter-intel}` to `/data`; container SQLite is `/data/twitter_intel.sqlite3`.
-- Local foreground default SQLite is `~/.gmgn-twitter-intel/twitter_intel.sqlite3`.
+- The only application config source is `~/.gmgn-twitter-intel/config.yaml`.
+- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` to container `/root/.gmgn-twitter-intel`.
+- Local foreground and Docker use the same host config and SQLite file under `~/.gmgn-twitter-intel`.
 - MCP/FastMCP is optional control/query infrastructure only, not the live event push mechanism.

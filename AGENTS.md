@@ -14,6 +14,7 @@ uv run python -m compileall src tests
 Run the CLI service:
 
 ```bash
+uv run gmgn-twitter-intel init
 uv run gmgn-twitter-intel serve
 ```
 
@@ -37,17 +38,18 @@ The service consumes GMGN anonymous public Twitter WebSocket channels, normalize
 
 The public configuration surface is intentionally small:
 
-- `MONITOR_HANDLES`: comma-separated Twitter handles.
-- `WS_TOKEN`: public WebSocket API token.
-- `API_HOST` / `API_PORT`: FastAPI bind address.
-- `SQLITE_PATH`: SQLite runtime database path.
-- `OPENAI_API_KEY` / `OPENAI_MODEL`: optional watched-account enrichment worker credentials.
+- `~/.gmgn-twitter-intel/config.yaml`: the only application configuration source.
+- `handles`: watched Twitter handles.
+- `ws_token`: public WebSocket API token.
+- `api`: FastAPI bind address and replay settings.
+- `storage.sqlite_path`: SQLite runtime database path, relative to `~/.gmgn-twitter-intel` by default.
+- `llm.openai_api_key` / `llm.openai_model`: optional watched-account enrichment worker credentials.
 
 GMGN chains, channels, app versions, and protocol frames are internal collector strategy, not user-facing subscription concepts.
 
 ## Module Responsibilities
 
-- `src/gmgn_twitter_intel/settings.py`: pydantic-settings environment loader.
+- `src/gmgn_twitter_intel/settings.py`: YAML config loader and typed runtime settings.
 - `src/gmgn_twitter_intel/api/app.py`: FastAPI app, health probes, WebSocket route, lifespan tasks.
 - `src/gmgn_twitter_intel/api/ws.py`: authenticated WebSocket subscribe/replay/live push hub.
 - `src/gmgn_twitter_intel/collector/direct_ws.py`: GMGN upstream WebSocket adapter.
@@ -79,8 +81,8 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - `coverage=public_stream` means events are filtered from GMGN's anonymous public stream; it is not a full Twitter firehose guarantee.
 - Run one ASGI worker unless the collector and API are split into separate processes.
 - There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
-- Docker Compose mounts `${GMGN_TWITTER_HOME:-$HOME/.gmgn-twitter-intel}` to `/data`; container SQLite is `/data/twitter_intel.sqlite3`.
-- Local foreground default SQLite is `~/.gmgn-twitter-intel/twitter_intel.sqlite3`.
+- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` to container `/root/.gmgn-twitter-intel`.
+- Local foreground and Docker use the same host config and SQLite file under `~/.gmgn-twitter-intel`.
 
 ## MCP
 

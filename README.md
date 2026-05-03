@@ -28,18 +28,18 @@ GMGN public WS
 
 ```bash
 make sync
-cp .env.example .env
+make init
 make config
 ```
 
-`.env` 至少配置：
+`make init` 会创建：
 
-```env
-WS_TOKEN=replace-with-a-strong-token
-MONITOR_HANDLES=toly,traderpow,theunipcs,dotyyds1234,brc20niubi,jessepollak,cz_binance,heyibinance,elonmusk,cookerflips,himgajria,cryptodevinl,spidercrypto0x
+```text
+~/.gmgn-twitter-intel/config.yaml
+~/.gmgn-twitter-intel/logs/
 ```
 
-如需启用 watched-account LLM enrichment，再配置 `OPENAI_API_KEY` 与 `OPENAI_MODEL`。
+编辑 `config.yaml` 中的 `handles`、`ws_token`，如需启用 watched-account LLM enrichment，再配置 `llm.openai_api_key` 与 `llm.openai_model`。
 
 本地前台运行：
 
@@ -64,17 +64,19 @@ make check
 
 ## 数据目录
 
-本地前台默认使用：
+本地前台和 Docker Compose 使用同一个宿主目录：
 
 ```text
+~/.gmgn-twitter-intel/config.yaml
 ~/.gmgn-twitter-intel/twitter_intel.sqlite3
+~/.gmgn-twitter-intel/logs/gmgn-twitter-intel.log
 ```
 
-Docker Compose 默认使用 Docker named volume：
+Docker Compose bind mount：
 
 ```text
-volume: gmgn-twitter-intel_data
-容器内: /data/twitter_intel.sqlite3
+宿主机: ~/.gmgn-twitter-intel
+容器内: /root/.gmgn-twitter-intel
 ```
 
 查询 Docker 内数据：
@@ -83,47 +85,40 @@ volume: gmgn-twitter-intel_data
 docker compose exec app gmgn-twitter-intel recent --limit 20
 ```
 
-指定数据库路径：
-
-```bash
-SQLITE_PATH=/absolute/path/to/twitter_intel.sqlite3 uv run gmgn-twitter-intel recent --limit 20
-```
-
 在线备份：
 
 ```bash
-sqlite3 /data/twitter_intel.sqlite3 ".backup '/data/backups/twitter_intel-YYYYMMDD-HHMMSS.sqlite3'"
+sqlite3 ~/.gmgn-twitter-intel/twitter_intel.sqlite3 ".backup '$HOME/.gmgn-twitter-intel/twitter_intel-YYYYMMDD-HHMMSS.sqlite3'"
 ```
 
 不要用 raw `cp -a` 复制正在写入的热数据库。
 
 ## 配置
 
-| 变量 | 说明 | 默认 |
-|---|---|---|
-| `WS_TOKEN` | 下游 WebSocket 鉴权 token，启动 `/ws` 服务时必填 | 必填 |
-| `MONITOR_HANDLES` | 需要实时命中的 Twitter handle，逗号分隔 | 空 |
-| `SQLITE_PATH` | SQLite 数据库文件 | `~/.gmgn-twitter-intel/twitter_intel.sqlite3` |
-| `API_HOST` | API 监听地址 | `0.0.0.0` |
-| `API_PORT` | API 端口 | `8765` |
-| `REPLAY_LIMIT` | WebSocket replay 默认条数 | `100` |
-| `GMGN_TWITTER_HOME` | 运行数据根目录 | `~/.gmgn-twitter-intel` |
-| `OPENAI_API_KEY` | watched-account LLM enrichment API key；为空时只积压 enrichment job | 空 |
-| `OPENAI_MODEL` | watched-account enrichment 使用的模型；与 API key 同时配置才会启动 worker | 空 |
-| `OPENAI_BASE_URL` | OpenAI-compatible API base URL | `https://api.openai.com/v1` |
-| `LLM_TIMEOUT_SECONDS` | 单条 enrichment 请求超时 | `20` |
-| `ENRICHMENT_POLL_INTERVAL` | enrichment worker 空轮询间隔 | `2` |
+唯一配置源是 `~/.gmgn-twitter-intel/config.yaml`。服务不读取 `.env`、`SQLITE_PATH`、`MONITOR_HANDLES`、`WS_TOKEN` 等环境变量。
 
-内部 collector 参数一般不需要改：
+核心字段：
 
-```env
-UPSTREAM_CHANNELS=twitter_monitor_basic,twitter_monitor_token
-UPSTREAM_CHAINS=sol,eth,base,bsc
-GMGN_WS_APP_VERSION=20260429-12894-ccec416
-GMGN_WS_PROXY=
-UPSTREAM_IDLE_TIMEOUT=90
-COLLECTOR_STALE_TIMEOUT=180
+```yaml
+ws_token: "replace-with-a-strong-token"
+handles:
+  - toly
+api:
+  host: "0.0.0.0"
+  port: 8765
+  heartbeat_interval: 30
+  replay_limit: 100
+storage:
+  sqlite_path: "twitter_intel.sqlite3"
+llm:
+  openai_api_key:
+  openai_model:
+  openai_base_url: "https://api.openai.com/v1"
+  timeout_seconds: 20
+  enrichment_poll_interval: 2
 ```
+
+`storage.sqlite_path` 推荐保持相对路径，这样数据库固定落在 `~/.gmgn-twitter-intel` 下。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
 
 ## 外部调用
 
@@ -171,6 +166,7 @@ ws://127.0.0.1:8765/ws
 所有查询命令输出 JSON，适合下游用 subprocess 调用。
 
 ```bash
+uv run gmgn-twitter-intel init
 uv run gmgn-twitter-intel config
 uv run gmgn-twitter-intel recent --limit 20
 uv run gmgn-twitter-intel search --symbol PEPE --limit 20
@@ -189,7 +185,7 @@ uv run gmgn-twitter-intel ops rebuild-windows --window 5m
 ## 范围边界
 
 - 所有可解析公共事件都会入库。
-- `MONITOR_HANDLES` 决定哪些事件触发 watched account 实时推送和默认 replay。
+- `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
 - token signal 来自确定性 CA/cashtag；narrative signal 来自 watched-account LLM enrichment。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。

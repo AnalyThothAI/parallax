@@ -1,12 +1,13 @@
 import io
 import json
-import os
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from threading import RLock
 from unittest.mock import patch
+
+import yaml
 
 from gmgn_twitter_intel.cli import main
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
@@ -108,18 +109,30 @@ def seed_sqlite(db_path: Path) -> None:
         conn.close()
 
 
+def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = None, llm: bool = False) -> Path:
+    app_home = home / ".gmgn-twitter-intel"
+    app_home.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "handles": ["toly", "traderpow"],
+        "storage": {"sqlite_path": str(db_path)},
+    }
+    if ws_token is not None:
+        payload["ws_token"] = ws_token
+    if llm:
+        payload["llm"] = {"openai_api_key": "sk-test", "openai_model": "gpt-test"}
+    path = app_home / "config.yaml"
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    return path
+
+
 class CliTests(unittest.TestCase):
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path, ws_token="secret", llm=True)
             stdout = io.StringIO()
-            original_env = {
-                "GMGN_TWITTER_HOME": str(Path(tmpdir) / "app-home"),
-                "WS_TOKEN": "secret",
-                "MONITOR_HANDLES": " @Toly, traderpow,toly ",
-                "OPENAI_API_KEY": "sk-test",
-                "OPENAI_MODEL": "gpt-test",
-            }
-            with patch.dict("os.environ", original_env, clear=False):
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 exit_code = main(["config"], stdout=stdout)
 
         payload = json.loads(stdout.getvalue())
@@ -135,14 +148,12 @@ class CliTests(unittest.TestCase):
 
     def test_recent_search_token_flow_narratives_and_alerts_use_sqlite_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "twitter_intel.sqlite3"
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
             seed_sqlite(db_path)
             stdout = io.StringIO()
-            env = {
-                "SQLITE_PATH": str(db_path),
-                "MONITOR_HANDLES": "toly",
-            }
-            with patch.dict(os.environ, env, clear=False):
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
                 search_code = main(["search", "--symbol", "PEPE", "--limit", "5"], stdout=stdout)
                 token_flow_code = main(["token-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
@@ -174,7 +185,9 @@ class CliTests(unittest.TestCase):
 
     def test_ops_rebuild_windows_reconstructs_materialized_signal_windows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "twitter_intel.sqlite3"
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
             seed_sqlite(db_path)
             conn = connect_sqlite(db_path, read_only=False)
             try:
@@ -184,7 +197,7 @@ class CliTests(unittest.TestCase):
                 conn.close()
 
             stdout = io.StringIO()
-            with patch.dict(os.environ, {"SQLITE_PATH": str(db_path)}, clear=False):
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 rebuild_code = main(["ops", "rebuild-windows", "--window", "5m"], stdout=stdout)
                 flow_code = main(["token-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
 
@@ -195,12 +208,11 @@ class CliTests(unittest.TestCase):
 
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
-    app_home = tmp_path / "app-home"
+    app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "twitter_intel.sqlite3"
+    write_runtime_config(tmp_path, db_path=db_path)
     seed_sqlite(db_path)
-    monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
-    monkeypatch.delenv("WS_TOKEN", raising=False)
-    monkeypatch.setenv("MONITOR_HANDLES", "toly")
+    monkeypatch.setenv("HOME", str(tmp_path))
     stdout = io.StringIO()
 
     exit_code = main(["recent", "--limit", "5"], stdout=stdout)
@@ -208,6 +220,18 @@ def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monk
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["data"]["events"][0]["event_id"] == "event-1"
+
+
+def test_init_creates_runtime_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    stdout = io.StringIO()
+
+    exit_code = main(["init"], stdout=stdout)
+
+    payload = json.loads(stdout.getvalue())
+    assert exit_code == 0
+    assert payload["data"]["created"] is True
+    assert (tmp_path / ".gmgn-twitter-intel" / "config.yaml").is_file()
 
 
 if __name__ == "__main__":

@@ -87,7 +87,7 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
 
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     if not settings.ws_token:
-        raise ValueError("WS_TOKEN is required")
+        raise ValueError("ws_token is required in config.yaml")
     conn = connect_sqlite(settings.sqlite_path, read_only=False)
     migrate(conn)
     read_conn = connect_sqlite(settings.sqlite_path, read_only=True)

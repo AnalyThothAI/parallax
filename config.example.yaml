@@ -1,0 +1,45 @@
+# GMGN Twitter Intel
+ws_token: "replace-with-a-strong-token"
+handles:
+  - toly
+  - traderpow
+  - theunipcs
+  - dotyyds1234
+  - brc20niubi
+  - jessepollak
+  - cz_binance
+  - heyibinance
+  - elonmusk
+  - cookerflips
+  - himgajria
+  - cryptodevinl
+  - spidercrypto0x
+
+api:
+  host: "0.0.0.0"
+  port: 8765
+  heartbeat_interval: 30
+  replay_limit: 100
+
+storage:
+  sqlite_path: "twitter_intel.sqlite3"
+
+llm:
+  openai_api_key:
+  openai_model:
+  openai_base_url: "https://api.openai.com/v1"
+  timeout_seconds: 20
+  enrichment_poll_interval: 2
+
+upstream:
+  chains: ["sol", "eth", "base", "bsc"]
+  channels: ["twitter_monitor_basic", "twitter_monitor_token"]
+  app_version: "20260429-12894-ccec416"
+  proxy:
+  reconnect_delay: 3
+  heartbeat_interval: 25
+  idle_timeout: 90
+
+collector:
+  watchdog_interval: 30
+  stale_timeout: 180

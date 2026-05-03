@@ -1,6 +1,6 @@
 GMGN := uv run gmgn-twitter-intel
 
-.PHONY: help sync install uninstall tool-path test lint compile check config serve status recent token-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
+.PHONY: help sync install uninstall tool-path test lint compile check init config serve status recent token-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -28,6 +28,9 @@ compile: ## compile Python files
 
 check: test lint compile ## run all local checks
 
+init: ## create ~/.gmgn-twitter-intel/config.yaml
+	@$(GMGN) init
+
 config: ## print effective runtime config
 	@$(GMGN) config
 
@@ -44,10 +47,10 @@ recent: ## print recent matched events
 token-flow: ## print 5m token activity
 	@$(GMGN) token-flow --window 5m --limit 20
 
-account-alerts: ## print watched-account token/keyword alerts
+account-alerts: ## print watched-account token alerts
 	@$(GMGN) account-alerts --window 24h --limit 50
 
-docker-up: ## build and start container service
+docker-up: init ## build and start container service
 	@docker compose up -d --build app
 
 docker-status: ## show container and readiness

@@ -14,7 +14,7 @@ from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.narrative_service import NarrativeService
 from .retrieval.search_service import SearchService
 from .retrieval.token_flow_service import TokenFlowService
-from .settings import load_settings
+from .settings import load_settings, write_default_config
 from .storage.enrichment_repository import EnrichmentRepository
 from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
@@ -27,9 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gmgn-twitter-intel")
     subcommands = parser.add_subparsers(dest="command")
 
-    serve = subcommands.add_parser("serve", help="run the collector service")
-    serve.add_argument("--host", default=None, help="override API bind host")
-    serve.add_argument("--port", type=int, default=None, help="override API bind port")
+    subcommands.add_parser("serve", help="run the collector service")
+
+    init = subcommands.add_parser("init", help="create ~/.gmgn-twitter-intel/config.yaml")
+    init.add_argument("--force", action="store_true", help="overwrite existing config.yaml")
 
     subcommands.add_parser("config", help="print effective runtime configuration")
 
@@ -93,15 +94,31 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return int(exc.code or 0)
     command = args.command or "serve"
 
+    if command == "init":
+        from .runtime_paths import config_path
+
+        existed = config_path().exists()
+        path = write_default_config(force=args.force)
+        _emit(
+            {
+                "ok": True,
+                "data": {
+                    "config_path": str(path),
+                    "app_home": str(path.parent),
+                    "created": args.force or not existed,
+                },
+            },
+            stdout,
+        )
+        return 0
+
     if command == "serve":
         settings = load_settings()
         setup_logging(settings.log_file)
-        host = args.host or settings.api_host
-        port = args.port or settings.api_port
         uvicorn.run(
             create_app(settings=settings),
-            host=host,
-            port=port,
+            host=settings.api_host,
+            port=settings.api_port,
             log_config=None,
             ws_ping_interval=settings.ws_heartbeat_interval,
             ws_ping_timeout=settings.ws_heartbeat_interval * 2,
@@ -116,6 +133,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 "data": {
                     "handles": list(settings.handles),
                     "handle_count": len(settings.handles),
+                    "config_path": str(settings.app_home / "config.yaml"),
                     "api": {
                         "host": settings.api_host,
                         "port": settings.api_port,

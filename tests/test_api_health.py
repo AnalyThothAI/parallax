@@ -1,16 +1,17 @@
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import _build_runtime, _readiness_payload, create_app
-from gmgn_twitter_intel.settings import Settings
+from gmgn_twitter_intel.settings import CollectorConfig, Settings
 
 
-def test_healthz_and_readyz_return_status(tmp_path, monkeypatch):
-    monkeypatch.setenv("GMGN_TWITTER_HOME", str(tmp_path / "app-home"))
+def test_healthz_and_readyz_return_status(tmp_path):
+    settings = Settings(
+        handles=("toly",),
+        ws_token="secret",
+    )
+    settings.set_config_dir(tmp_path / "app-home")
     app = create_app(
-        settings=Settings(
-            handles=("toly",),
-            ws_token="secret",
-        ),
+        settings=settings,
         start_collector=False,
     )
 
@@ -38,9 +39,9 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
     settings = Settings(
         handles=("toly",),
         ws_token="secret",
-        app_home_override=tmp_path / "app-home",
-        collector_stale_timeout=10,
+        collector=CollectorConfig(stale_timeout=10),
     )
+    settings.set_config_dir(tmp_path / "app-home")
     runtime = _build_runtime(settings, start_collector=False)
     runtime.start_collector = True
     runtime.collector_task = RunningTask()
