@@ -49,7 +49,7 @@ const statusData: StatusData = {
     llm_configured: false,
     worker_running: false,
     job_counts: { pending: 3, running: 0, failed: 0, dead: 0, done: 1 }
-	      }
+  }
 };
 
 describe("App cockpit value flow", () => {
@@ -338,6 +338,27 @@ describe("App cockpit value flow", () => {
             ]
           });
         }
+        if (/^0x[a-fA-F0-9]{40}$/.test(query)) {
+          return ok({
+            query: { kind: "ca", text: query, scope: "all", ca: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", chain: "evm_unknown" },
+            result_count: 1,
+            items: [
+              {
+                match_type: "exact_ca",
+                score: 100,
+                event: {
+                  event_id: "event-pepe-ca-1",
+                  canonical_url: "https://x.com/traderpow/status/4",
+                  author_handle: "traderpow",
+                  received_at_ms: 1_777_746_300_000,
+                  text_clean: "0x6982508145454ce325ddbe47a25d4ec3d2311933 exact CA evidence",
+                  cashtags: ["PEPE"],
+                  is_watched: 1
+                }
+              }
+            ]
+          });
+        }
         return ok({
           query: { kind: "symbol", text: query, scope: "all", symbol: "UPEG" },
           result_count: 1,
@@ -375,10 +396,10 @@ describe("App cockpit value flow", () => {
     expect(container.querySelector(".direction.flat")?.textContent).toBe("-");
     expect(container.querySelector(".source-cell b")?.textContent).toBe("2 src");
     expect(container.querySelector(".source-cell small")?.textContent).toBe("1 watch / qual 25");
-	    expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
-	    expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
-	    expect(await screen.findByLabelText("narrative link ai_agent_upeg")).toBeInTheDocument();
-	    expect(await screen.findByText("叙事前沿")).toBeInTheDocument();
+    expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
+    expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
+    expect(await screen.findByLabelText("narrative link ai_agent_upeg")).toBeInTheDocument();
+    expect(await screen.findByText("叙事前沿")).toBeInTheDocument();
     expect(await screen.findByText("ai_agent_grok · seed_term_and_token_mention")).toBeInTheDocument();
   });
 
@@ -409,7 +430,9 @@ describe("App cockpit value flow", () => {
   it("applies scope changes to token flow reads", async () => {
     renderWithQuery(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "watched" }));
+    const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
+    expect(tokenPanel).not.toBeNull();
+    fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "watched" }));
 
     await waitFor(() => {
       expect(
@@ -418,6 +441,37 @@ describe("App cockpit value flow", () => {
         )
       ).toBe(true);
     });
+  });
+
+  it("keeps all stream selected when the active toolbar scope is clicked", async () => {
+    renderWithQuery(<App />);
+
+    const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
+    expect(tokenPanel).not.toBeNull();
+    fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "all" }));
+
+    await waitFor(() => {
+      const tokenFlowCalls = mockedGetApi.mock.calls.filter(([path]) => path === "/api/token-flow");
+      expect(tokenFlowCalls.at(-1)?.[1]?.params?.scope).toBe("all");
+    });
+  });
+
+  it("renders manual CA searches as exact CA evidence, not symbol evidence", async () => {
+    renderWithQuery(<App />);
+
+    const ca = "0x6982508145454ce325ddbe47a25d4ec3d2311933";
+    fireEvent.change(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本"), { target: { value: ca } });
+    fireEvent.click(screen.getByRole("button", { name: "检索" }));
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/search" && options?.params?.q === ca
+        )
+      ).toBe(true);
+    });
+    expect((await screen.findAllByText("exact_ca")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("exact_symbol")).not.toBeInTheDocument();
   });
 
   it("turns token flow clicks into evidence-focused search", async () => {

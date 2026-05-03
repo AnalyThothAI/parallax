@@ -35,6 +35,37 @@ def test_search_service_uses_exact_entities_and_fts(tmp_path):
     assert by_text.items[0]["match_type"] == "fts"
 
 
+def test_search_service_ca_does_not_fall_back_to_same_symbol_other_ca(tmp_path):
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
+    target_ca = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    other_ca = "0x44b28991b167582f18ba0259e0173176ca125505"
+    try:
+        for event in [
+            make_event("event-target-ca", text=f"$PEPE exact target {target_ca}", received_at_ms=1_700_000_001_000),
+            make_event(
+                "event-other-ca",
+                text=f"$PEPE same symbol different ca {other_ca}",
+                received_at_ms=1_700_000_002_000,
+            ),
+        ]:
+            evidence.insert_event(event, is_watched=True)
+            entities = extract_entities(event.content.text)
+            entity_repo.insert_event_entities(event, entities, is_watched=True)
+            token_mentions = TokenIdentityResolver(TokenRepository(conn)).resolve_event_mentions(
+                event,
+                entities,
+                commit=True,
+            )
+            SignalBuilder(signal_repo).build_for_event(event, token_mentions, is_watched=True)
+
+        by_ca = SearchService(evidence=evidence, entities=entity_repo, signals=signal_repo).search(target_ca, limit=10)
+    finally:
+        conn.close()
+
+    assert [item["event"]["event_id"] for item in by_ca.items] == ["event-target-ca"]
+    assert {item["match_type"] for item in by_ca.items} == {"exact_ca"}
+
+
 def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
     conn, _, _, signal_repo, token_repo = seed_event(tmp_path)
     try:

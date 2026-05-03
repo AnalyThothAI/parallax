@@ -162,7 +162,9 @@ export function App() {
 
   const tokenItems = tokenFlowQuery.data?.data.items ?? [];
   const alertItems = alertsQuery.data?.data.items ?? [];
-  const searchItems = searchQuery.data?.data.items ?? [];
+  const searchData = searchQuery.data?.data;
+  const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
+  const searchItems = currentSearchData?.items ?? [];
   const frontierItems = frontierQuery.data?.data.items ?? [];
   const frontierByToken = useMemo(() => buildFrontierByToken(frontierItems), [frontierItems]);
   const focus = buildEvidenceFocus(selectedSignal, searchItems, submittedSearch);
@@ -346,9 +348,14 @@ export function App() {
                   </button>
                 ))}
               </div>
-              <button className="filter-chip" type="button" onClick={() => setScope(scope === "matched" ? "all" : "matched")}>
-                {scope === "matched" ? "watched" : "all"}
-              </button>
+              <div className="segmented scope-toggle" aria-label="token flow scope">
+                <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
+                  watched
+                </button>
+                <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
+                  all
+                </button>
+              </div>
             </div>
           </header>
 
@@ -363,16 +370,16 @@ export function App() {
               <span>Fresh</span>
               <span>Signal</span>
             </div>
-	            {tokenItems.slice(0, 40).map((item) => (
-	              <TokenRadarRow
-	                key={`${item.identity.identity_key}:${item.flow.window_start_ms ?? ""}`}
-	                item={item}
-	                decision={decisionForToken(item, decisions)}
-	                narrativeLink={frontierMatchForToken(item, frontierByToken)}
-	                selected={isSelectedToken(selectedSignal, item)}
-	                onSelect={selectToken}
-	              />
-	            ))}
+            {tokenItems.slice(0, 40).map((item) => (
+              <TokenRadarRow
+                key={`${item.identity.identity_key}:${item.flow.window_start_ms ?? ""}`}
+                item={item}
+                decision={decisionForToken(item, decisions)}
+                narrativeLink={frontierMatchForToken(item, frontierByToken)}
+                selected={isSelectedToken(selectedSignal, item)}
+                onSelect={selectToken}
+              />
+            ))}
             {tokenItems.length === 0 ? <EmptyState text="暂无 token flow" /> : null}
           </div>
 
@@ -398,7 +405,7 @@ export function App() {
               </div>
             </CompactPanel>
 
-            <CompactPanel title="检索结果" icon={<Search />} action={`${searchQuery.data?.data.result_count ?? 0} hits`}>
+            <CompactPanel title="检索结果" icon={<Search />} action={`${currentSearchData?.result_count ?? 0} hits`}>
               <div className="compact-list">
                 {searchItems.slice(0, 8).map((item) => (
                   <SearchRow key={`${item.match_type}:${item.event.event_id}`} item={item} selected={isSelectedSearch(selectedSignal, item)} onSelect={selectSearchItem} />
@@ -423,7 +430,7 @@ export function App() {
           </section>
           <CompactPanel title="叙事前沿" icon={<Brain />} action={`${frontierQuery.data?.data.items.length ?? 0} links`}>
             <div className="narrative-list">
-	              {frontierItems.slice(0, 8).map((item) => (
+              {frontierItems.slice(0, 8).map((item) => (
                 <div className="narrative-row frontier-row" key={`${item.seed.seed_id}:${item.link.identity.identity_key}`}>
                   <div>
                     <strong>
@@ -434,7 +441,7 @@ export function App() {
                   <DecisionTag decision={item.link.signal.decision} />
                 </div>
               ))}
-	              {frontierItems.length === 0 ? <EmptyState text="暂无 seed-token link" /> : null}
+              {frontierItems.length === 0 ? <EmptyState text="暂无 seed-token link" /> : null}
             </div>
           </CompactPanel>
           <CompactPanel title="叙事流" icon={<Brain />} action={statusQuery.data?.data.enrichment.llm_configured ? "LLM on" : "LLM off"}>

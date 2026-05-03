@@ -23,6 +23,10 @@ def parse_query(text: str) -> ParsedQuery:
         return ParsedQuery(kind="handle", text=query, handle=query.lstrip("@").lower())
     if query.startswith("$") and len(query) > 1:
         return ParsedQuery(kind="symbol", text=query, symbol=query.lstrip("$").upper())
+    chain_prefixed_ca = _parse_chain_prefixed_ca(query)
+    if chain_prefixed_ca is not None:
+        chain, ca = chain_prefixed_ca
+        return ParsedQuery(kind="ca", text=query, ca=ca, chain=chain)
     try:
         chain, ca = normalize_ca(query)
     except ValueError:
@@ -32,3 +36,13 @@ def parse_query(text: str) -> ParsedQuery:
     if query.isascii() and query.isupper() and 2 <= len(query) <= 12 and query.isalnum():
         return ParsedQuery(kind="symbol", text=query, symbol=query.upper())
     return ParsedQuery(kind="text", text=query)
+
+
+def _parse_chain_prefixed_ca(query: str) -> tuple[str, str] | None:
+    chain_hint, separator, value = query.partition(":")
+    if not separator or not chain_hint.strip() or not value.strip():
+        return None
+    try:
+        return normalize_ca(value, chain=chain_hint)
+    except ValueError:
+        return None

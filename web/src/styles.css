@@ -354,7 +354,6 @@ svg {
 
 .window-stack button,
 .scope-stack button,
-.filter-chip,
 .segmented button {
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -376,8 +375,7 @@ svg {
 
 .window-stack button.active,
 .scope-stack button.active,
-.segmented button.active,
-.filter-chip:hover {
+.segmented button.active {
   color: var(--accent);
   border-color: var(--accent-line);
   background: var(--accent-soft);
@@ -555,13 +553,12 @@ svg {
   gap: 4px;
 }
 
-.segmented button,
-.filter-chip {
-  height: 25px;
+.scope-toggle {
+  grid-template-columns: repeat(2, 58px);
 }
 
-.filter-chip {
-  padding: 0 9px;
+.segmented button {
+  height: 25px;
 }
 
 .token-radar-table {
