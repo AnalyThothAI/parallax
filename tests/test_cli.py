@@ -5,11 +5,14 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from threading import RLock
 from unittest.mock import patch
 
 from gmgn_twitter_intel.cli import main
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.pipeline.llm_enrichment import EnrichmentResult, NarrativeItem, TokenCandidate
+from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
@@ -22,7 +25,7 @@ PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 def make_event(
     event_id: str,
     received_at_ms: int | None = None,
-    text: str = f"$PEPE mainnet base stablecoin {PEPE}",
+    text: str = f"$PEPE Solana XDP mainnet base stablecoin {PEPE}",
 ) -> TwitterEvent:
     received_at_ms = received_at_ms if received_at_ms is not None else int(time.time() * 1000)
     return TwitterEvent(
@@ -54,13 +57,53 @@ def seed_sqlite(db_path: Path) -> None:
     conn = connect_sqlite(db_path, read_only=False)
     try:
         migrate(conn)
+        evidence = EvidenceRepository(conn)
+        entities = EntityRepository(conn)
+        signals = SignalRepository(conn)
+        enrichment = EnrichmentRepository(conn)
         ingest = IngestService(
-            evidence=EvidenceRepository(conn),
-            entities=EntityRepository(conn),
-            signals=SignalRepository(conn),
-            watch_keywords=("mainnet",),
+            evidence=evidence,
+            entities=entities,
+            signals=signals,
+            enrichment=enrichment,
+            write_lock=RLock(),
         )
         ingest.ingest_event(make_event("event-1"), is_watched=True)
+        job = enrichment.claim_next_job(now_ms=int(time.time() * 1000))
+        assert job is not None
+        event = evidence.events_by_ids(["event-1"])["event-1"]
+        enrichment.complete_job(
+            job=job,
+            event=event,
+            result=EnrichmentResult(
+                summary="Watched account discussed Solana XDP and PEPE.",
+                token_candidates=[
+                    TokenCandidate(
+                        symbol="SOL",
+                        project_name="Solana",
+                        chain=None,
+                        address=None,
+                        evidence="Solana XDP",
+                        confidence=0.9,
+                    ),
+                ],
+                narratives=[
+                    NarrativeItem(
+                        label="solana_scaling",
+                        description="Solana scaling and XDP readiness",
+                        evidence="Solana XDP",
+                        confidence=0.86,
+                    ),
+                ],
+                stance="informational",
+                intent="technical_commentary",
+                confidence=0.9,
+                raw_response={"ok": True},
+            ),
+            provider="test",
+            model="test-model",
+            request={"event_id": "event-1"},
+        )
     finally:
         conn.close()
 
@@ -73,7 +116,8 @@ class CliTests(unittest.TestCase):
                 "GMGN_TWITTER_HOME": str(Path(tmpdir) / "app-home"),
                 "WS_TOKEN": "secret",
                 "MONITOR_HANDLES": " @Toly, traderpow,toly ",
-                "WATCH_KEYWORDS": "mainnet,listing",
+                "OPENAI_API_KEY": "sk-test",
+                "OPENAI_MODEL": "gpt-test",
             }
             with patch.dict("os.environ", original_env, clear=False):
                 exit_code = main(["config"], stdout=stdout)
@@ -83,12 +127,13 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["data"]["handles"], ["toly", "traderpow"])
         self.assertEqual(payload["data"]["handle_count"], 2)
-        self.assertEqual(payload["data"]["watch_keywords"], ["mainnet", "listing"])
         self.assertTrue(payload["data"]["api"]["ws_token_configured"])
+        self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
+        self.assertEqual(payload["data"]["enrichment"]["openai_model"], "gpt-test")
         self.assertTrue(payload["data"]["store"]["sqlite_path"].endswith("twitter_intel.sqlite3"))
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
 
-    def test_recent_search_token_flow_keyword_flow_and_alerts_use_sqlite_runtime_store(self):
+    def test_recent_search_token_flow_narratives_and_alerts_use_sqlite_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "twitter_intel.sqlite3"
             seed_sqlite(db_path)
@@ -96,25 +141,31 @@ class CliTests(unittest.TestCase):
             env = {
                 "SQLITE_PATH": str(db_path),
                 "MONITOR_HANDLES": "toly",
-                "WATCH_KEYWORDS": "mainnet",
             }
             with patch.dict(os.environ, env, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
                 search_code = main(["search", "--symbol", "PEPE", "--limit", "5"], stdout=stdout)
                 token_flow_code = main(["token-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
-                keyword_flow_code = main(["keyword-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
+                narrative_flow_code = main(["narrative-flow", "--window", "1h", "--limit", "5"], stdout=stdout)
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
+                narratives_code = main(["account-narratives", "--window", "24h", "--limit", "5"], stdout=stdout)
+                jobs_code = main(["enrichment-jobs", "--limit", "5"], stdout=stdout)
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-        self.assertEqual([recent_code, search_code, token_flow_code, keyword_flow_code, alerts_code], [0, 0, 0, 0, 0])
+        self.assertEqual(
+            [recent_code, search_code, token_flow_code, narrative_flow_code, alerts_code, narratives_code, jobs_code],
+            [0, 0, 0, 0, 0, 0, 0],
+        )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["items"][0]["mention_count"], 1)
-        self.assertEqual(lines[3]["data"]["items"][0]["keyword"], "mainnet")
+        self.assertEqual(lines[3]["data"]["items"][0]["narrative_label"], "solana_scaling")
         self.assertEqual(
             {item["alert_type"] for item in lines[4]["data"]["items"]},
-            {"account_token", "account_keyword"},
+            {"account_token"},
         )
+        self.assertEqual(lines[5]["data"]["items"][0]["narrative_label"], "solana_scaling")
+        self.assertEqual(lines[6]["data"]["counts"]["done"], 1)
 
     def test_obsolete_runtime_commands_are_not_registered(self):
         parser_help = main(["embed"], stdout=io.StringIO())
@@ -128,7 +179,6 @@ class CliTests(unittest.TestCase):
             conn = connect_sqlite(db_path, read_only=False)
             try:
                 conn.execute("DELETE FROM token_windows")
-                conn.execute("DELETE FROM keyword_windows")
                 conn.commit()
             finally:
                 conn.close()
@@ -151,7 +201,6 @@ def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monk
     monkeypatch.setenv("GMGN_TWITTER_HOME", str(app_home))
     monkeypatch.delenv("WS_TOKEN", raising=False)
     monkeypatch.setenv("MONITOR_HANDLES", "toly")
-    monkeypatch.setenv("WATCH_KEYWORDS", "mainnet")
     stdout = io.StringIO()
 
     exit_code = main(["recent", "--limit", "5"], stdout=stdout)

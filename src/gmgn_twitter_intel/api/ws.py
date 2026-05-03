@@ -21,11 +21,21 @@ class ClientSubscription:
 
 
 class PublicWebSocketHub:
-    def __init__(self, *, token: str, evidence, entities, signals, default_replay_limit: int = 100):
+    def __init__(
+        self,
+        *,
+        token: str,
+        evidence,
+        entities,
+        signals,
+        enrichment,
+        default_replay_limit: int = 100,
+    ):
         self.token = token
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
+        self.enrichment = enrichment
         self.default_replay_limit = default_replay_limit
         self._clients: set[ClientSubscription] = set()
 
@@ -137,6 +147,7 @@ class PublicWebSocketHub:
             "event": event,
             "entities": self.entities.entities_for_event(event_id),
             "alerts": self.signals.alerts_for_event(event_id),
+            "enrichment": self.enrichment.enrichment_for_event(event_id),
         }
 
 

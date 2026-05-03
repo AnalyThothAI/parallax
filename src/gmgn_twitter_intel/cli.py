@@ -11,9 +11,11 @@ import uvicorn
 from .api.app import create_app
 from .logging_setup import setup_logging
 from .retrieval.account_alert_service import AccountAlertService
+from .retrieval.narrative_service import NarrativeService
 from .retrieval.search_service import SearchService
 from .retrieval.token_flow_service import TokenFlowService
 from .settings import load_settings
+from .storage.enrichment_repository import EnrichmentRepository
 from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
 from .storage.signal_repository import SignalRepository
@@ -52,19 +54,28 @@ def build_parser() -> argparse.ArgumentParser:
     token_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="5m")
     token_flow.add_argument("--limit", type=int, default=20)
 
-    keyword_flow = subcommands.add_parser("keyword-flow", help="rank keyword activity windows")
-    keyword_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
-    keyword_flow.add_argument("--limit", type=int, default=20)
+    narrative_flow = subcommands.add_parser("narrative-flow", help="rank LLM narrative activity windows")
+    narrative_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    narrative_flow.add_argument("--limit", type=int, default=20)
 
-    account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token/keyword alerts")
+    account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
     account_alerts.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
     account_alerts.add_argument("--limit", type=int, default=50)
     account_alerts.add_argument("--handles", default="")
     account_alerts.add_argument(
         "--alert-type",
-        choices=("account_token", "account_keyword", "token", "keyword"),
+        choices=("account_token", "token"),
         default=None,
     )
+
+    account_narratives = subcommands.add_parser("account-narratives", help="print watched-account narrative alerts")
+    account_narratives.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
+    account_narratives.add_argument("--limit", type=int, default=50)
+    account_narratives.add_argument("--handles", default="")
+
+    enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect LLM enrichment job backlog")
+    enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
+    enrichment_jobs.add_argument("--limit", type=int, default=50)
 
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
@@ -105,7 +116,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 "data": {
                     "handles": list(settings.handles),
                     "handle_count": len(settings.handles),
-                    "watch_keywords": list(settings.watch_keywords),
                     "api": {
                         "host": settings.api_host,
                         "port": settings.api_port,
@@ -121,6 +131,12 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "channels": list(settings.upstream_channels),
                         "chains": list(settings.upstream_chains),
                     },
+                    "enrichment": {
+                        "llm_configured": settings.llm_configured,
+                        "openai_model": settings.openai_model,
+                        "openai_base_url": settings.openai_base_url,
+                        "poll_interval": settings.enrichment_poll_interval,
+                    },
                 },
             },
             stdout,
@@ -129,7 +145,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     with _repositories(settings.sqlite_path) as repos:
-        evidence, entities, signals = repos
+        evidence, entities, signals, enrichment = repos
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -172,12 +188,9 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
-        if command == "keyword-flow":
-            items = signals.keyword_flow(window=args.window, limit=args.limit)
-            _emit(
-                {"ok": True, "data": {"window": args.window, "items": items}},
-                stdout,
-            )
+        if command == "narrative-flow":
+            items = NarrativeService(enrichment).narrative_flow(window=args.window, limit=args.limit)
+            _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
             return 0
 
         if command == "account-alerts":
@@ -188,6 +201,29 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 alert_type=args.alert_type,
             )
             _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
+            return 0
+
+        if command == "account-narratives":
+            items = NarrativeService(enrichment).account_narratives(
+                window=args.window,
+                limit=args.limit,
+                handles=_handle_set(args.handles),
+            )
+            _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
+            return 0
+
+        if command == "enrichment-jobs":
+            items = enrichment.list_jobs(limit=args.limit, status=args.status)
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "items": items,
+                        "counts": enrichment.job_counts(),
+                    },
+                },
+                stdout,
+            )
             return 0
 
         if command == "ops" and args.ops_command == "rebuild-windows":
@@ -204,7 +240,7 @@ def _repositories(sqlite_path):
     conn = connect_sqlite(sqlite_path, read_only=False)
     try:
         migrate(conn)
-        yield EvidenceRepository(conn), EntityRepository(conn), SignalRepository(conn)
+        yield EvidenceRepository(conn), EntityRepository(conn), SignalRepository(conn), EnrichmentRepository(conn)
     finally:
         conn.close()
 

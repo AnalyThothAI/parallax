@@ -22,9 +22,16 @@ def test_sqlite_schema_bootstraps_core_tables(tmp_path):
     assert "event_fts" in names
     assert "event_entities" in names
     assert "account_token_alerts" in names
-    assert "account_keyword_alerts" in names
     assert "token_windows" in names
-    assert "keyword_windows" in names
+    assert "enrichment_jobs" in names
+    assert "model_runs" in names
+    assert "event_enrichments" in names
+    assert "event_token_candidates" in names
+    assert "event_narratives" in names
+    assert "account_narrative_alerts" in names
+    assert "narrative_windows" in names
+    assert "account_keyword_alerts" not in names
+    assert "keyword_windows" not in names
 
 
 def test_sqlite_fts5_matches_inserted_text(tmp_path):
@@ -57,4 +64,26 @@ def test_migrations_are_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version"] for row in rows] == [1]
+    assert [row["version"] for row in rows] == [2]
+
+
+def test_migration_drops_legacy_keyword_product_tables(tmp_path):
+    db_path = tmp_path / "twitter_intel.sqlite3"
+    conn = connect_sqlite(db_path, read_only=False)
+    try:
+        conn.execute("CREATE TABLE account_keyword_alerts(id TEXT)")
+        conn.execute("CREATE TABLE keyword_windows(id TEXT)")
+        conn.commit()
+
+        migrate(conn)
+        names = {
+            row["name"]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert "account_keyword_alerts" not in names
+    assert "keyword_windows" not in names

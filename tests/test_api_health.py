@@ -24,6 +24,9 @@ def test_healthz_and_readyz_return_status(tmp_path, monkeypatch):
     assert ready.json()["collector"]["frames_received"] == 0
     assert ready.json()["store"].endswith("twitter_intel.sqlite3")
     assert ready.json()["db"]["write_probe"] is True
+    assert ready.json()["enrichment"]["llm_configured"] is False
+    assert ready.json()["enrichment"]["worker_running"] is False
+    assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
     assert "provider_status" not in ready.json()
 
 

@@ -20,6 +20,7 @@ class IngestedEvent:
     entities: list[dict[str, Any]]
     alerts: list[dict[str, Any]]
     inserted: bool
+    enrichment_job_id: str | None = None
 
 
 class IngestService:
@@ -29,14 +30,15 @@ class IngestService:
         evidence: EvidenceRepository,
         entities: EntityRepository,
         signals: SignalRepository,
-        watch_keywords: tuple[str, ...],
+        enrichment,
+        write_lock: RLock | None = None,
     ):
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
-        self.watch_keywords = watch_keywords
+        self.enrichment = enrichment
         self.signal_builder = SignalBuilder(signals, commit=False)
-        self._lock = RLock()
+        self._lock = write_lock or RLock()
 
     def insert_raw_frame(self, **kwargs) -> bool:
         with self._lock:
@@ -44,7 +46,7 @@ class IngestService:
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
         with self._lock:
-            extracted = extract_entities(_event_text(event), watch_keywords=self.watch_keywords)
+            extracted = extract_entities(_event_text(event))
             with transaction(self.evidence.conn):
                 row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
                 inserted = self.evidence.insert_event_without_commit(row)
@@ -52,11 +54,19 @@ class IngestService:
                     return IngestedEvent(event=event, entities=[], alerts=[], inserted=False)
                 self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
                 signal_result = self.signal_builder.build_for_event(event, extracted, is_watched=is_watched)
+                enrichment_job_id = None
+                if is_watched and _event_text(event):
+                    enrichment_job_id = self.enrichment.enqueue_watched_event(
+                        event_id=event.event_id,
+                        received_at_ms=event.received_at_ms,
+                        commit=False,
+                    )
             return IngestedEvent(
                 event=event,
                 entities=[_entity_payload(entity) for entity in extracted],
                 alerts=signal_result.alerts,
                 inserted=True,
+                enrichment_job_id=enrichment_job_id,
             )
 
 

@@ -7,8 +7,8 @@ def test_extract_entities_returns_deterministic_structured_entities():
         "#memecoin 0x6982508145454ce325ddbe47a25d4ec3d2311933"
     )
 
-    first = extract_entities(text, watch_keywords=("mainnet", "airdrop"))
-    second = extract_entities(text, watch_keywords=("mainnet", "airdrop"))
+    first = extract_entities(text)
+    second = extract_entities(text)
 
     assert first == second
     assert {
@@ -20,15 +20,13 @@ def test_extract_entities_returns_deterministic_structured_entities():
         ("mention", "toly", None, "non_token_entity"),
         ("hashtag", "memecoin", None, "non_token_entity"),
         ("domain", "example.com", None, "non_token_entity"),
-        ("keyword", "mainnet", None, "non_token_entity"),
     }
 
 
-def test_keyword_matching_does_not_match_word_fragments():
-    entities = extract_entities("airdropper listed nothing", watch_keywords=("airdrop", "list"))
+def test_plain_words_do_not_become_entities_without_structural_markers():
+    entities = extract_entities("airdropper listed nothing")
 
-    assert ("keyword", "airdrop") not in {(entity.entity_type, entity.normalized_value) for entity in entities}
-    assert ("keyword", "list") not in {(entity.entity_type, entity.normalized_value) for entity in entities}
+    assert entities == []
 
 
 def test_normalize_ca_supports_evm_and_solana():

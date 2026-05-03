@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -123,23 +123,6 @@ CREATE INDEX IF NOT EXISTS idx_account_token_alerts_received ON account_token_al
 CREATE INDEX IF NOT EXISTS idx_account_token_alerts_author_received
   ON account_token_alerts(author_handle, received_at_ms);
 
-CREATE TABLE IF NOT EXISTS account_keyword_alerts (
-  alert_id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  author_handle TEXT NOT NULL,
-  keyword TEXT NOT NULL,
-  is_first_seen_global INTEGER NOT NULL,
-  is_first_seen_by_author INTEGER NOT NULL,
-  received_at_ms INTEGER NOT NULL,
-  created_at_ms INTEGER NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_account_keyword_alert_event_keyword
-  ON account_keyword_alerts(event_id, keyword);
-CREATE INDEX IF NOT EXISTS idx_account_keyword_alerts_received ON account_keyword_alerts(received_at_ms);
-CREATE INDEX IF NOT EXISTS idx_account_keyword_alerts_author_received
-  ON account_keyword_alerts(author_handle, received_at_ms);
-
 CREATE TABLE IF NOT EXISTS token_windows (
   window_id TEXT PRIMARY KEY,
   entity_key TEXT NOT NULL,
@@ -166,9 +149,119 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_token_windows_entity_window_start
   ON token_windows(entity_key, window, window_start_ms);
 CREATE INDEX IF NOT EXISTS idx_token_windows_window_end ON token_windows(window, window_end_ms);
 
-CREATE TABLE IF NOT EXISTS keyword_windows (
+CREATE TABLE IF NOT EXISTS enrichment_jobs (
+  job_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  job_type TEXT NOT NULL,
+  priority INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  next_run_at_ms INTEGER NOT NULL,
+  last_error TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_enrichment_jobs_event_type
+  ON enrichment_jobs(event_id, job_type);
+CREATE INDEX IF NOT EXISTS idx_enrichment_jobs_status_next
+  ON enrichment_jobs(status, next_run_at_ms, priority);
+
+CREATE TABLE IF NOT EXISTS model_runs (
+  run_id TEXT PRIMARY KEY,
+  job_id TEXT NOT NULL REFERENCES enrichment_jobs(job_id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  status TEXT NOT NULL,
+  request_json TEXT NOT NULL,
+  response_json TEXT,
+  error TEXT,
+  started_at_ms INTEGER NOT NULL,
+  finished_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_runs_event ON model_runs(event_id, finished_at_ms);
+
+CREATE TABLE IF NOT EXISTS event_enrichments (
+  event_id TEXT PRIMARY KEY REFERENCES events(event_id) ON DELETE CASCADE,
+  run_id TEXT NOT NULL REFERENCES model_runs(run_id) ON DELETE CASCADE,
+  provider TEXT NOT NULL,
+  model TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  stance TEXT NOT NULL,
+  intent TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  raw_response_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_token_candidates (
+  candidate_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  symbol TEXT,
+  project_name TEXT,
+  chain TEXT,
+  address TEXT,
+  evidence TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  resolution_status TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_token_candidates_symbol
+  ON event_token_candidates(symbol, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS event_narratives (
+  narrative_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  narrative_label TEXT NOT NULL,
+  description TEXT NOT NULL,
+  evidence TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  stance TEXT NOT NULL,
+  intent TEXT NOT NULL,
+  received_at_ms INTEGER NOT NULL,
+  author_handle TEXT,
+  is_watched INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_narratives_event_label
+  ON event_narratives(event_id, narrative_label);
+CREATE INDEX IF NOT EXISTS idx_event_narratives_label_received
+  ON event_narratives(narrative_label, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_narratives_watched_received
+  ON event_narratives(is_watched, received_at_ms);
+
+CREATE TABLE IF NOT EXISTS account_narrative_alerts (
+  alert_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  author_handle TEXT NOT NULL,
+  narrative_label TEXT NOT NULL,
+  stance TEXT NOT NULL,
+  intent TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  summary TEXT NOT NULL,
+  evidence TEXT NOT NULL,
+  is_first_seen_global INTEGER NOT NULL,
+  is_first_seen_by_author INTEGER NOT NULL,
+  received_at_ms INTEGER NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_account_narrative_alert_event_label
+  ON account_narrative_alerts(event_id, narrative_label);
+CREATE INDEX IF NOT EXISTS idx_account_narrative_alerts_received
+  ON account_narrative_alerts(received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_account_narrative_alerts_author_received
+  ON account_narrative_alerts(author_handle, received_at_ms);
+
+CREATE TABLE IF NOT EXISTS narrative_windows (
   window_id TEXT PRIMARY KEY,
-  keyword TEXT NOT NULL,
+  narrative_label TEXT NOT NULL,
   window TEXT NOT NULL,
   window_start_ms INTEGER NOT NULL,
   window_end_ms INTEGER NOT NULL,
@@ -185,18 +278,25 @@ CREATE TABLE IF NOT EXISTS keyword_windows (
   updated_at_ms INTEGER NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_keyword_windows_keyword_window_start
-  ON keyword_windows(keyword, window, window_start_ms);
-CREATE INDEX IF NOT EXISTS idx_keyword_windows_window_end ON keyword_windows(window, window_end_ms);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_windows_label_window_start
+  ON narrative_windows(narrative_label, window, window_start_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_windows_window_end
+  ON narrative_windows(window, window_end_ms);
+"""
+
+DROP_LEGACY_SQL = """
+DROP TABLE IF EXISTS account_keyword_alerts;
+DROP TABLE IF EXISTS keyword_windows;
 """
 
 
 def migrate(conn: sqlite3.Connection) -> None:
     ensure_fts5_available(conn)
     conn.executescript(SCHEMA_SQL)
+    conn.executescript(DROP_LEGACY_SQL)
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
-        (SCHEMA_VERSION, "evidence_entity_signal_core", _now_ms()),
+        (SCHEMA_VERSION, "llm_watched_account_narrative_signal", _now_ms()),
     )
     conn.commit()
 

@@ -6,6 +6,7 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from threading import RLock
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -13,8 +14,11 @@ from loguru import logger
 
 from ..collector.direct_ws import DirectGmgnWebSocketClient
 from ..collector.service import CollectorService
+from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.ingest_service import IngestService
+from ..pipeline.llm_client import OpenAIChatEnrichmentClient
 from ..settings import Settings, load_settings
+from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository
 from ..storage.signal_repository import SignalRepository
@@ -29,15 +33,19 @@ class CliRuntime:
     evidence: EvidenceRepository
     entities: EntityRepository
     signals: SignalRepository
+    enrichment: EnrichmentRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
     read_signals: SignalRepository
+    read_enrichment: EnrichmentRepository
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
     start_collector: bool
+    enrichment_worker: EnrichmentWorker | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
+    enrichment_task: asyncio.Task | None = None
 
 
 def create_app(settings: Settings | None = None, *, start_collector: bool = True) -> FastAPI:
@@ -86,20 +94,25 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
+    enrichment = EnrichmentRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
     read_signals = SignalRepository(read_conn)
+    read_enrichment = EnrichmentRepository(read_conn)
+    write_lock = RLock()
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
-        watch_keywords=settings.watch_keywords,
+        enrichment=enrichment,
+        write_lock=write_lock,
     )
     hub = PublicWebSocketHub(
         token=settings.ws_token,
         evidence=read_evidence,
         entities=read_entities,
         signals=read_signals,
+        enrichment=read_enrichment,
         default_replay_limit=settings.replay_limit,
     )
     collector = CollectorService(
@@ -113,14 +126,33 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         evidence=evidence,
         entities=entities,
         signals=signals,
+        enrichment=enrichment,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
+        read_enrichment=read_enrichment,
         ingest=ingest,
         hub=hub,
         collector=collector,
         start_collector=start_collector,
     )
+    if settings.llm_configured:
+        client = OpenAIChatEnrichmentClient(
+            api_key=settings.openai_api_key or "",
+            model=settings.openai_model or "",
+            base_url=settings.openai_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+        runtime.enrichment_worker = EnrichmentWorker(
+            evidence=evidence,
+            entities=entities,
+            enrichment=enrichment,
+            client=client,
+            publisher=hub,
+            write_lock=write_lock,
+            poll_interval=settings.enrichment_poll_interval,
+        )
+        runtime.enrichment_task = asyncio.create_task(runtime.enrichment_worker.run())
     if start_collector:
         upstream = DirectGmgnWebSocketClient(
             app_version=settings.upstream_app_version,
@@ -139,7 +171,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
 
 
 async def _stop_runtime(runtime: CliRuntime) -> None:
-    tasks = [task for task in (runtime.supervisor_task, runtime.collector_task) if task is not None]
+    if runtime.enrichment_worker is not None:
+        runtime.enrichment_worker.stop()
+    tasks = [
+        task
+        for task in (runtime.supervisor_task, runtime.collector_task, runtime.enrichment_task)
+        if task is not None
+    ]
     for task in tasks:
         task.cancel()
     if tasks:
@@ -152,7 +190,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
 def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:
     now_ms = now_ms if now_ms is not None else _now_ms()
     collector_status = runtime.collector.status.to_dict()
-    reasons = _collector_unhealthy_reasons(runtime, now_ms=now_ms)
+    reasons = _unhealthy_reasons(runtime, now_ms=now_ms)
     payload = {
         "ok": not reasons,
         "reasons": reasons,
@@ -160,8 +198,20 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         "handles": list(runtime.settings.handles),
         "store": str(runtime.settings.sqlite_path),
         "db": {"write_probe": _db_write_probe(runtime)},
+        "enrichment": {
+            "llm_configured": runtime.settings.llm_configured,
+            "worker_running": _task_running(runtime.enrichment_task),
+            "job_counts": _enrichment_job_counts(runtime),
+        },
     }
     return payload, 503 if reasons else 200
+
+
+def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str]:
+    reasons = _collector_unhealthy_reasons(runtime, now_ms=now_ms)
+    if runtime.settings.llm_configured and not _task_running(runtime.enrichment_task):
+        reasons.append("enrichment_worker_stopped")
+    return reasons
 
 
 def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str]:
@@ -189,6 +239,17 @@ def _db_write_probe(runtime: CliRuntime) -> bool:
         return runtime.evidence.db_write_probe()
     except Exception:
         return False
+
+
+def _enrichment_job_counts(runtime: CliRuntime) -> dict[str, int]:
+    try:
+        return runtime.read_enrichment.job_counts()
+    except Exception:
+        return {}
+
+
+def _task_running(task: asyncio.Task | None) -> bool:
+    return task is not None and not task.done()
 
 
 async def _supervise_runtime(runtime: CliRuntime) -> None:

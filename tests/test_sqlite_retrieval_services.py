@@ -7,10 +7,10 @@ from tests.test_sqlite_repositories import make_event, open_repositories
 
 
 def seed_event(tmp_path):
-    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
     event = make_event(text="$PEPE base stablecoin mainnet 0x6982508145454ce325ddbe47a25d4ec3d2311933")
     evidence.insert_event(event, is_watched=True)
-    entities = extract_entities(event.content.text, watch_keywords=("mainnet",))
+    entities = extract_entities(event.content.text)
     entity_repo.insert_event_entities(event, entities, is_watched=True)
     SignalBuilder(signal_repo).build_for_event(event, entities, is_watched=True)
     return conn, evidence, entity_repo, signal_repo
@@ -40,4 +40,4 @@ def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
         conn.close()
 
     assert token_flow[0]["mention_count"] == 1
-    assert {alert["alert_type"] for alert in alerts} == {"account_token", "account_keyword"}
+    assert {alert["alert_type"] for alert in alerts} == {"account_token"}

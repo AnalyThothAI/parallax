@@ -1,11 +1,13 @@
 import asyncio
 import time
+from threading import RLock
 
 import pytest
 
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.entity_extractor import extract_entities
 from gmgn_twitter_intel.pipeline.signal_builder import SignalBuilder
+from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
@@ -53,11 +55,12 @@ def open_repositories(tmp_path):
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
-    return conn, evidence, entities, signals
+    enrichment = EnrichmentRepository(conn)
+    return conn, evidence, entities, signals, enrichment
 
 
 def test_evidence_repository_writes_event_and_fts_in_one_transaction(tmp_path):
-    conn, evidence, _, _ = open_repositories(tmp_path)
+    conn, evidence, _, _, _ = open_repositories(tmp_path)
     try:
         event = make_event()
 
@@ -72,7 +75,7 @@ def test_evidence_repository_writes_event_and_fts_in_one_transaction(tmp_path):
 
 
 def test_search_fts_sanitizes_user_query_syntax(tmp_path):
-    conn, evidence, _, _ = open_repositories(tmp_path)
+    conn, evidence, _, _, _ = open_repositories(tmp_path)
     try:
         event = make_event(text="$PEPE mainnet stablecoin")
         evidence.insert_event(event, is_watched=True)
@@ -86,7 +89,7 @@ def test_search_fts_sanitizes_user_query_syntax(tmp_path):
 
 
 def test_raw_frame_insert_is_idempotent_by_payload_hash(tmp_path):
-    conn, evidence, _, _ = open_repositories(tmp_path)
+    conn, evidence, _, _, _ = open_repositories(tmp_path)
     try:
         assert evidence.insert_raw_frame(
             source="gmgn",
@@ -111,13 +114,14 @@ def test_raw_frame_insert_is_idempotent_by_payload_hash(tmp_path):
 def test_duplicate_raw_frame_does_not_poison_next_ingest_transaction(tmp_path):
     from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 
-    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    conn, evidence, entity_repo, signal_repo, enrichment_repo = open_repositories(tmp_path)
     try:
         ingest = IngestService(
             evidence=evidence,
             entities=entity_repo,
             signals=signal_repo,
-            watch_keywords=("mainnet",),
+            enrichment=enrichment_repo,
+            write_lock=RLock(),
         )
         assert ingest.insert_raw_frame(
             source="gmgn",
@@ -142,33 +146,31 @@ def test_duplicate_raw_frame_does_not_poison_next_ingest_transaction(tmp_path):
     assert counts["events"] == 1
 
 
-def test_entity_repository_persists_exact_token_and_keyword_entities(tmp_path):
-    conn, evidence, entity_repo, _ = open_repositories(tmp_path)
+def test_entity_repository_persists_exact_token_entities(tmp_path):
+    conn, evidence, entity_repo, _, _ = open_repositories(tmp_path)
     try:
         event = make_event()
         evidence.insert_event(event, is_watched=True)
-        entities = extract_entities(event.content.text, watch_keywords=("mainnet",))
+        entities = extract_entities(event.content.text)
         inserted = entity_repo.insert_event_entities(event, entities, is_watched=True)
 
         assert inserted == len(entities)
         assert entity_repo.insert_event_entities(event, entities, is_watched=True) == 0
         ca_rows = entity_repo.find_by_ca("0x6982508145454ce325ddbe47a25d4ec3d2311933", limit=10)
         symbol_rows = entity_repo.find_by_symbol("PEPE", limit=10)
-        keyword_rows = entity_repo.find_by_keyword("mainnet", limit=10)
     finally:
         conn.close()
 
     assert ca_rows[0]["event_id"] == "event-1"
     assert symbol_rows[0]["event_id"] == "event-1"
-    assert keyword_rows[0]["event_id"] == "event-1"
 
 
 def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
-    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
     try:
         event = make_event()
         evidence.insert_event(event, is_watched=True)
-        entities = extract_entities(event.content.text, watch_keywords=("mainnet",))
+        entities = extract_entities(event.content.text)
         entity_repo.insert_event_entities(event, entities, is_watched=True)
 
         result = SignalBuilder(signal_repo).build_for_event(event, entities, is_watched=True)
@@ -177,8 +179,8 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
     finally:
         conn.close()
 
-    assert {alert["alert_type"] for alert in result.alerts} == {"account_token", "account_keyword"}
-    assert {alert["alert_type"] for alert in alerts} == {"account_token", "account_keyword"}
+    assert {alert["alert_type"] for alert in result.alerts} == {"account_token"}
+    assert {alert["alert_type"] for alert in alerts} == {"account_token"}
     assert token_flow[0]["entity_key"].startswith("ca:eth:")
     assert token_flow[0]["mention_count"] == 1
 
@@ -186,13 +188,14 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
 def test_ingest_service_serializes_concurrent_sqlite_writes(tmp_path):
     from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 
-    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    conn, evidence, entity_repo, signal_repo, enrichment_repo = open_repositories(tmp_path)
     try:
         ingest = IngestService(
             evidence=evidence,
             entities=entity_repo,
             signals=signal_repo,
-            watch_keywords=("mainnet",),
+            enrichment=enrichment_repo,
+            write_lock=RLock(),
         )
 
         async def scenario():
@@ -222,13 +225,14 @@ def test_ingest_service_rolls_back_event_when_signal_build_fails(tmp_path):
         def build_for_event(self, *args, **kwargs):
             raise RuntimeError("signal failed")
 
-    conn, evidence, entity_repo, signal_repo = open_repositories(tmp_path)
+    conn, evidence, entity_repo, signal_repo, enrichment_repo = open_repositories(tmp_path)
     try:
         ingest = IngestService(
             evidence=evidence,
             entities=entity_repo,
             signals=signal_repo,
-            watch_keywords=("mainnet",),
+            enrichment=enrichment_repo,
+            write_lock=RLock(),
         )
         ingest.signal_builder = FailingSignalBuilder()
 

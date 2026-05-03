@@ -58,6 +58,7 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path, monkeypatc
             assert replay["event"]["event_id"] == "event-1"
             assert "entities" in replay
             assert "alerts" in replay
+            assert "enrichment" in replay
 
             ignored = _ingest_payload(client, make_event("event-2", "elonmusk"), is_watched=True)
             matched = _ingest_payload(client, make_event("event-3", "toly"), is_watched=True)
@@ -102,4 +103,5 @@ def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
         "event": event.to_dict(),
         "entities": result.entities,
         "alerts": result.alerts,
+        "enrichment": None,
     }

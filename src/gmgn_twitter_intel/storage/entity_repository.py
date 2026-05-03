@@ -91,15 +91,6 @@ class EntityRepository:
             watched_only=watched_only,
         )
 
-    def find_by_keyword(self, keyword: str, *, limit: int, watched_only: bool = False) -> list[dict[str, Any]]:
-        return self._find(
-            entity_type="keyword",
-            normalized_value=keyword.strip().lower(),
-            chain=None,
-            limit=limit,
-            watched_only=watched_only,
-        )
-
     def _find(
         self,
         *,

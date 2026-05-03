@@ -31,7 +31,11 @@ class Settings(BaseSettings):
     replay_limit: int = Field(default=100, validation_alias="REPLAY_LIMIT")
     app_home_override: Path | None = Field(default=None, validation_alias="GMGN_TWITTER_HOME")
     sqlite_path_override: Path | None = Field(default=None, validation_alias="SQLITE_PATH")
-    watch_keywords: tuple[str, ...] = Field(default_factory=tuple, validation_alias="WATCH_KEYWORDS")
+    openai_api_key: str | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_model: str | None = Field(default=None, validation_alias="OPENAI_MODEL")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", validation_alias="OPENAI_BASE_URL")
+    llm_timeout_seconds: float = Field(default=20.0, validation_alias="LLM_TIMEOUT_SECONDS")
+    enrichment_poll_interval: float = Field(default=2.0, validation_alias="ENRICHMENT_POLL_INTERVAL")
 
     upstream_chains: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHAINS, validation_alias="UPSTREAM_CHAINS")
     upstream_channels: tuple[str, ...] = Field(default=DEFAULT_UPSTREAM_CHANNELS, validation_alias="UPSTREAM_CHANNELS")
@@ -55,6 +59,10 @@ class Settings(BaseSettings):
     def log_file(self) -> Path:
         return app_log_path(self.app_home_override)
 
+    @property
+    def llm_configured(self) -> bool:
+        return bool(self.openai_api_key and self.openai_model)
+
     @field_validator("handles", mode="before")
     @classmethod
     def parse_handles(cls, value: Any) -> tuple[str, ...]:
@@ -73,18 +81,6 @@ class Settings(BaseSettings):
         values = tuple(_split_values(value))
         return values
 
-    @field_validator("watch_keywords", mode="before")
-    @classmethod
-    def parse_watch_keywords(cls, value: Any) -> tuple[str, ...]:
-        keywords = []
-        seen = set()
-        for item in _split_values(value):
-            keyword = item.strip().lower()
-            if keyword and keyword not in seen:
-                keywords.append(keyword)
-                seen.add(keyword)
-        return tuple(keywords)
-
     @field_validator("app_home_override", "sqlite_path_override", mode="before")
     @classmethod
     def parse_optional_path(cls, value: Any) -> Any:
@@ -94,13 +90,19 @@ class Settings(BaseSettings):
             return None
         return value
 
-    @field_validator("ws_token", mode="before")
+    @field_validator("ws_token", "openai_api_key", "openai_model", mode="before")
     @classmethod
-    def parse_optional_ws_token(cls, value: Any) -> str | None:
+    def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
             return None
         token = str(value).strip()
         return token or None
+
+    @field_validator("openai_base_url", mode="before")
+    @classmethod
+    def parse_openai_base_url(cls, value: Any) -> str:
+        normalized = str(value or "https://api.openai.com/v1").strip().rstrip("/")
+        return normalized or "https://api.openai.com/v1"
 
     @field_validator("upstream_proxy", mode="before")
     @classmethod

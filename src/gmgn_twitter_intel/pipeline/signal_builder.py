@@ -59,25 +59,6 @@ class SignalBuilder:
                     if alert:
                         alerts.append(asdict(alert))
                 self._upsert_token_windows(event, entity, key, is_watched=is_watched)
-            elif entity.entity_type == "keyword":
-                seen_global, seen_author = self.repository.keyword_seen_before(
-                    keyword=entity.normalized_value,
-                    author_handle=author_handle,
-                    before_ms=event.received_at_ms,
-                )
-                if is_watched and author_handle:
-                    alert = self.repository.insert_account_keyword_alert(
-                        event_id=event.event_id,
-                        author_handle=author_handle,
-                        keyword=entity.normalized_value,
-                        is_first_seen_global=not seen_global,
-                        is_first_seen_by_author=not seen_author,
-                        received_at_ms=event.received_at_ms,
-                        commit=self.commit,
-                    )
-                    if alert:
-                        alerts.append(asdict(alert))
-                self._upsert_keyword_windows(event, entity.normalized_value, is_watched=is_watched)
         return SignalBuildResult(alerts=alerts)
 
     def _upsert_token_windows(
@@ -95,21 +76,6 @@ class SignalBuilder:
                 entity_type=entity.entity_type,
                 normalized_value=entity.normalized_value,
                 chain=entity.chain,
-                window=window,
-                window_start_ms=start_ms,
-                window_end_ms=start_ms + size_ms,
-                event_id=event.event_id,
-                author_handle=event.author.handle.lower() if event.author.handle else None,
-                author_followers=event.author.followers,
-                is_watched=is_watched,
-                commit=self.commit,
-            )
-
-    def _upsert_keyword_windows(self, event: TwitterEvent, keyword: str, *, is_watched: bool) -> None:
-        for window, size_ms in WINDOWS_MS.items():
-            start_ms = (event.received_at_ms // size_ms) * size_ms
-            self.repository.upsert_keyword_window(
-                keyword=keyword,
                 window=window,
                 window_start_ms=start_ms,
                 window_end_ms=start_ms + size_ms,

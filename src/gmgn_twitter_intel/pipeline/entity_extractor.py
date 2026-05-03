@@ -24,7 +24,7 @@ class ExtractedEntity:
     source: str
 
 
-def extract_entities(text: str | None, *, watch_keywords: tuple[str, ...] = ()) -> list[ExtractedEntity]:
+def extract_entities(text: str | None) -> list[ExtractedEntity]:
     if not text:
         return []
     entities: list[ExtractedEntity] = []
@@ -84,13 +84,6 @@ def extract_entities(text: str | None, *, watch_keywords: tuple[str, ...] = ()) 
                 ExtractedEntity("domain", domain, domain, None, "non_token_entity", 1.0, "url"),
             )
 
-    for keyword in _matched_keywords(text, watch_keywords):
-        _append_unique(
-            entities,
-            seen,
-            ExtractedEntity("keyword", keyword, keyword.lower(), None, "non_token_entity", 1.0, "watch_keyword"),
-        )
-
     return entities
 
 
@@ -121,20 +114,6 @@ def _solana_ca_entity(raw: str) -> ExtractedEntity | None:
     except ValueError:
         return None
     return ExtractedEntity("ca", raw, str(pubkey), "solana", "resolved_ca", 1.0, "regex")
-
-
-def _matched_keywords(text: str, watch_keywords: tuple[str, ...]) -> list[str]:
-    matches: list[str] = []
-    seen: set[str] = set()
-    for keyword in watch_keywords:
-        normalized = keyword.strip().lower()
-        if not normalized or normalized in seen:
-            continue
-        pattern = re.compile(rf"(?<![A-Za-z0-9_]){re.escape(normalized)}(?![A-Za-z0-9_])", re.IGNORECASE)
-        if pattern.search(text):
-            matches.append(normalized)
-            seen.add(normalized)
-    return matches
 
 
 def _append_unique(
