@@ -14,6 +14,7 @@ from ..models import (
     TwitterEvent,
     UnfollowTarget,
 )
+from .gmgn_token_payload import parse_gmgn_token_payload
 
 TWITTER_CHANNELS = {
     "twitter_monitor_basic",
@@ -107,6 +108,7 @@ def _normalize_twitter_item(channel: str, item: dict[str, Any], received_at_ms: 
         bio_change=_bio_change(item) if action == "description" else None,
         matched_handles=[handle.lower()] if handle else [],
         raw=item,
+        token_snapshot=parse_gmgn_token_payload(item),
     )
 
 
@@ -151,6 +153,7 @@ def _normalize_public_broadcast(channel: str, item: dict[str, Any], received_at_
         bio_change=None,
         matched_handles=[],
         raw=item,
+        token_snapshot=None,
     )
 
 

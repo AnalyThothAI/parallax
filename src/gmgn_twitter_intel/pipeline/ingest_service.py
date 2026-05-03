@@ -12,6 +12,7 @@ from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import transaction
 from .entity_extractor import extract_entities
 from .signal_builder import SignalBuilder
+from .token_identity_resolver import TokenIdentityResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,13 +32,16 @@ class IngestService:
         entities: EntityRepository,
         signals: SignalRepository,
         enrichment,
+        tokens,
         write_lock: RLock | None = None,
     ):
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
         self.enrichment = enrichment
+        self.tokens = tokens
         self.signal_builder = SignalBuilder(signals, commit=False)
+        self.token_resolver = TokenIdentityResolver(tokens)
         self._lock = write_lock or RLock()
 
     def insert_raw_frame(self, **kwargs) -> bool:
@@ -53,7 +57,12 @@ class IngestService:
                 if not inserted:
                     return IngestedEvent(event=event, entities=[], alerts=[], inserted=False)
                 self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
-                signal_result = self.signal_builder.build_for_event(event, extracted, is_watched=is_watched)
+                token_mentions = self.token_resolver.resolve_event_mentions(event, extracted, commit=False)
+                signal_result = self.signal_builder.build_for_event(
+                    event,
+                    token_mentions,
+                    is_watched=is_watched,
+                )
                 enrichment_job_id = None
                 if is_watched and _event_text(event):
                     enrichment_job_id = self.enrichment.enqueue_watched_event(

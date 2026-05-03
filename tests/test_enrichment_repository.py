@@ -9,6 +9,7 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from gmgn_twitter_intel.storage.token_repository import TokenRepository
 
 
 def make_event(
@@ -50,11 +51,13 @@ def open_repositories(tmp_path):
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
+    tokens = TokenRepository(conn)
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
+        tokens=tokens,
         write_lock=RLock(),
     )
     return conn, evidence, enrichment, ingest

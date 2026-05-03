@@ -19,6 +19,7 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from gmgn_twitter_intel.storage.token_repository import TokenRepository
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
@@ -62,11 +63,13 @@ def seed_sqlite(db_path: Path) -> None:
         entities = EntityRepository(conn)
         signals = SignalRepository(conn)
         enrichment = EnrichmentRepository(conn)
+        tokens = TokenRepository(conn)
         ingest = IngestService(
             evidence=evidence,
             entities=entities,
             signals=signals,
             enrichment=enrichment,
+            tokens=tokens,
             write_lock=RLock(),
         )
         ingest.ingest_event(make_event("event-1"), is_watched=True)
@@ -169,7 +172,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
-        self.assertEqual(lines[2]["data"]["items"][0]["mention_count"], 1)
+        self.assertEqual(lines[2]["data"]["items"][0]["social"]["mention_count"], 1)
         self.assertEqual(lines[3]["data"]["items"][0]["narrative_label"], "solana_scaling")
         self.assertEqual(
             {item["alert_type"] for item in lines[4]["data"]["items"]},
@@ -204,7 +207,7 @@ class CliTests(unittest.TestCase):
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual([rebuild_code, flow_code], [0, 0])
         self.assertGreater(lines[0]["data"]["rebuilt"], 0)
-        self.assertEqual(lines[1]["data"]["items"][0]["mention_count"], 1)
+        self.assertEqual(lines[1]["data"]["items"][0]["social"]["mention_count"], 1)
 
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):

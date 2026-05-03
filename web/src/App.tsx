@@ -270,12 +270,12 @@ export function App() {
           <div className="dense-table">
             <div className="table-head token-grid">
               <span>Token</span>
-              <span>提及</span>
-              <span>份额</span>
-              <span>速度</span>
+              <span>置信</span>
+              <span>流量</span>
+              <span>市场</span>
             </div>
             {tokenItems.slice(0, 24).map((item) => (
-              <TokenRow key={`${item.entity_key}:${item.window_start_ms ?? ""}`} item={item} selected={isSelectedToken(selectedSignal, item)} onSelect={selectToken} />
+              <TokenRow key={`${item.identity.identity_key}:${item.social.window_start_ms ?? ""}`} item={item} selected={isSelectedToken(selectedSignal, item)} onSelect={selectToken} />
             ))}
             {tokenItems.length === 0 ? <EmptyState text="暂无 token flow" /> : null}
           </div>
@@ -454,6 +454,7 @@ function TokenRow({
   selected: boolean;
   onSelect: (item: TokenFlowItem) => void;
 }) {
+  const social = item.social;
   return (
     <button
       aria-label={`select token ${tokenLabel(item)}`}
@@ -461,10 +462,16 @@ function TokenRow({
       type="button"
       onClick={() => onSelect(item)}
     >
-      <strong>{tokenLabel(item)}</strong>
-      <span>{compactNumber(item.watched_mention_count)} / {compactNumber(item.mention_count)}</span>
-      <span>{formatPercentShare(item.market_mindshare)}</span>
-      <b>{compactNumber(item.velocity ?? 0)}</b>
+      <strong className="token-main">
+        {tokenLabel(item)}
+        <small>{item.identity.chain ?? "symbol"} · {item.identity.identity_status}</small>
+      </strong>
+      <span>{compactNumber(item.confidence.score)} / {compactNumber(item.anomaly.score)}</span>
+      <span>
+        {compactNumber(social.watched_mention_count)} / {compactNumber(social.mention_count)}
+        <small>{formatPercentShare(social.market_mindshare)}</small>
+      </span>
+      <b>{marketDelta(item)}</b>
     </button>
   );
 }
@@ -594,20 +601,26 @@ type EvidenceFocusModel = {
 function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], submittedSearch: string): EvidenceFocusModel {
   if (signal?.kind === "token") {
     const item = signal.item;
+    const social = item.social;
+    const baselineSignal = item.baseline.z_score === null || item.baseline.z_score === undefined ? item.baseline.baseline_status : `z ${compactNumber(item.baseline.z_score)}`;
+    const marketSignal = item.market.market_status === "missing" ? "missing" : `${item.market.market_status} ${marketDelta(item)}`;
     return {
       kicker: "token flow",
       title: tokenLabel(item),
-      summary: `${formatPercentShare(item.market_mindshare)} market mindshare, ${compactNumber(item.watched_mention_count)} watched / ${compactNumber(item.mention_count)} total mentions across ${compactNumber(item.unique_author_count)} accounts.`,
+      summary: `${formatPercentShare(social.market_mindshare)} market mindshare, ${compactNumber(social.watched_mention_count)} watched / ${compactNumber(social.mention_count)} total mentions across ${compactNumber(social.unique_author_count)} accounts.`,
       score: String(tokenScore(item)),
-      badge: item.window,
+      badge: social.window,
       facts: [
-        { label: "entity", value: item.entity_type },
-        { label: "market share", value: formatPercentShare(item.market_mindshare) },
-        { label: "watched share", value: formatPercentShare(item.watched_mindshare) },
-        { label: "accounts", value: compactNumber(item.unique_author_count) },
-        { label: "velocity", value: compactNumber(item.velocity ?? 0) }
+        { label: "identity", value: item.identity.identity_status },
+        { label: "address", value: shortAddress(item.identity.address ?? item.identity.identity_key) },
+        { label: "confidence", value: compactNumber(item.confidence.score) },
+        { label: "anomaly", value: compactNumber(item.anomaly.score) },
+        { label: "baseline", value: baselineSignal },
+        { label: "market", value: marketSignal },
+        { label: "watched share", value: formatPercentShare(social.watched_mindshare) },
+        { label: "velocity", value: compactNumber(social.velocity ?? 0) }
       ],
-      evidence: evidenceFromSearch(searchItems),
+      evidence: evidenceFromToken(item, searchItems),
       authors: authorsFromToken(item),
       risks: tokenRisks(item)
     };
@@ -709,6 +722,22 @@ function evidenceFromSearch(items: SearchItem[]) {
   return items.slice(0, 8).map((item) => evidenceFromEvent(item.event, item.match_type));
 }
 
+function evidenceFromToken(item: TokenFlowItem, searchItems: SearchItem[]) {
+  const direct = item.evidence
+    .filter((event) => event.event_id)
+    .slice(0, 8)
+    .map((event) => ({
+      id: event.event_id ?? "-",
+      handle: event.author_handle ?? "unknown",
+      match: "token_window",
+      receivedAt: event.received_at_ms,
+      text: event.text_clean ?? "",
+      url: event.canonical_url
+    }))
+    .filter((event) => event.text || event.id !== "-");
+  return direct.length ? direct : evidenceFromSearch(searchItems);
+}
+
 function authorsFromSearch(items: SearchItem[]): string[] {
   const counts = new Map<string, number>();
   for (const item of items) {
@@ -733,7 +762,10 @@ function evidenceFromEvent(event: EventRecord, match: string) {
 }
 
 function tokenSearchQuery(item: TokenFlowItem): string {
-  return item.entity_type === "symbol" ? `$${item.normalized_value}` : item.normalized_value;
+  if (item.identity.address) {
+    return item.identity.address;
+  }
+  return item.identity.symbol ? `$${item.identity.symbol}` : item.identity.identity_key;
 }
 
 function alertSearchQuery(item: AlertRecord): string {
@@ -761,26 +793,24 @@ function alertReason(item: AlertRecord): string {
 }
 
 function tokenScore(item: TokenFlowItem): number {
-  return Math.min(
-    99,
-    Math.round(
-      (item.watched_mention_count * 28) +
-      (item.unique_author_count * 7) +
-      ((item.velocity ?? 0) * 18) +
-      (item.market_mindshare * 30) +
-      (item.watched_mindshare * 40) +
-      Math.log1p(item.mention_count) * 12
-    )
-  );
+  return item.confidence.score;
 }
 
 function tokenRisks(item: TokenFlowItem): string[] {
-  const risks = ["coverage public_stream"];
-  if (item.entity_type === "symbol") {
-    risks.push("symbol-only until CA confirms");
+  const risks = [item.confidence.coverage_boundary || "coverage public_stream"];
+  if (item.identity.identity_status === "unresolved_symbol" || item.identity.identity_status === "ambiguous_symbol") {
+    risks.push(item.identity.identity_status);
   }
-  if (!item.watched_mention_count) {
+  if (!item.social.watched_mention_count) {
     risks.push("no watched-account confirmation");
+  }
+  if (item.market.market_status !== "fresh") {
+    risks.push(`market ${item.market.market_status}`);
+  }
+  for (const reason of item.anomaly.reasons) {
+    if (!risks.includes(reason)) {
+      risks.push(reason);
+    }
   }
   return risks;
 }
@@ -805,11 +835,11 @@ function alertRisks(item: AlertRecord): string[] {
 }
 
 function authorsFromToken(item: TokenFlowItem): string[] {
-  return (item.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
+  return (item.social.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
 }
 
 function isSelectedToken(signal: SelectedSignal, item: TokenFlowItem): boolean {
-  return signal?.kind === "token" && signal.item.entity_key === item.entity_key && signal.item.window_start_ms === item.window_start_ms;
+  return signal?.kind === "token" && signal.item.identity.identity_key === item.identity.identity_key && signal.item.social.window_start_ms === item.social.window_start_ms;
 }
 
 function isSelectedAlert(signal: SelectedSignal, item: AlertRecord): boolean {
@@ -841,6 +871,23 @@ function shortPath(value?: string): string {
   }
   const parts = value.split("/");
   return parts.slice(-2).join("/");
+}
+
+function shortAddress(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+function marketDelta(item: TokenFlowItem): string {
+  const change = item.market.price_change_pct;
+  if (change === null || change === undefined || Number.isNaN(change)) {
+    return item.market.market_status;
+  }
+  const percent = Math.abs(change) * 100;
+  const formatted = percent >= 10 ? `${Math.round(percent)}%` : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
+  return `${change > 0 ? "+" : "-"}${formatted}`;
 }
 
 function shortId(value?: string): string {

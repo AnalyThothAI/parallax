@@ -107,22 +107,67 @@ export type SearchData = {
 };
 
 export type TokenFlowItem = {
-  entity_key: string;
-  entity_type: string;
-  normalized_value: string;
-  chain?: string | null;
-  window: WindowKey;
-  window_start_ms?: number | null;
-  window_end_ms?: number | null;
-  mention_count: number;
-  watched_mention_count: number;
-  unique_author_count: number;
-  weighted_reach?: number | null;
-  market_mindshare: number;
-  watched_mindshare: number;
-  velocity?: number | null;
-  top_authors?: Array<{ handle?: string; count?: number; followers?: number | null }>;
-  top_events?: Array<{ event_id?: string; author_handle?: string; received_at_ms?: number }>;
+  identity: {
+    identity_key: string;
+    identity_status: "resolved_ca" | "resolved_alias" | "unresolved_symbol" | "ambiguous_symbol" | string;
+    token_id?: string | null;
+    chain?: string | null;
+    address?: string | null;
+    symbol?: string | null;
+  };
+  social: {
+    window: WindowKey;
+    window_start_ms?: number | null;
+    window_end_ms?: number | null;
+    mention_count: number;
+    watched_mention_count: number;
+    unique_author_count: number;
+    weighted_reach?: number | null;
+    market_mindshare: number;
+    watched_mindshare: number;
+    velocity?: number | null;
+    top_authors?: Array<{ handle?: string; count?: number; followers?: number | null }>;
+  };
+  baseline: {
+    baseline_status: "ready" | "insufficient_history" | string;
+    sample_count: number;
+    baseline_mean?: number | null;
+    baseline_stddev?: number | null;
+    delta_pct?: number | null;
+    z_score?: number | null;
+    percentile?: number | null;
+    acceleration?: number | null;
+  };
+  anomaly: {
+    score: number;
+    reasons: string[];
+  };
+  market: {
+    market_status: "fresh" | "stale" | "missing" | string;
+    market_confirmed: boolean;
+    price?: number | null;
+    previous_price?: number | null;
+    price_change_pct?: number | null;
+    market_cap?: number | null;
+    snapshot_age_ms?: number | null;
+    snapshot_received_at_ms?: number | null;
+  };
+  confidence: {
+    score: number;
+    coverage: string;
+    coverage_boundary: string;
+    identity_status: string;
+    market_status: string;
+    baseline_status: string;
+    reasons: string[];
+  };
+  evidence: Array<{
+    event_id?: string;
+    author_handle?: string | null;
+    received_at_ms?: number | null;
+    text_clean?: string | null;
+    canonical_url?: string | null;
+  }>;
 };
 
 export type TokenFlowData = {

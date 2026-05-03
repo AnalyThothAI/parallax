@@ -59,6 +59,38 @@ class EventNormalizerTests(unittest.TestCase):
 
         self.assertEqual(events, [])
 
+    def test_normalizes_gmgn_token_snapshot_from_token_channel(self):
+        events = normalize_gmgn_payload(
+            {
+                "channel": "twitter_monitor_token",
+                "data": [
+                    {
+                        "tw": "follow",
+                        "i": "token-event-1",
+                        "ts": "1777729877581",
+                        "tt": "ca",
+                        "t": {
+                            "a": "0xf3525965a4ad3ca0ac13f4d2f237113691194444",
+                            "c": "bsc",
+                            "mc": "4304699.6",
+                            "p": "0.0043046996",
+                            "p1": "0.00065198877",
+                            "s": "熊猫头",
+                        },
+                        "u": {"s": "xc_meme", "n": "星辰", "f": 943},
+                        "c": {"t": "$熊猫头 momentum"},
+                    }
+                ],
+            },
+            received_at_ms=1_777_729_877_581,
+        )
+
+        self.assertEqual(len(events), 1)
+        self.assertIsNotNone(events[0].token_snapshot)
+        self.assertEqual(events[0].token_snapshot.address, "0xf3525965a4aD3ca0AC13f4D2F237113691194444")
+        self.assertEqual(events[0].token_snapshot.chain, "bsc")
+        self.assertEqual(events[0].token_snapshot.symbol, "熊猫头")
+
 
 if __name__ == "__main__":
     unittest.main()

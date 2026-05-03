@@ -7,12 +7,14 @@ import pytest
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.entity_extractor import extract_entities
 from gmgn_twitter_intel.pipeline.signal_builder import SignalBuilder
+from gmgn_twitter_intel.pipeline.token_identity_resolver import TokenIdentityResolver
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from gmgn_twitter_intel.storage.token_repository import TokenRepository
 
 
 def make_event(
@@ -57,6 +59,11 @@ def open_repositories(tmp_path):
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
     return conn, evidence, entities, signals, enrichment
+
+
+def build_token_signals(conn, event, entities, signal_repo, *, is_watched: bool):
+    token_mentions = TokenIdentityResolver(TokenRepository(conn)).resolve_event_mentions(event, entities, commit=True)
+    return SignalBuilder(signal_repo).build_for_event(event, token_mentions, is_watched=is_watched)
 
 
 def test_evidence_repository_writes_event_and_fts_in_one_transaction(tmp_path):
@@ -121,6 +128,7 @@ def test_duplicate_raw_frame_does_not_poison_next_ingest_transaction(tmp_path):
             entities=entity_repo,
             signals=signal_repo,
             enrichment=enrichment_repo,
+            tokens=TokenRepository(conn),
             write_lock=RLock(),
         )
         assert ingest.insert_raw_frame(
@@ -173,7 +181,7 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
         entities = extract_entities(event.content.text)
         entity_repo.insert_event_entities(event, entities, is_watched=True)
 
-        result = SignalBuilder(signal_repo).build_for_event(event, entities, is_watched=True)
+        result = build_token_signals(conn, event, entities, signal_repo, is_watched=True)
         alerts = signal_repo.account_alerts(window_ms=86_400_000, now_ms=event.received_at_ms + 1, limit=10)
         token_flow = signal_repo.token_flow(window="5m", limit=10)
     finally:
@@ -181,7 +189,7 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
 
     assert {alert["alert_type"] for alert in result.alerts} == {"account_token"}
     assert {alert["alert_type"] for alert in alerts} == {"account_token"}
-    assert token_flow[0]["entity_key"].startswith("ca:eth:")
+    assert token_flow[0]["identity_key"].startswith("token:eth:")
     assert token_flow[0]["mention_count"] == 1
 
 
@@ -206,13 +214,13 @@ def test_token_windows_materialize_bucket_mindshare(tmp_path):
             evidence.insert_event(event, is_watched=is_watched)
             entities = extract_entities(event.content.text)
             entity_repo.insert_event_entities(event, entities, is_watched=is_watched)
-            SignalBuilder(signal_repo).build_for_event(event, entities, is_watched=is_watched)
+            build_token_signals(conn, event, entities, signal_repo, is_watched=is_watched)
 
         token_flow = signal_repo.token_flow(window="5m", limit=10)
     finally:
         conn.close()
 
-    by_symbol = {item["normalized_value"]: item for item in token_flow}
+    by_symbol = {item["symbol"]: item for item in token_flow}
     assert by_symbol["PEPE"]["market_mindshare"] == pytest.approx(0.5)
     assert by_symbol["BONK"]["market_mindshare"] == pytest.approx(0.5)
     assert by_symbol["PEPE"]["watched_mindshare"] == pytest.approx(1.0)
@@ -229,6 +237,7 @@ def test_ingest_service_serializes_concurrent_sqlite_writes(tmp_path):
             entities=entity_repo,
             signals=signal_repo,
             enrichment=enrichment_repo,
+            tokens=TokenRepository(conn),
             write_lock=RLock(),
         )
 
@@ -266,6 +275,7 @@ def test_ingest_service_rolls_back_event_when_signal_build_fails(tmp_path):
             entities=entity_repo,
             signals=signal_repo,
             enrichment=enrichment_repo,
+            tokens=TokenRepository(conn),
             write_lock=RLock(),
         )
         ingest.signal_builder = FailingSignalBuilder()

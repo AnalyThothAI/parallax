@@ -1,0 +1,36 @@
+import pytest
+
+from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
+
+
+def test_parse_gmgn_token_payload_normalizes_market_snapshot():
+    payload = parse_gmgn_token_payload(
+        {
+            "tt": "ca",
+            "t": {
+                "a": "0xf3525965a4ad3ca0ac13f4d2f237113691194444",
+                "c": "bsc",
+                "i": "https://gmgn.ai/external-res/token.webp",
+                "mc": "4304699.6",
+                "p": "0.0043046996",
+                "p1": "0.00065198877",
+                "s": "熊猫头",
+            },
+        }
+    )
+
+    assert payload is not None
+    assert payload.address == "0xf3525965a4aD3ca0AC13f4D2F237113691194444"
+    assert payload.chain == "bsc"
+    assert payload.symbol == "熊猫头"
+    assert payload.market_cap == pytest.approx(4_304_699.6)
+    assert payload.price == pytest.approx(0.0043046996)
+    assert payload.previous_price == pytest.approx(0.00065198877)
+    assert payload.icon_url == "https://gmgn.ai/external-res/token.webp"
+    assert payload.trigger_type == "ca"
+
+
+def test_parse_gmgn_token_payload_rejects_symbol_only_without_address():
+    payload = parse_gmgn_token_payload({"tt": "symbol", "t": {"c": "eth", "s": "DOG", "p": "1"}})
+
+    assert payload is None

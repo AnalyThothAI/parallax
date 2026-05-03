@@ -21,6 +21,7 @@ from .storage.evidence_repository import EvidenceRepository
 from .storage.signal_repository import SignalRepository
 from .storage.sqlite_client import connect_sqlite
 from .storage.sqlite_schema import migrate
+from .storage.token_repository import TokenRepository
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -163,7 +164,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     with _repositories(settings.sqlite_path) as repos:
-        evidence, entities, signals, enrichment = repos
+        evidence, entities, signals, tokens, enrichment = repos
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -199,7 +200,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "token-flow":
-            items = TokenFlowService(signals).token_flow(window=args.window, limit=args.limit)
+            items = TokenFlowService(signals=signals, tokens=tokens).token_flow(window=args.window, limit=args.limit)
             _emit(
                 {"ok": True, "data": {"window": args.window, "items": items}},
                 stdout,
@@ -258,7 +259,13 @@ def _repositories(sqlite_path):
     conn = connect_sqlite(sqlite_path, read_only=False)
     try:
         migrate(conn)
-        yield EvidenceRepository(conn), EntityRepository(conn), SignalRepository(conn), EnrichmentRepository(conn)
+        yield (
+            EvidenceRepository(conn),
+            EntityRepository(conn),
+            SignalRepository(conn),
+            TokenRepository(conn),
+            EnrichmentRepository(conn),
+        )
     finally:
         conn.close()
 

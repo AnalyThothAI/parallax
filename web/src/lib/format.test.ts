@@ -19,6 +19,16 @@ describe("format helpers", () => {
 
   it("normalizes event handles and token labels", () => {
     expect(eventHandle({ event_id: "1", author: { handle: "@Toly" } })).toBe("toly");
-    expect(tokenLabel({ entity_key: "symbol:PEPE", entity_type: "symbol", normalized_value: "PEPE", window: "5m", mention_count: 1, watched_mention_count: 1, unique_author_count: 1, market_mindshare: 1, watched_mindshare: 1 })).toBe("$PEPE");
+    expect(
+      tokenLabel({
+        identity: { identity_key: "symbol:PEPE", identity_status: "unresolved_symbol", symbol: "PEPE" },
+        social: { window: "5m", mention_count: 1, watched_mention_count: 1, unique_author_count: 1, market_mindshare: 1, watched_mindshare: 1 },
+        baseline: { baseline_status: "insufficient_history", sample_count: 0 },
+        anomaly: { score: 1, reasons: [] },
+        market: { market_status: "missing", market_confirmed: false },
+        confidence: { score: 1, coverage: "public_stream", coverage_boundary: "public stream", identity_status: "unresolved_symbol", market_status: "missing", baseline_status: "insufficient_history", reasons: [] },
+        evidence: []
+      })
+    ).toBe("$PEPE");
   });
 });

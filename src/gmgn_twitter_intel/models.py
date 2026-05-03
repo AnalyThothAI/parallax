@@ -67,6 +67,19 @@ class BioChange:
 
 
 @dataclass(frozen=True, slots=True)
+class TokenSnapshot:
+    address: str
+    chain: str
+    symbol: str
+    market_cap: float | None
+    price: float | None
+    previous_price: float | None
+    icon_url: str | None
+    trigger_type: str | None
+    raw: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
 class TwitterEvent:
     event_id: str
     source: Source
@@ -84,6 +97,7 @@ class TwitterEvent:
     bio_change: BioChange | None
     matched_handles: list[str]
     raw: dict[str, Any] | None
+    token_snapshot: TokenSnapshot | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

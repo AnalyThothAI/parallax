@@ -11,6 +11,7 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.test_enrichment_repository import make_event
 
 
@@ -61,12 +62,14 @@ def test_enrichment_worker_materializes_narrative_signals_and_publishes_update(t
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
+    tokens = TokenRepository(conn)
     write_lock = RLock()
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
+        tokens=tokens,
         write_lock=write_lock,
     )
     publisher = RecordingPublisher()

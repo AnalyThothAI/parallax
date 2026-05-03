@@ -90,7 +90,10 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
 
     assert token_flow.status_code == 200
-    assert token_flow.json()["data"]["items"][0]["entity_key"].startswith("ca:eth:")
+    token_item = token_flow.json()["data"]["items"][0]
+    assert token_item["identity"]["identity_key"].startswith("token:eth:")
+    assert token_item["social"]["mention_count"] == 1
+    assert token_item["confidence"]["coverage"] == "public_stream"
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -102,6 +102,55 @@ CREATE INDEX IF NOT EXISTS idx_event_entities_token_window
   ON event_entities(entity_type, token_resolution_status, received_at_ms);
 CREATE INDEX IF NOT EXISTS idx_event_entities_watched_window ON event_entities(is_watched, received_at_ms);
 
+CREATE TABLE IF NOT EXISTS tokens (
+  token_id TEXT PRIMARY KEY,
+  chain TEXT NOT NULL,
+  address TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  name TEXT,
+  icon_url TEXT,
+  identity_status TEXT NOT NULL,
+  first_seen_event_id TEXT,
+  first_seen_ms INTEGER NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE(chain, address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_symbol ON tokens(symbol);
+
+CREATE TABLE IF NOT EXISTS token_aliases (
+  alias_id TEXT PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  token_id TEXT NOT NULL REFERENCES tokens(token_id) ON DELETE CASCADE,
+  chain TEXT NOT NULL,
+  address TEXT NOT NULL,
+  source TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE(symbol, token_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_aliases_symbol ON token_aliases(symbol);
+
+CREATE TABLE IF NOT EXISTS token_market_snapshots (
+  snapshot_id TEXT PRIMARY KEY,
+  token_id TEXT NOT NULL REFERENCES tokens(token_id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  price REAL,
+  previous_price REAL,
+  market_cap REAL,
+  source_channel TEXT NOT NULL,
+  received_at_ms INTEGER NOT NULL,
+  raw_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE(token_id, event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_market_snapshots_token_received
+  ON token_market_snapshots(token_id, received_at_ms);
+
 CREATE TABLE IF NOT EXISTS account_token_alerts (
   alert_id TEXT PRIMARY KEY,
   event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -123,12 +172,38 @@ CREATE INDEX IF NOT EXISTS idx_account_token_alerts_received ON account_token_al
 CREATE INDEX IF NOT EXISTS idx_account_token_alerts_author_received
   ON account_token_alerts(author_handle, received_at_ms);
 
+CREATE TABLE IF NOT EXISTS event_token_mentions (
+  mention_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  identity_key TEXT NOT NULL,
+  token_id TEXT,
+  identity_status TEXT NOT NULL,
+  chain TEXT,
+  address TEXT,
+  symbol TEXT NOT NULL,
+  source TEXT NOT NULL,
+  received_at_ms INTEGER NOT NULL,
+  author_handle TEXT,
+  author_followers INTEGER,
+  is_watched INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_token_mentions_event_identity
+  ON event_token_mentions(event_id, identity_key);
+CREATE INDEX IF NOT EXISTS idx_event_token_mentions_received
+  ON event_token_mentions(received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_mentions_identity_received
+  ON event_token_mentions(identity_key, received_at_ms);
+
 CREATE TABLE IF NOT EXISTS token_windows (
   window_id TEXT PRIMARY KEY,
-  entity_key TEXT NOT NULL,
-  entity_type TEXT NOT NULL,
-  normalized_value TEXT NOT NULL,
+  identity_key TEXT NOT NULL,
+  token_id TEXT,
+  identity_status TEXT NOT NULL,
   chain TEXT,
+  address TEXT,
+  symbol TEXT NOT NULL,
   window TEXT NOT NULL,
   window_start_ms INTEGER NOT NULL,
   window_end_ms INTEGER NOT NULL,
@@ -146,7 +221,7 @@ CREATE TABLE IF NOT EXISTS token_windows (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ux_token_windows_entity_window_start
-  ON token_windows(entity_key, window, window_start_ms);
+  ON token_windows(identity_key, window, window_start_ms);
 CREATE INDEX IF NOT EXISTS idx_token_windows_window_end ON token_windows(window, window_end_ms);
 
 CREATE TABLE IF NOT EXISTS enrichment_jobs (
@@ -292,11 +367,12 @@ DROP TABLE IF EXISTS keyword_windows;
 
 def migrate(conn: sqlite3.Connection) -> None:
     ensure_fts5_available(conn)
+    _drop_legacy_token_windows(conn)
     conn.executescript(SCHEMA_SQL)
     conn.executescript(DROP_LEGACY_SQL)
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
-        (SCHEMA_VERSION, "llm_watched_account_narrative_signal", _now_ms()),
+        (SCHEMA_VERSION, "token_identity_conviction_signal", _now_ms()),
     )
     conn.commit()
 
@@ -307,6 +383,12 @@ def ensure_fts5_available(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE IF EXISTS __fts5_probe")
     except sqlite3.OperationalError as exc:
         raise RuntimeError("SQLite FTS5 is required") from exc
+
+
+def _drop_legacy_token_windows(conn: sqlite3.Connection) -> None:
+    columns = conn.execute("PRAGMA table_info(token_windows)").fetchall()
+    if columns and "identity_key" not in {str(row[1]) for row in columns}:
+        conn.execute("DROP TABLE token_windows")
 
 
 def _now_ms() -> int:

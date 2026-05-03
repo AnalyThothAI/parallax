@@ -33,36 +33,23 @@ class SignalRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def token_seen_before(self, *, entity_key: str, author_handle: str | None, before_ms: int) -> tuple[bool, bool]:
-        global_count = self.conn.execute(
+    def token_seen_before(self, *, identity_key: str, author_handle: str | None, before_ms: int) -> tuple[bool, bool]:
+        rows = self.conn.execute(
             """
-            SELECT COUNT(*) FROM event_entities
-            WHERE received_at_ms < ? AND entity_type IN ('ca', 'symbol')
-              AND (
-                CASE
-                  WHEN chain IS NULL THEN entity_type || ':' || normalized_value
-                  ELSE entity_type || ':' || chain || ':' || normalized_value
-                END
-              ) = ?
+            SELECT top_authors_json FROM token_windows
+            WHERE identity_key = ? AND window = '1m' AND window_start_ms <= ?
             """,
-            (before_ms, entity_key),
-        ).fetchone()[0]
-        author_count = 0
+            (identity_key, (before_ms // 60_000) * 60_000),
+        ).fetchall()
+        global_seen = bool(rows)
+        author_seen = False
         if author_handle:
-            author_count = self.conn.execute(
-                """
-                SELECT COUNT(*) FROM event_entities
-                WHERE received_at_ms < ? AND author_handle = ? AND entity_type IN ('ca', 'symbol')
-                  AND (
-                    CASE
-                      WHEN chain IS NULL THEN entity_type || ':' || normalized_value
-                      ELSE entity_type || ':' || chain || ':' || normalized_value
-                    END
-                  ) = ?
-                """,
-                (before_ms, author_handle, entity_key),
-            ).fetchone()[0]
-        return bool(global_count), bool(author_count)
+            for row in rows:
+                authors = _json_loads(row["top_authors_json"], [])
+                if any(item.get("handle") == author_handle for item in authors if isinstance(item, dict)):
+                    author_seen = True
+                    break
+        return global_seen, author_seen
 
     def insert_account_token_alert(
         self,
@@ -120,13 +107,62 @@ class SignalRepository:
             is_first_seen_by_author=is_first_seen_by_author,
         )
 
+    def insert_event_token_mentions(
+        self,
+        *,
+        event_id: str,
+        token_mentions: list[Any],
+        received_at_ms: int,
+        author_handle: str | None,
+        author_followers: int | None,
+        is_watched: bool,
+        commit: bool = True,
+    ) -> int:
+        now_ms = _now_ms()
+        inserted = 0
+        for mention in token_mentions:
+            try:
+                self.conn.execute(
+                    """
+                    INSERT INTO event_token_mentions(
+                      mention_id, event_id, identity_key, token_id, identity_status, chain, address, symbol,
+                      source, received_at_ms, author_handle, author_followers, is_watched, created_at_ms
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        _id("event_token_mention", event_id, mention.identity_key),
+                        event_id,
+                        mention.identity_key,
+                        mention.token_id,
+                        mention.identity_status,
+                        mention.chain,
+                        mention.address,
+                        mention.symbol,
+                        mention.source,
+                        received_at_ms,
+                        author_handle,
+                        author_followers,
+                        1 if is_watched else 0,
+                        now_ms,
+                    ),
+                )
+                inserted += 1
+            except sqlite3.IntegrityError:
+                continue
+        if commit:
+            self.conn.commit()
+        return inserted
+
     def upsert_token_window(
         self,
         *,
-        entity_key: str,
-        entity_type: str,
-        normalized_value: str,
+        identity_key: str,
+        token_id: str | None,
+        identity_status: str,
         chain: str | None,
+        address: str | None,
+        symbol: str,
         window: str,
         window_start_ms: int,
         window_end_ms: int,
@@ -139,10 +175,12 @@ class SignalRepository:
         self._upsert_window(
             table="token_windows",
             identity={
-                "entity_key": entity_key,
-                "entity_type": entity_type,
-                "normalized_value": normalized_value,
+                "identity_key": identity_key,
+                "token_id": token_id,
+                "identity_status": identity_status,
                 "chain": chain,
+                "address": address,
+                "symbol": symbol,
             },
             window=window,
             window_start_ms=window_start_ms,
@@ -176,10 +214,12 @@ class SignalRepository:
             """
             SELECT
               tw.window_id,
-              tw.entity_key,
-              tw.entity_type,
-              tw.normalized_value,
+              tw.identity_key,
+              tw.token_id,
+              tw.identity_status,
               tw.chain,
+              tw.address,
+              tw.symbol,
               tw.window,
               tw.window_start_ms,
               tw.window_end_ms,
@@ -221,6 +261,25 @@ class SignalRepository:
             """,
             (window, window, max(0, int(limit))),
         ).fetchall()
+        return self._hydrate_token_flow_evidence([_decode_json_fields(dict(row)) for row in rows])
+
+    def token_window_history(
+        self,
+        *,
+        identity_key: str,
+        window: str,
+        before_start_ms: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM token_windows
+            WHERE identity_key = ? AND window = ? AND window_start_ms < ?
+            ORDER BY window_start_ms DESC
+            LIMIT ?
+            """,
+            (identity_key, window, before_start_ms, max(0, int(limit))),
+        ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
     def alerts_for_event(self, event_id: str) -> list[dict[str, Any]]:
@@ -234,38 +293,23 @@ class SignalRepository:
 
     def rebuild_windows(self, *, window: str) -> int:
         size_ms = WINDOW_MS[window]
-        rebuilt = 0
         with transaction(self.conn):
             self.conn.execute("DELETE FROM token_windows WHERE window = ?", (window,))
             rows = self.conn.execute(
                 """
-                SELECT
-                  ee.entity_type,
-                  ee.normalized_value,
-                  ee.chain,
-                  ee.received_at_ms,
-                  ee.event_id,
-                  ee.author_handle,
-                  ee.is_watched,
-                  e.author_followers
-                FROM event_entities ee
-                JOIN events e ON e.event_id = ee.event_id
-                WHERE ee.entity_type IN ('ca', 'symbol')
-                ORDER BY ee.received_at_ms ASC
+                SELECT * FROM event_token_mentions
+                ORDER BY received_at_ms ASC, event_id ASC, identity_key ASC
                 """
             ).fetchall()
             for row in rows:
                 start_ms = (int(row["received_at_ms"]) // size_ms) * size_ms
-                key = _entity_key(
-                    entity_type=str(row["entity_type"]),
-                    chain=row["chain"],
-                    normalized_value=str(row["normalized_value"]),
-                )
                 self.upsert_token_window(
-                    entity_key=key,
-                    entity_type=str(row["entity_type"]),
-                    normalized_value=str(row["normalized_value"]),
+                    identity_key=str(row["identity_key"]),
+                    token_id=row["token_id"],
+                    identity_status=str(row["identity_status"]),
                     chain=row["chain"],
+                    address=row["address"],
+                    symbol=str(row["symbol"]),
                     window=window,
                     window_start_ms=start_ms,
                     window_end_ms=start_ms + size_ms,
@@ -275,8 +319,36 @@ class SignalRepository:
                     is_watched=bool(row["is_watched"]),
                     commit=False,
                 )
-                rebuilt += 1
-        return rebuilt
+        return len(rows)
+
+    def _hydrate_token_flow_evidence(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        event_ids = [
+            str(item["event_id"])
+            for row in rows
+            for item in row.get("top_events", [])
+            if isinstance(item, dict) and item.get("event_id")
+        ]
+        if not event_ids:
+            return rows
+        placeholders = ",".join("?" for _ in event_ids)
+        event_rows = self.conn.execute(
+            f"""
+            SELECT event_id, author_handle, received_at_ms, text_clean, canonical_url
+            FROM events
+            WHERE event_id IN ({placeholders})
+            """,
+            event_ids,
+        ).fetchall()
+        by_event_id = {str(row["event_id"]): dict(row) for row in event_rows}
+        for row in rows:
+            hydrated = []
+            for item in row.get("top_events", []):
+                if not isinstance(item, dict):
+                    continue
+                event = by_event_id.get(str(item.get("event_id")))
+                hydrated.append(item | event if event else item)
+            row["top_events"] = hydrated
+        return rows
 
     def _upsert_window(
         self,
@@ -294,8 +366,8 @@ class SignalRepository:
     ) -> None:
         now_ms = _now_ms()
         if table == "token_windows":
-            where = "entity_key = ? AND window = ? AND window_start_ms = ?"
-            params = (identity["entity_key"], window, window_start_ms)
+            where = "identity_key = ? AND window = ? AND window_start_ms = ?"
+            params = (identity["identity_key"], window, window_start_ms)
         else:
             raise ValueError(f"unsupported window table: {table}")
         existing = self.conn.execute(f"SELECT * FROM {table} WHERE {where}", params).fetchone()
@@ -335,17 +407,18 @@ class SignalRepository:
     ) -> None:
         _apply_window_increment(row, event_id, author_handle, author_followers, is_watched)
         if table == "token_windows":
-            row["window_id"] = _id("token_window", row["entity_key"], row["window"], str(row["window_start_ms"]))
+            row["window_id"] = _id("token_window", row["identity_key"], row["window"], str(row["window_start_ms"]))
             self.conn.execute(
                 """
                 INSERT INTO token_windows(
-                  window_id, entity_key, entity_type, normalized_value, chain, window, window_start_ms,
+                  window_id, identity_key, token_id, identity_status, chain, address, symbol, window, window_start_ms,
                   window_end_ms, mention_count, watched_mention_count, unique_author_count, weighted_reach,
                   market_mindshare, watched_mindshare, velocity, top_authors_json, top_events_json,
                   created_at_ms, updated_at_ms
                 )
                 VALUES (
-                  :window_id, :entity_key, :entity_type, :normalized_value, :chain, :window, :window_start_ms,
+                  :window_id, :identity_key, :token_id, :identity_status, :chain, :address,
+                  :symbol, :window, :window_start_ms,
                   :window_end_ms, :mention_count, :watched_mention_count, :unique_author_count, :weighted_reach,
                   :market_mindshare, :watched_mindshare, :velocity, :top_authors_json, :top_events_json,
                   :created_at_ms, :updated_at_ms

@@ -88,24 +88,70 @@ describe("App cockpit value flow", () => {
               window: options?.params?.window,
           items: [
             {
-              entity_key: "symbol:UPEG",
-              entity_type: "symbol",
-              normalized_value: "UPEG",
-              window: "5m",
-              window_start_ms: 1_777_746_000_000,
-              window_end_ms: 1_777_746_300_000,
-              mention_count: 4,
-              watched_mention_count: 1,
-              unique_author_count: 2,
-              market_mindshare: 0.25,
-              watched_mindshare: 1,
-              velocity: 0.8,
-              top_authors: [
-                { handle: "traderpow", count: 1, followers: 168_905 },
-                { handle: "alien19710628", count: 3, followers: 220 }
-              ],
-              top_events: [
-                { event_id: "event-upeg-1", author_handle: "traderpow", received_at_ms: 1_777_746_010_000 }
+              identity: {
+                identity_key: "symbol:UPEG",
+                identity_status: "unresolved_symbol",
+                token_id: null,
+                chain: null,
+                address: null,
+                symbol: "UPEG"
+              },
+              social: {
+                window: "5m",
+                window_start_ms: 1_777_746_000_000,
+                window_end_ms: 1_777_746_300_000,
+                mention_count: 4,
+                watched_mention_count: 1,
+                unique_author_count: 2,
+                market_mindshare: 0.25,
+                watched_mindshare: 1,
+                velocity: 0.8,
+                top_authors: [
+                  { handle: "traderpow", count: 1, followers: 168_905 },
+                  { handle: "alien19710628", count: 3, followers: 220 }
+                ]
+              },
+              baseline: {
+                baseline_status: "insufficient_history",
+                sample_count: 0,
+                baseline_mean: null,
+                baseline_stddev: null,
+                delta_pct: null,
+                z_score: null,
+                percentile: null,
+                acceleration: null
+              },
+              anomaly: {
+                score: 58,
+                reasons: ["watched_first_mention", "market_data_missing", "symbol_unresolved"]
+              },
+              market: {
+                market_status: "missing",
+                market_confirmed: false,
+                price: null,
+                previous_price: null,
+                price_change_pct: null,
+                market_cap: null,
+                snapshot_age_ms: null,
+                snapshot_received_at_ms: null
+              },
+              confidence: {
+                score: 25,
+                coverage: "public_stream",
+                coverage_boundary: "GMGN anonymous public stream; not a full X firehose",
+                identity_status: "unresolved_symbol",
+                market_status: "missing",
+                baseline_status: "insufficient_history",
+                reasons: ["coverage public_stream", "watched evidence", "multi-author evidence", "insufficient baseline", "unresolved_symbol"]
+              },
+              evidence: [
+                {
+                  event_id: "event-upeg-1",
+                  author_handle: "traderpow",
+                  received_at_ms: 1_777_746_010_000,
+                  text_clean: "$UPEG watched account evidence",
+                  canonical_url: "https://x.com/traderpow/status/1"
+                }
               ]
             }
           ]

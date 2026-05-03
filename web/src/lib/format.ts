@@ -48,10 +48,11 @@ export function eventText(event: EventRecord): string {
 }
 
 export function tokenLabel(item: TokenFlowItem): string {
-  if (item.entity_type === "symbol") {
-    return `$${item.normalized_value}`;
+  const symbol = item.identity.symbol?.trim();
+  if (symbol) {
+    return `$${symbol}`;
   }
-  const value = item.normalized_value;
+  const value = item.identity.address ?? item.identity.identity_key;
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 

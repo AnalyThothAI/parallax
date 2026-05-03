@@ -26,6 +26,7 @@ from ..storage.evidence_repository import EvidenceRepository
 from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite
 from ..storage.sqlite_schema import migrate
+from ..storage.token_repository import TokenRepository
 from .http import ApiUnauthorized, api_unauthorized_response, create_api_router
 from .ws import PublicWebSocketHub
 
@@ -36,10 +37,12 @@ class CliRuntime:
     evidence: EvidenceRepository
     entities: EntityRepository
     signals: SignalRepository
+    tokens: TokenRepository
     enrichment: EnrichmentRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
     read_signals: SignalRepository
+    read_tokens: TokenRepository
     read_enrichment: EnrichmentRepository
     ingest: IngestService
     hub: PublicWebSocketHub
@@ -146,10 +149,12 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
+    tokens = TokenRepository(conn)
     enrichment = EnrichmentRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
     read_signals = SignalRepository(read_conn)
+    read_tokens = TokenRepository(read_conn)
     read_enrichment = EnrichmentRepository(read_conn)
     write_lock = RLock()
     ingest = IngestService(
@@ -157,6 +162,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         entities=entities,
         signals=signals,
         enrichment=enrichment,
+        tokens=tokens,
         write_lock=write_lock,
     )
     hub = PublicWebSocketHub(
@@ -178,10 +184,12 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         evidence=evidence,
         entities=entities,
         signals=signals,
+        tokens=tokens,
         enrichment=enrichment,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
+        read_tokens=read_tokens,
         read_enrichment=read_enrichment,
         ingest=ingest,
         hub=hub,

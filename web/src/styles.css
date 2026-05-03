@@ -495,7 +495,7 @@ svg {
 
 .token-grid {
   display: grid;
-  grid-template-columns: minmax(110px, 1fr) 86px 64px 64px;
+  grid-template-columns: minmax(120px, 1fr) 72px 82px 70px;
   gap: 8px;
   align-items: center;
 }
@@ -510,6 +510,25 @@ svg {
   border-top: 0;
   border-right: 0;
   border-left: 0;
+}
+
+.table-row span,
+.table-row b,
+.token-main {
+  min-width: 0;
+}
+
+.table-row small,
+.token-main small {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .table-head {
