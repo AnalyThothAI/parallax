@@ -29,6 +29,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.handles == ("toly", "cryptodevinl", "heyibinance")
     assert settings.api_host == "0.0.0.0"
     assert settings.api_port == 8765
+    assert settings.ws_token == "secret"
     assert settings.sqlite_path == tmp_path / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
@@ -36,11 +37,11 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
 
 
-def test_load_settings_rejects_missing_ws_token(tmp_path, monkeypatch):
+def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(tmp_path, {"handles": ["toly"]})
 
-    with pytest.raises(ValueError, match="ws_token"):
+    with pytest.raises(ValueError, match="ws_token is required"):
         load_settings()
 
 
@@ -88,7 +89,7 @@ def test_sqlite_path_and_llm_enrichment_can_be_explicitly_configured(tmp_path, m
     assert settings.enrichment_poll_interval == 0.5
 
 
-def test_load_settings_can_skip_ws_token_for_read_only_cli(tmp_path, monkeypatch):
+def test_load_settings_accepts_config_without_ws_token(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(tmp_path, {"handles": ["toly"]})
 

@@ -39,7 +39,7 @@ make config
 ~/.gmgn-twitter-intel/logs/
 ```
 
-编辑 `config.yaml` 中的 `handles`、`ws_token`，如需启用 watched-account LLM enrichment，再配置 `llm.openai_api_key` 与 `llm.openai_model`。
+编辑 `config.yaml` 中的 `handles`，如需启用 watched-account LLM enrichment，再配置 `llm.openai_api_key` 与 `llm.openai_model`。`ws_token` 是本服务的 Web/API 访问令牌；内置 cockpit 会从后端启动配置自动读取，不需要在页面里单独填写。
 
 本地前台运行：
 
@@ -56,7 +56,9 @@ make docker-logs
 make docker-down
 ```
 
-完整检查：
+FastAPI 会直接服务前端构建产物。Docker 镜像会在构建阶段自动执行前端构建，运行后访问 `http://127.0.0.1:8765/`。页面会先读取 `/api/bootstrap`，再自动带上 `config.yaml` 里的 `ws_token` 访问 `/api/*` 快照并连接 `/ws` 实时流，不需要输入 token。
+
+本地后端检查：
 
 ```bash
 make check
@@ -135,7 +137,7 @@ WebSocket：
 ws://127.0.0.1:8765/ws
 ```
 
-第一条消息鉴权：
+外部 WebSocket 客户端先发送 auth 消息：
 
 ```json
 {"type":"auth","token":"replace-with-a-strong-token"}
@@ -159,6 +161,20 @@ ws://127.0.0.1:8765/ws
   "alerts": [{"alert_type": "account_token", "author_handle": "toly"}],
   "enrichment": null
 }
+```
+
+内置 cockpit 会自动带鉴权；外部只读 HTTP API 调用需要 `Authorization: Bearer <ws_token>`，只有 `/api/bootstrap` 供同源前端启动使用：
+
+```bash
+TOKEN="replace-with-a-strong-token"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/status"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/recent?limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/search?q=%24PEPE&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-flow?window=5m&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-alerts?window=24h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-flow?window=1h&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-narratives?window=24h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/enrichment-jobs?limit=50"
 ```
 
 ## CLI

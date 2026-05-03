@@ -26,7 +26,7 @@ lint: ## run ruff
 compile: ## compile Python files
 	@uv run python -m compileall src tests
 
-check: test lint compile ## run all local checks
+check: test lint compile ## run all local Python checks
 
 init: ## create ~/.gmgn-twitter-intel/config.yaml
 	@$(GMGN) init

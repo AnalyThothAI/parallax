@@ -6,10 +6,12 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from threading import RLock
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from ..collector.direct_ws import DirectGmgnWebSocketClient
@@ -24,6 +26,7 @@ from ..storage.evidence_repository import EvidenceRepository
 from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite
 from ..storage.sqlite_schema import migrate
+from .http import ApiUnauthorized, api_unauthorized_response, create_api_router
 from .ws import PublicWebSocketHub
 
 
@@ -48,7 +51,12 @@ class CliRuntime:
     enrichment_task: asyncio.Task | None = None
 
 
-def create_app(settings: Settings | None = None, *, start_collector: bool = True) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    *,
+    start_collector: bool = True,
+    frontend_dist: str | Path | None = None,
+) -> FastAPI:
     resolved_settings = settings or load_settings()
 
     @asynccontextmanager
@@ -67,6 +75,8 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
             await _stop_runtime(runtime)
 
     app = FastAPI(title="GMGN Twitter Intel", lifespan=lifespan)
+    app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
+    app.include_router(create_api_router(_readiness_payload))
 
     @app.get("/healthz", response_class=PlainTextResponse)
     async def healthz() -> str:
@@ -82,7 +92,49 @@ def create_app(settings: Settings | None = None, *, start_collector: bool = True
     async def websocket_endpoint(websocket: WebSocket) -> None:
         await app.state.service.hub.handle(websocket)
 
+    _mount_frontend(app, frontend_dist=frontend_dist)
+
     return app
+
+
+def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
+    dist = _frontend_dist_dir(frontend_dist)
+    if dist is None:
+        return
+
+    assets = dist / "assets"
+    if assets.exists():
+        app.mount("/assets", StaticFiles(directory=assets), name="frontend-assets")
+
+    if (dist / "favicon.svg").exists():
+        async def frontend_favicon() -> FileResponse:
+            return FileResponse(dist / "favicon.svg")
+
+        app.add_api_route("/favicon.svg", frontend_favicon, include_in_schema=False)
+
+    async def frontend_index() -> FileResponse:
+        return FileResponse(dist / "index.html")
+
+    app.add_api_route("/", frontend_index, include_in_schema=False)
+    app.add_api_route("/app", frontend_index, include_in_schema=False)
+    app.add_api_route("/app/{path:path}", frontend_index, include_in_schema=False)
+
+
+def _frontend_dist_dir(frontend_dist: str | Path | None = None) -> Path | None:
+    candidates: list[Path] = []
+    if frontend_dist is not None:
+        candidates.append(Path(frontend_dist))
+    module_path = Path(__file__).resolve()
+    candidates.extend(
+        [
+            module_path.parents[1] / "web" / "dist",
+            module_path.parents[3] / "web" / "dist",
+        ]
+    )
+    for candidate in candidates:
+        if (candidate / "index.html").exists():
+            return candidate
+    return None
 
 
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:

@@ -1,0 +1,78 @@
+import { useEffect, useRef, useState } from "react";
+import ReconnectingWebSocket from "reconnecting-websocket";
+import type { LivePayload } from "./types";
+import { websocketUrl } from "./client";
+
+type SocketStatus = "idle" | "connecting" | "authenticating" | "connected" | "closed" | "error";
+
+type Options = {
+  token: string;
+  handles: string;
+  replay: number;
+};
+
+export function useIntelSocket({ token, handles, replay }: Options) {
+  const [status, setStatus] = useState<SocketStatus>("idle");
+  const [events, setEvents] = useState<LivePayload[]>([]);
+  const [lastMessageAt, setLastMessageAt] = useState<number | null>(null);
+  const socketRef = useRef<ReconnectingWebSocket | null>(null);
+
+  useEffect(() => {
+    if (!token) {
+      setStatus("idle");
+      setEvents([]);
+      setLastMessageAt(null);
+      return;
+    }
+
+    const ws = new ReconnectingWebSocket(websocketUrl(), [], {
+      connectionTimeout: 4_000,
+      maxRetries: Infinity,
+      maxReconnectionDelay: 8_000,
+      minReconnectionDelay: 800
+    });
+    socketRef.current = ws;
+    setStatus("connecting");
+
+    ws.addEventListener("open", () => {
+      setStatus("authenticating");
+      ws.send(JSON.stringify({ type: "auth", token }));
+    });
+
+    ws.addEventListener("message", (message) => {
+      setLastMessageAt(Date.now());
+      const payload = JSON.parse(String(message.data)) as { type?: string } | LivePayload;
+      if (payload.type === "ready") {
+        setStatus("connected");
+        ws.send(
+          JSON.stringify({
+            type: "subscribe",
+            handles: normalizeHandles(handles),
+            replay
+          })
+        );
+        return;
+      }
+      if (payload.type === "event") {
+        setEvents((current) => [payload as LivePayload, ...current].slice(0, 100));
+      }
+    });
+
+    ws.addEventListener("close", () => setStatus("closed"));
+    ws.addEventListener("error", () => setStatus("error"));
+
+    return () => {
+      socketRef.current = null;
+      ws.close();
+    };
+  }, [token, handles, replay]);
+
+  return { status, events, lastMessageAt };
+}
+
+function normalizeHandles(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim().replace(/^@/, "").toLowerCase())
+    .filter(Boolean);
+}

@@ -11,6 +11,10 @@ monitor_running.png
 *.lancedb/
 data/
 logs/
+web/node_modules/
+web/dist/
+web/.vite/
+web/coverage/
 
 # IDE & OS
 .vscode/

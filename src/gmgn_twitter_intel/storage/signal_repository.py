@@ -174,12 +174,52 @@ class SignalRepository:
     def token_flow(self, *, window: str, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            SELECT * FROM token_windows
-            WHERE window = ?
+            SELECT
+              tw.window_id,
+              tw.entity_key,
+              tw.entity_type,
+              tw.normalized_value,
+              tw.chain,
+              tw.window,
+              tw.window_start_ms,
+              tw.window_end_ms,
+              tw.mention_count,
+              tw.watched_mention_count,
+              tw.unique_author_count,
+              tw.weighted_reach,
+              CASE
+                WHEN totals.total_mentions > 0
+                THEN CAST(tw.mention_count AS REAL) / totals.total_mentions
+                ELSE 0.0
+              END AS market_mindshare,
+              CASE
+                WHEN totals.total_watched_mentions > 0
+                THEN CAST(tw.watched_mention_count AS REAL) / totals.total_watched_mentions
+                ELSE 0.0
+              END AS watched_mindshare,
+              tw.velocity,
+              tw.top_authors_json,
+              tw.top_events_json,
+              tw.created_at_ms,
+              tw.updated_at_ms
+            FROM token_windows tw
+            JOIN (
+              SELECT
+                window,
+                window_start_ms,
+                SUM(mention_count) AS total_mentions,
+                SUM(watched_mention_count) AS total_watched_mentions
+              FROM token_windows
+              WHERE window = ?
+              GROUP BY window, window_start_ms
+            ) totals
+              ON totals.window = tw.window
+             AND totals.window_start_ms = tw.window_start_ms
+            WHERE tw.window = ?
             ORDER BY watched_mention_count DESC, velocity DESC, mention_count DESC, window_end_ms DESC
             LIMIT ?
             """,
-            (window, max(0, int(limit))),
+            (window, window, max(0, int(limit))),
         ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
@@ -313,6 +353,7 @@ class SignalRepository:
                 """,
                 row,
             )
+            self._refresh_token_bucket_mindshare(window=str(row["window"]), window_start_ms=int(row["window_start_ms"]))
         if commit:
             self.conn.commit()
 
@@ -345,8 +386,47 @@ class SignalRepository:
             """,
             row,
         )
+        if table == "token_windows":
+            self._refresh_token_bucket_mindshare(window=str(row["window"]), window_start_ms=int(row["window_start_ms"]))
         if commit:
             self.conn.commit()
+
+    def _refresh_token_bucket_mindshare(self, *, window: str, window_start_ms: int) -> None:
+        totals = self.conn.execute(
+            """
+            SELECT
+              SUM(mention_count) AS total_mentions,
+              SUM(watched_mention_count) AS total_watched_mentions
+            FROM token_windows
+            WHERE window = ? AND window_start_ms = ?
+            """,
+            (window, window_start_ms),
+        ).fetchone()
+        total_mentions = int(totals["total_mentions"] or 0)
+        total_watched_mentions = int(totals["total_watched_mentions"] or 0)
+        self.conn.execute(
+            """
+            UPDATE token_windows
+            SET
+              market_mindshare = CASE
+                WHEN ? > 0 THEN CAST(mention_count AS REAL) / ?
+                ELSE 0.0
+              END,
+              watched_mindshare = CASE
+                WHEN ? > 0 THEN CAST(watched_mention_count AS REAL) / ?
+                ELSE 0.0
+              END
+            WHERE window = ? AND window_start_ms = ?
+            """,
+            (
+                total_mentions,
+                total_mentions,
+                total_watched_mentions,
+                total_watched_mentions,
+                window,
+                window_start_ms,
+            ),
+        )
 
     def _account_token_alerts(self, *, since_ms: int, limit: int, handles: set[str] | None) -> list[dict[str, Any]]:
         clauses = ["received_at_ms >= ?"]

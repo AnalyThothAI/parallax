@@ -185,6 +185,40 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
     assert token_flow[0]["mention_count"] == 1
 
 
+def test_token_windows_materialize_bucket_mindshare(tmp_path):
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        events = [
+            (make_event("event-pepe", text="$PEPE rotation", received_at_ms=base_ms), True),
+            (
+                make_event(
+                    "event-bonk",
+                    author_handle="anon",
+                    text="$BONK rotation",
+                    received_at_ms=base_ms + 1_000,
+                    is_watched=False,
+                ),
+                False,
+            ),
+        ]
+        for event, is_watched in events:
+            evidence.insert_event(event, is_watched=is_watched)
+            entities = extract_entities(event.content.text)
+            entity_repo.insert_event_entities(event, entities, is_watched=is_watched)
+            SignalBuilder(signal_repo).build_for_event(event, entities, is_watched=is_watched)
+
+        token_flow = signal_repo.token_flow(window="5m", limit=10)
+    finally:
+        conn.close()
+
+    by_symbol = {item["normalized_value"]: item for item in token_flow}
+    assert by_symbol["PEPE"]["market_mindshare"] == pytest.approx(0.5)
+    assert by_symbol["BONK"]["market_mindshare"] == pytest.approx(0.5)
+    assert by_symbol["PEPE"]["watched_mindshare"] == pytest.approx(1.0)
+    assert by_symbol["BONK"]["watched_mindshare"] == pytest.approx(0.0)
+
+
 def test_ingest_service_serializes_concurrent_sqlite_writes(tmp_path):
     from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 
