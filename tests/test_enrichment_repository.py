@@ -63,7 +63,7 @@ def open_repositories(tmp_path):
     return conn, evidence, enrichment, ingest
 
 
-def test_migration_creates_enrichment_tables_and_removes_keyword_product_tables(tmp_path):
+def test_migration_creates_current_enrichment_tables(tmp_path):
     conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
@@ -85,8 +85,6 @@ def test_migration_creates_enrichment_tables_and_removes_keyword_product_tables(
         "narrative_windows",
         "account_narrative_alerts",
     }.issubset(tables)
-    assert "keyword_windows" not in tables
-    assert "account_keyword_alerts" not in tables
 
 
 def test_watched_ingest_enqueues_one_durable_enrichment_job(tmp_path):

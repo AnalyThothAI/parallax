@@ -359,17 +359,9 @@ CREATE INDEX IF NOT EXISTS idx_narrative_windows_window_end
   ON narrative_windows(window, window_end_ms);
 """
 
-DROP_LEGACY_SQL = """
-DROP TABLE IF EXISTS account_keyword_alerts;
-DROP TABLE IF EXISTS keyword_windows;
-"""
-
-
 def migrate(conn: sqlite3.Connection) -> None:
     ensure_fts5_available(conn)
-    _drop_legacy_token_windows(conn)
     conn.executescript(SCHEMA_SQL)
-    conn.executescript(DROP_LEGACY_SQL)
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
         (SCHEMA_VERSION, "token_identity_conviction_signal", _now_ms()),
@@ -383,12 +375,6 @@ def ensure_fts5_available(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE IF EXISTS __fts5_probe")
     except sqlite3.OperationalError as exc:
         raise RuntimeError("SQLite FTS5 is required") from exc
-
-
-def _drop_legacy_token_windows(conn: sqlite3.Connection) -> None:
-    columns = conn.execute("PRAGMA table_info(token_windows)").fetchall()
-    if columns and "identity_key" not in {str(row[1]) for row in columns}:
-        conn.execute("DROP TABLE token_windows")
 
 
 def _now_ms() -> int:

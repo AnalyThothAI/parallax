@@ -69,25 +69,3 @@ def test_migrations_are_idempotent(tmp_path):
         conn.close()
 
     assert [row["version"] for row in rows] == [4]
-
-
-def test_migration_drops_legacy_keyword_product_tables(tmp_path):
-    db_path = tmp_path / "twitter_intel.sqlite3"
-    conn = connect_sqlite(db_path, read_only=False)
-    try:
-        conn.execute("CREATE TABLE account_keyword_alerts(id TEXT)")
-        conn.execute("CREATE TABLE keyword_windows(id TEXT)")
-        conn.commit()
-
-        migrate(conn)
-        names = {
-            row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
-            ).fetchall()
-        }
-    finally:
-        conn.close()
-
-    assert "account_keyword_alerts" not in names
-    assert "keyword_windows" not in names
