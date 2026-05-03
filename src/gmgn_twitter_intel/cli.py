@@ -10,6 +10,7 @@ import uvicorn
 
 from .api.app import create_app
 from .logging_setup import setup_logging
+from .pipeline.token_backfill import TokenBackfillService
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.narrative_service import NarrativeService
 from .retrieval.search_service import SearchService
@@ -180,7 +181,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
         if command == "search":
             query = _search_query(args)
-            results = SearchService(evidence=evidence, entities=entities).search(
+            results = SearchService(evidence=evidence, entities=entities, signals=signals).search(
                 query,
                 limit=args.limit,
                 scope=args.scope,
@@ -246,8 +247,23 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0
 
         if command == "ops" and args.ops_command == "rebuild-windows":
+            backfill = TokenBackfillService(tokens=tokens, signals=signals).backfill_existing_events()
             rebuilt = signals.rebuild_windows(window=args.window)
-            _emit({"ok": True, "data": {"window": args.window, "rebuilt": rebuilt}}, stdout)
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "window": args.window,
+                        "rebuilt": rebuilt,
+                        "backfill": {
+                            "token_payload_events": backfill.token_payload_events,
+                            "entity_events": backfill.entity_events,
+                            "mentions_inserted": backfill.mentions_inserted,
+                        },
+                    },
+                },
+                stdout,
+            )
             return 0
 
     parser.error(f"unknown command: {command}")

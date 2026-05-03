@@ -282,6 +282,53 @@ class SignalRepository:
         ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
+    def token_mentions_by_ca(
+        self,
+        *,
+        chain: str,
+        address: str,
+        limit: int,
+        watched_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses = ["etm.chain = ?", "etm.address = ?"]
+        params: list[Any] = [chain, address]
+        if watched_only:
+            clauses.append("etm.is_watched = 1")
+        rows = self.conn.execute(
+            f"""
+            SELECT etm.*
+            FROM event_token_mentions etm
+            WHERE {" AND ".join(clauses)}
+            ORDER BY etm.received_at_ms DESC
+            LIMIT ?
+            """,
+            (*params, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def token_mentions_by_symbol(
+        self,
+        *,
+        symbol: str,
+        limit: int,
+        watched_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses = ["etm.symbol = ?"]
+        params: list[Any] = [symbol.strip().lstrip("$").upper()]
+        if watched_only:
+            clauses.append("etm.is_watched = 1")
+        rows = self.conn.execute(
+            f"""
+            SELECT etm.*
+            FROM event_token_mentions etm
+            WHERE {" AND ".join(clauses)}
+            ORDER BY etm.received_at_ms DESC
+            LIMIT ?
+            """,
+            (*params, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def alerts_for_event(self, event_id: str) -> list[dict[str, Any]]:
         token_rows = self.conn.execute(
             "SELECT 'account_token' AS alert_type, * FROM account_token_alerts WHERE event_id = ?",

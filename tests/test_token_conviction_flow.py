@@ -4,6 +4,7 @@ from threading import RLock
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Source
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.retrieval.search_service import SearchService
 from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
@@ -31,11 +32,11 @@ def open_runtime(tmp_path):
         tokens=tokens,
         write_lock=RLock(),
     )
-    return conn, ingest, signals, tokens
+    return conn, ingest, evidence, entities, signals, tokens
 
 
 def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
-    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
     try:
         base_ms = 1_700_000_000_000
         snapshot = parse_gmgn_token_payload(
@@ -94,3 +95,45 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
     assert item["confidence"]["coverage"] == "public_stream"
     assert item["confidence"]["score"] > 0
     assert item["evidence"][0]["event_id"] == "event-dog-1"
+
+
+def test_search_resolves_gmgn_payload_token_mentions_without_text_ca(tmp_path):
+    conn, ingest, evidence, entities, signals, _ = open_runtime(tmp_path)
+    try:
+        snapshot = parse_gmgn_token_payload(
+            {
+                "tt": "ca",
+                "t": {
+                    "a": "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+                    "c": "eth",
+                    "mc": "60490.341996",
+                    "p": "0.0000000001437884",
+                    "p1": "0.00000000015514471",
+                    "s": "DOG",
+                },
+            }
+        )
+        event = replace(
+            make_event("event-dog-payload", text="fresh launch", received_at_ms=1_700_000_000_000),
+            source=Source(
+                provider="gmgn",
+                transport="direct_ws",
+                coverage="public_stream",
+                channel="twitter_monitor_token",
+            ),
+            token_snapshot=snapshot,
+        )
+        ingest.ingest_event(event, is_watched=False)
+
+        by_ca = SearchService(evidence=evidence, entities=entities, signals=signals).search(
+            "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+            limit=10,
+        )
+        by_symbol = SearchService(evidence=evidence, entities=entities, signals=signals).search("$DOG", limit=10)
+    finally:
+        conn.close()
+
+    assert by_ca.items[0]["event"]["event_id"] == "event-dog-payload"
+    assert by_ca.items[0]["match_type"] == "exact_ca"
+    assert by_symbol.items[0]["event"]["event_id"] == "event-dog-payload"
+    assert by_symbol.items[0]["match_type"] == "exact_symbol"

@@ -16,9 +16,10 @@ class SearchResults:
 
 
 class SearchService:
-    def __init__(self, *, evidence, entities):
+    def __init__(self, *, evidence, entities, signals):
         self.evidence = evidence
         self.entities = entities
+        self.signals = signals
 
     def search(self, query: str, *, limit: int = 20, scope: str = "all") -> SearchResults:
         watched_only = scope == "matched"
@@ -33,7 +34,13 @@ class SearchService:
                 limit=limit,
                 watched_only=watched_only,
             )
-            events = _events_for_entity_rows(self.evidence, entity_rows)
+            mention_rows = self.signals.token_mentions_by_ca(
+                chain=parsed.chain,
+                address=parsed.ca,
+                limit=limit,
+                watched_only=watched_only,
+            )
+            events = _events_for_rows(self.evidence, [*entity_rows, *mention_rows])
             return SearchResults(
                 ok=True,
                 items=[_item(event, "exact_ca", 100.0) for event in events],
@@ -41,7 +48,12 @@ class SearchService:
             )
         if parsed.kind == "symbol":
             entity_rows = self.entities.find_by_symbol(parsed.symbol, limit=limit, watched_only=watched_only)
-            events = _events_for_entity_rows(self.evidence, entity_rows)
+            mention_rows = self.signals.token_mentions_by_symbol(
+                symbol=parsed.symbol,
+                limit=limit,
+                watched_only=watched_only,
+            )
+            events = _events_for_rows(self.evidence, [*entity_rows, *mention_rows])
             return SearchResults(
                 ok=True,
                 items=[_item(event, "exact_symbol", 90.0) for event in events],
@@ -67,9 +79,17 @@ def _item(event: dict[str, Any], match_type: str, score: float) -> dict[str, Any
     return {"event": event, "match_type": match_type, "score": score}
 
 
-def _events_for_entity_rows(evidence, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_id = evidence.events_by_ids([str(row["event_id"]) for row in rows if row.get("event_id")])
-    events = [by_id[str(row["event_id"])] for row in rows if str(row.get("event_id")) in by_id]
+def _events_for_rows(evidence, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    event_ids = []
+    seen: set[str] = set()
+    for row in rows:
+        event_id = str(row.get("event_id") or "")
+        if not event_id or event_id in seen:
+            continue
+        seen.add(event_id)
+        event_ids.append(event_id)
+    by_id = evidence.events_by_ids(event_ids)
+    events = [by_id[event_id] for event_id in event_ids if event_id in by_id]
     events.sort(key=lambda event: int(event.get("received_at_ms") or 0), reverse=True)
     return events
 

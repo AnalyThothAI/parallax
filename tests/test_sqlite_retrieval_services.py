@@ -21,9 +21,9 @@ def seed_event(tmp_path):
 
 
 def test_search_service_uses_exact_entities_and_fts(tmp_path):
-    conn, evidence, entity_repo, _, _ = seed_event(tmp_path)
+    conn, evidence, entity_repo, signal_repo, _ = seed_event(tmp_path)
     try:
-        service = SearchService(evidence=evidence, entities=entity_repo)
+        service = SearchService(evidence=evidence, entities=entity_repo, signals=signal_repo)
         by_ca = service.search("0x6982508145454ce325ddbe47a25d4ec3d2311933", limit=10)
         by_symbol = service.search("$PEPE", limit=10)
         by_text = service.search("stablecoin", limit=10)

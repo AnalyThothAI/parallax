@@ -92,7 +92,11 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         query = _search_query(q=q, symbol=symbol, ca=ca, chain=chain, handle=handle)
-        results = SearchService(evidence=runtime.read_evidence, entities=runtime.read_entities).search(
+        results = SearchService(
+            evidence=runtime.read_evidence,
+            entities=runtime.read_entities,
+            signals=runtime.read_signals,
+        ).search(
             query,
             limit=_limit(limit),
             scope=_scope(scope),
