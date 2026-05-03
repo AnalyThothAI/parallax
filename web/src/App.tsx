@@ -246,6 +246,8 @@ export function App() {
           socketStatus={socket.status}
           configReady={Boolean(token)}
           status={statusQuery.data?.data}
+          statusLoading={Boolean(token) && statusQuery.isPending}
+          statusError={statusQuery.isError}
           lastMessageAt={socket.lastMessageAt}
         />
 
@@ -396,7 +398,7 @@ export function App() {
               </div>
             </CompactPanel>
 
-            <CompactPanel title="证据检索" icon={<Search />} action={`${searchQuery.data?.data.result_count ?? 0} hits`}>
+            <CompactPanel title="检索结果" icon={<Search />} action={`${searchQuery.data?.data.result_count ?? 0} hits`}>
               <div className="compact-list">
                 {searchItems.slice(0, 8).map((item) => (
                   <SearchRow key={`${item.match_type}:${item.event.event_id}`} item={item} selected={isSelectedSearch(selectedSignal, item)} onSelect={selectSearchItem} />
@@ -506,13 +508,18 @@ function StatusPills({
   socketStatus,
   configReady,
   status,
+  statusLoading,
+  statusError,
   lastMessageAt
 }: {
   socketStatus: string;
   configReady: boolean;
   status?: StatusData;
+  statusLoading: boolean;
+  statusError: boolean;
   lastMessageAt: number | null;
 }) {
+  const readiness = readinessLabel({ configReady, status, statusLoading, statusError });
   return (
     <div className="status-pills">
       <span className={configReady ? "pill good" : "pill warn"}>
@@ -523,9 +530,9 @@ function StatusPills({
         <Wifi aria-hidden />
         {socketStatus}
       </span>
-      <span className={status?.ok ? "pill good" : "pill warn"}>
+      <span className={readiness.ok ? "pill good" : "pill warn"} title={readiness.title}>
         <Zap aria-hidden />
-        {status?.ok ? "ready" : "not ready"}
+        {readiness.label}
       </span>
       <span className="pill muted">
         <Clock3 aria-hidden />
@@ -533,6 +540,36 @@ function StatusPills({
       </span>
     </div>
   );
+}
+
+function readinessLabel({
+  configReady,
+  status,
+  statusLoading,
+  statusError
+}: {
+  configReady: boolean;
+  status?: StatusData;
+  statusLoading: boolean;
+  statusError: boolean;
+}): { label: string; ok: boolean; title?: string } {
+  if (!configReady) {
+    return { label: "status idle", ok: false };
+  }
+  if (statusLoading && !status) {
+    return { label: "checking", ok: false };
+  }
+  if (statusError) {
+    return { label: "status error", ok: false };
+  }
+  if (status?.ok) {
+    return { label: "ready", ok: true };
+  }
+  return {
+    label: "not ready",
+    ok: false,
+    title: status?.reasons?.join(", ") || undefined
+  };
 }
 
 function EventRow({
