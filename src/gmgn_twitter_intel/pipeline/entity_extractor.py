@@ -11,6 +11,7 @@ from .tweet_text import CASHTAG_RE, HASHTAG_RE, MENTION_RE, URL_RE
 
 EVM_CA_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 SOLANA_CA_RE = re.compile(r"(?<![A-Za-z0-9])[1-9A-HJ-NP-Za-km-z]{32,44}(?![A-Za-z0-9])")
+EVM_QUERY_CHAINS = frozenset({"evm_unknown", "evm", "eth", "base", "bsc"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,8 +90,12 @@ def extract_entities(text: str | None) -> list[ExtractedEntity]:
 
 def normalize_ca(value: str, *, chain: str | None = None) -> tuple[str, str]:
     text = value.strip()
-    if chain in {None, "eth", "evm"} and is_address(text):
-        return ("eth", to_checksum_address(text))
+    normalized_chain = _normalize_chain_hint(chain)
+    if is_address(text):
+        if normalized_chain is None:
+            return ("evm_unknown", to_checksum_address(text))
+        if normalized_chain in EVM_QUERY_CHAINS:
+            return (normalized_chain, to_checksum_address(text))
     try:
         pubkey = Pubkey.from_string(text)
     except ValueError as exc:
@@ -105,7 +110,7 @@ def entity_key(entity: ExtractedEntity) -> str:
 
 
 def _evm_ca_entity(raw: str) -> ExtractedEntity:
-    return ExtractedEntity("ca", raw, to_checksum_address(raw), "eth", "resolved_ca", 1.0, "regex")
+    return ExtractedEntity("ca", raw, to_checksum_address(raw), "evm_unknown", "unresolved_chain_ca", 1.0, "regex")
 
 
 def _solana_ca_entity(raw: str) -> ExtractedEntity | None:
@@ -126,3 +131,14 @@ def _append_unique(
         return
     seen.add(key)
     entities.append(entity)
+
+
+def _normalize_chain_hint(chain: str | None) -> str | None:
+    if chain is None:
+        return None
+    normalized = chain.strip().lower()
+    if normalized == "ethereum":
+        return "eth"
+    if normalized in {"sol", "solana"}:
+        return "solana"
+    return normalized

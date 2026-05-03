@@ -92,7 +92,9 @@ class TokenMarketEnricher:
 
     def _candidate_chains(self, chain: str) -> list[str]:
         normalized = chain.lower()
-        if normalized not in {"eth", "evm", "evm_unknown"}:
+        if normalized == "evm_unknown":
+            return list(self.evm_candidate_chains)
+        if normalized not in {"eth", "evm"}:
             return [chain]
         candidates = [chain, *self.evm_candidate_chains]
         deduped: list[str] = []

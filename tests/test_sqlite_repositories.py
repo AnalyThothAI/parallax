@@ -189,7 +189,7 @@ def test_signal_builder_materializes_account_alerts_and_token_windows(tmp_path):
 
     assert {alert["alert_type"] for alert in result.alerts} == {"account_token"}
     assert {alert["alert_type"] for alert in alerts} == {"account_token"}
-    assert token_flow[0]["identity_key"].startswith("token:eth:")
+    assert token_flow[0]["identity_key"].startswith("token:evm_unknown:")
     assert token_flow[0]["mention_count"] == 1
 
 

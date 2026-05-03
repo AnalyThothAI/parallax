@@ -91,7 +91,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
 
     assert token_flow.status_code == 200
     token_item = token_flow.json()["data"]["items"][0]
-    assert token_item["identity"]["identity_key"].startswith("token:eth:")
+    assert token_item["identity"]["identity_key"].startswith("token:evm_unknown:")
     assert token_item["social"]["mention_count"] == 1
     assert token_item["confidence"]["coverage"] == "public_stream"
 

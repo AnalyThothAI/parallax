@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from ..models import TwitterEvent
-from ..pipeline.entity_extractor import ExtractedEntity, normalize_ca
+from ..pipeline.entity_extractor import EVM_QUERY_CHAINS, ExtractedEntity, normalize_ca
 
 
 class EntityRepository:
@@ -104,6 +104,10 @@ class EntityRepository:
         params: list[Any] = [entity_type, normalized_value]
         if chain is None:
             clauses.append("chain IS NULL")
+        elif chain == "evm_unknown" and entity_type == "ca":
+            placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+            clauses.append(f"chain IN ({placeholders})")
+            params.extend(sorted(EVM_QUERY_CHAINS))
         else:
             clauses.append("chain = ?")
             params.append(chain)

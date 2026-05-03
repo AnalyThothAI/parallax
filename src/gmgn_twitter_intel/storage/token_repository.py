@@ -157,6 +157,7 @@ class TokenRepository:
     ) -> TokenIdentity:
         normalized_symbol = _normalize_symbol(symbol or address)
         token_id = _token_id(chain, address)
+        identity_status = "unresolved_chain_ca" if chain == "evm_unknown" else "resolved_ca"
         now_ms = _now_ms()
         self.conn.execute(
             """
@@ -164,18 +165,18 @@ class TokenRepository:
               token_id, chain, address, symbol, name, icon_url, identity_status,
               first_seen_event_id, first_seen_ms, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, NULL, NULL, 'resolved_ca', ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)
             ON CONFLICT(chain, address) DO UPDATE SET
               symbol = CASE
                 WHEN tokens.symbol = tokens.address THEN excluded.symbol
                 ELSE tokens.symbol
               END,
-              identity_status = 'resolved_ca',
+              identity_status = excluded.identity_status,
               updated_at_ms = excluded.updated_at_ms
             """,
-            (token_id, chain, address, normalized_symbol, event_id, received_at_ms, now_ms, now_ms),
+            (token_id, chain, address, normalized_symbol, identity_status, event_id, received_at_ms, now_ms, now_ms),
         )
-        if symbol:
+        if symbol and identity_status == "resolved_ca":
             self.conn.execute(
                 """
                 INSERT INTO token_aliases(
@@ -192,7 +193,7 @@ class TokenRepository:
             self.conn.commit()
         return TokenIdentity(
             token_id=token_id,
-            identity_status="resolved_ca",
+            identity_status=identity_status,
             chain=chain,
             address=address,
             symbol=normalized_symbol,

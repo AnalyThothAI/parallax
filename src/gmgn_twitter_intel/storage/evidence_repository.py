@@ -9,7 +9,7 @@ from dataclasses import asdict
 from typing import Any
 
 from ..models import TwitterEvent
-from ..pipeline.entity_extractor import normalize_ca
+from ..pipeline.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
 from ..pipeline.tweet_identity import canonical_tweet_url, logical_dedup_key
 from ..pipeline.tweet_text import build_text_projection
 from .sqlite_client import transaction
@@ -120,8 +120,15 @@ class EvidenceRepository:
         if ca:
             normalized_chain, normalized_ca = normalize_ca(ca, chain=chain)
             join = "JOIN event_entities ee ON ee.event_id = e.event_id"
-            clauses.extend(["ee.entity_type = 'ca'", "ee.normalized_value = ?", "ee.chain = ?"])
-            params.extend([normalized_ca, normalized_chain])
+            clauses.extend(["ee.entity_type = 'ca'", "ee.normalized_value = ?"])
+            params.append(normalized_ca)
+            if normalized_chain == "evm_unknown":
+                placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+                clauses.append(f"ee.chain IN ({placeholders})")
+                params.extend(sorted(EVM_QUERY_CHAINS))
+            else:
+                clauses.append("ee.chain = ?")
+                params.append(normalized_chain)
         elif symbol:
             join = "JOIN event_entities ee ON ee.event_id = e.event_id"
             clauses.extend(["ee.entity_type = 'symbol'", "ee.normalized_value = ?"])

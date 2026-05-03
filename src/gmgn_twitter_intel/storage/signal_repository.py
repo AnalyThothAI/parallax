@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from ..pipeline.entity_extractor import EVM_QUERY_CHAINS
 from .sqlite_client import transaction
 
 WINDOW_MS = {
@@ -292,8 +293,15 @@ class SignalRepository:
         limit: int,
         watched_only: bool = False,
     ) -> list[dict[str, Any]]:
-        clauses = ["etm.chain = ?", "etm.address = ?"]
-        params: list[Any] = [chain, address]
+        clauses = ["etm.address = ?"]
+        params: list[Any] = [address]
+        if chain == "evm_unknown":
+            placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+            clauses.append(f"etm.chain IN ({placeholders})")
+            params.extend(sorted(EVM_QUERY_CHAINS))
+        else:
+            clauses.append("etm.chain = ?")
+            params.append(chain)
         if watched_only:
             clauses.append("etm.is_watched = 1")
         rows = self.conn.execute(

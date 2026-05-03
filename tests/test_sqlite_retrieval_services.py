@@ -44,5 +44,5 @@ def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
         conn.close()
 
     assert token_flow[0]["social"]["mention_count"] == 1
-    assert token_flow[0]["identity"]["identity_key"].startswith("token:eth:")
+    assert token_flow[0]["identity"]["identity_key"].startswith("token:evm_unknown:")
     assert {alert["alert_type"] for alert in alerts} == {"account_token"}

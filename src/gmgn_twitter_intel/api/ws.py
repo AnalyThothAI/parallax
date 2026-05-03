@@ -9,7 +9,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
 from ..collector.subscriptions import normalize_handles
-from ..pipeline.entity_extractor import normalize_ca
+from ..pipeline.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
 
 
 @dataclass(eq=False)
@@ -133,7 +133,7 @@ class PublicWebSocketHub:
             return not client.handles
         for entity in payload.get("entities") or []:
             ca_key = (entity.get("chain"), entity.get("normalized_value"))
-            if entity.get("entity_type") == "ca" and ca_key in client.cas:
+            if entity.get("entity_type") == "ca" and _ca_subscription_matches(ca_key, client.cas):
                 return True
             symbol = str(entity.get("normalized_value") or "").upper()
             if entity.get("entity_type") == "symbol" and symbol in client.symbols:
@@ -190,6 +190,16 @@ def _normalize_symbols(raw: Any) -> set[str]:
         if value and not value.startswith("0X"):
             symbols.add(value)
     return symbols
+
+
+def _ca_subscription_matches(ca_key: tuple[Any, Any], subscribed: set[tuple[str, str]]) -> bool:
+    chain, address = ca_key
+    if (chain, address) in subscribed:
+        return True
+    return any(
+        subscribed_chain == "evm_unknown" and address == subscribed_address and chain in EVM_QUERY_CHAINS
+        for subscribed_chain, subscribed_address in subscribed
+    )
 
 
 def _event_handle(event: Any) -> str | None:

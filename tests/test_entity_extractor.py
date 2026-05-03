@@ -15,7 +15,7 @@ def test_extract_entities_returns_deterministic_structured_entities():
         (entity.entity_type, entity.normalized_value, entity.chain, entity.token_resolution_status)
         for entity in first
     } >= {
-        ("ca", "0x6982508145454Ce325dDbE47a25d4ec3d2311933", "eth", "resolved_ca"),
+        ("ca", "0x6982508145454Ce325dDbE47a25d4ec3d2311933", "evm_unknown", "unresolved_chain_ca"),
         ("symbol", "PEPE", None, "unresolved_symbol"),
         ("mention", "toly", None, "non_token_entity"),
         ("hashtag", "memecoin", None, "non_token_entity"),
@@ -31,7 +31,7 @@ def test_plain_words_do_not_become_entities_without_structural_markers():
 
 def test_normalize_ca_supports_evm_and_solana():
     assert normalize_ca("0x6982508145454ce325ddbe47a25d4ec3d2311933") == (
-        "eth",
+        "evm_unknown",
         "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
     )
     assert normalize_ca("So11111111111111111111111111111111111111112") == (
