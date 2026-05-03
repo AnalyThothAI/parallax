@@ -19,8 +19,8 @@ type TraderState = {
 
 export const useTraderStore = create<TraderState>((set, get) => ({
   token: "",
-  window: "5m",
-  scope: "matched",
+  window: "1h",
+  scope: "all",
   handles: "",
   search: "$PEPE",
   submittedSearch: "$PEPE",

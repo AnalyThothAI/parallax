@@ -1,19 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Activity,
   AlertTriangle,
   Brain,
   Clock3,
-  Database,
   ExternalLink,
   Flame,
-  Hash,
-  Radio,
   RefreshCw,
   Search,
-  ShieldCheck,
   UserRound,
   Wifi,
   Zap
@@ -38,7 +33,7 @@ import { useIntelSocket } from "./api/useIntelSocket";
 import { compactNumber, eventHandle, eventText, formatPercentShare, formatRelativeTime, tokenLabel } from "./lib/format";
 import { useTraderStore } from "./store/useTraderStore";
 
-const WINDOWS: WindowKey[] = ["1m", "5m", "1h", "24h"];
+const WINDOWS: WindowKey[] = ["5m", "1h", "24h"];
 const ACCOUNT_ALERT_WINDOW: WindowKey = "24h";
 
 type SelectedSignal =
@@ -48,6 +43,8 @@ type SelectedSignal =
   | { kind: "search"; item: SearchItem }
   | { kind: "query"; query: string }
   | null;
+
+type Decision = "driver" | "watch" | "discard";
 
 export function App() {
   const queryClient = useQueryClient();
@@ -65,6 +62,8 @@ export function App() {
   const submitSearch = useTraderStore((state) => state.submitSearch);
   const runSearch = useTraderStore((state) => state.runSearch);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
+  const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
@@ -98,8 +97,8 @@ export function App() {
     refetchInterval: 15_000
   });
   const tokenFlowQuery = useQuery({
-    queryKey: ["token-flow", windowKey],
-    queryFn: () => getApi<TokenFlowData>("/api/token-flow", { token, params: { window: windowKey, limit: 48 } }),
+    queryKey: ["token-flow", windowKey, scope],
+    queryFn: () => getApi<TokenFlowData>("/api/token-flow", { token, params: { window: windowKey, limit: 48, scope } }),
     enabled: Boolean(token),
     refetchInterval: 10_000
   });
@@ -152,6 +151,10 @@ export function App() {
   const alertItems = alertsQuery.data?.data.items ?? [];
   const searchItems = searchQuery.data?.data.items ?? [];
   const focus = buildEvidenceFocus(selectedSignal, searchItems, submittedSearch);
+  const selectedToken = selectedSignal?.kind === "token" ? selectedSignal.item : null;
+  const selectedTokenKey = selectedToken ? tokenDecisionKey(selectedToken) : null;
+  const selectedDecision = selectedToken ? decisionForToken(selectedToken, decisions) : null;
+  const decisionCounts = useMemo(() => countDecisions(tokenItems, decisions), [tokenItems, decisions]);
 
   useEffect(() => {
     if (!selectedSignal && tokenItems.length) {
@@ -187,16 +190,49 @@ export function App() {
     void queryClient.invalidateQueries();
   };
 
+  const setTokenDecision = (decision: Decision) => {
+    if (!selectedTokenKey) {
+      return;
+    }
+    setDecisions((current) => ({ ...current, [selectedTokenKey]: decision }));
+  };
+
+  const handleHotkey = (event: KeyboardEvent<HTMLElement>) => {
+    const target = event.target as HTMLElement;
+    const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
+    if (event.key === "/" && !isTyping) {
+      event.preventDefault();
+      searchInputRef.current?.focus();
+      return;
+    }
+    if (isTyping) {
+      return;
+    }
+    if (event.key === "1") setWindow("5m");
+    if (event.key === "2") setWindow("1h");
+    if (event.key === "3") setWindow("24h");
+    if (event.key.toLowerCase() === "d") setTokenDecision("driver");
+    if (event.key.toLowerCase() === "w") setTokenDecision("watch");
+    if (event.key.toLowerCase() === "x") setTokenDecision("discard");
+  };
+
   return (
-    <main className="cockpit-shell">
+    <main className="cockpit-shell" onKeyDown={handleHotkey} tabIndex={-1}>
       <header className="topbar">
         <div className="brand">
-          <div className="brand-mark">GI</div>
-          <div>
-            <h1>GMGN Twitter Intel</h1>
-            <p>交易员实时情报台 · signal to evidence</p>
+          <div className="brand-mark" aria-hidden />
+          <div className="brand-copy">
+            <h1>intel.cockpit</h1>
+            <p>/ws · localhost:8765</p>
           </div>
         </div>
+
+        <StatusPills
+          socketStatus={socket.status}
+          configReady={Boolean(token)}
+          status={statusQuery.data?.data}
+          lastMessageAt={socket.lastMessageAt}
+        />
 
         <form
           className="searchbar"
@@ -206,120 +242,234 @@ export function App() {
           }}
         >
           <Search aria-hidden />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索 CA / $TOKEN / @handle / 文本" />
+          <input
+            ref={searchInputRef}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="搜索 CA / $TOKEN / @handle / 文本"
+          />
           <button type="submit">检索</button>
         </form>
 
-        <div className="top-actions">
-          <button className="icon-button" type="button" onClick={handleRefresh} title="刷新">
-            <RefreshCw aria-hidden />
-          </button>
+        <div className="top-stats">
+          <span>MATCHED <b>{compactNumber(statusQuery.data?.data.collector.matched_twitter_events)}</b></span>
+          <span>flow·{windowKey} <b>{compactNumber(liveItems.length)}</b></span>
+          <span>enrich <b>{jobSummary(enrichmentJobsQuery.data?.data.counts)}</b></span>
         </div>
+
+        <button className="icon-button" type="button" onClick={handleRefresh} title="刷新" aria-label="刷新">
+          <RefreshCw aria-hidden />
+        </button>
       </header>
 
-      <section className="control-strip">
-        <div className="segmented">
-          {WINDOWS.map((item) => (
-            <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-              {item}
-            </button>
-          ))}
-        </div>
-        <div className="segmented compact">
-          <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-            watched
-          </button>
-          <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-            all
-          </button>
-        </div>
-        <div className="handle-filter">
-          <UserRound aria-hidden />
-          <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="handles: toly,elonmusk" />
-        </div>
-        <StatusPills
-          socketStatus={socket.status}
-          configReady={Boolean(token)}
-          status={statusQuery.data?.data}
-          lastMessageAt={socket.lastMessageAt}
-        />
-      </section>
+      <div className="cockpit-grid">
+        <aside className="side-rail">
+          <RailSection label="views">
+            <RailButton active label="Live" value={liveItems.length} index="1" />
+            <RailButton active label="Tokens" value={tokenItems.length} index="2" />
+            <RailButton label="Narratives" value={narrativeQuery.data?.data.items.length ?? 0} index="3" />
+            <RailButton label="Accounts" value={statusQuery.data?.data.handles.length ?? 0} index="4" />
+            <RailButton label="Jobs/Ops" value={enrichmentJobsQuery.data?.data.items.length ?? 0} index="5" />
+          </RailSection>
 
-      <section className="metrics-row">
-        <Metric icon={<Radio />} label="LIVE" value={socket.status} tone={socket.status === "connected" ? "green" : "amber"} />
-        <Metric icon={<Activity />} label="FRAMES" value={compactNumber(statusQuery.data?.data.collector.frames_received)} />
-        <Metric icon={<Zap />} label="MATCHED" value={compactNumber(statusQuery.data?.data.collector.matched_twitter_events)} />
-        <Metric icon={<Brain />} label="LLM JOBS" value={jobSummary(enrichmentJobsQuery.data?.data.counts)} />
-        <Metric icon={<Database />} label="STORE" value={shortPath(statusQuery.data?.data.store)} wide />
-      </section>
-
-      <section className="grid-main">
-        <Panel title="实时信号 Tape" icon={<Flame />} action={`${liveItems.length} 条`} subtitle="按时间倒序，看账号、实体、告警和原文证据">
-          <div className="event-list">
-            {liveItems.length ? (
-              liveItems.slice(0, 30).map((item) => (
-                <EventRow key={item.event.event_id} payload={item} selected={isSelectedEvent(selectedSignal, item)} onSelect={selectEvent} />
-              ))
-            ) : (
-              <EmptyState text={token ? "等待 replay 或 live event" : "读取运行配置中"} />
-            )}
-          </div>
-        </Panel>
-
-        <Panel title="Token Flow" icon={<Hash />} action={windowKey} subtitle="点击 token 直接检索证据链">
-          <div className="dense-table">
-            <div className="table-head token-grid">
-              <span>Token</span>
-              <span>置信</span>
-              <span>流量</span>
-              <span>市场</span>
+          <RailSection label="window">
+            <div className="window-stack">
+              {WINDOWS.map((item, index) => (
+                <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
+                  {index + 1}<span>{item}</span>
+                </button>
+              ))}
             </div>
-            {tokenItems.slice(0, 24).map((item) => (
-              <TokenRow key={`${item.identity.identity_key}:${item.social.window_start_ms ?? ""}`} item={item} selected={isSelectedToken(selectedSignal, item)} onSelect={selectToken} />
+          </RailSection>
+
+          <RailSection label="scope">
+            <div className="scope-stack">
+              <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">watched</button>
+              <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">all stream</button>
+            </div>
+            <label className="handle-filter">
+              <UserRound aria-hidden />
+              <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="toly, ansem" />
+            </label>
+          </RailSection>
+
+          <RailSection label="decisions">
+            <DecisionCount decision="driver" count={decisionCounts.driver} />
+            <DecisionCount decision="watch" count={decisionCounts.watch} />
+            <DecisionCount decision="discard" count={decisionCounts.discard} />
+          </RailSection>
+
+          <RailSection label="watchlist">
+            <div className="watchlist">
+              {(statusQuery.data?.data.handles ?? bootstrapQuery.data?.data.handles ?? []).slice(0, 10).map((handle) => (
+                <button type="button" key={handle} onClick={() => runSearch(`@${handle}`)}>
+                  <span>{handle.slice(0, 1).toUpperCase()}</span>@{handle}
+                </button>
+              ))}
+            </div>
+          </RailSection>
+
+          <div className="rail-footer">
+            <span>kbd · 1-3 windows · / search</span>
+            <span>D / W / X tag selected</span>
+          </div>
+        </aside>
+
+        <section className="radar-panel" aria-label="Token Flow">
+          <header className="radar-toolbar">
+            <div>
+              <h2>Token Flow</h2>
+              <span>TOKEN RADAR <b>{tokenItems.length}</b></span>
+            </div>
+            <div className="toolbar-controls">
+              <div className="segmented">
+                {WINDOWS.map((item) => (
+                  <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
+                    {item}
+                  </button>
+                ))}
+              </div>
+              <button className="filter-chip" type="button" onClick={() => setScope(scope === "matched" ? "all" : "matched")}>
+                {scope === "matched" ? "watched" : "all"}
+              </button>
+            </div>
+          </header>
+
+          <div className="token-radar-table">
+            <div className="radar-head">
+              <span />
+              <span>symbol</span>
+              <span>CA</span>
+              <span>dir</span>
+              <span>trend</span>
+              <span>mentions·{windowKey}</span>
+              <span>accts</span>
+              <span>EV</span>
+              <span>narrative</span>
+              <span>first seen</span>
+              <span>tag</span>
+            </div>
+            {tokenItems.slice(0, 40).map((item) => (
+              <TokenRadarRow
+                key={`${item.identity.identity_key}:${item.social.window_start_ms ?? ""}`}
+                item={item}
+                decision={decisionForToken(item, decisions)}
+                selected={isSelectedToken(selectedSignal, item)}
+                onSelect={selectToken}
+              />
             ))}
             {tokenItems.length === 0 ? <EmptyState text="暂无 token flow" /> : null}
           </div>
-        </Panel>
 
-        <Panel title="焦点证据" icon={<ShieldCheck />} action={focus.badge} subtitle="选中任意信号后，看证据、来源和风险">
-          <EvidenceFocus focus={focus} />
-        </Panel>
-
-        <Panel title="关注账号告警" icon={<AlertTriangle />} action={ACCOUNT_ALERT_WINDOW} subtitle="watched account 提到 token/CA 的事件">
-          <div className="alert-list">
-            {alertItems.slice(0, 24).map((item) => (
-              <AlertRow key={`${item.alert_type}:${item.event_id}:${item.entity_key ?? item.narrative_label ?? ""}`} item={item} selected={isSelectedAlert(selectedSignal, item)} onSelect={selectAlert} />
-            ))}
-            {alertItems.length === 0 ? <EmptyState text="24h 内暂无 watched-account token 告警" /> : null}
-          </div>
-        </Panel>
-
-        <Panel title="证据检索" icon={<Search />} action={`${searchQuery.data?.data.result_count ?? 0} hits`} subtitle="exact CA / symbol / handle / FTS">
-          <div className="search-results">
-            {searchItems.slice(0, 24).map((item) => (
-              <SearchRow key={`${item.match_type}:${item.event.event_id}`} item={item} selected={isSelectedSearch(selectedSignal, item)} onSelect={selectSearchItem} />
-            ))}
-            {searchQuery.isFetching ? <EmptyState text="检索中" /> : null}
-            {!searchQuery.isFetching && searchItems.length === 0 ? <EmptyState text="输入 CA、$TOKEN、@handle 或关键词检索" /> : null}
-          </div>
-        </Panel>
-
-        <Panel title="叙事流" icon={<Brain />} action={statusQuery.data?.data.enrichment.llm_configured ? "LLM on" : "LLM off"} subtitle="LLM 叙事必须回到 evidence">
-          <div className="narrative-list">
-            {(narrativeQuery.data?.data.items ?? []).slice(0, 16).map((item) => (
-              <div className="narrative-row" key={`${item.narrative_label}:${item.window}`}>
-                <div>
-                  <strong>{item.narrative_label}</strong>
-                  <span>{compactNumber(item.watched_mention_count)} watched / {compactNumber(item.mention_count)} total</span>
-                </div>
-                <b>{compactNumber(item.velocity ?? 0)}</b>
+          <div className="bottom-deck">
+            <CompactPanel title="实时信号 Tape" icon={<Flame />} action={`${liveItems.length} 条`}>
+              <div className="compact-list">
+                {liveItems.length ? (
+                  liveItems.slice(0, 8).map((item) => (
+                    <EventRow key={item.event.event_id} payload={item} selected={isSelectedEvent(selectedSignal, item)} onSelect={selectEvent} />
+                  ))
+                ) : (
+                  <EmptyState text={token ? "等待 replay 或 live event" : "读取运行配置中"} />
+                )}
               </div>
-            ))}
-            {narrativeQuery.data?.data.items.length === 0 ? <EmptyState text="LLM 叙事窗口暂无数据" /> : null}
+            </CompactPanel>
+
+            <CompactPanel title="关注账号告警" icon={<AlertTriangle />} action={ACCOUNT_ALERT_WINDOW}>
+              <div className="compact-list">
+                {alertItems.slice(0, 8).map((item) => (
+                  <AlertRow key={`${item.alert_type}:${item.event_id}:${item.entity_key ?? item.narrative_label ?? ""}`} item={item} selected={isSelectedAlert(selectedSignal, item)} onSelect={selectAlert} />
+                ))}
+                {alertItems.length === 0 ? <EmptyState text="24h 内暂无 watched-account token 告警" /> : null}
+              </div>
+            </CompactPanel>
+
+            <CompactPanel title="证据检索" icon={<Search />} action={`${searchQuery.data?.data.result_count ?? 0} hits`}>
+              <div className="compact-list">
+                {searchItems.slice(0, 8).map((item) => (
+                  <SearchRow key={`${item.match_type}:${item.event.event_id}`} item={item} selected={isSelectedSearch(selectedSignal, item)} onSelect={selectSearchItem} />
+                ))}
+                {searchQuery.isFetching ? <EmptyState text="检索中" /> : null}
+                {!searchQuery.isFetching && searchItems.length === 0 ? <EmptyState text="输入 CA、$TOKEN、@handle 或关键词检索" /> : null}
+              </div>
+            </CompactPanel>
           </div>
-        </Panel>
-      </section>
+        </section>
+
+        <aside className="detail-drawer">
+          <section className="detail-focus">
+            <header className="drawer-head">
+              <button type="button" aria-label="close detail">×</button>
+              <div>
+                <h2>焦点证据</h2>
+                <span>{focus.badge}</span>
+              </div>
+            </header>
+            <EvidenceFocus focus={focus} decision={selectedDecision} onDecision={setTokenDecision} />
+          </section>
+          <CompactPanel title="叙事流" icon={<Brain />} action={statusQuery.data?.data.enrichment.llm_configured ? "LLM on" : "LLM off"}>
+            <div className="narrative-list">
+              {(narrativeQuery.data?.data.items ?? []).slice(0, 8).map((item) => (
+                <div className="narrative-row" key={`${item.narrative_label}:${item.window}`}>
+                  <div>
+                    <strong>{item.narrative_label}</strong>
+                    <span>{compactNumber(item.watched_mention_count)} watched / {compactNumber(item.mention_count)} total</span>
+                  </div>
+                  <b>{compactNumber(item.velocity ?? 0)}</b>
+                </div>
+              ))}
+              {narrativeQuery.data?.data.items.length === 0 ? <EmptyState text="LLM 叙事窗口暂无数据" /> : null}
+            </div>
+          </CompactPanel>
+        </aside>
+      </div>
     </main>
+  );
+}
+
+function RailSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <section className="rail-section">
+      <h2>{label}</h2>
+      {children}
+    </section>
+  );
+}
+
+function RailButton({ active, label, value, index }: { active?: boolean; label: string; value: number; index: string }) {
+  return (
+    <button className={`rail-button ${active ? "active" : ""}`} type="button">
+      <span>{index}</span>
+      <b>{label}</b>
+      <em>{compactNumber(value)}</em>
+    </button>
+  );
+}
+
+function DecisionCount({ decision, count }: { decision: Decision; count: number }) {
+  return (
+    <span className={`decision-count ${decision}`}>
+      <DecisionTag decision={decision} />
+      <b>{compactNumber(count)}</b>
+    </span>
+  );
+}
+
+function DecisionTag({ decision }: { decision: Decision }) {
+  return <span className={`decision-tag ${decision}`}>{decision}</span>;
+}
+
+function CompactPanel({ title, icon, action, children }: { title: string; icon: ReactNode; action?: string; children: ReactNode }) {
+  return (
+    <section className="compact-panel">
+      <header>
+        <div>
+          {icon}
+          <h2>{title}</h2>
+        </div>
+        {action ? <span>{action}</span> : null}
+      </header>
+      {children}
+    </section>
   );
 }
 
@@ -345,7 +495,7 @@ function StatusPills({
         {socketStatus}
       </span>
       <span className={status?.ok ? "pill good" : "pill warn"}>
-        <Activity aria-hidden />
+        <Zap aria-hidden />
         {status?.ok ? "ready" : "not ready"}
       </span>
       <span className="pill muted">
@@ -353,58 +503,6 @@ function StatusPills({
         {lastMessageAt ? `${formatRelativeTime(lastMessageAt)} ago` : "no msg"}
       </span>
     </div>
-  );
-}
-
-function Metric({
-  icon,
-  label,
-  value,
-  tone,
-  wide
-}: {
-  icon: ReactNode;
-  label: string;
-  value: string;
-  tone?: "green" | "amber";
-  wide?: boolean;
-}) {
-  return (
-    <div className={`metric ${tone ?? ""} ${wide ? "wide" : ""}`}>
-      <span>{icon}</span>
-      <div>
-        <label>{label}</label>
-        <strong>{value || "-"}</strong>
-      </div>
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  icon,
-  action,
-  subtitle,
-  children
-}: {
-  title: string;
-  icon: ReactNode;
-  action?: string;
-  subtitle?: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="panel">
-      <header>
-        <div>
-          {icon}
-          <h2>{title}</h2>
-          {subtitle ? <p>{subtitle}</p> : null}
-        </div>
-        {action ? <span>{action}</span> : null}
-      </header>
-      {children}
-    </section>
   );
 }
 
@@ -445,34 +543,52 @@ function EventRow({
   );
 }
 
-function TokenRow({
+function TokenRadarRow({
   item,
+  decision,
   selected,
   onSelect
 }: {
   item: TokenFlowItem;
+  decision: Decision;
   selected: boolean;
   onSelect: (item: TokenFlowItem) => void;
 }) {
-  const social = item.social;
+  const delta = marketDelta(item);
+  const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
   return (
     <button
       aria-label={`select token ${tokenLabel(item)}`}
-      className={`table-row token-grid ${selected ? "is-selected" : ""}`}
+      className={`radar-row ${selected ? "is-selected" : ""}`}
       type="button"
       onClick={() => onSelect(item)}
     >
-      <strong className="token-main">
+      <span className="signal-dot" aria-hidden />
+      <strong className="token-symbol">
         {tokenLabel(item)}
-        <small>{item.identity.chain ?? "symbol"} · {item.identity.identity_status}</small>
+        <small>{item.identity.chain ?? item.identity.identity_status}</small>
       </strong>
-      <span>{compactNumber(item.confidence.score)} / {compactNumber(item.anomaly.score)}</span>
-      <span>
-        {compactNumber(social.watched_mention_count)} / {compactNumber(social.mention_count)}
-        <small>{formatPercentShare(social.market_mindshare)}</small>
-      </span>
-      <b>{marketDelta(item)}</b>
+      <span className="mono muted">{shortAddress(item.identity.address ?? item.identity.identity_key)}</span>
+      <b className={`direction ${direction}`}>{delta}</b>
+      <TrendBars item={item} />
+      <span className="mono">{compactNumber(item.social.watched_mention_count)} / {compactNumber(item.social.mention_count)}</span>
+      <span className="mono">{compactNumber(item.social.unique_author_count)}</span>
+      <span className="mono">{compactNumber(tokenScore(item))}</span>
+      <span className="narrative-cell">{tokenNarrative(item)}</span>
+      <span className="mono muted">{formatRelativeTime(item.social.window_start_ms)}</span>
+      <DecisionTag decision={decision} />
     </button>
+  );
+}
+
+function TrendBars({ item }: { item: TokenFlowItem }) {
+  const bars = trendLevels(item);
+  return (
+    <span className="trend-bars" aria-label={`trend ${bars.join(",")}`}>
+      {bars.map((level, index) => (
+        <i key={`${level}:${index}`} className={`level-${level}`} />
+      ))}
+    </span>
   );
 }
 
@@ -517,7 +633,15 @@ function SearchRow({
   );
 }
 
-function EvidenceFocus({ focus }: { focus: EvidenceFocusModel }) {
+function EvidenceFocus({
+  focus,
+  decision,
+  onDecision
+}: {
+  focus: EvidenceFocusModel;
+  decision: Decision | null;
+  onDecision: (decision: Decision) => void;
+}) {
   return (
     <div className="focus-panel">
       <div className="focus-hero">
@@ -527,6 +651,13 @@ function EvidenceFocus({ focus }: { focus: EvidenceFocusModel }) {
           <p>{focus.summary}</p>
         </div>
         <b>{focus.score}</b>
+      </div>
+      <div className="decision-controls" aria-label="token decision">
+        {(["driver", "watch", "discard"] as Decision[]).map((item) => (
+          <button key={item} className={decision === item ? "active" : ""} type="button" onClick={() => onDecision(item)} disabled={!decision}>
+            {item === "driver" ? "D" : item === "watch" ? "W" : "X"} · {item}
+          </button>
+        ))}
       </div>
       <div className="focus-kv">
         {focus.facts.map((fact) => (
@@ -836,6 +967,52 @@ function alertRisks(item: AlertRecord): string[] {
 
 function authorsFromToken(item: TokenFlowItem): string[] {
   return (item.social.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
+}
+
+function tokenDecisionKey(item: TokenFlowItem): string {
+  return item.identity.token_id ?? item.identity.address ?? item.identity.identity_key;
+}
+
+function decisionForToken(item: TokenFlowItem, decisions: Record<string, Decision>): Decision {
+  const key = tokenDecisionKey(item);
+  if (decisions[key]) {
+    return decisions[key];
+  }
+  if (item.social.watched_mention_count > 0 && item.confidence.score >= 55) {
+    return "driver";
+  }
+  if (item.confidence.score <= 10 && item.identity.identity_status.includes("unresolved")) {
+    return "discard";
+  }
+  return "watch";
+}
+
+function countDecisions(items: TokenFlowItem[], decisions: Record<string, Decision>): Record<Decision, number> {
+  return items.reduce<Record<Decision, number>>(
+    (counts, item) => {
+      counts[decisionForToken(item, decisions)] += 1;
+      return counts;
+    },
+    { driver: 0, watch: 0, discard: 0 }
+  );
+}
+
+function trendLevels(item: TokenFlowItem): number[] {
+  const velocity = Math.min(3, Math.max(0, Math.round(item.social.velocity ?? 0)));
+  const watched = item.social.watched_mention_count > 0 ? 1 : 0;
+  const anomaly = item.anomaly.score >= 60 ? 2 : item.anomaly.score >= 35 ? 1 : 0;
+  return [watched, Math.min(3, watched + 1), Math.min(3, velocity), Math.min(3, anomaly + 1)];
+}
+
+function tokenNarrative(item: TokenFlowItem): string {
+  const reason = item.anomaly.reasons[0]?.replaceAll("_", " ");
+  if (reason) {
+    return reason;
+  }
+  if (item.social.top_authors?.length) {
+    return `${item.social.top_authors[0].handle ?? "source"} rotation`;
+  }
+  return item.confidence.coverage;
 }
 
 function isSelectedToken(signal: SelectedSignal, item: TokenFlowItem): boolean {

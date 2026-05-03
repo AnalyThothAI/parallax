@@ -18,8 +18,8 @@ class TokenFlowService:
         self.signals = signals
         self.tokens = tokens
 
-    def token_flow(self, *, window: str, limit: int = 20) -> list[dict[str, Any]]:
-        rows = self.signals.token_flow(window=window, limit=limit)
+    def token_flow(self, *, window: str, limit: int = 20, scope: str = "all") -> list[dict[str, Any]]:
+        rows = self.signals.token_flow(window=window, limit=limit, watched_only=scope == "matched")
         return [self._conviction_item(row, window=window) for row in rows]
 
     def _conviction_item(self, row: dict[str, Any], *, window: str) -> dict[str, Any]:

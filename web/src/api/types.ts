@@ -4,7 +4,7 @@ export type ApiResponse<T> = {
   error?: string | null;
 };
 
-export type WindowKey = "1m" | "5m" | "1h" | "24h";
+export type WindowKey = "5m" | "1h" | "24h";
 export type ScopeKey = "matched" | "all";
 
 export type BootstrapData = {
@@ -172,6 +172,7 @@ export type TokenFlowItem = {
 
 export type TokenFlowData = {
   window: WindowKey;
+  scope?: ScopeKey;
   items: TokenFlowItem[];
 };
 

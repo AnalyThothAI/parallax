@@ -118,14 +118,17 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         request: Request,
         window: Annotated[str, Query()] = "5m",
         limit: Annotated[int, Query()] = 20,
+        scope: Annotated[str, Query()] = "all",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
+        parsed_scope = _scope(scope)
         items = TokenFlowService(signals=runtime.read_signals, tokens=runtime.read_tokens).token_flow(
             window=parsed_window,
             limit=_limit(limit),
+            scope=parsed_scope,
         )
-        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
+        return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "items": items}})
 
     @router.get("/account-alerts")
     async def account_alerts(

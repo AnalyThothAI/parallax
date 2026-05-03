@@ -209,9 +209,10 @@ class SignalRepository:
         rows.sort(key=lambda item: int(item.get("received_at_ms") or 0), reverse=True)
         return rows[: max(0, int(limit))]
 
-    def token_flow(self, *, window: str, limit: int) -> list[dict[str, Any]]:
+    def token_flow(self, *, window: str, limit: int, watched_only: bool = False) -> list[dict[str, Any]]:
+        watched_clause = "AND tw.watched_mention_count > 0" if watched_only else ""
         rows = self.conn.execute(
-            """
+            f"""
             SELECT
               tw.window_id,
               tw.identity_key,
@@ -256,6 +257,7 @@ class SignalRepository:
               ON totals.window = tw.window
              AND totals.window_start_ms = tw.window_start_ms
             WHERE tw.window = ?
+              {watched_clause}
             ORDER BY watched_mention_count DESC, velocity DESC, mention_count DESC, window_end_ms DESC
             LIMIT ?
             """,

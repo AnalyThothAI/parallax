@@ -99,6 +99,27 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
 
 
+def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        watched_event = make_event("event-watched", text="$PEPE watched")
+        public_event = make_event("event-public", handle="anon", text="$BONK public")
+        client.app.state.service.ingest.ingest_event(watched_event, is_watched=True)
+        client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
+
+        headers = {"Authorization": "Bearer secret"}
+        all_flow = client.get("/api/token-flow", params={"window": "5m", "scope": "all"}, headers=headers)
+        watched_flow = client.get("/api/token-flow", params={"window": "5m", "scope": "matched"}, headers=headers)
+
+    assert all_flow.status_code == 200
+    assert {item["identity"]["symbol"] for item in all_flow.json()["data"]["items"]} == {"PEPE", "BONK"}
+
+    assert watched_flow.status_code == 200
+    assert watched_flow.json()["data"]["scope"] == "matched"
+    assert [item["identity"]["symbol"] for item in watched_flow.json()["data"]["items"]] == ["PEPE"]
+
+
 def test_api_status_exposes_operational_state(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

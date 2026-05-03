@@ -62,8 +62,8 @@ describe("App cockpit value flow", () => {
     mockedGetBootstrap.mockReset();
     useTraderStore.setState({
       token: "",
-      window: "5m",
-      scope: "matched",
+      window: "1h",
+      scope: "all",
       handles: "",
       search: "$PEPE",
       submittedSearch: "$PEPE"
@@ -81,7 +81,7 @@ describe("App cockpit value flow", () => {
         return ok(statusData);
       }
       if (path === "/api/recent") {
-        return ok({ scope: "matched", events: [], items: [] });
+        return ok({ scope: options?.params?.scope, events: [], items: [] });
       }
       if (path === "/api/token-flow") {
         return ok({
@@ -97,7 +97,7 @@ describe("App cockpit value flow", () => {
                 symbol: "UPEG"
               },
               social: {
-                window: "5m",
+              window: "1h",
                 window_start_ms: 1_777_746_000_000,
                 window_end_ms: 1_777_746_300_000,
                 mention_count: 4,
@@ -253,6 +253,32 @@ describe("App cockpit value flow", () => {
       expect(
         mockedGetApi.mock.calls.some(
           ([path, options]) => path === "/api/account-alerts" && options?.params?.window === "24h"
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("uses all stream as the default token flow scope", async () => {
+    renderWithQuery(<App />);
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/token-flow" && options?.params?.scope === "all"
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("applies scope changes to token flow reads", async () => {
+    renderWithQuery(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "watched" }));
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/token-flow" && options?.params?.scope === "matched"
         )
       ).toBe(true);
     });

@@ -227,6 +227,38 @@ def test_token_windows_materialize_bucket_mindshare(tmp_path):
     assert by_symbol["BONK"]["watched_mindshare"] == pytest.approx(0.0)
 
 
+def test_token_flow_can_filter_to_watched_mentions(tmp_path):
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        events = [
+            (make_event("event-pepe", text="$PEPE watched", received_at_ms=base_ms), True),
+            (
+                make_event(
+                    "event-bonk",
+                    author_handle="anon",
+                    text="$BONK public",
+                    received_at_ms=base_ms + 1_000,
+                    is_watched=False,
+                ),
+                False,
+            ),
+        ]
+        for event, is_watched in events:
+            evidence.insert_event(event, is_watched=is_watched)
+            entities = extract_entities(event.content.text)
+            entity_repo.insert_event_entities(event, entities, is_watched=is_watched)
+            build_token_signals(conn, event, entities, signal_repo, is_watched=is_watched)
+
+        all_flow = signal_repo.token_flow(window="5m", limit=10)
+        watched_flow = signal_repo.token_flow(window="5m", limit=10, watched_only=True)
+    finally:
+        conn.close()
+
+    assert {item["symbol"] for item in all_flow} == {"PEPE", "BONK"}
+    assert [item["symbol"] for item in watched_flow] == ["PEPE"]
+
+
 def test_ingest_service_serializes_concurrent_sqlite_writes(tmp_path):
     from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 
