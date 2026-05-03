@@ -70,14 +70,14 @@ class TokenMarketEnricher:
             if info is None:
                 resolved_mentions.append(mention)
                 continue
-            self.tokens.upsert_openapi_token_info(
+            identity = self.tokens.upsert_openapi_token_info(
                 event_id=event_id,
                 info=info,
                 received_at_ms=received_at_ms,
                 source_channel=source_channel,
                 commit=False,
             )
-            resolved_mentions.append(_mention_from_token_info(mention, info))
+            resolved_mentions.append(_mention_from_identity(mention, identity))
             enriched += 1
         if commit:
             self.tokens.conn.commit()
@@ -118,17 +118,16 @@ def no_token_market_enricher() -> Any:
     return None
 
 
-def _mention_from_token_info(mention: Any, info: GmgnTokenInfo) -> Any:
-    token_id = f"token:{info.chain}:{info.address}"
+def _mention_from_identity(mention: Any, identity: Any) -> Any:
     try:
         return replace(
             mention,
-            identity_key=token_id,
-            token_id=token_id,
-            identity_status="resolved_ca",
-            chain=info.chain,
-            address=info.address,
-            symbol=info.symbol,
+            identity_key=identity.token_id,
+            token_id=identity.token_id,
+            identity_status=identity.identity_status,
+            chain=identity.chain,
+            address=identity.address,
+            symbol=identity.symbol,
             source="gmgn_openapi_token_info",
         )
     except TypeError:

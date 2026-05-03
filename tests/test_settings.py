@@ -46,7 +46,7 @@ def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch
         load_settings()
 
 
-def test_load_settings_rejects_unknown_legacy_environment_style_keys(tmp_path, monkeypatch):
+def test_load_settings_rejects_unknown_top_level_keys(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -71,9 +71,10 @@ def test_sqlite_path_and_llm_enrichment_can_be_explicitly_configured(tmp_path, m
             "handles": ["toly"],
             "storage": {"sqlite_path": str(configured_path)},
             "llm": {
-                "openai_api_key": "sk-test",
-                "openai_model": "gpt-test",
-                "openai_base_url": "https://example.test/v1/",
+                "provider": "openai",
+                "api_key": "sk-test",
+                "model": "gpt-test",
+                "base_url": "https://example.test/v1/",
                 "timeout_seconds": 7,
                 "enrichment_poll_interval": 0.5,
             },
@@ -84,8 +85,8 @@ def test_sqlite_path_and_llm_enrichment_can_be_explicitly_configured(tmp_path, m
 
     assert settings.sqlite_path == configured_path
     assert settings.llm_configured is True
-    assert settings.openai_model == "gpt-test"
-    assert settings.openai_base_url == "https://example.test/v1"
+    assert settings.llm_model == "gpt-test"
+    assert settings.llm_base_url == "https://example.test/v1"
     assert settings.llm_timeout_seconds == 7
     assert settings.enrichment_poll_interval == 0.5
 

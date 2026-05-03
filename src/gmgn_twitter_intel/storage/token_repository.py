@@ -7,8 +7,29 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from eth_utils import is_address, to_checksum_address
+
 from ..market.gmgn_openapi_client import GmgnTokenInfo
 from ..models import TokenSnapshot
+
+EVM_CHAINS = {
+    "eth",
+    "ethereum",
+    "base",
+    "bsc",
+    "bnb",
+    "arbitrum",
+    "optimism",
+    "polygon",
+    "avalanche",
+    "evm",
+    "evm_unknown",
+}
+CHAIN_ALIASES = {
+    "ethereum": "eth",
+    "bnb": "bsc",
+    "sol": "solana",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +55,10 @@ class TokenRepository:
         source_channel: str,
         commit: bool = True,
     ) -> TokenIdentity:
-        token_id = _token_id(snapshot.chain, snapshot.address)
+        chain = _normalize_chain(snapshot.chain)
+        address = _normalize_address(snapshot.address, chain)
+        symbol = _normalize_symbol(snapshot.symbol)
+        token_id = _token_id(chain, address)
         now_ms = _now_ms()
         self.conn.execute(
             """
@@ -51,9 +75,9 @@ class TokenRepository:
             """,
             (
                 token_id,
-                snapshot.chain,
-                snapshot.address,
-                snapshot.symbol,
+                chain,
+                address,
+                symbol,
                 snapshot.icon_url,
                 event_id,
                 received_at_ms,
@@ -61,7 +85,15 @@ class TokenRepository:
                 now_ms,
             ),
         )
-        self._upsert_alias(snapshot=snapshot, token_id=token_id, now_ms=now_ms)
+        self._upsert_alias(
+            symbol=symbol,
+            token_id=token_id,
+            chain=chain,
+            address=address,
+            source="gmgn_token_payload",
+            confidence=1.0,
+            now_ms=now_ms,
+        )
         self._upsert_market_snapshot(
             event_id=event_id,
             token_id=token_id,
@@ -75,9 +107,9 @@ class TokenRepository:
         return TokenIdentity(
             token_id=token_id,
             identity_status="resolved_ca",
-            chain=snapshot.chain,
-            address=snapshot.address,
-            symbol=snapshot.symbol,
+            chain=chain,
+            address=address,
+            symbol=symbol,
             candidate_token_ids=[token_id],
         )
 
@@ -90,7 +122,10 @@ class TokenRepository:
         source_channel: str,
         commit: bool = True,
     ) -> TokenIdentity:
-        token_id = _token_id(info.chain, info.address)
+        chain = _normalize_chain(info.chain)
+        address = _normalize_address(info.address, chain)
+        symbol = _normalize_symbol(info.symbol)
+        token_id = _token_id(chain, address)
         now_ms = _now_ms()
         self.conn.execute(
             """
@@ -108,9 +143,9 @@ class TokenRepository:
             """,
             (
                 token_id,
-                info.chain,
-                info.address,
-                info.symbol,
+                chain,
+                address,
+                symbol,
                 info.name,
                 info.icon_url,
                 event_id,
@@ -119,7 +154,15 @@ class TokenRepository:
                 now_ms,
             ),
         )
-        self._upsert_openapi_alias(info=info, token_id=token_id, now_ms=now_ms)
+        self._upsert_alias(
+            symbol=symbol,
+            token_id=token_id,
+            chain=chain,
+            address=address,
+            source="gmgn_openapi_token_info",
+            confidence=1.0,
+            now_ms=now_ms,
+        )
         self._upsert_openapi_market_snapshot(
             event_id=event_id,
             token_id=token_id,
@@ -133,9 +176,9 @@ class TokenRepository:
         return TokenIdentity(
             token_id=token_id,
             identity_status="resolved_ca",
-            chain=info.chain,
-            address=info.address,
-            symbol=info.symbol,
+            chain=chain,
+            address=address,
+            symbol=symbol,
             candidate_token_ids=[token_id],
         )
 
@@ -143,7 +186,24 @@ class TokenRepository:
         if not token_id:
             return None
         row = self.conn.execute("SELECT * FROM tokens WHERE token_id = ?", (token_id,)).fetchone()
-        return dict(row) if row else None
+        if row:
+            return _canonical_token_row(dict(row))
+        parsed = _parse_token_id(token_id)
+        if parsed is None:
+            return None
+        chain, address = parsed
+        normalized_address = _normalize_address(address, chain)
+        equivalent = self.conn.execute(
+            """
+            SELECT * FROM tokens
+            WHERE chain = ?
+              AND lower(address) = lower(?)
+            ORDER BY token_id = ? DESC, updated_at_ms DESC
+            LIMIT 1
+            """,
+            (chain, normalized_address, _token_id(chain, normalized_address)),
+        ).fetchone()
+        return _canonical_token_row(dict(equivalent)) if equivalent else None
 
     def upsert_ca(
         self,
@@ -155,9 +215,11 @@ class TokenRepository:
         received_at_ms: int,
         commit: bool = True,
     ) -> TokenIdentity:
-        normalized_symbol = _normalize_symbol(symbol or address)
-        token_id = _token_id(chain, address)
-        identity_status = "unresolved_chain_ca" if chain == "evm_unknown" else "resolved_ca"
+        normalized_chain = _normalize_chain(chain)
+        normalized_address = _normalize_address(address, normalized_chain)
+        normalized_symbol = _normalize_symbol(symbol or normalized_address)
+        token_id = _token_id(normalized_chain, normalized_address)
+        identity_status = "unresolved_chain_ca" if normalized_chain == "evm_unknown" else "resolved_ca"
         now_ms = _now_ms()
         self.conn.execute(
             """
@@ -174,28 +236,35 @@ class TokenRepository:
               identity_status = excluded.identity_status,
               updated_at_ms = excluded.updated_at_ms
             """,
-            (token_id, chain, address, normalized_symbol, identity_status, event_id, received_at_ms, now_ms, now_ms),
+            (
+                token_id,
+                normalized_chain,
+                normalized_address,
+                normalized_symbol,
+                identity_status,
+                event_id,
+                received_at_ms,
+                now_ms,
+                now_ms,
+            ),
         )
         if symbol and identity_status == "resolved_ca":
-            self.conn.execute(
-                """
-                INSERT INTO token_aliases(
-                  alias_id, symbol, token_id, chain, address, source, confidence, created_at_ms, updated_at_ms
-                )
-                VALUES (?, ?, ?, ?, ?, 'co_occurring_ca_symbol', 0.95, ?, ?)
-                ON CONFLICT(symbol, token_id) DO UPDATE SET
-                  confidence = MAX(token_aliases.confidence, excluded.confidence),
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                (_alias_id(normalized_symbol, token_id), normalized_symbol, token_id, chain, address, now_ms, now_ms),
+            self._upsert_alias(
+                symbol=normalized_symbol,
+                token_id=token_id,
+                chain=normalized_chain,
+                address=normalized_address,
+                source="co_occurring_ca_symbol",
+                confidence=0.95,
+                now_ms=now_ms,
             )
         if commit:
             self.conn.commit()
         return TokenIdentity(
             token_id=token_id,
             identity_status=identity_status,
-            chain=chain,
-            address=address,
+            chain=normalized_chain,
+            address=normalized_address,
             symbol=normalized_symbol,
             candidate_token_ids=[token_id],
         )
@@ -203,14 +272,33 @@ class TokenRepository:
     def latest_market_snapshot(self, token_id: str | None) -> dict[str, Any] | None:
         if not token_id:
             return None
+        token_ids = self._equivalent_token_ids(token_id)
+        placeholders = ",".join("?" for _ in token_ids)
         row = self.conn.execute(
-            """
+            f"""
             SELECT * FROM token_market_snapshots
-            WHERE token_id = ?
+            WHERE token_id IN ({placeholders})
             ORDER BY received_at_ms DESC
             LIMIT 1
             """,
-            (token_id,),
+            token_ids,
+        ).fetchone()
+        return dict(row) if row else None
+
+    def market_snapshot_at_or_before(self, token_id: str | None, received_at_ms: int) -> dict[str, Any] | None:
+        if not token_id:
+            return None
+        token_ids = self._equivalent_token_ids(token_id)
+        placeholders = ",".join("?" for _ in token_ids)
+        row = self.conn.execute(
+            f"""
+            SELECT * FROM token_market_snapshots
+            WHERE token_id IN ({placeholders})
+              AND received_at_ms <= ?
+            ORDER BY received_at_ms DESC
+            LIMIT 1
+            """,
+            (*token_ids, received_at_ms),
         ).fetchone()
         return dict(row) if row else None
 
@@ -223,7 +311,7 @@ class TokenRepository:
             """,
             (_normalize_symbol(symbol),),
         ).fetchall()
-        return [str(row["token_id"]) for row in rows]
+        return sorted({_canonical_token_id_from_token_id(str(row["token_id"])) for row in rows})
 
     def resolve_symbol(self, symbol: str) -> TokenIdentity:
         normalized = _normalize_symbol(symbol)
@@ -247,13 +335,23 @@ class TokenRepository:
             )
         return TokenIdentity(token_id=None, identity_status="unresolved_symbol", symbol=normalized)
 
-    def _upsert_alias(self, *, snapshot: TokenSnapshot, token_id: str, now_ms: int) -> None:
+    def _upsert_alias(
+        self,
+        *,
+        symbol: str,
+        token_id: str,
+        chain: str,
+        address: str,
+        source: str,
+        confidence: float,
+        now_ms: int,
+    ) -> None:
         self.conn.execute(
             """
             INSERT INTO token_aliases(
               alias_id, symbol, token_id, chain, address, source, confidence, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, 'gmgn_token_payload', 1.0, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(symbol, token_id) DO UPDATE SET
               chain = excluded.chain,
               address = excluded.address,
@@ -261,11 +359,13 @@ class TokenRepository:
               updated_at_ms = excluded.updated_at_ms
             """,
             (
-                _alias_id(snapshot.symbol, token_id),
-                snapshot.symbol,
+                _alias_id(symbol, token_id),
+                symbol,
                 token_id,
-                snapshot.chain,
-                snapshot.address,
+                chain,
+                address,
+                source,
+                confidence,
                 now_ms,
                 now_ms,
             ),
@@ -310,30 +410,6 @@ class TokenRepository:
             ),
         )
 
-    def _upsert_openapi_alias(self, *, info: GmgnTokenInfo, token_id: str, now_ms: int) -> None:
-        self.conn.execute(
-            """
-            INSERT INTO token_aliases(
-              alias_id, symbol, token_id, chain, address, source, confidence, created_at_ms, updated_at_ms
-            )
-            VALUES (?, ?, ?, ?, ?, 'gmgn_openapi_token_info', 1.0, ?, ?)
-            ON CONFLICT(symbol, token_id) DO UPDATE SET
-              chain = excluded.chain,
-              address = excluded.address,
-              confidence = excluded.confidence,
-              updated_at_ms = excluded.updated_at_ms
-            """,
-            (
-                _alias_id(info.symbol, token_id),
-                info.symbol,
-                token_id,
-                info.chain,
-                info.address,
-                now_ms,
-                now_ms,
-            ),
-        )
-
     def _upsert_openapi_market_snapshot(
         self,
         *,
@@ -373,14 +449,68 @@ class TokenRepository:
             ),
         )
 
+    def _equivalent_token_ids(self, token_id: str) -> list[str]:
+        parsed = _parse_token_id(token_id)
+        if parsed is None:
+            return [token_id]
+        chain, address = parsed
+        normalized_address = _normalize_address(address, chain)
+        canonical_token_id = _token_id(chain, normalized_address)
+        rows = self.conn.execute(
+            """
+            SELECT token_id FROM tokens
+            WHERE chain = ?
+              AND lower(address) = lower(?)
+            """,
+            (chain, normalized_address),
+        ).fetchall()
+        return sorted({token_id, canonical_token_id, *(str(row["token_id"]) for row in rows)})
+
 
 def _normalize_symbol(symbol: str) -> str:
     text = symbol.strip().lstrip("$")
     return text.upper() if text.isascii() else text
 
 
+def _normalize_chain(chain: str) -> str:
+    normalized = chain.strip().lower()
+    return CHAIN_ALIASES.get(normalized, normalized)
+
+
+def _normalize_address(address: str, chain: str) -> str:
+    text = address.strip()
+    if chain in EVM_CHAINS and is_address(text):
+        return to_checksum_address(text)
+    return text
+
+
 def _token_id(chain: str, address: str) -> str:
     return f"token:{chain}:{address}"
+
+
+def _canonical_token_id_from_token_id(token_id: str) -> str:
+    parsed = _parse_token_id(token_id)
+    if parsed is None:
+        return token_id
+    chain, address = parsed
+    return _token_id(chain, _normalize_address(address, chain))
+
+
+def _canonical_token_row(row: dict[str, Any]) -> dict[str, Any]:
+    chain = _normalize_chain(str(row["chain"]))
+    address = _normalize_address(str(row["address"]), chain)
+    row["chain"] = chain
+    row["address"] = address
+    row["token_id"] = _token_id(chain, address)
+    row["symbol"] = _normalize_symbol(str(row["symbol"]))
+    return row
+
+
+def _parse_token_id(token_id: str) -> tuple[str, str] | None:
+    parts = token_id.split(":", 2)
+    if len(parts) != 3 or parts[0] != "token":
+        return None
+    return (_normalize_chain(parts[1]), parts[2])
 
 
 def _alias_id(symbol: str, token_id: str) -> str:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactNumber, eventHandle, formatPercentShare, formatRelativeTime, tokenLabel } from "./format";
+import { compactNumber, eventHandle, formatPercentShare, formatRelativeTime, formatSignedPercent, formatUsdCompact, tokenLabel } from "./format";
 
 describe("format helpers", () => {
   it("compacts large numbers for dense cockpit cells", () => {
@@ -17,16 +17,23 @@ describe("format helpers", () => {
     expect(formatPercentShare(0.0123)).toBe("1.2%");
   });
 
+  it("formats market cap and signed price changes for radar cells", () => {
+    expect(formatUsdCompact(15_200)).toBe("$15K");
+    expect(formatSignedPercent(0.124)).toBe("+12%");
+    expect(formatSignedPercent(-0.084)).toBe("-8.4%");
+    expect(formatSignedPercent(null)).toBe("-");
+  });
+
   it("normalizes event handles and token labels", () => {
     expect(eventHandle({ event_id: "1", author: { handle: "@Toly" } })).toBe("toly");
     expect(
       tokenLabel({
         identity: { identity_key: "symbol:PEPE", identity_status: "unresolved_symbol", symbol: "PEPE" },
-        social: { window: "5m", mention_count: 1, watched_mention_count: 1, unique_author_count: 1, market_mindshare: 1, watched_mindshare: 1 },
-        baseline: { baseline_status: "insufficient_history", sample_count: 0 },
-        anomaly: { score: 1, reasons: [] },
-        market: { market_status: "missing", market_confirmed: false },
-        confidence: { score: 1, coverage: "public_stream", coverage_boundary: "public stream", identity_status: "unresolved_symbol", market_status: "missing", baseline_status: "insufficient_history", reasons: [] },
+        market: { market_status: "missing", price_change_status: "missing_market" },
+        flow: { window: "5m", mentions: 1, watched_mentions: 1, previous_mentions: 0, mention_delta: 1, stream_dominance: 1, baseline_status: "insufficient_history", baseline_sample_count: 0 },
+        sources: { unique_authors: 1, watched_authors: 1, top_author_share: 1, source_quality_score: 1, source_quality_reasons: [] },
+        fresh: { is_new_token: true, is_first_seen_by_watched: true },
+        signal: { decision: "discard", score: 1, reasons: [], risks: [] },
         evidence: []
       })
     ).toBe("$PEPE");

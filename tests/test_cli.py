@@ -122,7 +122,7 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     if ws_token is not None:
         payload["ws_token"] = ws_token
     if llm:
-        payload["llm"] = {"openai_api_key": "sk-test", "openai_model": "gpt-test"}
+        payload["llm"] = {"provider": "openai", "api_key": "sk-test", "model": "gpt-test"}
     path = app_home / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path
@@ -145,7 +145,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["data"]["handle_count"], 2)
         self.assertTrue(payload["data"]["api"]["ws_token_configured"])
         self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
-        self.assertEqual(payload["data"]["enrichment"]["openai_model"], "gpt-test")
+        self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
+        self.assertEqual(payload["data"]["enrichment"]["provider"], "openai")
         self.assertTrue(payload["data"]["store"]["sqlite_path"].endswith("twitter_intel.sqlite3"))
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
 
@@ -172,7 +173,8 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
-        self.assertEqual(lines[2]["data"]["items"][0]["social"]["mention_count"], 1)
+        self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
+        self.assertEqual(lines[2]["data"]["items"][0]["signal"]["decision"], "discard")
         self.assertEqual(lines[3]["data"]["items"][0]["narrative_label"], "solana_scaling")
         self.assertEqual(
             {item["alert_type"] for item in lines[4]["data"]["items"]},
@@ -208,7 +210,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual([rebuild_code, flow_code], [0, 0])
         self.assertNotIn("backfill", lines[0]["data"])
         self.assertGreater(lines[0]["data"]["rebuilt"], 0)
-        self.assertEqual(lines[1]["data"]["items"][0]["social"]["mention_count"], 1)
+        self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 1)
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

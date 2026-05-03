@@ -4,11 +4,16 @@ import hashlib
 import json
 import sqlite3
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from eth_utils import is_address, to_checksum_address
+
 from ..pipeline.entity_extractor import EVM_QUERY_CHAINS
 from .sqlite_client import transaction
+
+EVM_CHAINS = {"eth", "base", "bsc", "arbitrum", "optimism", "polygon", "avalanche", "evm", "evm_unknown"}
 
 WINDOW_MS = {
     "1m": 60_000,
@@ -210,61 +215,306 @@ class SignalRepository:
         rows.sort(key=lambda item: int(item.get("received_at_ms") or 0), reverse=True)
         return rows[: max(0, int(limit))]
 
-    def token_flow(self, *, window: str, limit: int, watched_only: bool = False) -> list[dict[str, Any]]:
-        watched_clause = "AND tw.watched_mention_count > 0" if watched_only else ""
-        rows = self.conn.execute(
+    def token_flow(
+        self,
+        *,
+        window: str,
+        limit: int,
+        watched_only: bool = False,
+        now_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        size_ms = WINDOW_MS[window]
+        reference_ms = now_ms if now_ms is not None else _now_ms()
+        window_start_ms = (reference_ms // size_ms) * size_ms
+        rows = self._token_flow_bucket(
+            window=window,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_start_ms + size_ms,
+            limit=limit,
+            watched_only=watched_only,
+        )
+        if rows or now_ms is not None:
+            return rows
+
+        latest_ms = self._latest_token_mention_ms(watched_only=watched_only)
+        if latest_ms is None:
+            return []
+        fallback_start_ms = (latest_ms // size_ms) * size_ms
+        if fallback_start_ms == window_start_ms:
+            return []
+        return self._token_flow_bucket(
+            window=window,
+            window_start_ms=fallback_start_ms,
+            window_end_ms=fallback_start_ms + size_ms,
+            limit=limit,
+            watched_only=watched_only,
+        )
+
+    def _latest_token_mention_ms(self, *, watched_only: bool) -> int | None:
+        watched_clause = "WHERE is_watched = 1" if watched_only else ""
+        row = self.conn.execute(
+            f"SELECT MAX(received_at_ms) AS latest_ms FROM event_token_mentions {watched_clause}"
+        ).fetchone()
+        return int(row["latest_ms"]) if row and row["latest_ms"] is not None else None
+
+    def _token_flow_bucket(
+        self,
+        *,
+        window: str,
+        window_start_ms: int,
+        window_end_ms: int,
+        limit: int,
+        watched_only: bool,
+    ) -> list[dict[str, Any]]:
+        mention_rows = self._token_mentions_for_bucket(
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+            watched_only=watched_only,
+        )
+        if not mention_rows:
+            return []
+        maps = self._token_identity_maps()
+        groups: dict[str, dict[str, Any]] = {}
+        author_maps: dict[str, dict[str, dict[str, Any]]] = defaultdict(dict)
+        total_mentions = 0
+        total_watched_mentions = 0
+        for raw_row in mention_rows:
+            row = dict(raw_row)
+            identity = self._canonical_token_identity(row, maps)
+            identity_key = str(identity["identity_key"])
+            group = groups.get(identity_key)
+            if group is None:
+                group = {
+                    **identity,
+                    "window_id": _id("token_window", identity_key, window, str(window_start_ms)),
+                    "window": window,
+                    "window_start_ms": window_start_ms,
+                    "window_end_ms": window_end_ms,
+                    "mention_count": 0,
+                    "watched_mention_count": 0,
+                    "unique_author_count": 0,
+                    "weighted_reach": 0.0,
+                    "market_mindshare": 0.0,
+                    "watched_mindshare": 0.0,
+                    "velocity": 0.0,
+                    "top_authors": [],
+                    "top_events": [],
+                    "first_seen_ms": None,
+                    "latest_seen_ms": None,
+                    "first_watched_seen_ms": None,
+                    "created_at_ms": window_start_ms,
+                    "updated_at_ms": window_end_ms,
+                }
+                groups[identity_key] = group
+
+            is_watched = bool(row.get("is_watched"))
+            followers = int(row.get("author_followers") or 0)
+            group["mention_count"] = int(group["mention_count"]) + 1
+            group["watched_mention_count"] = int(group["watched_mention_count"]) + (1 if is_watched else 0)
+            group["weighted_reach"] = float(group["weighted_reach"]) + followers
+            group["velocity"] = float(group["mention_count"]) / ((window_end_ms - window_start_ms) / 60_000)
+            received_at_ms = int(row["received_at_ms"])
+            group["first_seen_ms"] = (
+                received_at_ms
+                if group["first_seen_ms"] is None
+                else min(int(group["first_seen_ms"]), received_at_ms)
+            )
+            group["latest_seen_ms"] = (
+                received_at_ms
+                if group["latest_seen_ms"] is None
+                else max(int(group["latest_seen_ms"]), received_at_ms)
+            )
+            if is_watched:
+                group["first_watched_seen_ms"] = (
+                    received_at_ms
+                    if group["first_watched_seen_ms"] is None
+                    else min(int(group["first_watched_seen_ms"]), received_at_ms)
+                )
+
+            author_handle = row.get("author_handle")
+            if author_handle:
+                author_map = author_maps[identity_key]
+                author = author_map.get(
+                    str(author_handle),
+                    {
+                        "handle": str(author_handle),
+                        "count": 0,
+                        "followers": 0,
+                        "watched_count": 0,
+                        "latest_received_at_ms": 0,
+                    },
+                )
+                author["count"] = int(author["count"]) + 1
+                author["followers"] = max(int(author["followers"]), followers)
+                author["watched_count"] = int(author["watched_count"]) + (1 if is_watched else 0)
+                author["latest_received_at_ms"] = max(int(author["latest_received_at_ms"]), received_at_ms)
+                author_map[str(author_handle)] = author
+
+            group["top_events"].append(
+                {
+                    "event_id": row.get("event_id"),
+                    "author_handle": row.get("event_author_handle") or row.get("author_handle"),
+                    "text_clean": row.get("text_clean"),
+                    "canonical_url": row.get("canonical_url"),
+                    "is_watched": (
+                        row.get("event_is_watched")
+                        if row.get("event_is_watched") is not None
+                        else row.get("is_watched")
+                    ),
+                    "received_at_ms": received_at_ms,
+                }
+            )
+            total_mentions += 1
+            total_watched_mentions += 1 if is_watched else 0
+
+        for identity_key, group in groups.items():
+            authors = sorted(
+                author_maps[identity_key].values(),
+                key=lambda item: (
+                    int(item.get("count") or 0),
+                    int(item.get("followers") or 0),
+                    int(item.get("latest_received_at_ms") or 0),
+                ),
+                reverse=True,
+            )
+            group["top_authors"] = authors[:20]
+            group["unique_author_count"] = len(authors)
+            group["top_events"] = sorted(
+                group["top_events"],
+                key=lambda item: int(item.get("received_at_ms") or 0),
+                reverse=True,
+            )[:20]
+            group["market_mindshare"] = (float(group["mention_count"]) / total_mentions) if total_mentions else 0.0
+            group["watched_mindshare"] = (
+                float(group["watched_mention_count"]) / total_watched_mentions if total_watched_mentions else 0.0
+            )
+
+        rows = sorted(
+            groups.values(),
+            key=lambda item: (
+                int(item["watched_mention_count"]),
+                float(item["velocity"]),
+                int(item["mention_count"]),
+                int(item["window_end_ms"]),
+            ),
+            reverse=True,
+        )
+        return rows[: max(0, int(limit))]
+
+    def _token_mentions_for_bucket(
+        self,
+        *,
+        window_start_ms: int,
+        window_end_ms: int,
+        watched_only: bool,
+    ) -> list[sqlite3.Row]:
+        watched_clause = "AND etm.is_watched = 1" if watched_only else ""
+        return self.conn.execute(
             f"""
             SELECT
-              tw.window_id,
-              tw.identity_key,
-              tw.token_id,
-              tw.identity_status,
-              tw.chain,
-              tw.address,
-              tw.symbol,
-              tw.window,
-              tw.window_start_ms,
-              tw.window_end_ms,
-              tw.mention_count,
-              tw.watched_mention_count,
-              tw.unique_author_count,
-              tw.weighted_reach,
-              CASE
-                WHEN totals.total_mentions > 0
-                THEN CAST(tw.mention_count AS REAL) / totals.total_mentions
-                ELSE 0.0
-              END AS market_mindshare,
-              CASE
-                WHEN totals.total_watched_mentions > 0
-                THEN CAST(tw.watched_mention_count AS REAL) / totals.total_watched_mentions
-                ELSE 0.0
-              END AS watched_mindshare,
-              tw.velocity,
-              tw.top_authors_json,
-              tw.top_events_json,
-              tw.created_at_ms,
-              tw.updated_at_ms
-            FROM token_windows tw
-            JOIN (
-              SELECT
-                window,
-                window_start_ms,
-                SUM(mention_count) AS total_mentions,
-                SUM(watched_mention_count) AS total_watched_mentions
-              FROM token_windows
-              WHERE window = ?
-              GROUP BY window, window_start_ms
-            ) totals
-              ON totals.window = tw.window
-             AND totals.window_start_ms = tw.window_start_ms
-            WHERE tw.window = ?
+              etm.*,
+              e.author_handle AS event_author_handle,
+              e.text_clean,
+              e.canonical_url,
+              e.is_watched AS event_is_watched
+            FROM event_token_mentions etm
+            LEFT JOIN events e ON e.event_id = etm.event_id
+            WHERE etm.received_at_ms >= ?
+              AND etm.received_at_ms < ?
               {watched_clause}
-            ORDER BY watched_mention_count DESC, velocity DESC, mention_count DESC, window_end_ms DESC
-            LIMIT ?
+            ORDER BY etm.received_at_ms DESC, etm.event_id DESC
             """,
-            (window, window, max(0, int(limit))),
+            (window_start_ms, window_end_ms),
         ).fetchall()
-        return self._hydrate_token_flow_evidence([_decode_json_fields(dict(row)) for row in rows])
+
+    def _token_identity_maps(self) -> dict[str, Any]:
+        token_rows = [dict(row) for row in self.conn.execute("SELECT * FROM tokens").fetchall()]
+        canonical_by_token_id: dict[str, dict[str, Any]] = {}
+        token_by_canonical_id: dict[str, dict[str, Any]] = {}
+        address_candidates: dict[tuple[str, str], set[str]] = defaultdict(set)
+        address_any_candidates: dict[str, set[str]] = defaultdict(set)
+        for row in token_rows:
+            canonical = _canonical_token_row(row)
+            canonical_id = str(canonical["token_id"])
+            existing = token_by_canonical_id.get(canonical_id)
+            if (
+                existing is None
+                or row.get("token_id") == canonical_id
+                or int(row.get("updated_at_ms") or 0) > int(existing.get("updated_at_ms") or 0)
+            ):
+                token_by_canonical_id[canonical_id] = canonical
+            canonical_by_token_id[str(row["token_id"])] = canonical
+            address_key = _address_key(canonical.get("address"))
+            chain = canonical.get("chain")
+            if address_key and chain:
+                address_candidates[(str(chain), address_key)].add(canonical_id)
+                if str(chain) in EVM_CHAINS:
+                    address_any_candidates[address_key].add(canonical_id)
+
+        symbol_candidates: dict[str, set[str]] = defaultdict(set)
+        alias_rows = self.conn.execute("SELECT symbol, token_id FROM token_aliases").fetchall()
+        for row in alias_rows:
+            canonical = canonical_by_token_id.get(str(row["token_id"]))
+            canonical_id = (
+                str(canonical["token_id"])
+                if canonical
+                else _canonical_token_id_from_token_id(str(row["token_id"]))
+            )
+            symbol_candidates[_normalize_symbol(str(row["symbol"]))].add(canonical_id)
+
+        return {
+            "canonical_by_token_id": canonical_by_token_id,
+            "token_by_canonical_id": token_by_canonical_id,
+            "unique_symbol_alias": {
+                symbol: next(iter(ids))
+                for symbol, ids in symbol_candidates.items()
+                if len(ids) == 1
+            },
+            "address_candidates": address_candidates,
+            "address_any_candidates": address_any_candidates,
+        }
+
+    def _canonical_token_identity(self, row: dict[str, Any], maps: dict[str, Any]) -> dict[str, Any]:
+        token_id = row.get("token_id")
+        if token_id:
+            canonical = maps["canonical_by_token_id"].get(str(token_id))
+            if canonical:
+                return _identity_from_token(canonical)
+
+        symbol = _normalize_symbol(str(row.get("symbol") or "UNKNOWN"))
+        alias_token_id = maps["unique_symbol_alias"].get(symbol)
+        if alias_token_id:
+            token = maps["token_by_canonical_id"].get(alias_token_id)
+            return (
+                _identity_from_token(token)
+                if token
+                else _identity_from_canonical_token_id(alias_token_id, symbol=symbol)
+            )
+
+        address_key = _address_key(row.get("address"))
+        chain = row.get("chain")
+        candidates: set[str] = set()
+        if address_key and chain and str(chain) not in {"evm_unknown", "evm"}:
+            candidates = set(maps["address_candidates"].get((str(chain), address_key), set()))
+        elif address_key:
+            candidates = set(maps["address_any_candidates"].get(address_key, set()))
+        if len(candidates) == 1:
+            canonical_id = next(iter(candidates))
+            token = maps["token_by_canonical_id"].get(canonical_id)
+            return (
+                _identity_from_token(token)
+                if token
+                else _identity_from_canonical_token_id(canonical_id, symbol=symbol)
+            )
+
+        return {
+            "identity_key": str(row["identity_key"]),
+            "token_id": row.get("token_id"),
+            "identity_status": str(row["identity_status"]),
+            "chain": row.get("chain"),
+            "address": row.get("address"),
+            "symbol": symbol,
+        }
 
     def token_window_history(
         self,
@@ -284,6 +534,47 @@ class SignalRepository:
             (identity_key, window, before_start_ms, max(0, int(limit))),
         ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
+
+    def token_window_author_stats(
+        self,
+        *,
+        identity_key: str,
+        window_start_ms: int,
+        window_end_ms: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              author_handle AS handle,
+              COUNT(*) AS count,
+              MAX(COALESCE(author_followers, 0)) AS followers,
+              SUM(is_watched) AS watched_count,
+              MAX(received_at_ms) AS latest_received_at_ms
+            FROM event_token_mentions
+            WHERE identity_key = ?
+              AND received_at_ms >= ?
+              AND received_at_ms < ?
+              AND author_handle IS NOT NULL
+            GROUP BY author_handle
+            ORDER BY count DESC, followers DESC, latest_received_at_ms DESC
+            """,
+            (identity_key, window_start_ms, window_end_ms),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def token_mention_bounds(self, *, identity_key: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT
+              MIN(received_at_ms) AS first_seen_ms,
+              MAX(received_at_ms) AS latest_seen_ms,
+              MIN(CASE WHEN is_watched = 1 THEN received_at_ms END) AS first_watched_seen_ms
+            FROM event_token_mentions
+            WHERE identity_key = ?
+            """,
+            (identity_key,),
+        ).fetchone()
+        return dict(row) if row else {"first_seen_ms": None, "latest_seen_ms": None, "first_watched_seen_ms": None}
 
     def token_mentions_by_ca(
         self,
@@ -390,7 +681,7 @@ class SignalRepository:
         placeholders = ",".join("?" for _ in event_ids)
         event_rows = self.conn.execute(
             f"""
-            SELECT event_id, author_handle, received_at_ms, text_clean, canonical_url
+            SELECT event_id, author_handle, received_at_ms, text_clean, canonical_url, is_watched
             FROM events
             WHERE event_id IN ({placeholders})
             """,
@@ -644,6 +935,89 @@ def _entity_key(*, entity_type: str, chain: str | None, normalized_value: str) -
     if chain:
         return f"{entity_type}:{chain}:{normalized_value}"
     return f"{entity_type}:{normalized_value}"
+
+
+def _identity_from_token(token: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "identity_key": str(token["token_id"]),
+        "token_id": str(token["token_id"]),
+        "identity_status": str(token.get("identity_status") or "resolved_ca"),
+        "chain": token.get("chain"),
+        "address": token.get("address"),
+        "symbol": token.get("symbol"),
+    }
+
+
+def _identity_from_canonical_token_id(token_id: str, *, symbol: str) -> dict[str, Any]:
+    parts = token_id.split(":", 2)
+    if len(parts) != 3:
+        return {
+            "identity_key": token_id,
+            "token_id": token_id,
+            "identity_status": "resolved_alias",
+            "chain": None,
+            "address": None,
+            "symbol": symbol,
+        }
+    return {
+        "identity_key": token_id,
+        "token_id": token_id,
+        "identity_status": "resolved_alias",
+        "chain": parts[1],
+        "address": parts[2],
+        "symbol": symbol,
+    }
+
+
+def _canonical_token_row(row: dict[str, Any]) -> dict[str, Any]:
+    chain = _normalize_chain(str(row["chain"]))
+    address = _normalize_address(str(row["address"]), chain)
+    row["chain"] = chain
+    row["address"] = address
+    row["token_id"] = _token_id(chain, address)
+    row["symbol"] = _normalize_symbol(str(row["symbol"]))
+    return row
+
+
+def _canonical_token_id_from_token_id(token_id: str) -> str:
+    parts = token_id.split(":", 2)
+    if len(parts) != 3 or parts[0] != "token":
+        return token_id
+    chain = _normalize_chain(parts[1])
+    return _token_id(chain, _normalize_address(parts[2], chain))
+
+
+def _normalize_symbol(symbol: str) -> str:
+    text = symbol.strip().lstrip("$")
+    return text.upper() if text.isascii() else text
+
+
+def _normalize_chain(chain: str) -> str:
+    normalized = chain.strip().lower()
+    if normalized == "ethereum":
+        return "eth"
+    if normalized == "bnb":
+        return "bsc"
+    if normalized == "sol":
+        return "solana"
+    return normalized
+
+
+def _normalize_address(address: str, chain: str) -> str:
+    text = address.strip()
+    if chain in EVM_CHAINS and is_address(text):
+        return to_checksum_address(text)
+    return text
+
+
+def _address_key(address: Any) -> str | None:
+    if not address:
+        return None
+    return str(address).strip().lower()
+
+
+def _token_id(chain: str, address: str) -> str:
+    return f"token:{chain}:{address}"
 
 
 def _now_ms() -> int:

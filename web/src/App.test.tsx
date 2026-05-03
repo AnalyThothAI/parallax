@@ -96,61 +96,75 @@ describe("App cockpit value flow", () => {
                 address: null,
                 symbol: "UPEG"
               },
-              social: {
-              window: "1h",
-                window_start_ms: 1_777_746_000_000,
-                window_end_ms: 1_777_746_300_000,
-                mention_count: 4,
-                watched_mention_count: 1,
-                unique_author_count: 2,
-                market_mindshare: 0.25,
-                watched_mindshare: 1,
-                velocity: 0.8,
-                top_authors: [
-                  { handle: "traderpow", count: 1, followers: 168_905 },
-                  { handle: "alien19710628", count: 3, followers: 220 }
-                ]
-              },
-              baseline: {
-                baseline_status: "insufficient_history",
-                sample_count: 0,
-                baseline_mean: null,
-                baseline_stddev: null,
-                delta_pct: null,
-                z_score: null,
-                percentile: null,
-                acceleration: null
-              },
-              anomaly: {
-                score: 58,
-                reasons: ["watched_first_mention", "market_data_missing", "symbol_unresolved"]
-              },
               market: {
                 market_status: "missing",
-                market_confirmed: false,
                 price: null,
-                previous_price: null,
-                price_change_pct: null,
                 market_cap: null,
                 snapshot_age_ms: null,
-                snapshot_received_at_ms: null
+                snapshot_received_at_ms: null,
+                price_change_window_pct: null,
+                price_at_window_start: null,
+                price_at_window_end: null,
+                price_change_status: "missing_market"
               },
-              confidence: {
-                score: 25,
-                coverage: "public_stream",
-                coverage_boundary: "GMGN anonymous public stream; not a full X firehose",
-                identity_status: "unresolved_symbol",
-                market_status: "missing",
+              flow: {
+                window: "1h",
+                window_start_ms: 1_777_746_000_000,
+                window_end_ms: 1_777_746_300_000,
+                mentions: 4,
+                watched_mentions: 1,
+                previous_mentions: 1,
+                mention_delta: 3,
+                mention_delta_pct: 3,
+                z_score: null,
+                stream_dominance: 0.25,
                 baseline_status: "insufficient_history",
-                reasons: ["coverage public_stream", "watched evidence", "multi-author evidence", "insufficient baseline", "unresolved_symbol"]
+                baseline_sample_count: 0
+              },
+              sources: {
+                unique_authors: 2,
+                watched_authors: 1,
+                weighted_reach: 169_125,
+                top_author_share: 0.75,
+                top_authors: [
+                  { handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 },
+                  { handle: "alien19710628", count: 3, followers: 220, watched_count: 0 }
+                ],
+                source_quality_score: 25,
+                source_quality_reasons: ["watched_evidence", "multi_author", "unresolved_symbol"]
+              },
+              fresh: {
+                latest_evidence_age_ms: 290_000,
+                first_seen_age_ms: 300_000,
+                market_snapshot_age_ms: null,
+                is_new_token: true,
+                is_first_seen_by_watched: true
+              },
+              signal: {
+                decision: "discard",
+                score: 25,
+                reasons: ["coverage_public_stream", "watched_evidence", "multi_author_flow"],
+                risks: ["unresolved_symbol", "market_missing"],
+                evidence_id: "event-upeg-1"
+              },
+              evidence_best: {
+                event_id: "event-upeg-1",
+                score: 35,
+                handle: "traderpow",
+                received_at_ms: 1_777_746_010_000,
+                text: "$UPEG watched account evidence",
+                url: "https://x.com/traderpow/status/1",
+                reasons: ["watched_source"]
               },
               evidence: [
                 {
                   event_id: "event-upeg-1",
-                  author_handle: "traderpow",
+                  score: 35,
+                  handle: "traderpow",
                   received_at_ms: 1_777_746_010_000,
-                  text_clean: "$UPEG watched account evidence",
-                  canonical_url: "https://x.com/traderpow/status/1"
+                  text: "$UPEG watched account evidence",
+                  url: "https://x.com/traderpow/status/1",
+                  reasons: ["watched_source"]
                 }
               ]
             }
@@ -240,10 +254,20 @@ describe("App cockpit value flow", () => {
   });
 
   it("renders current collector matched count from the backend contract", async () => {
-    renderWithQuery(<App />);
+    const { container } = renderWithQuery(<App />);
 
     expect(await screen.findByText("MATCHED")).toBeInTheDocument();
     expect(await screen.findByText("7")).toBeInTheDocument();
+    expect(await screen.findByText("MCap")).toBeInTheDocument();
+    expect(await screen.findByText("Δ")).toBeInTheDocument();
+    expect(await screen.findByText("Sources")).toBeInTheDocument();
+    expect(await screen.findByText("Signal")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    expect(container.querySelector(".direction.flat")?.textContent).toBe("-");
+    expect(container.querySelector(".source-cell b")?.textContent).toBe("2 src");
+    expect(container.querySelector(".source-cell small")?.textContent).toBe("1 watch / qual 25");
+    expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
+    expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
   });
 
   it("keeps watched-account alerts on the 24h decision window", async () => {
@@ -293,7 +317,7 @@ describe("App cockpit value flow", () => {
 
     expect(await screen.findByDisplayValue("$UPEG")).toBeInTheDocument();
     expect(await screen.findByText("焦点证据")).toBeInTheDocument();
-    expect(await screen.findByText("25% market mindshare, 1 watched / 4 total mentions across 2 accounts.")).toBeInTheDocument();
+    expect(await screen.findByText("4 mentions (+3), 1/2 watched sources, market missing.")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     });
@@ -305,7 +329,7 @@ describe("App cockpit value flow", () => {
 
     const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
     fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "select token $UPEG" }));
-    expect(await screen.findByText("25% market mindshare, 1 watched / 4 total mentions across 2 accounts.")).toBeInTheDocument();
+    expect(await screen.findByText("4 mentions (+3), 1/2 watched sources, market missing.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本"), { target: { value: "@traderpow" } });
     fireEvent.click(screen.getByRole("button", { name: "检索" }));

@@ -65,7 +65,7 @@ def test_compose_bind_mounts_local_runtime_home_without_env_config_sources():
     assert ("RAYON" + "_") not in compose
 
 
-def test_legacy_root_runtime_files_are_removed():
+def test_removed_root_runtime_files_stay_absent():
     assert not (ROOT / "gmgn_twitter_monitor.py").exists()
     assert not (ROOT / "gmgn-twitter-monitor.service").exists()
     assert not (ROOT / "requirements.txt").exists()

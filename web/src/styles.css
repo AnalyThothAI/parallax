@@ -572,10 +572,10 @@ svg {
 .radar-head,
 .radar-row {
   display: grid;
-  grid-template-columns: 18px minmax(96px, 1fr) 118px 64px 72px 92px 54px 48px minmax(136px, 1fr) 72px 88px;
-  min-width: 1010px;
+  grid-template-columns: 16px minmax(108px, 132px) 82px 64px 64px 118px 78px 78px;
+  min-width: 730px;
   align-items: center;
-  column-gap: 10px;
+  column-gap: 9px;
 }
 
 .radar-head {
@@ -589,7 +589,7 @@ svg {
   padding: 0 14px;
 }
 
-.radar-head span:nth-child(6) {
+.radar-head span:nth-child(5) {
   color: var(--accent);
 }
 
@@ -622,7 +622,9 @@ svg {
 }
 
 .token-symbol {
-  display: block;
+  display: grid;
+  gap: 2px;
+  align-content: center;
   overflow: hidden;
   min-width: 0;
   color: var(--accent);
@@ -634,13 +636,22 @@ svg {
   white-space: nowrap;
 }
 
-.token-symbol small {
+.token-symbol > span {
   overflow: hidden;
-  margin-top: 2px;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-symbol small {
+  display: block;
+  overflow: hidden;
   color: var(--faint);
   font-size: 9px;
   font-weight: 500;
+  line-height: 1;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -701,6 +712,9 @@ svg {
 }
 
 .narrative-cell,
+.flow-cell,
+.source-cell,
+.fresh-cell,
 .mono {
   overflow: hidden;
   min-width: 0;
@@ -714,6 +728,31 @@ svg {
 
 .narrative-cell {
   color: var(--muted);
+}
+
+.flow-cell,
+.source-cell,
+.fresh-cell {
+  display: grid;
+  gap: 1px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.flow-cell b,
+.source-cell b,
+.fresh-cell b {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.flow-cell small,
+.source-cell small,
+.fresh-cell small {
+  overflow: hidden;
+  color: var(--faint);
+  text-overflow: ellipsis;
 }
 
 .bottom-deck {

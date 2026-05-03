@@ -33,13 +33,22 @@ class StorageConfig(BaseModel):
 class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    openai_api_key: str | None = None
-    openai_model: str | None = None
-    openai_base_url: str = "https://api.openai.com/v1"
+    provider: str = "openai"
+    api_key: str | None = None
+    model: str | None = None
+    base_url: str = "https://api.openai.com/v1"
     timeout_seconds: float = 20.0
     enrichment_poll_interval: float = 2.0
 
-    @field_validator("openai_api_key", "openai_model", mode="before")
+    @field_validator("provider", mode="before")
+    @classmethod
+    def parse_provider(cls, value: Any) -> str:
+        normalized = str(value or "openai").strip().lower()
+        if normalized != "openai":
+            raise ValueError("llm.provider must be 'openai'")
+        return normalized
+
+    @field_validator("api_key", "model", mode="before")
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
@@ -47,9 +56,9 @@ class LlmConfig(BaseModel):
         normalized = str(value).strip()
         return normalized or None
 
-    @field_validator("openai_base_url", mode="before")
+    @field_validator("base_url", mode="before")
     @classmethod
-    def parse_openai_base_url(cls, value: Any) -> str:
+    def parse_base_url(cls, value: Any) -> str:
         normalized = str(value or "https://api.openai.com/v1").strip().rstrip("/")
         return normalized or "https://api.openai.com/v1"
 
@@ -170,16 +179,20 @@ class Settings(BaseModel):
         return self.api.replay_limit
 
     @property
-    def openai_api_key(self) -> str | None:
-        return self.llm.openai_api_key
+    def llm_api_key(self) -> str | None:
+        return self.llm.api_key
 
     @property
-    def openai_model(self) -> str | None:
-        return self.llm.openai_model
+    def llm_model(self) -> str | None:
+        return self.llm.model
 
     @property
-    def openai_base_url(self) -> str:
-        return self.llm.openai_base_url
+    def llm_base_url(self) -> str:
+        return self.llm.base_url
+
+    @property
+    def llm_provider(self) -> str:
+        return self.llm.provider
 
     @property
     def llm_timeout_seconds(self) -> float:
@@ -191,7 +204,7 @@ class Settings(BaseModel):
 
     @property
     def llm_configured(self) -> bool:
-        return bool(self.openai_api_key and self.openai_model)
+        return bool(self.llm_api_key and self.llm_model)
 
     @property
     def gmgn_api_key(self) -> str | None:
@@ -326,9 +339,10 @@ storage:
   sqlite_path: "twitter_intel.sqlite3"
 
 llm:
-  openai_api_key:
-  openai_model:
-  openai_base_url: "https://api.openai.com/v1"
+  provider: "openai"
+  api_key:
+  model:
+  base_url: "https://api.openai.com/v1"
   timeout_seconds: 20
   enrichment_poll_interval: 2
 

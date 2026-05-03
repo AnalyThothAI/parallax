@@ -92,8 +92,9 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert token_flow.status_code == 200
     token_item = token_flow.json()["data"]["items"][0]
     assert token_item["identity"]["identity_key"].startswith("token:evm_unknown:")
-    assert token_item["social"]["mention_count"] == 1
-    assert token_item["confidence"]["coverage"] == "public_stream"
+    assert token_item["flow"]["mentions"] == 1
+    assert token_item["signal"]["decision"] == "discard"
+    assert "unresolved_chain_ca" in token_item["signal"]["risks"]
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"

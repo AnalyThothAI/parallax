@@ -213,9 +213,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     )
     if settings.llm_configured:
         client = OpenAIChatEnrichmentClient(
-            api_key=settings.openai_api_key or "",
-            model=settings.openai_model or "",
-            base_url=settings.openai_base_url,
+            api_key=settings.llm_api_key or "",
+            model=settings.llm_model or "",
+            base_url=settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
         )
         runtime.enrichment_worker = EnrichmentWorker(

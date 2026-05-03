@@ -30,7 +30,7 @@ import type {
   WindowKey
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
-import { compactNumber, eventHandle, eventText, formatPercentShare, formatRelativeTime, tokenLabel } from "./lib/format";
+import { compactNumber, eventHandle, eventText, formatPercentShare, formatRelativeTime, formatSignedPercent, formatUsdCompact, tokenLabel } from "./lib/format";
 import { useTraderStore } from "./store/useTraderStore";
 
 const WINDOWS: WindowKey[] = ["5m", "1h", "24h"];
@@ -338,20 +338,17 @@ export function App() {
           <div className="token-radar-table">
             <div className="radar-head">
               <span />
-              <span>symbol</span>
-              <span>CA</span>
-              <span>dir</span>
-              <span>trend</span>
-              <span>mentions·{windowKey}</span>
-              <span>accts</span>
-              <span>EV</span>
-              <span>narrative</span>
-              <span>first seen</span>
-              <span>tag</span>
+              <span>Token</span>
+              <span>MCap</span>
+              <span>Δ</span>
+              <span>Flow</span>
+              <span>Sources</span>
+              <span>Fresh</span>
+              <span>Signal</span>
             </div>
             {tokenItems.slice(0, 40).map((item) => (
               <TokenRadarRow
-                key={`${item.identity.identity_key}:${item.social.window_start_ms ?? ""}`}
+                key={`${item.identity.identity_key}:${item.flow.window_start_ms ?? ""}`}
                 item={item}
                 decision={decisionForToken(item, decisions)}
                 selected={isSelectedToken(selectedSignal, item)}
@@ -555,7 +552,7 @@ function TokenRadarRow({
   onSelect: (item: TokenFlowItem) => void;
 }) {
   const delta = marketDelta(item);
-  const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
+  const direction = delta === "-" ? "flat" : delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
   return (
     <button
       aria-label={`select token ${tokenLabel(item)}`}
@@ -565,30 +562,25 @@ function TokenRadarRow({
     >
       <span className="signal-dot" aria-hidden />
       <strong className="token-symbol">
-        {tokenLabel(item)}
-        <small>{item.identity.chain ?? item.identity.identity_status}</small>
+        <span>{tokenLabel(item)}</span>
+        <small>{tokenIdentityMeta(item)}</small>
       </strong>
-      <span className="mono muted">{shortAddress(item.identity.address ?? item.identity.identity_key)}</span>
+      <span className={`mono ${item.market.market_cap ? "" : "muted"}`}>{formatUsdCompact(item.market.market_cap)}</span>
       <b className={`direction ${direction}`}>{delta}</b>
-      <TrendBars item={item} />
-      <span className="mono">{compactNumber(item.social.watched_mention_count)} / {compactNumber(item.social.mention_count)}</span>
-      <span className="mono">{compactNumber(item.social.unique_author_count)}</span>
-      <span className="mono">{compactNumber(tokenScore(item))}</span>
-      <span className="narrative-cell">{tokenNarrative(item)}</span>
-      <span className="mono muted">{formatRelativeTime(item.social.window_start_ms)}</span>
+      <span className="flow-cell">
+        <b>{compactNumber(item.flow.mentions)}</b>
+        <small>{flowDeltaLabel(item)}</small>
+      </span>
+      <span className="source-cell">
+        <b>{sourceCountLabel(item)}</b>
+        <small>{sourceQualityLabel(item)}</small>
+      </span>
+      <span className="fresh-cell">
+        <b>{formatDuration(item.fresh.latest_evidence_age_ms)}</b>
+        <small>{item.market.market_status}</small>
+      </span>
       <DecisionTag decision={decision} />
     </button>
-  );
-}
-
-function TrendBars({ item }: { item: TokenFlowItem }) {
-  const bars = trendLevels(item);
-  return (
-    <span className="trend-bars" aria-label={`trend ${bars.join(",")}`}>
-      {bars.map((level, index) => (
-        <i key={`${level}:${index}`} className={`level-${level}`} />
-      ))}
-    </span>
   );
 }
 
@@ -675,6 +667,7 @@ function EvidenceFocus({
               <div>
                 <strong>@{item.handle}</strong>
                 <span>{item.match}</span>
+                {item.score !== undefined ? <span>{compactNumber(item.score)}</span> : null}
                 <time>{formatRelativeTime(item.receivedAt)}</time>
                 {item.url ? (
                   <a href={item.url} target="_blank" rel="noreferrer" aria-label="打开原文">
@@ -724,7 +717,7 @@ type EvidenceFocusModel = {
   score: string;
   badge: string;
   facts: Array<{ label: string; value: string }>;
-  evidence: Array<{ id: string; handle: string; match: string; receivedAt?: number | null; text: string; url?: string | null }>;
+  evidence: Array<{ id: string; handle: string; match: string; receivedAt?: number | null; text: string; url?: string | null; score?: number }>;
   authors: string[];
   risks: string[];
 };
@@ -732,24 +725,25 @@ type EvidenceFocusModel = {
 function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], submittedSearch: string): EvidenceFocusModel {
   if (signal?.kind === "token") {
     const item = signal.item;
-    const social = item.social;
-    const baselineSignal = item.baseline.z_score === null || item.baseline.z_score === undefined ? item.baseline.baseline_status : `z ${compactNumber(item.baseline.z_score)}`;
-    const marketSignal = item.market.market_status === "missing" ? "missing" : `${item.market.market_status} ${marketDelta(item)}`;
+    const baselineSignal = item.flow.z_score === null || item.flow.z_score === undefined ? item.flow.baseline_status : `z ${compactNumber(item.flow.z_score)}`;
+    const marketSignal = item.market.market_status === "missing" ? "missing" : `${formatUsdCompact(item.market.market_cap)} ${marketDelta(item)}`;
     return {
       kicker: "token flow",
       title: tokenLabel(item),
-      summary: `${formatPercentShare(social.market_mindshare)} market mindshare, ${compactNumber(social.watched_mention_count)} watched / ${compactNumber(social.mention_count)} total mentions across ${compactNumber(social.unique_author_count)} accounts.`,
+      summary: `${compactNumber(item.flow.mentions)} mentions (${flowDeltaLabel(item)}), ${compactNumber(item.sources.watched_authors)}/${compactNumber(item.sources.unique_authors)} watched sources, market ${item.market.market_status}.`,
       score: String(tokenScore(item)),
-      badge: social.window,
+      badge: item.flow.window,
       facts: [
         { label: "identity", value: item.identity.identity_status },
         { label: "address", value: shortAddress(item.identity.address ?? item.identity.identity_key) },
-        { label: "confidence", value: compactNumber(item.confidence.score) },
-        { label: "anomaly", value: compactNumber(item.anomaly.score) },
+        { label: "mcap", value: formatUsdCompact(item.market.market_cap) },
+        { label: "delta", value: marketDelta(item) },
+        { label: "signal", value: item.signal.decision },
+        { label: "source q", value: compactNumber(item.sources.source_quality_score) },
         { label: "baseline", value: baselineSignal },
         { label: "market", value: marketSignal },
-        { label: "watched share", value: formatPercentShare(social.watched_mindshare) },
-        { label: "velocity", value: compactNumber(social.velocity ?? 0) }
+        { label: "stream share", value: formatPercentShare(item.flow.stream_dominance) },
+        { label: "fresh", value: formatDuration(item.fresh.latest_evidence_age_ms) }
       ],
       evidence: evidenceFromToken(item, searchItems),
       authors: authorsFromToken(item),
@@ -859,11 +853,12 @@ function evidenceFromToken(item: TokenFlowItem, searchItems: SearchItem[]) {
     .slice(0, 8)
     .map((event) => ({
       id: event.event_id ?? "-",
-      handle: event.author_handle ?? "unknown",
-      match: "token_window",
+      handle: event.handle ?? "unknown",
+      match: evidenceReasonLabel(event.reasons),
       receivedAt: event.received_at_ms,
-      text: event.text_clean ?? "",
-      url: event.canonical_url
+      text: event.text ?? "",
+      url: event.url,
+      score: event.score
     }))
     .filter((event) => event.text || event.id !== "-");
   return direct.length ? direct : evidenceFromSearch(searchItems);
@@ -924,26 +919,11 @@ function alertReason(item: AlertRecord): string {
 }
 
 function tokenScore(item: TokenFlowItem): number {
-  return item.confidence.score;
+  return item.signal.score;
 }
 
 function tokenRisks(item: TokenFlowItem): string[] {
-  const risks = [item.confidence.coverage_boundary || "coverage public_stream"];
-  if (item.identity.identity_status === "unresolved_symbol" || item.identity.identity_status === "ambiguous_symbol") {
-    risks.push(item.identity.identity_status);
-  }
-  if (!item.social.watched_mention_count) {
-    risks.push("no watched-account confirmation");
-  }
-  if (item.market.market_status !== "fresh") {
-    risks.push(`market ${item.market.market_status}`);
-  }
-  for (const reason of item.anomaly.reasons) {
-    if (!risks.includes(reason)) {
-      risks.push(reason);
-    }
-  }
-  return risks;
+  return item.signal.risks.length ? item.signal.risks : ["coverage_public_stream"];
 }
 
 function searchRisks(query: string, items: SearchItem[]): string[] {
@@ -966,7 +946,7 @@ function alertRisks(item: AlertRecord): string[] {
 }
 
 function authorsFromToken(item: TokenFlowItem): string[] {
-  return (item.social.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
+  return (item.sources.top_authors ?? []).slice(0, 6).map((author) => `${author.handle ?? "unknown"} x${author.count ?? 1}`);
 }
 
 function tokenDecisionKey(item: TokenFlowItem): string {
@@ -978,13 +958,7 @@ function decisionForToken(item: TokenFlowItem, decisions: Record<string, Decisio
   if (decisions[key]) {
     return decisions[key];
   }
-  if (item.social.watched_mention_count > 0 && item.confidence.score >= 55) {
-    return "driver";
-  }
-  if (item.confidence.score <= 10 && item.identity.identity_status.includes("unresolved")) {
-    return "discard";
-  }
-  return "watch";
+  return item.signal.decision;
 }
 
 function countDecisions(items: TokenFlowItem[], decisions: Record<string, Decision>): Record<Decision, number> {
@@ -997,26 +971,8 @@ function countDecisions(items: TokenFlowItem[], decisions: Record<string, Decisi
   );
 }
 
-function trendLevels(item: TokenFlowItem): number[] {
-  const velocity = Math.min(3, Math.max(0, Math.round(item.social.velocity ?? 0)));
-  const watched = item.social.watched_mention_count > 0 ? 1 : 0;
-  const anomaly = item.anomaly.score >= 60 ? 2 : item.anomaly.score >= 35 ? 1 : 0;
-  return [watched, Math.min(3, watched + 1), Math.min(3, velocity), Math.min(3, anomaly + 1)];
-}
-
-function tokenNarrative(item: TokenFlowItem): string {
-  const reason = item.anomaly.reasons[0]?.replaceAll("_", " ");
-  if (reason) {
-    return reason;
-  }
-  if (item.social.top_authors?.length) {
-    return `${item.social.top_authors[0].handle ?? "source"} rotation`;
-  }
-  return item.confidence.coverage;
-}
-
 function isSelectedToken(signal: SelectedSignal, item: TokenFlowItem): boolean {
-  return signal?.kind === "token" && signal.item.identity.identity_key === item.identity.identity_key && signal.item.social.window_start_ms === item.social.window_start_ms;
+  return signal?.kind === "token" && signal.item.identity.identity_key === item.identity.identity_key && signal.item.flow.window_start_ms === item.flow.window_start_ms;
 }
 
 function isSelectedAlert(signal: SelectedSignal, item: AlertRecord): boolean {
@@ -1057,14 +1013,43 @@ function shortAddress(value?: string | null): string {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
-function marketDelta(item: TokenFlowItem): string {
-  const change = item.market.price_change_pct;
-  if (change === null || change === undefined || Number.isNaN(change)) {
-    return item.market.market_status;
+function tokenIdentityMeta(item: TokenFlowItem): string {
+  const chain = item.identity.chain ?? "unknown";
+  return item.identity.identity_status === "resolved_ca" ? chain : `${chain} · ${item.identity.identity_status}`;
+}
+
+function flowDeltaLabel(item: TokenFlowItem): string {
+  const delta = item.flow.mention_delta;
+  if (delta > 0) {
+    return `+${compactNumber(delta)}`;
   }
-  const percent = Math.abs(change) * 100;
-  const formatted = percent >= 10 ? `${Math.round(percent)}%` : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
-  return `${change > 0 ? "+" : "-"}${formatted}`;
+  if (delta < 0) {
+    return `-${compactNumber(Math.abs(delta))}`;
+  }
+  return "flat";
+}
+
+function sourceQualityLabel(item: TokenFlowItem): string {
+  return `${compactNumber(item.sources.watched_authors)} watch / qual ${compactNumber(item.sources.source_quality_score)}`;
+}
+
+function sourceCountLabel(item: TokenFlowItem): string {
+  return `${compactNumber(item.sources.unique_authors)} src`;
+}
+
+function formatDuration(value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  return formatRelativeTime(Date.now() - value);
+}
+
+function evidenceReasonLabel(reasons: string[] | undefined): string {
+  return reasons?.[0]?.replaceAll("_", " ") ?? "token evidence";
+}
+
+function marketDelta(item: TokenFlowItem): string {
+  return formatSignedPercent(item.market.price_change_window_pct);
 }
 
 function shortId(value?: string): string {

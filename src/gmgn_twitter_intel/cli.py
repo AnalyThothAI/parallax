@@ -152,8 +152,9 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     },
                     "enrichment": {
                         "llm_configured": settings.llm_configured,
-                        "openai_model": settings.openai_model,
-                        "openai_base_url": settings.openai_base_url,
+                        "provider": settings.llm_provider,
+                        "model": settings.llm_model,
+                        "base_url": settings.llm_base_url,
                         "poll_interval": settings.enrichment_poll_interval,
                     },
                 },

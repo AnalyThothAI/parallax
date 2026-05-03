@@ -39,7 +39,7 @@ make config
 ~/.gmgn-twitter-intel/logs/
 ```
 
-编辑 `config.yaml` 中的 `handles`，如需启用 watched-account LLM enrichment，再配置 `llm.openai_api_key` 与 `llm.openai_model`。`ws_token` 是本服务的 Web/API 访问令牌；内置 cockpit 会从后端启动配置自动读取，不需要在页面里单独填写。
+编辑 `config.yaml` 中的 `handles`，如需启用 watched-account LLM enrichment，再配置 `llm.api_key` 与 `llm.model`。`ws_token` 是本服务的 Web/API 访问令牌；内置 cockpit 会从后端启动配置自动读取，不需要在页面里单独填写。
 
 本地前台运行：
 
@@ -113,9 +113,10 @@ api:
 storage:
   sqlite_path: "twitter_intel.sqlite3"
 llm:
-  openai_api_key:
-  openai_model:
-  openai_base_url: "https://api.openai.com/v1"
+  provider: "openai"
+  api_key:
+  model:
+  base_url: "https://api.openai.com/v1"
   timeout_seconds: 20
   enrichment_poll_interval: 2
 ```

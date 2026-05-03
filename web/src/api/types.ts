@@ -115,59 +115,66 @@ export type TokenFlowItem = {
     address?: string | null;
     symbol?: string | null;
   };
-  social: {
-    window: WindowKey;
-    window_start_ms?: number | null;
-    window_end_ms?: number | null;
-    mention_count: number;
-    watched_mention_count: number;
-    unique_author_count: number;
-    weighted_reach?: number | null;
-    market_mindshare: number;
-    watched_mindshare: number;
-    velocity?: number | null;
-    top_authors?: Array<{ handle?: string; count?: number; followers?: number | null }>;
-  };
-  baseline: {
-    baseline_status: "ready" | "insufficient_history" | string;
-    sample_count: number;
-    baseline_mean?: number | null;
-    baseline_stddev?: number | null;
-    delta_pct?: number | null;
-    z_score?: number | null;
-    percentile?: number | null;
-    acceleration?: number | null;
-  };
-  anomaly: {
-    score: number;
-    reasons: string[];
-  };
   market: {
     market_status: "fresh" | "stale" | "missing" | string;
-    market_confirmed: boolean;
     price?: number | null;
-    previous_price?: number | null;
-    price_change_pct?: number | null;
     market_cap?: number | null;
     snapshot_age_ms?: number | null;
     snapshot_received_at_ms?: number | null;
+    price_change_window_pct?: number | null;
+    price_at_window_start?: number | null;
+    price_at_window_end?: number | null;
+    price_change_status: "ready" | "insufficient_history" | "missing_market" | string;
   };
-  confidence: {
+  flow: {
+    window: WindowKey;
+    window_start_ms?: number | null;
+    window_end_ms?: number | null;
+    mentions: number;
+    watched_mentions: number;
+    previous_mentions: number;
+    mention_delta: number;
+    mention_delta_pct?: number | null;
+    z_score?: number | null;
+    stream_dominance: number;
+    baseline_status: "ready" | "insufficient_history" | string;
+    baseline_sample_count: number;
+  };
+  sources: {
+    unique_authors: number;
+    watched_authors: number;
+    weighted_reach?: number | null;
+    top_author_share: number;
+    top_authors?: Array<{ handle?: string | null; count?: number; followers?: number | null; watched_count?: number }>;
+    source_quality_score: number;
+    source_quality_reasons: string[];
+  };
+  fresh: {
+    latest_evidence_age_ms?: number | null;
+    first_seen_age_ms?: number | null;
+    market_snapshot_age_ms?: number | null;
+    is_new_token: boolean;
+    is_first_seen_by_watched: boolean;
+  };
+  signal: {
+    decision: "driver" | "watch" | "discard";
     score: number;
-    coverage: string;
-    coverage_boundary: string;
-    identity_status: string;
-    market_status: string;
-    baseline_status: string;
     reasons: string[];
+    risks: string[];
+    evidence_id?: string | null;
   };
-  evidence: Array<{
-    event_id?: string;
-    author_handle?: string | null;
-    received_at_ms?: number | null;
-    text_clean?: string | null;
-    canonical_url?: string | null;
-  }>;
+  evidence_best?: TokenEvidence | null;
+  evidence: TokenEvidence[];
+};
+
+export type TokenEvidence = {
+  event_id?: string;
+  score?: number;
+  handle?: string | null;
+  text?: string | null;
+  received_at_ms?: number | null;
+  url?: string | null;
+  reasons?: string[];
 };
 
 export type TokenFlowData = {

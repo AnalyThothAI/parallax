@@ -114,3 +114,59 @@ def test_token_repository_persists_openapi_token_info_market_snapshot(tmp_path):
     assert market["market_cap"] == 320000000.0
     assert market["source_channel"] == "gmgn_openapi_token_info"
     assert aliases == [identity.token_id]
+
+
+def test_token_repository_canonicalizes_openapi_evm_address_with_existing_token(tmp_path):
+    conn, evidence, repo = open_token_repo(tmp_path)
+    try:
+        evidence.insert_event(make_event("event-payload"), is_watched=True)
+        evidence.insert_event(make_event("event-openapi"), is_watched=True)
+        snapshot = parse_gmgn_token_payload(
+            {
+                "tt": "ca",
+                "t": {
+                    "a": "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+                    "c": "eth",
+                    "mc": "60490.341996",
+                    "p": "1.0",
+                    "p1": None,
+                    "s": "DOG",
+                },
+            }
+        )
+        payload_identity = repo.upsert_snapshot(
+            event_id="event-payload",
+            snapshot=snapshot,
+            received_at_ms=1_700_000_000_000,
+            source_channel="twitter_monitor_token",
+            commit=True,
+        )
+        openapi_identity = repo.upsert_openapi_token_info(
+            event_id="event-openapi",
+            info=GmgnTokenInfo(
+                chain="eth",
+                address="0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+                symbol="DOG",
+                name="Dog",
+                icon_url=None,
+                price=1.1,
+                previous_price=None,
+                market_cap=70000.0,
+                raw={"address": "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416", "symbol": "DOG"},
+            ),
+            received_at_ms=1_700_000_060_000,
+            source_channel="gmgn_openapi_token_info",
+            commit=True,
+        )
+        token_count = conn.execute("SELECT COUNT(*) FROM tokens").fetchone()[0]
+        market_count = conn.execute(
+            "SELECT COUNT(*) FROM token_market_snapshots WHERE token_id = ?",
+            (payload_identity.token_id,),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert openapi_identity.token_id == payload_identity.token_id
+    assert openapi_identity.address == payload_identity.address
+    assert token_count == 1
+    assert market_count == 2

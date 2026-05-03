@@ -39,6 +39,20 @@ export function formatPercentShare(value: number | null | undefined): string {
   return percent >= 10 ? `${Math.round(percent)}%` : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
 }
 
+export function formatSignedPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+  const percent = Math.abs(value) * 100;
+  const formatted = percent >= 10 ? `${Math.round(percent)}%` : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
+  return `${value > 0 ? "+" : value < 0 ? "-" : ""}${formatted}`;
+}
+
+export function formatUsdCompact(value: number | null | undefined): string {
+  const compact = compactNumber(value);
+  return compact === "-" ? "-" : `$${compact}`;
+}
+
 export function eventHandle(event: EventRecord): string {
   return (event.author_handle ?? event.author?.handle ?? "unknown").replace(/^@/, "").toLowerCase();
 }
