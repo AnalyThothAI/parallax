@@ -7,11 +7,13 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from ..retrieval.account_alert_service import AccountAlertService
+from ..retrieval.narrative_link_service import NarrativeLinkService
 from ..retrieval.narrative_service import NarrativeService
 from ..retrieval.search_service import SearchService
 from ..retrieval.token_flow_service import TokenFlowService
 
 WINDOWS = {"1m", "5m", "1h", "24h"}
+LINK_WINDOWS = {"5m", "1h", "24h"}
 SCOPES = {"all", "matched"}
 ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
@@ -203,6 +205,52 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
+    @router.get("/narrative-seeds")
+    async def narrative_seeds(
+        request: Request,
+        window: Annotated[str, Query()] = "24h",
+        limit: Annotated[int, Query()] = 50,
+        handles: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_window = _window(window)
+        items = NarrativeLinkService(enrichment=runtime.read_enrichment).narrative_seeds(
+            window=parsed_window,
+            limit=_limit(limit, maximum=500),
+            handles=_handle_set(handles),
+        )
+        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
+
+    @router.get("/narrative-token-flow")
+    async def narrative_token_flow(
+        request: Request,
+        seed_id: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "1h",
+        limit: Annotated[int, Query()] = 20,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_window = _link_window(window)
+        item = NarrativeLinkService(enrichment=runtime.read_enrichment).narrative_token_flow(
+            seed_id=seed_id,
+            window=parsed_window,
+            limit=_limit(limit, maximum=500),
+        )
+        return _json({"ok": True, "data": item | {"window": parsed_window}})
+
+    @router.get("/attention-frontier")
+    async def attention_frontier(
+        request: Request,
+        window: Annotated[str, Query()] = "1h",
+        limit: Annotated[int, Query()] = 30,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_window = _link_window(window)
+        items = NarrativeLinkService(enrichment=runtime.read_enrichment).attention_frontier(
+            window=parsed_window,
+            limit=_limit(limit, maximum=500),
+        )
+        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
+
     return router
 
 
@@ -261,6 +309,10 @@ def _scope(value: str) -> str:
 
 def _window(value: str) -> str:
     return value if value in WINDOWS else "5m"
+
+
+def _link_window(value: str) -> str:
+    return value if value in LINK_WINDOWS else "1h"
 
 
 def _alert_type(value: str | None) -> str | None:

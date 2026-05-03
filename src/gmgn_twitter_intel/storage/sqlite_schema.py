@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -357,6 +357,77 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_windows_label_window_start
   ON narrative_windows(narrative_label, window, window_start_ms);
 CREATE INDEX IF NOT EXISTS idx_narrative_windows_window_end
   ON narrative_windows(window, window_end_ms);
+
+CREATE TABLE IF NOT EXISTS narrative_seeds (
+  seed_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  narrative_label TEXT NOT NULL,
+  seed_family TEXT,
+  seed_terms_json TEXT NOT NULL DEFAULT '[]',
+  market_interpretation TEXT NOT NULL DEFAULT '',
+  stance TEXT NOT NULL,
+  intent TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  source_weight REAL NOT NULL,
+  novelty_status TEXT NOT NULL,
+  received_at_ms INTEGER NOT NULL,
+  author_handle TEXT NOT NULL,
+  evidence TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_seeds_event_label
+  ON narrative_seeds(event_id, narrative_label);
+CREATE INDEX IF NOT EXISTS idx_narrative_seeds_received
+  ON narrative_seeds(received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_seeds_label_received
+  ON narrative_seeds(narrative_label, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_seeds_author_received
+  ON narrative_seeds(author_handle, received_at_ms);
+
+CREATE TABLE IF NOT EXISTS narrative_token_links (
+  link_id TEXT PRIMARY KEY,
+  seed_id TEXT NOT NULL REFERENCES narrative_seeds(seed_id) ON DELETE CASCADE,
+  narrative_label TEXT NOT NULL,
+  token_identity_key TEXT NOT NULL,
+  token_id TEXT,
+  identity_status TEXT NOT NULL,
+  chain TEXT,
+  address TEXT,
+  symbol TEXT NOT NULL,
+  first_linked_event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  best_evidence_event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  link_reason TEXT NOT NULL,
+  matched_terms_json TEXT NOT NULL DEFAULT '[]',
+  link_confidence REAL NOT NULL,
+  lag_ms INTEGER NOT NULL,
+  window TEXT NOT NULL,
+  mention_count_after_seed INTEGER NOT NULL,
+  watched_mention_count_after_seed INTEGER NOT NULL,
+  unique_author_count_after_seed INTEGER NOT NULL,
+  weighted_reach_after_seed REAL NOT NULL,
+  market_cap REAL,
+  market_status TEXT NOT NULL,
+  price_change_after_seed_pct REAL,
+  seed_score INTEGER NOT NULL,
+  diffusion_score INTEGER NOT NULL,
+  token_link_score INTEGER NOT NULL,
+  tradeability_score INTEGER NOT NULL,
+  decision TEXT NOT NULL,
+  reasons_json TEXT NOT NULL DEFAULT '[]',
+  risks_json TEXT NOT NULL DEFAULT '[]',
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_token_links_seed_token_window
+  ON narrative_token_links(seed_id, token_identity_key, window);
+CREATE INDEX IF NOT EXISTS idx_narrative_token_links_label_decision
+  ON narrative_token_links(narrative_label, decision, updated_at_ms);
+CREATE INDEX IF NOT EXISTS idx_narrative_token_links_token
+  ON narrative_token_links(token_identity_key, updated_at_ms);
 """
 
 def migrate(conn: sqlite3.Connection) -> None:
@@ -364,7 +435,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
-        (SCHEMA_VERSION, "token_identity_conviction_signal", _now_ms()),
+        (SCHEMA_VERSION, "watched_handle_narrative_token_linking", _now_ms()),
     )
     conn.commit()
 

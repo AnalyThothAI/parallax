@@ -258,6 +258,223 @@ class EnrichmentRepository:
         ).fetchall()
         return [_decode_json_fields(dict(row)) for row in rows]
 
+    def upsert_narrative_seed(
+        self,
+        *,
+        event_id: str,
+        narrative_label: str,
+        seed_family: str | None,
+        seed_terms: list[str],
+        market_interpretation: str,
+        stance: str,
+        intent: str,
+        confidence: float,
+        source_weight: float,
+        novelty_status: str,
+        received_at_ms: int,
+        author_handle: str,
+        evidence: str,
+        summary: str,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        now_ms = _now_ms()
+        seed_id = _id("narrative_seed", event_id, narrative_label)
+        self.conn.execute(
+            """
+            INSERT INTO narrative_seeds(
+              seed_id, event_id, narrative_label, seed_family, seed_terms_json,
+              market_interpretation, stance, intent, confidence, source_weight,
+              novelty_status, received_at_ms, author_handle, evidence, summary,
+              created_at_ms, updated_at_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(event_id, narrative_label) DO UPDATE SET
+              seed_family = excluded.seed_family,
+              seed_terms_json = excluded.seed_terms_json,
+              market_interpretation = excluded.market_interpretation,
+              stance = excluded.stance,
+              intent = excluded.intent,
+              confidence = excluded.confidence,
+              source_weight = excluded.source_weight,
+              novelty_status = excluded.novelty_status,
+              received_at_ms = excluded.received_at_ms,
+              author_handle = excluded.author_handle,
+              evidence = excluded.evidence,
+              summary = excluded.summary,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                seed_id,
+                event_id,
+                narrative_label,
+                seed_family,
+                _json(_dedupe_text(seed_terms)),
+                market_interpretation,
+                stance,
+                intent,
+                confidence,
+                source_weight,
+                novelty_status,
+                received_at_ms,
+                author_handle,
+                evidence,
+                summary,
+                now_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        stored = self.narrative_seed(seed_id)
+        return stored or {}
+
+    def narrative_seed(self, seed_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute("SELECT * FROM narrative_seeds WHERE seed_id = ?", (seed_id,)).fetchone()
+        return _decode_seed(dict(row)) if row else None
+
+    def narrative_seeds(
+        self,
+        *,
+        window_ms: int,
+        limit: int,
+        now_ms: int | None = None,
+        handles: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        now = now_ms if now_ms is not None else _now_ms()
+        since = now - window_ms
+        clauses = ["received_at_ms >= ?"]
+        params: list[Any] = [since]
+        normalized = sorted(handle.strip().lstrip("@").lower() for handle in handles or set() if handle.strip())
+        if normalized:
+            placeholders = ",".join("?" for _ in normalized)
+            clauses.append(f"author_handle IN ({placeholders})")
+            params.extend(normalized)
+        rows = self.conn.execute(
+            f"""
+            SELECT * FROM narrative_seeds
+            WHERE {" AND ".join(clauses)}
+            ORDER BY received_at_ms DESC
+            LIMIT ?
+            """,
+            (*params, max(0, int(limit))),
+        ).fetchall()
+        return [_decode_seed(dict(row)) for row in rows]
+
+    def upsert_narrative_token_link(self, **kwargs: Any) -> dict[str, Any]:
+        now_ms = _now_ms()
+        seed_id = str(kwargs["seed_id"])
+        token_identity_key = str(kwargs["token_identity_key"])
+        window = str(kwargs["window"])
+        link_id = kwargs.get("link_id") or _id("narrative_token_link", seed_id, token_identity_key, window)
+        row = {
+            **kwargs,
+            "link_id": link_id,
+            "matched_terms_json": _json(_dedupe_text(kwargs.get("matched_terms") or [])),
+            "reasons_json": _json(_dedupe_text(kwargs.get("reasons") or [])),
+            "risks_json": _json(_dedupe_text(kwargs.get("risks") or [])),
+            "created_at_ms": int(kwargs.get("created_at_ms") or now_ms),
+            "updated_at_ms": now_ms,
+        }
+        self.conn.execute(
+            """
+            INSERT INTO narrative_token_links(
+              link_id, seed_id, narrative_label, token_identity_key, token_id,
+              identity_status, chain, address, symbol, first_linked_event_id,
+              best_evidence_event_id, link_reason, matched_terms_json, link_confidence,
+              lag_ms, window, mention_count_after_seed, watched_mention_count_after_seed,
+              unique_author_count_after_seed, weighted_reach_after_seed, market_cap,
+              market_status, price_change_after_seed_pct, seed_score, diffusion_score,
+              token_link_score, tradeability_score, decision, reasons_json, risks_json,
+              created_at_ms, updated_at_ms
+            )
+            VALUES (
+              :link_id, :seed_id, :narrative_label, :token_identity_key, :token_id,
+              :identity_status, :chain, :address, :symbol, :first_linked_event_id,
+              :best_evidence_event_id, :link_reason, :matched_terms_json, :link_confidence,
+              :lag_ms, :window, :mention_count_after_seed, :watched_mention_count_after_seed,
+              :unique_author_count_after_seed, :weighted_reach_after_seed, :market_cap,
+              :market_status, :price_change_after_seed_pct, :seed_score, :diffusion_score,
+              :token_link_score, :tradeability_score, :decision, :reasons_json, :risks_json,
+              :created_at_ms, :updated_at_ms
+            )
+            ON CONFLICT(seed_id, token_identity_key, window) DO UPDATE SET
+              narrative_label = excluded.narrative_label,
+              token_id = excluded.token_id,
+              identity_status = excluded.identity_status,
+              chain = excluded.chain,
+              address = excluded.address,
+              symbol = excluded.symbol,
+              first_linked_event_id = excluded.first_linked_event_id,
+              best_evidence_event_id = excluded.best_evidence_event_id,
+              link_reason = excluded.link_reason,
+              matched_terms_json = excluded.matched_terms_json,
+              link_confidence = excluded.link_confidence,
+              lag_ms = excluded.lag_ms,
+              mention_count_after_seed = excluded.mention_count_after_seed,
+              watched_mention_count_after_seed = excluded.watched_mention_count_after_seed,
+              unique_author_count_after_seed = excluded.unique_author_count_after_seed,
+              weighted_reach_after_seed = excluded.weighted_reach_after_seed,
+              market_cap = excluded.market_cap,
+              market_status = excluded.market_status,
+              price_change_after_seed_pct = excluded.price_change_after_seed_pct,
+              seed_score = excluded.seed_score,
+              diffusion_score = excluded.diffusion_score,
+              token_link_score = excluded.token_link_score,
+              tradeability_score = excluded.tradeability_score,
+              decision = excluded.decision,
+              reasons_json = excluded.reasons_json,
+              risks_json = excluded.risks_json,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            row,
+        )
+        if kwargs.get("commit", True):
+            self.conn.commit()
+        stored = self.conn.execute(
+            "SELECT * FROM narrative_token_links WHERE seed_id = ? AND token_identity_key = ? AND window = ?",
+            (seed_id, token_identity_key, window),
+        ).fetchone()
+        return _decode_link(dict(stored)) if stored else {}
+
+    def narrative_token_links(self, *, seed_id: str, window: str, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM narrative_token_links
+            WHERE seed_id = ? AND window = ?
+            ORDER BY decision = 'driver' DESC, tradeability_score DESC, token_link_score DESC, updated_at_ms DESC
+            LIMIT ?
+            """,
+            (seed_id, window, max(0, int(limit))),
+        ).fetchall()
+        return [_decode_link(dict(row)) for row in rows]
+
+    def attention_frontier(self, *, window: str, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              ntl.*,
+              ns.author_handle AS seed_author_handle,
+              ns.evidence AS seed_evidence,
+              ns.summary AS seed_summary,
+              ns.received_at_ms AS seed_received_at_ms,
+              ns.seed_family AS seed_family,
+              ns.seed_terms_json AS seed_terms_json,
+              ns.market_interpretation AS market_interpretation
+            FROM narrative_token_links ntl
+            JOIN narrative_seeds ns ON ns.seed_id = ntl.seed_id
+            WHERE ntl.window = ?
+            ORDER BY
+              ntl.decision = 'driver' DESC,
+              ntl.tradeability_score DESC,
+              ntl.token_link_score DESC,
+              ntl.diffusion_score DESC,
+              ntl.updated_at_ms DESC
+            LIMIT ?
+            """,
+            (window, max(0, int(limit))),
+        ).fetchall()
+        return [_decode_frontier_row(dict(row)) for row in rows]
+
     def _replace_event_enrichment(
         self,
         *,
@@ -559,6 +776,34 @@ def _decode_json_fields(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _decode_seed(row: dict[str, Any]) -> dict[str, Any]:
+    row["seed_terms"] = _json_loads(row.pop("seed_terms_json", None), [])
+    return row
+
+
+def _decode_link(row: dict[str, Any]) -> dict[str, Any]:
+    row["matched_terms"] = _json_loads(row.pop("matched_terms_json", None), [])
+    row["reasons"] = _json_loads(row.pop("reasons_json", None), [])
+    row["risks"] = _json_loads(row.pop("risks_json", None), [])
+    return row
+
+
+def _decode_frontier_row(row: dict[str, Any]) -> dict[str, Any]:
+    seed_terms = _json_loads(row.pop("seed_terms_json", None), [])
+    seed = {
+        "seed_id": row["seed_id"],
+        "narrative_label": row["narrative_label"],
+        "author_handle": row.pop("seed_author_handle", None),
+        "evidence": row.pop("seed_evidence", None),
+        "summary": row.pop("seed_summary", None),
+        "received_at_ms": row.pop("seed_received_at_ms", None),
+        "seed_family": row.pop("seed_family", None),
+        "seed_terms": seed_terms,
+        "market_interpretation": row.pop("market_interpretation", None),
+    }
+    return {"seed": seed, "link": _decode_link(row)}
+
+
 def _event_author_handle(event: dict[str, Any]) -> str | None:
     if event.get("author_handle"):
         return str(event["author_handle"]).lower()
@@ -586,6 +831,16 @@ def _json_loads(value: Any, default: Any) -> Any:
         return json.loads(value)
     except json.JSONDecodeError:
         return default
+
+
+def _dedupe_text(values: list[Any]) -> list[str]:
+    deduped: list[str] = []
+    for value in values:
+        text = str(value or "").strip().lower()
+        if not text or text in deduped:
+            continue
+        deduped.append(text)
+    return deduped
 
 
 def _id(*parts: str) -> str:

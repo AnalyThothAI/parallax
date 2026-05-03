@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.pipeline.narrative_token_linker import NarrativeTokenLinker
 from gmgn_twitter_intel.settings import Settings
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
@@ -133,3 +134,59 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert body["data"]["collector"]["frames_received"] == 0
     assert body["data"]["handles"] == ["toly", "elonmusk"]
     assert body["data"]["enrichment"]["llm_configured"] is False
+
+
+def test_api_exposes_narrative_link_read_models(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        event = make_event("seed-1", text="$GROK Grok is getting scary good")
+        client.app.state.service.ingest.ingest_event(event, is_watched=True)
+        seed = client.app.state.service.enrichment.upsert_narrative_seed(
+            event_id="seed-1",
+            narrative_label="ai_agent_grok",
+            seed_family="ai_agent",
+            seed_terms=["grok"],
+            market_interpretation="Market may look for Grok tokens.",
+            stance="bullish",
+            intent="technical_commentary",
+            confidence=0.9,
+            source_weight=0.6,
+            novelty_status="new_global",
+            received_at_ms=event.received_at_ms,
+            author_handle="toly",
+            evidence="Grok is getting scary good",
+            summary="Watched account discussed Grok.",
+        )
+        NarrativeTokenLinker(
+            evidence=client.app.state.service.evidence,
+            signals=client.app.state.service.signals,
+            enrichment=client.app.state.service.enrichment,
+            tokens=client.app.state.service.tokens,
+        ).link_seed(seed=seed, window="1h")
+
+        headers = {"Authorization": "Bearer secret"}
+        seeds = client.get("/api/narrative-seeds?window=24h&limit=5", headers=headers)
+        flow = client.get(
+            "/api/narrative-token-flow",
+            params={"seed_id": seed["seed_id"], "window": "1h", "limit": 5},
+            headers=headers,
+        )
+        unsupported_flow_window = client.get(
+            "/api/narrative-token-flow",
+            params={"seed_id": seed["seed_id"], "window": "1m", "limit": 5},
+            headers=headers,
+        )
+        frontier = client.get("/api/attention-frontier?window=1h&limit=5", headers=headers)
+
+    assert seeds.status_code == 200
+    assert seeds.json()["data"]["items"][0]["seed"]["narrative_label"] == "ai_agent_grok"
+
+    assert flow.status_code == 200
+    assert flow.json()["data"]["seed"]["seed_id"] == seed["seed_id"]
+    assert flow.json()["data"]["links"][0]["identity"]["symbol"] == "GROK"
+    assert unsupported_flow_window.status_code == 200
+    assert unsupported_flow_window.json()["data"]["window"] == "1h"
+
+    assert frontier.status_code == 200
+    assert frontier.json()["data"]["items"][0]["seed"]["narrative_label"] == "ai_agent_grok"

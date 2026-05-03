@@ -13,6 +13,7 @@ from gmgn_twitter_intel.cli import main
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.pipeline.llm_enrichment import EnrichmentResult, NarrativeItem, TokenCandidate
+from gmgn_twitter_intel.pipeline.narrative_token_linker import NarrativeTokenLinker
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
@@ -95,6 +96,9 @@ def seed_sqlite(db_path: Path) -> None:
                     NarrativeItem(
                         label="solana_scaling",
                         description="Solana scaling and XDP readiness",
+                        seed_family="solana_scaling",
+                        trigger_terms=["Solana", "XDP"],
+                        market_interpretation="Market may look for Solana scaling tokens.",
                         evidence="Solana XDP",
                         confidence=0.86,
                     ),
@@ -108,6 +112,28 @@ def seed_sqlite(db_path: Path) -> None:
             model="test-model",
             request={"event_id": "event-1"},
         )
+        seed = enrichment.upsert_narrative_seed(
+            event_id="event-1",
+            narrative_label="solana_scaling",
+            seed_family="solana_scaling",
+            seed_terms=["solana", "xdp"],
+            market_interpretation="Market may look for Solana scaling tokens.",
+            stance="informational",
+            intent="technical_commentary",
+            confidence=0.86,
+            source_weight=0.6,
+            novelty_status="new_global",
+            received_at_ms=event["received_at_ms"],
+            author_handle="toly",
+            evidence="Solana XDP",
+            summary="Watched account discussed Solana XDP and PEPE.",
+        )
+        NarrativeTokenLinker(
+            evidence=evidence,
+            signals=signals,
+            enrichment=enrichment,
+            tokens=tokens,
+        ).link_seed(seed=seed, window="1h")
     finally:
         conn.close()
 
@@ -156,6 +182,14 @@ class CliTests(unittest.TestCase):
             db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
             write_runtime_config(home, db_path=db_path)
             seed_sqlite(db_path)
+            conn = connect_sqlite(db_path, read_only=False)
+            try:
+                seed_id = EnrichmentRepository(conn).narrative_seeds(
+                    window_ms=86_400_000,
+                    limit=1,
+                )[0]["seed_id"]
+            finally:
+                conn.close()
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
@@ -165,11 +199,28 @@ class CliTests(unittest.TestCase):
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
                 narratives_code = main(["account-narratives", "--window", "24h", "--limit", "5"], stdout=stdout)
                 jobs_code = main(["enrichment-jobs", "--limit", "5"], stdout=stdout)
+                seeds_code = main(["narrative-seeds", "--window", "24h", "--limit", "5"], stdout=stdout)
+                token_links_code = main(
+                    ["narrative-token-flow", "--seed-id", seed_id, "--window", "1h", "--limit", "5"],
+                    stdout=stdout,
+                )
+                frontier_code = main(["attention-frontier", "--window", "1h", "--limit", "5"], stdout=stdout)
 
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual(
-            [recent_code, search_code, token_flow_code, narrative_flow_code, alerts_code, narratives_code, jobs_code],
-            [0, 0, 0, 0, 0, 0, 0],
+            [
+                recent_code,
+                search_code,
+                token_flow_code,
+                narrative_flow_code,
+                alerts_code,
+                narratives_code,
+                jobs_code,
+                seeds_code,
+                token_links_code,
+                frontier_code,
+            ],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
@@ -182,11 +233,20 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(lines[5]["data"]["items"][0]["narrative_label"], "solana_scaling")
         self.assertEqual(lines[6]["data"]["counts"]["done"], 1)
+        self.assertEqual(lines[7]["data"]["items"][0]["seed"]["seed_id"], seed_id)
+        self.assertEqual(lines[7]["data"]["items"][0]["seed"]["narrative_label"], "solana_scaling")
+        self.assertEqual(lines[8]["data"]["seed"]["seed_id"], seed_id)
+        self.assertGreaterEqual(len(lines[8]["data"]["links"]), 1)
+        self.assertEqual(lines[9]["data"]["items"][0]["seed"]["narrative_label"], "solana_scaling")
 
     def test_obsolete_runtime_commands_are_not_registered(self):
         parser_help = main(["embed"], stdout=io.StringIO())
 
         self.assertEqual(parser_help, 2)
+
+    def test_unsupported_narrative_link_windows_are_not_registered(self):
+        self.assertEqual(main(["narrative-token-flow", "--seed-id", "seed", "--window", "1m"], stdout=io.StringIO()), 2)
+        self.assertEqual(main(["attention-frontier", "--window", "1m"], stdout=io.StringIO()), 2)
 
     def test_ops_rebuild_windows_reconstructs_materialized_signal_windows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -211,6 +271,30 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("backfill", lines[0]["data"])
         self.assertGreater(lines[0]["data"]["rebuilt"], 0)
         self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 1)
+
+    def test_ops_rebuild_narrative_links_reconstructs_seed_links(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
+            seed_sqlite(db_path)
+            conn = connect_sqlite(db_path, read_only=False)
+            try:
+                conn.execute("DELETE FROM narrative_token_links")
+                conn.commit()
+            finally:
+                conn.close()
+
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                rebuild_code = main(["ops", "rebuild-narrative-links", "--window", "1h"], stdout=stdout)
+                frontier_code = main(["attention-frontier", "--window", "1h", "--limit", "5"], stdout=stdout)
+
+        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual([rebuild_code, frontier_code], [0, 0])
+        self.assertEqual(lines[0]["data"]["seeds_scanned"], 1)
+        self.assertGreaterEqual(lines[0]["data"]["links_upserted"], 1)
+        self.assertEqual(lines[1]["data"]["items"][0]["seed"]["narrative_label"], "solana_scaling")
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

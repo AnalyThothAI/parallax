@@ -221,7 +221,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         runtime.enrichment_worker = EnrichmentWorker(
             evidence=evidence,
             entities=entities,
+            signals=signals,
             enrichment=enrichment,
+            tokens=tokens,
             client=client,
             publisher=hub,
             write_lock=write_lock,

@@ -3,6 +3,7 @@ import type { KeyboardEvent, ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRight,
   Brain,
   Clock3,
   ExternalLink,
@@ -17,6 +18,8 @@ import { getApi, getBootstrap } from "./api/client";
 import type {
   AccountAlertsData,
   AlertRecord,
+  AttentionFrontierItem,
+  AttentionFrontierData,
   EnrichmentJobsData,
   EventRecord,
   LivePayload,
@@ -122,6 +125,16 @@ export function App() {
     enabled: Boolean(token),
     refetchInterval: 18_000
   });
+  const frontierQuery = useQuery({
+    queryKey: ["attention-frontier", windowKey],
+    queryFn: () =>
+      getApi<AttentionFrontierData>("/api/attention-frontier", {
+        token,
+        params: { window: windowKey, limit: 20 }
+      }),
+    enabled: Boolean(token),
+    refetchInterval: 18_000
+  });
   const enrichmentJobsQuery = useQuery({
     queryKey: ["enrichment-jobs"],
     queryFn: () => getApi<EnrichmentJobsData>("/api/enrichment-jobs", { token, params: { limit: 20 } }),
@@ -150,6 +163,8 @@ export function App() {
   const tokenItems = tokenFlowQuery.data?.data.items ?? [];
   const alertItems = alertsQuery.data?.data.items ?? [];
   const searchItems = searchQuery.data?.data.items ?? [];
+  const frontierItems = frontierQuery.data?.data.items ?? [];
+  const frontierByToken = useMemo(() => buildFrontierByToken(frontierItems), [frontierItems]);
   const focus = buildEvidenceFocus(selectedSignal, searchItems, submittedSearch);
   const selectedToken = selectedSignal?.kind === "token" ? selectedSignal.item : null;
   const selectedTokenKey = selectedToken ? tokenDecisionKey(selectedToken) : null;
@@ -346,15 +361,16 @@ export function App() {
               <span>Fresh</span>
               <span>Signal</span>
             </div>
-            {tokenItems.slice(0, 40).map((item) => (
-              <TokenRadarRow
-                key={`${item.identity.identity_key}:${item.flow.window_start_ms ?? ""}`}
-                item={item}
-                decision={decisionForToken(item, decisions)}
-                selected={isSelectedToken(selectedSignal, item)}
-                onSelect={selectToken}
-              />
-            ))}
+	            {tokenItems.slice(0, 40).map((item) => (
+	              <TokenRadarRow
+	                key={`${item.identity.identity_key}:${item.flow.window_start_ms ?? ""}`}
+	                item={item}
+	                decision={decisionForToken(item, decisions)}
+	                narrativeLink={frontierMatchForToken(item, frontierByToken)}
+	                selected={isSelectedToken(selectedSignal, item)}
+	                onSelect={selectToken}
+	              />
+	            ))}
             {tokenItems.length === 0 ? <EmptyState text="暂无 token flow" /> : null}
           </div>
 
@@ -403,6 +419,22 @@ export function App() {
             </header>
             <EvidenceFocus focus={focus} decision={selectedDecision} onDecision={setTokenDecision} />
           </section>
+          <CompactPanel title="叙事前沿" icon={<Brain />} action={`${frontierQuery.data?.data.items.length ?? 0} links`}>
+            <div className="narrative-list">
+	              {frontierItems.slice(0, 8).map((item) => (
+                <div className="narrative-row frontier-row" key={`${item.seed.seed_id}:${item.link.identity.identity_key}`}>
+                  <div>
+                    <strong>
+                      @{item.seed.author_handle ?? "watched"} <ArrowRight aria-hidden /> ${item.link.identity.symbol ?? "TOKEN"}
+                    </strong>
+                    <span>{item.seed.narrative_label} · {item.link.evidence.link_reason ?? "linked evidence"}</span>
+                  </div>
+                  <DecisionTag decision={item.link.signal.decision} />
+                </div>
+              ))}
+	              {frontierItems.length === 0 ? <EmptyState text="暂无 seed-token link" /> : null}
+            </div>
+          </CompactPanel>
           <CompactPanel title="叙事流" icon={<Brain />} action={statusQuery.data?.data.enrichment.llm_configured ? "LLM on" : "LLM off"}>
             <div className="narrative-list">
               {(narrativeQuery.data?.data.items ?? []).slice(0, 8).map((item) => (
@@ -543,11 +575,13 @@ function EventRow({
 function TokenRadarRow({
   item,
   decision,
+  narrativeLink,
   selected,
   onSelect
 }: {
   item: TokenFlowItem;
   decision: Decision;
+  narrativeLink?: AttentionFrontierItem;
   selected: boolean;
   onSelect: (item: TokenFlowItem) => void;
 }) {
@@ -562,7 +596,18 @@ function TokenRadarRow({
     >
       <span className="signal-dot" aria-hidden />
       <strong className="token-symbol">
-        <span>{tokenLabel(item)}</span>
+        <span className="symbol-line">
+          <span>{tokenLabel(item)}</span>
+          {narrativeLink ? (
+            <span
+              className="narrative-link-badge"
+              title={`Narrative link: ${narrativeLink.seed.narrative_label}`}
+              aria-label={`narrative link ${narrativeLink.seed.narrative_label}`}
+            >
+              <Brain aria-hidden />
+            </span>
+          ) : null}
+        </span>
         <small>{tokenIdentityMeta(item)}</small>
       </strong>
       <span className={`mono ${item.market.market_cap ? "" : "muted"}`}>{formatUsdCompact(item.market.market_cap)}</span>
@@ -951,6 +996,42 @@ function authorsFromToken(item: TokenFlowItem): string[] {
 
 function tokenDecisionKey(item: TokenFlowItem): string {
   return item.identity.token_id ?? item.identity.address ?? item.identity.identity_key;
+}
+
+function buildFrontierByToken(items: AttentionFrontierItem[]): Map<string, AttentionFrontierItem> {
+  const map = new Map<string, AttentionFrontierItem>();
+  for (const item of items) {
+    for (const key of frontierTokenKeys(item.link.identity)) {
+      if (!map.has(key)) {
+        map.set(key, item);
+      }
+    }
+  }
+  return map;
+}
+
+function frontierMatchForToken(item: TokenFlowItem, frontierByToken: Map<string, AttentionFrontierItem>): AttentionFrontierItem | undefined {
+  for (const key of frontierTokenKeys(item.identity)) {
+    const match = frontierByToken.get(key);
+    if (match) {
+      return match;
+    }
+  }
+  return undefined;
+}
+
+function frontierTokenKeys(identity: {
+  identity_key: string;
+  token_id?: string | null;
+  address?: string | null;
+  symbol?: string | null;
+}): string[] {
+  return [
+    `identity:${identity.identity_key}`,
+    identity.token_id ? `token:${identity.token_id}` : "",
+    identity.address ? `address:${identity.address.toLowerCase()}` : "",
+    identity.symbol ? `symbol:${identity.symbol.toUpperCase()}` : ""
+  ].filter(Boolean);
 }
 
 function decisionForToken(item: TokenFlowItem, decisions: Record<string, Decision>): Decision {

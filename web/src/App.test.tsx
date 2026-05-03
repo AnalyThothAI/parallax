@@ -49,7 +49,7 @@ const statusData: StatusData = {
     llm_configured: false,
     worker_running: false,
     job_counts: { pending: 3, running: 0, failed: 0, dead: 0, done: 1 }
-  }
+	      }
 };
 
 describe("App cockpit value flow", () => {
@@ -83,10 +83,10 @@ describe("App cockpit value flow", () => {
       if (path === "/api/recent") {
         return ok({ scope: options?.params?.scope, events: [], items: [] });
       }
-      if (path === "/api/token-flow") {
-        return ok({
-              window: options?.params?.window,
-          items: [
+	      if (path === "/api/token-flow") {
+	        return ok({
+	          window: options?.params?.window,
+	          items: [
             {
               identity: {
                 identity_key: "symbol:UPEG",
@@ -192,6 +192,115 @@ describe("App cockpit value flow", () => {
       if (path === "/api/narrative-flow") {
         return ok({ window: options?.params?.window, items: [] });
       }
+	      if (path === "/api/attention-frontier") {
+	        return ok({
+	          window: options?.params?.window,
+	          items: [
+	            {
+	              seed: {
+	                seed_id: "seed-1",
+	                narrative_label: "ai_agent_grok",
+	                author_handle: "traderpow",
+	                evidence: "Grok is getting scary good",
+	                summary: "watched account seed",
+	                received_at_ms: 1_777_746_000_000
+	              },
+	              link: {
+	                identity: {
+	                  identity_key: "symbol:GROK",
+	                  identity_status: "unresolved_symbol",
+	                  token_id: null,
+	                  chain: null,
+	                  address: null,
+	                  symbol: "GROK"
+	                },
+	                flow: {
+	                  window: "1h",
+	                  mentions: 3,
+	                  watched_mentions: 0,
+	                  unique_authors: 2,
+	                  weighted_reach: 200,
+	                  lag_ms: 60_000
+	                },
+	                market: {
+	                  market_status: "missing",
+	                  market_cap: null,
+	                  price_change_after_seed_pct: null
+	                },
+	                scores: {
+	                  seed: 70,
+	                  diffusion: 30,
+	                  token_link: 60,
+	                  tradeability: 10
+	                },
+	                signal: {
+	                  decision: "discard",
+	                  reasons: ["watched_handle_seed", "seed_term_and_token_mention"],
+	                  risks: ["unresolved_symbol", "market_missing"]
+	                },
+	                evidence: {
+	                  first_linked_event_id: "event-grok-1",
+	                  best_evidence_event_id: "event-grok-1",
+	                  link_reason: "seed_term_and_token_mention",
+	                  matched_terms: ["grok"],
+	                  link_confidence: 0.6
+	                }
+	              }
+	            },
+	            {
+	              seed: {
+	                seed_id: "seed-2",
+	                narrative_label: "ai_agent_upeg",
+	                author_handle: "traderpow",
+	                evidence: "$UPEG watched account evidence",
+	                summary: "watched account linked UPEG",
+	                received_at_ms: 1_777_746_010_000
+	              },
+	              link: {
+	                identity: {
+	                  identity_key: "symbol:UPEG",
+	                  identity_status: "unresolved_symbol",
+	                  token_id: null,
+	                  chain: null,
+	                  address: null,
+	                  symbol: "UPEG"
+	                },
+	                flow: {
+	                  window: "1h",
+	                  mentions: 4,
+	                  watched_mentions: 1,
+	                  unique_authors: 2,
+	                  weighted_reach: 169_125,
+	                  lag_ms: 30_000
+	                },
+	                market: {
+	                  market_status: "missing",
+	                  market_cap: null,
+	                  price_change_after_seed_pct: null
+	                },
+	                scores: {
+	                  seed: 70,
+	                  diffusion: 45,
+	                  token_link: 65,
+	                  tradeability: 10
+	                },
+	                signal: {
+	                  decision: "discard",
+	                  reasons: ["watched_handle_seed", "seed_symbol_candidate_confirmed"],
+	                  risks: ["unresolved_symbol", "market_missing"]
+	                },
+	                evidence: {
+	                  first_linked_event_id: "event-upeg-1",
+	                  best_evidence_event_id: "event-upeg-1",
+	                  link_reason: "seed_symbol_candidate_confirmed",
+	                  matched_terms: ["upeg"],
+	                  link_confidence: 0.65
+	                }
+	              }
+	            }
+	          ]
+	        });
+      }
       if (path === "/api/enrichment-jobs") {
         return ok({ items: [], counts: { pending: 3, running: 0, failed: 0, dead: 0, done: 1 } });
       }
@@ -266,8 +375,11 @@ describe("App cockpit value flow", () => {
     expect(container.querySelector(".direction.flat")?.textContent).toBe("-");
     expect(container.querySelector(".source-cell b")?.textContent).toBe("2 src");
     expect(container.querySelector(".source-cell small")?.textContent).toBe("1 watch / qual 25");
-    expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
-    expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
+	    expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
+	    expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
+	    expect(await screen.findByLabelText("narrative link ai_agent_upeg")).toBeInTheDocument();
+	    expect(await screen.findByText("叙事前沿")).toBeInTheDocument();
+    expect(await screen.findByText("ai_agent_grok · seed_term_and_token_mention")).toBeInTheDocument();
   });
 
   it("keeps watched-account alerts on the 24h decision window", async () => {

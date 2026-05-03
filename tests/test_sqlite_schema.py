@@ -68,4 +68,4 @@ def test_migrations_are_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version"] for row in rows] == [4]
+    assert [row["version"] for row in rows] == [5]

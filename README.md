@@ -20,9 +20,13 @@ GMGN public WS
   -> enrichment jobs
   -> LLM watched-account enrichment
   -> narrative signal windows
+  -> watched-handle narrative seeds
+  -> full-stream narrative token links
   -> /ws live push + replay
-  -> CLI search / token-flow / account-alerts / narrative-flow / account-narratives
+  -> CLI search / token-flow / account-alerts / narrative-flow / narrative-seeds / attention-frontier
 ```
+
+叙事链路有一条硬边界：只有 `handles` 中的 watched accounts 会创建 narrative seed；全量 GMGN public stream 只作为 seed 之后的 token 扩散验证证据，不会被全量送进 LLM。
 
 ## 快速开始
 
@@ -175,6 +179,9 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-flow?win
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-alerts?window=24h&limit=50"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-flow?window=1h&limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-narratives?window=24h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-seeds?window=24h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-token-flow?seed_id=<seed_id>&window=1h&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/attention-frontier?window=1h&limit=30"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/enrichment-jobs?limit=50"
 ```
 
@@ -193,8 +200,12 @@ uv run gmgn-twitter-intel token-flow --window 5m --limit 20
 uv run gmgn-twitter-intel account-alerts --window 24h --limit 50
 uv run gmgn-twitter-intel narrative-flow --window 1h --limit 20
 uv run gmgn-twitter-intel account-narratives --window 24h --limit 50
+uv run gmgn-twitter-intel narrative-seeds --window 24h --limit 50
+uv run gmgn-twitter-intel narrative-token-flow --seed-id <seed_id> --window 1h --limit 20
+uv run gmgn-twitter-intel attention-frontier --window 1h --limit 30
 uv run gmgn-twitter-intel enrichment-jobs --limit 50
 uv run gmgn-twitter-intel ops rebuild-windows --window 5m
+uv run gmgn-twitter-intel ops rebuild-narrative-links --window 1h
 ```
 
 `search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。
@@ -205,6 +216,8 @@ uv run gmgn-twitter-intel ops rebuild-windows --window 5m
 - `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
 - token signal 来自确定性 CA/cashtag；narrative signal 来自 watched-account LLM enrichment。
+- narrative seed 只来自 configured watched handles；全量 public stream 只用于 seed 后的 token uptake/link validation。
+- narrative-token link 必须有确定性 token evidence、link reason、matched terms、lag、scores 和 risks；不会只凭 LLM 语义联想创建可交易 token。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。
 - cashtag 没有 CA 时保持 unresolved symbol，不强行映射成某个 token。
 - `coverage=public_stream` 代表 GMGN 匿名公共流覆盖，不是完整 Twitter firehose。
