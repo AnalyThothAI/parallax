@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 from curl_cffi import requests as curl_requests
+from eth_utils import is_address
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,14 +64,16 @@ class GmgnOpenApiClient:
             self._curl_session.close()
 
     def get_token_info(self, *, chain: str, address: str) -> GmgnTokenInfo | None:
-        key = (chain.lower(), address)
+        api_chain = _api_chain(chain)
+        api_address = _api_address(chain=api_chain, address=address)
+        key = (api_chain, api_address)
         cached = self._cache.get(key)
         now = time.time()
         if cached and now - cached[0] <= self.cache_ttl_seconds:
             return cached[1]
 
-        data = self._request("GET", "/v1/token/info", {"chain": _api_chain(chain), "address": address})
-        info = _token_info_from_response(chain=chain, address=address, data=data)
+        data = self._request("GET", "/v1/token/info", {"chain": api_chain, "address": api_address})
+        info = _token_info_from_response(chain=chain, address=api_address, data=data)
         self._cache[key] = (now, info)
         return info
 
@@ -135,6 +138,12 @@ def _api_chain(chain: str) -> str:
     if normalized == "solana":
         return "sol"
     return normalized
+
+
+def _api_address(*, chain: str, address: str) -> str:
+    if chain in {"eth", "base", "bsc"} and is_address(address):
+        return address.lower()
+    return address
 
 
 def _internal_chain(chain: str) -> str:

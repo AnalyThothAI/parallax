@@ -78,3 +78,37 @@ def test_gmgn_openapi_client_maps_internal_solana_chain_to_openapi_sol():
 
     assert info is not None
     assert info.chain == "solana"
+
+
+def test_gmgn_openapi_client_lowercases_evm_addresses_for_lookup():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["chain"] == "bsc"
+        assert request.url.params["address"] == "0x5f03ddcb6c7d9ed83f21346bb9c97d9e51a84444"
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "address": "0x5f03ddcb6c7d9ed83f21346bb9c97d9e51a84444",
+                    "symbol": "蛋猫",
+                    "price": "0.000015282855",
+                    "circulating_supply": "1000000000",
+                },
+            },
+        )
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        info = client.get_token_info(chain="bsc", address="0x5f03DDCB6C7d9ed83f21346Bb9c97d9E51a84444")
+    finally:
+        client.close()
+
+    assert info is not None
+    assert info.chain == "bsc"
+    assert info.address == "0x5f03ddcb6c7d9ed83f21346bb9c97d9e51a84444"
+    assert info.symbol == "蛋猫"
+    assert info.market_cap == 15282.855
