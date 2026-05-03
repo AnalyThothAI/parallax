@@ -205,6 +205,70 @@ export type NarrativeFlowData = {
   items: NarrativeFlowItem[];
 };
 
+export type NarrativeSeed = {
+  seed_id: string;
+  narrative_label: string;
+  seed_family?: string | null;
+  seed_terms?: string[];
+  market_interpretation?: string | null;
+  author_handle?: string | null;
+  evidence?: string | null;
+  summary?: string | null;
+  received_at_ms?: number | null;
+};
+
+export type NarrativeTokenLinkItem = {
+  identity: {
+    identity_key: string;
+    identity_status: string;
+    token_id?: string | null;
+    chain?: string | null;
+    address?: string | null;
+    symbol?: string | null;
+  };
+  flow: {
+    window: WindowKey;
+    mentions: number;
+    watched_mentions: number;
+    unique_authors: number;
+    weighted_reach?: number | null;
+    lag_ms?: number | null;
+  };
+  market: {
+    market_status: string;
+    market_cap?: number | null;
+    price_change_after_seed_pct?: number | null;
+  };
+  scores: {
+    seed: number;
+    diffusion: number;
+    token_link: number;
+    tradeability: number;
+  };
+  signal: {
+    decision: "driver" | "watch" | "discard";
+    reasons: string[];
+    risks: string[];
+  };
+  evidence: {
+    first_linked_event_id?: string | null;
+    best_evidence_event_id?: string | null;
+    link_reason?: string | null;
+    matched_terms?: string[];
+    link_confidence?: number | null;
+  };
+};
+
+export type AttentionFrontierItem = {
+  seed: NarrativeSeed;
+  link: NarrativeTokenLinkItem;
+};
+
+export type AttentionFrontierData = {
+  window: WindowKey;
+  items: AttentionFrontierItem[];
+};
+
 export type EnrichmentJobsData = {
   items: Array<Record<string, unknown>>;
   counts: Record<string, number>;

@@ -31,6 +31,9 @@ class TokenCandidate:
 class NarrativeItem:
     label: str
     description: str
+    seed_family: str
+    trigger_terms: list[str]
+    market_interpretation: str
     evidence: str
     confidence: float
 
@@ -70,7 +73,9 @@ def build_enrichment_prompt(*, event: dict[str, Any], entities: list[dict[str, A
             "content": (
                 "You extract trading-relevant intelligence from one X/Twitter event. "
                 "Return only JSON. Every token candidate and narrative must include an evidence "
-                "substring copied exactly from the provided text. Do not infer hidden tickers."
+                "substring copied exactly from the provided text. Do not infer hidden tickers. "
+                "Every narrative must include label, description, seed_family, trigger_terms, "
+                "market_interpretation, evidence, and confidence."
             ),
         },
         {
@@ -141,11 +146,29 @@ def _narrative(item: Any, event_text: str, min_confidence: float) -> NarrativeIt
     confidence = _confidence(item.get("confidence"))
     label = _label(str(item.get("label") or ""))
     description = str(item.get("description") or "").strip()
-    if confidence < min_confidence or not label or not description:
+    seed_family = _label(str(item.get("seed_family") or ""))
+    trigger_terms = _trigger_terms(item.get("trigger_terms"), event_text=event_text)
+    market_interpretation = str(item.get("market_interpretation") or "").strip()
+    if (
+        confidence < min_confidence
+        or not label
+        or not description
+        or not seed_family
+        or not trigger_terms
+        or not market_interpretation
+    ):
         return None
     if not _contains_evidence(event_text, evidence):
         return None
-    return NarrativeItem(label=label, description=description, evidence=evidence, confidence=confidence)
+    return NarrativeItem(
+        label=label,
+        description=description,
+        seed_family=seed_family,
+        trigger_terms=trigger_terms,
+        market_interpretation=market_interpretation,
+        evidence=evidence,
+        confidence=confidence,
+    )
 
 
 def _json_payload(raw_response: str | dict[str, Any]) -> dict[str, Any]:
@@ -188,6 +211,25 @@ def _label(value: str) -> str:
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _trigger_terms(value: Any, *, event_text: str) -> list[str]:
+    terms: list[str] = []
+    for item in _list(value):
+        term = _normalized_text(str(item or ""))
+        if not term or not _contains_trigger_term(event_text, term) or term in terms:
+            continue
+        terms.append(term[:80])
+        if len(terms) >= 12:
+            break
+    return terms
+
+
+def _contains_trigger_term(event_text: str, term: str) -> bool:
+    escaped = re.escape(term.lower())
+    if " " in term:
+        return re.search(escaped.replace("\\ ", r"\s+"), event_text) is not None
+    return re.search(rf"(?<![a-z0-9]){escaped}(?![a-z0-9])", event_text) is not None
 
 
 def _event_text(event: dict[str, Any]) -> str:

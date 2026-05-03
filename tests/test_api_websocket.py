@@ -96,6 +96,33 @@ def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path):
             assert live["event"]["event_id"] == "event-ca-live"
 
 
+def test_websocket_routes_narrative_link_updates_by_seed_event_handle(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        event = make_event("seed-event", "toly", text="Grok is getting scary good")
+        client.app.state.service.ingest.ingest_event(event, is_watched=True)
+
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "auth", "token": "secret"})
+            assert ws.receive_json()["type"] == "ready"
+            ws.send_json({"type": "subscribe", "handles": ["toly"], "replay": 0})
+
+            client.portal.call(
+                client.app.state.service.hub.publish,
+                {
+                    "type": "narrative_link_update",
+                    "event": event.to_dict(),
+                    "seeds": [{"seed_id": "seed-1", "narrative_label": "ai_agent_grok"}],
+                    "links": [{"symbol": "GROK"}],
+                },
+            )
+            update = ws.receive_json()
+
+    assert update["type"] == "narrative_link_update"
+    assert update["seeds"][0]["narrative_label"] == "ai_agent_grok"
+
+
 def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
     result = client.app.state.service.ingest.ingest_event(event, is_watched=is_watched)
     return {
