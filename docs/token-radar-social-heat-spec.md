@@ -160,7 +160,7 @@ Layout:
 }
 ```
 
-This is a breaking API redesign. `/api/token-flow` should remove the old `signal`, `evidence_highlights`, and `evidence_highlight_best` blocks when this spec is implemented. Database migrations may backfill historical data, but runtime code should not use old-field fallback branches.
+This is a breaking API redesign. `/api/token-flow` should remove the old `signal`, `evidence_highlights`, and `evidence_highlight_best` blocks when this spec is implemented. The runtime does not migrate old token-radar data; incompatible app tables are reset and rebuilt from fresh collection.
 
 ### Realtime Signal Tape Contract
 
@@ -438,7 +438,7 @@ Validation:
 - `evidence` and every `trigger_term` must be grounded in event text.
 - Chinese display fields are required for UI.
 - `label` remains the stable machine key.
-- If display fields are missing, treat the row as a contract error and show `narrative_display_missing`; old records should be repaired by one-time backfill instead of runtime fallback code.
+- If display fields are missing, treat the row as a contract error and show `narrative_display_missing`; do not repair it from old summaries or machine labels in runtime.
 
 ### Storage
 

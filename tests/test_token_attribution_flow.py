@@ -122,12 +122,8 @@ def test_symbol_mentions_before_ca_are_reattributed_to_explicit_token_candidate(
     assert item["flow"]["direct_mentions"] == 1
     assert item["flow"]["symbol_mentions"] == 1
     assert item["flow"]["weighted_mentions"] == pytest.approx(2.0, abs=0.3)
-    assert item["attribution"]["avg_confidence"] >= 0.70
-    assert item["attribution"]["selected_symbol_mentions"] == 1
-    assert {event["event_id"] for event in item["evidence_highlights"]} == {
-        "event-dog-symbol-first",
-        "event-dog-payload-later",
-    }
+    assert item["discussion_quality"]["avg_attribution_confidence"] >= 0.70
+    assert item["evidence_total_count"] == 2
 
 
 def test_ambiguous_symbol_flow_selects_best_market_candidate_without_symbol_bucket(tmp_path):
@@ -178,6 +174,18 @@ def test_ambiguous_symbol_flow_selects_best_market_candidate_without_symbol_buck
             limit=10,
             now_ms=base_ms + 60_000,
         )
+        target = next(item for item in items if item["identity"]["address"] == target_address)
+        target_id = target["identity"]["token_id"]
+        target_symbol_rows = conn.execute(
+            """
+            SELECT candidate_count, reasons_json
+            FROM event_token_attributions
+            WHERE token_id = ?
+              AND attribution_status = 'selected'
+            LIMIT 1
+            """,
+            (target_id,),
+        ).fetchall()
     finally:
         conn.close()
 
@@ -187,8 +195,9 @@ def test_ambiguous_symbol_flow_selects_best_market_candidate_without_symbol_buck
     assert target["flow"]["direct_mentions"] == 1
     assert target["flow"]["symbol_mentions"] == 6
     assert target["flow"]["mentions"] == 7
-    assert target["attribution"]["candidate_count"] == 2
-    assert "market_quality_lead" in target["attribution"]["reasons"]
+    assert target_symbol_rows
+    assert target_symbol_rows[0]["candidate_count"] == 2
+    assert "market_quality_lead" in target_symbol_rows[0]["reasons_json"]
     assert weak["flow"]["mentions"] == 1
     assert weak["flow"]["symbol_mentions"] == 0
 

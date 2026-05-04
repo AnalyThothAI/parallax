@@ -25,13 +25,16 @@ def test_seed_builder_only_materializes_watched_event_narratives(tmp_path):
         evidence.insert_event(public, is_watched=False)
         result = EnrichmentResult(
             summary="Musk-like account talked about Grok.",
+            summary_zh="关注账号讨论 Grok，引发 AI Agent 主题注意力。",
             narratives=[
                 NarrativeItem(
                     label="ai_agent_grok",
-                    description="Grok as an AI-agent attention seed",
+                    display_name_zh="Grok AI Agent",
+                    headline_zh="Grok 相关发言带动 AI Agent 注意力",
+                    description_zh="Grok as an AI-agent attention seed",
                     seed_family="ai_agent",
                     trigger_terms=["Grok", "AI agent"],
-                    market_interpretation="Market may look for Grok or AI-agent tokens.",
+                    market_interpretation_zh="交易员可能关注 Grok 或 AI Agent 相关 token。",
                     evidence="Grok is getting scary good",
                     confidence=0.9,
                 )
@@ -55,4 +58,7 @@ def test_seed_builder_only_materializes_watched_event_narratives(tmp_path):
     assert len(watched_seed_rows) == 1
     assert watched_seed_rows[0]["narrative_label"] == "ai_agent_grok"
     assert watched_seed_rows[0]["seed_terms"] == ["grok", "ai agent"]
+    assert watched_seed_rows[0]["display"]["headline_zh"] == "Grok 相关发言带动 AI Agent 注意力"
+    assert watched_seed_rows[0]["display"]["summary_zh"] == "关注账号讨论 Grok，引发 AI Agent 主题注意力。"
+    assert "Musk-like account" not in watched_seed_rows[0]["display"]["summary_zh"]
     assert public_seed_rows == []

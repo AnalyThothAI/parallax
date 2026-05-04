@@ -69,4 +69,32 @@ def test_migrations_are_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version"] for row in rows] == [7]
+    assert [row["version"] for row in rows] == [8]
+
+
+def test_migrate_resets_incompatible_app_schema_instead_of_keeping_old_columns(tmp_path):
+    db_path = tmp_path / "twitter_intel.sqlite3"
+    conn = connect_sqlite(db_path, read_only=False)
+    try:
+        conn.execute(
+            "CREATE TABLE schema_migrations("
+            "version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at_ms INTEGER NOT NULL)"
+        )
+        conn.execute("INSERT INTO schema_migrations(version, name, applied_at_ms) VALUES (7, 'old_schema', 1)")
+        conn.execute("CREATE TABLE event_enrichments(event_id TEXT PRIMARY KEY, summary TEXT NOT NULL)")
+        conn.execute("INSERT INTO event_enrichments(event_id, summary) VALUES ('old-event', 'old english summary')")
+        conn.commit()
+
+        migrate(conn)
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(event_enrichments)").fetchall()
+        }
+        rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+        old_rows = conn.execute("SELECT COUNT(*) AS count FROM event_enrichments").fetchone()
+    finally:
+        conn.close()
+
+    assert "summary_zh" in columns
+    assert [row["version"] for row in rows] == [8]
+    assert old_rows["count"] == 0

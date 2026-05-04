@@ -859,7 +859,13 @@
 
     @media (max-width: 1180px) {
       .grid { grid-template-columns: 166px minmax(760px, 1fr); }
-      .drawer { display: none; }
+      .drawer {
+        display: grid;
+        grid-column: 1 / -1;
+        min-height: 0;
+        border-top: 1px solid var(--line);
+        border-left: 0;
+      }
       .topbar { grid-template-columns: 220px 1fr minmax(240px, 420px) 120px 30px; }
     }
   </style>

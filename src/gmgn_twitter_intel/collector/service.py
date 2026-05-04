@@ -165,6 +165,7 @@ class CollectorService:
                     "event": event.to_dict(),
                     "entities": ingested.entities,
                     "alerts": ingested.alerts,
+                    "token_attributions": ingested.token_attributions,
                 }
             )
 

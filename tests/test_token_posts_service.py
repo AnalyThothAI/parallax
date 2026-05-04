@@ -51,8 +51,9 @@ def test_token_posts_returns_distinct_paginated_attributed_posts(tmp_path):
     assert second_page["has_more"] is False
     assert second_page["next_cursor"] is None
     assert [item["event_id"] for item in second_page["items"]] == ["event-dog-post-2"]
-    assert first_page["items"][0]["score_version"] == "post_score_v1"
-    assert first_page["items"][0]["contributions"]
+    assert first_page["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
+    assert first_page["items"][0]["post_quality"]["contributions"]
+    assert "score" not in first_page["items"][0]
     assert "evidence" not in first_page["items"][0]
 
 
@@ -86,4 +87,3 @@ def test_token_posts_scope_filters_to_watched_attributions(tmp_path):
 
     assert watched_page["total_count"] == 1
     assert [item["event_id"] for item in watched_page["items"]] == ["event-dog-watched"]
-

@@ -12,6 +12,7 @@ from .token_identity_resolver import TokenMention
 @dataclass(frozen=True, slots=True)
 class SignalBuildResult:
     alerts: list[dict[str, Any]]
+    token_attributions: list[dict[str, Any]]
 
 
 class SignalBuilder:
@@ -47,6 +48,7 @@ class SignalBuilder:
         )
         for symbol in _symbols_to_rebuild(mention_rows):
             self.attribution_builder.rebuild_symbol(symbol, commit=self.commit)
+        token_attributions = self.repository.token_attributions_for_event(event.event_id)
         for mention in token_mentions:
             seen_global, seen_author = self.repository.token_seen_before(
                 identity_key=mention.identity_key,
@@ -69,7 +71,7 @@ class SignalBuilder:
                 )
                 if alert:
                     alerts.append(asdict(alert))
-        return SignalBuildResult(alerts=alerts)
+        return SignalBuildResult(alerts=alerts, token_attributions=token_attributions)
 
 
 def _symbols_to_rebuild(mention_rows: list[dict[str, Any]]) -> set[str]:

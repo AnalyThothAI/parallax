@@ -3,7 +3,39 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
+
+APP_TABLES = (
+    "schema_migrations",
+    "raw_frames",
+    "events",
+    "event_fts",
+    "event_entities",
+    "tokens",
+    "token_aliases",
+    "token_market_snapshots",
+    "account_token_alerts",
+    "event_token_mentions",
+    "event_token_attributions",
+    "enrichment_jobs",
+    "model_runs",
+    "event_enrichments",
+    "event_token_candidates",
+    "event_narratives",
+    "account_narrative_alerts",
+    "narrative_windows",
+    "narrative_seeds",
+    "narrative_token_links",
+    "account_profiles",
+    "account_token_call_stats",
+    "account_quality_snapshots",
+)
+
+REQUIRED_COLUMNS = {
+    "event_enrichments": {"summary_zh"},
+    "event_narratives": {"display_name_zh", "headline_zh", "description_zh", "market_interpretation_zh"},
+    "narrative_seeds": {"display_name_zh", "headline_zh", "market_interpretation_zh"},
+}
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -301,6 +333,7 @@ CREATE TABLE IF NOT EXISTS event_enrichments (
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
   summary TEXT NOT NULL,
+  summary_zh TEXT NOT NULL DEFAULT '',
   stance TEXT NOT NULL,
   intent TEXT NOT NULL,
   confidence REAL NOT NULL,
@@ -330,6 +363,10 @@ CREATE TABLE IF NOT EXISTS event_narratives (
   event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
   narrative_label TEXT NOT NULL,
   description TEXT NOT NULL,
+  display_name_zh TEXT NOT NULL DEFAULT '',
+  headline_zh TEXT NOT NULL DEFAULT '',
+  description_zh TEXT NOT NULL DEFAULT '',
+  market_interpretation_zh TEXT NOT NULL DEFAULT '',
   evidence TEXT NOT NULL,
   confidence REAL NOT NULL,
   stance TEXT NOT NULL,
@@ -401,6 +438,9 @@ CREATE TABLE IF NOT EXISTS narrative_seeds (
   seed_family TEXT,
   seed_terms_json TEXT NOT NULL DEFAULT '[]',
   market_interpretation TEXT NOT NULL DEFAULT '',
+  display_name_zh TEXT NOT NULL DEFAULT '',
+  headline_zh TEXT NOT NULL DEFAULT '',
+  market_interpretation_zh TEXT NOT NULL DEFAULT '',
   stance TEXT NOT NULL,
   intent TEXT NOT NULL,
   confidence REAL NOT NULL,
@@ -470,10 +510,55 @@ CREATE INDEX IF NOT EXISTS idx_narrative_token_links_chain_address_updated
   ON narrative_token_links(chain, lower(address), updated_at_ms);
 CREATE INDEX IF NOT EXISTS idx_narrative_token_links_symbol_updated
   ON narrative_token_links(symbol, updated_at_ms);
+
+CREATE TABLE IF NOT EXISTS account_profiles (
+  handle TEXT PRIMARY KEY,
+  first_seen_ms INTEGER NOT NULL,
+  latest_seen_ms INTEGER NOT NULL,
+  follower_max INTEGER,
+  watched_status TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS account_token_call_stats (
+  handle TEXT NOT NULL,
+  token_id TEXT NOT NULL,
+  first_mention_ms INTEGER NOT NULL,
+  mention_count INTEGER NOT NULL,
+  was_early_author INTEGER NOT NULL,
+  price_change_5m_pct REAL,
+  price_change_1h_pct REAL,
+  price_change_24h_pct REAL,
+  max_drawdown_1h_pct REAL,
+  outcome_status TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  PRIMARY KEY(handle, token_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_token_call_stats_token
+  ON account_token_call_stats(token_id, first_mention_ms);
+
+CREATE TABLE IF NOT EXISTS account_quality_snapshots (
+  snapshot_id TEXT PRIMARY KEY,
+  handle TEXT NOT NULL,
+  window TEXT NOT NULL,
+  precision_score REAL,
+  early_call_score REAL,
+  spam_risk_score REAL,
+  avg_realized_return REAL,
+  sample_size INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_quality_snapshots_handle_window
+  ON account_quality_snapshots(handle, window, updated_at_ms DESC);
 """
 
 def migrate(conn: sqlite3.Connection) -> None:
     ensure_fts5_available(conn)
+    if _should_reset_schema(conn):
+        _reset_app_schema(conn)
     conn.executescript(SCHEMA_SQL)
     conn.execute("DROP TABLE IF EXISTS token_windows")
     conn.execute(
@@ -481,6 +566,57 @@ def migrate(conn: sqlite3.Connection) -> None:
         (SCHEMA_VERSION, "token_attribution_radar", _now_ms()),
     )
     conn.commit()
+
+
+def _should_reset_schema(conn: sqlite3.Connection) -> bool:
+    existing = _existing_tables(conn)
+    if "schema_migrations" not in existing:
+        return any(name in existing for name in APP_TABLES if name != "schema_migrations")
+    row = conn.execute("SELECT max(version) AS version FROM schema_migrations").fetchone()
+    version = int(row["version"]) if row and row["version"] is not None else 0
+    if version != SCHEMA_VERSION:
+        return True
+    return _required_columns_missing(conn)
+
+
+def _required_columns_missing(conn: sqlite3.Connection) -> bool:
+    existing = _existing_tables(conn)
+    for table, required in REQUIRED_COLUMNS.items():
+        if table not in existing:
+            return True
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({_quote_identifier(table)})").fetchall()}
+        if not required.issubset(columns):
+            return True
+    return False
+
+
+def _reset_app_schema(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA foreign_keys=OFF")
+    try:
+        existing = _existing_tables(conn)
+        if "event_fts" in existing:
+            conn.execute("DROP TABLE IF EXISTS event_fts")
+            existing = _existing_tables(conn)
+        for table in reversed(APP_TABLES):
+            if table != "event_fts" and table in existing:
+                conn.execute(f"DROP TABLE IF EXISTS {_quote_identifier(table)}")
+        for table in sorted(name for name in _existing_tables(conn) if name.startswith("event_fts_")):
+            conn.execute(f"DROP TABLE IF EXISTS {_quote_identifier(table)}")
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
+
+
+def _existing_tables(conn: sqlite3.Connection) -> set[str]:
+    return {
+        row["name"]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table', 'virtual table')"
+        ).fetchall()
+    }
+
+
+def _quote_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
 
 
 def ensure_fts5_available(conn: sqlite3.Connection) -> None:

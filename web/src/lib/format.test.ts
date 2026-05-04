@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { compactNumber, eventHandle, formatPercentShare, formatRelativeTime, formatSignedPercent, formatUsdCompact, tokenLabel } from "./format";
+import type { TokenFlowItem } from "../api/types";
+import {
+  compactNumber,
+  eventHandle,
+  formatPercentShare,
+  formatPropagationPhase,
+  formatRelativeTime,
+  formatRisk,
+  formatScoreDelta,
+  formatSignedPercent,
+  formatTimingStatus,
+  formatUsdCompact,
+  tokenLabel
+} from "./format";
 
 describe("format helpers", () => {
   it("compacts large numbers for dense cockpit cells", () => {
@@ -26,42 +39,137 @@ describe("format helpers", () => {
 
   it("normalizes event handles and token labels", () => {
     expect(eventHandle({ event_id: "1", author: { handle: "@Toly" } })).toBe("toly");
-    expect(
-      tokenLabel({
-        identity: {
-          identity_key: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-          identity_status: "resolved_ca",
-          token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-          chain: "eth",
-          address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-          symbol: "PEPE"
-        },
-        market: { market_status: "fresh", price_change_status: "insufficient_history" },
-        flow: { window: "5m", mentions: 1, watched_mentions: 1, previous_mentions: 0, mention_delta: 1, stream_dominance: 1, baseline_status: "insufficient_history", baseline_sample_count: 0 },
-        baseline: { baseline_status: "insufficient_history", sample_count: 0, zero_slot_count: 0, ewma_mean: null, ewma_stddev: null, simple_mean: null, z_score: null, new_burst_score: 1 },
-        diffusion: { score: 80, status: "thin", independent_authors: 1, effective_authors: 1, top_author_share: 1, duplicate_text_share: 0, repeated_cluster_count: 0, shill_author_count: 0, reasons: [], risks: ["thin_author_set"] },
-        watch: { status: "direct_watch", direct_mentions: 1, direct_authors: 1, seed_link_count: 0, top_seed: null, reasons: ["watched_direct_mention"], risks: [] },
-        fresh: { is_new_local_evidence: true, is_first_seen_by_watched: true },
-        signal: {
-          score_version: "token_signal_v1",
-          decision: "watch",
-          score: 1,
-          reasons: [],
-          risks: [],
-          contributions: [],
-          risk_caps: []
-        },
-        evidence_highlight_best: null,
-        evidence_highlights: [],
-        evidence_total_count: 0,
-        posts_query: {
-          token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-          chain: "eth",
-          address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-          window: "5m",
-          scope: "all"
-        }
-      })
-    ).toBe("$PEPE");
+    expect(tokenLabel(sampleToken())).toBe("$PEPE");
+  });
+
+  it("formats social heat rebuild labels", () => {
+    expect(formatTimingStatus("social_leads_price")).toBe("社交领先");
+    expect(formatTimingStatus("price_leads_social")).toBe("价格先动");
+    expect(formatPropagationPhase("expansion")).toBe("扩散");
+    expect(formatRisk("author_concentration_high")).toBe("作者集中");
+    expect(formatScoreDelta(11)).toBe("+11");
   });
 });
+
+function sampleToken(): TokenFlowItem {
+  return {
+    identity: {
+      identity_key: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      identity_status: "resolved_ca",
+      token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      chain: "eth",
+      address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      symbol: "PEPE"
+    },
+    market: { market_status: "fresh", price_change_status: "insufficient_history" },
+    flow: {
+      window: "5m",
+      mentions: 1,
+      watched_mentions: 1,
+      previous_mentions: 0,
+      mention_delta: 1,
+      stream_dominance: 1,
+      baseline_status: "insufficient_history",
+      baseline_sample_count: 0
+    },
+    social_heat: {
+      score_version: "social_heat_v1",
+      score: 50,
+      reasons: [],
+      risks: [],
+      contributions: [],
+      risk_caps: [],
+      window: "5m",
+      mentions: 1,
+      weighted_mentions: 1,
+      previous_mentions: 0,
+      mention_delta: 1,
+      stream_share: 1,
+      watched_share: 1,
+      status: "new_burst"
+    },
+    discussion_quality: {
+      score_version: "discussion_quality_v1",
+      score: 50,
+      reasons: [],
+      risks: [],
+      contributions: [],
+      risk_caps: [],
+      evidence_specificity: 1,
+      avg_post_quality: 50,
+      avg_attribution_confidence: 1,
+      duplicate_text_share: 0,
+      informative_post_count: 1,
+      watched_source_count: 1
+    },
+    propagation: {
+      score_version: "propagation_v1",
+      score: 50,
+      reasons: [],
+      risks: [],
+      contributions: [],
+      risk_caps: [],
+      independent_authors: 1,
+      effective_authors: 1,
+      new_authors: 1,
+      top_author_share: 1,
+      duplicate_text_share: 0,
+      author_entropy: 0,
+      phase: "seed",
+      top_authors: []
+    },
+    tradeability: {
+      score_version: "tradeability_v1",
+      score: 50,
+      reasons: [],
+      risks: [],
+      contributions: [],
+      risk_caps: [],
+      identity_tradeable: true,
+      market_fresh: true,
+      market_cap_present: false,
+      liquidity_present: false,
+      pool_present: false
+    },
+    timing: {
+      score_version: "timing_v1",
+      score: 50,
+      status: "insufficient_data",
+      chase_risk: false,
+      reasons: [],
+      risks: []
+    },
+    opportunity: {
+      score_version: "social_opportunity_v1",
+      score: 50,
+      decision: "watch",
+      reasons: [],
+      risks: [],
+      contributions: [],
+      risk_caps: [],
+      components: {
+        heat: 50,
+        quality: 50,
+        propagation: 50,
+        tradeability: 50,
+        timing: 50
+      }
+    },
+    evidence_total_count: 0,
+    posts_query: {
+      token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      chain: "eth",
+      address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      window: "5m",
+      scope: "all"
+    },
+    timeline_query: {
+      token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      chain: "eth",
+      address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+      window: "5m",
+      bucket: "1m",
+      scope: "all"
+    }
+  };
+}

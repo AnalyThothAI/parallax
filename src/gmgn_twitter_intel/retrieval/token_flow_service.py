@@ -5,9 +5,15 @@ import time
 from typing import Any
 
 from .diffusion_health import diffusion_health
+from .discussion_quality_scoring import discussion_quality_score
+from .opportunity_scoring import opportunity_score
+from .post_text_quality import post_text_features
+from .propagation_scoring import propagation_score
 from .rolling_token_flow import RollingTokenFlow
+from .social_heat_scoring import social_heat_score
+from .timing_scoring import timing_score
 from .token_baseline import token_baseline
-from .token_signal_scoring import evidence_score, signal_block
+from .tradeability_scoring import tradeability_score
 
 FRESH_MARKET_MS = 30 * 60_000
 
@@ -65,31 +71,39 @@ class TokenFlowService:
         diffusion = self._diffusion_block(row)
         fresh = self._fresh_block(row, market=market)
         watch = self._watch_block(row)
-        attribution = self._attribution_block(row)
-        evidence_highlights = self._evidence_items(row, diffusion=diffusion, market=market)
-        evidence_highlight_best = evidence_highlights[0] if evidence_highlights else None
-        signal = signal_block(
-            row,
-            market=market,
-            flow=flow,
-            diffusion=diffusion,
-            watch=watch,
-            evidence_highlight_best=evidence_highlight_best,
+        identity = self._identity_block(row, token)
+        social_heat = social_heat_score(self._social_heat_features(row, flow=flow, fresh=fresh)) | {
+            "window": window,
+            "mentions": flow["mentions"],
+        }
+        discussion_quality = discussion_quality_score(
+            self._discussion_quality_features(row, flow=flow, diffusion=diffusion)
+        )
+        propagation = propagation_score(self._propagation_features(row, diffusion=diffusion, watch=watch))
+        tradeability = tradeability_score(self._tradeability_features(identity=identity, market=market))
+        timing = timing_score(self._timing_features(row, market=market, social_heat=social_heat))
+        opportunity = opportunity_score(
+            {
+                "heat": social_heat,
+                "quality": discussion_quality,
+                "propagation": propagation,
+                "tradeability": tradeability,
+                "timing": timing,
+            }
         )
         return {
-            "identity": self._identity_block(row, token),
+            "identity": identity,
             "market": market,
             "flow": flow,
-            "baseline": baseline,
-            "diffusion": diffusion,
-            "fresh": fresh,
-            "watch": watch,
-            "attribution": attribution,
-            "signal": signal,
-            "evidence_highlight_best": evidence_highlight_best,
-            "evidence_highlights": evidence_highlights,
+            "social_heat": social_heat,
+            "discussion_quality": discussion_quality,
+            "propagation": propagation,
+            "tradeability": tradeability,
+            "timing": timing,
+            "opportunity": opportunity,
             "evidence_total_count": evidence_total_count,
             "posts_query": self._posts_query(row, window=window, scope=scope),
+            "timeline_query": self._timeline_query(row, window=window, scope=scope),
         }
 
     def _identity_block(self, row: dict[str, Any], token: dict[str, Any] | None) -> dict[str, Any]:
@@ -220,18 +234,6 @@ class TokenFlowService:
             "is_first_seen_by_watched": _in_window(first_watched_seen_ms, window_start_ms, window_end_ms),
         }
 
-    def _attribution_block(self, row: dict[str, Any]) -> dict[str, Any]:
-        reasons = [str(item) for item in row.get("attribution_reasons", []) if item]
-        risks = [str(item) for item in row.get("attribution_risks", []) if item]
-        return {
-            "status": "selected" if int(row.get("symbol_mention_count") or 0) else "direct",
-            "avg_confidence": float(row.get("avg_attribution_confidence") or 0.0),
-            "selected_symbol_mentions": int(row.get("selected_symbol_mentions") or 0),
-            "candidate_count": int(row.get("candidate_count") or 0),
-            "reasons": reasons,
-            "risks": risks,
-        }
-
     def _watch_block(self, row: dict[str, Any]) -> dict[str, Any]:
         direct_mentions = int(row.get("watched_mention_count") or 0)
         direct_authors = int(row.get("watched_author_count") or 0)
@@ -268,6 +270,151 @@ class TokenFlowService:
             "risks": ["no_watched_confirmation"],
         }
 
+    def _social_heat_features(
+        self,
+        row: dict[str, Any],
+        *,
+        flow: dict[str, Any],
+        fresh: dict[str, Any],
+    ) -> dict[str, Any]:
+        mentions = int(flow.get("mentions") or 0)
+        watched_mentions = int(flow.get("watched_mentions") or 0)
+        return {
+            "mentions": mentions,
+            "mentions_5m": mentions if row.get("window") == "5m" else 0,
+            "mentions_1h": mentions if row.get("window") == "1h" else mentions,
+            "mentions_24h": mentions if row.get("window") == "24h" else 0,
+            "weighted_mentions": flow.get("weighted_mentions"),
+            "previous_mentions": flow.get("previous_mentions"),
+            "mention_delta": flow.get("mention_delta"),
+            "mention_delta_pct": flow.get("mention_delta_pct"),
+            "z_score": flow.get("z_score"),
+            "new_burst_score": flow.get("new_burst_score"),
+            "stream_share": flow.get("stream_dominance"),
+            "watched_share": watched_mentions / mentions if mentions else 0.0,
+            "is_new_local_evidence": fresh.get("is_new_local_evidence"),
+            "is_first_seen_by_watched": fresh.get("is_first_seen_by_watched"),
+        }
+
+    def _discussion_quality_features(
+        self,
+        row: dict[str, Any],
+        *,
+        flow: dict[str, Any],
+        diffusion: dict[str, Any],
+    ) -> dict[str, Any]:
+        informative_count = 0
+        market_context_count = 0
+        for event in row.get("events_for_diffusion", []):
+            if not isinstance(event, dict):
+                continue
+            features = post_text_features(event.get("text_clean") or event.get("search_text"))
+            informative_count += 1 if features["informative"] else 0
+            market_context_count += 1 if features["has_market_context"] else 0
+        return {
+            "mentions": flow.get("mentions"),
+            "direct_mentions": flow.get("direct_mentions"),
+            "avg_attribution_confidence": flow.get("avg_attribution_confidence"),
+            "duplicate_text_share": diffusion.get("duplicate_text_share"),
+            "informative_post_count": informative_count,
+            "watched_source_count": row.get("watched_author_count"),
+            "market_context_count": market_context_count,
+        }
+
+    def _propagation_features(
+        self,
+        row: dict[str, Any],
+        *,
+        diffusion: dict[str, Any],
+        watch: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "mentions": row.get("mention_count"),
+            "independent_authors": diffusion.get("independent_authors"),
+            "effective_authors": diffusion.get("effective_authors"),
+            "new_authors": diffusion.get("independent_authors"),
+            "top_author_share": diffusion.get("top_author_share"),
+            "duplicate_text_share": diffusion.get("duplicate_text_share"),
+            "watched_author_count": row.get("watched_author_count"),
+            "seed_lag_ms": _seed_lag_ms(watch),
+            "top_authors": diffusion.get("top_authors") or row.get("top_authors") or [],
+        }
+
+    def _tradeability_features(self, *, identity: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "identity_status": identity.get("identity_status"),
+            "token_id": identity.get("token_id"),
+            "chain": identity.get("chain"),
+            "address": identity.get("address"),
+            "market_status": market.get("market_status"),
+            "market_cap": market.get("market_cap"),
+            "liquidity": market.get("liquidity"),
+            "pool_status": market.get("pool_status"),
+        }
+
+    def _timing_features(
+        self,
+        row: dict[str, Any],
+        *,
+        market: dict[str, Any],
+        social_heat: dict[str, Any],
+    ) -> dict[str, Any]:
+        price_change = market.get("price_change_window_pct")
+        token_id = row.get("token_id")
+        window_start_ms = int(row.get("window_start_ms") or 0)
+        social_start_ms = int(row.get("first_seen_ms") or row.get("window_start_ms") or 0)
+        window_start_snapshot = self.tokens.market_snapshot_at_or_before(token_id, window_start_ms)
+        social_start_snapshot = self.tokens.market_snapshot_at_or_before(token_id, social_start_ms)
+        price_change_before = _price_change_between(window_start_snapshot, social_start_snapshot)
+        first_price_move_ms = self._first_price_move_ms(
+            token_id=token_id,
+            start_ms=window_start_ms,
+            end_ms=int(row.get("window_end_ms") or _now_ms()),
+            baseline_snapshot=window_start_snapshot,
+            threshold=0.08,
+        )
+        return {
+            "social_start_ms": social_start_ms,
+            "burst_ms": row.get("latest_seen_ms"),
+            "first_price_move_ms": first_price_move_ms,
+            "price_change_window_pct": price_change,
+            "price_change_before_social_pct": price_change_before or 0.0,
+            "social_heat_score": social_heat.get("score"),
+        }
+
+    def _first_price_move_ms(
+        self,
+        *,
+        token_id: str | None,
+        start_ms: int,
+        end_ms: int,
+        baseline_snapshot: dict[str, Any] | None,
+        threshold: float,
+    ) -> int | None:
+        baseline_price = _float_or_none(baseline_snapshot.get("price")) if baseline_snapshot else None
+        rows = self.tokens.conn.execute(
+            """
+            SELECT received_at_ms, price
+            FROM token_market_snapshots
+            WHERE token_id = ?
+              AND received_at_ms >= ?
+              AND received_at_ms <= ?
+              AND price IS NOT NULL
+            ORDER BY received_at_ms ASC
+            """,
+            (token_id, start_ms, end_ms),
+        ).fetchall() if token_id else []
+        for row in rows:
+            price = _float_or_none(row["price"])
+            if price is None:
+                continue
+            if baseline_price is None:
+                baseline_price = price
+                continue
+            if baseline_price and abs((price - baseline_price) / baseline_price) >= threshold:
+                return int(row["received_at_ms"])
+        return None
+
     def _seed_links(self, row: dict[str, Any]) -> list[dict[str, Any]]:
         if self.enrichment is None:
             return []
@@ -280,49 +427,6 @@ class TokenFlowService:
             since_ms=int(row["window_start_ms"]),
             limit=5,
         )
-
-    def _evidence_items(
-        self,
-        row: dict[str, Any],
-        *,
-        diffusion: dict[str, Any],
-        market: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        reference_ms = int(row.get("window_end_ms") or _now_ms())
-        items = []
-        for event in row.get("top_events", []):
-            if not isinstance(event, dict) or not event.get("event_id"):
-                continue
-            score_payload = evidence_score(
-                event,
-                identity_status=str(row["identity_status"]),
-                diffusion=diffusion,
-                market=market,
-                event_age_ms=_age_ms(reference_ms, _int_or_none(event.get("received_at_ms"))),
-            )
-            items.append(
-                {
-                    "event_id": event.get("event_id"),
-                    "evidence_type": event.get("mention_source") or event.get("source") or "event_token_mention",
-                    "handle": event.get("author_handle"),
-                    "text": event.get("text_clean"),
-                    "received_at_ms": event.get("received_at_ms"),
-                    "url": event.get("canonical_url"),
-                    "attribution_status": event.get("attribution_status"),
-                    "attribution_confidence": event.get("attribution_confidence"),
-                    "attribution_weight": event.get("attribution_weight"),
-                    **score_payload,
-                }
-            )
-        items.sort(
-            key=lambda item: (
-                int(item["score"]),
-                _evidence_type_priority(str(item.get("evidence_type") or "")),
-                int(item.get("received_at_ms") or 0),
-            ),
-            reverse=True,
-        )
-        return items
 
     def _evidence_total_counts(self, rows: list[dict[str, Any]], *, watched_only: bool) -> dict[str, int]:
         if not rows:
@@ -363,32 +467,39 @@ class TokenFlowService:
             "scope": scope,
         }
 
+    def _timeline_query(self, row: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
+        return {
+            "token_id": row.get("token_id"),
+            "chain": row.get("chain"),
+            "address": row.get("address"),
+            "window": window,
+            "bucket": "1m",
+            "scope": scope,
+        }
 
-def _token_flow_rank_key(item: dict[str, Any]) -> tuple[int, int, int, float, int, int]:
-    decision_priority = {"driver": 3, "watch": 2, "discard": 1}
-    signal = item.get("signal") or {}
+
+def _token_flow_rank_key(item: dict[str, Any]) -> tuple[int, int, int, int, int, int]:
+    opportunity = item.get("opportunity") or {}
+    heat = item.get("social_heat") or {}
+    propagation = item.get("propagation") or {}
     flow = item.get("flow") or {}
-    fresh = item.get("fresh") or {}
-    latest_age = fresh.get("latest_evidence_age_ms")
-    freshness_rank = -int(latest_age) if latest_age is not None else -10**18
+    latest_seen = int(flow.get("window_end_ms") or 0)
     return (
-        decision_priority.get(str(signal.get("decision") or ""), 0),
-        int(signal.get("score") or 0),
+        int(opportunity.get("decision_priority") or 0),
+        int(opportunity.get("score") or 0),
+        int(heat.get("score") or 0),
+        int(propagation.get("score") or 0),
         int(flow.get("watched_mentions") or 0),
-        float(flow.get("z_score") or flow.get("new_burst_score") or 0.0),
-        int(flow.get("mentions") or 0),
-        freshness_rank,
+        latest_seen,
     )
 
 
-def _evidence_type_priority(value: str) -> int:
-    if value == "gmgn_token_payload":
-        return 3
-    if value in {"ca", "regex", "contract_address"} or "ca" in value:
-        return 2
-    if value == "cashtag":
-        return 1
-    return 0
+def _seed_lag_ms(watch: dict[str, Any]) -> int | None:
+    seed = watch.get("top_seed")
+    if not isinstance(seed, dict):
+        return None
+    value = seed.get("lag_ms")
+    return int(value) if value is not None else None
 
 
 def _age_ms(reference_ms: int, value: int | None) -> int | None:
@@ -404,6 +515,14 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _price_change_between(start_snapshot: dict[str, Any] | None, end_snapshot: dict[str, Any] | None) -> float | None:
+    start_price = _float_or_none(start_snapshot.get("price")) if start_snapshot else None
+    end_price = _float_or_none(end_snapshot.get("price")) if end_snapshot else None
+    if not start_price or end_price is None:
+        return None
+    return round((end_price - start_price) / start_price, 12)
 
 
 def _int_or_none(value: Any) -> int | None:

@@ -98,7 +98,6 @@ def test_token_flow_uses_trailing_window_not_epoch_bucket(tmp_path):
 
     assert item["flow"]["mentions"] == 1
     assert item["flow"]["previous_mentions"] == 1
-    assert item["evidence_highlight_best"]["event_id"] == "event-dog-current"
     assert item["flow"]["window_start_ms"] == now_ms - 3_600_000
     assert item["flow"]["window_end_ms"] == now_ms
 
@@ -180,12 +179,9 @@ def test_baseline_zero_fills_silent_slots_and_scores_new_burst(tmp_path):
         conn.close()
 
     assert item["flow"]["mentions"] == 5
-    assert item["baseline"]["zero_slot_count"] > 0
-    assert item["baseline"]["ewma_mean"] == 0
-    assert item["baseline"]["new_burst_score"] > 0
     assert item["flow"]["z_score"] is None
-    assert item["flow"]["new_burst_score"] == item["baseline"]["new_burst_score"]
-    assert "insufficient_baseline_new_burst" in item["signal"]["reasons"]
+    assert item["social_heat"]["new_burst_score"] == item["flow"]["new_burst_score"]
+    assert "insufficient_baseline_new_burst" in item["opportunity"]["reasons"]
 
 
 def test_token_flow_omitted_now_ms_does_not_return_stale_fallback_rows(tmp_path):
@@ -222,10 +218,10 @@ def test_token_flow_diffusion_uses_full_author_counts_beyond_display_slice(tmp_p
     finally:
         conn.close()
 
-    assert item["diffusion"]["independent_authors"] == 25
-    assert sum(int(author["watched_count"]) for author in item["diffusion"]["top_authors"]) == 3
-    assert sum(int(author["followers"]) for author in item["diffusion"]["top_authors"]) == 2000
-    assert len(item["diffusion"]["top_authors"]) == 20
+    assert item["propagation"]["independent_authors"] == 25
+    assert sum(int(author["watched_count"]) for author in item["propagation"]["top_authors"]) == 3
+    assert sum(int(author["followers"]) for author in item["propagation"]["top_authors"]) == 2000
+    assert len(item["propagation"]["top_authors"]) == 20
 
 
 def test_token_flow_response_includes_repeated_diffusion_block(tmp_path):
@@ -254,11 +250,11 @@ def test_token_flow_response_includes_repeated_diffusion_block(tmp_path):
     finally:
         conn.close()
 
-    assert item["diffusion"]["status"] == "repeated"
-    assert item["diffusion"]["independent_authors"] == 3
-    assert item["diffusion"]["duplicate_text_share"] == 1.0
-    assert "repeated_text_cluster" in item["diffusion"]["risks"]
-    assert "watched_author_present" in item["diffusion"]["reasons"]
+    assert item["propagation"]["phase"] == "concentration"
+    assert item["propagation"]["independent_authors"] == 3
+    assert item["propagation"]["duplicate_text_share"] == 1.0
+    assert "repeated_text_cluster" in item["propagation"]["risks"]
+    assert "watched_author_present" in item["propagation"]["reasons"]
 
 
 def test_token_flow_watch_block_marks_direct_watched_mentions(tmp_path):
@@ -281,13 +277,9 @@ def test_token_flow_watch_block_marks_direct_watched_mentions(tmp_path):
     finally:
         conn.close()
 
-    assert item["watch"]["status"] == "direct_watch"
-    assert item["watch"]["direct_mentions"] == 3
-    assert item["watch"]["direct_authors"] == 3
-    assert item["watch"]["seed_link_count"] == 0
-    assert item["watch"]["top_seed"] is None
-    assert item["watch"]["reasons"] == ["watched_direct_mention"]
-    assert item["watch"]["risks"] == []
+    assert item["flow"]["watched_mentions"] == 3
+    assert "watched_source_present" in item["social_heat"]["reasons"]
+    assert "watched_author_present" in item["propagation"]["reasons"]
 
 
 def test_token_flow_watch_block_marks_public_only_without_seed_links(tmp_path):
@@ -304,13 +296,8 @@ def test_token_flow_watch_block_marks_public_only_without_seed_links(tmp_path):
     finally:
         conn.close()
 
-    assert item["watch"]["status"] == "public_only"
-    assert item["watch"]["direct_mentions"] == 0
-    assert item["watch"]["direct_authors"] == 0
-    assert item["watch"]["seed_link_count"] == 0
-    assert item["watch"]["top_seed"] is None
-    assert item["watch"]["reasons"] == ["public_stream_evidence"]
-    assert item["watch"]["risks"] == ["no_watched_confirmation"]
+    assert item["flow"]["watched_mentions"] == 0
+    assert "public_stream_coverage" in item["opportunity"]["risks"]
 
 
 def test_token_flow_watch_block_marks_seed_linked_without_direct_watch(tmp_path):
@@ -383,11 +370,6 @@ def test_token_flow_watch_block_marks_seed_linked_without_direct_watch(tmp_path)
     finally:
         conn.close()
 
-    assert item["watch"]["status"] == "seed_linked"
-    assert item["watch"]["direct_mentions"] == 0
-    assert item["watch"]["direct_authors"] == 0
-    assert item["watch"]["seed_link_count"] == 1
-    assert item["watch"]["top_seed"]["seed_id"] == seed["seed_id"]
-    assert item["watch"]["top_seed"]["author_handle"] == "toly"
-    assert item["watch"]["reasons"] == ["watched_seed_link"]
-    assert item["watch"]["risks"] == []
+    assert item["flow"]["watched_mentions"] == 0
+    assert item["propagation"]["score"] > 0
+    assert item["opportunity"]["decision"] in {"watch", "driver"}

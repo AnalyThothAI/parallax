@@ -8,6 +8,27 @@
 
 **Tech Stack:** Python 3.12, FastAPI, SQLite WAL/FTS5, pytest, ruff, React 19, TanStack Query, TypeScript, Vitest, Vite.
 
+## 落地状态
+
+截至 2026-05-04，本计划已进入实现完成和验证阶段：
+
+- 右侧 `TokenDetailDrawer` 保留，空状态为 `Select Token`，选中 token 后默认进入 `Timeline`。
+- `实时信号 Tape` 作为中间底部全局组件保留，不被 timeline 替代，也不藏进 drawer。
+- `/api/token-flow` 运行时只输出新 semantic blocks：`social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity`、`posts_query`、`timeline_query`。
+- `/api/token-posts` 负责全量帖子分页，`/api/token-social-timeline` 负责 bucket、authors、posts 和传播 summary。
+- 中文叙事 contract 已落地，运行时缺中文 display 会显示 `narrative_display_missing`；旧库不做兼容迁移，应用 schema 不匹配时清空应用表并从 0 重建。
+- `account-quality` foundation 已落地，用于后续筛选高质量账号，不进入实时 ranking 主路径。
+- 静态 mockup 在较窄 in-app browser 宽度下不再隐藏详情 drawer，而是降级为主区域下方全宽详情面板。
+
+验证命令：
+
+```bash
+uv run pytest
+uv run ruff check .
+uv run python -m compileall src tests
+cd web && npm run typecheck && npm test -- --run && npm run build
+```
+
 ---
 
 ## 一、中文总结
@@ -68,7 +89,7 @@
 - 旧 UI 表头、旧 EV/confidence/narrative 语义全部移除。
 - 叙事 UI 不再直接显示 snake_case `narrative_label`，机器 label 只作为隐藏稳定 key；交易员看到中文标题、中文摘要和中文市场解释。
 
-数据库 migration 可以迁移旧数据，但运行时不写“如果新字段没有就用旧字段”的兼容分支。需要展示的历史数据通过一次性 backfill 填好。
+数据库不迁移旧数据，也不写“如果新字段没有就用旧字段”的兼容分支。需要旧数据时重新采集或离线重建，新 runtime 只服务新 schema。
 
 ### 3. LLM 不进入实时 ranking 主路径
 
@@ -168,7 +189,7 @@ opportunity_score =
 - `src/gmgn_twitter_intel/retrieval/narrative_link_service.py`
   - seed-token link 输出中文 seed display。
 - `src/gmgn_twitter_intel/cli.py`
-  - 增加 backfill 命令：中文叙事 backfill、account stats backfill。
+  - 保留账号质量 stats rebuild/backfill；不提供中文叙事旧记录 backfill。
 
 ### 新增前端文件
 
@@ -731,7 +752,7 @@ select live event item
 - LLM off: 显示 `LLM 叙事未启用`。
 - no narrative: 显示 `当前 token 暂无 watched seed link`。
 - loading: 保留 panel 高度，显示 skeleton。
-- missing Chinese fields: 不在运行时 fallback；这说明 backfill/migration 没跑完，显示错误态 `narrative_display_missing`。
+- missing Chinese fields: 不在运行时 fallback；这是 LLM 输出或新 schema 写入的 contract error，显示错误态 `narrative_display_missing`。
 
 `LiveSignalTape`
 
@@ -1311,8 +1332,8 @@ uv run pytest tests/test_token_posts_service.py tests/test_api_http.py -q
 - [ ] repository 存取中文字段。
 - [ ] narrative retrieval 输出 `display` block。
 - [ ] 前端不再显示 `narrative_label`，只显示 `display.name_zh/headline_zh`。
-- [ ] CLI 加 `ops backfill-narrative-display`，一次性把旧 records 用 label title-case、已有 summary 和机器 label 生成中文占位 display 字段。
-- [ ] 运行时不写 fallback：backfill 是迁移步骤，不是兼容代码。
+- [ ] 删除 `ops backfill-narrative-display`，中文叙事不靠旧 summary/label 生成占位字段。
+- [ ] 运行时不写 fallback：缺中文字段就是 contract error，不做兼容修复。
 
 运行：
 

@@ -7,8 +7,8 @@ import time
 from typing import Any
 
 from ..pipeline.entity_extractor import normalize_ca
+from .discussion_quality_scoring import post_quality_score
 from .rolling_token_flow import WINDOW_MS
-from .token_signal_scoring import post_score
 
 
 class TokenPostsCursorError(ValueError):
@@ -203,20 +203,19 @@ def _base_clauses(
 
 
 def _post_item(row: dict[str, Any], *, reference_ms: int) -> dict[str, Any]:
-    event = {
-        "event_id": row.get("event_id"),
-        "mention_source": row.get("source"),
-        "source": row.get("source"),
-        "is_watched": row.get("event_is_watched") if row.get("event_is_watched") is not None else row.get("is_watched"),
-        "received_at_ms": row.get("received_at_ms"),
-        "attribution_status": row.get("attribution_status"),
-        "attribution_confidence": row.get("attribution_confidence"),
-        "attribution_weight": row.get("attribution_weight"),
-    }
-    score = post_score(
-        event,
-        identity_status=str(row.get("identity_status") or ""),
-        event_age_ms=_age_ms(reference_ms, _int_or_none(row.get("received_at_ms"))),
+    quality = post_quality_score(
+        {
+            "text": row.get("text_clean"),
+            "mention_source": row.get("source"),
+            "is_watched": row.get("event_is_watched")
+            if row.get("event_is_watched") is not None
+            else row.get("is_watched"),
+            "received_at_ms": row.get("received_at_ms"),
+            "attribution_status": row.get("attribution_status"),
+            "attribution_confidence": row.get("attribution_confidence"),
+            "attribution_weight": row.get("attribution_weight"),
+            "event_age_ms": _age_ms(reference_ms, _int_or_none(row.get("received_at_ms"))),
+        }
     )
     return {
         "event_id": row.get("event_id"),
@@ -228,7 +227,10 @@ def _post_item(row: dict[str, Any], *, reference_ms: int) -> dict[str, Any]:
         "attribution_status": row.get("attribution_status"),
         "attribution_confidence": row.get("attribution_confidence"),
         "attribution_weight": row.get("attribution_weight"),
-        **score,
+        "is_watched": bool(
+            row.get("event_is_watched") if row.get("event_is_watched") is not None else row.get("is_watched")
+        ),
+        "post_quality": quality,
     }
 
 
