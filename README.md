@@ -205,7 +205,7 @@ uv run gmgn-twitter-intel narrative-seeds --window 24h --limit 50
 uv run gmgn-twitter-intel narrative-token-flow --seed-id <seed_id> --window 1h --limit 20
 uv run gmgn-twitter-intel attention-frontier --window 1h --limit 30
 uv run gmgn-twitter-intel enrichment-jobs --limit 50
-uv run gmgn-twitter-intel ops rebuild-windows --window 5m
+uv run gmgn-twitter-intel ops rebuild-attributions --symbol PEPE
 uv run gmgn-twitter-intel ops rebuild-narrative-links --window 1h
 ```
 
@@ -216,9 +216,10 @@ uv run gmgn-twitter-intel ops rebuild-narrative-links --window 1h
 - 所有可解析公共事件都会入库。
 - `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
-- token signal 来自确定性 CA/cashtag；narrative signal 来自 watched-account LLM enrichment。
-- `token-flow` 返回信号解释样本 `evidence_highlights`，不是全量帖子集合。
-- `token-posts` 按 token attribution 返回全量帖子分页，包含 `total_count`、`has_more` 和 `next_cursor`。
+- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、market snapshot 和可解释评分模块；narrative signal 来自 watched-account LLM enrichment。
+- `token-flow` 返回 `social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity` 评分块，以及 `posts_query`、`timeline_query`。
+- `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
+- `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。
 - narrative seed 只来自 configured watched handles；全量 public stream 只用于 seed 后的 token uptake/link validation。
 - narrative-token link 必须有确定性 token evidence、link reason、matched terms、lag、scores 和 risks；不会只凭 LLM 语义联想创建可交易 token。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。

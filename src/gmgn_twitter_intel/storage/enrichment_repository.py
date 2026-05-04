@@ -256,7 +256,7 @@ class EnrichmentRepository:
             """,
             (window, max(0, int(limit))),
         ).fetchall()
-        return [_decode_json_fields(dict(row)) for row in rows]
+        return [self._decode_narrative_window(dict(row)) for row in rows]
 
     def upsert_narrative_seed(
         self,
@@ -275,6 +275,9 @@ class EnrichmentRepository:
         author_handle: str,
         evidence: str,
         summary: str,
+        display_name_zh: str = "",
+        headline_zh: str = "",
+        market_interpretation_zh: str = "",
         commit: bool = True,
     ) -> dict[str, Any]:
         now_ms = _now_ms()
@@ -283,15 +286,19 @@ class EnrichmentRepository:
             """
             INSERT INTO narrative_seeds(
               seed_id, event_id, narrative_label, seed_family, seed_terms_json,
-              market_interpretation, stance, intent, confidence, source_weight,
+              market_interpretation, display_name_zh, headline_zh, market_interpretation_zh,
+              stance, intent, confidence, source_weight,
               novelty_status, received_at_ms, author_handle, evidence, summary,
               created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id, narrative_label) DO UPDATE SET
               seed_family = excluded.seed_family,
               seed_terms_json = excluded.seed_terms_json,
               market_interpretation = excluded.market_interpretation,
+              display_name_zh = excluded.display_name_zh,
+              headline_zh = excluded.headline_zh,
+              market_interpretation_zh = excluded.market_interpretation_zh,
               stance = excluded.stance,
               intent = excluded.intent,
               confidence = excluded.confidence,
@@ -310,6 +317,9 @@ class EnrichmentRepository:
                 seed_family,
                 _json(_dedupe_text(seed_terms)),
                 market_interpretation,
+                display_name_zh,
+                headline_zh,
+                market_interpretation_zh,
                 stance,
                 intent,
                 confidence,
@@ -502,6 +512,9 @@ class EnrichmentRepository:
               ns.author_handle AS seed_author_handle,
               ns.evidence AS seed_evidence,
               ns.summary AS seed_summary,
+              ns.display_name_zh AS seed_display_name_zh,
+              ns.headline_zh AS seed_headline_zh,
+              ns.market_interpretation_zh AS seed_market_interpretation_zh,
               ns.received_at_ms AS seed_received_at_ms,
               ns.seed_family AS seed_family,
               ns.seed_terms_json AS seed_terms_json,
@@ -531,6 +544,9 @@ class EnrichmentRepository:
               ns.author_handle AS seed_author_handle,
               ns.evidence AS seed_evidence,
               ns.summary AS seed_summary,
+              ns.display_name_zh AS seed_display_name_zh,
+              ns.headline_zh AS seed_headline_zh,
+              ns.market_interpretation_zh AS seed_market_interpretation_zh,
               ns.received_at_ms AS seed_received_at_ms,
               ns.seed_family AS seed_family,
               ns.seed_terms_json AS seed_terms_json,
@@ -549,6 +565,39 @@ class EnrichmentRepository:
             (window, max(0, int(limit))),
         ).fetchall()
         return [_decode_frontier_row(dict(row)) for row in rows]
+
+    def _decode_narrative_window(self, row: dict[str, Any]) -> dict[str, Any]:
+        decoded = _decode_json_fields(row)
+        display = self._display_for_label(str(decoded["narrative_label"]))
+        decoded["display"] = display
+        return decoded
+
+    def _display_for_label(self, label: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT display_name_zh, headline_zh, description_zh, market_interpretation_zh
+            FROM event_narratives
+            WHERE narrative_label = ?
+            ORDER BY received_at_ms DESC
+            LIMIT 1
+            """,
+            (label,),
+        ).fetchone()
+        if row is None or not row["headline_zh"]:
+            return {
+                "name_zh": "",
+                "headline_zh": "",
+                "summary_zh": "",
+                "market_interpretation_zh": "",
+                "readability_status": "narrative_display_missing",
+            }
+        return {
+            "name_zh": row["display_name_zh"],
+            "headline_zh": row["headline_zh"],
+            "summary_zh": row["description_zh"],
+            "market_interpretation_zh": row["market_interpretation_zh"],
+            "readability_status": "ready",
+        }
 
     def _replace_event_enrichment(
         self,
@@ -571,15 +620,16 @@ class EnrichmentRepository:
         self.conn.execute(
             """
             INSERT INTO event_enrichments(
-              event_id, run_id, provider, model, summary, stance, intent, confidence,
+              event_id, run_id, provider, model, summary, summary_zh, stance, intent, confidence,
               raw_response_json, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
               run_id = excluded.run_id,
               provider = excluded.provider,
               model = excluded.model,
               summary = excluded.summary,
+              summary_zh = excluded.summary_zh,
               stance = excluded.stance,
               intent = excluded.intent,
               confidence = excluded.confidence,
@@ -592,6 +642,7 @@ class EnrichmentRepository:
                 provider,
                 model,
                 result.summary,
+                result.summary_zh,
                 result.stance,
                 result.intent,
                 result.confidence,
@@ -626,16 +677,21 @@ class EnrichmentRepository:
             self.conn.execute(
                 """
                 INSERT INTO event_narratives(
-                  narrative_id, event_id, narrative_label, description, evidence, confidence,
+                  narrative_id, event_id, narrative_label, description, display_name_zh,
+                  headline_zh, description_zh, market_interpretation_zh, evidence, confidence,
                   stance, intent, received_at_ms, author_handle, is_watched, created_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     _id("narrative", event_id, narrative.label),
                     event_id,
                     narrative.label,
-                    narrative.description,
+                    narrative.description_zh,
+                    narrative.display_name_zh,
+                    narrative.headline_zh,
+                    narrative.description_zh,
+                    narrative.market_interpretation_zh,
                     narrative.evidence,
                     narrative.confidence,
                     result.stance,
@@ -871,8 +927,20 @@ def _decode_json_fields(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+def _display_name_from_label(label: str) -> str:
+    words = [part for part in label.replace("-", "_").split("_") if part]
+    return " ".join(word[:1].upper() + word[1:].lower() for word in words) or label
+
+
 def _decode_seed(row: dict[str, Any]) -> dict[str, Any]:
     row["seed_terms"] = _json_loads(row.pop("seed_terms_json", None), [])
+    row["display"] = {
+        "name_zh": row.get("display_name_zh") or "",
+        "headline_zh": row.get("headline_zh") or "",
+        "summary_zh": row.get("summary") or "",
+        "market_interpretation_zh": row.get("market_interpretation_zh") or "",
+        "readability_status": "ready" if row.get("headline_zh") else "narrative_display_missing",
+    }
     return row
 
 
@@ -885,12 +953,23 @@ def _decode_link(row: dict[str, Any]) -> dict[str, Any]:
 
 def _decode_frontier_row(row: dict[str, Any]) -> dict[str, Any]:
     seed_terms = _json_loads(row.pop("seed_terms_json", None), [])
+    seed_summary = row.pop("seed_summary", None)
+    seed_display_name_zh = row.pop("seed_display_name_zh", None) or ""
+    seed_headline_zh = row.pop("seed_headline_zh", None) or ""
+    seed_market_interpretation_zh = row.pop("seed_market_interpretation_zh", None) or ""
     seed = {
         "seed_id": row["seed_id"],
         "narrative_label": row["narrative_label"],
         "author_handle": row.pop("seed_author_handle", None),
         "evidence": row.pop("seed_evidence", None),
-        "summary": row.pop("seed_summary", None),
+        "summary": seed_summary,
+        "display": {
+            "name_zh": seed_display_name_zh,
+            "headline_zh": seed_headline_zh,
+            "summary_zh": seed_summary or "",
+            "market_interpretation_zh": seed_market_interpretation_zh,
+            "readability_status": "ready" if seed_headline_zh else "narrative_display_missing",
+        },
         "received_at_ms": row.pop("seed_received_at_ms", None),
         "seed_family": row.pop("seed_family", None),
         "seed_terms": seed_terms,

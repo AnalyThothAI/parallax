@@ -6,6 +6,10 @@ export type ApiResponse<T> = {
 
 export type WindowKey = "5m" | "1h" | "24h";
 export type ScopeKey = "matched" | "all";
+export type Decision = "driver" | "watch" | "discard";
+export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
+export type TokenDetailTab = "timeline" | "posts" | "score" | "narratives" | "accounts";
+export type TimelineBucket = "30s" | "1m" | "5m";
 
 export type BootstrapData = {
   ws_token: string;
@@ -70,8 +74,30 @@ export type AlertRecord = {
   evidence?: string | null;
 };
 
+export type TokenAttributionRecord = {
+  attribution_id?: string | null;
+  mention_identity_key?: string | null;
+  identity_key?: string | null;
+  token_id?: string | null;
+  identity_status?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  symbol?: string | null;
+  source?: string | null;
+  attribution_status?: string | null;
+  attribution_confidence?: number | null;
+  attribution_weight?: number | null;
+  attribution_rank?: number | null;
+  candidate_count?: number | null;
+  received_at_ms?: number | null;
+  author_handle?: string | null;
+  author_followers?: number | null;
+  is_watched?: number | boolean | null;
+};
+
 export type EnrichmentRecord = {
   summary?: string | null;
+  summary_zh?: string | null;
   stance?: string | null;
   intent?: string | null;
   confidence?: number | null;
@@ -85,6 +111,7 @@ export type LivePayload = {
   event: EventRecord;
   entities: EntityRecord[];
   alerts: AlertRecord[];
+  token_attributions?: TokenAttributionRecord[];
   enrichment?: EnrichmentRecord | null;
 };
 
@@ -108,112 +135,6 @@ export type SearchData = {
   items: SearchItem[];
 };
 
-export type TokenFlowItem = {
-  identity: {
-    identity_key: string;
-    identity_status: "resolved_ca";
-    token_id?: string | null;
-    chain?: string | null;
-    address?: string | null;
-    symbol?: string | null;
-  };
-  market: {
-    market_status: "fresh" | "stale" | "missing" | string;
-    price?: number | null;
-    market_cap?: number | null;
-    liquidity?: number | null;
-    pool_status?: "ready" | "missing" | string;
-    holder_count?: number | null;
-    volume_24h?: number | null;
-    snapshot_age_ms?: number | null;
-    snapshot_received_at_ms?: number | null;
-    price_change_window_pct?: number | null;
-    price_at_window_start?: number | null;
-    price_at_window_end?: number | null;
-    price_change_status: "ready" | "insufficient_history" | "missing_market" | string;
-  };
-  flow: {
-    window: WindowKey;
-    window_start_ms?: number | null;
-    window_end_ms?: number | null;
-    mentions: number;
-    direct_mentions?: number;
-    symbol_mentions?: number;
-    weighted_mentions?: number;
-    avg_attribution_confidence?: number;
-    watched_mentions: number;
-    previous_mentions: number;
-    mention_delta: number;
-    mention_delta_pct?: number | null;
-    z_score?: number | null;
-    new_burst_score?: number | null;
-    stream_dominance: number;
-    baseline_status: "ready" | "insufficient_history" | string;
-    baseline_sample_count: number;
-  };
-  baseline: {
-    baseline_status: "ready" | "insufficient_history" | string;
-    sample_count: number;
-    zero_slot_count: number;
-    ewma_mean?: number | null;
-    ewma_stddev?: number | null;
-    simple_mean?: number | null;
-    z_score?: number | null;
-    new_burst_score?: number | null;
-  };
-  diffusion: {
-    score: number;
-    status: "healthy" | "thin" | "concentrated" | "repeated" | "shill_risk" | string;
-    independent_authors: number;
-    effective_authors: number;
-    top_author_share: number;
-    duplicate_text_share: number;
-    repeated_cluster_count: number;
-    shill_author_count: number;
-    top_authors?: Array<{ handle?: string | null; count?: number; followers?: number | null; watched_count?: number }>;
-    reasons: string[];
-    risks: string[];
-  };
-  watch: {
-    status: "direct_watch" | "seed_linked" | "public_only" | string;
-    direct_mentions: number;
-    direct_authors: number;
-    seed_link_count: number;
-    top_seed?: Record<string, unknown> | null;
-    reasons: string[];
-    risks: string[];
-  };
-  fresh: {
-    latest_evidence_age_ms?: number | null;
-    first_seen_age_ms?: number | null;
-    market_snapshot_age_ms?: number | null;
-    is_new_local_evidence: boolean;
-    is_first_seen_by_watched: boolean;
-  };
-  attribution?: {
-    status: "direct" | "selected" | string;
-    avg_confidence: number;
-    selected_symbol_mentions: number;
-    candidate_count: number;
-    reasons: string[];
-    risks: string[];
-  };
-  signal: {
-    score_version: string;
-    decision: "driver" | "watch" | "discard";
-    score: number;
-    reasons: string[];
-    risks: string[];
-    contributions: ScoreContribution[];
-    risk_caps: RiskCap[];
-    evidence_id?: string | null;
-  };
-  evidence_highlight_best: TokenEvidenceHighlight | null;
-  evidence_highlights: TokenEvidenceHighlight[];
-  evidence_total_count: number;
-  posts_query: TokenPostsQuery;
-};
-
 export type ScoreContribution = {
   feature: string;
   value: number;
@@ -225,22 +146,132 @@ export type RiskCap = {
   cap: number;
 };
 
-export type TokenEvidenceHighlight = {
-  event_id: string;
-  evidence_type: string;
+export type ScoreBlock = {
   score: number;
   score_version: string;
-  handle?: string | null;
-  text?: string | null;
-  received_at_ms?: number | null;
-  url?: string | null;
   reasons: string[];
   risks: string[];
-  attribution_status?: string | null;
-  attribution_confidence?: number | null;
-  attribution_weight?: number | null;
   contributions: ScoreContribution[];
   risk_caps: RiskCap[];
+};
+
+export type TokenIdentityBlock = {
+  identity_key: string;
+  identity_status: "resolved_ca" | string;
+  token_id?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  symbol?: string | null;
+};
+
+export type TokenMarketBlock = {
+  market_status: "fresh" | "stale" | "missing" | string;
+  price?: number | null;
+  market_cap?: number | null;
+  liquidity?: number | null;
+  pool_status?: "ready" | "missing" | string;
+  holder_count?: number | null;
+  volume_24h?: number | null;
+  snapshot_age_ms?: number | null;
+  snapshot_received_at_ms?: number | null;
+  price_change_window_pct?: number | null;
+  price_at_window_start?: number | null;
+  price_at_window_end?: number | null;
+  price_change_status: "ready" | "insufficient_history" | "missing_market" | string;
+};
+
+export type TokenFlowBlock = {
+  window: WindowKey;
+  window_start_ms?: number | null;
+  window_end_ms?: number | null;
+  mentions: number;
+  direct_mentions?: number;
+  symbol_mentions?: number;
+  weighted_mentions?: number;
+  avg_attribution_confidence?: number;
+  watched_mentions: number;
+  previous_mentions: number;
+  mention_delta: number;
+  mention_delta_pct?: number | null;
+  z_score?: number | null;
+  new_burst_score?: number | null;
+  stream_dominance: number;
+  baseline_status: "ready" | "insufficient_history" | string;
+  baseline_sample_count: number;
+};
+
+export type SocialHeatBlock = ScoreBlock & {
+  window: WindowKey;
+  mentions: number;
+  mentions_5m?: number;
+  mentions_1h?: number;
+  mentions_24h?: number;
+  weighted_mentions: number;
+  previous_mentions: number;
+  mention_delta: number;
+  mention_delta_pct?: number | null;
+  z_score?: number | null;
+  new_burst_score?: number | null;
+  stream_share: number;
+  watched_share: number;
+  status: "cold" | "rising" | "burst" | "new_burst" | "insufficient_history" | string;
+};
+
+export type DiscussionQualityBlock = ScoreBlock & {
+  evidence_specificity: number;
+  avg_post_quality: number;
+  avg_attribution_confidence: number;
+  duplicate_text_share: number;
+  informative_post_count: number;
+  watched_source_count: number;
+};
+
+export type PropagationBlock = ScoreBlock & {
+  independent_authors: number;
+  effective_authors: number;
+  new_authors: number;
+  top_author_share: number;
+  duplicate_text_share: number;
+  author_entropy: number;
+  reproduction_rate?: number | null;
+  phase: "seed" | "ignition" | "expansion" | "concentration" | "fade" | string;
+  top_authors: Array<{ handle?: string | null; count?: number; posts?: number; followers?: number | null; watched_count?: number; role?: string | null }>;
+};
+
+export type TradeabilityBlock = ScoreBlock & {
+  identity_tradeable: boolean;
+  market_fresh: boolean;
+  market_cap_present: boolean;
+  liquidity_present: boolean;
+  pool_present: boolean;
+  hard_risks?: string[];
+};
+
+export type TimingBlock = {
+  score: number;
+  score_version: string;
+  status: "social_leads_price" | "social_confirms_price" | "price_leads_social" | "social_fades" | "insufficient_data" | string;
+  social_start_ms?: number | null;
+  first_price_move_ms?: number | null;
+  price_change_window_pct?: number | null;
+  chase_risk: boolean;
+  reasons: string[];
+  risks: string[];
+  contributions?: ScoreContribution[];
+  risk_caps?: RiskCap[];
+};
+
+export type OpportunityBlock = ScoreBlock & {
+  decision: Decision;
+  decision_priority?: number;
+  hard_risks?: string[];
+  components: {
+    heat: number;
+    quality: number;
+    propagation: number;
+    tradeability: number;
+    timing: number;
+  };
 };
 
 export type TokenPostsQuery = {
@@ -250,6 +281,30 @@ export type TokenPostsQuery = {
   window: WindowKey;
   scope: ScopeKey;
   sort?: "recent" | string;
+};
+
+export type TokenSocialTimelineQuery = {
+  token_id?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  window: WindowKey;
+  bucket: TimelineBucket;
+  scope: ScopeKey;
+};
+
+export type TokenFlowItem = {
+  identity: TokenIdentityBlock;
+  market: TokenMarketBlock;
+  flow: TokenFlowBlock;
+  social_heat: SocialHeatBlock;
+  discussion_quality: DiscussionQualityBlock;
+  propagation: PropagationBlock;
+  tradeability: TradeabilityBlock;
+  timing: TimingBlock;
+  opportunity: OpportunityBlock;
+  evidence_total_count: number;
+  posts_query: TokenPostsQuery;
+  timeline_query: TokenSocialTimelineQuery;
 };
 
 export type TokenPostItem = {
@@ -262,12 +317,8 @@ export type TokenPostItem = {
   attribution_status?: string | null;
   attribution_confidence?: number | null;
   attribution_weight?: number | null;
-  score: number;
-  score_version: string;
-  reasons: string[];
-  risks: string[];
-  contributions: ScoreContribution[];
-  risk_caps: RiskCap[];
+  is_watched?: boolean | number | null;
+  post_quality: ScoreBlock;
 };
 
 export type TokenPostsData = {
@@ -285,15 +336,77 @@ export type TokenFlowData = {
   items: TokenFlowItem[];
 };
 
+export type TokenTimelineBucket = {
+  start_ms: number;
+  end_ms: number;
+  posts: number;
+  new_authors: number;
+  watched_posts: number;
+  duplicate_text_share: number;
+  price?: number | null;
+  price_change_from_start_pct?: number | null;
+};
+
+export type TokenTimelineAuthor = {
+  handle: string;
+  first_seen_ms?: number | null;
+  latest_seen_ms?: number | null;
+  posts: number;
+  followers?: number | null;
+  role?: "seed" | "early_amplifier" | "amplifier" | "repeater" | "watched" | string | null;
+  quality_score?: number | null;
+};
+
+export type TokenTimelinePost = {
+  event_id: string;
+  handle?: string | null;
+  received_at_ms?: number | null;
+  bucket_start_ms?: number | null;
+  text?: string | null;
+  url?: string | null;
+  attribution_status?: string | null;
+  is_watched?: boolean | number | null;
+  post_quality: ScoreBlock;
+};
+
+export type TokenSocialTimelineData = {
+  query: TokenSocialTimelineQuery;
+  summary: {
+    posts: number;
+    authors: number;
+    effective_authors: number;
+    first_seen_ms?: number | null;
+    latest_seen_ms?: number | null;
+    phase: string;
+    top_author_share: number;
+    duplicate_text_share: number;
+  };
+  buckets: TokenTimelineBucket[];
+  authors: TokenTimelineAuthor[];
+  posts: TokenTimelinePost[];
+  returned_count: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+};
+
 export type AccountAlertsData = {
   window: WindowKey;
   alert_type?: string | null;
   items: AlertRecord[];
 };
 
+export type NarrativeDisplay = {
+  name_zh: string;
+  headline_zh: string;
+  summary_zh: string;
+  market_interpretation_zh: string;
+  readability_status: "ready" | "narrative_display_missing" | string;
+};
+
 export type NarrativeFlowItem = {
   narrative_label: string;
   window: WindowKey;
+  display: NarrativeDisplay;
   mention_count: number;
   watched_mention_count: number;
   unique_author_count: number;
@@ -310,6 +423,7 @@ export type NarrativeFlowData = {
 export type NarrativeSeed = {
   seed_id: string;
   narrative_label: string;
+  display: NarrativeDisplay;
   seed_family?: string | null;
   seed_terms?: string[];
   market_interpretation?: string | null;
@@ -320,14 +434,7 @@ export type NarrativeSeed = {
 };
 
 export type NarrativeTokenLinkItem = {
-  identity: {
-    identity_key: string;
-    identity_status: string;
-    token_id?: string | null;
-    chain?: string | null;
-    address?: string | null;
-    symbol?: string | null;
-  };
+  identity: TokenIdentityBlock;
   flow: {
     window: WindowKey;
     mentions: number;
@@ -348,7 +455,7 @@ export type NarrativeTokenLinkItem = {
     tradeability: number;
   };
   signal: {
-    decision: "driver" | "watch" | "discard";
+    decision: Decision;
     reasons: string[];
     risks: string[];
   };
@@ -369,6 +476,31 @@ export type AttentionFrontierItem = {
 export type AttentionFrontierData = {
   window: WindowKey;
   items: AttentionFrontierItem[];
+};
+
+export type AccountQualityItem = {
+  profile: {
+    handle: string;
+    first_seen_ms: number;
+    latest_seen_ms: number;
+    follower_max?: number | null;
+    watched_status: string;
+  } | null;
+  summary: {
+    status: "ready" | "insufficient_sample" | string;
+    sample_size: number;
+    precision_score?: number | null;
+    early_call_score?: number | null;
+    spam_risk_score?: number | null;
+    avg_realized_return?: number | null;
+  };
+  token_call_stats: Array<Record<string, unknown>>;
+  quality_snapshots: Array<Record<string, unknown>>;
+};
+
+export type AccountQualityData = {
+  query: { handles: string[] };
+  accounts: AccountQualityItem[];
 };
 
 export type EnrichmentJobsData = {

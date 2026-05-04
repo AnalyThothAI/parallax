@@ -147,6 +147,7 @@ class PublicWebSocketHub:
             "event": event,
             "entities": self.entities.entities_for_event(event_id),
             "alerts": self.signals.alerts_for_event(event_id),
+            "token_attributions": self.signals.token_attributions_for_event(event_id),
             "enrichment": self.enrichment.enrichment_for_event(event_id),
         }
 

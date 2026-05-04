@@ -397,6 +397,38 @@ class SignalRepository:
         rows.sort(key=lambda item: (item["alert_type"], item["normalized_value"]))
         return rows
 
+    def token_attributions_for_event(self, event_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              attribution_id,
+              mention_identity_key,
+              identity_key,
+              token_id,
+              identity_status,
+              chain,
+              address,
+              symbol,
+              source,
+              attribution_status,
+              attribution_confidence,
+              attribution_weight,
+              attribution_rank,
+              candidate_count,
+              received_at_ms,
+              author_handle,
+              author_followers,
+              is_watched
+            FROM event_token_attributions
+            WHERE event_id = ?
+              AND attribution_status IN ('direct', 'selected')
+              AND attribution_weight > 0
+            ORDER BY attribution_weight DESC, attribution_confidence DESC, attribution_rank ASC
+            """,
+            (event_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def _account_token_alerts(self, *, since_ms: int, limit: int, handles: set[str] | None) -> list[dict[str, Any]]:
         clauses = ["received_at_ms >= ?"]
         params: list[Any] = [since_ms]

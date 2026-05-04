@@ -1,0 +1,75 @@
+from __future__ import annotations
+
+from typing import Any
+
+from .scoring_common import cap, contribution, safe_int, score_payload
+
+WEIGHTS = {
+    "heat": 0.30,
+    "quality": 0.25,
+    "propagation": 0.20,
+    "tradeability": 0.15,
+    "timing": 0.10,
+}
+
+
+def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    component_scores = {key: safe_int(components.get(key, {}).get("score")) for key in WEIGHTS}
+    weighted_score = sum(component_scores[key] * weight for key, weight in WEIGHTS.items())
+    risks: list[str] = []
+    reasons: list[str] = []
+    hard_risks: list[str] = []
+    risk_caps: list[dict[str, Any]] = []
+    contributions: list[dict[str, Any]] = []
+
+    for key, component in components.items():
+        reasons.extend(str(item) for item in component.get("reasons", []) if item)
+        risks.extend(str(item) for item in component.get("risks", []) if item)
+        hard_risks.extend(str(item) for item in component.get("hard_risks", []) if item)
+        risk_caps.extend(dict(item) for item in component.get("risk_caps", []) if isinstance(item, dict))
+        contributions.append(contribution(f"opportunity.{key}", component_scores.get(key, 0), f"{key}_component"))
+
+    if hard_risks:
+        risk_caps.append(cap("hard_risk", 40))
+
+    if risks.count("public_stream_coverage") > 1:
+        first_coverage_index = risks.index("public_stream_coverage")
+        risks = [
+            risk
+            for index, risk in enumerate(risks)
+            if risk != "public_stream_coverage" or index == first_coverage_index
+        ]
+
+    score_payload_base = score_payload(
+        score_version="social_opportunity_v1",
+        score=weighted_score,
+        reasons=reasons,
+        risks=risks,
+        contributions=contributions,
+        risk_caps=risk_caps,
+    )
+    final_score = score_payload_base["score"]
+    if hard_risks or "repeated_text_cluster" in risks:
+        decision = "discard"
+    elif (
+        final_score >= 75
+        and component_scores["heat"] >= 70
+        and component_scores["quality"] >= 65
+        and component_scores["propagation"] >= 60
+        and component_scores["tradeability"] >= 65
+    ):
+        decision = "driver"
+    elif final_score >= 45 and component_scores["tradeability"] >= 45:
+        decision = "watch"
+    else:
+        decision = "discard"
+
+    score_payload_base.update(
+        {
+            "decision": decision,
+            "decision_priority": {"driver": 3, "watch": 2, "discard": 1}[decision],
+            "components": component_scores,
+            "hard_risks": list(dict.fromkeys(hard_risks)),
+        }
+    )
+    return score_payload_base

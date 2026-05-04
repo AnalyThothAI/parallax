@@ -20,7 +20,10 @@ class NarrativeSeedBuilder:
                     narrative_label=narrative.label,
                     seed_family=narrative.seed_family,
                     seed_terms=_seed_terms(narrative),
-                    market_interpretation=narrative.market_interpretation,
+                    market_interpretation=narrative.market_interpretation_zh,
+                    display_name_zh=narrative.display_name_zh,
+                    headline_zh=narrative.headline_zh,
+                    market_interpretation_zh=narrative.market_interpretation_zh,
                     stance=result.stance,
                     intent=result.intent,
                     confidence=narrative.confidence,
@@ -29,7 +32,7 @@ class NarrativeSeedBuilder:
                     received_at_ms=int(event["received_at_ms"]),
                     author_handle=str(event["author_handle"]).lower(),
                     evidence=narrative.evidence,
-                    summary=result.summary,
+                    summary=result.summary_zh,
                     commit=False,
                 )
             )

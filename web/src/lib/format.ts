@@ -70,6 +70,125 @@ export function tokenLabel(item: TokenFlowItem): string {
   return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
 }
 
+export function tokenKey(item: TokenFlowItem): string {
+  return item.identity.token_id ?? item.identity.address ?? item.identity.identity_key;
+}
+
+export function shortAddress(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+}
+
+export function formatScore(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+  return String(Math.round(value));
+}
+
+export function formatScoreDelta(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return "-";
+  }
+  const rounded = Math.round(value);
+  if (rounded > 0) {
+    return `+${rounded}`;
+  }
+  return String(rounded);
+}
+
+export function formatTimingStatus(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    social_leads_price: "社交领先",
+    social_confirms_price: "社交确认",
+    price_leads_social: "价格先动",
+    social_fades: "热度衰退",
+    insufficient_data: "数据不足"
+  };
+  return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
+}
+
+export function formatPropagationPhase(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    seed: "种子",
+    ignition: "点火",
+    expansion: "扩散",
+    concentration: "集中",
+    fade: "衰退"
+  };
+  return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
+}
+
+export function formatHeatStatus(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    cold: "冷",
+    rising: "升温",
+    burst: "爆发",
+    new_burst: "新爆发",
+    insufficient_history: "历史不足"
+  };
+  return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
+}
+
+export function formatDecision(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    driver: "Driver",
+    watch: "Watch",
+    discard: "Discard"
+  };
+  return labels[value ?? ""] ?? (value ?? "-");
+}
+
+export function formatRisk(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    author_concentration_high: "作者集中",
+    duplicate_text_cluster: "重复文本",
+    repeated_text_cluster: "重复文本簇",
+    price_leads_social: "价格先动",
+    market_missing: "市场缺失",
+    missing_market: "市场缺失",
+    no_watched_confirmation: "缺少关注确认",
+    public_stream_coverage: "公共流覆盖",
+    thin_author_set: "作者过少",
+    thin_mentions: "提及过少",
+    insufficient_baseline: "基线不足",
+    insufficient_history: "历史不足",
+    stale_market: "市场过旧",
+    identity_not_tradeable: "身份不可交易",
+    low_information_posts: "信息密度低",
+    attribution_confidence_low: "归因置信低"
+  };
+  return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
+}
+
+export function formatReason(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    z_score_above_3: "z-score > 3",
+    z_score_above_2: "z-score > 2",
+    insufficient_baseline_new_burst: "新币基线不足但热度突增",
+    positive_mention_delta: "提及加速",
+    watched_source_present: "关注源出现",
+    new_local_evidence: "本地新证据",
+    resolved_direct_evidence: "直接 CA 证据",
+    informative_discussion: "讨论有信息量",
+    independent_expansion: "独立作者扩散",
+    low_concentration: "集中度低",
+    fresh_market: "市场快照新鲜"
+  };
+  return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
+}
+
+export function formatBucketLabel(value: string | null | undefined): string {
+  const labels: Record<string, string> = {
+    "30s": "30 秒",
+    "1m": "1 分钟",
+    "5m": "5 分钟"
+  };
+  return labels[value ?? ""] ?? (value ?? "-");
+}
+
 function trim(value: number): string {
   return value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, "");
 }

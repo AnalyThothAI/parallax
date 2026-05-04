@@ -22,6 +22,7 @@ class FakeClient:
     async def enrich_event(self, *, event, entities):
         return EnrichmentResult(
             summary="Toly says Solana XDP scaling is nearly ready.",
+            summary_zh="Toly 表示 Solana XDP 扩容接近准备完成。",
             token_candidates=[
                 TokenCandidate(
                     symbol="SOL",
@@ -35,10 +36,12 @@ class FakeClient:
             narratives=[
                 NarrativeItem(
                     label="solana_scaling",
-                    description="Solana throughput and XDP readiness",
+                    display_name_zh="Solana XDP 扩容",
+                    headline_zh="Solana XDP 扩容进展重新获得关注",
+                    description_zh="Solana throughput and XDP readiness",
                     seed_family="solana_scaling",
                     trigger_terms=["Solana", "XDP"],
-                    market_interpretation="Market may look for Solana scaling tokens.",
+                    market_interpretation_zh="交易员可能关注 Solana scaling tokens。",
                     evidence="XDP scaling",
                     confidence=0.87,
                 )

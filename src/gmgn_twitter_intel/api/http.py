@@ -7,11 +7,18 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from ..retrieval.account_alert_service import AccountAlertService
+from ..retrieval.account_quality_service import AccountQualityService
 from ..retrieval.narrative_link_service import NarrativeLinkService
 from ..retrieval.narrative_service import NarrativeService
 from ..retrieval.search_service import SearchService
 from ..retrieval.token_flow_service import TokenFlowService
 from ..retrieval.token_posts_service import TokenPostsCursorError, TokenPostsIdentityError, TokenPostsService
+from ..retrieval.token_social_timeline_service import (
+    TokenSocialTimelineCursorError,
+    TokenSocialTimelineIdentityError,
+    TokenSocialTimelineService,
+)
+from ..storage.account_quality_repository import AccountQualityRepository
 
 WINDOWS = {"1m", "5m", "1h", "24h"}
 LINK_WINDOWS = {"5m", "1h", "24h"}
@@ -171,6 +178,41 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
+    @router.get("/token-social-timeline")
+    async def token_social_timeline(
+        request: Request,
+        token_id: Annotated[str, Query()] = "",
+        chain: Annotated[str, Query()] = "",
+        address: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "1h",
+        bucket: Annotated[str, Query()] = "1m",
+        limit: Annotated[int, Query()] = 200,
+        scope: Annotated[str, Query()] = "all",
+        cursor: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        if not token_id and not (chain and address):
+            return _json({"ok": False, "error": "missing_token_identity"}, status_code=400)
+        parsed_window = _window(window)
+        parsed_scope = _scope(scope)
+        parsed_bucket = _bucket(bucket)
+        try:
+            data = TokenSocialTimelineService(signals=runtime.read_signals).timeline(
+                token_id=token_id or None,
+                chain=chain or None,
+                address=address or None,
+                window=parsed_window,
+                bucket=parsed_bucket,
+                scope=parsed_scope,
+                limit=_limit(limit, maximum=500),
+                cursor=cursor or None,
+            )
+        except TokenSocialTimelineIdentityError:
+            return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
+        except TokenSocialTimelineCursorError:
+            return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
+        return _json({"ok": True, "data": data})
+
     @router.get("/account-alerts")
     async def account_alerts(
         request: Request,
@@ -198,6 +240,18 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 },
             }
         )
+
+    @router.get("/account-quality")
+    async def account_quality(
+        request: Request,
+        handles: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        data = AccountQualityService(
+            signals=runtime.read_signals,
+            repository=AccountQualityRepository(runtime.read_signals.conn),
+        ).account_quality_for_handles(sorted(_handle_set(handles)))
+        return _json({"ok": True, "data": data})
 
     @router.get("/narrative-flow")
     async def narrative_flow(
@@ -320,6 +374,7 @@ def _payload_for_event(runtime: Any, event: dict[str, Any]) -> dict[str, Any]:
         "event": event,
         "entities": runtime.read_entities.entities_for_event(event_id),
         "alerts": runtime.read_signals.alerts_for_event(event_id),
+        "token_attributions": runtime.read_signals.token_attributions_for_event(event_id),
         "enrichment": runtime.read_enrichment.enrichment_for_event(event_id),
     }
 
@@ -348,6 +403,10 @@ def _scope(value: str) -> str:
 
 def _window(value: str) -> str:
     return value if value in WINDOWS else "5m"
+
+
+def _bucket(value: str) -> str:
+    return value if value in {"30s", "1m", "5m"} else "1m"
 
 
 def _link_window(value: str) -> str:

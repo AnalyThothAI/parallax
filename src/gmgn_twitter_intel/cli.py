@@ -13,11 +13,13 @@ from .logging_setup import setup_logging
 from .pipeline.narrative_token_linker import NarrativeTokenLinker
 from .pipeline.token_attribution import TokenAttributionBuilder
 from .retrieval.account_alert_service import AccountAlertService
+from .retrieval.account_quality_service import AccountQualityService
 from .retrieval.narrative_link_service import NarrativeLinkService
 from .retrieval.narrative_service import NarrativeService
 from .retrieval.search_service import SearchService
 from .retrieval.token_flow_service import TokenFlowService
 from .settings import load_settings, write_default_config
+from .storage.account_quality_repository import AccountQualityRepository
 from .storage.enrichment_repository import EnrichmentRepository
 from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
@@ -79,6 +81,9 @@ def build_parser() -> argparse.ArgumentParser:
     account_narratives.add_argument("--limit", type=int, default=50)
     account_narratives.add_argument("--handles", default="")
 
+    account_quality = subcommands.add_parser("account-quality", help="print account quality profiles")
+    account_quality.add_argument("--handles", default="", help="comma separated account handles")
+
     enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect LLM enrichment job backlog")
     enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
     enrichment_jobs.add_argument("--limit", type=int, default=50)
@@ -117,7 +122,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rebuild_attributions.add_argument("--symbol", default="", help="limit rebuild to one token symbol")
     rebuild_attributions.add_argument("--limit", type=int, default=0, help="optional max raw mentions per phase")
-
+    backfill_account_quality = ops_subcommands.add_parser(
+        "backfill-account-quality",
+        help="backfill account token-call stats and quality snapshots",
+    )
+    backfill_account_quality.add_argument("--limit", type=int, default=1000)
     return parser
 
 
@@ -272,6 +281,15 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
             return 0
 
+        if command == "account-quality":
+            handles = sorted(_handle_set(args.handles))
+            data = AccountQualityService(
+                signals=signals,
+                repository=AccountQualityRepository(signals.conn),
+            ).account_quality_for_handles(handles)
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
         if command == "enrichment-jobs":
             items = enrichment.list_jobs(limit=args.limit, status=args.status)
             _emit(
@@ -375,6 +393,14 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 },
                 stdout,
             )
+            return 0
+
+        if command == "ops" and args.ops_command == "backfill-account-quality":
+            data = AccountQualityService(
+                signals=signals,
+                repository=AccountQualityRepository(signals.conn),
+            ).backfill_account_token_call_stats(limit=args.limit)
+            _emit({"ok": True, "data": data}, stdout)
             return 0
 
     parser.error(f"unknown command: {command}")

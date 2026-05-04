@@ -30,10 +30,12 @@ class TokenCandidate:
 @dataclass(frozen=True, slots=True)
 class NarrativeItem:
     label: str
-    description: str
+    display_name_zh: str
+    headline_zh: str
+    description_zh: str
     seed_family: str
     trigger_terms: list[str]
-    market_interpretation: str
+    market_interpretation_zh: str
     evidence: str
     confidence: float
 
@@ -41,6 +43,7 @@ class NarrativeItem:
 @dataclass(frozen=True, slots=True)
 class EnrichmentResult:
     summary: str
+    summary_zh: str = ""
     token_candidates: list[TokenCandidate] = field(default_factory=list)
     narratives: list[NarrativeItem] = field(default_factory=list)
     stance: str = "neutral"
@@ -72,12 +75,13 @@ def build_enrichment_prompt(*, event: dict[str, Any], entities: list[dict[str, A
             "role": "system",
             "content": (
                 "You extract trading-relevant intelligence from one X/Twitter event. "
-                "Return only JSON with top-level summary, token_candidates, narratives, stance, "
+                "Return only JSON with top-level summary, summary_zh, token_candidates, narratives, stance, "
                 "intent, and confidence. Every token candidate and narrative must include an evidence "
                 "substring copied exactly from the provided text. Do not infer hidden tickers. "
-                "Every narrative must include label, description, seed_family, trigger_terms, "
-                "market_interpretation, evidence, and confidence. Every trigger term must be an exact "
-                "substring from the provided text."
+                "Every narrative must include label, display_name_zh, headline_zh, description_zh, "
+                "seed_family, trigger_terms, market_interpretation_zh, evidence, and confidence. "
+                "Chinese display fields are required and every trigger term must be an exact substring "
+                "from the provided text."
             ),
         },
         {
@@ -109,6 +113,7 @@ def parse_enrichment_response(
     intent = str(payload.get("intent") or "informational").strip().lower()
     return EnrichmentResult(
         summary=str(payload.get("summary") or "").strip(),
+        summary_zh=str(payload.get("summary_zh") or "").strip(),
         token_candidates=token_candidates,
         narratives=narratives,
         stance=stance if stance in VALID_STANCES else "neutral",
@@ -147,27 +152,33 @@ def _narrative(item: Any, event_text: str, min_confidence: float) -> NarrativeIt
     evidence = str(item.get("evidence") or "").strip()
     confidence = _confidence(item.get("confidence"))
     label = _label(str(item.get("label") or ""))
-    description = str(item.get("description") or "").strip()
+    display_name_zh = str(item.get("display_name_zh") or "").strip()
+    headline_zh = str(item.get("headline_zh") or "").strip()
+    description_zh = str(item.get("description_zh") or "").strip()
     seed_family = _label(str(item.get("seed_family") or ""))
     trigger_terms = _trigger_terms(item.get("trigger_terms"), event_text=event_text)
-    market_interpretation = str(item.get("market_interpretation") or "").strip()
+    market_interpretation_zh = str(item.get("market_interpretation_zh") or "").strip()
     if (
         confidence < min_confidence
         or not label
-        or not description
+        or not display_name_zh
+        or not headline_zh
+        or not description_zh
         or not seed_family
         or not trigger_terms
-        or not market_interpretation
+        or not market_interpretation_zh
     ):
         return None
     if not _contains_evidence(event_text, evidence):
         return None
     return NarrativeItem(
         label=label,
-        description=description,
+        display_name_zh=display_name_zh,
+        headline_zh=headline_zh,
+        description_zh=description_zh,
         seed_family=seed_family,
         trigger_terms=trigger_terms,
-        market_interpretation=market_interpretation,
+        market_interpretation_zh=market_interpretation_zh,
         evidence=evidence,
         confidence=confidence,
     )

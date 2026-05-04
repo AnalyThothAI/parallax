@@ -119,10 +119,12 @@ def seed_sqlite(db_path: Path) -> None:
                 narratives=[
                     NarrativeItem(
                         label="solana_scaling",
-                        description="Solana scaling and XDP readiness",
+                        display_name_zh="Solana 扩容",
+                        headline_zh="Solana XDP 扩容叙事升温",
+                        description_zh="Solana scaling and XDP readiness",
                         seed_family="solana_scaling",
                         trigger_terms=["Solana", "XDP"],
-                        market_interpretation="Market may look for Solana scaling tokens.",
+                        market_interpretation_zh="交易员可能关注 Solana 扩容相关 token。",
                         evidence="Solana XDP",
                         confidence=0.86,
                     ),
@@ -142,6 +144,9 @@ def seed_sqlite(db_path: Path) -> None:
             seed_family="solana_scaling",
             seed_terms=["solana", "xdp"],
             market_interpretation="Market may look for Solana scaling tokens.",
+            display_name_zh="Solana 扩容",
+            headline_zh="Solana XDP 扩容叙事升温",
+            market_interpretation_zh="交易员可能关注 Solana 扩容相关 token。",
             stance="informational",
             intent="technical_commentary",
             confidence=0.86,
@@ -253,9 +258,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
         self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
-        self.assertGreaterEqual(lines[2]["data"]["items"][0]["watch"]["seed_link_count"], 1)
-        self.assertEqual(lines[2]["data"]["items"][0]["signal"]["decision"], "watch")
+        self.assertEqual(lines[2]["data"]["items"][0]["opportunity"]["decision"], "watch")
         self.assertEqual(lines[3]["data"]["items"][0]["narrative_label"], "solana_scaling")
+        self.assertEqual(lines[3]["data"]["items"][0]["display"]["headline_zh"], "Solana XDP 扩容叙事升温")
         self.assertEqual(
             {item["alert_type"] for item in lines[4]["data"]["items"]},
             {"account_token"},
@@ -375,7 +380,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["symbol_mentions_scanned"], 1)
         self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 2)
         self.assertEqual(lines[1]["data"]["items"][0]["flow"]["symbol_mentions"], 1)
-
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

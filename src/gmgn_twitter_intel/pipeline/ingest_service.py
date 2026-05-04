@@ -20,6 +20,7 @@ class IngestedEvent:
     event: TwitterEvent
     entities: list[dict[str, Any]]
     alerts: list[dict[str, Any]]
+    token_attributions: list[dict[str, Any]]
     inserted: bool
     enrichment_job_id: str | None = None
 
@@ -57,7 +58,7 @@ class IngestService:
                 row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
                 inserted = self.evidence.insert_event_without_commit(row)
                 if not inserted:
-                    return IngestedEvent(event=event, entities=[], alerts=[], inserted=False)
+                    return IngestedEvent(event=event, entities=[], alerts=[], token_attributions=[], inserted=False)
                 self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
                 token_mentions = self.token_resolver.resolve_event_mentions(event, extracted, commit=False)
                 if self.token_market_enricher is not None:
@@ -84,6 +85,7 @@ class IngestService:
                 event=event,
                 entities=[_entity_payload(entity) for entity in extracted],
                 alerts=signal_result.alerts,
+                token_attributions=signal_result.token_attributions,
                 inserted=True,
                 enrichment_job_id=enrichment_job_id,
             )
