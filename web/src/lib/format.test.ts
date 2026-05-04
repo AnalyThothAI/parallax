@@ -42,8 +42,25 @@ describe("format helpers", () => {
         diffusion: { score: 80, status: "thin", independent_authors: 1, effective_authors: 1, top_author_share: 1, duplicate_text_share: 0, repeated_cluster_count: 0, shill_author_count: 0, reasons: [], risks: ["thin_author_set"] },
         watch: { status: "direct_watch", direct_mentions: 1, direct_authors: 1, seed_link_count: 0, top_seed: null, reasons: ["watched_direct_mention"], risks: [] },
         fresh: { is_new_local_evidence: true, is_first_seen_by_watched: true },
-        signal: { decision: "watch", score: 1, reasons: [], risks: [] },
-        evidence: []
+        signal: {
+          score_version: "token_signal_v1",
+          decision: "watch",
+          score: 1,
+          reasons: [],
+          risks: [],
+          contributions: [],
+          risk_caps: []
+        },
+        evidence_highlight_best: null,
+        evidence_highlights: [],
+        evidence_total_count: 0,
+        posts_query: {
+          token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+          chain: "eth",
+          address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+          window: "5m",
+          scope: "all"
+        }
       })
     ).toBe("$PEPE");
   });

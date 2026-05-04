@@ -124,7 +124,7 @@ def test_symbol_mentions_before_ca_are_reattributed_to_explicit_token_candidate(
     assert item["flow"]["weighted_mentions"] == pytest.approx(2.0, abs=0.3)
     assert item["attribution"]["avg_confidence"] >= 0.70
     assert item["attribution"]["selected_symbol_mentions"] == 1
-    assert {event["event_id"] for event in item["evidence"]} == {
+    assert {event["event_id"] for event in item["evidence_highlights"]} == {
         "event-dog-symbol-first",
         "event-dog-payload-later",
     }

@@ -1139,6 +1139,33 @@ svg {
   font-weight: 500;
 }
 
+.focus-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.focus-tabs button,
+.load-more-posts {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0b1010;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.focus-tabs button {
+  min-height: 30px;
+}
+
+.focus-tabs button.active {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .focus-evidence {
   border-top: 1px solid var(--line-soft);
   padding: 8px 0;
@@ -1147,6 +1174,16 @@ svg {
 .focus-evidence:first-of-type {
   border-top: 0;
   padding-top: 0;
+}
+
+.load-more-posts {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 10px;
+}
+
+.load-more-posts:disabled {
+  opacity: 0.6;
 }
 
 .author-strip,

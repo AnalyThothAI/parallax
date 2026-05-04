@@ -11,6 +11,7 @@ from ..retrieval.narrative_link_service import NarrativeLinkService
 from ..retrieval.narrative_service import NarrativeService
 from ..retrieval.search_service import SearchService
 from ..retrieval.token_flow_service import TokenFlowService
+from ..retrieval.token_posts_service import TokenPostsCursorError, TokenPostsIdentityError, TokenPostsService
 
 WINDOWS = {"1m", "5m", "1h", "24h"}
 LINK_WINDOWS = {"5m", "1h", "24h"}
@@ -137,6 +138,38 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             scope=parsed_scope,
         )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "items": items}})
+
+    @router.get("/token-posts")
+    async def token_posts(
+        request: Request,
+        token_id: Annotated[str, Query()] = "",
+        chain: Annotated[str, Query()] = "",
+        address: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "5m",
+        limit: Annotated[int, Query()] = 50,
+        scope: Annotated[str, Query()] = "all",
+        cursor: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        if not token_id and not (chain and address):
+            return _json({"ok": False, "error": "missing_token_identity"}, status_code=400)
+        parsed_window = _window(window)
+        parsed_scope = _scope(scope)
+        try:
+            data = TokenPostsService(signals=runtime.read_signals).token_posts(
+                token_id=token_id or None,
+                chain=chain or None,
+                address=address or None,
+                window=parsed_window,
+                scope=parsed_scope,
+                limit=_limit(limit, maximum=200),
+                cursor=cursor or None,
+            )
+        except TokenPostsIdentityError:
+            return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
+        except TokenPostsCursorError:
+            return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
+        return _json({"ok": True, "data": data})
 
     @router.get("/account-alerts")
     async def account_alerts(

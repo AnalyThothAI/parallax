@@ -176,6 +176,7 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/status"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/recent?limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/search?q=%24PEPE&limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-flow?window=5m&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-posts?token_id=token:eth:0x...&window=5m&limit=50"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-alerts?window=24h&limit=50"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-flow?window=1h&limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-narratives?window=24h&limit=50"
@@ -216,6 +217,8 @@ uv run gmgn-twitter-intel ops rebuild-narrative-links --window 1h
 - `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
 - token signal 来自确定性 CA/cashtag；narrative signal 来自 watched-account LLM enrichment。
+- `token-flow` 返回信号解释样本 `evidence_highlights`，不是全量帖子集合。
+- `token-posts` 按 token attribution 返回全量帖子分页，包含 `total_count`、`has_more` 和 `next_cursor`。
 - narrative seed 只来自 configured watched handles；全量 public stream 只用于 seed 后的 token uptake/link validation。
 - narrative-token link 必须有确定性 token evidence、link reason、matched terms、lag、scores 和 risks；不会只凭 LLM 语义联想创建可交易 token。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。

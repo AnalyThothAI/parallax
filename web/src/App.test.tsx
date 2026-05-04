@@ -165,34 +165,119 @@ describe("App cockpit value flow", () => {
                 is_first_seen_by_watched: true
               },
               signal: {
+                score_version: "token_signal_v1",
                 decision: "watch",
                 score: 55,
                 reasons: ["coverage_public_stream", "watched_evidence", "multi_author_flow"],
                 risks: ["author_concentration_high"],
+                contributions: [{ feature: "diffusion_health", value: 55, reason: "concentrated" }],
+                risk_caps: [{ risk: "author_concentration_high", cap: 65 }],
                 evidence_id: "event-upeg-1"
               },
-              evidence_best: {
+              evidence_highlight_best: {
                 event_id: "event-upeg-1",
                 evidence_type: "gmgn_token_payload",
                 score: 80,
+                score_version: "post_score_v1",
                 handle: "traderpow",
                 received_at_ms: 1_777_746_010_000,
                 text: "$UPEG watched account evidence",
                 url: "https://x.com/traderpow/status/1",
-                reasons: ["watched_source"]
+                reasons: ["watched_source"],
+                risks: [],
+                contributions: [{ feature: "source_trust", value: 16, reason: "watched_source" }],
+                risk_caps: []
               },
-              evidence: [
+              evidence_highlights: [
                 {
                   event_id: "event-upeg-1",
                   evidence_type: "gmgn_token_payload",
                   score: 80,
+                  score_version: "post_score_v1",
                   handle: "traderpow",
                   received_at_ms: 1_777_746_010_000,
                   text: "$UPEG watched account evidence",
                   url: "https://x.com/traderpow/status/1",
-                  reasons: ["watched_source"]
+                  reasons: ["watched_source"],
+                  risks: [],
+                  contributions: [{ feature: "source_trust", value: 16, reason: "watched_source" }],
+                  risk_caps: []
                 }
-              ]
+              ],
+              evidence_total_count: 4,
+              posts_query: {
+                token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+                chain: "eth",
+                address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+                window: "1h",
+                scope: "all"
+              }
+            }
+          ]
+        });
+      }
+      if (path === "/api/token-posts") {
+        const cursor = String(options?.params?.cursor ?? "");
+        const baseItem = {
+          handle: "traderpow",
+          mention_source: "gmgn_token_payload",
+          attribution_status: "direct",
+          attribution_confidence: 1,
+          attribution_weight: 1,
+          score: 82,
+          score_version: "post_score_v1",
+          reasons: ["structured_token_payload"],
+          risks: [],
+          contributions: [{ feature: "source_specificity", value: 18, reason: "structured_token_payload" }],
+          risk_caps: []
+        };
+        if (cursor === "cursor-2") {
+          return ok({
+            query: options?.params,
+            total_count: 4,
+            returned_count: 1,
+            has_more: false,
+            next_cursor: null,
+            items: [
+              {
+                ...baseItem,
+                event_id: "event-upeg-4",
+                received_at_ms: 1_777_746_007_000,
+                text: "$UPEG final public post",
+                url: "https://x.com/traderpow/status/4"
+              }
+            ]
+          });
+        }
+        return ok({
+          query: options?.params,
+          total_count: 4,
+          returned_count: 3,
+          has_more: true,
+          next_cursor: "cursor-2",
+          items: [
+            {
+              ...baseItem,
+              event_id: "event-upeg-1",
+              received_at_ms: 1_777_746_010_000,
+              text: "$UPEG watched account evidence",
+              url: "https://x.com/traderpow/status/1"
+            },
+            {
+              ...baseItem,
+              handle: "alien19710628",
+              event_id: "event-upeg-2",
+              received_at_ms: 1_777_746_009_000,
+              text: "$UPEG public follow-through",
+              url: "https://x.com/alien19710628/status/2"
+            },
+            {
+              ...baseItem,
+              handle: "alien19710628",
+              event_id: "event-upeg-3",
+              received_at_ms: 1_777_746_008_000,
+              text: "$UPEG another public post",
+              url: "https://x.com/alien19710628/status/3"
             }
           ]
         });
@@ -508,7 +593,7 @@ describe("App cockpit value flow", () => {
     expect(screen.queryByText("exact_symbol")).not.toBeInTheDocument();
   });
 
-  it("turns token flow clicks into evidence-focused search", async () => {
+  it("turns token flow clicks into full token posts with signal explanation", async () => {
     renderWithQuery(<App />);
 
     const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
@@ -517,11 +602,28 @@ describe("App cockpit value flow", () => {
 
     expect(await screen.findByDisplayValue("0x6982508145454Ce325dDbE47a25d4ec3d2311933")).toBeInTheDocument();
     expect(await screen.findByText("焦点证据")).toBeInTheDocument();
-    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market fresh.")).toBeInTheDocument();
+    expect(await screen.findByText("4 posts / 4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market fresh.")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "全部帖子" })).toHaveClass("active");
     await waitFor(() => {
       expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     });
-    expect((await screen.findAllByText("1/4")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("3/4")).length).toBeGreaterThan(0);
+    expect(
+      mockedGetApi.mock.calls.some(
+        ([path, options]) => path === "/api/token-posts" && options?.params?.token_id === "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+      )
+    ).toBe(true);
+    fireEvent.click(await screen.findByRole("button", { name: "加载更多" }));
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/token-posts" && options?.params?.cursor === "cursor-2"
+        )
+      ).toBe(true);
+    });
+    expect(await screen.findByText("$UPEG final public post")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "信号解释" }));
+    expect(await screen.findByRole("button", { name: "信号解释" })).toHaveClass("active");
     expect(await screen.findByText("traderpow x1")).toBeInTheDocument();
   });
 
@@ -530,7 +632,7 @@ describe("App cockpit value flow", () => {
 
     const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
     fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "select token $UPEG" }));
-    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market fresh.")).toBeInTheDocument();
+    expect(await screen.findByText("4 posts / 4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market fresh.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本"), { target: { value: "@traderpow" } });
     fireEvent.click(screen.getByRole("button", { name: "检索" }));

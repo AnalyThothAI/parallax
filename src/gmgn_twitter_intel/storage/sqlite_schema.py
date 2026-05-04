@@ -243,6 +243,22 @@ CREATE INDEX IF NOT EXISTS idx_event_token_attributions_status_received
   ON event_token_attributions(attribution_status, received_at_ms);
 CREATE INDEX IF NOT EXISTS idx_event_token_attributions_identity_author_received
   ON event_token_attributions(identity_key, author_handle, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_attributions_posts_recent
+  ON event_token_attributions(token_id, received_at_ms DESC, event_id DESC)
+  WHERE token_id IS NOT NULL
+    AND attribution_status IN ('direct', 'selected')
+    AND attribution_weight > 0
+    AND chain IS NOT NULL
+    AND address IS NOT NULL
+    AND chain NOT IN ('unknown', 'evm', 'evm_unknown');
+CREATE INDEX IF NOT EXISTS idx_event_token_attributions_posts_ca_recent
+  ON event_token_attributions(chain, address, received_at_ms DESC, event_id DESC)
+  WHERE token_id IS NOT NULL
+    AND attribution_status IN ('direct', 'selected')
+    AND attribution_weight > 0
+    AND chain IS NOT NULL
+    AND address IS NOT NULL
+    AND chain NOT IN ('unknown', 'evm', 'evm_unknown');
 
 CREATE TABLE IF NOT EXISTS enrichment_jobs (
   job_id TEXT PRIMARY KEY,

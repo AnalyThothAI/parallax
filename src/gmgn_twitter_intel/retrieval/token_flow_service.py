@@ -29,15 +29,35 @@ class TokenFlowService:
         requested_limit = max(0, int(limit))
         if requested_limit == 0:
             return []
+        candidate_limit = max(requested_limit, min(max(requested_limit * 5, 100), 500))
         rows = RollingTokenFlow(self.signals.conn).token_flow(
             window=window,
-            limit=requested_limit,
+            limit=candidate_limit,
             watched_only=scope == "matched",
             now_ms=now_ms,
         )
-        return [self._token_flow_item(row, window=window) for row in rows]
+        watched_only = scope == "matched"
+        evidence_counts = self._evidence_total_counts(rows, watched_only=watched_only)
+        items = [
+            self._token_flow_item(
+                row,
+                window=window,
+                scope=scope,
+                evidence_total_count=evidence_counts.get(str(row.get("token_id")), 0),
+            )
+            for row in rows
+        ]
+        items.sort(key=_token_flow_rank_key, reverse=True)
+        return items[:requested_limit]
 
-    def _token_flow_item(self, row: dict[str, Any], *, window: str) -> dict[str, Any]:
+    def _token_flow_item(
+        self,
+        row: dict[str, Any],
+        *,
+        window: str,
+        scope: str,
+        evidence_total_count: int,
+    ) -> dict[str, Any]:
         token = self.tokens.get_token(row.get("token_id"))
         baseline = self._baseline_block(row, window=window)
         market = self._market_block(row)
@@ -46,15 +66,15 @@ class TokenFlowService:
         fresh = self._fresh_block(row, market=market)
         watch = self._watch_block(row)
         attribution = self._attribution_block(row)
-        evidence = self._evidence_items(row, diffusion=diffusion, market=market)
-        evidence_best = evidence[0] if evidence else None
+        evidence_highlights = self._evidence_items(row, diffusion=diffusion, market=market)
+        evidence_highlight_best = evidence_highlights[0] if evidence_highlights else None
         signal = signal_block(
             row,
             market=market,
             flow=flow,
             diffusion=diffusion,
             watch=watch,
-            evidence_best=evidence_best,
+            evidence_highlight_best=evidence_highlight_best,
         )
         return {
             "identity": self._identity_block(row, token),
@@ -66,8 +86,10 @@ class TokenFlowService:
             "watch": watch,
             "attribution": attribution,
             "signal": signal,
-            "evidence_best": evidence_best,
-            "evidence": evidence,
+            "evidence_highlight_best": evidence_highlight_best,
+            "evidence_highlights": evidence_highlights,
+            "evidence_total_count": evidence_total_count,
+            "posts_query": self._posts_query(row, window=window, scope=scope),
         }
 
     def _identity_block(self, row: dict[str, Any], token: dict[str, Any] | None) -> dict[str, Any]:
@@ -271,7 +293,7 @@ class TokenFlowService:
         for event in row.get("top_events", []):
             if not isinstance(event, dict) or not event.get("event_id"):
                 continue
-            score, reasons = evidence_score(
+            score_payload = evidence_score(
                 event,
                 identity_status=str(row["identity_status"]),
                 diffusion=diffusion,
@@ -282,15 +304,14 @@ class TokenFlowService:
                 {
                     "event_id": event.get("event_id"),
                     "evidence_type": event.get("mention_source") or event.get("source") or "event_token_mention",
-                    "score": score,
                     "handle": event.get("author_handle"),
                     "text": event.get("text_clean"),
                     "received_at_ms": event.get("received_at_ms"),
                     "url": event.get("canonical_url"),
-                    "reasons": reasons,
                     "attribution_status": event.get("attribution_status"),
                     "attribution_confidence": event.get("attribution_confidence"),
                     "attribution_weight": event.get("attribution_weight"),
+                    **score_payload,
                 }
             )
         items.sort(
@@ -302,6 +323,62 @@ class TokenFlowService:
             reverse=True,
         )
         return items
+
+    def _evidence_total_counts(self, rows: list[dict[str, Any]], *, watched_only: bool) -> dict[str, int]:
+        if not rows:
+            return {}
+        token_ids = sorted({str(row.get("token_id")) for row in rows if row.get("token_id")})
+        if not token_ids:
+            return {}
+        watched_clause = "AND eta.is_watched = 1" if watched_only else ""
+        placeholders = ",".join("?" for _ in token_ids)
+        window_start_ms = int(rows[0]["window_start_ms"])
+        window_end_ms = int(rows[0]["window_end_ms"])
+        results = self.signals.conn.execute(
+            f"""
+            SELECT eta.token_id, COUNT(DISTINCT eta.event_id) AS count
+            FROM event_token_attributions eta
+            WHERE eta.received_at_ms >= ?
+              AND eta.received_at_ms < ?
+              AND eta.token_id IN ({placeholders})
+              AND eta.token_id IS NOT NULL
+              AND eta.attribution_status IN ('direct', 'selected')
+              AND eta.attribution_weight > 0
+              AND eta.chain IS NOT NULL
+              AND eta.address IS NOT NULL
+              AND eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')
+              {watched_clause}
+            GROUP BY eta.token_id
+            """,
+            (window_start_ms, window_end_ms, *token_ids),
+        ).fetchall()
+        return {str(row["token_id"]): int(row["count"] or 0) for row in results}
+
+    def _posts_query(self, row: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
+        return {
+            "token_id": row.get("token_id"),
+            "chain": row.get("chain"),
+            "address": row.get("address"),
+            "window": window,
+            "scope": scope,
+        }
+
+
+def _token_flow_rank_key(item: dict[str, Any]) -> tuple[int, int, int, float, int, int]:
+    decision_priority = {"driver": 3, "watch": 2, "discard": 1}
+    signal = item.get("signal") or {}
+    flow = item.get("flow") or {}
+    fresh = item.get("fresh") or {}
+    latest_age = fresh.get("latest_evidence_age_ms")
+    freshness_rank = -int(latest_age) if latest_age is not None else -10**18
+    return (
+        decision_priority.get(str(signal.get("decision") or ""), 0),
+        int(signal.get("score") or 0),
+        int(flow.get("watched_mentions") or 0),
+        float(flow.get("z_score") or flow.get("new_burst_score") or 0.0),
+        int(flow.get("mentions") or 0),
+        freshness_rank,
+    )
 
 
 def _evidence_type_priority(value: str) -> int:

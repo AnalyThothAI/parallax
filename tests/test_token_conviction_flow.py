@@ -143,8 +143,10 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
         "watch",
         "attribution",
         "signal",
-        "evidence_best",
-        "evidence",
+        "evidence_highlight_best",
+        "evidence_highlights",
+        "evidence_total_count",
+        "posts_query",
     }
     assert item["flow"]["mentions"] == 2
     assert item["flow"]["direct_mentions"] == 1
@@ -166,12 +168,22 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
     assert item["attribution"]["selected_symbol_mentions"] == 1
     assert item["signal"]["decision"] == "driver"
     assert "direct_watch" in item["signal"]["reasons"]
-    assert item["evidence_best"]["event_id"] == "event-dog-1"
-    assert item["evidence_best"]["evidence_type"] == "gmgn_token_payload"
-    assert "structured_token_payload" in item["evidence_best"]["reasons"]
-    assert item["evidence_best"]["score"] > 0
-    assert item["evidence"][0]["event_id"] == "event-dog-1"
-    assert {event["evidence_type"] for event in item["evidence"]} == {"gmgn_token_payload", "cashtag"}
+    assert "evidence_best" not in item
+    assert "evidence" not in item
+    assert item["evidence_highlight_best"]["event_id"] == "event-dog-1"
+    assert item["evidence_highlight_best"]["evidence_type"] == "gmgn_token_payload"
+    assert "structured_token_payload" in item["evidence_highlight_best"]["reasons"]
+    assert item["evidence_highlight_best"]["score"] > 0
+    assert item["evidence_highlight_best"]["score_version"] == "post_score_v1"
+    assert item["evidence_highlight_best"]["contributions"]
+    assert "risk_caps" in item["evidence_highlight_best"]
+    assert item["evidence_highlights"][0]["event_id"] == "event-dog-1"
+    assert {event["evidence_type"] for event in item["evidence_highlights"]} == {
+        "gmgn_token_payload",
+        "cashtag",
+    }
+    assert item["evidence_total_count"] == 2
+    assert item["posts_query"]["token_id"] == item["identity"]["token_id"]
 
 
 def test_signal_driver_uses_rolling_acceleration_healthy_diffusion_and_fresh_market(tmp_path):
@@ -316,7 +328,7 @@ def test_token_flow_returns_one_current_row_per_token_identity(tmp_path):
     assert len(items) == 1
     assert items[0]["identity"]["identity_key"] == "token:eth:0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
     assert items[0]["flow"]["mentions"] == 1
-    assert items[0]["evidence_best"]["event_id"] == "event-dog-current"
+    assert items[0]["evidence_highlight_best"]["event_id"] == "event-dog-current"
 
 
 def test_token_flow_attributes_symbol_only_mentions_into_resolved_candidate(tmp_path):

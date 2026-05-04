@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -30,6 +30,8 @@ import type {
   StatusData,
   TokenFlowData,
   TokenFlowItem,
+  TokenPostItem,
+  TokenPostsData,
   WindowKey
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
@@ -48,6 +50,7 @@ type SelectedSignal =
   | null;
 
 type Decision = "driver" | "watch" | "discard";
+type FocusTab = "posts" | "explain";
 
 export function App() {
   const queryClient = useQueryClient();
@@ -66,6 +69,7 @@ export function App() {
   const runSearch = useTraderStore((state) => state.runSearch);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [decisions, setDecisions] = useState<Record<string, Decision>>({});
+  const [focusTab, setFocusTab] = useState<FocusTab>("explain");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const bootstrapQuery = useQuery({
@@ -151,6 +155,30 @@ export function App() {
     enabled: Boolean(token && submittedSearch)
   });
 
+  const selectedToken = selectedSignal?.kind === "token" ? selectedSignal.item : null;
+  const tokenPostParams = selectedToken ? tokenPostsParams(selectedToken) : null;
+  const tokenPostsQuery = useInfiniteQuery({
+    queryKey: ["token-posts", tokenPostParams],
+    queryFn: async ({ pageParam }) => {
+      const response = await getApi<TokenPostsData>("/api/token-posts", {
+        token,
+        params: {
+          token_id: tokenPostParams?.token_id,
+          chain: tokenPostParams?.chain,
+          address: tokenPostParams?.address,
+          window: tokenPostParams?.window,
+          scope: tokenPostParams?.scope,
+          limit: 24,
+          cursor: pageParam || undefined
+        }
+      });
+      return response.data;
+    },
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
+    enabled: Boolean(token && tokenPostParams && (tokenPostParams.token_id || (tokenPostParams.chain && tokenPostParams.address)))
+  });
+
   const liveItems = useMemo(() => {
     const replayItems = recentQuery.data?.data.items ?? [];
     const byId = new Map<string, LivePayload>();
@@ -168,16 +196,31 @@ export function App() {
   const frontierItems = frontierQuery.data?.data.items ?? [];
   const frontierByToken = useMemo(() => buildFrontierByToken(frontierItems), [frontierItems]);
   const focus = buildEvidenceFocus(selectedSignal, searchItems, submittedSearch, currentSearchData);
-  const selectedToken = selectedSignal?.kind === "token" ? selectedSignal.item : null;
   const selectedTokenKey = selectedToken ? tokenDecisionKey(selectedToken) : null;
   const selectedDecision = selectedToken ? decisionForToken(selectedToken, decisions) : null;
   const decisionCounts = useMemo(() => countDecisions(tokenItems, decisions), [tokenItems, decisions]);
+  const tokenPostFeed = selectedToken
+    ? {
+        items: (tokenPostsQuery.data?.pages ?? []).flatMap((page) => page.items),
+        totalCount: tokenPostsQuery.data?.pages[0]?.total_count ?? selectedToken.evidence_total_count,
+        hasMore: Boolean(tokenPostsQuery.hasNextPage),
+        isLoading: tokenPostsQuery.isLoading,
+        isFetchingNextPage: tokenPostsQuery.isFetchingNextPage,
+        onLoadMore: () => {
+          void tokenPostsQuery.fetchNextPage();
+        }
+      }
+    : null;
 
   useEffect(() => {
     if (!selectedSignal && tokenItems.length) {
       setSelectedSignal({ kind: "token", item: tokenItems[0] });
     }
   }, [selectedSignal, tokenItems]);
+
+  useEffect(() => {
+    setFocusTab(selectedSignal?.kind === "token" ? "posts" : "explain");
+  }, [selectedTokenKey, selectedSignal?.kind]);
 
   const selectToken = (item: TokenFlowItem) => {
     setSelectedSignal({ kind: "token", item });
@@ -426,7 +469,14 @@ export function App() {
                 <span>{focus.badge}</span>
               </div>
             </header>
-            <EvidenceFocus focus={focus} decision={selectedDecision} onDecision={setTokenDecision} />
+            <EvidenceFocus
+              activeTab={focusTab}
+              decision={selectedDecision}
+              focus={focus}
+              onDecision={setTokenDecision}
+              onTabChange={setFocusTab}
+              postFeed={tokenPostFeed}
+            />
           </section>
           <CompactPanel title="叙事前沿" icon={<Brain />} action={`${frontierQuery.data?.data.items.length ?? 0} links`}>
             <div className="narrative-list">
@@ -715,14 +765,24 @@ function SearchRow({
 }
 
 function EvidenceFocus({
+  activeTab,
   focus,
   decision,
-  onDecision
+  onDecision,
+  onTabChange,
+  postFeed
 }: {
+  activeTab: FocusTab;
   focus: EvidenceFocusModel;
   decision: Decision | null;
   onDecision: (decision: Decision) => void;
+  onTabChange: (tab: FocusTab) => void;
+  postFeed: TokenPostFeed | null;
 }) {
+  const showingPosts = Boolean(postFeed) && activeTab === "posts";
+  const displayItems = showingPosts ? tokenPostEvidence(postFeed?.items ?? []) : focus.highlights;
+  const totalCount = showingPosts ? postFeed?.totalCount ?? 0 : focus.highlightTotal;
+  const isLoading = showingPosts && postFeed?.isLoading;
   return (
     <div className="focus-panel">
       <div className="focus-hero">
@@ -749,11 +809,22 @@ function EvidenceFocus({
         ))}
       </div>
       <div className="focus-section">
+        {postFeed ? (
+          <div className="focus-tabs" aria-label="focus evidence view">
+            <button className={activeTab === "posts" ? "active" : ""} type="button" onClick={() => onTabChange("posts")}>
+              全部帖子
+            </button>
+            <button className={activeTab === "explain" ? "active" : ""} type="button" onClick={() => onTabChange("explain")}>
+              信号解释
+            </button>
+          </div>
+        ) : null}
         <h3>
-          证据 <span>{focus.evidence.length}/{compactNumber(Math.max(focus.evidenceTotal, focus.evidence.length))}</span>
+          {showingPosts ? "全部帖子" : "信号解释"}{" "}
+          <span>{compactNumber(displayItems.length)}/{compactNumber(Math.max(totalCount, displayItems.length))}</span>
         </h3>
-        {focus.evidence.length ? (
-          focus.evidence.map((item) => (
+        {displayItems.length ? (
+          displayItems.map((item) => (
             <article className="focus-evidence" key={item.id}>
               <div>
                 <strong>@{item.handle}</strong>
@@ -769,9 +840,16 @@ function EvidenceFocus({
               <p>{item.text}</p>
             </article>
           ))
+        ) : isLoading ? (
+          <EmptyState text="加载 token posts 中" />
         ) : (
           <EmptyState text="选中 token、告警、检索结果或实时事件后查看证据" />
         )}
+        {showingPosts && postFeed?.hasMore ? (
+          <button className="load-more-posts" type="button" onClick={postFeed.onLoadMore} disabled={postFeed.isFetchingNextPage}>
+            {postFeed.isFetchingNextPage ? "加载中" : "加载更多"}
+          </button>
+        ) : null}
       </div>
       {focus.authors.length ? (
         <div className="focus-section">
@@ -808,10 +886,29 @@ type EvidenceFocusModel = {
   score: string;
   badge: string;
   facts: Array<{ label: string; value: string }>;
-  evidence: Array<{ id: string; handle: string; match: string; receivedAt?: number | null; text: string; url?: string | null; score?: number }>;
-  evidenceTotal: number;
+  highlights: FocusEvidenceItem[];
+  highlightTotal: number;
   authors: string[];
   risks: string[];
+};
+
+type FocusEvidenceItem = {
+  id: string;
+  handle: string;
+  match: string;
+  receivedAt?: number | null;
+  text: string;
+  url?: string | null;
+  score?: number;
+};
+
+type TokenPostFeed = {
+  items: TokenPostItem[];
+  totalCount: number;
+  hasMore: boolean;
+  isLoading: boolean;
+  isFetchingNextPage: boolean;
+  onLoadMore: () => void;
 };
 
 function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], submittedSearch: string, searchData: SearchData | null): EvidenceFocusModel {
@@ -819,19 +916,20 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
     const item = signal.item;
     const baselineSignal = item.flow.z_score === null || item.flow.z_score === undefined ? item.flow.baseline_status : `z ${compactNumber(item.flow.z_score)}`;
     const marketSignal = item.market.market_status === "missing" ? "missing" : `${formatUsdCompact(item.market.market_cap)} ${marketDelta(item)}`;
-    const evidence = evidenceFromToken(item, searchItems);
-    const evidenceTotal = Math.max(item.flow.mentions, item.evidence.length, evidence.length);
+    const highlights = highlightsFromToken(item, searchItems);
+    const postTotal = Math.max(item.evidence_total_count, item.flow.mentions, highlights.length);
     return {
       kicker: "token flow",
       title: tokenLabel(item),
-      summary: `${compactNumber(item.flow.mentions)} mentions (${flowDeltaLabel(item)}), diffusion ${item.diffusion.status} across ${compactNumber(item.diffusion.independent_authors)} authors, ${watchStatusLabel(item)}, market ${item.market.market_status}.`,
+      summary: `${compactNumber(postTotal)} posts / ${compactNumber(item.flow.mentions)} mentions (${flowDeltaLabel(item)}), diffusion ${item.diffusion.status} across ${compactNumber(item.diffusion.independent_authors)} authors, ${watchStatusLabel(item)}, market ${item.market.market_status}.`,
       score: String(tokenScore(item)),
       badge: item.flow.window,
       facts: [
         { label: "identity", value: item.identity.identity_status },
         { label: "address", value: shortAddress(item.identity.address ?? item.identity.identity_key) },
         { label: "local flow", value: `${compactNumber(item.flow.mentions)} ${item.flow.window}` },
-        { label: "shown", value: `${compactNumber(evidence.length)}/${compactNumber(evidenceTotal)}` },
+        { label: "posts", value: compactNumber(postTotal) },
+        { label: "highlights", value: compactNumber(highlights.length) },
         { label: "mcap", value: formatUsdCompact(item.market.market_cap) },
         { label: "delta", value: marketDelta(item) },
         { label: "signal", value: item.signal.decision },
@@ -845,15 +943,15 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "stream share", value: formatPercentShare(item.flow.stream_dominance) },
         { label: "fresh", value: formatDuration(item.fresh.latest_evidence_age_ms) }
       ],
-      evidence,
-      evidenceTotal,
+      highlights,
+      highlightTotal: highlights.length,
       authors: authorsFromToken(item),
       risks: tokenRisks(item)
     };
   }
   if (signal?.kind === "alert") {
     const item = signal.item;
-    const evidence = evidenceFromSearch(searchItems);
+    const highlights = evidenceFromSearch(searchItems);
     return {
       kicker: item.alert_type,
       title: `${item.author_handle ?? "unknown"} -> ${alertTokenLabel(item)}`,
@@ -866,15 +964,15 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "entity", value: item.entity_key ?? "-" },
         { label: "event", value: shortId(item.event_id) }
       ],
-      evidence,
-      evidenceTotal: evidence.length,
+      highlights,
+      highlightTotal: highlights.length,
       authors: item.author_handle ? [`${item.author_handle} x1`] : [],
       risks: alertRisks(item)
     };
   }
   if (signal?.kind === "event") {
     const payload = signal.item;
-    const evidence = [evidenceFromEvent(payload.event, "selected_event")];
+    const highlights = [evidenceFromEvent(payload.event, "selected_event")];
     return {
       kicker: payload.event.action ?? "event",
       title: `@${eventHandle(payload.event)}`,
@@ -887,15 +985,15 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "coverage", value: payload.event.source?.coverage ?? "public_stream" },
         { label: "event", value: shortId(payload.event.event_id) }
       ],
-      evidence,
-      evidenceTotal: evidence.length,
+      highlights,
+      highlightTotal: highlights.length,
       authors: [`${eventHandle(payload.event)} x1`],
       risks: payload.event.is_watched ? ["watched source"] : ["public stream"]
     };
   }
   if (signal?.kind === "search") {
     const item = signal.item;
-    const evidence = [evidenceFromEvent(item.event, item.match_type)];
+    const highlights = [evidenceFromEvent(item.event, item.match_type)];
     return {
       kicker: item.match_type,
       title: `@${eventHandle(item.event)}`,
@@ -908,14 +1006,14 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "watched", value: yesNo(item.event.is_watched) },
         { label: "event", value: shortId(item.event.event_id) }
       ],
-      evidence,
-      evidenceTotal: evidence.length,
+      highlights,
+      highlightTotal: highlights.length,
       authors: [`${eventHandle(item.event)} x1`],
       risks: item.match_type === "exact_symbol" ? ["symbol-only until CA confirms"] : []
     };
   }
   if (signal?.kind === "query") {
-    const evidence = evidenceFromSearch(searchItems);
+    const highlights = evidenceFromSearch(searchItems);
     const total = searchTotal(searchData, searchItems);
     return {
       kicker: "search query",
@@ -929,13 +1027,13 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "coverage", value: "public_stream" },
         { label: "mode", value: "evidence" }
       ],
-      evidence,
-      evidenceTotal: total,
+      highlights,
+      highlightTotal: total,
       authors: authorsFromSearch(searchItems),
       risks: searchRisks(signal.query, searchItems)
     };
   }
-  const evidence = evidenceFromSearch(searchItems);
+  const highlights = evidenceFromSearch(searchItems);
   const total = searchTotal(searchData, searchItems);
   return {
     kicker: "search",
@@ -949,8 +1047,8 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
       { label: "coverage", value: "public_stream" },
       { label: "mode", value: "evidence" }
     ],
-    evidence,
-    evidenceTotal: total,
+    highlights,
+    highlightTotal: total,
     authors: [],
     risks: []
   };
@@ -960,8 +1058,8 @@ function evidenceFromSearch(items: SearchItem[]) {
   return items.slice(0, 8).map((item) => evidenceFromEvent(item.event, item.match_type));
 }
 
-function evidenceFromToken(item: TokenFlowItem, searchItems: SearchItem[]) {
-  const direct = item.evidence
+function highlightsFromToken(item: TokenFlowItem, searchItems: SearchItem[]) {
+  const direct = item.evidence_highlights
     .filter((event) => event.event_id)
     .slice(0, 8)
     .map((event) => ({
@@ -975,6 +1073,22 @@ function evidenceFromToken(item: TokenFlowItem, searchItems: SearchItem[]) {
     }))
     .filter((event) => event.text || event.id !== "-");
   return direct.length ? direct : evidenceFromSearch(searchItems);
+}
+
+function tokenPostEvidence(items: TokenPostItem[]): FocusEvidenceItem[] {
+  return items.map((item) => ({
+    id: item.event_id,
+    handle: item.handle ?? "unknown",
+    match: `${evidenceTypeLabel(item.mention_source ?? undefined)} · ${evidenceReasonLabel(item.reasons)}`,
+    receivedAt: item.received_at_ms,
+    text: item.text ?? "",
+    url: item.url,
+    score: item.score
+  }));
+}
+
+function tokenPostsParams(item: TokenFlowItem) {
+  return item.posts_query;
 }
 
 function authorsFromSearch(items: SearchItem[]): string[] {

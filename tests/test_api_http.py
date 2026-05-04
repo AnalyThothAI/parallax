@@ -21,7 +21,12 @@ def make_settings(tmp_path) -> Settings:
     return settings
 
 
-def make_event(event_id: str, handle: str = "toly", text: str | None = None) -> TwitterEvent:
+def make_event(
+    event_id: str,
+    handle: str = "toly",
+    text: str | None = None,
+    received_at_ms: int | None = None,
+) -> TwitterEvent:
     return TwitterEvent(
         event_id=event_id,
         source=Source(
@@ -35,7 +40,7 @@ def make_event(event_id: str, handle: str = "toly", text: str | None = None) -> 
         tweet_id=event_id,
         internal_id=event_id,
         timestamp=1,
-        received_at_ms=int(time.time() * 1000),
+        received_at_ms=received_at_ms if received_at_ms is not None else int(time.time() * 1000),
         author=Author(handle=handle, name=handle, avatar=None, followers=100, tags=[]),
         content=Content(text=text or f"{handle} text", media=[]),
         reference=None,
@@ -54,6 +59,7 @@ def make_token_event(
     address: str,
     handle: str = "toly",
     text: str | None = None,
+    received_at_ms: int | None = None,
 ) -> TwitterEvent:
     snapshot = parse_gmgn_token_payload(
         {
@@ -68,7 +74,7 @@ def make_token_event(
         }
     )
     return replace(
-        make_event(event_id, handle=handle, text=text or f"${symbol} launch"),
+        make_event(event_id, handle=handle, text=text or f"${symbol} launch", received_at_ms=received_at_ms),
         source=Source(
             provider="gmgn",
             transport="direct_ws",
@@ -162,6 +168,97 @@ def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
     assert watched_flow.status_code == 200
     assert watched_flow.json()["data"]["scope"] == "matched"
     assert [item["identity"]["symbol"] for item in watched_flow.json()["data"]["items"]] == ["PEPE"]
+
+
+def test_api_token_posts_returns_full_post_pages_and_requires_identity(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        base_ms = int(time.time() * 1000)
+        for index in range(3):
+            event = make_token_event(
+                f"event-pepe-post-{index}",
+                symbol="PEPE",
+                address=PEPE,
+                handle=f"voice{index}",
+                text=f"$PEPE post {index}",
+                received_at_ms=base_ms - index * 1_000,
+            )
+            client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
+
+        token_flow = client.get(
+            "/api/token-flow",
+            params={"window": "5m", "limit": 5, "scope": "all"},
+            headers={"Authorization": "Bearer secret"},
+        ).json()["data"]["items"][0]
+        token_id = token_flow["identity"]["token_id"]
+
+        missing = client.get("/api/token-posts?window=5m", headers={"Authorization": "Bearer secret"})
+        first_page = client.get(
+            "/api/token-posts",
+            params={"token_id": token_id, "window": "5m", "scope": "all", "limit": 2},
+            headers={"Authorization": "Bearer secret"},
+        )
+        second_page = client.get(
+            "/api/token-posts",
+            params={
+                "token_id": token_id,
+                "window": "5m",
+                "scope": "all",
+                "limit": 2,
+                "cursor": first_page.json()["data"]["next_cursor"],
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+        ca_page = client.get(
+            "/api/token-posts",
+            params={"chain": "eth", "address": PEPE, "window": "5m", "scope": "all", "limit": 10},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert missing.status_code == 400
+    assert missing.json() == {"ok": False, "error": "missing_token_identity"}
+    assert first_page.status_code == 200
+    first_body = first_page.json()["data"]
+    assert first_body["total_count"] == 3
+    assert first_body["returned_count"] == 2
+    assert first_body["has_more"] is True
+    assert first_body["query"]["token_id"] == token_id
+    assert first_body["items"][0]["score_version"] == "post_score_v1"
+    assert first_body["items"][0]["contributions"]
+    assert second_page.status_code == 200
+    assert second_page.json()["data"]["returned_count"] == 1
+    assert ca_page.status_code == 200
+    assert ca_page.json()["data"]["total_count"] == 3
+    assert ca_page.json()["data"]["query"]["chain"] == "eth"
+
+
+def test_api_token_posts_rejects_malformed_cursor(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-posts",
+            params={"token_id": f"token:eth:{PEPE}", "window": "5m", "cursor": "abcde"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_cursor"}
+
+
+def test_api_token_posts_rejects_invalid_chain_address_identity(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-posts",
+            params={"chain": "eth", "address": "not-a-ca", "window": "5m"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_token_identity"}
 
 
 def test_api_token_flow_exposes_seed_linked_watch_status(tmp_path):

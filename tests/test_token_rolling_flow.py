@@ -98,7 +98,7 @@ def test_token_flow_uses_trailing_window_not_epoch_bucket(tmp_path):
 
     assert item["flow"]["mentions"] == 1
     assert item["flow"]["previous_mentions"] == 1
-    assert item["evidence_best"]["event_id"] == "event-dog-current"
+    assert item["evidence_highlight_best"]["event_id"] == "event-dog-current"
     assert item["flow"]["window_start_ms"] == now_ms - 3_600_000
     assert item["flow"]["window_end_ms"] == now_ms
 

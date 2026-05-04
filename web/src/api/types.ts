@@ -199,28 +199,84 @@ export type TokenFlowItem = {
     risks: string[];
   };
   signal: {
+    score_version: string;
     decision: "driver" | "watch" | "discard";
     score: number;
     reasons: string[];
     risks: string[];
+    contributions: ScoreContribution[];
+    risk_caps: RiskCap[];
     evidence_id?: string | null;
   };
-  evidence_best?: TokenEvidence | null;
-  evidence: TokenEvidence[];
+  evidence_highlight_best: TokenEvidenceHighlight | null;
+  evidence_highlights: TokenEvidenceHighlight[];
+  evidence_total_count: number;
+  posts_query: TokenPostsQuery;
 };
 
-export type TokenEvidence = {
-  event_id?: string;
-  evidence_type?: string;
-  score?: number;
+export type ScoreContribution = {
+  feature: string;
+  value: number;
+  reason: string;
+};
+
+export type RiskCap = {
+  risk: string;
+  cap: number;
+};
+
+export type TokenEvidenceHighlight = {
+  event_id: string;
+  evidence_type: string;
+  score: number;
+  score_version: string;
   handle?: string | null;
   text?: string | null;
   received_at_ms?: number | null;
   url?: string | null;
-  reasons?: string[];
+  reasons: string[];
+  risks: string[];
   attribution_status?: string | null;
   attribution_confidence?: number | null;
   attribution_weight?: number | null;
+  contributions: ScoreContribution[];
+  risk_caps: RiskCap[];
+};
+
+export type TokenPostsQuery = {
+  token_id?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  window: WindowKey;
+  scope: ScopeKey;
+  sort?: "recent" | string;
+};
+
+export type TokenPostItem = {
+  event_id: string;
+  handle?: string | null;
+  text?: string | null;
+  url?: string | null;
+  received_at_ms?: number | null;
+  mention_source?: string | null;
+  attribution_status?: string | null;
+  attribution_confidence?: number | null;
+  attribution_weight?: number | null;
+  score: number;
+  score_version: string;
+  reasons: string[];
+  risks: string[];
+  contributions: ScoreContribution[];
+  risk_caps: RiskCap[];
+};
+
+export type TokenPostsData = {
+  query: TokenPostsQuery;
+  total_count: number;
+  returned_count: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+  items: TokenPostItem[];
 };
 
 export type TokenFlowData = {
