@@ -111,6 +111,41 @@ def test_api_rejects_protected_reads_without_token(tmp_path):
     assert response.json() == {"ok": False, "error": "unauthorized"}
 
 
+def test_api_status_exposes_market_observation_backlog(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        event = make_token_event(
+            "event-market-observation",
+            symbol="PEPE",
+            address=PEPE,
+            text="$PEPE payload",
+        )
+        client.app.state.service.ingest.ingest_event(event, is_watched=True)
+
+        response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    market_observations = response.json()["data"]["market_observations"]
+    assert market_observations["worker_running"] is True
+    assert set(market_observations) >= {
+        "pending",
+        "running",
+        "ready",
+        "cached",
+        "provider_not_configured",
+        "provider_error",
+        "rate_limited",
+        "dead",
+        "worker_running",
+    }
+    assert (
+        market_observations["pending"]
+        + market_observations["provider_not_configured"]
+        + market_observations["running"]
+    ) >= 1
+
+
 def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

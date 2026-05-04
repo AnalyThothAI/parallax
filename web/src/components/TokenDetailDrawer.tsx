@@ -1,7 +1,6 @@
 import type {
   AccountQualityData,
   AttentionFrontierItem,
-  Decision,
   NarrativeFlowItem,
   TimelineBucket,
   TokenDetailTab,
@@ -9,22 +8,12 @@ import type {
   TokenPostsData,
   TokenSocialTimelineData
 } from "../api/types";
-import {
-  compactNumber,
-  formatPercentShare,
-  formatRisk,
-  formatScore,
-  formatSignedPercent,
-  formatTimingStatus,
-  formatUsdCompact,
-  shortAddress,
-  tokenLabel
-} from "../lib/format";
+import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { AccountLane } from "./AccountLane";
-import { DecisionTag } from "./DecisionTag";
 import { NarrativePanel } from "./NarrativePanel";
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsTab } from "./TokenPostsTab";
+import { tokenDrawerSummary } from "./TokenRadarRow";
 import { TokenTimeline } from "./TokenTimeline";
 
 const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
@@ -38,7 +27,6 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
 type TokenDetailDrawerProps = {
   token: TokenFlowItem | null;
   activeTab: TokenDetailTab;
-  manualDecision?: Decision;
   timeline?: TokenSocialTimelineData | null;
   posts?: TokenPostsData | null;
   narratives: NarrativeFlowItem[];
@@ -54,7 +42,6 @@ type TokenDetailDrawerProps = {
   watchedPostsOnly: boolean;
   llmConfigured: boolean;
   onTabChange: (tab: TokenDetailTab) => void;
-  onDecisionOverride: (decision: Decision) => void;
   onTimelineBucketChange: (bucket: TimelineBucket) => void;
   onPostSortModeChange: (mode: "recent" | "quality") => void;
   onHideDuplicateClustersChange: (enabled: boolean) => void;
@@ -65,7 +52,6 @@ type TokenDetailDrawerProps = {
 export function TokenDetailDrawer({
   token,
   activeTab,
-  manualDecision,
   timeline,
   posts,
   narratives,
@@ -81,7 +67,6 @@ export function TokenDetailDrawer({
   watchedPostsOnly,
   llmConfigured,
   onTabChange,
-  onDecisionOverride,
   onTimelineBucketChange,
   onPostSortModeChange,
   onHideDuplicateClustersChange,
@@ -90,107 +75,89 @@ export function TokenDetailDrawer({
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
-      <aside className="detail-drawer">
-        <section className="detail-focus select-token-empty">
-          <header className="drawer-head">
+      <aside className="detail-drawer drawer">
+        <header className="drawer-head select-token-empty">
+          <div className="drawer-title">
             <div>
+              <div className="eyebrow">selected token</div>
               <h2>Select Token</h2>
-              <span>右侧详情组件已保留</span>
+              <p>no token selected</p>
             </div>
-          </header>
-          <div className="empty-state">从 Token Radar 或实时信号 Tape 选择一个币，查看完整传播时间线、全量帖子、分数账本和账号 lane。</div>
+            <div className="opportunity-score">-</div>
+          </div>
+        </header>
+        <section className="drawer-section">
+          <div className="empty-state">从 Token Radar 或实时信号 Tape 选择一个币</div>
         </section>
       </aside>
     );
   }
 
-  const decision = manualDecision ?? token.opportunity.decision;
   const risks = [...(token.opportunity.hard_risks ?? []), ...token.opportunity.risks];
+  const drawerSummary = tokenDrawerSummary(token);
   return (
-    <aside className="detail-drawer">
-      <section className="detail-focus">
-        <header className="drawer-head">
+    <aside className="detail-drawer drawer">
+      <header className="drawer-head">
+        <div className="drawer-title">
           <div>
+            <div className="eyebrow">selected token</div>
             <h2>{tokenLabel(token)}</h2>
-            <span>
-              {token.identity.chain ?? "unknown"} · {shortAddress(token.identity.address ?? token.identity.identity_key)}
-            </span>
+            <p>
+              {token.identity.chain ?? "unknown"} · {shortAddress(token.identity.address ?? token.identity.identity_key)} · {token.identity.identity_status}
+            </p>
           </div>
-          <DecisionTag decision={decision} manual={Boolean(manualDecision)} />
-        </header>
-
-        <section className="drawer-hero">
-          <div>
-            <span>Opportunity</span>
-            <b>{formatScore(token.opportunity.score)}</b>
-          </div>
-          <div>
-            <span>Heat</span>
-            <b>{formatScore(token.social_heat.score)}</b>
-          </div>
-          <div>
-            <span>Posts</span>
-            <b>{compactNumber(token.evidence_total_count)}</b>
-          </div>
-          <div>
-            <span>MCap</span>
-            <b>{formatUsdCompact(token.market.market_cap)}</b>
-          </div>
-        </section>
+          <div className="opportunity-score">{formatScore(token.opportunity.score)}</div>
+        </div>
 
         <div className="drawer-kv">
           <div>
-            <span>delta</span>
-            <b>{formatSignedPercent(token.market.price_change_window_pct)}</b>
+            <span>heat</span>
+            <b>{drawerSummary.heat}</b>
+          </div>
+          <div>
+            <span>quality</span>
+            <b>{drawerSummary.quality}</b>
+          </div>
+          <div>
+            <span>spread</span>
+            <b>{drawerSummary.spread}</b>
           </div>
           <div>
             <span>timing</span>
-            <b>{formatTimingStatus(token.timing.status)}</b>
-          </div>
-          <div>
-            <span>authors</span>
-            <b>{compactNumber(token.propagation.independent_authors)}</b>
-          </div>
-          <div>
-            <span>top share</span>
-            <b>{formatPercentShare(token.propagation.top_author_share)}</b>
+            <b>{drawerSummary.timing}</b>
           </div>
         </div>
 
-        <div className="decision-controls" aria-label="manual token decision override">
-          {(["driver", "watch", "discard"] as Decision[]).map((item) => (
-            <button key={item} className={decision === item ? "active" : ""} type="button" onClick={() => onDecisionOverride(item)}>
-              {item === "driver" ? "D" : item === "watch" ? "W" : "X"} · {item}
-            </button>
+        <div className="risk-strip">
+          <span className="hot">{token.opportunity.decision}</span>
+          {risks.slice(0, 8).map((risk) => (
+            <span key={risk}>{risk}</span>
           ))}
         </div>
+      </header>
 
-        {risks.length ? (
-          <div className="risk-strip">
-            {risks.slice(0, 8).map((risk) => (
-              <span key={risk}>{formatRisk(risk)}</span>
-            ))}
-          </div>
-        ) : null}
+      <nav className="tabs" aria-label="token detail tabs">
+        {TABS.map((item) => (
+          <button key={item.tab} className={activeTab === item.tab ? "active" : ""} type="button" onClick={() => onTabChange(item.tab)}>
+            {item.label}
+          </button>
+        ))}
+      </nav>
 
-        <nav className="focus-tabs" aria-label="token detail tabs">
-          {TABS.map((item) => (
-            <button key={item.tab} className={activeTab === item.tab ? "active" : ""} type="button" onClick={() => onTabChange(item.tab)}>
-              {item.label}
-            </button>
-          ))}
-        </nav>
-
-        <div className="drawer-tab-body">
-          {activeTab === "timeline" ? (
+      {activeTab === "timeline" ? (
+        <section className="drawer-section">
+          <div className="section-title">social timeline · {token.timeline_query.window} bucket={timelineBucket}</div>
             <TokenTimeline
               bucket={timelineBucket}
               isLoading={isTimelineLoading}
               timeline={timeline}
               onBucketChange={onTimelineBucketChange}
             />
-          ) : null}
-          {activeTab === "posts" ? (
+        </section>
+      ) : null}
+      {activeTab === "posts" ? (
+        <section className="drawer-section">
+          <div className="section-title">top posts</div>
             <TokenPostsTab
               hideDuplicateClusters={hideDuplicateClusters}
               isFetchingNextPage={isPostsFetchingNextPage}
@@ -203,25 +170,35 @@ export function TokenDetailDrawer({
               onPostSortModeChange={onPostSortModeChange}
               onWatchedPostsOnlyChange={onWatchedPostsOnlyChange}
             />
-          ) : null}
-          {activeTab === "score" ? <ScoreLedger token={token} /> : null}
-          {activeTab === "narratives" ? (
+        </section>
+      ) : null}
+      {activeTab === "score" ? (
+        <section className="drawer-section">
+          <div className="section-title">score ledger</div>
+          <ScoreLedger token={token} />
+        </section>
+      ) : null}
+      {activeTab === "narratives" ? (
+        <section className="drawer-section">
+          <div className="section-title">中文叙事</div>
             <NarrativePanel
               frontierItems={narrativeLinks}
               llmConfigured={llmConfigured}
               narratives={narratives}
               token={token}
             />
-          ) : null}
-          {activeTab === "accounts" ? (
+        </section>
+      ) : null}
+      {activeTab === "accounts" ? (
+        <section className="drawer-section">
+          <div className="section-title">accounts</div>
             <AccountLane
               accountQuality={accountQuality}
               isLoading={isAccountQualityLoading}
               timeline={timeline}
             />
-          ) : null}
-        </div>
-      </section>
+        </section>
+      ) : null}
     </aside>
   );
 }

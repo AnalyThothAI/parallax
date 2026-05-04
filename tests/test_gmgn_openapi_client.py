@@ -37,16 +37,18 @@ def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():
         transport=httpx.MockTransport(handler),
     )
     try:
-        first = client.get_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
-        second = client.get_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+        first = client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+        second = client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
     finally:
         client.close()
 
-    assert first == second
-    assert first is not None
-    assert first.symbol == "SOL"
-    assert first.price == 150.5
-    assert first.market_cap == 150500.0
+    assert first.info == second.info
+    assert first.info is not None
+    assert first.info.symbol == "SOL"
+    assert first.info.price == 150.5
+    assert first.info.market_cap == 150500.0
+    assert first.cache_status == "miss"
+    assert second.cache_status == "hit"
     assert requests[0].content == b""
     assert len(requests) == 1
 
@@ -72,7 +74,7 @@ def test_gmgn_openapi_client_maps_internal_solana_chain_to_openapi_sol():
         transport=httpx.MockTransport(handler),
     )
     try:
-        info = client.get_token_info(chain="solana", address="So11111111111111111111111111111111111111112")
+        info = client.lookup_token_info(chain="solana", address="So11111111111111111111111111111111111111112").info
     finally:
         client.close()
 
@@ -103,7 +105,7 @@ def test_gmgn_openapi_client_lowercases_evm_addresses_for_lookup():
         transport=httpx.MockTransport(handler),
     )
     try:
-        info = client.get_token_info(chain="bsc", address="0x5f03DDCB6C7d9ed83f21346Bb9c97d9E51a84444")
+        info = client.lookup_token_info(chain="bsc", address="0x5f03DDCB6C7d9ed83f21346Bb9c97d9E51a84444").info
     finally:
         client.close()
 

@@ -105,7 +105,9 @@ export function formatTimingStatus(value: string | null | undefined): string {
     social_confirms_price: "社交确认",
     price_leads_social: "价格先动",
     social_fades: "热度衰退",
-    insufficient_data: "数据不足"
+    market_pending: "市场观测中",
+    market_unavailable: "市场不可用",
+    insufficient_history: "历史不足"
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
@@ -134,9 +136,9 @@ export function formatHeatStatus(value: string | null | undefined): string {
 
 export function formatDecision(value: string | null | undefined): string {
   const labels: Record<string, string> = {
-    driver: "Driver",
-    watch: "Watch",
-    discard: "Discard"
+    driver: "driver",
+    watch: "watch",
+    discard: "discard"
   };
   return labels[value ?? ""] ?? (value ?? "-");
 }
@@ -155,10 +157,21 @@ export function formatRisk(value: string | null | undefined): string {
     thin_mentions: "提及过少",
     insufficient_baseline: "基线不足",
     insufficient_history: "历史不足",
+    pending_observation: "市场观测中",
+    market_observation_pending: "市场观测中",
+    provider_not_configured: "行情源未配置",
+    provider_not_found: "行情源无结果",
+    provider_error: "行情源错误",
+    rate_limited: "行情限流",
+    dead: "行情观测失败",
     stale_market: "市场过旧",
     identity_not_tradeable: "身份不可交易",
     low_information_posts: "信息密度低",
-    attribution_confidence_low: "归因置信低"
+    attribution_confidence_low: "归因置信低",
+    missing_social_start: "社交起点缺失",
+    chase_risk: "追高风险",
+    missing_price: "价格缺失",
+    missing_social_history: "社交历史不足"
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }

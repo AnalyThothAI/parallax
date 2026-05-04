@@ -16,9 +16,10 @@ class SignalBuildResult:
 
 
 class SignalBuilder:
-    def __init__(self, repository: SignalRepository, tokens, *, commit: bool = True):
+    def __init__(self, repository: SignalRepository, tokens, *, market_observations=None, commit: bool = True):
         self.repository = repository
         self.tokens = tokens
+        self.market_observations = market_observations
         self.commit = commit
         self.attribution_builder = TokenAttributionBuilder(signals=repository, tokens=tokens)
 
@@ -46,8 +47,11 @@ class SignalBuilder:
             attributions=self.attribution_builder.build_for_rows(mention_rows),
             commit=self.commit,
         )
+        token_attributions = self.repository.token_attributions_for_event(event.event_id)
+        self._enqueue_market_observations(token_attributions)
         for symbol in _symbols_to_rebuild(mention_rows):
-            self.attribution_builder.rebuild_symbol(symbol, commit=self.commit)
+            rebuilt = self.attribution_builder.rebuild_symbol(symbol, commit=self.commit)
+            self._enqueue_market_observations([asdict(attribution) for attribution in rebuilt])
         token_attributions = self.repository.token_attributions_for_event(event.event_id)
         for mention in token_mentions:
             seen_global, seen_author = self.repository.token_seen_before(
@@ -72,6 +76,11 @@ class SignalBuilder:
                 if alert:
                     alerts.append(asdict(alert))
         return SignalBuildResult(alerts=alerts, token_attributions=token_attributions)
+
+    def _enqueue_market_observations(self, token_attributions: list[dict[str, Any]]) -> None:
+        if self.market_observations is None or not token_attributions:
+            return
+        self.market_observations.enqueue_for_attributions(token_attributions, commit=self.commit)
 
 
 def _symbols_to_rebuild(mention_rows: list[dict[str, Any]]) -> set[str]:

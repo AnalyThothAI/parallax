@@ -64,6 +64,16 @@ const statusData: StatusData = {
     llm_configured: true,
     worker_running: true,
     job_counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 }
+  },
+  market_observations: {
+    pending: 0,
+    running: 0,
+    ready: 1,
+    cached: 0,
+    provider_error: 0,
+    rate_limited: 0,
+    dead: 0,
+    worker_running: true
   }
 };
 
@@ -90,15 +100,14 @@ describe("App Token Radar social heat cockpit", () => {
       timelineBucket: "1m",
       postSortMode: "recent",
       hideDuplicateClusters: false,
-      watchedPostsOnly: false,
-      manualDecisions: {}
+      watchedPostsOnly: false
     });
     mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
     mockApi();
   });
 
-  it("renders the new radar contract and keeps Select Token detail plus realtime tape", async () => {
-    renderWithQuery(<App />);
+  it("renders radar rows with mock-aligned semantic fields and selected state", async () => {
+    const { container } = renderWithQuery(<App />);
 
     expect(await screen.findByText("Token")).toBeInTheDocument();
     expect(screen.getAllByText("Heat").length).toBeGreaterThan(0);
@@ -109,10 +118,46 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getByText("Decision")).toBeInTheDocument();
     expect(screen.queryByText("EV")).not.toBeInTheDocument();
     expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "select token $UPEG" })).toBeInTheDocument();
-    expect(screen.getAllByText("Driver").length).toBeGreaterThan(0);
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
+    expect(row).toHaveClass("selected");
+    expect(row).not.toHaveClass("is-selected");
+    expect(within(row).getByText("86 · 4 +3")).toBeInTheDocument();
+    expect(within(row).getByText("4 posts · z3.2 · share 25%")).toBeInTheDocument();
+    expect(within(row).getByText("78 · CA direct")).toBeInTheDocument();
+    expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
+    expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
+    expect(within(row).getByText("top 50% · repro 1.5")).toBeInTheDocument();
+    expect(within(row).getByText("+12% fresh")).toBeInTheDocument();
+    expect(within(row).getByText("social confirms")).toBeInTheDocument();
+    expect(within(row).getByText("+12% since social")).toBeInTheDocument();
+    expect(row.querySelector(".barline")).toBeInTheDocument();
+    expect(screen.getAllByText("driver").length).toBeGreaterThan(0);
+    expect(container.querySelector(".decision-controls")).not.toBeInTheDocument();
     expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText("$UPEG").length).toBeGreaterThan(0));
+  });
+
+  it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(drawer).toBeInTheDocument();
+    expect(drawer.querySelector(".detail-focus")).not.toBeInTheDocument();
+    expect(drawer.querySelector(".drawer-title .eyebrow")).toHaveTextContent("selected token");
+    expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
+    expect(drawer.querySelector(".opportunity-score")).toHaveTextContent("79");
+    expect(within(drawer).getByText("86 / burst")).toBeInTheDocument();
+    expect(within(drawer).getByText("78 / direct")).toBeInTheDocument();
+    expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
+    expect(within(drawer).getByText("confirms")).toBeInTheDocument();
+    expect(within(drawer).getByText("driver")).toBeInTheDocument();
+    expect(within(drawer).getByText("public_stream_coverage")).toBeInTheDocument();
+    expect(drawer.querySelector(".tabs")).toBeInTheDocument();
+    expect(drawer.querySelector(".focus-tabs")).not.toBeInTheDocument();
+    expect(drawer.querySelector(".decision-controls")).not.toBeInTheDocument();
+    expect(within(drawer).getByRole("button", { name: "Timeline" })).toHaveClass("active");
   });
 
   it("opens Timeline by default, requests timeline/posts, and exposes score ledger tabs", async () => {
@@ -128,7 +173,7 @@ describe("App Token Radar social heat cockpit", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
-    expect(await screen.findByText("$UPEG watched account evidence")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0));
     fireEvent.click(screen.getByRole("button", { name: "Score" }));
     await waitFor(() => expect(screen.getAllByText("Opportunity").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Tradeability").length).toBeGreaterThan(0);
@@ -154,13 +199,25 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     await screen.findByText("实时信号 Tape");
+    const tape = screen.getByText("实时信号 Tape").closest("section") as HTMLElement;
     expect(await screen.findByText("@traderpow -> $UPEG")).toBeInTheDocument();
     expect(screen.getAllByText("@traderpow -> $UPEG")).toHaveLength(1);
+    expect(within(tape).getByText("$UPEG watched account evidence")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Heat" }));
     expect(screen.getByRole("button", { name: "Heat" })).toHaveClass("active");
     fireEvent.click(screen.getByText("@traderpow -> $UPEG"));
     expect(screen.getByRole("button", { name: "Heat" })).toHaveClass("active");
     expect(screen.getByRole("button", { name: "Timeline" })).toHaveClass("active");
+  });
+
+  it("shows actionable radar row context when timing has sparse market data", async () => {
+    mockApi({ insufficientTiming: true });
+    renderWithQuery(<App />);
+
+    const tokenButton = await screen.findByRole("button", { name: "select token $UPEG" });
+    expect(within(tokenButton).getByText("86 · 4 +3")).toBeInTheDocument();
+    expect(within(tokenButton).getByText("market pending")).toBeInTheDocument();
+    expect(within(tokenButton).getByText("market observation pending")).toBeInTheDocument();
   });
 
   it("keeps replay rows visible when websocket disconnects", async () => {
@@ -184,6 +241,19 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
+  it("realigns the drawer when the selected token disappears after a window switch", async () => {
+    mockApi({ windowSwapToken: true });
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    fireEvent.click(screen.getAllByRole("button", { name: "5m" })[0]);
+
+    const altRow = await screen.findByRole("button", { name: "select token $ALT" });
+    await waitFor(() => expect(altRow).toHaveClass("selected"));
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$ALT");
+  });
+
   it("uses live token attribution before ambiguous cashtag matching in the tape", async () => {
     socketMock.events = [liveUpegEvent({ tokenId: "token:eth:0x1111111111111111111111111111111111111111", address: "0x1111111111111111111111111111111111111111" })];
     mockApi({ duplicateSymbol: true });
@@ -201,7 +271,13 @@ describe("App Token Radar social heat cockpit", () => {
   });
 });
 
-function mockApi(options: { missingNarrativeDisplay?: boolean; missingTokenId?: boolean; duplicateSymbol?: boolean } = {}) {
+function mockApi(options: {
+  missingNarrativeDisplay?: boolean;
+  missingTokenId?: boolean;
+  duplicateSymbol?: boolean;
+  insufficientTiming?: boolean;
+  windowSwapToken?: boolean;
+} = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
     if (path === "/api/recent") return ok({ scope: requestOptions?.params?.scope, events: [], items: [liveUpegEvent()] });
@@ -216,7 +292,20 @@ function mockApi(options: { missingNarrativeDisplay?: boolean; missingTokenId?: 
           ]
         });
       }
-      return ok<TokenFlowData>({ window: "1h", scope: "all", items: [tokenFlowItem({ tokenId: options.missingTokenId ? null : undefined })] });
+      const window = String(requestOptions?.params?.window ?? "1h");
+      const swapped = options.windowSwapToken && window === "5m";
+      return ok<TokenFlowData>({
+        window: window as TokenFlowData["window"],
+        scope: "all",
+        items: [
+          tokenFlowItem({
+            tokenId: swapped ? "token:eth:0x2222222222222222222222222222222222222222" : options.missingTokenId ? null : undefined,
+            address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
+            symbol: swapped ? "ALT" : undefined,
+            insufficientTiming: options.insufficientTiming
+          })
+        ]
+      });
     }
     if (path === "/api/token-social-timeline") return ok<TokenSocialTimelineData>(timelineData());
     if (path === "/api/token-posts") return ok<TokenPostsData>(postsData());
@@ -250,9 +339,10 @@ function mockApi(options: { missingNarrativeDisplay?: boolean; missingTokenId?: 
   });
 }
 
-function tokenFlowItem(options: { tokenId?: string | null; address?: string; score?: number } = {}): TokenFlowItem {
+function tokenFlowItem(options: { tokenId?: string | null; address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const tokenId = options.tokenId === undefined ? `token:eth:${address}` : options.tokenId;
+  const symbol = options.symbol ?? "UPEG";
   return {
     identity: {
       identity_key: tokenId ?? `eth:${address}`,
@@ -260,7 +350,7 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sco
       token_id: tokenId,
       chain: "eth",
       address,
-      symbol: "UPEG"
+      symbol
     },
     market: {
       market_status: "fresh",
@@ -270,9 +360,14 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sco
       pool_status: "ready",
       snapshot_age_ms: 120_000,
       snapshot_received_at_ms: 1_777_746_050_000,
-      price_change_window_pct: 0.12,
-      price_at_window_start: 0.001,
-      price_at_window_end: 0.00112,
+      social_signal_start_ms: 1_777_746_000_000,
+      reference_ms: 1_777_746_300_000,
+      price_at_social_start: 0.001,
+      price_at_reference: 0.00112,
+      price_change_since_social_pct: 0.12,
+      price_before_social_start: 0.0009,
+      price_change_before_social_pct: 0.111111,
+      market_observation_status: "ready",
       price_change_status: "ready"
     },
     flow: {
@@ -346,17 +441,31 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sco
       liquidity_present: true,
       pool_present: true
     }),
-    timing: {
-      score_version: "timing_v1",
-      score: 70,
-      status: "social_confirms_price",
-      chase_risk: false,
-      social_start_ms: 1_777_746_000_000,
-      first_price_move_ms: 1_777_746_050_000,
-      price_change_window_pct: 0.12,
-      reasons: ["social_and_price_confirm"],
-      risks: []
-    },
+    timing: options.insufficientTiming
+      ? {
+          score_version: "timing_v2",
+          score: 50,
+          status: "market_pending",
+          chase_risk: false,
+          social_signal_start_ms: 1_777_746_000_000,
+          price_change_since_social_pct: null,
+          price_change_before_social_pct: null,
+          market_observation_status: "pending",
+          reasons: [],
+          risks: ["market_observation_pending"]
+        }
+      : {
+          score_version: "timing_v2",
+          score: 70,
+          status: "social_confirms_price",
+          chase_risk: false,
+          social_signal_start_ms: 1_777_746_000_000,
+          price_change_since_social_pct: 0.12,
+          price_change_before_social_pct: 0.111111,
+          market_observation_status: "ready",
+          reasons: ["social_and_price_confirm"],
+          risks: []
+        },
     opportunity: scoreBlock({
       score_version: "social_opportunity_v1",
       score: options.score ?? 79,

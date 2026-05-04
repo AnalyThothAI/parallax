@@ -65,7 +65,6 @@ export function App() {
   const postSortMode = useTraderStore((state) => state.postSortMode);
   const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
   const watchedPostsOnly = useTraderStore((state) => state.watchedPostsOnly);
-  const manualDecisions = useTraderStore((state) => state.manualDecisions);
   const setToken = useTraderStore((state) => state.setToken);
   const setWindow = useTraderStore((state) => state.setWindow);
   const setScope = useTraderStore((state) => state.setScope);
@@ -79,7 +78,6 @@ export function App() {
   const setPostSortMode = useTraderStore((state) => state.setPostSortMode);
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
-  const setManualDecision = useTraderStore((state) => state.setManualDecision);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -182,7 +180,6 @@ export function App() {
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
-  const selectedManualDecision = selectedTokenKey ? manualDecisions[selectedTokenKey] : undefined;
   const tokenTimelineParams = selectedToken ? { ...selectedToken.timeline_query, bucket: timelineBucket } : null;
   const tokenPostParams = selectedToken ? selectedToken.posts_query : null;
 
@@ -246,12 +243,11 @@ export function App() {
   const searchItems = currentSearchData?.items ?? [];
   const frontierItems = frontierQuery.data?.data.items ?? [];
   const narratives = narrativeQuery.data?.data.items ?? [];
-  const frontierByToken = useMemo(() => buildFrontierByToken(frontierItems), [frontierItems]);
   const liveSignalTapeItems = useMemo(
     () => buildLiveSignalTapeItems({ liveItems, tokenItems, frontierItems }),
     [frontierItems, liveItems, tokenItems]
   );
-  const decisionCounts = useMemo(() => countDecisions(tokenItems, manualDecisions), [manualDecisions, tokenItems]);
+  const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
   const tokenPostsData = useMemo(() => mergePostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
 
   useEffect(() => {
@@ -268,8 +264,17 @@ export function App() {
     const latest = tokenItems.find((item) => tokenKey(item) === selectedSignal.key);
     if (latest && latest !== selectedSignal.item) {
       setSelectedSignal({ kind: "token", key: selectedSignal.key, item: latest });
+      return;
     }
-  }, [selectedSignal, tokenItems]);
+    if (!latest && tokenItems.length) {
+      setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
+      setDetailTab("timeline");
+      return;
+    }
+    if (!latest) {
+      setSelectedSignal(null);
+    }
+  }, [selectedSignal, setDetailTab, tokenItems]);
 
   const selectToken = (item: TokenFlowItem) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
@@ -314,9 +319,6 @@ export function App() {
     if (event.key === "1") setWindow("5m");
     if (event.key === "2") setWindow("1h");
     if (event.key === "3") setWindow("24h");
-    if (selectedTokenKey && event.key.toLowerCase() === "d") setManualDecision(selectedTokenKey, "driver");
-    if (selectedTokenKey && event.key.toLowerCase() === "w") setManualDecision(selectedTokenKey, "watch");
-    if (selectedTokenKey && event.key.toLowerCase() === "x") setManualDecision(selectedTokenKey, "discard");
   };
 
   return (
@@ -426,7 +428,6 @@ export function App() {
 
           <div className="rail-footer">
             <span>kbd · 1-3 windows · / search</span>
-            <span>D / W / X tag selected</span>
           </div>
         </aside>
 
@@ -451,10 +452,8 @@ export function App() {
 
           <TokenRadarTable
             error={tokenFlowQuery.error instanceof Error ? tokenFlowQuery.error : null}
-            frontierByToken={frontierByToken}
             isLoading={tokenFlowQuery.isPending}
             items={tokenItems}
-            manualDecisions={manualDecisions}
             selectedKey={selectedTokenKey}
             sortMode={radarSortMode}
             onSelect={selectToken}
@@ -512,7 +511,6 @@ export function App() {
           isPostsLoading={tokenPostsQuery.isLoading}
           isTimelineLoading={tokenTimelineQuery.isFetching}
           llmConfigured={Boolean(statusQuery.data?.data.enrichment.llm_configured)}
-          manualDecision={selectedManualDecision}
           narrativeLinks={frontierItems}
           narratives={narratives}
           postSortMode={postSortMode}
@@ -521,11 +519,6 @@ export function App() {
           timelineBucket={timelineBucket}
           token={selectedToken}
           watchedPostsOnly={watchedPostsOnly}
-          onDecisionOverride={(decision) => {
-            if (selectedTokenKey) {
-              setManualDecision(selectedTokenKey, decision);
-            }
-          }}
           onHideDuplicateClustersChange={setHideDuplicateClusters}
           onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
           onPostSortModeChange={setPostSortMode}
@@ -688,13 +681,13 @@ function sortValue(item: TokenFlowItem, mode: RadarSortMode): number {
 }
 
 function latestTokenForSelection(signal: Extract<SelectedSignal, { kind: "token" }>, items: TokenFlowItem[]) {
-  return items.find((item) => tokenKey(item) === signal.key) ?? signal.item;
+  return items.find((item) => tokenKey(item) === signal.key) ?? null;
 }
 
-function countDecisions(items: TokenFlowItem[], manualDecisions: Record<string, Decision>): Record<Decision, number> {
+function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {
   return items.reduce<Record<Decision, number>>(
     (counts, item) => {
-      counts[manualDecisions[tokenKey(item)] ?? item.opportunity.decision] += 1;
+      counts[item.opportunity.decision] += 1;
       return counts;
     },
     { driver: 0, watch: 0, discard: 0 }
@@ -714,18 +707,6 @@ function mergePostPages(pages?: TokenPostsData[]): TokenPostsData | null {
     next_cursor: last.next_cursor,
     items: pages.flatMap((page) => page.items)
   };
-}
-
-function buildFrontierByToken(items: AttentionFrontierItem[]): Map<string, AttentionFrontierItem> {
-  const map = new Map<string, AttentionFrontierItem>();
-  for (const item of items) {
-    for (const key of frontierTokenKeys(item.link.identity)) {
-      if (!map.has(key)) {
-        map.set(key, item);
-      }
-    }
-  }
-  return map;
 }
 
 function frontierMatchesToken(item: AttentionFrontierItem, token: TokenFlowItem): boolean {
@@ -773,18 +754,43 @@ function buildLiveSignalTapeItems({
   for (const payload of liveItems) {
     const tokenMatch = tokenMatchForPayload(payload, { byTokenId, byCa, byIdentityKey, bySymbol });
     if (tokenMatch) {
-      rows.push({ kind: "token", token: tokenMatch, event: payload, score: tokenMatch.opportunity.score, reason: tokenTapeReason(tokenMatch) });
+      rows.push({
+        kind: "token",
+        token: tokenMatch,
+        event: payload,
+        score: tokenMatch.opportunity.score,
+        reason: tokenTapeReason(tokenMatch),
+        body: eventText(payload.event) || tokenTapeBody(tokenMatch)
+      });
     } else if (payload.enrichment?.summary_zh || payload.enrichment?.summary) {
-      rows.push({ kind: "enrichment", payload, score: payload.enrichment.confidence ? payload.enrichment.confidence * 100 : null, reason: "watched enrichment" });
+      rows.push({
+        kind: "enrichment",
+        payload,
+        score: payload.enrichment.confidence ? payload.enrichment.confidence * 100 : null,
+        reason: "watched enrichment",
+        body: payload.enrichment.summary_zh || payload.enrichment.summary || eventText(payload.event)
+      });
     } else {
-      rows.push({ kind: "event", payload, score: payload.alerts.length ? 80 : null, reason: payload.alerts.length ? "watched alert" : "public pulse" });
+      rows.push({
+        kind: "event",
+        payload,
+        score: payload.alerts.length ? 80 : null,
+        reason: payload.alerts.length ? "watched alert" : "public pulse",
+        body: eventText(payload.event)
+      });
     }
   }
   for (const item of tokenItems.slice(0, 8)) {
-    rows.push({ kind: "token", token: item, event: null, score: item.opportunity.score, reason: tokenTapeReason(item) });
+    rows.push({ kind: "token", token: item, event: null, score: item.opportunity.score, reason: tokenTapeReason(item), body: tokenTapeBody(item) });
   }
   for (const item of frontierItems.slice(0, 8)) {
-    rows.push({ kind: "narrative", item, score: item.link.scores.token_link, reason: item.link.evidence.link_reason ?? "watched seed" });
+    rows.push({
+      kind: "narrative",
+      item,
+      score: item.link.scores.token_link,
+      reason: item.link.evidence.link_reason ?? "watched seed",
+      body: item.seed.display?.summary_zh || item.seed.display?.market_interpretation_zh || item.seed.evidence
+    });
   }
   const seen = new Set<string>();
   return rows.filter((item) => {
@@ -793,6 +799,15 @@ function buildLiveSignalTapeItems({
     seen.add(id);
     return true;
   });
+}
+
+function tokenTapeBody(item: TokenFlowItem): string {
+  return [
+    `${compactNumber(item.social_heat.mentions)} 帖`,
+    `Heat ${compactNumber(item.social_heat.score)}`,
+    `作者 ${compactNumber(item.propagation.independent_authors)}`,
+    item.timing.status === "market_pending" ? "市场观测处理中" : formatRelativeTime(item.flow.window_end_ms)
+  ].join(" · ");
 }
 
 function hasTokenIdentity(params?: { token_id?: string | null; chain?: string | null; address?: string | null } | null): boolean {

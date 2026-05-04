@@ -514,12 +514,12 @@
     .compact-list {
       display: grid;
       gap: 0;
-      max-height: 152px;
+      max-height: 214px;
       overflow: hidden;
     }
 
     .live-signal-tape .compact-list {
-      max-height: 178px;
+      max-height: 244px;
       overflow: auto;
     }
 
@@ -528,6 +528,7 @@
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 10px;
       border-bottom: 1px solid var(--line-soft);
+      min-height: 54px;
       padding: 8px 10px;
       min-width: 0;
     }
@@ -544,6 +545,17 @@
       font-size: 12px;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .compact-row p {
+      display: -webkit-box;
+      overflow: hidden;
+      margin: 3px 0;
+      color: var(--text);
+      font-size: 11px;
+      line-height: 1.35;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
 
     .compact-row span {
@@ -976,7 +988,7 @@
 
           <div class="radar-row selected">
             <div class="token-cell"><strong>$CAT</strong><small>bsc · 0x5f03...4444</small></div>
-            <div class="metric"><b class="score-hot">92 · 14 +11</b><small>z3.8 · share 4.2%</small><div class="barline"><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i></div></div>
+            <div class="metric"><b class="score-hot">92 · 14 +11</b><small>14 posts · z3.8 · share 4.2%</small><div class="barline"><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i></div></div>
             <div class="metric"><b class="score-good">81 · CA direct</b><small>dup 6% · info 9</small></div>
             <div class="phase"><b>expansion · 8 author</b><small>top 25% · repro 1.5</small></div>
             <div class="metric"><b>$1.6M</b><small><span class="direction up">+12.4%</span> fresh</small></div>
@@ -986,7 +998,7 @@
 
           <div class="radar-row">
             <div class="token-cell"><strong>$GROKAI</strong><small>base · 0xa81c...19bc</small></div>
-            <div class="metric"><b class="score-hot">84 · 9 +7</b><small>new burst · watched</small><div class="barline"><i></i><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i></i></div></div>
+            <div class="metric"><b class="score-hot">84 · 9 +7</b><small>9 posts · new burst · watched</small><div class="barline"><i></i><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i></i></div></div>
             <div class="metric"><b class="score-good">76 · catalyst</b><small>低重复 · 中文叙事</small></div>
             <div class="phase"><b>ignition · 4 author</b><small>seed lag 3m</small></div>
             <div class="metric"><b>$820K</b><small><span class="direction flat">-</span> sparse</small></div>
@@ -996,7 +1008,7 @@
 
           <div class="radar-row">
             <div class="token-cell"><strong>$ROCK</strong><small>solana · HdnL...pump</small></div>
-            <div class="metric"><b class="score-hot">79 · 22 +4</b><small>stream share 6.1%</small><div class="barline"><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i></i><i></i></div></div>
+            <div class="metric"><b class="score-hot">79 · 22 +4</b><small>22 posts · stream share 6.1%</small><div class="barline"><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i></i><i></i></div></div>
             <div class="metric"><b class="score-warn">58 · meme only</b><small>info 3 · dup 28%</small></div>
             <div class="phase"><b>concentration</b><small>top author 63%</small></div>
             <div class="metric"><b>$240K</b><small><span class="direction up">+31.0%</span> fresh</small></div>
@@ -1006,17 +1018,17 @@
 
           <div class="radar-row">
             <div class="token-cell"><strong>$FROG</strong><small>eth · 0x91ad...2e10</small></div>
-            <div class="metric"><b class="score-warn">61 · 18 +15</b><small>z2.4 · public only</small><div class="barline"><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i></i><i></i></div></div>
+            <div class="metric"><b class="score-warn">61 · 18 +15</b><small>18 posts · z2.4 · public only</small><div class="barline"><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i></i><i></i></div></div>
             <div class="metric"><b class="score-risk">34 · repeat</b><small>dup 72%</small></div>
             <div class="phase"><b>single cluster</b><small>top 88%</small></div>
             <div class="metric"><b>$96K</b><small><span class="direction up">+4.2%</span> stale</small></div>
-            <div class="phase"><b>insufficient</b><small>market stale</small></div>
+            <div class="phase"><b>waiting</b><small>price history thin</small></div>
             <span class="decision-tag discard">discard</span>
           </div>
 
           <div class="radar-row">
             <div class="token-cell"><strong>$BNBAGENT</strong><small>bsc · 0x7a21...88df</small></div>
-            <div class="metric"><b class="score-hot">88 · 11 +10</b><small>seed linked · z3.2</small><div class="barline"><i></i><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i></div></div>
+            <div class="metric"><b class="score-hot">88 · 11 +10</b><small>11 posts · seed linked · z3.2</small><div class="barline"><i></i><i></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i><i class="hot"></i></div></div>
             <div class="metric"><b class="score-good">83 · seed+CA</b><small>info 8 · dup 4%</small></div>
             <div class="phase"><b>expansion · 7 author</b><small>top 31% · watched</small></div>
             <div class="metric"><b>$3.4M</b><small><span class="direction up">+8.7%</span> fresh</small></div>
@@ -1026,22 +1038,22 @@
         </div>
 
         <div class="bottom-deck">
-          <section class="panel">
-            <header><h2>中文叙事流</h2><span>LLM watched seeds</span></header>
-            <div class="compact-list">
-              <div class="compact-row"><div><strong>Grok 相关发言重新点燃 AI Agent 代币注意力</strong><span>@elonmusk seed · $GROKAI lag 3m · 4 authors</span></div><span class="decision-tag watch">watch</span></div>
-              <div class="compact-row"><div><strong>BNB 生态补贴讨论带动链上 Agent 概念扩散</strong><span>@cz_binance seed · $BNBAGENT lag 4m · 7 authors</span></div><span class="decision-tag driver">driver</span></div>
-              <div class="compact-row"><div><strong>Meme 轮动从猫狗主题切到低市值动物盘</strong><span>public stream · $CAT $ROCK $FROG</span></div><span class="decision-tag watch">watch</span></div>
-            </div>
-          </section>
-
           <section class="panel live-signal-tape">
             <header><h2>实时信号 Tape</h2><span>live · replay · enrichment</span></header>
             <div class="compact-list">
-              <div class="compact-row selected"><div><strong>@earlyape → $CAT</strong><span>token · CA direct · new pool live, mcap still under 2m</span></div><span class="mono">92</span></div>
-              <div class="compact-row"><div><strong>@aixbt_agent → $BNBAGENT</strong><span>narrative_link · BNB 生态 AI Agent · lag 4m</span></div><span class="mono">88</span></div>
-              <div class="compact-row"><div><strong>@cz_binance → BNB 生态</strong><span>watched_seed · 中文叙事已生成</span></div><span class="mono">seed</span></div>
-              <div class="compact-row"><div><strong>@copytrade88 → $FROG</strong><span>risk · duplicate cluster · repeated slogan</span></div><span class="mono">34</span></div>
+              <div class="compact-row selected"><div><strong>@earlyape → $CAT</strong><p>$CAT new pool live, CA 0x5f03..., if second wave of animal memes rotates here this is still early.</p><span>token · CA direct · new pool live · mcap &lt; $2m</span></div><span class="mono">92</span></div>
+              <div class="compact-row"><div><strong>@aixbt_agent → $BNBAGENT</strong><p>BNB chain agent plays starting to pick up after CZ ecosystem subsidy thread, watching independent authors.</p><span>narrative_link · BNB 生态 AI Agent · lag 4m</span></div><span class="mono">88</span></div>
+              <div class="compact-row"><div><strong>@cz_binance → BNB 生态</strong><p>中文叙事已生成：资金可能从交易所链补贴叙事扩散到链上 AI Agent 小盘。</p><span>watched_seed · evidence-bound Chinese summary</span></div><span class="mono">seed</span></div>
+              <div class="compact-row"><div><strong>@copytrade88 → $FROG</strong><p>Same slogan reposted by clustered accounts; keep as risk pulse, not a tradeable driver.</p><span>risk · duplicate cluster · repeated slogan</span></div><span class="mono">34</span></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <header><h2>中文叙事流</h2><span>LLM watched seeds</span></header>
+            <div class="compact-list">
+              <div class="compact-row"><div><strong>Grok 相关发言重新点燃 AI Agent 代币注意力</strong><p>公开流开始出现 AI Agent 相关 token 讨论，先看独立作者是否继续扩散。</p><span>@elonmusk seed · $GROKAI lag 3m · 4 authors</span></div><span class="decision-tag watch">watch</span></div>
+              <div class="compact-row"><div><strong>BNB 生态补贴讨论带动链上 Agent 概念扩散</strong><p>watched seed 后 4 分钟出现 $BNBAGENT 直接 CA 证据，传播质量高于普通 meme。</p><span>@cz_binance seed · $BNBAGENT lag 4m · 7 authors</span></div><span class="decision-tag driver">driver</span></div>
+              <div class="compact-row"><div><strong>Meme 轮动从猫狗主题切到低市值动物盘</strong><p>$CAT、$ROCK、$FROG 同时升温，但需要用重复文本和作者集中度过滤。</p><span>public stream · $CAT $ROCK $FROG</span></div><span class="decision-tag watch">watch</span></div>
             </div>
           </section>
         </div>

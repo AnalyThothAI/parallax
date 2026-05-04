@@ -402,6 +402,7 @@ class SignalRepository:
             """
             SELECT
               attribution_id,
+              event_id,
               mention_identity_key,
               identity_key,
               token_id,

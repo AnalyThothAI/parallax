@@ -281,6 +281,20 @@ class TokenRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def market_snapshot_for_event(self, *, token_id: str | None, event_id: str) -> dict[str, Any] | None:
+        if not token_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT * FROM token_market_snapshots
+            WHERE token_id = ?
+              AND event_id = ?
+            LIMIT 1
+            """,
+            (token_id, event_id),
+        ).fetchone()
+        return dict(row) if row else None
+
     def aliases_for_symbol(self, symbol: str) -> list[str]:
         rows = self.conn.execute(
             """

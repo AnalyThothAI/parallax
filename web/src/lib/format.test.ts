@@ -132,9 +132,9 @@ function sampleToken(): TokenFlowItem {
       pool_present: false
     },
     timing: {
-      score_version: "timing_v1",
+      score_version: "timing_v2",
       score: 50,
-      status: "insufficient_data",
+      status: "insufficient_history",
       chase_risk: false,
       reasons: [],
       risks: []

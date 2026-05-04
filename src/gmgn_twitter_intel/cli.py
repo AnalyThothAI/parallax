@@ -23,6 +23,7 @@ from .storage.account_quality_repository import AccountQualityRepository
 from .storage.enrichment_repository import EnrichmentRepository
 from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
+from .storage.market_observation_repository import MarketObservationRepository
 from .storage.signal_repository import SignalRepository
 from .storage.sqlite_client import connect_sqlite
 from .storage.sqlite_schema import migrate
@@ -88,6 +89,24 @@ def build_parser() -> argparse.ArgumentParser:
     enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
     enrichment_jobs.add_argument("--limit", type=int, default=50)
 
+    market_observations = subcommands.add_parser("market-observations", help="inspect token market observation backlog")
+    market_observations.add_argument(
+        "--status",
+        choices=(
+            "pending",
+            "running",
+            "ready",
+            "cached",
+            "provider_not_configured",
+            "provider_not_found",
+            "provider_error",
+            "rate_limited",
+            "dead",
+        ),
+        default=None,
+    )
+    market_observations.add_argument("--limit", type=int, default=50)
+
     narrative_seeds = subcommands.add_parser("narrative-seeds", help="print watched-handle narrative seeds")
     narrative_seeds.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
     narrative_seeds.add_argument("--limit", type=int, default=50)
@@ -127,6 +146,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="backfill account token-call stats and quality snapshots",
     )
     backfill_account_quality.add_argument("--limit", type=int, default=1000)
+    backfill_market_observations = ops_subcommands.add_parser(
+        "backfill-market-observations",
+        help="enqueue missing market observations for existing direct/selected token attributions",
+    )
+    backfill_market_observations.add_argument("--limit", type=int, default=1000)
     return parser
 
 
@@ -208,7 +232,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     with _repositories(settings.sqlite_path) as repos:
-        evidence, entities, signals, tokens, enrichment = repos
+        evidence, entities, signals, tokens, market_observations, enrichment = repos
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -298,6 +322,19 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     "data": {
                         "items": items,
                         "counts": enrichment.job_counts(),
+                    },
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "market-observations":
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "items": market_observations.list_observations(limit=args.limit, status=args.status),
+                        "counts": market_observations.counts(),
                     },
                 },
                 stdout,
@@ -403,6 +440,22 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
+        if command == "ops" and args.ops_command == "backfill-market-observations":
+            rows = market_observations.pending_backfill_rows(limit=args.limit)
+            enqueued = market_observations.enqueue_for_attributions(rows)
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "rows_scanned": len(rows),
+                        "observations_enqueued": enqueued,
+                        "counts": market_observations.counts(),
+                    },
+                },
+                stdout,
+            )
+            return 0
+
     parser.error(f"unknown command: {command}")
     return 2
 
@@ -417,6 +470,7 @@ def _repositories(sqlite_path):
             EntityRepository(conn),
             SignalRepository(conn),
             TokenRepository(conn),
+            MarketObservationRepository(conn),
             EnrichmentRepository(conn),
         )
     finally:

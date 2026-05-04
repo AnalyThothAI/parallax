@@ -160,7 +160,7 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
     assert item["propagation"]["top_author_share"] == 0.5
     assert item["market"]["market_status"] == "fresh"
     assert item["market"]["price"] == 0.0000000001437884
-    assert item["market"]["price_change_window_pct"] is None
+    assert item["market"]["price_change_since_social_pct"] is None
     assert item["market"]["price_change_status"] == "insufficient_history"
     assert item["opportunity"]["decision"] in {"driver", "watch"}
     assert "resolved_ca" in item["opportunity"]["reasons"]
@@ -499,10 +499,12 @@ def test_token_flow_price_delta_uses_window_snapshots_not_payload_previous_price
     finally:
         conn.close()
 
-    assert item["market"]["price_at_window_start"] == 1.0
-    assert item["market"]["price_at_window_end"] == 1.2
-    assert item["market"]["price_change_status"] == "ready"
-    assert item["market"]["price_change_window_pct"] == 0.2
+    assert item["market"]["price_before_social_start"] == 1.0
+    assert item["market"]["price_at_social_start"] == 1.2
+    assert item["market"]["price_at_reference"] == 1.2
+    assert item["market"]["price_change_status"] == "insufficient_history"
+    assert item["market"]["price_change_since_social_pct"] is None
+    assert item["market"]["price_change_before_social_pct"] == 0.2
     assert item["flow"]["previous_mentions"] == 1
     assert item["flow"]["mention_delta"] == 0
 
@@ -540,10 +542,10 @@ def test_token_flow_price_delta_requires_window_snapshots(tmp_path):
     finally:
         conn.close()
 
-    assert item["market"]["price_at_window_start"] is None
-    assert item["market"]["price_at_window_end"] == 1.2
+    assert item["market"]["price_at_social_start"] == 1.2
+    assert item["market"]["price_at_reference"] == 1.2
     assert item["market"]["price_change_status"] == "insufficient_history"
-    assert item["market"]["price_change_window_pct"] is None
+    assert item["market"]["price_change_since_social_pct"] is None
 
 
 def test_token_flow_excludes_symbol_only_mentions_but_keeps_alert_evidence(tmp_path):

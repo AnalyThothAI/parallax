@@ -123,9 +123,18 @@ class TokenFlowService:
 
     def _market_block(self, row: dict[str, Any]) -> dict[str, Any]:
         reference_ms = int(row.get("window_end_ms") or _now_ms())
-        start_ms = int(row.get("window_start_ms") or reference_ms)
-        end_snapshot = self.tokens.market_snapshot_at_or_before(row.get("token_id"), reference_ms)
+        window_start_ms = int(row.get("window_start_ms") or reference_ms)
+        social_start_ms = int(row.get("first_seen_ms") or window_start_ms)
+        token_id = row.get("token_id")
+        end_snapshot = self.tokens.market_snapshot_at_or_before(token_id, reference_ms)
         if end_snapshot is None:
+            observation_status = self._market_observation_status(
+                token_id=token_id,
+                start_ms=social_start_ms,
+                end_ms=reference_ms,
+                has_market_snapshot=False,
+                has_ready_history=False,
+            )
             return {
                 "market_status": "missing",
                 "price": None,
@@ -136,20 +145,33 @@ class TokenFlowService:
                 "volume_24h": None,
                 "snapshot_age_ms": None,
                 "snapshot_received_at_ms": None,
-                "price_change_window_pct": None,
-                "price_at_window_start": None,
-                "price_at_window_end": None,
-                "price_change_status": "missing_market",
+                "social_signal_start_ms": social_start_ms,
+                "reference_ms": reference_ms,
+                "price_at_social_start": None,
+                "price_at_reference": None,
+                "price_change_since_social_pct": None,
+                "price_before_social_start": None,
+                "price_change_before_social_pct": None,
+                "market_observation_status": observation_status,
+                "price_change_status": _price_change_status(
+                    observation_status=observation_status,
+                    has_ready_history=False,
+                    missing_market=True,
+                ),
             }
 
-        start_snapshot = self.tokens.market_snapshot_at_or_before(row.get("token_id"), start_ms)
+        start_snapshot = self.tokens.market_snapshot_at_or_before(token_id, social_start_ms)
+        before_snapshot = self.tokens.market_snapshot_at_or_before(token_id, window_start_ms)
+        if before_snapshot is None and social_start_ms > 0:
+            before_snapshot = self.tokens.market_snapshot_at_or_before(token_id, social_start_ms - 1)
         age_ms = max(0, reference_ms - int(end_snapshot["received_at_ms"]))
         market_status = "fresh" if age_ms <= FRESH_MARKET_MS else "stale"
         start_price = _float_or_none(start_snapshot.get("price")) if start_snapshot else None
         end_price = _float_or_none(end_snapshot.get("price"))
+        before_price = _float_or_none(before_snapshot.get("price")) if before_snapshot else None
         raw = _raw_snapshot(end_snapshot)
-        price_change_status = "insufficient_history"
         price_change = None
+        has_ready_history = False
         if (
             start_snapshot is not None
             and start_snapshot.get("snapshot_id") != end_snapshot.get("snapshot_id")
@@ -157,7 +179,15 @@ class TokenFlowService:
             and end_price is not None
         ):
             price_change = round((end_price - start_price) / start_price, 12)
-            price_change_status = "ready"
+            has_ready_history = True
+        price_change_before = _price_change_between(before_snapshot, start_snapshot)
+        observation_status = self._market_observation_status(
+            token_id=token_id,
+            start_ms=social_start_ms,
+            end_ms=reference_ms,
+            has_market_snapshot=True,
+            has_ready_history=has_ready_history,
+        )
         liquidity = _first_number(raw, ["liquidity", "liquidity_usd", "pool.liquidity", "pool.liquidity_usd"])
         pool_address = _first_string(raw, ["pool.pool_address", "pool.address", "pool"])
         return {
@@ -170,11 +200,61 @@ class TokenFlowService:
             "volume_24h": _first_number(raw, ["volume_24h", "volume", "stat.volume_24h", "stat.volume"]),
             "snapshot_age_ms": age_ms,
             "snapshot_received_at_ms": end_snapshot.get("received_at_ms"),
-            "price_change_window_pct": price_change,
-            "price_at_window_start": start_price,
-            "price_at_window_end": end_price,
-            "price_change_status": price_change_status,
+            "social_signal_start_ms": social_start_ms,
+            "reference_ms": reference_ms,
+            "price_at_social_start": start_price,
+            "price_at_reference": end_price,
+            "price_change_since_social_pct": price_change,
+            "price_before_social_start": before_price,
+            "price_change_before_social_pct": price_change_before,
+            "market_observation_status": observation_status,
+            "price_change_status": _price_change_status(
+                observation_status=observation_status,
+                has_ready_history=has_ready_history,
+                missing_market=False,
+            ),
         }
+
+    def _market_observation_status(
+        self,
+        *,
+        token_id: str | None,
+        start_ms: int,
+        end_ms: int,
+        has_market_snapshot: bool,
+        has_ready_history: bool,
+    ) -> str:
+        if not token_id:
+            return "missing_observation"
+        rows = self.tokens.conn.execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM token_market_observations
+            WHERE token_id = ?
+              AND target_received_at_ms >= ?
+              AND target_received_at_ms <= ?
+            GROUP BY status
+            """,
+            (token_id, start_ms, end_ms),
+        ).fetchall()
+        counts = {str(row["status"]): int(row["count"] or 0) for row in rows}
+        if has_ready_history:
+            return "ready"
+        for status in ("pending", "running"):
+            if counts.get(status):
+                return status
+        for status in (
+            "provider_not_configured",
+            "provider_error",
+            "rate_limited",
+            "dead",
+            "provider_not_found",
+        ):
+            if counts.get(status):
+                return status
+        if counts.get("ready") or counts.get("cached") or has_market_snapshot:
+            return "ready"
+        return "missing_observation"
 
     def _flow_block(self, row: dict[str, Any], *, baseline: dict[str, Any]) -> dict[str, Any]:
         mentions = int(row["mention_count"])
@@ -359,61 +439,14 @@ class TokenFlowService:
         market: dict[str, Any],
         social_heat: dict[str, Any],
     ) -> dict[str, Any]:
-        price_change = market.get("price_change_window_pct")
-        token_id = row.get("token_id")
-        window_start_ms = int(row.get("window_start_ms") or 0)
-        social_start_ms = int(row.get("first_seen_ms") or row.get("window_start_ms") or 0)
-        window_start_snapshot = self.tokens.market_snapshot_at_or_before(token_id, window_start_ms)
-        social_start_snapshot = self.tokens.market_snapshot_at_or_before(token_id, social_start_ms)
-        price_change_before = _price_change_between(window_start_snapshot, social_start_snapshot)
-        first_price_move_ms = self._first_price_move_ms(
-            token_id=token_id,
-            start_ms=window_start_ms,
-            end_ms=int(row.get("window_end_ms") or _now_ms()),
-            baseline_snapshot=window_start_snapshot,
-            threshold=0.08,
-        )
         return {
-            "social_start_ms": social_start_ms,
+            "social_signal_start_ms": market.get("social_signal_start_ms"),
             "burst_ms": row.get("latest_seen_ms"),
-            "first_price_move_ms": first_price_move_ms,
-            "price_change_window_pct": price_change,
-            "price_change_before_social_pct": price_change_before or 0.0,
+            "price_change_since_social_pct": market.get("price_change_since_social_pct"),
+            "price_change_before_social_pct": market.get("price_change_before_social_pct"),
+            "market_observation_status": market.get("market_observation_status"),
             "social_heat_score": social_heat.get("score"),
         }
-
-    def _first_price_move_ms(
-        self,
-        *,
-        token_id: str | None,
-        start_ms: int,
-        end_ms: int,
-        baseline_snapshot: dict[str, Any] | None,
-        threshold: float,
-    ) -> int | None:
-        baseline_price = _float_or_none(baseline_snapshot.get("price")) if baseline_snapshot else None
-        rows = self.tokens.conn.execute(
-            """
-            SELECT received_at_ms, price
-            FROM token_market_snapshots
-            WHERE token_id = ?
-              AND received_at_ms >= ?
-              AND received_at_ms <= ?
-              AND price IS NOT NULL
-            ORDER BY received_at_ms ASC
-            """,
-            (token_id, start_ms, end_ms),
-        ).fetchall() if token_id else []
-        for row in rows:
-            price = _float_or_none(row["price"])
-            if price is None:
-                continue
-            if baseline_price is None:
-                baseline_price = price
-                continue
-            if baseline_price and abs((price - baseline_price) / baseline_price) >= threshold:
-                return int(row["received_at_ms"])
-        return None
 
     def _seed_links(self, row: dict[str, Any]) -> list[dict[str, Any]]:
         if self.enrichment is None:
@@ -523,6 +556,22 @@ def _price_change_between(start_snapshot: dict[str, Any] | None, end_snapshot: d
     if not start_price or end_price is None:
         return None
     return round((end_price - start_price) / start_price, 12)
+
+
+def _price_change_status(*, observation_status: str, has_ready_history: bool, missing_market: bool) -> str:
+    if observation_status in {"pending", "running"}:
+        return "pending_observation"
+    if observation_status in {
+        "provider_not_configured",
+        "provider_not_found",
+        "provider_error",
+        "rate_limited",
+        "dead",
+    }:
+        return observation_status
+    if missing_market:
+        return "missing_market"
+    return "ready" if has_ready_history else "insufficient_history"
 
 
 def _int_or_none(value: Any) -> int | None:

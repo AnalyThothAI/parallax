@@ -1,4 +1,4 @@
-import type { AttentionFrontierItem, Decision, RadarSortMode, TokenFlowItem } from "../api/types";
+import type { RadarSortMode, TokenFlowItem } from "../api/types";
 import { TokenRadarRow } from "./TokenRadarRow";
 
 const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
@@ -12,11 +12,9 @@ const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
 type TokenRadarTableProps = {
   items: TokenFlowItem[];
   selectedKey: string | null;
-  manualDecisions: Record<string, Decision>;
   sortMode: RadarSortMode;
   isLoading: boolean;
   error?: Error | null;
-  frontierByToken: Map<string, AttentionFrontierItem>;
   onSelect: (item: TokenFlowItem) => void;
   onSortModeChange: (mode: RadarSortMode) => void;
 };
@@ -24,11 +22,9 @@ type TokenRadarTableProps = {
 export function TokenRadarTable({
   items,
   selectedKey,
-  manualDecisions,
   sortMode,
   isLoading,
   error,
-  frontierByToken,
   onSelect,
   onSortModeChange
 }: TokenRadarTableProps) {
@@ -73,15 +69,11 @@ export function TokenRadarTable({
         {!isLoading && !error
           ? items.map((item) => {
               const key = tokenDecisionKey(item);
-              const manualDecision = manualDecisions[key];
               return (
                 <TokenRadarRow
                   key={`${key}:${item.flow.window_start_ms ?? ""}`}
                   item={item}
                   selected={selectedKey === key}
-                  decision={manualDecision ?? item.opportunity.decision}
-                  manualDecision={manualDecision}
-                  narrativeLink={frontierMatchForToken(item, frontierByToken)}
                   onSelect={onSelect}
                 />
               );
@@ -104,26 +96,4 @@ function RadarSkeleton() {
 
 function tokenDecisionKey(item: TokenFlowItem): string {
   return item.identity.token_id ?? item.identity.address ?? item.identity.identity_key;
-}
-
-function frontierMatchForToken(
-  item: TokenFlowItem,
-  frontierByToken: Map<string, AttentionFrontierItem>
-): AttentionFrontierItem | undefined {
-  for (const key of frontierTokenKeys(item.identity)) {
-    const match = frontierByToken.get(key);
-    if (match) {
-      return match;
-    }
-  }
-  return undefined;
-}
-
-function frontierTokenKeys(identity: TokenFlowItem["identity"]): string[] {
-  return [
-    `identity:${identity.identity_key}`,
-    identity.token_id ? `token:${identity.token_id}` : "",
-    identity.address ? `address:${identity.address.toLowerCase()}` : "",
-    identity.symbol ? `symbol:${identity.symbol.toUpperCase()}` : ""
-  ].filter(Boolean);
 }

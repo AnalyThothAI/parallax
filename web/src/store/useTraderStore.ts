@@ -1,12 +1,5 @@
 import { create } from "zustand";
-import type {
-  Decision,
-  RadarSortMode,
-  ScopeKey,
-  TimelineBucket,
-  TokenDetailTab,
-  WindowKey
-} from "../api/types";
+import type { RadarSortMode, ScopeKey, TimelineBucket, TokenDetailTab, WindowKey } from "../api/types";
 
 type PostSortMode = "recent" | "quality";
 
@@ -23,7 +16,6 @@ type TraderState = {
   postSortMode: PostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
-  manualDecisions: Record<string, Decision>;
   setToken: (token: string) => void;
   setWindow: (window: WindowKey) => void;
   setScope: (scope: ScopeKey) => void;
@@ -37,7 +29,6 @@ type TraderState = {
   setPostSortMode: (mode: PostSortMode) => void;
   setHideDuplicateClusters: (enabled: boolean) => void;
   setWatchedPostsOnly: (enabled: boolean) => void;
-  setManualDecision: (tokenKey: string, decision: Decision) => void;
 };
 
 export const useTraderStore = create<TraderState>((set, get) => ({
@@ -53,7 +44,6 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   postSortMode: "recent",
   hideDuplicateClusters: false,
   watchedPostsOnly: false,
-  manualDecisions: {},
   setToken: (token) => set({ token }),
   setWindow: (window) => set({ window }),
   setScope: (scope) => set({ scope }),
@@ -66,9 +56,5 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setTimelineBucket: (timelineBucket) => set({ timelineBucket }),
   setPostSortMode: (postSortMode) => set({ postSortMode }),
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),
-  setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly }),
-  setManualDecision: (tokenKey, decision) =>
-    set((state) => ({
-      manualDecisions: { ...state.manualDecisions, [tokenKey]: decision }
-    }))
+  setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly })
 }));

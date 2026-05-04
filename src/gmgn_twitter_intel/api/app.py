@@ -20,11 +20,12 @@ from ..market.gmgn_openapi_client import GmgnOpenApiClient
 from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.ingest_service import IngestService
 from ..pipeline.llm_client import OpenAIChatEnrichmentClient
-from ..pipeline.token_market_enricher import TokenMarketEnricher
+from ..pipeline.market_observation_worker import MarketObservationWorker
 from ..settings import Settings, load_settings
 from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository
+from ..storage.market_observation_repository import MarketObservationRepository
 from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
 from ..storage.sqlite_schema import migrate
@@ -40,6 +41,7 @@ class CliRuntime:
     entities: EntityRepository
     signals: SignalRepository
     tokens: TokenRepository
+    market_observations: MarketObservationRepository
     enrichment: EnrichmentRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
@@ -52,10 +54,12 @@ class CliRuntime:
     write_lock: RLock
     start_collector: bool
     enrichment_worker: EnrichmentWorker | None = None
+    market_observation_worker: MarketObservationWorker | None = None
     gmgn_client: GmgnOpenApiClient | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
+    market_observation_task: asyncio.Task | None = None
 
 
 def create_app(
@@ -69,6 +73,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         runtime = _build_runtime(resolved_settings, start_collector=start_collector)
+        _start_runtime_tasks(runtime)
         app.state.service = runtime
         logger.info(
             "Starting GMGN Twitter Intel | "
@@ -157,6 +162,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
     tokens = TokenRepository(conn)
+    market_observations = MarketObservationRepository(conn)
     enrichment = EnrichmentRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
@@ -165,22 +171,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     read_enrichment = EnrichmentRepository(read_conn)
     write_lock = RLock()
     gmgn_client = _gmgn_client(settings)
-    token_market_enricher = (
-        TokenMarketEnricher(
-            tokens=tokens,
-            client=gmgn_client,
-            evm_candidate_chains=settings.gmgn_evm_candidate_chains,
-        )
-        if gmgn_client is not None
-        else None
-    )
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
         tokens=tokens,
-        token_market_enricher=token_market_enricher,
+        market_observations=market_observations,
         write_lock=write_lock,
     )
     hub = PublicWebSocketHub(
@@ -203,6 +200,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         entities=entities,
         signals=signals,
         tokens=tokens,
+        market_observations=market_observations,
         enrichment=enrichment,
         read_evidence=read_evidence,
         read_entities=read_entities,
@@ -215,6 +213,12 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         write_lock=write_lock,
         start_collector=start_collector,
         gmgn_client=gmgn_client,
+    )
+    runtime.market_observation_worker = MarketObservationWorker(
+        observations=market_observations,
+        tokens=tokens,
+        client=gmgn_client,
+        write_lock=write_lock,
     )
     if settings.llm_configured:
         client = OpenAIChatEnrichmentClient(
@@ -234,7 +238,6 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             write_lock=write_lock,
             poll_interval=settings.enrichment_poll_interval,
         )
-        runtime.enrichment_task = asyncio.create_task(runtime.enrichment_worker.run())
     if start_collector:
         upstream = DirectGmgnWebSocketClient(
             app_version=settings.upstream_app_version,
@@ -247,17 +250,34 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             on_frame=collector.handle_frame,
         )
         collector.upstream_client = upstream
-        runtime.collector_task = asyncio.create_task(collector.run())
-        runtime.supervisor_task = asyncio.create_task(_supervise_runtime(runtime))
     return runtime
 
 
+def _start_runtime_tasks(runtime: CliRuntime) -> None:
+    if runtime.market_observation_worker is not None and runtime.market_observation_task is None:
+        runtime.market_observation_task = asyncio.create_task(runtime.market_observation_worker.run())
+    if runtime.enrichment_worker is not None and runtime.enrichment_task is None:
+        runtime.enrichment_task = asyncio.create_task(runtime.enrichment_worker.run())
+    if runtime.start_collector:
+        if runtime.collector_task is None:
+            runtime.collector_task = asyncio.create_task(runtime.collector.run())
+        if runtime.supervisor_task is None:
+            runtime.supervisor_task = asyncio.create_task(_supervise_runtime(runtime))
+
+
 async def _stop_runtime(runtime: CliRuntime) -> None:
+    if runtime.market_observation_worker is not None:
+        runtime.market_observation_worker.stop()
     if runtime.enrichment_worker is not None:
         runtime.enrichment_worker.stop()
     tasks = [
         task
-        for task in (runtime.supervisor_task, runtime.collector_task, runtime.enrichment_task)
+        for task in (
+            runtime.supervisor_task,
+            runtime.collector_task,
+            runtime.enrichment_task,
+            runtime.market_observation_task,
+        )
         if task is not None
     ]
     for task in tasks:
@@ -299,6 +319,10 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "worker_running": _task_running(runtime.enrichment_task),
             "job_counts": _enrichment_job_counts(runtime),
         },
+        "market_observations": {
+            **_market_observation_counts(runtime),
+            "worker_running": _task_running(runtime.market_observation_task),
+        },
         "gmgn": {
             "openapi_configured": runtime.settings.gmgn_configured,
             "token_info_cache_ttl_seconds": runtime.settings.gmgn_token_info_cache_ttl_seconds,
@@ -313,6 +337,8 @@ def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int, db_status: dict[str,
         reasons.append("database_unhealthy")
     if runtime.settings.llm_configured and not _task_running(runtime.enrichment_task):
         reasons.append("enrichment_worker_stopped")
+    if not _task_running(runtime.market_observation_task):
+        reasons.append("market_observation_worker_stopped")
     return reasons
 
 
@@ -347,6 +373,14 @@ def _db_status(runtime: CliRuntime) -> dict[str, object]:
 def _enrichment_job_counts(runtime: CliRuntime) -> dict[str, int]:
     try:
         return runtime.read_enrichment.job_counts()
+    except Exception:
+        return {}
+
+
+def _market_observation_counts(runtime: CliRuntime) -> dict[str, int]:
+    try:
+        with runtime.write_lock:
+            return runtime.market_observations.counts()
     except Exception:
         return {}
 

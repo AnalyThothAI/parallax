@@ -73,15 +73,16 @@ class TokenAttributionBuilder:
             return [self._unresolved_attribution(row, reason="symbol_missing")]
         return self._symbol_attributions(row, symbol=symbol)
 
-    def rebuild_symbol(self, symbol: str, *, commit: bool) -> int:
+    def rebuild_symbol(self, symbol: str, *, commit: bool) -> list[TokenAttribution]:
         rows = self.signals.symbol_mention_rows(symbol=symbol)
         mention_ids = [str(row["mention_id"]) for row in rows]
         attributions = self.build_for_rows(rows)
-        return self.signals.replace_token_attributions(
+        self.signals.replace_token_attributions(
             mention_ids=mention_ids,
             attributions=attributions,
             commit=commit,
         )
+        return attributions
 
     def _direct_attribution(self, row: dict[str, Any]) -> TokenAttribution:
         token_id = str(row["token_id"])

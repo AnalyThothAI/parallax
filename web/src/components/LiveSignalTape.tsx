@@ -1,11 +1,17 @@
 import type { AttentionFrontierItem, LivePayload, TokenFlowItem } from "../api/types";
 import { compactNumber, eventHandle, eventText, formatRelativeTime, formatScore, tokenLabel } from "../lib/format";
 
+type LiveSignalTapeBase = {
+  score?: number | null;
+  reason: string;
+  body?: string | null;
+};
+
 export type LiveSignalTapeItem =
-  | { kind: "event"; payload: LivePayload; score?: number | null; reason: string }
-  | { kind: "token"; token: TokenFlowItem; event?: LivePayload | null; score?: number | null; reason: string }
-  | { kind: "narrative"; item: AttentionFrontierItem; score?: number | null; reason: string }
-  | { kind: "enrichment"; payload: LivePayload; score?: number | null; reason: string };
+  | (LiveSignalTapeBase & { kind: "event"; payload: LivePayload })
+  | (LiveSignalTapeBase & { kind: "token"; token: TokenFlowItem; event?: LivePayload | null })
+  | (LiveSignalTapeBase & { kind: "narrative"; item: AttentionFrontierItem })
+  | (LiveSignalTapeBase & { kind: "enrichment"; payload: LivePayload });
 
 type LiveSignalTapeProps = {
   items: LiveSignalTapeItem[];
@@ -40,14 +46,17 @@ export function LiveSignalTape({
           const id = tapeItemId(item);
           return (
             <button
-              className={`tape-row ${selectedEventId === id ? "is-selected" : ""}`}
+              className={`tape-row ${selectedEventId === id ? "selected" : ""}`}
               key={`${item.kind}:${id}`}
               type="button"
               onClick={() => onSelect(item)}
             >
               <span className={`tape-kind ${item.kind}`}>{item.kind}</span>
-              <strong>{tapeTitle(item)}</strong>
-              <em className="tape-reason">{item.reason}</em>
+              <span className="tape-main">
+                <strong>{tapeTitle(item)}</strong>
+                <p>{tapeBody(item)}</p>
+                <em className="tape-reason">{item.reason}</em>
+              </span>
               <b className="tape-score">{item.score !== null && item.score !== undefined ? formatScore(item.score) : "-"}</b>
               <time>{tapeTime(item)}</time>
             </button>
@@ -94,6 +103,25 @@ function tapeTime(item: LiveSignalTapeItem): string {
     return formatRelativeTime(item.item.seed.received_at_ms);
   }
   return formatRelativeTime(item.payload.event.received_at_ms);
+}
+
+function tapeBody(item: LiveSignalTapeItem): string {
+  if (item.body?.trim()) {
+    return item.body.trim();
+  }
+  if (item.kind === "token") {
+    if (item.event) {
+      return eventText(item.event.event) || tokenTapeReason(item.token);
+    }
+    return `${compactNumber(item.token.social_heat.mentions)} 帖 · ${tokenTapeReason(item.token)}`;
+  }
+  if (item.kind === "narrative") {
+    return item.item.seed.display?.summary_zh || item.item.seed.display?.market_interpretation_zh || item.item.seed.evidence || "watched seed link";
+  }
+  if (item.kind === "enrichment") {
+    return item.payload.enrichment?.summary_zh || item.payload.enrichment?.summary || eventText(item.payload.event) || "watched enrichment";
+  }
+  return eventText(item.payload.event) || "public stream event";
 }
 
 export function tokenTapeReason(token: TokenFlowItem): string {

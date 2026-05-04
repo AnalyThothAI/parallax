@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 APP_TABLES = (
     "schema_migrations",
@@ -17,6 +17,7 @@ APP_TABLES = (
     "account_token_alerts",
     "event_token_mentions",
     "event_token_attributions",
+    "token_market_observations",
     "enrichment_jobs",
     "model_runs",
     "event_enrichments",
@@ -292,6 +293,36 @@ CREATE INDEX IF NOT EXISTS idx_event_token_attributions_posts_ca_recent
     AND address IS NOT NULL
     AND chain NOT IN ('unknown', 'evm', 'evm_unknown');
 
+CREATE TABLE IF NOT EXISTS token_market_observations (
+  observation_id TEXT PRIMARY KEY,
+  attribution_id TEXT NOT NULL REFERENCES event_token_attributions(attribution_id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  token_id TEXT NOT NULL REFERENCES tokens(token_id) ON DELETE CASCADE,
+  chain TEXT NOT NULL,
+  address TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  target_received_at_ms INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 100,
+  provider TEXT,
+  source_channel TEXT NOT NULL DEFAULT 'gmgn_openapi_token_info',
+  snapshot_id TEXT,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  next_run_at_ms INTEGER NOT NULL,
+  last_error TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE(attribution_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_market_observations_status_next
+  ON token_market_observations(status, next_run_at_ms, priority);
+CREATE INDEX IF NOT EXISTS idx_token_market_observations_token_target
+  ON token_market_observations(token_id, target_received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_token_market_observations_event
+  ON token_market_observations(event_id);
+
 CREATE TABLE IF NOT EXISTS enrichment_jobs (
   job_id TEXT PRIMARY KEY,
   event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -557,26 +588,81 @@ CREATE INDEX IF NOT EXISTS idx_account_quality_snapshots_handle_window
 
 def migrate(conn: sqlite3.Connection) -> None:
     ensure_fts5_available(conn)
-    if _should_reset_schema(conn):
+    current_version = _current_schema_version(conn)
+    if _should_reset_schema(conn, current_version=current_version):
         _reset_app_schema(conn)
+        current_version = 0
     conn.executescript(SCHEMA_SQL)
+    _apply_incremental_migrations(conn, current_version=current_version)
     conn.execute("DROP TABLE IF EXISTS token_windows")
+    conn.execute("DELETE FROM schema_migrations WHERE version != ?", (SCHEMA_VERSION,))
     conn.execute(
-        "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
+        """
+        INSERT INTO schema_migrations(version, name, applied_at_ms)
+        VALUES (?, ?, ?)
+        ON CONFLICT(version) DO UPDATE SET
+          name = excluded.name,
+          applied_at_ms = excluded.applied_at_ms
+        """,
         (SCHEMA_VERSION, "token_attribution_radar", _now_ms()),
     )
     conn.commit()
 
 
-def _should_reset_schema(conn: sqlite3.Connection) -> bool:
+def _current_schema_version(conn: sqlite3.Connection) -> int:
+    existing = _existing_tables(conn)
+    if "schema_migrations" not in existing:
+        return 0
+    row = conn.execute("SELECT max(version) AS version FROM schema_migrations").fetchone()
+    return int(row["version"]) if row and row["version"] is not None else 0
+
+
+def _should_reset_schema(conn: sqlite3.Connection, *, current_version: int) -> bool:
     existing = _existing_tables(conn)
     if "schema_migrations" not in existing:
         return any(name in existing for name in APP_TABLES if name != "schema_migrations")
-    row = conn.execute("SELECT max(version) AS version FROM schema_migrations").fetchone()
-    version = int(row["version"]) if row and row["version"] is not None else 0
-    if version != SCHEMA_VERSION:
+    if current_version == 8:
+        return _required_columns_missing(conn)
+    if current_version != SCHEMA_VERSION:
         return True
     return _required_columns_missing(conn)
+
+
+def _apply_incremental_migrations(conn: sqlite3.Connection, *, current_version: int) -> None:
+    if current_version == 8:
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS token_market_observations (
+              observation_id TEXT PRIMARY KEY,
+              attribution_id TEXT NOT NULL REFERENCES event_token_attributions(attribution_id) ON DELETE CASCADE,
+              event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+              token_id TEXT NOT NULL REFERENCES tokens(token_id) ON DELETE CASCADE,
+              chain TEXT NOT NULL,
+              address TEXT NOT NULL,
+              symbol TEXT NOT NULL,
+              target_received_at_ms INTEGER NOT NULL,
+              status TEXT NOT NULL,
+              priority INTEGER NOT NULL DEFAULT 100,
+              provider TEXT,
+              source_channel TEXT NOT NULL DEFAULT 'gmgn_openapi_token_info',
+              snapshot_id TEXT,
+              attempt_count INTEGER NOT NULL DEFAULT 0,
+              max_attempts INTEGER NOT NULL DEFAULT 5,
+              next_run_at_ms INTEGER NOT NULL,
+              last_error TEXT,
+              created_at_ms INTEGER NOT NULL,
+              updated_at_ms INTEGER NOT NULL,
+              UNIQUE(attribution_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_token_market_observations_status_next
+              ON token_market_observations(status, next_run_at_ms, priority);
+            CREATE INDEX IF NOT EXISTS idx_token_market_observations_token_target
+              ON token_market_observations(token_id, target_received_at_ms);
+            CREATE INDEX IF NOT EXISTS idx_token_market_observations_event
+              ON token_market_observations(event_id);
+            """
+        )
 
 
 def _required_columns_missing(conn: sqlite3.Connection) -> bool:

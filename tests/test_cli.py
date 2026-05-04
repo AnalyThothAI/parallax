@@ -19,6 +19,7 @@ from gmgn_twitter_intel.pipeline.narrative_token_linker import NarrativeTokenLin
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
@@ -67,12 +68,14 @@ def seed_sqlite(db_path: Path) -> None:
         signals = SignalRepository(conn)
         enrichment = EnrichmentRepository(conn)
         tokens = TokenRepository(conn)
+        observations = MarketObservationRepository(conn)
         ingest = IngestService(
             evidence=evidence,
             entities=entities,
             signals=signals,
             enrichment=enrichment,
             tokens=tokens,
+            market_observations=observations,
             write_lock=RLock(),
         )
         snapshot = parse_gmgn_token_payload(
@@ -380,6 +383,69 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["symbol_mentions_scanned"], 1)
         self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 2)
         self.assertEqual(lines[1]["data"]["items"][0]["flow"]["symbol_mentions"], 1)
+
+    def test_market_observations_cli_lists_counts_and_backfills_missing_rows(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
+            conn = connect_sqlite(db_path, read_only=False)
+            try:
+                migrate(conn)
+                evidence = EvidenceRepository(conn)
+                entities = EntityRepository(conn)
+                signals = SignalRepository(conn)
+                enrichment = EnrichmentRepository(conn)
+                tokens = TokenRepository(conn)
+                ingest = IngestService(
+                    evidence=evidence,
+                    entities=entities,
+                    signals=signals,
+                    enrichment=enrichment,
+                    tokens=tokens,
+                    write_lock=RLock(),
+                )
+                snapshot = parse_gmgn_token_payload(
+                    {
+                        "tt": "ca",
+                        "t": {
+                            "a": PEPE,
+                            "c": "eth",
+                            "mc": "60490.341996",
+                            "p": "1.0",
+                            "s": "PEPE",
+                        },
+                    }
+                )
+                ingest.ingest_event(
+                    replace(
+                        make_event("event-market-backfill"),
+                        source=Source(
+                            provider="gmgn",
+                            transport="direct_ws",
+                            coverage="public_stream",
+                            channel="twitter_monitor_token",
+                        ),
+                        token_snapshot=snapshot,
+                    ),
+                    is_watched=True,
+                )
+            finally:
+                conn.close()
+
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                before_code = main(["market-observations", "--status", "pending", "--limit", "5"], stdout=stdout)
+                backfill_code = main(["ops", "backfill-market-observations", "--limit", "5"], stdout=stdout)
+                after_code = main(["market-observations", "--status", "pending", "--limit", "5"], stdout=stdout)
+
+        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual([before_code, backfill_code, after_code], [0, 0, 0])
+        self.assertEqual(lines[0]["data"]["items"], [])
+        self.assertEqual(lines[1]["data"]["rows_scanned"], 1)
+        self.assertEqual(lines[1]["data"]["observations_enqueued"], 1)
+        self.assertEqual(lines[2]["data"]["counts"]["pending"], 1)
+        self.assertEqual(lines[2]["data"]["items"][0]["event_id"], "event-market-backfill")
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

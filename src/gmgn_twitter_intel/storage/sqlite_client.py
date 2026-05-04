@@ -18,6 +18,10 @@ SQLITE_OPERATIONAL_PROBES = (
         "event_token_attributions",
         "SELECT attribution_id FROM event_token_attributions ORDER BY received_at_ms DESC LIMIT 1",
     ),
+    (
+        "token_market_observations",
+        "SELECT observation_id FROM token_market_observations ORDER BY updated_at_ms DESC LIMIT 1",
+    ),
 )
 
 

@@ -51,6 +51,10 @@ class TokenSocialTimelineService:
         window_start_ms = reference_ms - WINDOW_MS[window]
         window_end_ms = reference_ms
         normalized_chain, normalized_address = _normalized_chain_address(chain=chain, address=address)
+        resolved_token_id = token_id or self._token_id_for_chain_address(
+            chain=normalized_chain,
+            address=normalized_address,
+        )
         summary_rows = [dict(row) for row in self._summary_rows(
             token_id=token_id,
             chain=normalized_chain,
@@ -83,7 +87,13 @@ class TokenSocialTimelineService:
                 "scope": scope,
             },
             "summary": _summary(summary_rows),
-            "buckets": _buckets(summary_rows, bucket_ms=BUCKET_MS[bucket], window_start_ms=window_start_ms),
+            "buckets": _buckets(
+                summary_rows,
+                conn=self.conn,
+                token_id=resolved_token_id,
+                bucket_ms=BUCKET_MS[bucket],
+                window_start_ms=window_start_ms,
+            ),
             "authors": _authors(summary_rows),
             "posts": page_items,
             "returned_count": len(page_items),
@@ -142,6 +152,21 @@ class TokenSocialTimelineService:
             """,
             params,
         ).fetchall()
+
+    def _token_id_for_chain_address(self, *, chain: str | None, address: str | None) -> str | None:
+        if not chain or not address:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT token_id
+            FROM tokens
+            WHERE chain = ?
+              AND address = ?
+            LIMIT 1
+            """,
+            (chain, address),
+        ).fetchone()
+        return str(row["token_id"]) if row else None
 
     def _post_rows(
         self,
@@ -265,7 +290,14 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _buckets(rows: list[dict[str, Any]], *, bucket_ms: int, window_start_ms: int) -> list[dict[str, Any]]:
+def _buckets(
+    rows: list[dict[str, Any]],
+    *,
+    conn: sqlite3.Connection,
+    token_id: str | None,
+    bucket_ms: int,
+    window_start_ms: int,
+) -> list[dict[str, Any]]:
     grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
     first_seen_by_author: dict[str, int] = {}
     for row in sorted(rows, key=lambda item: int(item.get("received_at_ms") or 0)):
@@ -275,9 +307,24 @@ def _buckets(rows: list[dict[str, Any]], *, bucket_ms: int, window_start_ms: int
         handle = _handle(row)
         if handle and handle not in first_seen_by_author:
             first_seen_by_author[handle] = bucket_start
+    bucket_starts = sorted(grouped)
+    bucket_prices = _bucket_prices(
+        conn=conn,
+        token_id=token_id,
+        bucket_starts=bucket_starts,
+        bucket_ms=bucket_ms,
+        window_start_ms=window_start_ms,
+    )
+    baseline_price = _timeline_baseline_price(
+        conn=conn,
+        token_id=token_id,
+        window_start_ms=window_start_ms,
+        bucket_prices=bucket_prices,
+    )
     buckets = []
-    for start_ms in sorted(grouped):
+    for start_ms in bucket_starts:
         bucket_rows = grouped[start_ms]
+        price = bucket_prices.get(start_ms)
         buckets.append(
             {
                 "start_ms": start_ms,
@@ -290,11 +337,85 @@ def _buckets(rows: list[dict[str, Any]], *, bucket_ms: int, window_start_ms: int
                 ),
                 "watched_posts": sum(1 for row in bucket_rows if _is_watched(row)),
                 "duplicate_text_share": _duplicate_text_share(bucket_rows),
-                "price": None,
-                "price_change_from_start_pct": None,
+                "price": price,
+                "price_change_from_start_pct": _price_change_from_baseline(
+                    baseline_price=baseline_price,
+                    price=price,
+                ),
             }
         )
     return buckets
+
+
+def _bucket_prices(
+    *,
+    conn: sqlite3.Connection,
+    token_id: str | None,
+    bucket_starts: list[int],
+    bucket_ms: int,
+    window_start_ms: int,
+) -> dict[int, float | None]:
+    if not token_id:
+        return {start_ms: None for start_ms in bucket_starts}
+    prices: dict[int, float | None] = {}
+    for start_ms in bucket_starts:
+        snapshot = _snapshot_at_or_before(conn=conn, token_id=token_id, received_at_ms=start_ms + bucket_ms - 1)
+        price = _float_or_none(snapshot.get("price")) if snapshot else None
+        prices[start_ms] = price
+    return prices
+
+
+def _timeline_baseline_price(
+    *,
+    conn: sqlite3.Connection,
+    token_id: str | None,
+    window_start_ms: int,
+    bucket_prices: dict[int, float | None],
+) -> float | None:
+    if token_id:
+        snapshot = _snapshot_at_or_before(conn=conn, token_id=token_id, received_at_ms=window_start_ms)
+        price = _float_or_none(snapshot.get("price")) if snapshot else None
+        if price is not None:
+            return price
+    for start_ms in sorted(bucket_prices):
+        if bucket_prices[start_ms] is not None:
+            return bucket_prices[start_ms]
+    return None
+
+
+def _snapshot_at_or_before(
+    *,
+    conn: sqlite3.Connection,
+    token_id: str,
+    received_at_ms: int,
+) -> dict[str, Any] | None:
+    row = conn.execute(
+        """
+        SELECT *
+        FROM token_market_snapshots
+        WHERE token_id = ?
+          AND received_at_ms <= ?
+        ORDER BY received_at_ms DESC
+        LIMIT 1
+        """,
+        (token_id, received_at_ms),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _price_change_from_baseline(*, baseline_price: float | None, price: float | None) -> float | None:
+    if not baseline_price or price is None:
+        return None
+    return round((price - baseline_price) / baseline_price, 12)
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _authors(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -346,28 +467,6 @@ def _post_item(row: dict[str, Any]) -> dict[str, Any]:
         "is_watched": _is_watched(row),
         "post_quality": quality,
     }
-
-
-def _page_rows(
-    rows: list[dict[str, Any]],
-    *,
-    limit: int,
-    cursor: tuple[int, str] | None,
-) -> list[dict[str, Any]]:
-    sorted_rows = sorted(
-        rows,
-        key=lambda item: (int(item.get("received_at_ms") or 0), str(item.get("event_id"))),
-        reverse=True,
-    )
-    if cursor is None:
-        return sorted_rows[: limit + 1]
-    cursor_ms, cursor_event_id = cursor
-    return [
-        row
-        for row in sorted_rows
-        if int(row.get("received_at_ms") or 0) < cursor_ms
-        or (int(row.get("received_at_ms") or 0) == cursor_ms and str(row.get("event_id")) < cursor_event_id)
-    ][: limit + 1]
 
 
 def _author_role(*, posts: int, watched: bool, first_seen_ms: int, rows: list[dict[str, Any]]) -> str:

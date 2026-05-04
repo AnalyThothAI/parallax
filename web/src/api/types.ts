@@ -174,10 +174,15 @@ export type TokenMarketBlock = {
   volume_24h?: number | null;
   snapshot_age_ms?: number | null;
   snapshot_received_at_ms?: number | null;
-  price_change_window_pct?: number | null;
-  price_at_window_start?: number | null;
-  price_at_window_end?: number | null;
-  price_change_status: "ready" | "insufficient_history" | "missing_market" | string;
+  social_signal_start_ms?: number | null;
+  reference_ms?: number | null;
+  price_at_social_start?: number | null;
+  price_at_reference?: number | null;
+  price_change_since_social_pct?: number | null;
+  price_before_social_start?: number | null;
+  price_change_before_social_pct?: number | null;
+  market_observation_status?: "ready" | "pending" | "running" | "provider_not_configured" | "provider_not_found" | "provider_error" | "rate_limited" | "dead" | string;
+  price_change_status: "ready" | "pending_observation" | "insufficient_history" | "missing_market" | "provider_not_configured" | "provider_not_found" | "provider_error" | "rate_limited" | "dead" | string;
 };
 
 export type TokenFlowBlock = {
@@ -250,10 +255,11 @@ export type TradeabilityBlock = ScoreBlock & {
 export type TimingBlock = {
   score: number;
   score_version: string;
-  status: "social_leads_price" | "social_confirms_price" | "price_leads_social" | "social_fades" | "insufficient_data" | string;
-  social_start_ms?: number | null;
-  first_price_move_ms?: number | null;
-  price_change_window_pct?: number | null;
+  status: "social_leads_price" | "social_confirms_price" | "price_leads_social" | "social_fades" | "market_pending" | "market_unavailable" | "insufficient_history" | string;
+  social_signal_start_ms?: number | null;
+  price_change_since_social_pct?: number | null;
+  price_change_before_social_pct?: number | null;
+  market_observation_status?: string | null;
   chase_risk: boolean;
   reasons: string[];
   risks: string[];
@@ -531,4 +537,5 @@ export type StatusData = {
     worker_running: boolean;
     job_counts: Record<string, number>;
   };
+  market_observations?: Record<string, number | boolean>;
 };

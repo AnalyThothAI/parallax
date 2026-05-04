@@ -23,6 +23,12 @@ class GmgnTokenInfo:
     raw: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class GmgnTokenInfoLookup:
+    info: GmgnTokenInfo | None
+    cache_status: str
+
+
 class GmgnOpenApiError(RuntimeError):
     pass
 
@@ -63,19 +69,19 @@ class GmgnOpenApiClient:
         if self._curl_session is not None:
             self._curl_session.close()
 
-    def get_token_info(self, *, chain: str, address: str) -> GmgnTokenInfo | None:
+    def lookup_token_info(self, *, chain: str, address: str) -> GmgnTokenInfoLookup:
         api_chain = _api_chain(chain)
         api_address = _api_address(chain=api_chain, address=address)
         key = (api_chain, api_address)
         cached = self._cache.get(key)
         now = time.time()
         if cached and now - cached[0] <= self.cache_ttl_seconds:
-            return cached[1]
+            return GmgnTokenInfoLookup(info=cached[1], cache_status="hit")
 
         data = self._request("GET", "/v1/token/info", {"chain": api_chain, "address": api_address})
         info = _token_info_from_response(chain=chain, address=api_address, data=data)
         self._cache[key] = (now, info)
-        return info
+        return GmgnTokenInfoLookup(info=info, cache_status="miss")
 
     def _request(self, method: str, path: str, params: dict[str, str]) -> Any:
         query = {

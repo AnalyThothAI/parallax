@@ -4,11 +4,10 @@ from gmgn_twitter_intel.retrieval.timing_scoring import timing_score
 def test_timing_social_leads_price_before_move():
     score = timing_score(
         {
-            "social_start_ms": 1_700_000_000_000,
-            "burst_ms": 1_700_000_060_000,
-            "first_price_move_ms": 1_700_000_300_000,
-            "price_change_window_pct": 0.02,
+            "social_signal_start_ms": 1_700_000_000_000,
+            "price_change_since_social_pct": 0.02,
             "price_change_before_social_pct": 0.0,
+            "market_observation_status": "ready",
             "social_heat_score": 82,
         }
     )
@@ -21,11 +20,10 @@ def test_timing_social_leads_price_before_move():
 def test_timing_price_leads_social_sets_chase_risk():
     score = timing_score(
         {
-            "social_start_ms": 1_700_000_300_000,
-            "burst_ms": 1_700_000_360_000,
-            "first_price_move_ms": 1_700_000_000_000,
-            "price_change_window_pct": 0.42,
+            "social_signal_start_ms": 1_700_000_300_000,
+            "price_change_since_social_pct": 0.08,
             "price_change_before_social_pct": 0.32,
+            "market_observation_status": "ready",
             "social_heat_score": 80,
         }
     )
@@ -34,3 +32,48 @@ def test_timing_price_leads_social_sets_chase_risk():
     assert score["chase_risk"] is True
     assert "chase_risk" in score["risks"]
     assert score["score"] <= 45
+
+
+def test_timing_social_confirms_price_after_social_start():
+    score = timing_score(
+        {
+            "social_signal_start_ms": 1_700_000_000_000,
+            "price_change_since_social_pct": 0.18,
+            "price_change_before_social_pct": 0.0,
+            "market_observation_status": "ready",
+            "social_heat_score": 75,
+        }
+    )
+
+    assert score["status"] == "social_confirms_price"
+    assert "social_and_price_confirm" in score["reasons"]
+
+
+def test_timing_market_pending_uses_observation_status():
+    score = timing_score(
+        {
+            "social_signal_start_ms": 1_700_000_000_000,
+            "price_change_since_social_pct": None,
+            "price_change_before_social_pct": None,
+            "market_observation_status": "pending",
+            "social_heat_score": 80,
+        }
+    )
+
+    assert score["status"] == "market_pending"
+    assert "market_observation_pending" in score["risks"]
+
+
+def test_timing_provider_failure_is_market_unavailable():
+    score = timing_score(
+        {
+            "social_signal_start_ms": 1_700_000_000_000,
+            "price_change_since_social_pct": None,
+            "price_change_before_social_pct": None,
+            "market_observation_status": "dead",
+            "social_heat_score": 80,
+        }
+    )
+
+    assert score["status"] == "market_unavailable"
+    assert "dead" in score["risks"]

@@ -88,7 +88,10 @@ class RollingTokenFlow:
             baseline = token_baseline(slot_counts=slot_counts, current_mentions=int(group["mention_count"]))
             group["baseline"] = baseline
             group["previous_mentions"] = int(slot_counts[-1]) if slot_counts else 0
-            group.update(bounds.get(identity_key, {}))
+            bound = bounds.get(identity_key, {})
+            group["global_first_seen_ms"] = bound.get("first_seen_ms")
+            group["global_latest_seen_ms"] = bound.get("latest_seen_ms")
+            group["global_first_watched_seen_ms"] = bound.get("first_watched_seen_ms")
 
         rows = sorted(
             groups.values(),
