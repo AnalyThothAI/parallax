@@ -218,7 +218,10 @@ class CliTests(unittest.TestCase):
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
                 search_code = main(["search", "--symbol", "PEPE", "--limit", "5"], stdout=stdout)
-                token_flow_code = main(["token-flow", "--window", "5m", "--limit", "5"], stdout=stdout)
+                token_flow_code = main(
+                    ["token-flow", "--window", "5m", "--limit", "5", "--scope", "all"],
+                    stdout=stdout,
+                )
                 narrative_flow_code = main(["narrative-flow", "--window", "1h", "--limit", "5"], stdout=stdout)
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
                 narratives_code = main(["account-narratives", "--window", "24h", "--limit", "5"], stdout=stdout)
@@ -248,6 +251,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
+        self.assertEqual(lines[2]["data"]["scope"], "all")
         self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
         self.assertGreaterEqual(lines[2]["data"]["items"][0]["watch"]["seed_link_count"], 1)
         self.assertEqual(lines[2]["data"]["items"][0]["signal"]["decision"], "watch")

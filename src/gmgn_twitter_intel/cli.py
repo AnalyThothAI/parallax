@@ -58,6 +58,7 @@ def build_parser() -> argparse.ArgumentParser:
     token_flow = subcommands.add_parser("token-flow", help="rank token activity windows")
     token_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="5m")
     token_flow.add_argument("--limit", type=int, default=20)
+    token_flow.add_argument("--scope", choices=("all", "matched"), default="all")
 
     narrative_flow = subcommands.add_parser("narrative-flow", help="rank LLM narrative activity windows")
     narrative_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
@@ -239,9 +240,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             items = TokenFlowService(signals=signals, tokens=tokens, enrichment=enrichment).token_flow(
                 window=args.window,
                 limit=args.limit,
+                scope=args.scope,
             )
             _emit(
-                {"ok": True, "data": {"window": args.window, "items": items}},
+                {"ok": True, "data": {"window": args.window, "scope": args.scope, "items": items}},
                 stdout,
             )
             return 0

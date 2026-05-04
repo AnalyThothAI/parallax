@@ -26,7 +26,7 @@ from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository
 from ..storage.signal_repository import SignalRepository
-from ..storage.sqlite_client import connect_sqlite
+from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
 from ..storage.sqlite_schema import migrate
 from ..storage.token_repository import TokenRepository
 from .http import ApiUnauthorized, api_unauthorized_response, create_api_router
@@ -148,6 +148,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         raise ValueError("ws_token is required in config.yaml")
     conn = connect_sqlite(settings.sqlite_path, read_only=False)
     migrate(conn)
+    startup_db = sqlite_health_check(conn)
+    if not startup_db.get("ok"):
+        raise RuntimeError(f"sqlite health check failed: {startup_db}")
     read_conn = connect_sqlite(settings.sqlite_path, read_only=True)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -280,14 +283,15 @@ def _gmgn_client(settings: Settings) -> GmgnOpenApiClient | None:
 def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:
     now_ms = now_ms if now_ms is not None else _now_ms()
     collector_status = runtime.collector.status.to_dict()
-    reasons = _unhealthy_reasons(runtime, now_ms=now_ms)
+    db_status = _db_status(runtime)
+    reasons = _unhealthy_reasons(runtime, now_ms=now_ms, db_status=db_status)
     payload = {
         "ok": not reasons,
         "reasons": reasons,
         "collector": collector_status,
         "handles": list(runtime.settings.handles),
         "store": str(runtime.settings.sqlite_path),
-        "db": {"write_probe": _db_write_probe(runtime)},
+        "db": db_status,
         "enrichment": {
             "llm_configured": runtime.settings.llm_configured,
             "worker_running": _task_running(runtime.enrichment_task),
@@ -301,8 +305,10 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
     return payload, 503 if reasons else 200
 
 
-def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str]:
+def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int, db_status: dict[str, object]) -> list[str]:
     reasons = _collector_unhealthy_reasons(runtime, now_ms=now_ms)
+    if not db_status.get("ok"):
+        reasons.append("database_unhealthy")
     if runtime.settings.llm_configured and not _task_running(runtime.enrichment_task):
         reasons.append("enrichment_worker_stopped")
     return reasons
@@ -328,11 +334,11 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
     return ["stale_upstream_frames"] if frame_age_ms > stale_ms else []
 
 
-def _db_write_probe(runtime: CliRuntime) -> bool:
+def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
-        return runtime.evidence.db_write_probe()
-    except Exception:
-        return False
+        return sqlite_health_check(runtime.evidence.conn)
+    except Exception as exc:
+        return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 
 
 def _enrichment_job_counts(runtime: CliRuntime) -> dict[str, int]:

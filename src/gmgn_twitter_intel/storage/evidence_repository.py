@@ -199,10 +199,6 @@ class EvidenceRepository:
             ),
         }
 
-    def db_write_probe(self) -> bool:
-        self.conn.execute("SELECT 1").fetchone()
-        return True
-
     def close(self) -> None:
         self.conn.close()
 

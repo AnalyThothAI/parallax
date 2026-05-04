@@ -24,7 +24,8 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert ready.status_code == 200
     assert ready.json()["collector"]["frames_received"] == 0
     assert ready.json()["store"].endswith("twitter_intel.sqlite3")
-    assert ready.json()["db"]["write_probe"] is True
+    assert ready.json()["db"]["ok"] is True
+    assert ready.json()["db"]["quick_check"] == "ok"
     assert ready.json()["enrichment"]["llm_configured"] is False
     assert ready.json()["enrichment"]["worker_running"] is False
     assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
@@ -56,3 +57,23 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
     assert status_code == 503
     assert payload["ok"] is False
     assert "no_upstream_frames" in payload["reasons"]
+
+
+def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
+    settings = Settings(
+        handles=("toly",),
+        ws_token="secret",
+    )
+    settings.set_config_dir(tmp_path / "app-home")
+    runtime = _build_runtime(settings, start_collector=False)
+    runtime.evidence.conn.close()
+
+    try:
+        payload, status_code = _readiness_payload(runtime)
+    finally:
+        runtime.read_evidence.close()
+
+    assert status_code == 503
+    assert payload["ok"] is False
+    assert payload["db"]["ok"] is False
+    assert "database_unhealthy" in payload["reasons"]
