@@ -200,7 +200,6 @@ def _best_item(items: list[dict[str, Any]]) -> dict[str, Any]:
         items,
         key=lambda item: (
             item.get("identity_status") == "resolved_ca",
-            item.get("identity_status") == "resolved_alias",
             len(item.get("matched_terms") or []),
             int(item.get("is_watched") or 0),
             -int(item.get("received_at_ms") or 0),

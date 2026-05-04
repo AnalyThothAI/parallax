@@ -167,6 +167,24 @@ class EvidenceRepository:
         ).fetchall()
         return [decode_event_row(row) | {"score": row["score"]} for row in rows]
 
+    def count_fts(self, query: str, *, watched_only: bool = False) -> int:
+        if not query.strip():
+            return 0
+        fts_query = _fts_query(query)
+        if not fts_query:
+            return 0
+        watched_clause = "AND e.is_watched = 1" if watched_only else ""
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(*) AS count
+            FROM event_fts
+            JOIN events e ON e.event_id = event_fts.event_id
+            WHERE event_fts MATCH ? {watched_clause}
+            """,
+            (fts_query,),
+        ).fetchone()
+        return int(row["count"] or 0) if row else 0
+
     def counts(self, *, since_ms: int | None = None) -> dict[str, int]:
         suffix = " WHERE received_at_ms >= ?" if since_ms is not None else ""
         params = (since_ms,) if since_ms is not None else ()

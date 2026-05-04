@@ -186,24 +186,7 @@ class TokenRepository:
         if not token_id:
             return None
         row = self.conn.execute("SELECT * FROM tokens WHERE token_id = ?", (token_id,)).fetchone()
-        if row:
-            return _canonical_token_row(dict(row))
-        parsed = _parse_token_id(token_id)
-        if parsed is None:
-            return None
-        chain, address = parsed
-        normalized_address = _normalize_address(address, chain)
-        equivalent = self.conn.execute(
-            """
-            SELECT * FROM tokens
-            WHERE chain = ?
-              AND lower(address) = lower(?)
-            ORDER BY token_id = ? DESC, updated_at_ms DESC
-            LIMIT 1
-            """,
-            (chain, normalized_address, _token_id(chain, normalized_address)),
-        ).fetchone()
-        return _canonical_token_row(dict(equivalent)) if equivalent else None
+        return _canonical_token_row(dict(row)) if row else None
 
     def upsert_ca(
         self,
@@ -272,33 +255,29 @@ class TokenRepository:
     def latest_market_snapshot(self, token_id: str | None) -> dict[str, Any] | None:
         if not token_id:
             return None
-        token_ids = self._equivalent_token_ids(token_id)
-        placeholders = ",".join("?" for _ in token_ids)
         row = self.conn.execute(
-            f"""
+            """
             SELECT * FROM token_market_snapshots
-            WHERE token_id IN ({placeholders})
+            WHERE token_id = ?
             ORDER BY received_at_ms DESC
             LIMIT 1
             """,
-            token_ids,
+            (token_id,),
         ).fetchone()
         return dict(row) if row else None
 
     def market_snapshot_at_or_before(self, token_id: str | None, received_at_ms: int) -> dict[str, Any] | None:
         if not token_id:
             return None
-        token_ids = self._equivalent_token_ids(token_id)
-        placeholders = ",".join("?" for _ in token_ids)
         row = self.conn.execute(
-            f"""
+            """
             SELECT * FROM token_market_snapshots
-            WHERE token_id IN ({placeholders})
+            WHERE token_id = ?
               AND received_at_ms <= ?
             ORDER BY received_at_ms DESC
             LIMIT 1
             """,
-            (*token_ids, received_at_ms),
+            (token_id, received_at_ms),
         ).fetchone()
         return dict(row) if row else None
 
@@ -317,12 +296,9 @@ class TokenRepository:
         normalized = _normalize_symbol(symbol)
         aliases = self.aliases_for_symbol(normalized)
         if len(aliases) == 1:
-            token = self.get_token(aliases[0])
             return TokenIdentity(
-                token_id=aliases[0],
-                identity_status="resolved_alias",
-                chain=token.get("chain") if token else None,
-                address=token.get("address") if token else None,
+                token_id=None,
+                identity_status="symbol_only",
                 symbol=normalized,
                 candidate_token_ids=aliases,
             )
@@ -448,24 +424,6 @@ class TokenRepository:
                 now_ms,
             ),
         )
-
-    def _equivalent_token_ids(self, token_id: str) -> list[str]:
-        parsed = _parse_token_id(token_id)
-        if parsed is None:
-            return [token_id]
-        chain, address = parsed
-        normalized_address = _normalize_address(address, chain)
-        canonical_token_id = _token_id(chain, normalized_address)
-        rows = self.conn.execute(
-            """
-            SELECT token_id FROM tokens
-            WHERE chain = ?
-              AND lower(address) = lower(?)
-            """,
-            (chain, normalized_address),
-        ).fetchall()
-        return sorted({token_id, canonical_token_id, *(str(row["token_id"]) for row in rows)})
-
 
 def _normalize_symbol(symbol: str) -> str:
     text = symbol.strip().lstrip("$")

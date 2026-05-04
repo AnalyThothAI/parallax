@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from ..pipeline.entity_extractor import EVM_QUERY_CHAINS
@@ -155,6 +156,150 @@ class SignalRepository:
             self.conn.commit()
         return inserted
 
+    def token_mentions_for_event(self, event_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM event_token_mentions
+            WHERE event_id = ?
+            ORDER BY received_at_ms, mention_id
+            """,
+            (event_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def symbol_mention_rows(self, *, symbol: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM event_token_mentions
+            WHERE symbol = ?
+              AND token_id IS NULL
+              AND identity_key = ?
+            ORDER BY received_at_ms, mention_id
+            """,
+            (_normalize_symbol(symbol), f"symbol:{_normalize_symbol(symbol)}"),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def attribution_rebuild_rows(
+        self,
+        *,
+        symbol: str | None = None,
+        direct_only: bool = False,
+        symbol_only: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses = []
+        params: list[Any] = []
+        if symbol:
+            clauses.append("symbol = ?")
+            params.append(_normalize_symbol(symbol))
+        if direct_only:
+            clauses.append("token_id IS NOT NULL")
+        if symbol_only:
+            clauses.append("token_id IS NULL")
+            if symbol:
+                clauses.append("identity_key = ?")
+                params.append(f"symbol:{_normalize_symbol(symbol)}")
+            else:
+                clauses.append("identity_key LIKE 'symbol:%'")
+        limit_clause = ""
+        if limit is not None:
+            limit_clause = "LIMIT ?"
+            params.append(max(0, int(limit)))
+        where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM event_token_mentions
+            {where_clause}
+            ORDER BY received_at_ms, mention_id
+            {limit_clause}
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def replace_token_attributions(
+        self,
+        *,
+        mention_ids: list[str],
+        attributions: list[Any],
+        commit: bool = True,
+    ) -> int:
+        if not mention_ids:
+            return 0
+        placeholders = ",".join("?" for _ in mention_ids)
+        self.conn.execute(
+            f"DELETE FROM event_token_attributions WHERE mention_id IN ({placeholders})",
+            mention_ids,
+        )
+        now_ms = _now_ms()
+        inserted = 0
+        for attribution in attributions:
+            payload = _attribution_payload(attribution, now_ms=now_ms)
+            self.conn.execute(
+                """
+                INSERT INTO event_token_attributions(
+                  attribution_id, mention_id, event_id, mention_identity_key, identity_key, token_id,
+                  identity_status, chain, address, symbol, source, attribution_status,
+                  attribution_confidence, attribution_weight, attribution_rank, candidate_count,
+                  score_features_json, reasons_json, risks_json, received_at_ms, author_handle,
+                  author_followers, is_watched, created_at_ms
+                )
+                VALUES (
+                  :attribution_id, :mention_id, :event_id, :mention_identity_key, :identity_key, :token_id,
+                  :identity_status, :chain, :address, :symbol, :source, :attribution_status,
+                  :attribution_confidence, :attribution_weight, :attribution_rank, :candidate_count,
+                  :score_features_json, :reasons_json, :risks_json, :received_at_ms, :author_handle,
+                  :author_followers, :is_watched, :created_at_ms
+                )
+                """,
+                payload,
+            )
+            inserted += 1
+        if commit:
+            self.conn.commit()
+        return inserted
+
+    def token_attribution_bounds(self, *, identity_key: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT
+              MIN(received_at_ms) AS first_seen_ms,
+              MAX(received_at_ms) AS latest_seen_ms,
+              MIN(CASE WHEN is_watched = 1 THEN received_at_ms END) AS first_watched_seen_ms
+            FROM event_token_attributions
+            WHERE identity_key = ?
+              AND token_id IS NOT NULL
+              AND attribution_status IN ('direct', 'selected')
+              AND attribution_weight > 0
+            """,
+            (identity_key,),
+        ).fetchone()
+        return dict(row) if row else {"first_seen_ms": None, "latest_seen_ms": None, "first_watched_seen_ms": None}
+
+    def direct_token_mention_count(
+        self,
+        *,
+        token_id: str,
+        since_ms: int,
+        before_ms: int,
+    ) -> int:
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM event_token_attributions
+            WHERE token_id = ?
+              AND received_at_ms >= ?
+              AND received_at_ms < ?
+              AND attribution_status = 'direct'
+            """,
+            (token_id, since_ms, before_ms),
+        ).fetchone()
+        return int(row["count"] or 0) if row else 0
+
     def account_alerts(
         self,
         *,
@@ -188,20 +333,6 @@ class SignalRepository:
             watched_only=watched_only,
             now_ms=now_ms,
         )
-
-    def token_mention_bounds(self, *, identity_key: str) -> dict[str, Any]:
-        row = self.conn.execute(
-            """
-            SELECT
-              MIN(received_at_ms) AS first_seen_ms,
-              MAX(received_at_ms) AS latest_seen_ms,
-              MIN(CASE WHEN is_watched = 1 THEN received_at_ms END) AS first_watched_seen_ms
-            FROM event_token_mentions
-            WHERE identity_key = ?
-            """,
-            (identity_key,),
-        ).fetchone()
-        return dict(row) if row else {"first_seen_ms": None, "latest_seen_ms": None, "first_watched_seen_ms": None}
 
     def token_mentions_by_ca(
         self,
@@ -292,3 +423,23 @@ def _id(*parts: str) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _normalize_symbol(symbol: str) -> str:
+    text = symbol.strip().lstrip("$")
+    return text.upper() if text.isascii() else text
+
+
+def _attribution_payload(attribution: Any, *, now_ms: int) -> dict[str, Any]:
+    if hasattr(attribution, "__dataclass_fields__"):
+        data = asdict(attribution)
+    elif hasattr(attribution, "__dict__"):
+        data = dict(attribution.__dict__)
+    else:
+        data = dict(attribution)
+    data["score_features_json"] = json.dumps(data.pop("score_features", {}), ensure_ascii=False, sort_keys=True)
+    data["reasons_json"] = json.dumps(data.pop("reasons", []), ensure_ascii=False, sort_keys=True)
+    data["risks_json"] = json.dumps(data.pop("risks", []), ensure_ascii=False, sort_keys=True)
+    data["is_watched"] = 1 if data.get("is_watched") else 0
+    data["created_at_ms"] = now_ms
+    return data

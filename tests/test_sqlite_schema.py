@@ -26,6 +26,7 @@ def test_sqlite_schema_bootstraps_core_tables(tmp_path):
     assert "token_market_snapshots" in names
     assert "account_token_alerts" in names
     assert "event_token_mentions" in names
+    assert "event_token_attributions" in names
     assert "token_windows" not in names
     assert "enrichment_jobs" in names
     assert "model_runs" in names
@@ -68,4 +69,4 @@ def test_migrations_are_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version"] for row in rows] == [6]
+    assert [row["version"] for row in rows] == [7]

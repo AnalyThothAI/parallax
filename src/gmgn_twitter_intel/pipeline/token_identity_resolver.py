@@ -61,20 +61,18 @@ class TokenIdentityResolver:
         mentions: list[TokenMention] = []
         for entity in symbol_entities:
             identity = self.tokens.resolve_symbol(entity.normalized_value)
-            if identity.token_id:
-                mentions.append(_mention_from_identity(identity, source=entity.source))
-            else:
-                mentions.append(
-                    TokenMention(
-                        identity_key=f"symbol:{entity.normalized_value}",
-                        token_id=None,
-                        identity_status=identity.identity_status,
-                        chain=None,
-                        address=None,
-                        symbol=entity.normalized_value,
-                        source=entity.source,
-                    )
+            status = "symbol_only" if identity.candidate_token_ids else identity.identity_status
+            mentions.append(
+                TokenMention(
+                    identity_key=f"symbol:{entity.normalized_value}",
+                    token_id=None,
+                    identity_status=status,
+                    chain=None,
+                    address=None,
+                    symbol=entity.normalized_value,
+                    source=entity.source,
                 )
+            )
         return mentions
 
 

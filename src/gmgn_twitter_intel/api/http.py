@@ -108,7 +108,9 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 "ok": results.ok,
                 "data": {
                     "query": results.query,
-                    "result_count": len(results.items),
+                    "total_count": results.total_count,
+                    "returned_count": results.returned_count,
+                    "has_more": results.has_more,
                     "items": results.items,
                 },
                 "error": results.error,

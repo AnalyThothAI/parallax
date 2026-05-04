@@ -1125,7 +1125,18 @@ svg {
 }
 
 .focus-section h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.focus-section h3 span {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
 }
 
 .focus-evidence {

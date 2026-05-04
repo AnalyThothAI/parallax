@@ -56,6 +56,10 @@ def gmgn_token_event(
                 "p": price,
                 "p1": previous_price,
                 "s": "DOG",
+                "liquidity": "250000",
+                "holder_count": 10000,
+                "pool": {"pool_address": "pool-dog"},
+                "stat": {"volume_24h": "750000"},
             },
         }
     )
@@ -85,6 +89,10 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
                     "p": "0.0000000001437884",
                     "p1": "0.00000000015514471",
                     "s": "DOG",
+                    "liquidity": "250000",
+                    "holder_count": 10000,
+                    "pool": {"pool_address": "pool-dog"},
+                    "stat": {"volume_24h": "750000"},
                 },
             }
         )
@@ -133,11 +141,15 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
         "diffusion",
         "fresh",
         "watch",
+        "attribution",
         "signal",
         "evidence_best",
         "evidence",
     }
     assert item["flow"]["mentions"] == 2
+    assert item["flow"]["direct_mentions"] == 1
+    assert item["flow"]["symbol_mentions"] == 1
+    assert item["flow"]["avg_attribution_confidence"] >= 0.70
     assert item["flow"]["watched_mentions"] == 1
     assert item["flow"]["previous_mentions"] == 0
     assert item["flow"]["baseline_status"] == "insufficient_history"
@@ -149,8 +161,9 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
     assert item["diffusion"]["top_author_share"] == 0.5
     assert item["market"]["market_status"] == "fresh"
     assert item["market"]["price"] == 0.0000000001437884
-    assert item["market"]["price_change_window_pct"] == -0.073198177366
-    assert item["market"]["price_change_status"] == "snapshot_previous"
+    assert item["market"]["price_change_window_pct"] is None
+    assert item["market"]["price_change_status"] == "insufficient_history"
+    assert item["attribution"]["selected_symbol_mentions"] == 1
     assert item["signal"]["decision"] == "driver"
     assert "direct_watch" in item["signal"]["reasons"]
     assert item["evidence_best"]["event_id"] == "event-dog-1"
@@ -306,7 +319,7 @@ def test_token_flow_returns_one_current_row_per_token_identity(tmp_path):
     assert items[0]["evidence_best"]["event_id"] == "event-dog-current"
 
 
-def test_token_flow_merges_unique_symbol_mentions_after_token_resolution(tmp_path):
+def test_token_flow_attributes_symbol_only_mentions_into_resolved_candidate(tmp_path):
     conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
     try:
         now_ms = int(time.time() * 1000)
@@ -326,6 +339,10 @@ def test_token_flow_merges_unique_symbol_mentions_after_token_resolution(tmp_pat
                     "p": "1.0",
                     "p1": None,
                     "s": "DOG",
+                    "liquidity": "250000",
+                    "holder_count": 10000,
+                    "pool": {"pool_address": "pool-dog"},
+                    "stat": {"volume_24h": "750000"},
                 },
             }
         )
@@ -349,8 +366,100 @@ def test_token_flow_merges_unique_symbol_mentions_after_token_resolution(tmp_pat
     assert len(items) == 1
     assert items[0]["identity"]["identity_key"] == "token:eth:0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
     assert items[0]["flow"]["mentions"] == 2
+    assert items[0]["flow"]["direct_mentions"] == 1
+    assert items[0]["flow"]["symbol_mentions"] == 1
     assert items[0]["diffusion"]["independent_authors"] == 2
     assert sum(int(author["watched_count"]) for author in items[0]["diffusion"]["top_authors"]) == 1
+
+
+def test_token_flow_excludes_ambiguous_symbol_buckets_from_radar(tmp_path):
+    conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        target_snapshot = parse_gmgn_token_payload(
+            {
+                "tt": "ca",
+                "t": {
+                    "a": "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+                    "c": "sol",
+                    "mc": "45151685.6",
+                    "p": "0.045",
+                    "p1": "0.041",
+                    "s": "TROLL",
+                    "liquidity": "2442798.17",
+                    "holder_count": 51064,
+                    "pool": {"pool_address": "pool-target"},
+                    "stat": {"volume_24h": "5000000"},
+                },
+            }
+        )
+        other_snapshot = parse_gmgn_token_payload(
+            {
+                "tt": "ca",
+                "t": {
+                    "a": "DkVsvbzz39yx8hawbxfWubJKpZ4cdc4SPtPf5TZQpump",
+                    "c": "sol",
+                    "mc": "12000",
+                    "p": "0.001",
+                    "p1": "0.001",
+                    "s": "TROLL",
+                    "liquidity": "800",
+                    "holder_count": 45,
+                    "pool": {"pool_address": "pool-weak"},
+                    "stat": {"volume_24h": "1000"},
+                },
+            }
+        )
+        for event_id, snapshot, offset, handle in [
+            ("event-troll-target-1", target_snapshot, 1_000, "voicea"),
+            ("event-troll-target-2", target_snapshot, 2_000, "voiceb"),
+            ("event-troll-other", other_snapshot, 3_000, "voicec"),
+        ]:
+            event = replace(
+                make_event(
+                    event_id,
+                    author_handle=handle,
+                    text="$TROLL structured token evidence",
+                    received_at_ms=base_ms + offset,
+                ),
+                source=Source(
+                    provider="gmgn",
+                    transport="direct_ws",
+                    coverage="public_stream",
+                    channel="twitter_monitor_token",
+                ),
+                token_snapshot=snapshot,
+            )
+            ingest.ingest_event(event, is_watched=False)
+
+        for index in range(8):
+            event = make_event(
+                f"event-troll-symbol-{index}",
+                author_handle=f"symbolvoice{index}",
+                text="$TROLL symbol-only chatter",
+                received_at_ms=base_ms + 10_000 + index,
+            )
+            ingest.ingest_event(event, is_watched=False)
+
+        items = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="1h",
+            limit=10,
+            now_ms=base_ms + 60_000,
+        )
+    finally:
+        conn.close()
+
+    assert {item["identity"]["identity_status"] for item in items} == {"resolved_ca"}
+    assert {item["identity"]["address"] for item in items} == {
+        "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+        "DkVsvbzz39yx8hawbxfWubJKpZ4cdc4SPtPf5TZQpump",
+    }
+    target = next(
+        item for item in items if item["identity"]["address"] == "5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2"
+    )
+    assert target["flow"]["mentions"] == 10
+    assert target["flow"]["direct_mentions"] == 2
+    assert target["flow"]["symbol_mentions"] == 8
 
 
 def test_token_flow_price_delta_uses_window_snapshots_not_payload_previous_price(tmp_path):
@@ -405,7 +514,7 @@ def test_token_flow_price_delta_uses_window_snapshots_not_payload_previous_price
     assert item["flow"]["mention_delta"] == 0
 
 
-def test_token_flow_price_delta_falls_back_to_snapshot_previous_price(tmp_path):
+def test_token_flow_price_delta_requires_window_snapshots(tmp_path):
     conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
     try:
         current_ms = int(time.time() * 1000) - 10_000
@@ -438,13 +547,13 @@ def test_token_flow_price_delta_falls_back_to_snapshot_previous_price(tmp_path):
     finally:
         conn.close()
 
-    assert item["market"]["price_at_window_start"] == 1.0
+    assert item["market"]["price_at_window_start"] is None
     assert item["market"]["price_at_window_end"] == 1.2
-    assert item["market"]["price_change_status"] == "snapshot_previous"
-    assert item["market"]["price_change_window_pct"] == 0.2
+    assert item["market"]["price_change_status"] == "insufficient_history"
+    assert item["market"]["price_change_window_pct"] is None
 
 
-def test_token_flow_missing_market_forces_discard_signal(tmp_path):
+def test_token_flow_excludes_symbol_only_mentions_but_keeps_alert_evidence(tmp_path):
     conn, ingest, _, _, signals, tokens = open_runtime(tmp_path)
     try:
         event = make_event(
@@ -454,20 +563,23 @@ def test_token_flow_missing_market_forces_discard_signal(tmp_path):
             received_at_ms=1_700_000_000_000,
         )
         ingest.ingest_event(event, is_watched=True)
-        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+        items = TokenFlowService(signals=signals, tokens=tokens).token_flow(
             window="5m",
             limit=10,
             now_ms=1_700_000_000_000 + 5 * 60_000,
-        )[0]
+        )
+        alerts = signals.account_alerts(
+            window_ms=86_400_000,
+            now_ms=1_700_000_000_000 + 5 * 60_000,
+            limit=10,
+        )
     finally:
         conn.close()
 
-    assert item["identity"]["identity_status"] == "unresolved_symbol"
-    assert item["market"]["market_status"] == "missing"
-    assert item["signal"]["decision"] == "discard"
-    assert "market_missing" in item["signal"]["risks"]
-    assert "unresolved_symbol" in item["signal"]["risks"]
-    assert "symbol_only_no_market_identity" in item["signal"]["risks"]
+    assert items == []
+    assert alerts[0]["event_id"] == "event-symbol-only"
+    assert alerts[0]["entity_key"] == "symbol:UPEG"
+    assert alerts[0]["token_resolution_status"] == "unresolved_symbol"
 
 
 def test_token_flow_penalizes_single_author_concentration(tmp_path):

@@ -1,8 +1,10 @@
 import time
+from dataclasses import replace
 
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
+from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.narrative_token_linker import NarrativeTokenLinker
 from gmgn_twitter_intel.settings import Settings
@@ -42,6 +44,38 @@ def make_event(event_id: str, handle: str = "toly", text: str | None = None) -> 
         bio_change=None,
         matched_handles=[handle],
         raw={"id": event_id},
+    )
+
+
+def make_token_event(
+    event_id: str,
+    *,
+    symbol: str,
+    address: str,
+    handle: str = "toly",
+    text: str | None = None,
+) -> TwitterEvent:
+    snapshot = parse_gmgn_token_payload(
+        {
+            "tt": "ca",
+            "t": {
+                "a": address,
+                "c": "eth",
+                "mc": "60490.341996",
+                "p": "1.0",
+                "s": symbol,
+            },
+        }
+    )
+    return replace(
+        make_event(event_id, handle=handle, text=text or f"${symbol} launch"),
+        source=Source(
+            provider="gmgn",
+            transport="direct_ws",
+            coverage="public_stream",
+            channel="twitter_monitor_token",
+        ),
+        token_snapshot=snapshot,
     )
 
 
@@ -91,22 +125,30 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
 
     assert token_flow.status_code == 200
-    token_item = token_flow.json()["data"]["items"][0]
-    assert token_item["identity"]["identity_key"].startswith("token:evm_unknown:")
-    assert token_item["flow"]["mentions"] == 1
-    assert token_item["signal"]["decision"] == "discard"
-    assert "unresolved_chain_ca" in token_item["signal"]["risks"]
+    assert token_flow.json()["data"]["items"] == []
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
+    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "unresolved_chain_ca"
 
 
 def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        watched_event = make_event("event-watched", text="$PEPE watched")
-        public_event = make_event("event-public", handle="anon", text="$BONK public")
+        watched_event = make_token_event(
+            "event-watched",
+            symbol="PEPE",
+            address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            text="$PEPE watched",
+        )
+        public_event = make_token_event(
+            "event-public",
+            symbol="BONK",
+            address="0x44b28991b167582f18ba0259e0173176ca125505",
+            handle="anon",
+            text="$BONK public",
+        )
         client.app.state.service.ingest.ingest_event(watched_event, is_watched=True)
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
 
@@ -127,7 +169,13 @@ def test_api_token_flow_exposes_seed_linked_watch_status(tmp_path):
 
     with TestClient(app) as client:
         seed_event = make_event("seed-event", text="AI agent narrative is accelerating")
-        public_event = make_event("public-token", handle="anon", text="$GROK AI agent momentum")
+        public_event = make_token_event(
+            "public-token",
+            symbol="GROK",
+            address="0x44b28991b167582f18ba0259e0173176ca125505",
+            handle="anon",
+            text="$GROK AI agent momentum",
+        )
         client.app.state.service.ingest.ingest_event(seed_event, is_watched=True)
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
         seed = client.app.state.service.enrichment.upsert_narrative_seed(

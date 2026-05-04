@@ -11,6 +11,7 @@ import uvicorn
 from .api.app import create_app
 from .logging_setup import setup_logging
 from .pipeline.narrative_token_linker import NarrativeTokenLinker
+from .pipeline.token_attribution import TokenAttributionBuilder
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.narrative_link_service import NarrativeLinkService
 from .retrieval.narrative_service import NarrativeService
@@ -109,6 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rebuild_narrative_links.add_argument("--window", choices=("5m", "1h", "24h"), default="1h")
     rebuild_narrative_links.add_argument("--limit", type=int, default=1000)
+    rebuild_attributions = ops_subcommands.add_parser(
+        "rebuild-attributions",
+        help="rebuild explicit token attributions from existing token mentions",
+    )
+    rebuild_attributions.add_argument("--symbol", default="", help="limit rebuild to one token symbol")
+    rebuild_attributions.add_argument("--limit", type=int, default=0, help="optional max raw mentions per phase")
 
     return parser
 
@@ -217,7 +224,9 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     "ok": results.ok,
                     "data": {
                         "query": results.query,
-                        "result_count": len(results.items),
+                        "total_count": results.total_count,
+                        "returned_count": results.returned_count,
+                        "has_more": results.has_more,
                         "items": results.items,
                     },
                     "error": results.error,
@@ -320,6 +329,46 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "window": args.window,
                         "seeds_scanned": len(seeds),
                         "links_upserted": links_upserted,
+                    },
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "ops" and args.ops_command == "rebuild-attributions":
+            symbol = args.symbol.strip().lstrip("$").upper() or None
+            limit = int(args.limit) if int(args.limit) > 0 else None
+            builder = TokenAttributionBuilder(signals=signals, tokens=tokens)
+            direct_rows = signals.attribution_rebuild_rows(
+                symbol=symbol,
+                direct_only=True,
+                limit=limit,
+            )
+            direct_count = signals.replace_token_attributions(
+                mention_ids=[str(row["mention_id"]) for row in direct_rows],
+                attributions=builder.build_for_rows(direct_rows),
+                commit=False,
+            )
+            symbol_rows = signals.attribution_rebuild_rows(
+                symbol=symbol,
+                symbol_only=True,
+                limit=limit,
+            )
+            symbol_count = signals.replace_token_attributions(
+                mention_ids=[str(row["mention_id"]) for row in symbol_rows],
+                attributions=builder.build_for_rows(symbol_rows),
+                commit=False,
+            )
+            signals.conn.commit()
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "symbol": symbol or "ALL",
+                        "direct_mentions_scanned": len(direct_rows),
+                        "symbol_mentions_scanned": len(symbol_rows),
+                        "direct_attributions_written": direct_count,
+                        "symbol_attributions_written": symbol_count,
                     },
                 },
                 stdout,

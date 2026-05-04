@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -205,6 +205,44 @@ CREATE INDEX IF NOT EXISTS idx_event_token_mentions_address_received
   ON event_token_mentions(lower(address), received_at_ms);
 CREATE INDEX IF NOT EXISTS idx_event_token_mentions_identity_author_received
   ON event_token_mentions(identity_key, author_handle, received_at_ms);
+
+CREATE TABLE IF NOT EXISTS event_token_attributions (
+  attribution_id TEXT PRIMARY KEY,
+  mention_id TEXT NOT NULL REFERENCES event_token_mentions(mention_id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  mention_identity_key TEXT NOT NULL,
+  identity_key TEXT NOT NULL,
+  token_id TEXT,
+  identity_status TEXT NOT NULL,
+  chain TEXT,
+  address TEXT,
+  symbol TEXT NOT NULL,
+  source TEXT NOT NULL,
+  attribution_status TEXT NOT NULL,
+  attribution_confidence REAL NOT NULL,
+  attribution_weight REAL NOT NULL,
+  attribution_rank INTEGER NOT NULL,
+  candidate_count INTEGER NOT NULL,
+  score_features_json TEXT NOT NULL DEFAULT '{}',
+  reasons_json TEXT NOT NULL DEFAULT '[]',
+  risks_json TEXT NOT NULL DEFAULT '[]',
+  received_at_ms INTEGER NOT NULL,
+  author_handle TEXT,
+  author_followers INTEGER,
+  is_watched INTEGER NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ux_event_token_attributions_mention_rank
+  ON event_token_attributions(mention_id, attribution_rank);
+CREATE INDEX IF NOT EXISTS idx_event_token_attributions_token_received
+  ON event_token_attributions(token_id, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_attributions_symbol_received
+  ON event_token_attributions(symbol, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_attributions_status_received
+  ON event_token_attributions(attribution_status, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_token_attributions_identity_author_received
+  ON event_token_attributions(identity_key, author_handle, received_at_ms);
 
 CREATE TABLE IF NOT EXISTS enrichment_jobs (
   job_id TEXT PRIMARY KEY,
@@ -424,7 +462,7 @@ def migrate(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS token_windows")
     conn.execute(
         "INSERT OR IGNORE INTO schema_migrations(version, name, applied_at_ms) VALUES (?, ?, ?)",
-        (SCHEMA_VERSION, "rolling_token_radar", _now_ms()),
+        (SCHEMA_VERSION, "token_attribution_radar", _now_ms()),
     )
     conn.commit()
 

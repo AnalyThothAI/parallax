@@ -62,7 +62,7 @@ def test_token_market_enricher_fetches_once_per_unique_resolved_mention(tmp_path
             received_at_ms=1_700_000_000_000,
             source_channel="gmgn_openapi_token_info",
         )
-        market = tokens.latest_market_snapshot("token:sol:dog")
+        market = tokens.latest_market_snapshot("token:solana:dog")
     finally:
         conn.close()
 

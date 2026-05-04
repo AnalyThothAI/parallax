@@ -3,6 +3,7 @@ import json
 import tempfile
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from threading import RLock
 from unittest.mock import patch
@@ -10,6 +11,7 @@ from unittest.mock import patch
 import yaml
 
 from gmgn_twitter_intel.cli import build_parser, main
+from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.pipeline.llm_enrichment import EnrichmentResult, NarrativeItem, TokenCandidate
@@ -73,7 +75,29 @@ def seed_sqlite(db_path: Path) -> None:
             tokens=tokens,
             write_lock=RLock(),
         )
-        ingest.ingest_event(make_event("event-1"), is_watched=True)
+        snapshot = parse_gmgn_token_payload(
+            {
+                "tt": "ca",
+                "t": {
+                    "a": PEPE,
+                    "c": "eth",
+                    "mc": "60490.341996",
+                    "p": "1.0",
+                    "s": "PEPE",
+                },
+            }
+        )
+        token_event = replace(
+            make_event("event-1"),
+            source=Source(
+                provider="gmgn",
+                transport="direct_ws",
+                coverage="public_stream",
+                channel="twitter_monitor_token",
+            ),
+            token_snapshot=snapshot,
+        )
+        ingest.ingest_event(token_event, is_watched=True)
         job = enrichment.claim_next_job(now_ms=int(time.time() * 1000))
         assert job is not None
         event = evidence.events_by_ids(["event-1"])["event-1"]
@@ -226,7 +250,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
         self.assertGreaterEqual(lines[2]["data"]["items"][0]["watch"]["seed_link_count"], 1)
-        self.assertEqual(lines[2]["data"]["items"][0]["signal"]["decision"], "discard")
+        self.assertEqual(lines[2]["data"]["items"][0]["signal"]["decision"], "watch")
         self.assertEqual(lines[3]["data"]["items"][0]["narrative_label"], "solana_scaling")
         self.assertEqual(
             {item["alert_type"] for item in lines[4]["data"]["items"]},
@@ -275,6 +299,79 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["seeds_scanned"], 1)
         self.assertGreaterEqual(lines[0]["data"]["links_upserted"], 1)
         self.assertEqual(lines[1]["data"]["items"][0]["seed"]["narrative_label"], "solana_scaling")
+
+    def test_ops_rebuild_attributions_materializes_existing_symbol_mentions(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
+            conn = connect_sqlite(db_path, read_only=False)
+            try:
+                migrate(conn)
+                evidence = EvidenceRepository(conn)
+                entities = EntityRepository(conn)
+                signals = SignalRepository(conn)
+                enrichment = EnrichmentRepository(conn)
+                tokens = TokenRepository(conn)
+                ingest = IngestService(
+                    evidence=evidence,
+                    entities=entities,
+                    signals=signals,
+                    enrichment=enrichment,
+                    tokens=tokens,
+                    write_lock=RLock(),
+                )
+                base_ms = int(time.time() * 1000) - 10_000
+                ingest.ingest_event(
+                    make_event("event-dog-symbol", received_at_ms=base_ms, text="$DOG early"),
+                    is_watched=True,
+                )
+                snapshot = parse_gmgn_token_payload(
+                    {
+                        "tt": "ca",
+                        "t": {
+                            "a": PEPE,
+                            "c": "eth",
+                            "mc": "60490.341996",
+                            "p": "1.0",
+                            "s": "DOG",
+                            "liquidity": "250000",
+                            "holder_count": 10000,
+                            "pool": {"pool_address": "pool-dog"},
+                        },
+                    }
+                )
+                ingest.ingest_event(
+                    replace(
+                        make_event("event-dog-token", received_at_ms=base_ms + 1_000, text="$DOG payload"),
+                        source=Source(
+                            provider="gmgn",
+                            transport="direct_ws",
+                            coverage="public_stream",
+                            channel="twitter_monitor_token",
+                        ),
+                        token_snapshot=snapshot,
+                    ),
+                    is_watched=False,
+                )
+                conn.execute("DELETE FROM event_token_attributions")
+                conn.commit()
+            finally:
+                conn.close()
+
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                rebuild_code = main(["ops", "rebuild-attributions", "--symbol", "DOG"], stdout=stdout)
+                flow_code = main(["token-flow", "--window", "24h", "--limit", "5"], stdout=stdout)
+
+        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual([rebuild_code, flow_code], [0, 0])
+        self.assertEqual(lines[0]["data"]["symbol"], "DOG")
+        self.assertEqual(lines[0]["data"]["direct_mentions_scanned"], 1)
+        self.assertEqual(lines[0]["data"]["symbol_mentions_scanned"], 1)
+        self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 2)
+        self.assertEqual(lines[1]["data"]["items"][0]["flow"]["symbol_mentions"], 1)
+
 
 def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

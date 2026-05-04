@@ -83,29 +83,29 @@ describe("App cockpit value flow", () => {
       if (path === "/api/recent") {
         return ok({ scope: options?.params?.scope, events: [], items: [] });
       }
-	      if (path === "/api/token-flow") {
-	        return ok({
-	          window: options?.params?.window,
-	          items: [
+      if (path === "/api/token-flow") {
+        return ok({
+          window: options?.params?.window,
+          items: [
             {
               identity: {
-                identity_key: "symbol:UPEG",
-                identity_status: "unresolved_symbol",
-                token_id: null,
-                chain: null,
-                address: null,
+                identity_key: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+                identity_status: "resolved_ca",
+                token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+                chain: "eth",
+                address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
                 symbol: "UPEG"
               },
               market: {
-                market_status: "missing",
-                price: null,
-                market_cap: null,
-                snapshot_age_ms: null,
+                market_status: "fresh",
+                price: 0.001,
+                market_cap: 60490,
+                snapshot_age_ms: 120_000,
                 snapshot_received_at_ms: null,
                 price_change_window_pct: null,
                 price_at_window_start: null,
                 price_at_window_end: null,
-                price_change_status: "missing_market"
+                price_change_status: "insufficient_history"
               },
               flow: {
                 window: "1h",
@@ -160,21 +160,21 @@ describe("App cockpit value flow", () => {
               fresh: {
                 latest_evidence_age_ms: 290_000,
                 first_seen_age_ms: 300_000,
-                market_snapshot_age_ms: null,
-                is_new_token: true,
+                market_snapshot_age_ms: 120_000,
+                is_new_local_evidence: true,
                 is_first_seen_by_watched: true
               },
               signal: {
-                decision: "discard",
-                score: 25,
+                decision: "watch",
+                score: 55,
                 reasons: ["coverage_public_stream", "watched_evidence", "multi_author_flow"],
-                risks: ["unresolved_symbol", "market_missing"],
+                risks: ["author_concentration_high"],
                 evidence_id: "event-upeg-1"
               },
               evidence_best: {
                 event_id: "event-upeg-1",
-                evidence_type: "cashtag",
-                score: 35,
+                evidence_type: "gmgn_token_payload",
+                score: 80,
                 handle: "traderpow",
                 received_at_ms: 1_777_746_010_000,
                 text: "$UPEG watched account evidence",
@@ -184,8 +184,8 @@ describe("App cockpit value flow", () => {
               evidence: [
                 {
                   event_id: "event-upeg-1",
-                  evidence_type: "cashtag",
-                  score: 35,
+                  evidence_type: "gmgn_token_payload",
+                  score: 80,
                   handle: "traderpow",
                   received_at_ms: 1_777_746_010_000,
                   text: "$UPEG watched account evidence",
@@ -208,6 +208,7 @@ describe("App cockpit value flow", () => {
               author_handle: "traderpow",
               entity_key: "symbol:UPEG",
               normalized_value: "UPEG",
+              token_resolution_status: "unresolved_symbol",
               received_at_ms: 1_777_746_010_000,
               is_first_seen_global: 0,
               is_first_seen_by_author: 1
@@ -335,7 +336,9 @@ describe("App cockpit value flow", () => {
         if (query === "@traderpow") {
           return ok({
             query: { kind: "handle", text: query, scope: "all", handle: "traderpow" },
-            result_count: 2,
+            total_count: 2,
+            returned_count: 2,
+            has_more: false,
             items: [
               {
                 match_type: "handle",
@@ -367,7 +370,9 @@ describe("App cockpit value flow", () => {
         if (/^0x[a-fA-F0-9]{40}$/.test(query)) {
           return ok({
             query: { kind: "ca", text: query, scope: "all", ca: "0x6982508145454Ce325dDbE47a25d4ec3d2311933", chain: "evm_unknown" },
-            result_count: 1,
+            total_count: 1,
+            returned_count: 1,
+            has_more: false,
             items: [
               {
                 match_type: "exact_ca",
@@ -387,7 +392,9 @@ describe("App cockpit value flow", () => {
         }
         return ok({
           query: { kind: "symbol", text: query, scope: "all", symbol: "UPEG" },
-          result_count: 1,
+          total_count: 1,
+          returned_count: 1,
+          has_more: false,
           items: [
             {
               match_type: "exact_symbol",
@@ -424,7 +431,7 @@ describe("App cockpit value flow", () => {
     expect(container.querySelector(".source-cell b")?.textContent).toBe("concentrated");
     expect(container.querySelector(".source-cell small")?.textContent).toBe("1 direct watch · 2 authors");
     expect(container.querySelector(".token-symbol > span")?.textContent).toBe("$UPEG");
-    expect(container.querySelector(".token-symbol small")?.textContent).toBe("unknown · unresolved_symbol");
+    expect(container.querySelector(".token-symbol small")?.textContent).toBe("eth");
     expect(await screen.findByLabelText("narrative link ai_agent_upeg")).toBeInTheDocument();
     expect(await screen.findByText("叙事前沿")).toBeInTheDocument();
     expect(await screen.findByText("ai_agent_grok · seed_term_and_token_mention")).toBeInTheDocument();
@@ -508,12 +515,13 @@ describe("App cockpit value flow", () => {
     expect(tokenPanel).not.toBeNull();
     fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "select token $UPEG" }));
 
-    expect(await screen.findByDisplayValue("$UPEG")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("0x6982508145454Ce325dDbE47a25d4ec3d2311933")).toBeInTheDocument();
     expect(await screen.findByText("焦点证据")).toBeInTheDocument();
-    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market missing.")).toBeInTheDocument();
+    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market fresh.")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     });
+    expect((await screen.findAllByText("1/4")).length).toBeGreaterThan(0);
     expect(await screen.findByText("traderpow x1")).toBeInTheDocument();
   });
 
@@ -522,7 +530,7 @@ describe("App cockpit value flow", () => {
 
     const tokenPanel = (await screen.findByText("Token Flow")).closest("section");
     fireEvent.click(await within(tokenPanel!).findByRole("button", { name: "select token $UPEG" }));
-    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market missing.")).toBeInTheDocument();
+    expect(await screen.findByText("4 mentions (+3), diffusion concentrated across 2 authors, 1 direct watch, market fresh.")).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本"), { target: { value: "@traderpow" } });
     fireEvent.click(screen.getByRole("button", { name: "检索" }));
@@ -533,7 +541,8 @@ describe("App cockpit value flow", () => {
     await waitFor(() => {
       expect(within(focusPanel!).getAllByText("@traderpow").length).toBeGreaterThan(0);
     });
-    expect(await within(focusPanel!).findByText("2 evidence hits for @traderpow. Exact CA, symbol, and handle matches are ranked before FTS text.")).toBeInTheDocument();
+    expect(await screen.findByText("2/2 shown")).toBeInTheDocument();
+    expect(await within(focusPanel!).findByText("2/2 evidence shown for @traderpow. Exact CA, symbol, and handle matches are ranked before FTS text.")).toBeInTheDocument();
     expect(within(focusPanel!).queryByText("$UPEG")).not.toBeInTheDocument();
   });
 });

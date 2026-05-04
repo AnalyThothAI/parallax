@@ -167,7 +167,7 @@ export function App() {
   const searchItems = currentSearchData?.items ?? [];
   const frontierItems = frontierQuery.data?.data.items ?? [];
   const frontierByToken = useMemo(() => buildFrontierByToken(frontierItems), [frontierItems]);
-  const focus = buildEvidenceFocus(selectedSignal, searchItems, submittedSearch);
+  const focus = buildEvidenceFocus(selectedSignal, searchItems, submittedSearch, currentSearchData);
   const selectedToken = selectedSignal?.kind === "token" ? selectedSignal.item : null;
   const selectedTokenKey = selectedToken ? tokenDecisionKey(selectedToken) : null;
   const selectedDecision = selectedToken ? decisionForToken(selectedToken, decisions) : null;
@@ -405,7 +405,7 @@ export function App() {
               </div>
             </CompactPanel>
 
-            <CompactPanel title="检索结果" icon={<Search />} action={`${currentSearchData?.result_count ?? 0} hits`}>
+            <CompactPanel title="检索结果" icon={<Search />} action={searchResultAction(searchItems, currentSearchData)}>
               <div className="compact-list">
                 {searchItems.slice(0, 8).map((item) => (
                   <SearchRow key={`${item.match_type}:${item.event.event_id}`} item={item} selected={isSelectedSearch(selectedSignal, item)} onSelect={selectSearchItem} />
@@ -749,7 +749,9 @@ function EvidenceFocus({
         ))}
       </div>
       <div className="focus-section">
-        <h3>证据</h3>
+        <h3>
+          证据 <span>{focus.evidence.length}/{compactNumber(Math.max(focus.evidenceTotal, focus.evidence.length))}</span>
+        </h3>
         {focus.evidence.length ? (
           focus.evidence.map((item) => (
             <article className="focus-evidence" key={item.id}>
@@ -807,15 +809,18 @@ type EvidenceFocusModel = {
   badge: string;
   facts: Array<{ label: string; value: string }>;
   evidence: Array<{ id: string; handle: string; match: string; receivedAt?: number | null; text: string; url?: string | null; score?: number }>;
+  evidenceTotal: number;
   authors: string[];
   risks: string[];
 };
 
-function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], submittedSearch: string): EvidenceFocusModel {
+function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], submittedSearch: string, searchData: SearchData | null): EvidenceFocusModel {
   if (signal?.kind === "token") {
     const item = signal.item;
     const baselineSignal = item.flow.z_score === null || item.flow.z_score === undefined ? item.flow.baseline_status : `z ${compactNumber(item.flow.z_score)}`;
     const marketSignal = item.market.market_status === "missing" ? "missing" : `${formatUsdCompact(item.market.market_cap)} ${marketDelta(item)}`;
+    const evidence = evidenceFromToken(item, searchItems);
+    const evidenceTotal = Math.max(item.flow.mentions, item.evidence.length, evidence.length);
     return {
       kicker: "token flow",
       title: tokenLabel(item),
@@ -825,6 +830,8 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
       facts: [
         { label: "identity", value: item.identity.identity_status },
         { label: "address", value: shortAddress(item.identity.address ?? item.identity.identity_key) },
+        { label: "local flow", value: `${compactNumber(item.flow.mentions)} ${item.flow.window}` },
+        { label: "shown", value: `${compactNumber(evidence.length)}/${compactNumber(evidenceTotal)}` },
         { label: "mcap", value: formatUsdCompact(item.market.market_cap) },
         { label: "delta", value: marketDelta(item) },
         { label: "signal", value: item.signal.decision },
@@ -838,13 +845,15 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "stream share", value: formatPercentShare(item.flow.stream_dominance) },
         { label: "fresh", value: formatDuration(item.fresh.latest_evidence_age_ms) }
       ],
-      evidence: evidenceFromToken(item, searchItems),
+      evidence,
+      evidenceTotal,
       authors: authorsFromToken(item),
       risks: tokenRisks(item)
     };
   }
   if (signal?.kind === "alert") {
     const item = signal.item;
+    const evidence = evidenceFromSearch(searchItems);
     return {
       kicker: item.alert_type,
       title: `${item.author_handle ?? "unknown"} -> ${alertTokenLabel(item)}`,
@@ -857,13 +866,15 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "entity", value: item.entity_key ?? "-" },
         { label: "event", value: shortId(item.event_id) }
       ],
-      evidence: evidenceFromSearch(searchItems),
+      evidence,
+      evidenceTotal: evidence.length,
       authors: item.author_handle ? [`${item.author_handle} x1`] : [],
       risks: alertRisks(item)
     };
   }
   if (signal?.kind === "event") {
     const payload = signal.item;
+    const evidence = [evidenceFromEvent(payload.event, "selected_event")];
     return {
       kicker: payload.event.action ?? "event",
       title: `@${eventHandle(payload.event)}`,
@@ -876,13 +887,15 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "coverage", value: payload.event.source?.coverage ?? "public_stream" },
         { label: "event", value: shortId(payload.event.event_id) }
       ],
-      evidence: [evidenceFromEvent(payload.event, "selected_event")],
+      evidence,
+      evidenceTotal: evidence.length,
       authors: [`${eventHandle(payload.event)} x1`],
       risks: payload.event.is_watched ? ["watched source"] : ["public stream"]
     };
   }
   if (signal?.kind === "search") {
     const item = signal.item;
+    const evidence = [evidenceFromEvent(item.event, item.match_type)];
     return {
       kicker: item.match_type,
       title: `@${eventHandle(item.event)}`,
@@ -895,29 +908,35 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
         { label: "watched", value: yesNo(item.event.is_watched) },
         { label: "event", value: shortId(item.event.event_id) }
       ],
-      evidence: [evidenceFromEvent(item.event, item.match_type)],
+      evidence,
+      evidenceTotal: evidence.length,
       authors: [`${eventHandle(item.event)} x1`],
       risks: item.match_type === "exact_symbol" ? ["symbol-only until CA confirms"] : []
     };
   }
   if (signal?.kind === "query") {
+    const evidence = evidenceFromSearch(searchItems);
+    const total = searchTotal(searchData, searchItems);
     return {
       kicker: "search query",
       title: signal.query,
-      summary: `${compactNumber(searchItems.length)} evidence hits for ${signal.query}. Exact CA, symbol, and handle matches are ranked before FTS text.`,
-      score: compactNumber(searchItems.length),
+      summary: `${compactNumber(searchItems.length)}/${compactNumber(total)} evidence shown for ${signal.query}. Exact CA, symbol, and handle matches are ranked before FTS text.`,
+      score: compactNumber(total),
       badge: "search",
       facts: [
         { label: "query", value: signal.query },
-        { label: "results", value: compactNumber(searchItems.length) },
+        { label: "results", value: `${compactNumber(searchItems.length)}/${compactNumber(total)}` },
         { label: "coverage", value: "public_stream" },
         { label: "mode", value: "evidence" }
       ],
-      evidence: evidenceFromSearch(searchItems),
+      evidence,
+      evidenceTotal: total,
       authors: authorsFromSearch(searchItems),
       risks: searchRisks(signal.query, searchItems)
     };
   }
+  const evidence = evidenceFromSearch(searchItems);
+  const total = searchTotal(searchData, searchItems);
   return {
     kicker: "search",
     title: submittedSearch || "No signal selected",
@@ -926,11 +945,12 @@ function buildEvidenceFocus(signal: SelectedSignal, searchItems: SearchItem[], s
     badge: "focus",
     facts: [
       { label: "query", value: submittedSearch || "-" },
-      { label: "results", value: compactNumber(searchItems.length) },
+      { label: "results", value: `${compactNumber(searchItems.length)}/${compactNumber(total)}` },
       { label: "coverage", value: "public_stream" },
       { label: "mode", value: "evidence" }
     ],
-    evidence: evidenceFromSearch(searchItems),
+    evidence,
+    evidenceTotal: total,
     authors: [],
     risks: []
   };
@@ -1143,8 +1163,17 @@ function shortAddress(value?: string | null): string {
 }
 
 function tokenIdentityMeta(item: TokenFlowItem): string {
-  const chain = item.identity.chain ?? "unknown";
-  return item.identity.identity_status === "resolved_ca" ? chain : `${chain} · ${item.identity.identity_status}`;
+  return item.identity.chain ?? "unknown chain";
+}
+
+function searchResultAction(items: SearchItem[], data: SearchData | null): string {
+  const total = searchTotal(data, items);
+  const shown = Math.min(items.length, 8);
+  return total ? `${compactNumber(shown)}/${compactNumber(total)} shown` : "0 shown";
+}
+
+function searchTotal(data: SearchData | null, items: SearchItem[]): number {
+  return data?.total_count ?? items.length;
 }
 
 function flowDeltaLabel(item: TokenFlowItem): string {

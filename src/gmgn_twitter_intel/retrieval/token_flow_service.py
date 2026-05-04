@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -25,9 +26,12 @@ class TokenFlowService:
         scope: str = "all",
         now_ms: int | None = None,
     ) -> list[dict[str, Any]]:
+        requested_limit = max(0, int(limit))
+        if requested_limit == 0:
+            return []
         rows = RollingTokenFlow(self.signals.conn).token_flow(
             window=window,
-            limit=limit,
+            limit=requested_limit,
             watched_only=scope == "matched",
             now_ms=now_ms,
         )
@@ -41,6 +45,7 @@ class TokenFlowService:
         diffusion = self._diffusion_block(row)
         fresh = self._fresh_block(row, market=market)
         watch = self._watch_block(row)
+        attribution = self._attribution_block(row)
         evidence = self._evidence_items(row, diffusion=diffusion, market=market)
         evidence_best = evidence[0] if evidence else None
         signal = signal_block(
@@ -59,6 +64,7 @@ class TokenFlowService:
             "diffusion": diffusion,
             "fresh": fresh,
             "watch": watch,
+            "attribution": attribution,
             "signal": signal,
             "evidence_best": evidence_best,
             "evidence": evidence,
@@ -88,6 +94,10 @@ class TokenFlowService:
                 "market_status": "missing",
                 "price": None,
                 "market_cap": None,
+                "liquidity": None,
+                "pool_status": "missing",
+                "holder_count": None,
+                "volume_24h": None,
                 "snapshot_age_ms": None,
                 "snapshot_received_at_ms": None,
                 "price_change_window_pct": None,
@@ -101,6 +111,7 @@ class TokenFlowService:
         market_status = "fresh" if age_ms <= FRESH_MARKET_MS else "stale"
         start_price = _float_or_none(start_snapshot.get("price")) if start_snapshot else None
         end_price = _float_or_none(end_snapshot.get("price"))
+        raw = _raw_snapshot(end_snapshot)
         price_change_status = "insufficient_history"
         price_change = None
         if (
@@ -111,16 +122,16 @@ class TokenFlowService:
         ):
             price_change = round((end_price - start_price) / start_price, 12)
             price_change_status = "ready"
-        else:
-            previous_price = _float_or_none(end_snapshot.get("previous_price"))
-            if previous_price and end_price is not None:
-                start_price = previous_price
-                price_change = round((end_price - previous_price) / previous_price, 12)
-                price_change_status = "snapshot_previous"
+        liquidity = _first_number(raw, ["liquidity", "liquidity_usd", "pool.liquidity", "pool.liquidity_usd"])
+        pool_address = _first_string(raw, ["pool.pool_address", "pool.address", "pool"])
         return {
             "market_status": market_status,
             "price": end_price,
             "market_cap": end_snapshot.get("market_cap"),
+            "liquidity": liquidity,
+            "pool_status": "ready" if pool_address else "missing",
+            "holder_count": _first_number(raw, ["holder_count", "holders", "holder"]),
+            "volume_24h": _first_number(raw, ["volume_24h", "volume", "stat.volume_24h", "stat.volume"]),
             "snapshot_age_ms": age_ms,
             "snapshot_received_at_ms": end_snapshot.get("received_at_ms"),
             "price_change_window_pct": price_change,
@@ -139,6 +150,10 @@ class TokenFlowService:
             "window_start_ms": row["window_start_ms"],
             "window_end_ms": row["window_end_ms"],
             "mentions": mentions,
+            "direct_mentions": int(row.get("direct_mention_count") or 0),
+            "symbol_mentions": int(row.get("symbol_mention_count") or 0),
+            "weighted_mentions": float(row.get("weighted_mention_count") or mentions),
+            "avg_attribution_confidence": float(row.get("avg_attribution_confidence") or 0.0),
             "watched_mentions": int(row["watched_mention_count"]),
             "previous_mentions": previous_mentions,
             "mention_delta": mention_delta,
@@ -171,7 +186,7 @@ class TokenFlowService:
             "first_watched_seen_ms": row.get("first_watched_seen_ms"),
         }
         if bounds["first_seen_ms"] is None and bounds["latest_seen_ms"] is None:
-            bounds = self.signals.token_mention_bounds(identity_key=str(row["identity_key"]))
+            bounds = self.signals.token_attribution_bounds(identity_key=str(row["identity_key"]))
         first_seen_ms = _int_or_none(bounds.get("first_seen_ms"))
         latest_seen_ms = _int_or_none(bounds.get("latest_seen_ms"))
         first_watched_seen_ms = _int_or_none(bounds.get("first_watched_seen_ms"))
@@ -179,8 +194,20 @@ class TokenFlowService:
             "latest_evidence_age_ms": _age_ms(reference_ms, latest_seen_ms),
             "first_seen_age_ms": _age_ms(reference_ms, first_seen_ms),
             "market_snapshot_age_ms": market["snapshot_age_ms"],
-            "is_new_token": _in_window(first_seen_ms, window_start_ms, window_end_ms),
+            "is_new_local_evidence": _in_window(first_seen_ms, window_start_ms, window_end_ms),
             "is_first_seen_by_watched": _in_window(first_watched_seen_ms, window_start_ms, window_end_ms),
+        }
+
+    def _attribution_block(self, row: dict[str, Any]) -> dict[str, Any]:
+        reasons = [str(item) for item in row.get("attribution_reasons", []) if item]
+        risks = [str(item) for item in row.get("attribution_risks", []) if item]
+        return {
+            "status": "selected" if int(row.get("symbol_mention_count") or 0) else "direct",
+            "avg_confidence": float(row.get("avg_attribution_confidence") or 0.0),
+            "selected_symbol_mentions": int(row.get("selected_symbol_mentions") or 0),
+            "candidate_count": int(row.get("candidate_count") or 0),
+            "reasons": reasons,
+            "risks": risks,
         }
 
     def _watch_block(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -261,6 +288,9 @@ class TokenFlowService:
                     "received_at_ms": event.get("received_at_ms"),
                     "url": event.get("canonical_url"),
                     "reasons": reasons,
+                    "attribution_status": event.get("attribution_status"),
+                    "attribution_confidence": event.get("attribution_confidence"),
+                    "attribution_weight": event.get("attribution_weight"),
                 }
             )
         items.sort(
@@ -293,7 +323,10 @@ def _age_ms(reference_ms: int, value: int | None) -> int | None:
 def _float_or_none(value: Any) -> float | None:
     if value is None:
         return None
-    return float(value)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _int_or_none(value: Any) -> int | None:
@@ -304,6 +337,48 @@ def _int_or_none(value: Any) -> int | None:
 
 def _in_window(value: int | None, start_ms: int, end_ms: int) -> bool:
     return value is not None and start_ms <= value < end_ms
+
+
+def _raw_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    if not snapshot:
+        return {}
+    raw_json = snapshot.get("raw_json")
+    if not isinstance(raw_json, str):
+        return {}
+    try:
+        raw = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _first_number(raw: dict[str, Any], paths: list[str]) -> float | None:
+    for path in paths:
+        number = _float_or_none(_path_value(raw, path))
+        if number is not None:
+            return number
+    return None
+
+
+def _first_string(raw: dict[str, Any], paths: list[str]) -> str | None:
+    for path in paths:
+        value = _path_value(raw, path)
+        if isinstance(value, dict):
+            continue
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
+
+def _path_value(raw: dict[str, Any], path: str) -> Any:
+    current: Any = raw
+    for part in path.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
 
 
 def _now_ms() -> int:

@@ -1,3 +1,7 @@
+from dataclasses import replace
+
+from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.models import Source
 from gmgn_twitter_intel.pipeline.entity_extractor import extract_entities
 from gmgn_twitter_intel.pipeline.signal_builder import SignalBuilder
 from gmgn_twitter_intel.pipeline.token_identity_resolver import TokenIdentityResolver
@@ -16,7 +20,7 @@ def seed_event(tmp_path):
     entities = extract_entities(event.content.text)
     entity_repo.insert_event_entities(event, entities, is_watched=True)
     token_mentions = TokenIdentityResolver(token_repo).resolve_event_mentions(event, entities, commit=True)
-    SignalBuilder(signal_repo).build_for_event(event, token_mentions, is_watched=True)
+    SignalBuilder(signal_repo, token_repo).build_for_event(event, token_mentions, is_watched=True)
     return conn, evidence, entity_repo, signal_repo, token_repo
 
 
@@ -51,12 +55,13 @@ def test_search_service_ca_does_not_fall_back_to_same_symbol_other_ca(tmp_path):
             evidence.insert_event(event, is_watched=True)
             entities = extract_entities(event.content.text)
             entity_repo.insert_event_entities(event, entities, is_watched=True)
-            token_mentions = TokenIdentityResolver(TokenRepository(conn)).resolve_event_mentions(
+            token_repo = TokenRepository(conn)
+            token_mentions = TokenIdentityResolver(token_repo).resolve_event_mentions(
                 event,
                 entities,
                 commit=True,
             )
-            SignalBuilder(signal_repo).build_for_event(event, token_mentions, is_watched=True)
+            SignalBuilder(signal_repo, token_repo).build_for_event(event, token_mentions, is_watched=True)
 
         by_ca = SearchService(evidence=evidence, entities=entity_repo, signals=signal_repo).search(target_ca, limit=10)
     finally:
@@ -66,7 +71,77 @@ def test_search_service_ca_does_not_fall_back_to_same_symbol_other_ca(tmp_path):
     assert {item["match_type"] for item in by_ca.items} == {"exact_ca"}
 
 
-def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
+def test_search_service_exact_symbol_respects_limit_after_combining_sources(tmp_path):
+    conn, evidence, entity_repo, signal_repo, _ = open_repositories(tmp_path)
+    try:
+        for index in range(3):
+            event = make_event(
+                f"event-dog-symbol-{index}",
+                text=f"$DOG text-only evidence {index}",
+                received_at_ms=1_700_000_000_000 + index,
+            )
+            evidence.insert_event(event, is_watched=True)
+            entities = extract_entities(event.content.text)
+            entity_repo.insert_event_entities(event, entities, is_watched=True)
+            token_repo = TokenRepository(conn)
+            token_mentions = TokenIdentityResolver(token_repo).resolve_event_mentions(
+                event,
+                entities,
+                commit=True,
+            )
+            SignalBuilder(signal_repo, token_repo).build_for_event(event, token_mentions, is_watched=True)
+
+        snapshot = parse_gmgn_token_payload(
+            {
+                "tt": "ca",
+                "t": {
+                    "a": "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+                    "c": "eth",
+                    "mc": "60490.341996",
+                    "p": "1.0",
+                    "s": "DOG",
+                },
+            }
+        )
+        for index in range(3):
+            event = replace(
+                make_event(
+                    f"event-dog-token-{index}",
+                    text=f"structured token evidence {index}",
+                    received_at_ms=1_700_000_001_000 + index,
+                ),
+                source=Source(
+                    provider="gmgn",
+                    transport="direct_ws",
+                    coverage="public_stream",
+                    channel="twitter_monitor_token",
+                ),
+                token_snapshot=snapshot,
+            )
+            evidence.insert_event(event, is_watched=True)
+            entities = extract_entities(event.content.text)
+            entity_repo.insert_event_entities(event, entities, is_watched=True)
+            token_repo = TokenRepository(conn)
+            token_mentions = TokenIdentityResolver(token_repo).resolve_event_mentions(
+                event,
+                entities,
+                commit=True,
+            )
+            SignalBuilder(signal_repo, token_repo).build_for_event(event, token_mentions, is_watched=True)
+
+        results = SearchService(evidence=evidence, entities=entity_repo, signals=signal_repo).search("$DOG", limit=3)
+    finally:
+        conn.close()
+
+    assert len(results.items) == 3
+    assert [item["event"]["event_id"] for item in results.items] == [
+        "event-dog-token-2",
+        "event-dog-token-1",
+        "event-dog-token-0",
+    ]
+
+
+def test_unknown_chain_ca_is_alert_evidence_but_not_token_flow(tmp_path):
     conn, _, _, signal_repo, token_repo = seed_event(tmp_path)
     try:
         latest_ms = conn.execute("SELECT MAX(received_at_ms) AS latest_ms FROM event_token_mentions").fetchone()[
@@ -81,7 +156,7 @@ def test_token_flow_and_account_alert_services_return_trader_views(tmp_path):
     finally:
         conn.close()
 
-    assert token_flow[0]["flow"]["mentions"] == 1
-    assert token_flow[0]["signal"]["decision"] == "discard"
-    assert token_flow[0]["identity"]["identity_key"].startswith("token:evm_unknown:")
+    assert token_flow == []
     assert {alert["alert_type"] for alert in alerts} == {"account_token"}
+    assert alerts[0]["entity_key"].startswith("token:evm_unknown:")
+    assert alerts[0]["token_resolution_status"] == "unresolved_chain_ca"

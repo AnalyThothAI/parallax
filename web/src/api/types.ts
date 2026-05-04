@@ -102,14 +102,16 @@ export type SearchItem = {
 
 export type SearchData = {
   query: Record<string, unknown>;
-  result_count: number;
+  total_count: number;
+  returned_count: number;
+  has_more: boolean;
   items: SearchItem[];
 };
 
 export type TokenFlowItem = {
   identity: {
     identity_key: string;
-    identity_status: "resolved_ca" | "resolved_alias" | "unresolved_symbol" | "ambiguous_symbol" | string;
+    identity_status: "resolved_ca";
     token_id?: string | null;
     chain?: string | null;
     address?: string | null;
@@ -119,6 +121,10 @@ export type TokenFlowItem = {
     market_status: "fresh" | "stale" | "missing" | string;
     price?: number | null;
     market_cap?: number | null;
+    liquidity?: number | null;
+    pool_status?: "ready" | "missing" | string;
+    holder_count?: number | null;
+    volume_24h?: number | null;
     snapshot_age_ms?: number | null;
     snapshot_received_at_ms?: number | null;
     price_change_window_pct?: number | null;
@@ -131,6 +137,10 @@ export type TokenFlowItem = {
     window_start_ms?: number | null;
     window_end_ms?: number | null;
     mentions: number;
+    direct_mentions?: number;
+    symbol_mentions?: number;
+    weighted_mentions?: number;
+    avg_attribution_confidence?: number;
     watched_mentions: number;
     previous_mentions: number;
     mention_delta: number;
@@ -177,8 +187,16 @@ export type TokenFlowItem = {
     latest_evidence_age_ms?: number | null;
     first_seen_age_ms?: number | null;
     market_snapshot_age_ms?: number | null;
-    is_new_token: boolean;
+    is_new_local_evidence: boolean;
     is_first_seen_by_watched: boolean;
+  };
+  attribution?: {
+    status: "direct" | "selected" | string;
+    avg_confidence: number;
+    selected_symbol_mentions: number;
+    candidate_count: number;
+    reasons: string[];
+    risks: string[];
   };
   signal: {
     decision: "driver" | "watch" | "discard";
@@ -200,6 +218,9 @@ export type TokenEvidence = {
   received_at_ms?: number | null;
   url?: string | null;
   reasons?: string[];
+  attribution_status?: string | null;
+  attribution_confidence?: number | null;
+  attribution_weight?: number | null;
 };
 
 export type TokenFlowData = {

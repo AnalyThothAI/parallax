@@ -1,9 +1,11 @@
 import asyncio
 import time
+from dataclasses import replace
 from threading import RLock
 
 import pytest
 
+from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.entity_extractor import extract_entities
 from gmgn_twitter_intel.pipeline.signal_builder import SignalBuilder
@@ -51,6 +53,49 @@ def make_event(
     )
 
 
+def make_token_event(
+    event_id: str,
+    *,
+    symbol: str,
+    address: str,
+    received_at_ms: int,
+    author_handle: str = "toly",
+    is_watched: bool = True,
+) -> TwitterEvent:
+    snapshot = parse_gmgn_token_payload(
+        {
+            "tt": "ca",
+            "t": {
+                "a": address,
+                "c": "eth",
+                "mc": "60490.341996",
+                "p": "1.0",
+                "s": symbol,
+                "liquidity": "250000",
+                "holder_count": 10000,
+                "pool": {"pool_address": f"pool-{symbol.lower()}"},
+                "stat": {"volume_24h": "750000"},
+            },
+        }
+    )
+    return replace(
+        make_event(
+            event_id,
+            author_handle=author_handle,
+            text=f"${symbol} rotation",
+            received_at_ms=received_at_ms,
+            is_watched=is_watched,
+        ),
+        source=Source(
+            provider="gmgn",
+            transport="direct_ws",
+            coverage="public_stream",
+            channel="twitter_monitor_token",
+        ),
+        token_snapshot=snapshot,
+    )
+
+
 def open_repositories(tmp_path):
     conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
@@ -62,8 +107,9 @@ def open_repositories(tmp_path):
 
 
 def build_token_signals(conn, event, entities, signal_repo, *, is_watched: bool):
-    token_mentions = TokenIdentityResolver(TokenRepository(conn)).resolve_event_mentions(event, entities, commit=True)
-    return SignalBuilder(signal_repo).build_for_event(event, token_mentions, is_watched=is_watched)
+    token_repo = TokenRepository(conn)
+    token_mentions = TokenIdentityResolver(token_repo).resolve_event_mentions(event, entities, commit=True)
+    return SignalBuilder(signal_repo, token_repo).build_for_event(event, token_mentions, is_watched=is_watched)
 
 
 def test_evidence_repository_writes_event_and_fts_in_one_transaction(tmp_path):
@@ -184,6 +230,10 @@ def test_signal_builder_materializes_account_alerts_and_token_mentions(tmp_path)
         result = build_token_signals(conn, event, entities, signal_repo, is_watched=True)
         alerts = signal_repo.account_alerts(window_ms=86_400_000, now_ms=event.received_at_ms + 1, limit=10)
         token_flow = signal_repo.token_flow(window="5m", limit=10, now_ms=event.received_at_ms + 1)
+        token_mention = conn.execute(
+            "SELECT * FROM event_token_mentions WHERE event_id = ?",
+            (event.event_id,),
+        ).fetchone()
         token_window_table = conn.execute(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'token_windows'"
         ).fetchone()
@@ -193,8 +243,8 @@ def test_signal_builder_materializes_account_alerts_and_token_mentions(tmp_path)
     assert {alert["alert_type"] for alert in result.alerts} == {"account_token"}
     assert {alert["alert_type"] for alert in alerts} == {"account_token"}
     assert token_window_table is None
-    assert token_flow[0]["identity_key"].startswith("token:evm_unknown:")
-    assert token_flow[0]["mention_count"] == 1
+    assert token_mention["identity_key"].startswith("token:evm_unknown:")
+    assert token_flow == []
 
 
 def test_account_token_first_seen_uses_raw_token_mentions(tmp_path):
@@ -239,13 +289,22 @@ def test_token_flow_computes_rolling_mindshare_from_mentions(tmp_path):
     try:
         base_ms = 1_700_000_000_000
         events = [
-            (make_event("event-pepe", text="$PEPE rotation", received_at_ms=base_ms), True),
             (
-                make_event(
+                make_token_event(
+                    "event-pepe",
+                    symbol="PEPE",
+                    address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    received_at_ms=base_ms,
+                ),
+                True,
+            ),
+            (
+                make_token_event(
                     "event-bonk",
-                    author_handle="anon",
-                    text="$BONK rotation",
+                    symbol="BONK",
+                    address="0x44b28991b167582f18ba0259e0173176ca125505",
                     received_at_ms=base_ms + 1_000,
+                    author_handle="anon",
                     is_watched=False,
                 ),
                 False,
@@ -273,13 +332,22 @@ def test_token_flow_can_filter_to_watched_mentions(tmp_path):
     try:
         base_ms = 1_700_000_000_000
         events = [
-            (make_event("event-pepe", text="$PEPE watched", received_at_ms=base_ms), True),
             (
-                make_event(
+                make_token_event(
+                    "event-pepe",
+                    symbol="PEPE",
+                    address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    received_at_ms=base_ms,
+                ),
+                True,
+            ),
+            (
+                make_token_event(
                     "event-bonk",
-                    author_handle="anon",
-                    text="$BONK public",
+                    symbol="BONK",
+                    address="0x44b28991b167582f18ba0259e0173176ca125505",
                     received_at_ms=base_ms + 1_000,
+                    author_handle="anon",
                     is_watched=False,
                 ),
                 False,

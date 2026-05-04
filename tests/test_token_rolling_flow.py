@@ -59,6 +59,10 @@ def token_event(
                 "p": "1.0",
                 "p1": None,
                 "s": "DOG",
+                "liquidity": "250000",
+                "holder_count": 10000,
+                "pool": {"pool_address": "pool-dog"},
+                "stat": {"volume_24h": "750000"},
             },
         }
     )
@@ -103,14 +107,14 @@ def test_token_flow_does_not_scan_unbounded_history_for_mention_bounds(tmp_path,
     conn, ingest, signals, tokens = open_runtime(tmp_path)
     original = RollingTokenFlow._raw_token_mentions
 
-    def guarded_raw_mentions(self, *, start_ms, end_ms, candidates, watched_only):
+    def guarded_raw_mentions(self, *, start_ms, end_ms, token_ids, watched_only):
         if start_ms is None and end_ms is None:
             raise AssertionError("unbounded raw mention scan")
         return original(
             self,
             start_ms=start_ms,
             end_ms=end_ms,
-            candidates=candidates,
+            token_ids=token_ids,
             watched_only=watched_only,
         )
 
@@ -130,85 +134,12 @@ def test_token_flow_does_not_scan_unbounded_history_for_mention_bounds(tmp_path,
     assert items[0]["identity"]["symbol"] == "DOG"
 
 
-def test_token_catalog_candidate_queries_use_indexed_plans(tmp_path):
-    conn, _ingest, _signals, _tokens = open_runtime(tmp_path)
-    try:
-        token_id = "token:eth:0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
-        conn.execute(
-            """
-            INSERT INTO tokens(
-              token_id, chain, address, symbol, identity_status,
-              first_seen_ms, created_at_ms, updated_at_ms
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                token_id,
-                "eth",
-                "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
-                "DOG",
-                "resolved_ca",
-                1,
-                1,
-                1,
-            ),
-        )
-        conn.execute(
-            """
-            INSERT INTO token_aliases(
-              alias_id, symbol, token_id, chain, address, source,
-              confidence, created_at_ms, updated_at_ms
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "alias-dog",
-                "DOG",
-                token_id,
-                "eth",
-                "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
-                "test",
-                1.0,
-                1,
-                1,
-            ),
-        )
-        conn.commit()
-
-        traced: list[str] = []
-        conn.set_trace_callback(lambda sql: traced.append(sql))
-        flow = RollingTokenFlow(conn)
-        candidates = {
-            "identity_keys": set(),
-            "token_ids": {token_id},
-            "symbols": {"DOG"},
-            "address_keys": {"0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"},
-        }
-        assert flow._candidate_alias_rows(candidates)
-        assert flow._candidate_token_rows(candidates, token_ids={token_id})
-        conn.set_trace_callback(None)
-
-        catalog_selects = [
-            sql
-            for sql in traced
-            if sql.startswith("SELECT") and (" FROM tokens" in sql or " FROM token_aliases" in sql)
-        ]
-        assert catalog_selects
-        assert all(" OR " not in sql for sql in catalog_selects)
-        for sql in catalog_selects:
-            plan = " | ".join(row["detail"] for row in conn.execute(f"EXPLAIN QUERY PLAN {sql}").fetchall())
-            assert "SCAN tokens" not in plan
-            assert "SCAN token_aliases" not in plan
-    finally:
-        conn.close()
-
-
-def test_resolved_identity_bounds_use_exact_keys_not_symbol_or_address(tmp_path, monkeypatch):
+def test_resolved_identity_bounds_use_token_ids_only(tmp_path, monkeypatch):
     conn, ingest, signals, tokens = open_runtime(tmp_path)
-    captured_candidates: dict[str, set[str]] = {}
+    captured_token_ids: set[str] = set()
 
-    def guarded_bound_rows(self, *, candidates, watched_only):
-        captured_candidates.update({key: set(values) for key, values in candidates.items()})
+    def guarded_bound_rows(self, *, token_ids, watched_only):
+        captured_token_ids.update(token_ids)
         return []
 
     monkeypatch.setattr(RollingTokenFlow, "_indexed_mention_bound_rows", guarded_bound_rows)
@@ -225,10 +156,7 @@ def test_resolved_identity_bounds_use_exact_keys_not_symbol_or_address(tmp_path,
         conn.close()
 
     assert items[0]["identity"]["token_id"] is not None
-    assert captured_candidates["identity_keys"] == {items[0]["identity"]["identity_key"]}
-    assert captured_candidates["token_ids"] == {items[0]["identity"]["token_id"]}
-    assert captured_candidates["symbols"] == set()
-    assert captured_candidates["address_keys"] == set()
+    assert captured_token_ids == {items[0]["identity"]["token_id"]}
 
 
 def test_baseline_zero_fills_silent_slots_and_scores_new_burst(tmp_path):

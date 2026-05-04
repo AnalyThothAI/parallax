@@ -131,9 +131,6 @@ def _token_link_score(
     if identity_status == "resolved_ca":
         score += 20
         reasons.append("resolved_ca")
-    elif identity_status == "resolved_alias":
-        score += 12
-        reasons.append("resolved_alias")
     else:
         score -= 15
         risks.append(identity_status)
@@ -155,9 +152,6 @@ def _tradeability_score(
     if identity_status == "resolved_ca":
         score += 35
         reasons.append("resolved_ca")
-    elif identity_status == "resolved_alias":
-        score += 20
-        reasons.append("resolved_alias")
     else:
         risks.append(identity_status)
     if market_status == "fresh":

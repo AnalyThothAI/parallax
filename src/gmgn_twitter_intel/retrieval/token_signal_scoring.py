@@ -20,15 +20,24 @@ def signal_block(
     if identity_status == "resolved_ca":
         score += 20
         reasons.append("resolved_ca")
-    elif identity_status == "resolved_alias":
-        score += 12
-        reasons.append("resolved_alias")
-        risks.append("symbol_resolved_alias")
     else:
         score -= 30
         risks.append(identity_status)
-        if identity_status == "unresolved_symbol":
+        if identity_status in {"unresolved_symbol", "symbol_only"}:
             risks.append("symbol_only_no_market_identity")
+
+    attribution_confidence = float(flow.get("avg_attribution_confidence") or 0.0)
+    if int(flow.get("symbol_mentions") or 0) > 0:
+        reasons.append("symbol_mentions_attributed")
+    if attribution_confidence >= 0.85:
+        score += 10
+        reasons.append("high_attribution_confidence")
+    elif attribution_confidence >= 0.70:
+        score += 5
+        reasons.append("acceptable_attribution_confidence")
+    else:
+        score -= 25
+        risks.append("attribution_confidence_low")
 
     watch_status = str(watch.get("status") or "public_only")
     if watch_status == "direct_watch":
@@ -66,6 +75,18 @@ def signal_block(
     else:
         score += 10
         reasons.append("market_cap_present")
+    if market.get("liquidity") is None:
+        score -= 10
+        risks.append("liquidity_missing")
+    else:
+        score += 8
+        reasons.append("liquidity_present")
+    if market.get("pool_status") == "ready":
+        score += 5
+        reasons.append("pool_present")
+    else:
+        score -= 5
+        risks.append("pool_missing")
 
     diffusion_status = str(diffusion.get("status") or "thin")
     if diffusion_status == "healthy":
@@ -81,7 +102,7 @@ def signal_block(
             "thin_author_set": 10,
         }.get(str(risk), 0)
 
-    score = max(0, min(100, score))
+    score = _apply_risk_caps(max(0, min(100, score)), risks)
     return {
         "decision": _decision(
             identity_status=identity_status,
@@ -124,9 +145,6 @@ def evidence_score(
     if identity_status == "resolved_ca":
         score += 20
         reasons.append("resolved_ca")
-    elif identity_status == "resolved_alias":
-        score += 12
-        reasons.append("resolved_alias")
     if int(diffusion.get("independent_authors") or 0) >= 2:
         score += 10
         reasons.append("independent_author")
@@ -145,6 +163,9 @@ def evidence_score(
     if "author_concentration_high" in diffusion.get("risks", []):
         score -= 10
         reasons.append("author_concentration_high")
+    if event.get("attribution_status") == "selected":
+        score += 8
+        reasons.append("selected_symbol_candidate")
     return max(0, min(100, score)), reasons
 
 
@@ -163,7 +184,10 @@ def _decision(
         identity_status == "resolved_ca"
         and market["market_status"] == "fresh"
         and market["market_cap"] is not None
+        and market.get("liquidity") is not None
+        and market.get("pool_status") == "ready"
         and int(flow["mentions"]) >= 2
+        and float(flow.get("avg_attribution_confidence") or 0.0) >= 0.70
         and _rolling_acceleration(flow)
         and str(diffusion.get("status") or "") == "healthy"
         and "author_concentration_high" not in risks
@@ -174,7 +198,7 @@ def _decision(
 
 
 def _discard_required(*, identity_status: str, market: dict[str, Any], diffusion: dict[str, Any]) -> bool:
-    if identity_status in {"unresolved_symbol", "ambiguous_symbol", "unresolved_chain_ca"}:
+    if identity_status in {"unresolved_symbol", "ambiguous_symbol", "unresolved_chain_ca", "symbol_only"}:
         return True
     if market["market_status"] == "missing" or market["market_cap"] is None:
         return True
@@ -200,3 +224,18 @@ def _insufficient_baseline_new_burst(flow: dict[str, Any]) -> bool:
 
 def _dedupe(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
+
+
+def _apply_risk_caps(score: int, risks: list[str]) -> int:
+    caps = []
+    if "repeated_text_cluster" in risks or "shill_author_pattern" in risks:
+        caps.append(45)
+    if "author_concentration_high" in risks:
+        caps.append(65)
+    if "attribution_confidence_low" in risks:
+        caps.append(60)
+    if "market_stale" in risks:
+        caps.append(70)
+    if "no_watched_confirmation" in risks:
+        caps.append(85)
+    return min([score, *caps]) if caps else score

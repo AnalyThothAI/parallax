@@ -42,7 +42,7 @@ class IngestService:
         self.enrichment = enrichment
         self.tokens = tokens
         self.token_market_enricher = token_market_enricher
-        self.signal_builder = SignalBuilder(signals, commit=False)
+        self.signal_builder = SignalBuilder(signals, tokens, commit=False)
         self.token_resolver = TokenIdentityResolver(tokens)
         self._lock = write_lock or RLock()
 

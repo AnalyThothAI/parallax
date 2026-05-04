@@ -5,6 +5,7 @@ from typing import Any
 
 from ..models import TwitterEvent
 from ..storage.signal_repository import SignalRepository
+from .token_attribution import TokenAttributionBuilder
 from .token_identity_resolver import TokenMention
 
 
@@ -14,9 +15,11 @@ class SignalBuildResult:
 
 
 class SignalBuilder:
-    def __init__(self, repository: SignalRepository, *, commit: bool = True):
+    def __init__(self, repository: SignalRepository, tokens, *, commit: bool = True):
         self.repository = repository
+        self.tokens = tokens
         self.commit = commit
+        self.attribution_builder = TokenAttributionBuilder(signals=repository, tokens=tokens)
 
     def build_for_event(
         self,
@@ -36,6 +39,14 @@ class SignalBuilder:
             is_watched=is_watched,
             commit=self.commit,
         )
+        mention_rows = self.repository.token_mentions_for_event(event.event_id)
+        self.repository.replace_token_attributions(
+            mention_ids=[str(row["mention_id"]) for row in mention_rows],
+            attributions=self.attribution_builder.build_for_rows(mention_rows),
+            commit=self.commit,
+        )
+        for symbol in _symbols_to_rebuild(mention_rows):
+            self.attribution_builder.rebuild_symbol(symbol, commit=self.commit)
         for mention in token_mentions:
             seen_global, seen_author = self.repository.token_seen_before(
                 identity_key=mention.identity_key,
@@ -59,3 +70,11 @@ class SignalBuilder:
                 if alert:
                     alerts.append(asdict(alert))
         return SignalBuildResult(alerts=alerts)
+
+
+def _symbols_to_rebuild(mention_rows: list[dict[str, Any]]) -> set[str]:
+    symbols = set()
+    for row in mention_rows:
+        if row.get("token_id") and row.get("symbol"):
+            symbols.add(str(row["symbol"]))
+    return symbols
