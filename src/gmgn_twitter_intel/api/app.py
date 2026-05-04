@@ -49,6 +49,7 @@ class CliRuntime:
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
+    write_lock: RLock
     start_collector: bool
     enrichment_worker: EnrichmentWorker | None = None
     gmgn_client: GmgnOpenApiClient | None = None
@@ -211,6 +212,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         ingest=ingest,
         hub=hub,
         collector=collector,
+        write_lock=write_lock,
         start_collector=start_collector,
         gmgn_client=gmgn_client,
     )
@@ -336,7 +338,8 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
 
 def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
-        return sqlite_health_check(runtime.evidence.conn)
+        with runtime.write_lock:
+            return sqlite_health_check(runtime.evidence.conn)
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 

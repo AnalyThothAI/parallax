@@ -42,7 +42,7 @@ The public configuration surface is intentionally small:
 - `handles`: watched Twitter handles.
 - `ws_token`: public WebSocket API token.
 - `api`: FastAPI bind address and replay settings.
-- `storage.sqlite_path`: SQLite runtime database path, relative to `~/.gmgn-twitter-intel` by default.
+- `storage.sqlite_path`: SQLite runtime database path, `data/twitter_intel.sqlite3` by default.
 - `llm.openai_api_key` / `llm.openai_model`: optional watched-account enrichment worker credentials.
 
 GMGN chains, channels, app versions, and protocol frames are internal collector strategy, not user-facing subscription concepts.
@@ -81,8 +81,8 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - `coverage=public_stream` means events are filtered from GMGN's anonymous public stream; it is not a full Twitter firehose guarantee.
 - Run one ASGI worker unless the collector and API are split into separate processes.
 - There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
-- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` to container `/root/.gmgn-twitter-intel`.
-- Local foreground and Docker use the same host config and SQLite file under `~/.gmgn-twitter-intel`.
+- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` for config, and mounts the live SQLite directory `/root/.gmgn-twitter-intel/data` from the `gmgn-twitter-intel-data` named volume.
+- Local foreground and Docker use the same host config but separate live SQLite files; query Docker data through `/api/*`, `/ws`, or `docker compose exec app gmgn-twitter-intel ...`.
 
 ## MCP
 

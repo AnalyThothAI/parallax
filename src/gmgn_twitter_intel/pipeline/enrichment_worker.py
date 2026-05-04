@@ -55,13 +55,15 @@ class EnrichmentWorker:
         if job is None:
             return False
 
-        event = self.evidence.events_by_ids([str(job["event_id"])]).get(str(job["event_id"]))
+        with self.write_lock:
+            event = self.evidence.events_by_ids([str(job["event_id"])]).get(str(job["event_id"]))
         if event is None:
             with self.write_lock:
                 self.enrichment.fail_job(job=job, error="event_not_found")
             return True
 
-        entities = self.entities.entities_for_event(str(job["event_id"]))
+        with self.write_lock:
+            entities = self.entities.entities_for_event(str(job["event_id"]))
         request = {"event_id": job["event_id"], "job_type": job["job_type"]}
         try:
             result = await self.client.enrich_event(event=event, entities=entities)

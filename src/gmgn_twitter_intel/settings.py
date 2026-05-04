@@ -27,7 +27,7 @@ class ApiConfig(BaseModel):
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    sqlite_path: str = "twitter_intel.sqlite3"
+    sqlite_path: str = "data/twitter_intel.sqlite3"
 
 
 class LlmConfig(BaseModel):
@@ -336,7 +336,7 @@ api:
   replay_limit: 100
 
 storage:
-  sqlite_path: "twitter_intel.sqlite3"
+  sqlite_path: "data/twitter_intel.sqlite3"
 
 llm:
   provider: "openai"

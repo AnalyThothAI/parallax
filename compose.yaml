@@ -9,6 +9,7 @@ services:
       - "8765:8765"
     volumes:
       - ${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel
+      - gmgn-twitter-intel-data:/root/.gmgn-twitter-intel/data
     healthcheck:
       test:
         [
@@ -21,3 +22,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+volumes:
+  gmgn-twitter-intel-data:

@@ -70,19 +70,19 @@ make check
 
 ## 数据目录
 
-本地前台和 Docker Compose 使用同一个宿主目录：
+本地前台和 Docker Compose 共用宿主配置文件，但不共用热 SQLite 文件。Docker 的 live DB 放在 Compose named volume，避免 macOS bind mount 与宿主 `sqlite3`/CLI 同时访问同一个 WAL 数据库。
 
 ```text
 ~/.gmgn-twitter-intel/config.yaml
-~/.gmgn-twitter-intel/twitter_intel.sqlite3
+~/.gmgn-twitter-intel/data/twitter_intel.sqlite3
 ~/.gmgn-twitter-intel/logs/gmgn-twitter-intel.log
 ```
 
-Docker Compose bind mount：
+Docker Compose 挂载：
 
 ```text
-宿主机: ~/.gmgn-twitter-intel
-容器内: /root/.gmgn-twitter-intel
+宿主配置: ~/.gmgn-twitter-intel -> /root/.gmgn-twitter-intel
+Docker DB: gmgn-twitter-intel-data -> /root/.gmgn-twitter-intel/data
 ```
 
 查询 Docker 内数据：
@@ -91,13 +91,13 @@ Docker Compose bind mount：
 docker compose exec app gmgn-twitter-intel recent --limit 20
 ```
 
-在线备份：
+本地前台模式在线备份：
 
 ```bash
-sqlite3 ~/.gmgn-twitter-intel/twitter_intel.sqlite3 ".backup '$HOME/.gmgn-twitter-intel/twitter_intel-YYYYMMDD-HHMMSS.sqlite3'"
+sqlite3 ~/.gmgn-twitter-intel/data/twitter_intel.sqlite3 ".backup '$HOME/.gmgn-twitter-intel/twitter_intel-YYYYMMDD-HHMMSS.sqlite3'"
 ```
 
-不要用 raw `cp -a` 复制正在写入的热数据库。
+不要从宿主机直接读取或复制 Docker named volume 里的热数据库；Docker 模式下通过 `/api/*`、`/ws` 或 `docker compose exec app gmgn-twitter-intel ...` 查询。
 
 ## 配置
 
@@ -115,7 +115,7 @@ api:
   heartbeat_interval: 30
   replay_limit: 100
 storage:
-  sqlite_path: "twitter_intel.sqlite3"
+  sqlite_path: "data/twitter_intel.sqlite3"
 llm:
   provider: "openai"
   api_key:
@@ -125,7 +125,7 @@ llm:
   enrichment_poll_interval: 2
 ```
 
-`storage.sqlite_path` 推荐保持相对路径，这样数据库固定落在 `~/.gmgn-twitter-intel` 下。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
+`storage.sqlite_path` 推荐保持 `data/twitter_intel.sqlite3`。本地前台模式会写入宿主 `~/.gmgn-twitter-intel/data`；Docker 模式会把同一路径映射到 Compose named volume。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
 
 ## 外部调用
 
