@@ -49,6 +49,8 @@ class OpenAIChatEnrichmentClient:
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "gmgn-twitter-intel/0.1",
             },
             method="POST",
         )

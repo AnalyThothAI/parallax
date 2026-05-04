@@ -72,10 +72,12 @@ def build_enrichment_prompt(*, event: dict[str, Any], entities: list[dict[str, A
             "role": "system",
             "content": (
                 "You extract trading-relevant intelligence from one X/Twitter event. "
-                "Return only JSON. Every token candidate and narrative must include an evidence "
+                "Return only JSON with top-level summary, token_candidates, narratives, stance, "
+                "intent, and confidence. Every token candidate and narrative must include an evidence "
                 "substring copied exactly from the provided text. Do not infer hidden tickers. "
                 "Every narrative must include label, description, seed_family, trigger_terms, "
-                "market_interpretation, evidence, and confidence."
+                "market_interpretation, evidence, and confidence. Every trigger term must be an exact "
+                "substring from the provided text."
             ),
         },
         {
