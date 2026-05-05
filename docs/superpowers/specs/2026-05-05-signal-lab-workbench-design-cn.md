@@ -20,7 +20,7 @@ The implementation must remove hidden symbol-based lineage guessing. The UI must
 
 Signal Lab is a second-level workbench inside the existing cockpit shell.
 
-- Primary cockpit: Token Radar and live tape, optimized for real-time opportunity scanning.
+- Primary cockpit: Token Radar and live tape, optimized for real-time opportunity scanning. It must still surface Signal Lab activity as a discovery layer.
 - Signal Lab workbench: lifecycle audit, optimized for explaining why a social signal exists and whether the closed-loop harness learned from it.
 - Detail inspector: right-side tabs for the selected Signal Chain. It is not a separate page.
 
@@ -43,7 +43,15 @@ When `Signal Lab` is active:
 - The right drawer becomes the Signal Chain inspector.
 - Top-level search, window, horizon, and stream scope remain shared cockpit context.
 
-The old bottom-deck Signal Lab compact panel should be removed from the active Token Radar page once the second-level workbench ships. Token Radar may keep a small Signal Lab health/entry summary later, but the lifecycle UI should not live in the bottom deck.
+When `Live` or `Tokens` is active:
+
+- Signal Lab data must not disappear.
+- The live surface shows a compact Signal Lab Pulse sourced from the same `SignalLabChain` read model.
+- The pulse is a discovery and alert surface, not a second lifecycle table.
+- Selecting a pulse row opens the right inspector for that Signal Chain while preserving the current view.
+- A `View in Signal Lab` action switches to the Signal Lab workbench with the same chain selected.
+
+The old bottom-deck Signal Lab compact lifecycle panel should be replaced, not simply deleted. The replacement is a Signal Lab Pulse that shows health, stage counts, and the newest/highest-priority Signal Chains. The full lifecycle table belongs only in the Signal Lab workbench.
 
 ## Screen Layout
 
@@ -147,6 +155,37 @@ Row information budget:
 - One status block.
 
 Everything else belongs in the inspector.
+
+## Live Mode Exposure
+
+Live mode is the default operating mode for many sessions, so Signal Lab must remain visible there.
+
+Add a compact `Signal Lab Pulse` to the Live/Tokens cockpit surface.
+
+Required Pulse fields:
+
+- Signal Lab health state: extractor configured/running
+- stage summary: `extracted`, `seeded`, `frozen`, `settled`, `credited`
+- newest or highest-priority 3-5 Signal Chains
+- each row:
+  - stage badge
+  - source
+  - event type
+  - asset or unresolved marker
+  - score
+  - outcome/credit status
+  - relative time
+
+Pulse behavior:
+
+- Uses `GET /api/signal-lab/chains?limit=5` with the current window, horizon, and scope.
+- Does not reconstruct chains from raw arrays.
+- Does not expose full Trace/Snapshot/Outcome/Credit tabs in the compact area.
+- Clicking a row opens the shared right inspector on `Trace`.
+- `Open Lab` switches active view to `signal_lab` and preserves selected chain.
+- If there are no chains, show `No Signal Chains in this window` plus the current window/scope.
+
+This keeps Live mode useful for discovery while keeping Signal Lab workbench responsible for deep audit.
 
 ## Right Inspector
 
@@ -577,14 +616,16 @@ Phase 1: Frontend shell and backend read model
 - Add `/api/signal-lab/chains`.
 - Add types and tests for `SignalLabChain`.
 - Build Signal Lab second-level view.
+- Replace live compact lifecycle reconstruction with a Signal Lab Pulse fed by the chain endpoint.
 - Keep old raw endpoints available.
 - Stop using old array reconstruction for the workbench.
 
-Phase 2: Remove compact panel
+Phase 2: Remove compact lifecycle panel
 
-- Remove bottom-deck Signal Lab lifecycle panel from Token Radar.
-- Replace it with a compact entry/health strip or remove it entirely.
-- Left rail Signal Lab view becomes the primary entry.
+- Remove the bottom-deck full lifecycle panel from Token Radar.
+- Keep a compact Signal Lab Pulse for discovery in Live/Tokens mode.
+- Left rail Signal Lab view becomes the primary entry for deep audit.
+- Pulse row selection and workbench row selection share the same inspector contract.
 
 Phase 3: Polish and quality
 
@@ -598,6 +639,9 @@ Phase 3: Polish and quality
 Product:
 
 - Signal Lab is accessible as a second-level cockpit view.
+- Live/Tokens mode still shows Signal Lab data through a compact Pulse when chains exist.
+- Clicking a Signal Lab Pulse row opens the shared inspector without requiring a view switch.
+- `Open Lab` from a Pulse row switches to the Signal Lab workbench with the same chain selected.
 - The center screen shows lifecycle stage counts and Signal Chain rows.
 - Rows are readable at desktop and mobile widths without text overlap.
 - Right inspector tabs switch content and render one tab panel at a time.
@@ -615,6 +659,7 @@ Tests:
 - Backend tests cover chain assembly for extracted-only, seeded-only, frozen, settled, and credited chains.
 - Backend tests cover same-symbol decoy snapshots and verify id-based linking.
 - Frontend tests cover Signal Lab view routing.
+- Frontend tests cover Live/Tokens mode Pulse visibility and row selection.
 - Frontend tests cover stage filter behavior.
 - Frontend tests cover inspector tab switching.
 - Frontend tests cover missing snapshot/outcome/credit empty states.
@@ -626,5 +671,5 @@ Tests:
 - Do not build a separate full research console yet.
 - Do not add graph/network visualization in this iteration.
 - Do not add causal claims to credit language.
-- Do not preserve the current bottom compact lifecycle UI as a parallel path.
+- Do not preserve the current bottom compact lifecycle UI as a parallel full-audit path.
 - Do not add compatibility symbol fallback for chain linking.
