@@ -26,6 +26,46 @@ class RecordingPushDeerAdapter:
         self.sent.append({"url": url, "title": title, "body": body})
 
 
+class RecordingLock:
+    def __init__(self):
+        self.depth = 0
+        self.entered = 0
+
+    def __enter__(self):
+        self.depth += 1
+        self.entered += 1
+
+    def __exit__(self, exc_type, exc, tb):
+        self.depth -= 1
+
+
+class LockCheckingRepository:
+    def __init__(self, lock: RecordingLock):
+        self.lock = lock
+        self.completed = False
+
+    def claim_next_delivery(self, *, now_ms=None):
+        assert self.lock.depth > 0
+        return {
+            "delivery_id": "delivery-1",
+            "notification_id": "notification-1",
+            "channel_id": "audit_log",
+            "provider": "log",
+        }
+
+    def notification_by_id(self, notification_id, *, subscriber_key=None):
+        assert self.lock.depth > 0
+        return {"notification_id": notification_id, "title": "Audit notification", "body": "body"}
+
+    def complete_delivery(self, delivery, *, delivered_at_ms=None):
+        assert self.lock.depth > 0
+        self.completed = True
+
+    def fail_delivery(self, delivery, *, error, now_ms=None):
+        assert self.lock.depth > 0
+        raise AssertionError(error)
+
+
 def open_repo(tmp_path):
     conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
@@ -205,3 +245,26 @@ def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
             "body": "Heat 88, quality 76",
         }
     ]
+
+
+def test_delivery_worker_uses_write_lock_for_shared_sqlite_connection():
+    lock = RecordingLock()
+    repo = LockCheckingRepository(lock)
+    worker = NotificationDeliveryWorker(
+        repository=repo,
+        channels={
+            "audit_log": NotificationChannelConfig(
+                enabled=True,
+                provider="log",
+                min_severity="info",
+            )
+        },
+        write_lock=lock,
+        poll_interval=0.2,
+    )
+
+    processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
+
+    assert processed is True
+    assert repo.completed is True
+    assert lock.entered == 1

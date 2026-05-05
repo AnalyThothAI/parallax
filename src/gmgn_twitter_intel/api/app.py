@@ -274,6 +274,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             runtime.notification_delivery_worker = NotificationDeliveryWorker(
                 repository=notifications,
                 channels=settings.notifications.channels,
+                write_lock=write_lock,
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
     if settings.llm_configured:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from threading import RLock
 from typing import Any
 from urllib.parse import urlparse
 
@@ -48,12 +49,14 @@ class NotificationDeliveryWorker:
         channels: dict[str, NotificationChannelConfig],
         adapter: Any | None = None,
         pushdeer_adapter: Any | None = None,
+        write_lock: Any | None = None,
         poll_interval: float = 5.0,
     ):
         self.repository = repository
         self.channels = channels
         self.adapter = adapter or AppriseNotificationAdapter()
         self.pushdeer_adapter = pushdeer_adapter or PushDeerNotificationAdapter()
+        self.write_lock = write_lock or RLock()
         self.poll_interval = max(0.5, float(poll_interval))
         self._stopped = asyncio.Event()
 
@@ -72,32 +75,33 @@ class NotificationDeliveryWorker:
 
     async def process_one(self, *, now_ms: int | None = None) -> bool:
         now = int(now_ms if now_ms is not None else _now_ms())
-        delivery = self.repository.claim_next_delivery(now_ms=now)
-        if delivery is None:
-            return False
-        notification = self.repository.notification_by_id(str(delivery["notification_id"]), subscriber_key=None)
-        if notification is None:
-            self.repository.fail_delivery(delivery, error="notification_not_found", now_ms=now)
-            return True
-        channel_id = str(delivery["channel_id"])
-        channel = self.channels.get(channel_id)
-        if channel is None or not channel.enabled:
-            self.repository.fail_delivery(delivery, error="channel_not_configured", now_ms=now)
-            return True
-        if channel.provider != str(delivery["provider"]):
-            self.repository.fail_delivery(delivery, error="channel_provider_mismatch", now_ms=now)
-            return True
-        if channel.provider == "log":
-            logger.info(
-                "notification delivery log "
-                f"channel={channel_id} notification_id={notification['notification_id']} "
-                f"title={notification['title']}"
-            )
-            self.repository.complete_delivery(delivery, delivered_at_ms=now)
-            return True
-        if not channel.url:
-            self.repository.fail_delivery(delivery, error="channel_url_missing", now_ms=now)
-            return True
+        with self.write_lock:
+            delivery = self.repository.claim_next_delivery(now_ms=now)
+            if delivery is None:
+                return False
+            notification = self.repository.notification_by_id(str(delivery["notification_id"]), subscriber_key=None)
+            if notification is None:
+                self.repository.fail_delivery(delivery, error="notification_not_found", now_ms=now)
+                return True
+            channel_id = str(delivery["channel_id"])
+            channel = self.channels.get(channel_id)
+            if channel is None or not channel.enabled:
+                self.repository.fail_delivery(delivery, error="channel_not_configured", now_ms=now)
+                return True
+            if channel.provider != str(delivery["provider"]):
+                self.repository.fail_delivery(delivery, error="channel_provider_mismatch", now_ms=now)
+                return True
+            if channel.provider == "log":
+                logger.info(
+                    "notification delivery log "
+                    f"channel={channel_id} notification_id={notification['notification_id']} "
+                    f"title={notification['title']}"
+                )
+                self.repository.complete_delivery(delivery, delivered_at_ms=now)
+                return True
+            if not channel.url:
+                self.repository.fail_delivery(delivery, error="channel_url_missing", now_ms=now)
+                return True
         try:
             if channel.provider == "pushdeer":
                 await asyncio.to_thread(
@@ -115,9 +119,11 @@ class NotificationDeliveryWorker:
                     body_format="text",
                 )
         except Exception as exc:
-            self.repository.fail_delivery(delivery, error=str(exc), now_ms=now)
+            with self.write_lock:
+                self.repository.fail_delivery(delivery, error=str(exc), now_ms=now)
             return True
-        self.repository.complete_delivery(delivery, delivered_at_ms=now)
+        with self.write_lock:
+            self.repository.complete_delivery(delivery, delivered_at_ms=now)
         return True
 
 
