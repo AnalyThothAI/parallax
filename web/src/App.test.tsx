@@ -630,7 +630,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     fireEvent.click(row);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
+    const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
+    await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-flow")).toBe(false);
     expect(screen.getByText("selected token")).toBeInTheDocument();
   });
