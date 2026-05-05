@@ -78,7 +78,7 @@ svg {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(160px, 210px) minmax(230px, 0.9fr) minmax(260px, 420px) minmax(210px, auto) 30px;
+  grid-template-columns: minmax(160px, 210px) minmax(230px, 0.9fr) minmax(260px, 420px) minmax(210px, auto) 30px 30px;
   gap: 10px;
   align-items: center;
   min-height: 46px;
@@ -204,6 +204,48 @@ svg {
 .searchbar button:hover {
   color: var(--accent);
   border-color: var(--accent-line);
+}
+
+.notification-bell {
+  position: relative;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  background: var(--panel-2);
+  padding: 0;
+}
+
+.notification-bell:hover,
+.notification-bell.open {
+  color: var(--accent);
+  border-color: var(--accent-line);
+}
+
+.notification-bell span {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  min-width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid rgba(7, 9, 9, 0.9);
+  border-radius: 999px;
+  color: #170f03;
+  background: var(--accent);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.notification-bell.has-high span {
+  color: #fff4f4;
+  background: var(--red);
 }
 
 .status-pills,
@@ -461,7 +503,8 @@ svg {
 }
 
 .watchlist button {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
   min-width: 0;
@@ -472,7 +515,14 @@ svg {
   text-align: left;
 }
 
-.watchlist span {
+.watchlist b {
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-avatar {
   display: grid;
   width: 17px;
   height: 17px;
@@ -482,6 +532,134 @@ svg {
   color: var(--accent);
   font-family: var(--mono);
   font-size: 10px;
+}
+
+.watchlist-notification-dot {
+  display: grid;
+  min-width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff4f4;
+  background: var(--red);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.notification-drawer {
+  position: fixed;
+  top: 54px;
+  right: 10px;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(390px, calc(100vw - 20px));
+  max-height: min(640px, calc(100vh - 70px));
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: rgba(13, 17, 17, 0.98);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.44);
+  overflow: hidden;
+}
+
+.notification-drawer > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  gap: 8px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  padding: 9px;
+}
+
+.notification-drawer > header div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notification-drawer > header span,
+.notification-row-main span {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.notification-drawer > header b {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.notification-list {
+  min-height: 0;
+  overflow: auto;
+}
+
+.notification-empty {
+  padding: 18px 12px;
+  color: var(--faint);
+  font-family: var(--mono);
+  text-align: center;
+}
+
+.notification-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 10px;
+}
+
+.notification-row.unread {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.notification-row.severity-high,
+.notification-row.severity-critical {
+  border-left: 2px solid var(--red);
+}
+
+.notification-row-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.notification-row-main b,
+.notification-row-main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notification-row-main b {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.notification-row-main em {
+  color: var(--muted);
+  font-style: normal;
+}
+
+.notification-row-main small {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.notification-row-actions {
+  display: grid;
+  grid-template-columns: 28px 28px;
+  gap: 5px;
+  align-content: start;
 }
 
 .rail-footer {

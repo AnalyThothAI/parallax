@@ -39,6 +39,9 @@ def test_sqlite_schema_bootstraps_core_tables(tmp_path):
     assert "harness_outcomes" in names
     assert "harness_credits" in names
     assert "harness_weights" in names
+    assert "notifications" in names
+    assert "notification_reads" in names
+    assert "notification_deliveries" in names
     assert "event_enrichments" not in names
     assert "event_token_candidates" not in names
     assert "event_narratives" not in names
@@ -80,7 +83,7 @@ def test_migrations_are_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version"] for row in rows] == [11]
+    assert [row["version"] for row in rows] == [12]
 
 
 def test_migrate_v8_to_v9_adds_market_observations_without_clearing_data(tmp_path):
@@ -179,10 +182,52 @@ def test_migrate_v8_to_v9_adds_market_observations_without_clearing_data(tmp_pat
         conn.close()
 
     assert "token_market_observations" in names
-    assert [row["version"] for row in rows] == [11]
+    assert [row["version"] for row in rows] == [12]
     assert event_count["count"] == 1
     assert attribution_count["count"] == 1
     assert snapshot_count["count"] == 1
+
+
+def test_migrate_v11_to_v12_adds_notifications_without_clearing_data(tmp_path):
+    db_path = tmp_path / "twitter_intel.sqlite3"
+    conn = connect_sqlite(db_path, read_only=False)
+    try:
+        migrate(conn)
+        conn.execute("DROP TABLE notification_deliveries")
+        conn.execute("DROP TABLE notification_reads")
+        conn.execute("DROP TABLE notifications")
+        conn.execute("DELETE FROM schema_migrations")
+        conn.execute(
+            "INSERT INTO schema_migrations(version, name, applied_at_ms) "
+            "VALUES (11, 'closed_loop_harness', 1)"
+        )
+        conn.execute(
+            """
+            INSERT INTO events(
+              event_id, logical_dedup_key, source_provider, source_transport, coverage, channel,
+              action, timestamp_ms, received_at_ms, urls_json, cashtags_json, hashtags_json,
+              mentions_json, media_json, matched_handles_json, raw_json, event_json, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              'event-v11', 'dedup-v11', 'gmgn', 'direct_ws', 'public_stream', 'twitter_monitor_basic',
+              'tweet', 1700000000, 1700000000000, '[]', '[]', '[]', '[]', '[]', '[]', '{}', '{}', 1, 1
+            )
+            """
+        )
+        conn.commit()
+
+        migrate(conn)
+        names = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
+        rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+        event_count = conn.execute("SELECT COUNT(*) AS count FROM events WHERE event_id = 'event-v11'").fetchone()
+    finally:
+        conn.close()
+
+    assert "notifications" in names
+    assert "notification_reads" in names
+    assert "notification_deliveries" in names
+    assert [row["version"] for row in rows] == [12]
+    assert event_count["count"] == 1
 
 
 def test_migrate_resets_legacy_narrative_schema_instead_of_keeping_compat_tables(tmp_path):
@@ -205,4 +250,4 @@ def test_migrate_resets_legacy_narrative_schema_instead_of_keeping_compat_tables
         conn.close()
 
     assert "event_enrichments" not in names
-    assert [row["version"] for row in rows] == [11]
+    assert [row["version"] for row in rows] == [12]

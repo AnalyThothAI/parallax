@@ -118,6 +118,52 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.gmgn_evm_candidate_chains == ("base", "bsc", "eth")
 
 
+def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "enabled": True,
+                "poll_interval_seconds": 3,
+                "token_flow_limit": 40,
+                "rules": {
+                    "hot_quality_token_5m": {
+                        "enabled": True,
+                        "channels": ["in_app"],
+                        "social_heat_min": 82,
+                        "discussion_quality_min": 72,
+                        "suppress_chase_risk": True,
+                        "cooldown_seconds": 600,
+                    },
+                },
+                "channels": {
+                    "pushdeer": {
+                        "enabled": True,
+                        "provider": "apprise",
+                        "url": "pushdeer://pushKey",
+                        "min_severity": "high",
+                    },
+                },
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.notifications.enabled is True
+    assert settings.notifications.poll_interval_seconds == 3
+    assert settings.notifications.token_flow_limit == 40
+    assert settings.notifications.rules["watched_account_activity"].channels == ("in_app",)
+    assert settings.notifications.rules["hot_quality_token_5m"].social_heat_min == 82
+    assert settings.notifications.rules["hot_quality_token_5m"].discussion_quality_min == 72
+    assert settings.notifications.rules["hot_quality_token_5m"].suppress_chase_risk is True
+    assert settings.notifications.rules["hot_quality_token_5m"].cooldown_seconds == 600
+    assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
+
+
 def test_load_settings_accepts_config_without_ws_token(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(tmp_path, {"handles": ["toly"]})

@@ -18,6 +18,17 @@ export class ApiError extends Error {
 }
 
 export async function getApi<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
+  return requestApi<T>(path, { ...options, method: "GET" });
+}
+
+export async function postApi<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
+  return requestApi<T>(path, { ...options, method: "POST" });
+}
+
+async function requestApi<T>(
+  path: string,
+  options: RequestOptions & { method: "GET" | "POST" } = { method: "GET" }
+): Promise<ApiResponse<T>> {
   const url = new URL(path, window.location.origin);
   for (const [key, value] of Object.entries(options.params ?? {})) {
     if (value !== null && value !== undefined && value !== "") {
@@ -30,7 +41,7 @@ export async function getApi<T>(path: string, options: RequestOptions = {}): Pro
     headers.Authorization = `Bearer ${options.token}`;
   }
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers, method: options.method });
   const body = (await response.json()) as ApiResponse<T>;
   if (!response.ok || body.ok === false) {
     throw new ApiError(body.error ?? response.statusText, response.status, body.error);

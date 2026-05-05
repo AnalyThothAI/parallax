@@ -207,6 +207,108 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "resolved_ca"
 
 
+def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        first = runtime.notifications.insert_notification(
+            dedup_key="activity:event-1",
+            rule_id="watched_account_activity",
+            severity="info",
+            title="activity",
+            body="new post",
+            entity_type="account",
+            entity_key="account:toly",
+            author_handle="toly",
+            event_id="event-1",
+            source_table="events",
+            source_id="event-1",
+            occurrence_at_ms=1_700_000_000_000,
+            payload={"event_id": "event-1"},
+            channels=["in_app"],
+        )
+        runtime.notifications.insert_notification(
+            dedup_key="hot:pepe",
+            rule_id="hot_quality_token_5m",
+            severity="high",
+            title="PEPE heat",
+            body="heat score 88",
+            entity_type="token",
+            entity_key="token:eth:pepe",
+            symbol="PEPE",
+            chain="eth",
+            address=PEPE,
+            source_table="token_flow",
+            source_id="token:eth:pepe",
+            occurrence_at_ms=1_700_000_060_000,
+            payload={"social_heat_score": 88},
+            channels=["in_app"],
+        )
+        assert first is not None
+
+        headers = {"Authorization": "Bearer secret"}
+        summary = client.get("/api/notification-summary", headers=headers)
+        listed = client.get("/api/notifications?limit=10", headers=headers)
+        read = client.post(f"/api/notifications/{first['notification_id']}/read", headers=headers)
+        unread = client.get("/api/notifications?unread_only=true&limit=10", headers=headers)
+        updated_summary = client.get("/api/notification-summary", headers=headers)
+
+    assert summary.status_code == 200
+    assert summary.json()["data"]["unread_count"] == 2
+    assert summary.json()["data"]["high_unread_count"] == 1
+    assert summary.json()["data"]["account_unread_counts"] == {"toly": 1}
+
+    assert listed.status_code == 200
+    assert listed.json()["data"]["items"][0]["rule_id"] == "hot_quality_token_5m"
+    assert listed.json()["data"]["items"][0]["payload"]["social_heat_score"] == 88
+    assert listed.json()["data"]["items"][0]["channels"] == ["in_app"]
+
+    assert read.status_code == 200
+    assert read.json()["data"]["updated"] is True
+    assert unread.status_code == 200
+    assert [item["notification_id"] for item in unread.json()["data"]["items"]] != [first["notification_id"]]
+    assert updated_summary.json()["data"]["unread_count"] == 1
+
+
+def test_api_exposes_notification_delivery_audit(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        notification = runtime.notifications.insert_notification(
+            dedup_key="hot:pepe",
+            rule_id="hot_quality_token_5m",
+            severity="high",
+            title="PEPE heat",
+            body="heat score 88",
+            entity_type="token",
+            entity_key="token:eth:pepe",
+            symbol="PEPE",
+            source_table="token_flow",
+            source_id="token:eth:pepe",
+            occurrence_at_ms=1_700_000_060_000,
+            payload={"social_heat_score": 88},
+            channels=["in_app", "pushdeer"],
+        )
+        assert notification is not None
+        runtime.notifications.enqueue_delivery(
+            notification_id=notification["notification_id"],
+            channel_id="pushdeer",
+            provider="apprise",
+            max_attempts=5,
+            next_run_at_ms=1_700_000_060_000,
+        )
+
+        response = client.get("/api/notification-deliveries", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["data"]["items"][0]["channel_id"] == "pushdeer"
+    assert body["data"]["items"][0]["provider"] == "apprise"
+    assert body["data"]["items"][0]["status"] == "pending"
+
+
 def test_api_exposes_empty_harness_read_models_without_404(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

@@ -18,6 +18,7 @@ from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepositor
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
+from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
@@ -141,6 +142,44 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["store"]["sqlite_path"].endswith("twitter_intel.sqlite3"))
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
 
+    def test_config_redacts_notification_channel_urls(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            app_home = home / ".gmgn-twitter-intel"
+            app_home.mkdir(parents=True, exist_ok=True)
+            (app_home / "config.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "ws_token": "secret",
+                        "handles": ["toly"],
+                        "storage": {"sqlite_path": str(db_path)},
+                        "notifications": {
+                            "channels": {
+                                "pushdeer": {
+                                    "enabled": True,
+                                    "provider": "apprise",
+                                    "url": "pushdeer://pushKey",
+                                    "min_severity": "high",
+                                },
+                            },
+                        },
+                    },
+                    sort_keys=False,
+                ),
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                exit_code = main(["config"], stdout=stdout)
+
+        raw_output = stdout.getvalue()
+        payload = json.loads(raw_output)
+        self.assertEqual(exit_code, 0)
+        self.assertNotIn("pushdeer://pushKey", raw_output)
+        self.assertTrue(payload["data"]["notifications"]["channels"]["pushdeer"]["url_configured"])
+        self.assertEqual(payload["data"]["notifications"]["channels"]["pushdeer"]["provider"], "apprise")
+
     def test_recent_search_token_flow_harness_and_alerts_use_sqlite_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
@@ -188,6 +227,49 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[5]["data"]["items"], [])
         self.assertEqual(lines[6]["data"]["items"], [])
         self.assertEqual(lines[7]["data"]["items"], [])
+
+    def test_notification_deliveries_command_reads_delivery_audit(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
+            conn = connect_sqlite(db_path, read_only=False)
+            try:
+                migrate(conn)
+                notifications = NotificationRepository(conn)
+                notification = notifications.insert_notification(
+                    dedup_key="hot:pepe",
+                    rule_id="hot_quality_token_5m",
+                    severity="high",
+                    title="PEPE heat",
+                    body="heat score 88",
+                    entity_type="token",
+                    entity_key="token:eth:pepe",
+                    symbol="PEPE",
+                    source_table="token_flow",
+                    source_id="token:eth:pepe",
+                    occurrence_at_ms=1_700_000_060_000,
+                    payload={"social_heat_score": 88},
+                    channels=["in_app", "pushdeer"],
+                )
+                self.assertIsNotNone(notification)
+                notifications.enqueue_delivery(
+                    notification_id=notification["notification_id"],
+                    channel_id="pushdeer",
+                    provider="apprise",
+                    max_attempts=5,
+                    next_run_at_ms=1_700_000_060_000,
+                )
+            finally:
+                conn.close()
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                exit_code = main(["notification-deliveries", "--limit", "5"], stdout=stdout)
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(payload["data"]["items"][0]["channel_id"], "pushdeer")
+        self.assertEqual(payload["data"]["items"][0]["status"], "pending")
 
     def test_obsolete_runtime_commands_are_not_registered(self):
         parser_help = main(["embed"], stdout=io.StringIO())

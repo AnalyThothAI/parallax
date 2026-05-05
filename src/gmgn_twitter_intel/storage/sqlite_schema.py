@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 APP_TABLES = (
     "schema_migrations",
@@ -28,6 +28,9 @@ APP_TABLES = (
     "harness_outcomes",
     "harness_credits",
     "harness_weights",
+    "notifications",
+    "notification_reads",
+    "notification_deliveries",
     "account_profiles",
     "account_token_call_stats",
     "account_quality_snapshots",
@@ -538,6 +541,74 @@ CREATE TABLE IF NOT EXISTS harness_weights (
 
 CREATE INDEX IF NOT EXISTS idx_harness_weights_type_horizon ON harness_weights(weight_type, horizon);
 
+CREATE TABLE IF NOT EXISTS notifications (
+  notification_id TEXT PRIMARY KEY,
+  dedup_key TEXT NOT NULL UNIQUE,
+  rule_id TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  entity_type TEXT,
+  entity_key TEXT,
+  author_handle TEXT,
+  symbol TEXT,
+  chain TEXT,
+  address TEXT,
+  event_id TEXT,
+  source_table TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  occurrence_count INTEGER NOT NULL DEFAULT 1,
+  first_seen_at_ms INTEGER NOT NULL,
+  last_seen_at_ms INTEGER NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  channels_json TEXT NOT NULL DEFAULT '["in_app"]',
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_last_seen
+  ON notifications(last_seen_at_ms DESC, created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_rule_seen
+  ON notifications(rule_id, last_seen_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_entity_seen
+  ON notifications(entity_type, entity_key, last_seen_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_author_seen
+  ON notifications(author_handle, last_seen_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_source
+  ON notifications(source_table, source_id);
+
+CREATE TABLE IF NOT EXISTS notification_reads (
+  notification_id TEXT NOT NULL REFERENCES notifications(notification_id) ON DELETE CASCADE,
+  subscriber_key TEXT NOT NULL,
+  read_at_ms INTEGER NOT NULL,
+  PRIMARY KEY(notification_id, subscriber_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_reads_subscriber
+  ON notification_reads(subscriber_key, read_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS notification_deliveries (
+  delivery_id TEXT PRIMARY KEY,
+  notification_id TEXT NOT NULL REFERENCES notifications(notification_id) ON DELETE CASCADE,
+  channel_id TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  next_run_at_ms INTEGER NOT NULL,
+  last_attempt_at_ms INTEGER,
+  delivered_at_ms INTEGER,
+  last_error TEXT,
+  created_at_ms INTEGER NOT NULL,
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE(notification_id, channel_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status_next
+  ON notification_deliveries(status, next_run_at_ms, created_at_ms);
+CREATE INDEX IF NOT EXISTS idx_notification_deliveries_notification
+  ON notification_deliveries(notification_id);
+
 CREATE TABLE IF NOT EXISTS account_profiles (
   handle TEXT PRIMARY KEY,
   first_seen_ms INTEGER NOT NULL,
@@ -600,7 +671,7 @@ def migrate(conn: sqlite3.Connection) -> None:
           name = excluded.name,
           applied_at_ms = excluded.applied_at_ms
         """,
-        (SCHEMA_VERSION, "closed_loop_harness", _now_ms()),
+        (SCHEMA_VERSION, "production_notifications", _now_ms()),
     )
     conn.commit()
 
@@ -620,6 +691,8 @@ def _should_reset_schema(conn: sqlite3.Connection, *, current_version: int) -> b
     if any(name in existing for name in LEGACY_TABLES):
         return True
     if current_version in {8, 9}:
+        return _required_columns_missing(conn)
+    if current_version == 11:
         return _required_columns_missing(conn)
     if current_version != SCHEMA_VERSION:
         return True

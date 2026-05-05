@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Annotated, Any
 
@@ -28,6 +29,7 @@ WINDOWS = {"5m", "1h", "4h", "24h"}
 SCOPES = {"all", "matched"}
 ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
+DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
 SIGNAL_LAB_STAGES = {"extracted", "seeded", "frozen", "settled", "credited"}
 
@@ -276,6 +278,68 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         ).account_quality_for_handles(sorted(_handle_set(handles)))
         return _json({"ok": True, "data": data})
 
+    @router.get("/notifications")
+    async def notifications(
+        request: Request,
+        limit: Annotated[int, Query()] = 50,
+        unread_only: Annotated[bool, Query()] = False,
+        rule_id: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        rows = runtime.read_notifications.list_notifications(
+            limit=_limit(limit, maximum=500),
+            subscriber_key="local",
+            unread_only=bool(unread_only),
+            rule_id=rule_id or None,
+        )
+        return _json(
+            {
+                "ok": True,
+                "data": {
+                    "items": [_notification_payload(row) for row in rows],
+                    "summary": runtime.read_notifications.summary(subscriber_key="local"),
+                },
+            }
+        )
+
+    @router.get("/notification-summary")
+    async def notification_summary(request: Request) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        return _json({"ok": True, "data": runtime.read_notifications.summary(subscriber_key="local")})
+
+    @router.get("/notification-deliveries")
+    async def notification_deliveries(
+        request: Request,
+        limit: Annotated[int, Query()] = 50,
+        status: Annotated[str | None, Query()] = None,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        return _json(
+            {
+                "ok": True,
+                "data": {
+                    "items": runtime.read_notifications.list_deliveries(
+                        limit=_limit(limit, maximum=500),
+                        status=_delivery_status(status),
+                    )
+                },
+            }
+        )
+
+    @router.post("/notifications/{notification_id}/read")
+    async def mark_notification_read(request: Request, notification_id: str) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        with runtime.write_lock:
+            updated = runtime.notifications.mark_read(notification_id=notification_id, subscriber_key="local")
+        return _json({"ok": True, "data": {"notification_id": notification_id, "updated": updated}})
+
+    @router.post("/notifications/read-all")
+    async def mark_all_notifications_read(request: Request) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        with runtime.write_lock:
+            updated_count = runtime.notifications.mark_all_read(subscriber_key="local")
+        return _json({"ok": True, "data": {"updated_count": updated_count}})
+
     @router.get("/social-events")
     async def social_events(
         request: Request,
@@ -477,6 +541,13 @@ def _payload_for_event(runtime: Any, event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _notification_payload(row: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(row)
+    payload["payload"] = _json_loads(payload.pop("payload_json", "{}"), {})
+    payload["channels"] = _json_loads(payload.pop("channels_json", "[]"), [])
+    return payload
+
+
 def _search_query(*, q: str, symbol: str, ca: str, chain: str, handle: str) -> str:
     if ca:
         return f"{chain}:{ca}" if chain else ca
@@ -531,5 +602,18 @@ def _job_status(value: str | None) -> str | None:
     return value if value in JOB_STATUSES else None
 
 
+def _delivery_status(value: str | None) -> str | None:
+    return value if value in DELIVERY_STATUSES else None
+
+
 def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(payload, status_code=status_code)
+
+
+def _json_loads(value: Any, default: Any) -> Any:
+    if value is None:
+        return default
+    try:
+        return json.loads(str(value))
+    except json.JSONDecodeError:
+        return default

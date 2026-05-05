@@ -105,6 +105,53 @@ export type LivePayload = {
   harness?: HarnessEventState | null;
 };
 
+export type NotificationSeverity = "info" | "warning" | "high" | "critical";
+
+export type NotificationItem = {
+  notification_id: string;
+  dedup_key: string;
+  rule_id: string;
+  severity: NotificationSeverity | string;
+  title: string;
+  body: string;
+  entity_type?: string | null;
+  entity_key?: string | null;
+  author_handle?: string | null;
+  symbol?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  event_id?: string | null;
+  source_table: string;
+  source_id: string;
+  occurrence_count: number;
+  first_seen_at_ms: number;
+  last_seen_at_ms: number;
+  created_at_ms: number;
+  updated_at_ms: number;
+  read_at_ms?: number | null;
+  payload: Record<string, unknown>;
+  channels: string[];
+};
+
+export type NotificationSummary = {
+  subscriber_key: string;
+  unread_count: number;
+  high_unread_count: number;
+  critical_unread_count: number;
+  highest_unread_severity?: NotificationSeverity | string | null;
+  account_unread_counts: Record<string, number>;
+};
+
+export type NotificationsData = {
+  items: NotificationItem[];
+  summary: NotificationSummary;
+};
+
+export type NotificationLivePayload = {
+  type: "notification";
+  notification: NotificationItem;
+};
+
 export type RecentData = {
   scope: ScopeKey;
   events: EventRecord[];
@@ -687,4 +734,10 @@ export type StatusData = {
     job_counts: Record<string, number>;
   };
   market_observations?: Record<string, number | boolean>;
+  notifications?: {
+    enabled: boolean;
+    worker_running: boolean;
+    delivery_worker_running?: boolean;
+    summary: NotificationSummary;
+  };
 };

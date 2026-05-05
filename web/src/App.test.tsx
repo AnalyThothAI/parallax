@@ -8,6 +8,7 @@ import type {
   BootstrapData,
   HarnessHealthData,
   LivePayload,
+  NotificationLivePayload,
   SignalLabChainsData,
   StatusData,
   TokenFlowData,
@@ -18,9 +19,10 @@ import type {
 import { getApi, getBootstrap } from "./api/client";
 import { useTraderStore } from "./store/useTraderStore";
 
-const socketMock: { status: string; events: LivePayload[]; lastMessageAt: number | null } = {
+const socketMock: { status: string; events: LivePayload[]; notifications: NotificationLivePayload[]; lastMessageAt: number | null } = {
   status: "connected",
   events: [],
+  notifications: [],
   lastMessageAt: 1_777_770_000_000
 };
 
@@ -72,6 +74,18 @@ const statusData: StatusData = {
     rate_limited: 0,
     dead: 0,
     worker_running: true
+  },
+  notifications: {
+    enabled: true,
+    worker_running: true,
+    summary: {
+      subscriber_key: "local",
+      unread_count: 0,
+      high_unread_count: 0,
+      critical_unread_count: 0,
+      highest_unread_severity: null,
+      account_unread_counts: {}
+    }
   }
 };
 
@@ -85,6 +99,7 @@ describe("App Token Radar social heat cockpit", () => {
     mockedGetBootstrap.mockReset();
     socketMock.status = "connected";
     socketMock.events = [liveUpegEvent()];
+    socketMock.notifications = [];
     socketMock.lastMessageAt = 1_777_770_000_000;
     useTraderStore.setState({
       token: "",
@@ -791,6 +806,12 @@ function mockApi(options: {
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
+    if (path === "/api/notification-summary") {
+      return ok(statusData.notifications?.summary);
+    }
+    if (path === "/api/notifications") {
+      return ok({ items: [], summary: statusData.notifications?.summary });
+    }
     if (path === "/api/recent") return ok({ scope: requestOptions?.params?.scope, events: [], items: [liveUpegEvent()] });
     if (path === "/api/token-flow") {
       if (options.duplicateSymbol) {

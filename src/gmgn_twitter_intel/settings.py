@@ -13,6 +13,14 @@ from .runtime_paths import app_home, app_log_path, config_path
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")
 DEFAULT_GMGN_APP_VERSION = "20260429-12894-ccec416"
+NOTIFICATION_SEVERITIES = ("info", "warning", "high", "critical")
+NOTIFICATION_RULE_IDS = (
+    "watched_account_activity",
+    "watched_account_token_alert",
+    "hot_quality_token_5m",
+    "quality_token_5m",
+    "harness_snapshot_high_score",
+)
 
 
 class ApiConfig(BaseModel):
@@ -126,6 +134,96 @@ class CollectorConfig(BaseModel):
     stale_timeout: float = 180.0
 
 
+class NotificationRuleConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    channels: tuple[str, ...] = ("in_app",)
+    social_heat_min: int | None = None
+    discussion_quality_min: int | None = None
+    opportunity_min: int | None = None
+    combined_score_min: float | None = None
+    suppress_chase_risk: bool = False
+    cooldown_seconds: int = 0
+
+    @field_validator("channels", mode="before")
+    @classmethod
+    def parse_channels(cls, value: Any) -> tuple[str, ...]:
+        parsed = tuple(_split_values(value))
+        return parsed or ("in_app",)
+
+
+class NotificationChannelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    provider: str = "apprise"
+    url: str | None = None
+    min_severity: str = "warning"
+    max_attempts: int = 5
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def parse_provider(cls, value: Any) -> str:
+        normalized = str(value or "apprise").strip().lower()
+        if normalized not in {"apprise", "log"}:
+            raise ValueError("notifications channel provider must be 'apprise' or 'log'")
+        return normalized
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def parse_url(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    @field_validator("min_severity", mode="before")
+    @classmethod
+    def parse_min_severity(cls, value: Any) -> str:
+        normalized = str(value or "warning").strip().lower()
+        if normalized not in NOTIFICATION_SEVERITIES:
+            raise ValueError("notifications channel min_severity must be info, warning, high, or critical")
+        return normalized
+
+
+class NotificationsConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    poll_interval_seconds: float = 5.0
+    token_flow_limit: int = 50
+    retention_days: int = 30
+    rules: dict[str, NotificationRuleConfig] = Field(
+        default_factory=lambda: {
+            rule_id: NotificationRuleConfig(**payload)
+            for rule_id, payload in _default_notification_rule_payloads().items()
+        }
+    )
+    channels: dict[str, NotificationChannelConfig] = Field(default_factory=dict)
+
+    @field_validator("rules", mode="before")
+    @classmethod
+    def parse_rules(cls, value: Any) -> dict[str, Any]:
+        merged = _default_notification_rule_payloads()
+        if value is None:
+            return merged
+        if not isinstance(value, Mapping):
+            raise ValueError("notifications.rules must be a mapping")
+        for rule_id, payload in value.items():
+            key = str(rule_id).strip()
+            if key not in NOTIFICATION_RULE_IDS:
+                raise ValueError(f"unknown notification rule: {key}")
+            if isinstance(payload, NotificationRuleConfig):
+                payload = payload.model_dump()
+            if payload is None:
+                payload = {}
+            if not isinstance(payload, Mapping):
+                raise ValueError(f"notifications.rules.{key} must be a mapping")
+            merged[key] = {**merged[key], **dict(payload)}
+        return merged
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -139,6 +237,7 @@ class Settings(BaseModel):
     gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
     collector: CollectorConfig = Field(default_factory=CollectorConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
 
     @property
     def config_dir(self) -> Path:
@@ -365,6 +464,39 @@ upstream:
 collector:
   watchdog_interval: 30
   stale_timeout: 180
+
+notifications:
+  enabled: true
+  poll_interval_seconds: 5
+  token_flow_limit: 50
+  retention_days: 30
+  rules:
+    watched_account_activity:
+      enabled: true
+      channels: ["in_app"]
+    watched_account_token_alert:
+      enabled: true
+      channels: ["in_app"]
+    hot_quality_token_5m:
+      enabled: true
+      channels: ["in_app"]
+      social_heat_min: 80
+      discussion_quality_min: 70
+      suppress_chase_risk: true
+      cooldown_seconds: 900
+    quality_token_5m:
+      enabled: true
+      channels: ["in_app"]
+      social_heat_min: 65
+      discussion_quality_min: 80
+      suppress_chase_risk: true
+      cooldown_seconds: 900
+    harness_snapshot_high_score:
+      enabled: true
+      channels: ["in_app"]
+      combined_score_min: 0.8
+      cooldown_seconds: 900
+  channels: {{}}
 """
 
 
@@ -386,3 +518,38 @@ def _split_values(value: Any) -> list[str]:
     if isinstance(value, (list, tuple, set)):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
+
+
+def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
+    return {
+        "watched_account_activity": {
+            "enabled": True,
+            "channels": ("in_app",),
+        },
+        "watched_account_token_alert": {
+            "enabled": True,
+            "channels": ("in_app",),
+        },
+        "hot_quality_token_5m": {
+            "enabled": True,
+            "channels": ("in_app",),
+            "social_heat_min": 80,
+            "discussion_quality_min": 70,
+            "suppress_chase_risk": True,
+            "cooldown_seconds": 900,
+        },
+        "quality_token_5m": {
+            "enabled": True,
+            "channels": ("in_app",),
+            "social_heat_min": 65,
+            "discussion_quality_min": 80,
+            "suppress_chase_risk": True,
+            "cooldown_seconds": 900,
+        },
+        "harness_snapshot_high_score": {
+            "enabled": True,
+            "channels": ("in_app",),
+            "combined_score_min": 0.8,
+            "cooldown_seconds": 900,
+        },
+    }

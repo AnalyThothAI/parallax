@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import { getApi, getBootstrap } from "./api/client";
+import { getNotifications, getNotificationSummary, markAllNotificationsRead, markNotificationRead } from "./api/notifications";
 import type {
   AccountQualityData,
   Decision,
   HarnessHealth,
   HarnessHealthData,
   LivePayload,
+  NotificationItem,
   RadarSortMode,
   RecentData,
   SearchData,
@@ -24,12 +26,16 @@ import { useIntelSocket } from "./api/useIntelSocket";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
 import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
 import { MobileTaskNav, type MobileTask } from "./components/MobileTaskNav";
+import { NotificationBell } from "./components/NotificationBell";
+import { NotificationDrawer } from "./components/NotificationDrawer";
+import { NotificationToastBridge } from "./components/NotificationToastBridge";
 import { SignalLabInspector } from "./components/SignalLabInspector";
 import { SignalLabPulse } from "./components/SignalLabPulse";
 import { SignalLabWorkbench } from "./components/SignalLabWorkbench";
 import { RadarControls } from "./components/RadarControls";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenRadarTable } from "./components/TokenRadarTable";
+import { WatchlistNotificationDot } from "./components/WatchlistNotificationDot";
 import {
   compactNumber,
   eventText,
@@ -93,6 +99,7 @@ export function App() {
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const [mobileTask, setMobileTask] = useState<MobileTask>("radar");
+  const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const bootstrapQuery = useQuery({
@@ -108,7 +115,7 @@ export function App() {
   }, [bootstrapQuery.data?.data.ws_token, setToken]);
 
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
-  const socket = useIntelSocket({ token, handles, replay: replayLimit });
+  const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true });
 
   const statusQuery = useQuery({
     queryKey: ["status"],
@@ -235,6 +242,36 @@ export function App() {
     enabled: Boolean(token && accountQualityHandles)
   });
 
+  const notificationSummaryQuery = useQuery({
+    queryKey: ["notification-summary"],
+    queryFn: () => getNotificationSummary(token),
+    enabled: Boolean(token),
+    refetchInterval: 12_000
+  });
+
+  const notificationsQuery = useQuery({
+    queryKey: ["notifications"],
+    queryFn: () => getNotifications(token),
+    enabled: Boolean(token),
+    refetchInterval: notificationDrawerOpen ? 8_000 : 20_000
+  });
+
+  const markReadMutation = useMutation({
+    mutationFn: (notificationId: string) => markNotificationRead(token, notificationId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => markAllNotificationsRead(token),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
+      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    }
+  });
+
   const liveItems = useMemo(() => {
     const replayItems = recentQuery.data?.data.items ?? [];
     const byId = new Map<string, LivePayload>();
@@ -267,6 +304,17 @@ export function App() {
     [currentSearchData, searchQuery.error, searchQuery.isFetching, selectedSignal]
   );
   const selectedTokenSignalChains = useMemo(() => filterSignalChainsForToken(selectedToken, signalLabChains), [selectedToken, signalLabChains]);
+  const notificationSummary = notificationSummaryQuery.data?.data ?? statusQuery.data?.data.notifications?.summary ?? null;
+  const notifications = notificationsQuery.data?.data.items ?? [];
+  const latestSocketNotificationId = socket.notifications[0]?.notification.notification_id ?? null;
+
+  useEffect(() => {
+    if (!latestSocketNotificationId) {
+      return;
+    }
+    void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
+    void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+  }, [latestSocketNotificationId, queryClient]);
 
   useEffect(() => {
     if (!selectedSignal && tokenItems.length) {
@@ -377,6 +425,36 @@ export function App() {
     setMobileTask(task);
     if (task === "radar" || task === "tape") {
       setActiveView("live");
+    }
+  };
+
+  const openNotification = (notification: NotificationItem) => {
+    markReadMutation.mutate(notification.notification_id);
+    setNotificationDrawerOpen(false);
+    if (notification.entity_type === "harness_snapshot" || notification.source_table === "harness_snapshots") {
+      setActiveView("signal_lab");
+      setMobileTask("lab");
+      if (notification.symbol) {
+        setSignalLabAsset(notification.symbol);
+      }
+      return;
+    }
+    if (notification.symbol) {
+      runSearch(`$${notification.symbol}`);
+      setActiveView("live");
+      setMobileTask("detail");
+      return;
+    }
+    if (notification.author_handle) {
+      runSearch(`@${notification.author_handle}`);
+      setActiveView("live");
+      setMobileTask("detail");
+      return;
+    }
+    if (notification.event_id) {
+      runSearch(notification.event_id);
+      setActiveView("live");
+      setMobileTask("detail");
     }
   };
 
@@ -499,6 +577,12 @@ export function App() {
           </span>
         </div>
 
+        <NotificationBell
+          open={notificationDrawerOpen}
+          summary={notificationSummary}
+          onClick={() => setNotificationDrawerOpen((current) => !current)}
+        />
+
         <button className="icon-button" type="button" onClick={() => void queryClient.invalidateQueries()} title="刷新" aria-label="刷新">
           <RefreshCw aria-hidden />
         </button>
@@ -519,7 +603,9 @@ export function App() {
             <div className="watchlist">
               {(statusQuery.data?.data.handles ?? bootstrapQuery.data?.data.handles ?? []).slice(0, 10).map((handle) => (
                 <button type="button" key={handle} onClick={() => runSearch(`@${handle}`)}>
-                  <span>{handle.slice(0, 1).toUpperCase()}</span>@{handle}
+                  <span className="watchlist-avatar">{handle.slice(0, 1).toUpperCase()}</span>
+                  <b>@{handle}</b>
+                  <WatchlistNotificationDot count={notificationSummary?.account_unread_counts?.[handle] ?? 0} />
                 </button>
               ))}
             </div>
@@ -642,6 +728,20 @@ export function App() {
         activeTask={mobileTask}
         detailAvailable={Boolean(selectedSignal || selectedToken)}
         onTaskChange={handleMobileTaskChange}
+      />
+      <NotificationDrawer
+        loading={notificationsQuery.isFetching && notifications.length === 0}
+        notifications={notifications}
+        open={notificationDrawerOpen}
+        summary={notificationSummary}
+        onClose={() => setNotificationDrawerOpen(false)}
+        onMarkAllRead={() => markAllReadMutation.mutate()}
+        onMarkRead={(notificationId) => markReadMutation.mutate(notificationId)}
+        onOpenNotification={openNotification}
+      />
+      <NotificationToastBridge
+        notifications={socket.notifications.map((item) => item.notification)}
+        onOpenNotification={openNotification}
       />
     </main>
   );

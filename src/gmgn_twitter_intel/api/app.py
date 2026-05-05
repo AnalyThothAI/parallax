@@ -21,12 +21,19 @@ from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.ingest_service import IngestService
 from ..pipeline.llm_client import OpenAIChatEnrichmentClient
 from ..pipeline.market_observation_worker import MarketObservationWorker
+from ..pipeline.notification_delivery import NotificationDeliveryWorker
+from ..pipeline.notification_rules import NotificationRuleEngine
+from ..pipeline.notification_worker import NotificationWorker
+from ..retrieval.account_alert_service import AccountAlertService
+from ..retrieval.harness_service import HarnessService
+from ..retrieval.token_flow_service import TokenFlowService
 from ..settings import Settings, load_settings
 from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository
 from ..storage.harness_repository import HarnessRepository
 from ..storage.market_observation_repository import MarketObservationRepository
+from ..storage.notification_repository import NotificationRepository
 from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
 from ..storage.sqlite_schema import migrate
@@ -45,12 +52,14 @@ class CliRuntime:
     market_observations: MarketObservationRepository
     enrichment: EnrichmentRepository
     harness: HarnessRepository
+    notifications: NotificationRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
     read_signals: SignalRepository
     read_tokens: TokenRepository
     read_enrichment: EnrichmentRepository
     read_harness: HarnessRepository
+    read_notifications: NotificationRepository
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
@@ -58,11 +67,15 @@ class CliRuntime:
     start_collector: bool
     enrichment_worker: EnrichmentWorker | None = None
     market_observation_worker: MarketObservationWorker | None = None
+    notification_worker: NotificationWorker | None = None
+    notification_delivery_worker: NotificationDeliveryWorker | None = None
     gmgn_client: GmgnOpenApiClient | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
     market_observation_task: asyncio.Task | None = None
+    notification_task: asyncio.Task | None = None
+    notification_delivery_task: asyncio.Task | None = None
 
 
 def create_app(
@@ -169,12 +182,14 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     market_observations = MarketObservationRepository(conn)
     enrichment = EnrichmentRepository(conn)
     harness = HarnessRepository(conn)
+    notifications = NotificationRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
     read_signals = SignalRepository(read_conn)
     read_tokens = TokenRepository(read_conn)
     read_enrichment = EnrichmentRepository(read_conn)
     read_harness = HarnessRepository(read_conn)
+    read_notifications = NotificationRepository(read_conn)
     write_lock = RLock()
     gmgn_client = _gmgn_client(settings)
     ingest = IngestService(
@@ -209,12 +224,14 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         market_observations=market_observations,
         enrichment=enrichment,
         harness=harness,
+        notifications=notifications,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
         read_tokens=read_tokens,
         read_enrichment=read_enrichment,
         read_harness=read_harness,
+        read_notifications=read_notifications,
         ingest=ingest,
         hub=hub,
         collector=collector,
@@ -228,6 +245,30 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         client=gmgn_client,
         write_lock=write_lock,
     )
+    if settings.notifications.enabled:
+        runtime.notification_worker = NotificationWorker(
+            repository=notifications,
+            rule_engine=NotificationRuleEngine(
+                settings=settings,
+                evidence=evidence,
+                account_alerts=AccountAlertService(signals),
+                token_flow=TokenFlowService(signals=signals, tokens=tokens, harness=harness),
+                harness=HarnessService(harness),
+            ),
+            publisher=hub,
+            delivery_channels=settings.notifications.channels,
+            write_lock=write_lock,
+            poll_interval=settings.notifications.poll_interval_seconds,
+        )
+        if any(
+            channel.enabled and (channel.provider == "log" or channel.url)
+            for channel in settings.notifications.channels.values()
+        ):
+            runtime.notification_delivery_worker = NotificationDeliveryWorker(
+                repository=notifications,
+                channels=settings.notifications.channels,
+                poll_interval=settings.notifications.poll_interval_seconds,
+            )
     if settings.llm_configured:
         client = OpenAIChatEnrichmentClient(
             api_key=settings.llm_api_key or "",
@@ -267,6 +308,10 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.market_observation_task = asyncio.create_task(runtime.market_observation_worker.run())
     if runtime.enrichment_worker is not None and runtime.enrichment_task is None:
         runtime.enrichment_task = asyncio.create_task(runtime.enrichment_worker.run())
+    if runtime.notification_worker is not None and runtime.notification_task is None:
+        runtime.notification_task = asyncio.create_task(runtime.notification_worker.run())
+    if runtime.notification_delivery_worker is not None and runtime.notification_delivery_task is None:
+        runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
     if runtime.start_collector:
         if runtime.collector_task is None:
             runtime.collector_task = asyncio.create_task(runtime.collector.run())
@@ -279,6 +324,10 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.market_observation_worker.stop()
     if runtime.enrichment_worker is not None:
         runtime.enrichment_worker.stop()
+    if runtime.notification_worker is not None:
+        runtime.notification_worker.stop()
+    if runtime.notification_delivery_worker is not None:
+        runtime.notification_delivery_worker.stop()
     tasks = [
         task
         for task in (
@@ -286,6 +335,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.collector_task,
             runtime.enrichment_task,
             runtime.market_observation_task,
+            runtime.notification_task,
+            runtime.notification_delivery_task,
         )
         if task is not None
     ]
@@ -332,6 +383,12 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             **_market_observation_counts(runtime),
             "worker_running": _task_running(runtime.market_observation_task),
         },
+        "notifications": {
+            "enabled": runtime.settings.notifications.enabled,
+            "worker_running": _task_running(runtime.notification_task),
+            "delivery_worker_running": _task_running(runtime.notification_delivery_task),
+            "summary": _notification_summary(runtime),
+        },
         "gmgn": {
             "openapi_configured": runtime.settings.gmgn_configured,
             "token_info_cache_ttl_seconds": runtime.settings.gmgn_token_info_cache_ttl_seconds,
@@ -348,6 +405,10 @@ def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int, db_status: dict[str,
         reasons.append("enrichment_worker_stopped")
     if not _task_running(runtime.market_observation_task):
         reasons.append("market_observation_worker_stopped")
+    if runtime.settings.notifications.enabled and not _task_running(runtime.notification_task):
+        reasons.append("notification_worker_stopped")
+    if runtime.notification_delivery_worker is not None and not _task_running(runtime.notification_delivery_task):
+        reasons.append("notification_delivery_worker_stopped")
     return reasons
 
 
@@ -390,6 +451,13 @@ def _market_observation_counts(runtime: CliRuntime) -> dict[str, int]:
     try:
         with runtime.write_lock:
             return runtime.market_observations.counts()
+    except Exception:
+        return {}
+
+
+def _notification_summary(runtime: CliRuntime) -> dict[str, object]:
+    try:
+        return runtime.read_notifications.summary(subscriber_key="local")
     except Exception:
         return {}
 

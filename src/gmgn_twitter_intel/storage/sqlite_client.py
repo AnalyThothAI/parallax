@@ -22,6 +22,11 @@ SQLITE_OPERATIONAL_PROBES = (
         "token_market_observations",
         "SELECT observation_id FROM token_market_observations ORDER BY updated_at_ms DESC LIMIT 1",
     ),
+    ("notifications", "SELECT notification_id FROM notifications ORDER BY last_seen_at_ms DESC LIMIT 1"),
+    (
+        "notification_deliveries",
+        "SELECT delivery_id FROM notification_deliveries ORDER BY updated_at_ms DESC LIMIT 1",
+    ),
 )
 
 

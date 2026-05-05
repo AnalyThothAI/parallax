@@ -176,6 +176,43 @@ def test_websocket_routes_harness_updates_by_seed_event_handle(tmp_path):
     assert update["seed"]["seed_id"] == "seed-1"
 
 
+def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        notification = client.app.state.service.notifications.insert_notification(
+            dedup_key="activity:event-1",
+            rule_id="watched_account_activity",
+            severity="info",
+            title="activity",
+            body="new post",
+            entity_type="account",
+            entity_key="account:toly",
+            author_handle="toly",
+            event_id="event-1",
+            source_table="events",
+            source_id="event-1",
+            occurrence_at_ms=1_700_000_000_000,
+            payload={"event_id": "event-1"},
+            channels=["in_app"],
+        )
+        assert notification is not None
+
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "auth", "token": "secret"})
+            assert ws.receive_json()["type"] == "ready"
+            ws.send_json({"type": "subscribe", "handles": ["elonmusk"], "notifications": True, "replay": 0})
+
+            client.portal.call(
+                client.app.state.service.hub.publish,
+                {"type": "notification", "notification": notification},
+            )
+            message = ws.receive_json()
+
+    assert message["type"] == "notification"
+    assert message["notification"]["notification_id"] == notification["notification_id"]
+
+
 def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
     result = client.app.state.service.ingest.ingest_event(event, is_watched=is_watched)
     return {

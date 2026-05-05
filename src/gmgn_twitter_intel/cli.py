@@ -24,6 +24,7 @@ from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
 from .storage.harness_repository import HarnessRepository
 from .storage.market_observation_repository import MarketObservationRepository
+from .storage.notification_repository import NotificationRepository
 from .storage.signal_repository import SignalRepository
 from .storage.sqlite_client import connect_sqlite
 from .storage.sqlite_schema import migrate
@@ -136,6 +137,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     market_observations.add_argument("--limit", type=int, default=50)
 
+    notification_deliveries = subcommands.add_parser(
+        "notification-deliveries",
+        help="inspect notification external delivery audit rows",
+    )
+    notification_deliveries.add_argument(
+        "--status",
+        choices=("pending", "running", "failed", "dead", "delivered"),
+        default=None,
+    )
+    notification_deliveries.add_argument("--limit", type=int, default=50)
+
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
     rebuild_attributions = ops_subcommands.add_parser(
@@ -247,6 +259,26 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "base_url": settings.llm_base_url,
                         "poll_interval": settings.enrichment_poll_interval,
                     },
+                    "notifications": {
+                        "enabled": settings.notifications.enabled,
+                        "poll_interval_seconds": settings.notifications.poll_interval_seconds,
+                        "token_flow_limit": settings.notifications.token_flow_limit,
+                        "retention_days": settings.notifications.retention_days,
+                        "rules": {
+                            rule_id: rule.model_dump(mode="json")
+                            for rule_id, rule in settings.notifications.rules.items()
+                        },
+                        "channels": {
+                            channel_id: {
+                                "enabled": channel.enabled,
+                                "provider": channel.provider,
+                                "url_configured": bool(channel.url),
+                                "min_severity": channel.min_severity,
+                                "max_attempts": channel.max_attempts,
+                            }
+                            for channel_id, channel in settings.notifications.channels.items()
+                        },
+                    },
                 },
             },
             stdout,
@@ -255,7 +287,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     with _repositories(settings.sqlite_path) as repos:
-        evidence, entities, signals, tokens, market_observations, enrichment, harness = repos
+        evidence, entities, signals, tokens, market_observations, enrichment, harness, notifications = repos
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -463,6 +495,18 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
+        if command == "notification-deliveries":
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "items": notifications.list_deliveries(limit=args.limit, status=args.status),
+                    },
+                },
+                stdout,
+            )
+            return 0
+
         if command == "ops" and args.ops_command == "rebuild-attributions":
             symbol = args.symbol.strip().lstrip("$").upper() or None
             limit = int(args.limit) if int(args.limit) > 0 else None
@@ -588,6 +632,7 @@ def _repositories(sqlite_path):
             MarketObservationRepository(conn),
             EnrichmentRepository(conn),
             HarnessRepository(conn),
+            NotificationRepository(conn),
         )
     finally:
         conn.close()

@@ -18,6 +18,7 @@ class ClientSubscription:
     handles: set[str] = field(default_factory=set)
     cas: set[tuple[str, str]] = field(default_factory=set)
     symbols: set[str] = field(default_factory=set)
+    notifications: bool = False
 
 
 class PublicWebSocketHub:
@@ -103,6 +104,7 @@ class PublicWebSocketHub:
             await client.websocket.send_text(_json_message({"type": "error", "code": "invalid_ca"}))
             return
         client.symbols = _normalize_symbols(message.get("symbols") or message.get("tokens") or [])
+        client.notifications = bool(message.get("notifications"))
         replay_limit = _replay_limit(message.get("replay"), self.default_replay_limit)
         replay_events = self._replay_events(client, replay_limit)
         for payload in reversed(replay_events):
@@ -126,6 +128,8 @@ class PublicWebSocketHub:
         ]
 
     def _payload_matches_subscription(self, payload: dict[str, Any], client: ClientSubscription) -> bool:
+        if payload.get("type") == "notification":
+            return client.notifications
         has_token_filters = bool(client.cas or client.symbols)
         if client.handles and _event_handle(payload.get("event")) in client.handles:
             return True
