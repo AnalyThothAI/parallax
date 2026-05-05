@@ -446,7 +446,7 @@ export function App() {
   );
 
   const responsiveControls = (
-    <section hidden className="responsive-control-panel" aria-label="cockpit controls">
+    <section className="responsive-control-panel" aria-label="cockpit controls">
       <div className="segmented" aria-label="window">
         {WINDOWS.map((item) => (
           <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">

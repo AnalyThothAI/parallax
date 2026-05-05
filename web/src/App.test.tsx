@@ -676,7 +676,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(container.querySelector(".desktop-side-rail")).toBeInTheDocument();
     expect(responsiveControls).toBeInTheDocument();
-    expect(responsiveControls).toHaveAttribute("hidden");
+    expect(responsiveControls).not.toHaveAttribute("hidden");
     expect(container.querySelector(".mobile-task-surface")).toBeInTheDocument();
     expect(container.querySelectorAll(".token-radar-table .radar-row")).toHaveLength(1);
   });
