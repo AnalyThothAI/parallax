@@ -142,6 +142,12 @@ def test_hot_quality_token_candidate_requires_heat_quality_and_suppresses_chase_
     assert hot[0].dedup_key == "hot_quality_token_5m:token:eth:pepe:1888889"
     assert hot[0].severity == "high"
     assert hot[0].symbol == "PEPE"
+    assert "## $PEPE 5m heat alert" in hot[0].body
+    assert "**Heat:** 88" in hot[0].body
+    assert "**Discussion quality:** 76" in hot[0].body
+    assert "`0xpepe`" in hot[0].body
+    assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
+    assert "[X Search]" in hot[0].body
     assert hot[0].payload["social_heat_score"] == 88
 
 

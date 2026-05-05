@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
+from urllib.parse import quote
 
 from ..settings import NotificationRuleConfig, Settings
 from .notification_models import NotificationCandidate
@@ -219,18 +220,31 @@ class NotificationRuleEngine:
                 "mentions": _int(flow.get("mentions")),
                 "timing": timing,
             }
+            chain = _chain(identity.get("chain"))
+            address = str(identity.get("address") or "") or None
             candidates.append(
                 NotificationCandidate(
                     dedup_key=f"{rule_id}:{identity_key}:{bucket}",
                     rule_id=rule_id,
                     severity=severity,
                     title=f"${symbol} {title_suffix}" if symbol else title_suffix,
-                    body=f"Heat {social_heat_score}, quality {discussion_quality_score}",
+                    body=_token_markdown_body(
+                        heading="5m heat alert" if rule_id == "hot_quality_token_5m" else "5m quality alert",
+                        symbol=symbol,
+                        chain=chain,
+                        address=address,
+                        identity_key=identity_key,
+                        social_heat_score=social_heat_score,
+                        discussion_quality_score=discussion_quality_score,
+                        opportunity_score=opportunity_score,
+                        mentions=_int(flow.get("mentions")),
+                        chase_risk=bool(timing.get("chase_risk")),
+                    ),
                     entity_type="token",
                     entity_key=identity_key,
                     symbol=symbol,
-                    chain=_chain(identity.get("chain")),
-                    address=str(identity.get("address") or "") or None,
+                    chain=chain,
+                    address=address,
                     source_table="token_flow",
                     source_id=identity_key,
                     occurrence_at_ms=occurrence_at_ms,
@@ -334,6 +348,50 @@ def _compact_text(value: Any, *, limit: int = 180) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 1].rstrip() + "..."
+
+
+def _token_markdown_body(
+    *,
+    heading: str,
+    symbol: str | None,
+    chain: str | None,
+    address: str | None,
+    identity_key: str,
+    social_heat_score: int,
+    discussion_quality_score: int,
+    opportunity_score: int,
+    mentions: int,
+    chase_risk: bool,
+) -> str:
+    display = f"${symbol}" if symbol else identity_key
+    lines = [
+        f"## {display} {heading}",
+        "",
+        f"- **Heat:** {social_heat_score}",
+        f"- **Discussion quality:** {discussion_quality_score}",
+        f"- **Opportunity:** {opportunity_score}",
+        f"- **5m mentions:** {mentions}",
+        f"- **Chase risk:** {'yes' if chase_risk else 'no'}",
+    ]
+    if chain:
+        lines.append(f"- **Chain:** `{chain}`")
+    if address:
+        lines.append(f"- **Address:** `{address}`")
+    lines.append(f"- **Identity:** `{identity_key}`")
+    links = _token_links(symbol=symbol, chain=chain, address=address)
+    if links:
+        lines.extend(["", "**Links**"])
+        lines.extend(f"- [{label}]({url})" for label, url in links)
+    return "\n".join(lines)
+
+
+def _token_links(*, symbol: str | None, chain: str | None, address: str | None) -> list[tuple[str, str]]:
+    links: list[tuple[str, str]] = []
+    if chain and address:
+        links.append(("GMGN", f"https://gmgn.ai/{quote(chain)}/token/{quote(address)}"))
+    if symbol:
+        links.append(("X Search", f"https://x.com/search?q={quote('$' + symbol)}&f=live"))
+    return links
 
 
 def _now_ms() -> int:

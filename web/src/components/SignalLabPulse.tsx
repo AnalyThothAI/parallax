@@ -12,7 +12,7 @@ type SignalLabPulseProps = {
 };
 
 export function SignalLabPulse({ data, isLoading, selectedChainId, mobileTaskPanel, onOpenLab, onSelect }: SignalLabPulseProps) {
-  const pulseItems = [...(data?.items ?? [])].sort((a, b) => signalPulseRank(b) - signalPulseRank(a) || b.updated_at_ms - a.updated_at_ms).slice(0, 5);
+  const pulseItems = [...(data?.items ?? [])].sort((a, b) => signalPulseRank(b) - signalPulseRank(a) || b.updated_at_ms - a.updated_at_ms);
   return (
     <section className="compact-panel signal-lab-pulse" data-mobile-task-panel={mobileTaskPanel}>
       <header>

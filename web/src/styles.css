@@ -500,6 +500,9 @@ svg {
 .watchlist {
   display: grid;
   gap: 4px;
+  max-height: 250px;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 .watchlist button {
@@ -515,11 +518,27 @@ svg {
   text-align: left;
 }
 
-.watchlist b {
+.watchlist-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.watchlist b,
+.watchlist small {
   overflow: hidden;
-  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.watchlist b {
+  font-weight: 500;
+}
+
+.watchlist small {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 9px;
 }
 
 .watchlist-avatar {

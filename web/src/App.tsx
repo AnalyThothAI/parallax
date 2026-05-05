@@ -44,6 +44,7 @@ import {
 } from "./lib/format";
 import { tokenForSearchQuery } from "./lib/searchIntent";
 import { totalChains } from "./lib/signalLabChains";
+import { buildWatchlistRows } from "./lib/watchlist";
 import { useTraderStore } from "./store/useTraderStore";
 
 type SelectedSignal =
@@ -178,6 +179,22 @@ export function App() {
     refetchInterval: 12_000
   });
 
+  const signalLabPulseQuery = useQuery({
+    queryKey: ["signal-lab-pulse", signalLabHorizon],
+    queryFn: () =>
+      getApi<SignalLabChainsData>("/api/signal-lab/chains", {
+        token,
+        params: {
+          window: "24h",
+          horizon: signalLabHorizon,
+          scope: "all",
+          limit: 200
+        }
+      }),
+    enabled: Boolean(token),
+    refetchInterval: 20_000
+  });
+
   const searchQuery = useQuery({
     queryKey: ["search", submittedSearch],
     queryFn: () =>
@@ -285,6 +302,7 @@ export function App() {
   const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
   const signalLabHealth = signalLabHealthQuery.data?.data ?? defaultSignalLabHealth(statusQuery.data?.data);
   const signalLabData = useMemo(() => mergeSignalLabPages(signalLabChainsQuery.data?.pages), [signalLabChainsQuery.data?.pages]);
+  const signalLabPulseData = signalLabPulseQuery.data?.data ?? signalLabData;
   const signalLabChains = signalLabData?.items ?? [];
   const liveSignalTapeItems = useMemo(
     () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
@@ -307,6 +325,15 @@ export function App() {
   const notificationSummary = notificationSummaryQuery.data?.data ?? statusQuery.data?.data.notifications?.summary ?? null;
   const notifications = notificationsQuery.data?.data.items ?? [];
   const latestSocketNotificationId = socket.notifications[0]?.notification.notification_id ?? null;
+  const watchlistRows = useMemo(
+    () =>
+      buildWatchlistRows({
+        handles: statusQuery.data?.data.handles ?? bootstrapQuery.data?.data.handles ?? [],
+        accountUnreadCounts: notificationSummary?.account_unread_counts,
+        liveItems
+      }),
+    [bootstrapQuery.data?.data.handles, liveItems, notificationSummary?.account_unread_counts, statusQuery.data?.data.handles]
+  );
 
   useEffect(() => {
     if (!latestSocketNotificationId) {
@@ -601,11 +628,14 @@ export function App() {
 
           <RailSection label="watchlist">
             <div className="watchlist">
-              {(statusQuery.data?.data.handles ?? bootstrapQuery.data?.data.handles ?? []).slice(0, 10).map((handle) => (
-                <button type="button" key={handle} onClick={() => runSearch(`@${handle}`)}>
-                  <span className="watchlist-avatar">{handle.slice(0, 1).toUpperCase()}</span>
-                  <b>@{handle}</b>
-                  <WatchlistNotificationDot count={notificationSummary?.account_unread_counts?.[handle] ?? 0} />
+              {watchlistRows.map((row) => (
+                <button type="button" key={row.handle} onClick={() => runSearch(`@${row.handle}`)}>
+                  <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
+                  <span className="watchlist-copy">
+                    <b>@{row.handle}</b>
+                    <small>{row.lastSeenAtMs ? `${formatRelativeTime(row.lastSeenAtMs)} ago` : "no recent"}</small>
+                  </span>
+                  <WatchlistNotificationDot count={row.unreadCount} />
                 </button>
               ))}
             </div>
@@ -670,8 +700,8 @@ export function App() {
                 />
 
                 <SignalLabPulse
-                  data={signalLabData}
-                  isLoading={signalLabChainsQuery.isPending}
+                  data={signalLabPulseData}
+                  isLoading={signalLabPulseQuery.isPending && !signalLabPulseData}
                   mobileTaskPanel="lab"
                   selectedChainId={selectedSignalChainId}
                   onOpenLab={() => {

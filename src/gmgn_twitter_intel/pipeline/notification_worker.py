@@ -88,7 +88,7 @@ class NotificationWorker:
             channel = self.delivery_channels.get(channel_id)
             if channel is None or not channel.enabled:
                 continue
-            if channel.provider == "apprise" and not channel.url:
+            if channel.provider in {"apprise", "pushdeer"} and not channel.url:
                 continue
             if SEVERITY_RANK.get(candidate.severity, 0) < SEVERITY_RANK.get(channel.min_severity, 1):
                 continue

@@ -142,7 +142,7 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                 "channels": {
                     "pushdeer": {
                         "enabled": True,
-                        "provider": "apprise",
+                        "provider": "pushdeer",
                         "url": "pushdeer://pushKey",
                         "min_severity": "high",
                     },
@@ -161,6 +161,7 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.rules["hot_quality_token_5m"].discussion_quality_min == 72
     assert settings.notifications.rules["hot_quality_token_5m"].suppress_chase_risk is True
     assert settings.notifications.rules["hot_quality_token_5m"].cooldown_seconds == 600
+    assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
 
 

@@ -166,8 +166,8 @@ class NotificationChannelConfig(BaseModel):
     @classmethod
     def parse_provider(cls, value: Any) -> str:
         normalized = str(value or "apprise").strip().lower()
-        if normalized not in {"apprise", "log"}:
-            raise ValueError("notifications channel provider must be 'apprise' or 'log'")
+        if normalized not in {"apprise", "log", "pushdeer"}:
+            raise ValueError("notifications channel provider must be 'apprise', 'log', or 'pushdeer'")
         return normalized
 
     @field_validator("url", mode="before")

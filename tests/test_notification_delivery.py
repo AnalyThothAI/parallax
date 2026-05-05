@@ -18,13 +18,21 @@ class RecordingAdapter:
         self.sent.append({"url": url, "title": title, "body": body, "body_format": body_format})
 
 
+class RecordingPushDeerAdapter:
+    def __init__(self):
+        self.sent = []
+
+    def notify_markdown(self, *, url, title, body):
+        self.sent.append({"url": url, "title": title, "body": body})
+
+
 def open_repo(tmp_path):
     conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     return conn, NotificationRepository(conn)
 
 
-def seed_delivery(repo: NotificationRepository, *, max_attempts=3):
+def seed_delivery(repo: NotificationRepository, *, max_attempts=3, provider="apprise"):
     notification = repo.insert_notification(
         dedup_key="hot:pepe",
         rule_id="hot_quality_token_5m",
@@ -44,7 +52,7 @@ def seed_delivery(repo: NotificationRepository, *, max_attempts=3):
     delivery = repo.enqueue_delivery(
         notification_id=notification["notification_id"],
         channel_id="pushdeer",
-        provider="apprise",
+        provider=provider,
         max_attempts=max_attempts,
         next_run_at_ms=1_700_000_000_000,
     )
@@ -161,3 +169,39 @@ def test_delivery_worker_completes_log_channel_without_url_or_adapter(tmp_path):
     assert updated["status"] == "delivered"
     assert adapter.sent == []
     assert notification["notification_id"] == updated["notification_id"]
+
+
+def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
+    conn, repo = open_repo(tmp_path)
+    pushdeer_adapter = RecordingPushDeerAdapter()
+    try:
+        _, delivery = seed_delivery(repo, provider="pushdeer")
+        worker = NotificationDeliveryWorker(
+            repository=repo,
+            channels={
+                "pushdeer": NotificationChannelConfig(
+                    enabled=True,
+                    provider="pushdeer",
+                    url="pushdeers://pushKey",
+                    min_severity="high",
+                )
+            },
+            pushdeer_adapter=pushdeer_adapter,
+            poll_interval=0.2,
+        )
+
+        processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
+        updated = repo.delivery_by_id(delivery["delivery_id"])
+    finally:
+        conn.close()
+
+    assert processed is True
+    assert updated is not None
+    assert updated["status"] == "delivered"
+    assert pushdeer_adapter.sent == [
+        {
+            "url": "pushdeers://pushKey",
+            "title": "PEPE heat",
+            "body": "Heat 88, quality 76",
+        }
+    ]
