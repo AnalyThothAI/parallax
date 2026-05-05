@@ -669,6 +669,29 @@ describe("App Token Radar social heat cockpit", () => {
     expect(useTraderStore.getState().scope).toBe("all");
   });
 
+  it("returns mobile Radar and Tape tasks to the live cockpit after opening Signal Lab", async () => {
+    renderWithQuery(<App />);
+    const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
+    const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+
+    fireEvent.click(within(pulse).getByRole("button", { name: "Open Lab" }));
+    await screen.findByText("Audit watched-account social events into snapshots, outcomes, and predictive credit.");
+    expect(useTraderStore.getState().activeView).toBe("signal_lab");
+
+    fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
+    expect(useTraderStore.getState().activeView).toBe("live");
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
+
+    const livePulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+    fireEvent.click(within(livePulse).getByRole("button", { name: "Open Lab" }));
+    await screen.findByText("Audit watched-account social events into snapshots, outcomes, and predictive credit.");
+    fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
+    expect(useTraderStore.getState().activeView).toBe("live");
+    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
+  });
+
   it("exposes distinct responsive shell surfaces without duplicating Token Radar rows", async () => {
     const { container } = renderWithQuery(<App />);
     await screen.findByRole("button", { name: "select token $UPEG" });

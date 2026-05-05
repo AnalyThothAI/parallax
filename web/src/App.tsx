@@ -384,6 +384,13 @@ export function App() {
     setMobileTask("detail");
   };
 
+  const handleMobileTaskChange = (task: MobileTask) => {
+    setMobileTask(task);
+    if (task === "radar" || task === "tape") {
+      setActiveView("live");
+    }
+  };
+
   const handleHotkey = (event: KeyboardEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
     const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
@@ -679,7 +686,7 @@ export function App() {
       <MobileTaskNav
         activeTask={mobileTask}
         detailAvailable={Boolean(selectedSignal || selectedToken)}
-        onTaskChange={setMobileTask}
+        onTaskChange={handleMobileTaskChange}
       />
     </main>
   );
