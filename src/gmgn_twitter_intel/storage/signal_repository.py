@@ -388,6 +388,85 @@ class SignalRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def token_attributions_by_token_id(
+        self,
+        *,
+        token_id: str,
+        limit: int,
+        watched_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
+        clauses.append("eta.token_id = ?")
+        params.append(token_id)
+        rows = self.conn.execute(
+            f"""
+            SELECT eta.*
+            FROM event_token_attributions eta
+            WHERE {" AND ".join(clauses)}
+            ORDER BY eta.received_at_ms DESC, eta.event_id DESC
+            LIMIT ?
+            """,
+            (*params, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def token_attribution_count_by_token_id(self, *, token_id: str, watched_only: bool = False) -> int:
+        clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
+        clauses.append("eta.token_id = ?")
+        params.append(token_id)
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT eta.event_id) AS count
+            FROM event_token_attributions eta
+            WHERE {" AND ".join(clauses)}
+            """,
+            params,
+        ).fetchone()
+        return int(row["count"] or 0) if row else 0
+
+    def token_attributions_by_ca(
+        self,
+        *,
+        chain: str,
+        address: str,
+        limit: int,
+        watched_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
+        clauses.append("eta.address = ?")
+        params.append(address)
+        chain_clause, chain_params = _attribution_chain_clause("eta.chain", chain)
+        clauses.append(chain_clause)
+        params.extend(chain_params)
+        rows = self.conn.execute(
+            f"""
+            SELECT eta.*
+            FROM event_token_attributions eta
+            WHERE {" AND ".join(clauses)}
+            ORDER BY eta.received_at_ms DESC, eta.event_id DESC
+            LIMIT ?
+            """,
+            (*params, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def token_attribution_count_by_ca(self, *, chain: str, address: str, watched_only: bool = False) -> int:
+        clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
+        clauses.append("eta.address = ?")
+        params.append(address)
+        chain_clause, chain_params = _attribution_chain_clause("eta.chain", chain)
+        clauses.append(chain_clause)
+        params.extend(chain_params)
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT eta.event_id) AS count
+            FROM event_token_attributions eta
+            WHERE {" AND ".join(clauses)}
+            """,
+            params,
+        ).fetchone()
+        return int(row["count"] or 0) if row else 0
+
     def alerts_for_event(self, event_id: str) -> list[dict[str, Any]]:
         token_rows = self.conn.execute(
             "SELECT 'account_token' AS alert_type, * FROM account_token_alerts WHERE event_id = ?",
@@ -461,6 +540,27 @@ def _now_ms() -> int:
 def _normalize_symbol(symbol: str) -> str:
     text = symbol.strip().lstrip("$")
     return text.upper() if text.isascii() else text
+
+
+def _resolved_attribution_clauses(*, watched_only: bool) -> tuple[list[str], list[Any]]:
+    clauses = [
+        "eta.token_id IS NOT NULL",
+        "eta.attribution_status IN ('direct', 'selected')",
+        "eta.attribution_weight > 0",
+        "eta.chain IS NOT NULL",
+        "eta.address IS NOT NULL",
+        "eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')",
+    ]
+    if watched_only:
+        clauses.append("eta.is_watched = 1")
+    return clauses, []
+
+
+def _attribution_chain_clause(column: str, chain: str) -> tuple[str, list[Any]]:
+    if chain == "evm_unknown":
+        placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+        return f"{column} IN ({placeholders})", sorted(EVM_QUERY_CHAINS)
+    return f"{column} = ?", [chain]
 
 
 def _attribution_payload(attribution: Any, *, now_ms: int) -> dict[str, Any]:

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { RadarSortMode, ScopeKey, TimelineBucket, TokenDetailTab, WindowKey } from "../api/types";
 
 type PostSortMode = "recent" | "quality";
-type HarnessView = "events" | "seeds" | "snapshots" | "outcomes" | "evaluation";
+type HarnessView = "events" | "seeds" | "snapshots";
 type HarnessHorizon = "6h" | "24h";
 
 type TraderState = {

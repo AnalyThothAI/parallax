@@ -34,7 +34,7 @@ import type {
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
-import { HarnessDetailDrawer } from "./components/HarnessDetailDrawer";
+import { HarnessDetailDrawer, type HarnessDetailTab } from "./components/HarnessDetailDrawer";
 import { HarnessPanel } from "./components/HarnessPanel";
 import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
@@ -46,6 +46,7 @@ import {
   tokenKey,
   tokenLabel
 } from "./lib/format";
+import { tokenForSearchQuery } from "./lib/searchIntent";
 import { useTraderStore } from "./store/useTraderStore";
 
 const WINDOWS: WindowKey[] = ["5m", "1h", "24h"];
@@ -93,6 +94,7 @@ export function App() {
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
+  const [harnessDetailTab, setHarnessDetailTab] = useState<HarnessDetailTab>("trace");
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -359,6 +361,12 @@ export function App() {
 
   const submitEvidenceSearch = () => {
     const query = search.trim();
+    const tokenMatch = tokenForSearchQuery(query, tokenItems);
+    if (tokenMatch) {
+      selectToken(tokenMatch);
+      setSelectedTapeEventId(null);
+      return;
+    }
     submitSearch();
     setSelectedSignal(query ? { kind: "query", query } : null);
     setSelectedTapeEventId(null);
@@ -372,14 +380,17 @@ export function App() {
       return;
     }
     if (item.kind === "social_event") {
+      setHarnessDetailTab("trace");
       setSelectedSignal({ kind: "social_event", item: item.item });
       return;
     }
     if (item.kind === "attention_seed") {
+      setHarnessDetailTab("trace");
       setSelectedSignal({ kind: "attention_seed", item: item.item });
       return;
     }
     if (item.kind === "harness_snapshot") {
+      setHarnessDetailTab("trace");
       setSelectedSignal({ kind: "harness_snapshot", item: item.item });
       return;
     }
@@ -573,9 +584,18 @@ export function App() {
                 snapshots={harnessSnapshots}
                 socialEvents={socialEvents}
                 view={harnessView}
-                onSelectEvent={(item) => setSelectedSignal({ kind: "social_event", item })}
-                onSelectSeed={(item) => setSelectedSignal({ kind: "attention_seed", item })}
-                onSelectSnapshot={(item) => setSelectedSignal({ kind: "harness_snapshot", item })}
+                onSelectEvent={(item) => {
+                  setHarnessDetailTab("trace");
+                  setSelectedSignal({ kind: "social_event", item });
+                }}
+                onSelectSeed={(item) => {
+                  setHarnessDetailTab("trace");
+                  setSelectedSignal({ kind: "attention_seed", item });
+                }}
+                onSelectSnapshot={(item) => {
+                  setHarnessDetailTab("trace");
+                  setSelectedSignal({ kind: "harness_snapshot", item });
+                }}
                 onHorizonChange={setHarnessHorizon}
                 onViewChange={setHarnessView}
               />
@@ -585,11 +605,13 @@ export function App() {
 
         {selectedHarnessDetails ? (
           <HarnessDetailDrawer
+            activeTab={harnessDetailTab}
             credits={selectedHarnessDetails.credits}
             outcome={selectedHarnessDetails.outcome}
             seed={selectedHarnessDetails.seed}
             snapshot={selectedHarnessDetails.snapshot}
             socialEvent={selectedHarnessDetails.socialEvent}
+            onTabChange={setHarnessDetailTab}
           />
         ) : selectedEvidenceDetails ? (
           <EvidenceDetailDrawer {...selectedEvidenceDetails} />
@@ -617,6 +639,7 @@ export function App() {
             onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
             onPostSortModeChange={setPostSortMode}
             onSelectSnapshot={(snapshot) => {
+              setHarnessDetailTab("trace");
               setSelectedSignal({ kind: "harness_snapshot", item: snapshot });
               setSelectedTapeEventId(snapshot.snapshot_id);
             }}
@@ -994,15 +1017,29 @@ function resolveHarnessDetails(
     socialEvents: SocialEventItem[];
   }
 ): { socialEvent: SocialEventItem | null; seed: AttentionSeedItem | null; snapshot: HarnessSnapshotItem | null; outcome: HarnessOutcomeItem | null; credits: HarnessCreditItem[] } | null {
-  if (!signal || !["social_event", "attention_seed", "harness_snapshot"].includes(signal.kind)) {
+  if (!signal) {
     return null;
   }
-  const socialEvent = signal.kind === "social_event" ? signal.item : data.socialEvents.find((item) => item.extraction_id === seedForSignal(signal, data.attentionSeeds)?.extraction_id) ?? null;
-  const seed = seedForSignal(signal, data.attentionSeeds);
-  const snapshot =
-    signal.kind === "harness_snapshot"
-      ? signal.item
-      : data.harnessSnapshots.find((item) => seed?.top_linked_symbols.some((symbol) => symbol.toUpperCase() === item.asset.toUpperCase())) ?? null;
+
+  let socialEvent: SocialEventItem | null;
+  let seed: AttentionSeedItem | null;
+  let snapshot: HarnessSnapshotItem | null;
+  if (signal.kind === "social_event") {
+    socialEvent = signal.item;
+    seed = seedForSocialEvent(signal.item, data.attentionSeeds);
+    snapshot = snapshotForSocialEvent(signal.item, seed, data.harnessSnapshots);
+  } else if (signal.kind === "attention_seed") {
+    socialEvent = socialEventForSeed(signal.item, data.socialEvents);
+    seed = signal.item;
+    snapshot = snapshotForSeed(signal.item, data.harnessSnapshots);
+  } else if (signal.kind === "harness_snapshot") {
+    socialEvent = socialEventForSnapshot(signal.item, data.socialEvents, data.attentionSeeds);
+    seed = seedForSnapshot(signal.item, data.attentionSeeds);
+    snapshot = signal.item;
+  } else {
+    return null;
+  }
+
   const outcome = snapshot ? data.harnessOutcomes.find((item) => item.snapshot_id === snapshot.snapshot_id) ?? null : null;
   const credits = snapshot ? data.harnessCredits.filter((item) => item.snapshot_id === snapshot.snapshot_id) : [];
   return { socialEvent, seed, snapshot, outcome, credits };
@@ -1041,11 +1078,35 @@ function resolveEvidenceDetails(
   return null;
 }
 
-function seedForSignal(signal: NonNullable<SelectedSignal>, seeds: AttentionSeedItem[]): AttentionSeedItem | null {
-  if (signal.kind === "attention_seed") return signal.item;
-  if (signal.kind === "social_event") return seeds.find((item) => item.extraction_id === signal.item.extraction_id) ?? null;
-  if (signal.kind === "harness_snapshot") return seeds.find((item) => item.top_linked_symbols.some((symbol) => symbol.toUpperCase() === signal.item.asset.toUpperCase())) ?? null;
-  return null;
+function seedForSocialEvent(socialEvent: SocialEventItem, seeds: AttentionSeedItem[]): AttentionSeedItem | null {
+  return seeds.find((item) => item.extraction_id === socialEvent.extraction_id || item.event_id === socialEvent.event_id) ?? null;
+}
+
+function seedForSnapshot(snapshot: HarnessSnapshotItem, seeds: AttentionSeedItem[]): AttentionSeedItem | null {
+  return snapshot.seed_id ? seeds.find((item) => item.seed_id === snapshot.seed_id) ?? null : null;
+}
+
+function socialEventForSeed(seed: AttentionSeedItem, socialEvents: SocialEventItem[]): SocialEventItem | null {
+  return socialEvents.find((item) => item.extraction_id === seed.extraction_id || item.event_id === seed.event_id) ?? null;
+}
+
+function socialEventForSnapshot(snapshot: HarnessSnapshotItem, socialEvents: SocialEventItem[], seeds: AttentionSeedItem[]): SocialEventItem | null {
+  const seed = seedForSnapshot(snapshot, seeds);
+  if (seed) {
+    return socialEventForSeed(seed, socialEvents);
+  }
+  return snapshot.source_event_id ? socialEvents.find((item) => item.event_id === snapshot.source_event_id) ?? null : null;
+}
+
+function snapshotForSeed(seed: AttentionSeedItem, snapshots: HarnessSnapshotItem[]): HarnessSnapshotItem | null {
+  return snapshots.find((item) => item.seed_id === seed.seed_id || item.source_event_id === seed.event_id) ?? null;
+}
+
+function snapshotForSocialEvent(socialEvent: SocialEventItem, seed: AttentionSeedItem | null, snapshots: HarnessSnapshotItem[]): HarnessSnapshotItem | null {
+  if (seed) {
+    return snapshotForSeed(seed, snapshots);
+  }
+  return snapshots.find((item) => item.source_event_id === socialEvent.event_id) ?? null;
 }
 
 function filterHarnessForToken(

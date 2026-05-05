@@ -271,7 +271,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
         if command == "search":
             query = _search_query(args)
-            results = SearchService(evidence=evidence, entities=entities, signals=signals).search(
+            results = SearchService(evidence=evidence, signals=signals, tokens=tokens).search(
                 query,
                 limit=args.limit,
                 scope=args.scope,
@@ -284,6 +284,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "total_count": results.total_count,
                         "returned_count": results.returned_count,
                         "has_more": results.has_more,
+                        "candidates": results.candidates,
                         "items": results.items,
                     },
                     "error": results.error,

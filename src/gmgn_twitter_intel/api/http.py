@@ -103,8 +103,8 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         query = _search_query(q=q, symbol=symbol, ca=ca, chain=chain, handle=handle)
         results = SearchService(
             evidence=runtime.read_evidence,
-            entities=runtime.read_entities,
             signals=runtime.read_signals,
+            tokens=runtime.read_tokens,
         ).search(
             query,
             limit=_limit(limit),
@@ -118,6 +118,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                     "total_count": results.total_count,
                     "returned_count": results.returned_count,
                     "has_more": results.has_more,
+                    "candidates": results.candidates,
                     "items": results.items,
                 },
                 "error": results.error,

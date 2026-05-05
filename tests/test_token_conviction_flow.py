@@ -630,7 +630,7 @@ def test_token_flow_penalizes_single_author_concentration(tmp_path):
 
 
 def test_search_resolves_gmgn_payload_token_mentions_without_text_ca(tmp_path):
-    conn, ingest, evidence, entities, signals, _ = open_runtime(tmp_path)
+    conn, ingest, evidence, _entities, signals, tokens = open_runtime(tmp_path)
     try:
         snapshot = parse_gmgn_token_payload(
             {
@@ -657,15 +657,15 @@ def test_search_resolves_gmgn_payload_token_mentions_without_text_ca(tmp_path):
         )
         ingest.ingest_event(event, is_watched=False)
 
-        by_ca = SearchService(evidence=evidence, entities=entities, signals=signals).search(
+        by_ca = SearchService(evidence=evidence, signals=signals, tokens=tokens).search(
             "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
             limit=10,
         )
-        by_symbol = SearchService(evidence=evidence, entities=entities, signals=signals).search("$DOG", limit=10)
+        by_symbol = SearchService(evidence=evidence, signals=signals, tokens=tokens).search("$DOG", limit=10)
     finally:
         conn.close()
 
     assert by_ca.items[0]["event"]["event_id"] == "event-dog-payload"
-    assert by_ca.items[0]["match_type"] == "exact_ca"
+    assert by_ca.items[0]["match_type"] == "token_attribution"
     assert by_symbol.items[0]["event"]["event_id"] == "event-dog-payload"
-    assert by_symbol.items[0]["match_type"] == "exact_symbol"
+    assert by_symbol.items[0]["match_type"] == "token_attribution"

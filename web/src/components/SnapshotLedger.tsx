@@ -14,6 +14,8 @@ export function SnapshotLedger({ snapshot }: SnapshotLedgerProps) {
     <div className="snapshot-ledger ledger-box">
       <h3>Snapshot Ledger</h3>
       <LedgerRow label="snapshot_id" value={signalLabLabel(snapshot.snapshot_id)} />
+      <LedgerRow label="source_event" value={signalLabLabel(snapshot.source_event_id)} />
+      <LedgerRow label="seed" value={signalLabLabel(snapshot.seed_id)} />
       <LedgerRow label="asset" value={snapshot.asset} />
       <LedgerRow label="horizon" value={snapshot.horizon} />
       <LedgerRow label="combined_score" value={formatScore(snapshot.combined_score * 100)} />

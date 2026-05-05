@@ -5,15 +5,26 @@ import { HarnessTrace } from "./HarnessTrace";
 import { OutcomeCard } from "./OutcomeCard";
 import { SnapshotLedger } from "./SnapshotLedger";
 
+export type HarnessDetailTab = "trace" | "snapshot" | "outcome" | "credit";
+
 type HarnessDetailDrawerProps = {
   socialEvent?: SocialEventItem | null;
   seed?: AttentionSeedItem | null;
   snapshot?: HarnessSnapshotItem | null;
   outcome?: HarnessOutcomeItem | null;
   credits: HarnessCreditItem[];
+  activeTab: HarnessDetailTab;
+  onTabChange: (tab: HarnessDetailTab) => void;
 };
 
-export function HarnessDetailDrawer({ socialEvent, seed, snapshot, outcome, credits }: HarnessDetailDrawerProps) {
+const DETAIL_TABS: { tab: HarnessDetailTab; label: string }[] = [
+  { tab: "trace", label: "Trace" },
+  { tab: "snapshot", label: "Snapshot" },
+  { tab: "outcome", label: "Outcome" },
+  { tab: "credit", label: "Credit" }
+];
+
+export function HarnessDetailDrawer({ activeTab, credits, outcome, seed, snapshot, socialEvent, onTabChange }: HarnessDetailDrawerProps) {
   const title = snapshot ? `${snapshot.asset} · ${snapshot.horizon}` : socialEvent ? `@${socialEvent.author_handle ?? "watched"} · ${socialEvent.event_type}` : seed ? `@${seed.author_handle ?? "watched"} · ${seed.event_type}` : "Signal Lab";
   const score = snapshot?.combined_score ?? socialEvent?.confidence ?? null;
   return (
@@ -28,19 +39,25 @@ export function HarnessDetailDrawer({ socialEvent, seed, snapshot, outcome, cred
           <div className="opportunity-score">{score === null ? "-" : formatPercentShare(score)}</div>
         </div>
       </header>
-      <nav className="tabs" aria-label="signal detail tabs">
-        <button className="active" type="button">
-          Trace
-        </button>
-        <button type="button">Snapshot</button>
-        <button type="button">Outcome</button>
-        <button type="button">Credit</button>
+      <nav className="tabs signal-detail-tabs" aria-label="signal detail tabs" role="tablist">
+        {DETAIL_TABS.map(({ label, tab }) => (
+          <button
+            aria-selected={activeTab === tab}
+            className={activeTab === tab ? "active" : ""}
+            key={tab}
+            role="tab"
+            type="button"
+            onClick={() => onTabChange(tab)}
+          >
+            {label}
+          </button>
+        ))}
       </nav>
-      <section className="drawer-section">
-        <HarnessTrace credits={credits} outcome={outcome} seed={seed} snapshot={snapshot} socialEvent={socialEvent} />
-        <SnapshotLedger snapshot={snapshot ?? null} />
-        <OutcomeCard outcome={outcome} status={snapshot?.outcome_status ?? "pending"} />
-        <CreditLedger credits={credits} />
+      <section className="drawer-section" role="tabpanel">
+        {activeTab === "trace" ? <HarnessTrace credits={credits} outcome={outcome} seed={seed} snapshot={snapshot} socialEvent={socialEvent} /> : null}
+        {activeTab === "snapshot" ? <SnapshotLedger snapshot={snapshot ?? null} /> : null}
+        {activeTab === "outcome" ? <OutcomeCard outcome={outcome} status={snapshot?.outcome_status ?? "pending"} /> : null}
+        {activeTab === "credit" ? <CreditLedger credits={credits} /> : null}
       </section>
     </aside>
   );

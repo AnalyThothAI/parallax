@@ -256,26 +256,113 @@ def test_close_ambiguous_symbol_candidates_are_not_counted_as_flow(tmp_path):
     assert {row["attribution_weight"] for row in attribution_rows} == {0.0}
 
 
-def test_search_reports_total_returned_and_has_more_for_limited_results(tmp_path):
-    conn, ingest, evidence, entities, signals, _ = open_runtime(tmp_path)
+def test_search_symbol_uses_unique_resolved_token_attributions(tmp_path):
+    conn, ingest, evidence, _entities, signals, tokens = open_runtime(tmp_path)
     try:
         base_ms = 1_700_000_000_000
-        for index in range(6):
-            ingest.ingest_event(
-                make_event(
-                    f"event-dog-search-{index}",
-                    author_handle=f"voice{index}",
-                    text=f"$DOG search evidence {index}",
-                    received_at_ms=base_ms + index,
-                ),
-                is_watched=index % 2 == 0,
-            )
+        ingest.ingest_event(
+            make_event(
+                "event-dog-symbol-first",
+                author_handle="watcher",
+                text="$DOG early before payload",
+                received_at_ms=base_ms + 1_000,
+            ),
+            is_watched=True,
+        )
+        ingest.ingest_event(
+            token_event(
+                "event-dog-payload-later",
+                symbol="DOG",
+                address="5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+                market_cap="45000000",
+                liquidity="2400000",
+                received_at_ms=base_ms + 2_000,
+                author_handle="gmgnfeed",
+            ),
+            is_watched=False,
+        )
 
-        results = SearchService(evidence=evidence, entities=entities, signals=signals).search("$DOG", limit=3)
+        results = SearchService(evidence=evidence, signals=signals, tokens=tokens).search(
+            "$DOG",
+            limit=10,
+        )
     finally:
         conn.close()
 
-    assert len(results.items) == 3
-    assert results.total_count == 6
-    assert results.returned_count == 3
-    assert results.has_more is True
+    assert [item["event"]["event_id"] for item in results.items] == [
+        "event-dog-payload-later",
+        "event-dog-symbol-first",
+    ]
+    assert {item["match_type"] for item in results.items} == {"token_attribution"}
+    assert results.total_count == 2
+    assert results.returned_count == 2
+    assert results.has_more is False
+
+
+def test_search_symbol_refuses_unresolved_symbol_buckets(tmp_path):
+    conn, ingest, evidence, _entities, signals, tokens = open_runtime(tmp_path)
+    try:
+        ingest.ingest_event(
+            make_event(
+                "event-dog-unresolved",
+                author_handle="watcher",
+                text="$DOG unresolved symbol chatter",
+                received_at_ms=1_700_000_000_000,
+            ),
+            is_watched=True,
+        )
+
+        results = SearchService(evidence=evidence, signals=signals, tokens=tokens).search(
+            "$DOG",
+            limit=10,
+        )
+    finally:
+        conn.close()
+
+    assert results.ok is False
+    assert results.error == "unresolved_token_symbol"
+    assert results.items == []
+
+
+def test_search_symbol_reports_ambiguous_token_candidates_without_mixed_events(tmp_path):
+    conn, ingest, evidence, _entities, signals, tokens = open_runtime(tmp_path)
+    try:
+        base_ms = 1_700_000_000_000
+        ingest.ingest_event(
+            token_event(
+                "event-dupe-token-a",
+                symbol="DUPE",
+                address="5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+                market_cap="1000000",
+                liquidity="100000",
+                holder_count=1_000,
+                received_at_ms=base_ms + 1_000,
+                author_handle="voicea",
+            ),
+            is_watched=False,
+        )
+        ingest.ingest_event(
+            token_event(
+                "event-dupe-token-b",
+                symbol="DUPE",
+                address="DkVsvbzz39yx8hawbxfWubJKpZ4cdc4SPtPf5TZQpump",
+                market_cap="1000000",
+                liquidity="100000",
+                holder_count=1_000,
+                received_at_ms=base_ms + 2_000,
+                author_handle="voiceb",
+            ),
+            is_watched=False,
+        )
+
+        results = SearchService(evidence=evidence, signals=signals, tokens=tokens).search(
+            "$DUPE",
+            limit=10,
+        )
+    finally:
+        conn.close()
+
+    assert results.ok is False
+    assert results.error == "ambiguous_token_symbol"
+    assert results.items == []
+    assert [candidate["symbol"] for candidate in results.candidates] == ["DUPE", "DUPE"]

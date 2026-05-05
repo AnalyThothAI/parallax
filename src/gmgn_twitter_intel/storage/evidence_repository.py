@@ -160,7 +160,7 @@ class EvidenceRepository:
             FROM event_fts
             JOIN events e ON e.event_id = event_fts.event_id
             WHERE event_fts MATCH ? {watched_clause}
-            ORDER BY score
+            ORDER BY score, e.received_at_ms DESC
             LIMIT ?
             """,
             (fts_query, max(0, int(limit))),
@@ -273,8 +273,10 @@ def decode_event_row(row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
 
 
 def _fts_query(query: str) -> str:
+    if query.count('"') % 2 == 1:
+        query = query[: query.rfind('"')]
     tokens = re.findall(r"\w+", query, flags=re.UNICODE)
-    return " OR ".join(f'"{token}"' for token in tokens[:16])
+    return " AND ".join(f'"{token}"' for token in tokens[:16])
 
 
 def _json(value: Any) -> str:

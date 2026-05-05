@@ -33,8 +33,6 @@ def parse_query(text: str) -> ParsedQuery:
         chain = ca = None
     if ca:
         return ParsedQuery(kind="ca", text=query, ca=ca, chain=chain)
-    if query.isascii() and query.isupper() and 2 <= len(query) <= 12 and query.isalnum():
-        return ParsedQuery(kind="symbol", text=query, symbol=query.upper())
     return ParsedQuery(kind="text", text=query)
 
 

@@ -120,6 +120,7 @@ export type SearchData = {
   total_count: number;
   returned_count: number;
   has_more: boolean;
+  candidates?: TokenIdentityBlock[];
   items: SearchItem[];
 };
 
@@ -479,6 +480,8 @@ export type HarnessVersionBlock = {
 
 export type HarnessSnapshotItem = {
   snapshot_id: string;
+  source_event_id?: string | null;
+  seed_id?: string | null;
   asset: string;
   decision_time_ms: number;
   horizon: "6h" | "24h" | string;

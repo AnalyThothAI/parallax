@@ -306,6 +306,23 @@ class TokenRepository:
         ).fetchall()
         return sorted({_canonical_token_id_from_token_id(str(row["token_id"])) for row in rows})
 
+    def tokens_for_symbol(self, symbol: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT t.*
+            FROM token_aliases ta
+            JOIN tokens t ON t.token_id = ta.token_id
+            WHERE ta.symbol = ?
+            ORDER BY ta.confidence DESC, t.first_seen_ms DESC, t.token_id
+            """,
+            (_normalize_symbol(symbol),),
+        ).fetchall()
+        by_id: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            token = _canonical_token_row(dict(row))
+            by_id[str(token["token_id"])] = token
+        return list(by_id.values())
+
     def resolve_symbol(self, symbol: str) -> TokenIdentity:
         normalized = _normalize_symbol(symbol)
         aliases = self.aliases_for_symbol(normalized)

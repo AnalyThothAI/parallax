@@ -28,17 +28,10 @@ export function AttentionSeedList({ items, selectedSeedId, onSelect }: Attention
             <p>
               {item.subject} · {item.seed_status}
             </p>
-            <span className="harness-chip-line">
-              {item.top_linked_symbols.slice(0, 3).map((symbol) => (
-                <span className="harness-anchor-chip" key={symbol}>
-                  ${symbol}
-                </span>
-              ))}
-              {item.risks.slice(0, 2).map((risk) => (
-                <span className="harness-risk-chip" key={risk}>
-                  {risk}
-                </span>
-              ))}
+            <span className="harness-stage-line">
+              <span>{item.seed_status.replaceAll("_", " ")}</span>
+              <span>{item.top_linked_symbols.length ? item.top_linked_symbols.map((symbol) => `$${symbol}`).join(", ") : "no linked token"}</span>
+              {item.risks[0] ? <span>{item.risks[0].replaceAll("_", " ")}</span> : null}
             </span>
           </span>
           <span className="harness-row-meta">

@@ -27,17 +27,10 @@ export function SocialEventFeed({ compact, items, selectedId, onSelect }: Social
               @{item.author_handle ?? "watched"} · {item.event_type}
             </strong>
             <p>{item.subject || item.summary_zh || "no subject"}</p>
-            <span className="harness-chip-line">
-              {item.anchor_terms.slice(0, 3).map((anchor) => (
-                <span className="harness-anchor-chip" key={`${anchor.role}:${anchor.term}`}>
-                  {anchor.term}
-                </span>
-              ))}
-              {item.semantic_risks.slice(0, 2).map((risk) => (
-                <span className="harness-risk-chip" key={risk}>
-                  {risk}
-                </span>
-              ))}
+            <span className="harness-stage-line">
+              <span>{item.attention_mechanism.replaceAll("_", " ")}</span>
+              <span>{item.anchor_terms[0]?.term ?? "no anchor"}</span>
+              {item.semantic_risks[0] ? <span>{item.semantic_risks[0].replaceAll("_", " ")}</span> : null}
             </span>
           </span>
           <span className="harness-row-meta">

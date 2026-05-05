@@ -4,7 +4,7 @@ import { AttentionSeedList } from "./AttentionSeedList";
 import { HarnessHealthStrip } from "./HarnessHealthStrip";
 import { SocialEventFeed } from "./SocialEventFeed";
 
-export type HarnessPanelMode = "events" | "seeds" | "snapshots" | "outcomes" | "evaluation";
+export type HarnessPanelMode = "events" | "seeds" | "snapshots";
 type HarnessHorizon = "6h" | "24h";
 
 type HarnessPanelProps = {
@@ -44,13 +44,13 @@ export function HarnessPanel({
       <div className="harness-toolbar">
         <div className="harness-tabs" aria-label="signal lab panel tabs">
           <button className={view === "events" ? "active" : ""} type="button" onClick={() => onViewChange("events")}>
-            Events
+            Events <span>{socialEvents.length}</span>
           </button>
           <button className={view === "seeds" ? "active" : ""} type="button" onClick={() => onViewChange("seeds")}>
-            Seeds
+            Seeds <span>{seeds.length}</span>
           </button>
           <button className={view === "snapshots" ? "active" : ""} type="button" onClick={() => onViewChange("snapshots")}>
-            Snapshots
+            Snapshots <span>{snapshots.length}</span>
           </button>
         </div>
         <div className="harness-horizon-control" aria-label="settlement horizon">
@@ -83,9 +83,9 @@ export function HarnessPanel({
                 <p>
                   shadow {snapshot.shadow_signal} · policy {snapshot.policy_signal}
                 </p>
-                <span className="harness-chip-line">
-                  <span className="harness-anchor-chip">{snapshot.outcome_status}</span>
-                  <span className="harness-anchor-chip">{snapshot.credit_status}</span>
+                <span className="harness-stage-line">
+                  <span>{snapshot.outcome_status.replaceAll("_", " ")}</span>
+                  <span>{snapshot.credit_status.replaceAll("_", " ")}</span>
                 </span>
               </span>
               <span className="harness-row-meta">

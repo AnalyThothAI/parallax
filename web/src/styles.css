@@ -717,8 +717,8 @@ svg {
 
 .bottom-deck {
   display: grid;
-  grid-template-columns: minmax(420px, 1.08fr) minmax(320px, 0.92fr);
-  min-height: 320px;
+  grid-template-columns: minmax(380px, 0.95fr) minmax(400px, 1.05fr);
+  min-height: 368px;
   border-top: 1px solid var(--line);
 }
 
@@ -1335,6 +1335,10 @@ svg {
   padding: 10px 14px 0;
 }
 
+.signal-detail-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .tabs button {
   height: 26px;
   border: 1px solid var(--line);
@@ -1697,8 +1701,8 @@ svg {
 }
 
 .harness-panel {
-  max-height: 286px;
-  overflow: hidden;
+  max-height: none;
+  overflow: visible;
   padding: 8px;
 }
 
@@ -1810,6 +1814,10 @@ svg {
 
 .harness-tabs button,
 .harness-horizon-control button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   height: 24px;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -1817,6 +1825,11 @@ svg {
   background: #0a0e0e;
   font-family: var(--mono);
   font-size: 10px;
+}
+
+.harness-tabs button span {
+  color: var(--faint);
+  font-size: 9px;
 }
 
 .harness-tabs button:hover,
@@ -1830,7 +1843,7 @@ svg {
 
 .harness-feed {
   display: grid;
-  max-height: 184px;
+  max-height: 252px;
   overflow: auto;
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -1843,18 +1856,16 @@ svg {
 
 .harness-row {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 74px;
+  grid-template-columns: 36px minmax(0, 1fr) 84px;
   align-items: start;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  min-height: 56px;
-  max-height: 76px;
-  overflow: hidden;
+  min-height: 86px;
   border: 0;
   border-bottom: 1px solid var(--line-soft);
   color: inherit;
   background: transparent;
-  padding: 8px;
+  padding: 10px;
   text-align: left;
 }
 
@@ -1884,7 +1895,7 @@ svg {
 .harness-row-main {
   display: grid;
   min-width: 0;
-  gap: 3px;
+  gap: 5px;
 }
 
 .harness-row-main strong,
@@ -1905,38 +1916,34 @@ svg {
   margin: 0;
   color: var(--text);
   font-size: 11px;
-  line-height: 1.28;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.38;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
-.harness-chip-line {
+.harness-stage-line {
   display: flex;
+  flex-wrap: wrap;
   min-width: 0;
-  gap: 4px;
+  gap: 5px;
   overflow: hidden;
 }
 
-.harness-anchor-chip,
-.harness-risk-chip {
+.harness-stage-line span {
   display: inline-block;
-  max-width: 140px;
+  max-width: 170px;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 3px;
   color: var(--muted);
   background: rgba(255, 255, 255, 0.025);
-  padding: 1px 6px;
+  padding: 2px 6px;
   font-family: var(--mono);
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.harness-risk-chip {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
 }
 
 .harness-row-meta {
@@ -2014,12 +2021,11 @@ svg {
 }
 
 .harness-trace-step p {
-  overflow: hidden;
   margin: 2px 0;
   color: var(--muted);
   line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .harness-token-tab {

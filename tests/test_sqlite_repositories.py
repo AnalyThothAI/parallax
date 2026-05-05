@@ -141,6 +141,24 @@ def test_search_fts_sanitizes_user_query_syntax(tmp_path):
     assert empty_results == []
 
 
+def test_search_fts_requires_all_query_terms(tmp_path):
+    conn, evidence, _, _, _ = open_repositories(tmp_path)
+    try:
+        evidence.insert_event(
+            make_event("event-base-only", text="base rotation", received_at_ms=1_700_000_000_000),
+            is_watched=True,
+        )
+        evidence.insert_event(
+            make_event("event-base-stablecoin", text="base stablecoin rotation", received_at_ms=1_700_000_001_000),
+            is_watched=True,
+        )
+        results = evidence.search_fts("base stablecoin", limit=10, watched_only=True)
+    finally:
+        conn.close()
+
+    assert [item["event_id"] for item in results] == ["event-base-stablecoin"]
+
+
 def test_raw_frame_insert_is_idempotent_by_payload_hash(tmp_path):
     conn, evidence, _, _, _ = open_repositories(tmp_path)
     try:

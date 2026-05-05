@@ -151,7 +151,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        event = make_event("event-1", text=f"$PEPE ignition {PEPE}")
+        event = make_token_event("event-1", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
         HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
             event=event.to_dict(),
@@ -200,11 +200,11 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
 
     assert token_flow.status_code == 200
-    assert token_flow.json()["data"]["items"] == []
+    assert token_flow.json()["data"]["items"][0]["identity"]["symbol"] == "PEPE"
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
-    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "unresolved_chain_ca"
+    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "resolved_ca"
 
 
 def test_api_exposes_empty_harness_read_models_without_404(tmp_path):

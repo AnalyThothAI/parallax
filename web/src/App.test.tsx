@@ -10,6 +10,7 @@ import type {
   HarnessCreditsData,
   HarnessHealthData,
   HarnessOutcomesData,
+  HarnessSnapshotItem,
   HarnessSnapshotsData,
   LivePayload,
   SocialEventsData,
@@ -157,6 +158,41 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.queryByText("Select Token")).not.toBeInTheDocument();
   });
 
+  it("selects the current radar token instead of running evidence search for token-like input", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    mockedGetApi.mockClear();
+
+    fireEvent.change(input, { target: { value: "$UPEG" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+      expect(drawer.querySelector(".drawer-title .eyebrow")).toHaveTextContent("selected token");
+      expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
+    });
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
+  });
+
+  it("treats bare uppercase as token lookup only when the current radar has a unique match", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    mockedGetApi.mockClear();
+
+    fireEvent.change(input, { target: { value: "UPEG" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => {
+      const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+      expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
+    });
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
+  });
+
   it("opens an evidence drawer from a non-token live tape event", async () => {
     socketMock.events = [plainLiveEvent()];
     renderWithQuery(<App />);
@@ -280,7 +316,7 @@ describe("App Token Radar social heat cockpit", () => {
   });
 
   it("renders social event signal rows and opens the right-side trace", async () => {
-    renderWithQuery(<App />);
+    const { container } = renderWithQuery(<App />);
 
     const socialEventRows = await screen.findAllByText("@cz_binance · meme_phrase_seed");
     expect(socialEventRows.length).toBeGreaterThan(0);
@@ -290,13 +326,45 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(socialEventRows[0]);
 
     await waitFor(() => expect(screen.getByText("selected signal object")).toBeInTheDocument());
-    expect(screen.getAllByText("Extracted").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Seed").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Snapshot").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Outcome").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Predictive credit, not causal proof.").length).toBeGreaterThan(0);
-    expect(screen.getByText("signal-lab-score-v1")).toBeInTheDocument();
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(within(drawer).getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true");
+    expect(within(drawer).getAllByText("Extracted").length).toBeGreaterThan(0);
+    expect(within(drawer).queryByText("Snapshot Ledger")).not.toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Snapshot" }));
+    expect(within(drawer).getByText("Snapshot Ledger")).toBeInTheDocument();
+    expect(within(drawer).getByText("signal-lab-score-v1")).toBeInTheDocument();
+    expect(within(drawer).queryByText("Extracted")).not.toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Outcome" }));
+    expect(within(drawer).getByText("Latest Outcome")).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("tab", { name: "Credit" }));
+    expect(within(drawer).getByText("Credit Rows")).toBeInTheDocument();
+    expect(within(drawer).getByText("Predictive credit, not causal proof.")).toBeInTheDocument();
     expect(screen.queryByText("harness-score-v1")).not.toBeInTheDocument();
+  });
+
+  it("links Signal Lab details by persisted lineage ids instead of symbol fallback", async () => {
+    const matchingSnapshot = harnessSnapshotItem();
+    const decoySnapshot: HarnessSnapshotItem = {
+      ...harnessSnapshotItem(),
+      snapshot_id: "snapshot-bnb-wrong",
+      source_event_id: "event-other",
+      seed_id: "seed-other",
+      combined_score: 0.91
+    };
+    mockApi({ harnessSnapshots: [decoySnapshot, matchingSnapshot] });
+    const { container } = renderWithQuery(<App />);
+
+    const socialEventRows = await screen.findAllByText("@cz_binance · meme_phrase_seed");
+    fireEvent.click(socialEventRows[0]);
+
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    fireEvent.click(await within(drawer).findByRole("tab", { name: "Snapshot" }));
+
+    expect(within(drawer).getByText("snapshot-bnb-6h")).toBeInTheDocument();
+    expect(within(drawer).queryByText("snapshot-bnb-wrong")).not.toBeInTheDocument();
   });
 
   it("dedupes replay/live tape rows and token tape click does not change sort mode", async () => {
@@ -381,6 +449,7 @@ function mockApi(options: {
   insufficientTiming?: boolean;
   windowSwapToken?: boolean;
   searchResult?: boolean;
+  harnessSnapshots?: HarnessSnapshotItem[];
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -429,7 +498,7 @@ function mockApi(options: {
     if (path === "/api/account-alerts") return ok({ window: "24h", alert_type: null, items: [] });
     if (path === "/api/social-events") return ok<SocialEventsData>({ items: [socialEventItem()] });
     if (path === "/api/attention-seeds") return ok<AttentionSeedsData>({ items: [attentionSeedItem()] });
-    if (path === "/api/harness-snapshots") return ok<HarnessSnapshotsData>({ items: [harnessSnapshotItem()] });
+    if (path === "/api/harness-snapshots") return ok<HarnessSnapshotsData>({ items: options.harnessSnapshots ?? [harnessSnapshotItem()] });
     if (path === "/api/harness-outcomes") return ok<HarnessOutcomesData>({ items: [harnessOutcomeItem()] });
     if (path === "/api/harness-credits") return ok<HarnessCreditsData>({ items: [harnessCreditItem()] });
     if (path === "/api/harness-health") {
@@ -771,6 +840,8 @@ function attentionSeedItem() {
 function harnessSnapshotItem() {
   return {
     snapshot_id: "snapshot-bnb-6h",
+    source_event_id: "event-cz-bnb",
+    seed_id: "seed-cz-bnb",
     asset: "BNB",
     decision_time_ms: 1_777_746_040_000,
     horizon: "6h",
