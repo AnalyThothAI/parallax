@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 WINDOW_MS = {
-    "1m": 60_000,
     "5m": 300_000,
     "1h": 3_600_000,
+    "4h": 4 * 3_600_000,
     "24h": 86_400_000,
 }
 

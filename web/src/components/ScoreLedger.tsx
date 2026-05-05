@@ -20,6 +20,40 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
   ];
   return (
     <div className="score-ledger">
+      <section className="score-health">
+        <div>
+          <span>score type</span>
+          <b>deterministic ranking</b>
+        </div>
+        <div>
+          <span>baseline</span>
+          <b>{token.flow.baseline_status} · n{token.flow.baseline_sample_count}</b>
+        </div>
+        <div>
+          <span>market</span>
+          <b>{token.market.price_change_status}</b>
+        </div>
+        <div>
+          <span>evidence</span>
+          <b>{token.evidence_total_count} posts</b>
+        </div>
+      </section>
+      {(token.opportunity.hard_risks ?? []).length ? (
+        <div className="hard-risk-strip">
+          {token.opportunity.hard_risks?.map((risk) => (
+            <span key={risk}>{formatRisk(risk)}</span>
+          ))}
+        </div>
+      ) : null}
+      {token.opportunity.risk_caps.length ? (
+        <div className="risk-cap-list opportunity-caps">
+          {token.opportunity.risk_caps.map((cap) => (
+            <span key={`opportunity:${cap.risk}:${cap.cap}`}>
+              {formatRisk(cap.risk)} cap {formatScore(cap.cap)}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <section className="score-overview">
         <div>
           <span>Opportunity</span>
@@ -62,13 +96,6 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
           </article>
         ))}
       </div>
-      {token.opportunity.hard_risks?.length ? (
-        <div className="hard-risk-strip">
-          {token.opportunity.hard_risks.map((risk) => (
-            <span key={risk}>{formatRisk(risk)}</span>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }

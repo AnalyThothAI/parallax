@@ -42,7 +42,7 @@ import { tokenForSearchQuery } from "./lib/searchIntent";
 import { totalChains } from "./lib/signalLabChains";
 import { useTraderStore } from "./store/useTraderStore";
 
-const WINDOWS: WindowKey[] = ["5m", "1h", "24h"];
+const WINDOWS: WindowKey[] = ["5m", "1h", "4h", "24h"];
 const ACCOUNT_ALERT_WINDOW: WindowKey = "24h";
 
 type SelectedSignal =
@@ -70,7 +70,8 @@ export function App() {
   const signalLabHandle = useTraderStore((state) => state.signalLabHandle);
   const signalLabSearch = useTraderStore((state) => state.signalLabSearch);
   const signalLabInspectorTab = useTraderStore((state) => state.signalLabInspectorTab);
-  const timelineBucket = useTraderStore((state) => state.timelineBucket);
+  const detailWindow = useTraderStore((state) => state.detailWindow);
+  const postRange = useTraderStore((state) => state.postRange);
   const postSortMode = useTraderStore((state) => state.postSortMode);
   const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
   const watchedPostsOnly = useTraderStore((state) => state.watchedPostsOnly);
@@ -90,7 +91,8 @@ export function App() {
   const setSignalLabHandle = useTraderStore((state) => state.setSignalLabHandle);
   const setSignalLabInspectorTab = useTraderStore((state) => state.setSignalLabInspectorTab);
   const setSignalLabSearch = useTraderStore((state) => state.setSignalLabSearch);
-  const setTimelineBucket = useTraderStore((state) => state.setTimelineBucket);
+  const setDetailWindow = useTraderStore((state) => state.setDetailWindow);
+  const setPostRange = useTraderStore((state) => state.setPostRange);
   const setPostSortMode = useTraderStore((state) => state.setPostSortMode);
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
@@ -200,8 +202,8 @@ export function App() {
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
-  const tokenTimelineParams = selectedToken ? { ...selectedToken.timeline_query, bucket: timelineBucket } : null;
-  const tokenPostParams = selectedToken ? selectedToken.posts_query : null;
+  const tokenTimelineParams = selectedToken ? { ...selectedToken.timeline_query, window: detailWindow } : null;
+  const tokenPostParams = selectedToken ? { ...selectedToken.posts_query, window: detailWindow, range: postRange } : null;
 
   const tokenTimelineQuery = useQuery({
     queryKey: ["token-social-timeline", tokenTimelineParams],
@@ -224,6 +226,7 @@ export function App() {
           address: tokenPostParams?.address,
           window: tokenPostParams?.window,
           scope: tokenPostParams?.scope,
+          range: tokenPostParams?.range,
           limit: 24,
           cursor: pageParam || undefined
         }
@@ -286,8 +289,10 @@ export function App() {
     if (!selectedSignal && tokenItems.length) {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
       setDetailTab("timeline");
+      setDetailWindow(windowKey);
+      setPostRange("current_window");
     }
-  }, [selectedSignal, setDetailTab, tokenItems]);
+  }, [selectedSignal, setDetailTab, setDetailWindow, setPostRange, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "token") {
@@ -301,12 +306,14 @@ export function App() {
     if (!latest && tokenItems.length) {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
       setDetailTab("timeline");
+      setDetailWindow(windowKey);
+      setPostRange("current_window");
       return;
     }
     if (!latest) {
       setSelectedSignal(null);
     }
-  }, [selectedSignal, setDetailTab, tokenItems]);
+  }, [selectedSignal, setDetailTab, setDetailWindow, setPostRange, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "signal_chain") {
@@ -335,6 +342,8 @@ export function App() {
   const selectToken = (item: TokenFlowItem, tapeId: string | null = null) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailTab("timeline");
+    setDetailWindow(windowKey);
+    setPostRange("current_window");
     setSelectedTapeEventId(tapeId);
     setMobileTask("detail");
   };
@@ -401,7 +410,8 @@ export function App() {
     }
     if (event.key === "1") setWindow("5m");
     if (event.key === "2") setWindow("1h");
-    if (event.key === "3") setWindow("24h");
+    if (event.key === "3") setWindow("4h");
+    if (event.key === "4") setWindow("24h");
   };
 
   const viewControls = (
@@ -556,7 +566,7 @@ export function App() {
           </RailSection>
 
           <div className="rail-footer">
-            <span>kbd · 1-3 windows · / search</span>
+            <span>kbd · 1-4 windows · / search</span>
           </div>
         </aside>
 
@@ -656,25 +666,27 @@ export function App() {
             <TokenDetailDrawer
               accountQuality={accountQualityQuery.data?.data}
               activeTab={detailTab}
+              detailWindow={detailWindow}
               hideDuplicateClusters={hideDuplicateClusters}
               isAccountQualityLoading={accountQualityQuery.isFetching}
               isSignalLabLoading={signalLabChainsQuery.isFetching}
               isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
               isPostsLoading={tokenPostsQuery.isLoading}
               isTimelineLoading={tokenTimelineQuery.isFetching}
+              postRange={postRange}
               postSortMode={postSortMode}
               posts={tokenPostsData}
               signalChains={selectedTokenSignalChains}
               timeline={tokenTimelineQuery.data?.data}
-              timelineBucket={timelineBucket}
               token={selectedToken}
               watchedPostsOnly={watchedPostsOnly}
               onHideDuplicateClustersChange={setHideDuplicateClusters}
+              onDetailWindowChange={setDetailWindow}
               onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
+              onPostRangeChange={setPostRange}
               onPostSortModeChange={setPostSortMode}
               onSelectSignalChain={selectSignalChain}
               onTabChange={setDetailTab}
-              onTimelineBucketChange={setTimelineBucket}
               onWatchedPostsOnlyChange={setWatchedPostsOnly}
             />
           )}

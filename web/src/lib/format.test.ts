@@ -170,14 +170,14 @@ function sampleToken(): TokenFlowItem {
       chain: "eth",
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       window: "5m",
-      scope: "all"
+      scope: "all",
+      range: "current_window"
     },
     timeline_query: {
       token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       chain: "eth",
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       window: "5m",
-      bucket: "1m",
       scope: "all"
     }
   };

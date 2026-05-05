@@ -10,12 +10,18 @@ from ..pipeline.entity_extractor import normalize_ca
 from .discussion_quality_scoring import post_quality_score
 from .rolling_token_flow import WINDOW_MS
 
+POST_RANGES = {"current_window", "since_ignition", "all_history"}
+
 
 class TokenPostsCursorError(ValueError):
     pass
 
 
 class TokenPostsIdentityError(ValueError):
+    pass
+
+
+class TokenPostsRangeError(ValueError):
     pass
 
 
@@ -33,14 +39,27 @@ class TokenPostsService:
         window: str,
         scope: str,
         limit: int,
+        post_range: str = "current_window",
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         requested_limit = max(0, int(limit))
         reference_ms = now_ms if now_ms is not None else _now_ms()
-        window_start_ms = reference_ms - WINDOW_MS[window]
-        window_end_ms = reference_ms
         normalized_chain, normalized_address = _normalized_chain_address(chain=chain, address=address)
+        if post_range not in POST_RANGES:
+            raise TokenPostsRangeError("invalid_range")
+        selected_range = post_range
+        score_window_start_ms = reference_ms - WINDOW_MS[window]
+        score_window_end_ms = reference_ms
+        window_start_ms, window_end_ms = self._range_bounds(
+            token_id=token_id,
+            chain=normalized_chain,
+            address=normalized_address,
+            score_window_start_ms=score_window_start_ms,
+            score_window_end_ms=score_window_end_ms,
+            watched_only=scope == "matched",
+            post_range=selected_range,
+        )
         cursor_value = _decode_cursor(cursor) if cursor else None
 
         rows = self._post_rows(
@@ -73,7 +92,9 @@ class TokenPostsService:
                 "window": window,
                 "scope": scope,
                 "sort": "recent",
+                "range": selected_range,
             },
+            "score_window": {"window": window},
             "total_count": total_count,
             "returned_count": len(items),
             "has_more": has_more,
@@ -81,13 +102,66 @@ class TokenPostsService:
             "items": items,
         }
 
-    def _post_rows(
+    def _range_bounds(
+        self,
+        *,
+        token_id: str | None,
+        chain: str | None,
+        address: str | None,
+        score_window_start_ms: int,
+        score_window_end_ms: int,
+        watched_only: bool,
+        post_range: str,
+    ) -> tuple[int | None, int]:
+        if post_range == "all_history":
+            return None, score_window_end_ms
+        if post_range == "since_ignition":
+            first_seen_ms = self._first_seen_in_window(
+                token_id=token_id,
+                chain=chain,
+                address=address,
+                window_start_ms=score_window_start_ms,
+                window_end_ms=score_window_end_ms,
+                watched_only=watched_only,
+            )
+            return (first_seen_ms if first_seen_ms is not None else score_window_end_ms), score_window_end_ms
+        return score_window_start_ms, score_window_end_ms
+
+    def _first_seen_in_window(
         self,
         *,
         token_id: str | None,
         chain: str | None,
         address: str | None,
         window_start_ms: int,
+        window_end_ms: int,
+        watched_only: bool,
+    ) -> int | None:
+        clauses, params = _base_clauses(
+            token_id=token_id,
+            chain=chain,
+            address=address,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+            watched_only=watched_only,
+        )
+        row = self.conn.execute(
+            f"""
+            SELECT MIN(eta.received_at_ms) AS first_seen_ms
+            FROM event_token_attributions eta
+            WHERE {" AND ".join(clauses)}
+            """,
+            params,
+        ).fetchone()
+        return int(row["first_seen_ms"]) if row and row["first_seen_ms"] is not None else None
+
+    def _post_rows(
+        self,
+        *,
+        token_id: str | None,
+        chain: str | None,
+        address: str | None,
+        window_start_ms: int | None,
         window_end_ms: int,
         watched_only: bool,
         limit: int,
@@ -146,7 +220,7 @@ class TokenPostsService:
         token_id: str | None,
         chain: str | None,
         address: str | None,
-        window_start_ms: int,
+        window_start_ms: int | None,
         window_end_ms: int,
         watched_only: bool,
     ) -> int:
@@ -174,12 +248,11 @@ def _base_clauses(
     token_id: str | None,
     chain: str | None,
     address: str | None,
-    window_start_ms: int,
+    window_start_ms: int | None,
     window_end_ms: int,
     watched_only: bool,
 ) -> tuple[list[str], list[Any]]:
     clauses = [
-        "eta.received_at_ms >= ?",
         "eta.received_at_ms < ?",
         "eta.token_id IS NOT NULL",
         "eta.attribution_status IN ('direct', 'selected')",
@@ -188,7 +261,10 @@ def _base_clauses(
         "eta.address IS NOT NULL",
         "eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')",
     ]
-    params: list[Any] = [window_start_ms, window_end_ms]
+    params: list[Any] = [window_end_ms]
+    if window_start_ms is not None:
+        clauses.insert(0, "eta.received_at_ms >= ?")
+        params.insert(0, window_start_ms)
     if token_id:
         clauses.append("eta.token_id = ?")
         params.append(token_id)

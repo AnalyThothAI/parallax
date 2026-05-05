@@ -11,7 +11,12 @@ from ..retrieval.account_quality_service import AccountQualityService
 from ..retrieval.harness_service import HarnessService
 from ..retrieval.search_service import SearchService
 from ..retrieval.token_flow_service import TokenFlowService
-from ..retrieval.token_posts_service import TokenPostsCursorError, TokenPostsIdentityError, TokenPostsService
+from ..retrieval.token_posts_service import (
+    TokenPostsCursorError,
+    TokenPostsIdentityError,
+    TokenPostsRangeError,
+    TokenPostsService,
+)
 from ..retrieval.token_social_timeline_service import (
     TokenSocialTimelineCursorError,
     TokenSocialTimelineIdentityError,
@@ -19,7 +24,7 @@ from ..retrieval.token_social_timeline_service import (
 )
 from ..storage.account_quality_repository import AccountQualityRepository
 
-WINDOWS = {"1m", "5m", "1h", "24h"}
+WINDOWS = {"5m", "1h", "4h", "24h"}
 SCOPES = {"all", "matched"}
 ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
@@ -31,8 +36,22 @@ class ApiUnauthorized(Exception):
     pass
 
 
+class ApiBadRequest(Exception):
+    def __init__(self, error: str, *, field: str | None = None):
+        super().__init__(error)
+        self.error = error
+        self.field = field
+
+
 def api_unauthorized_response(_: Request, __: ApiUnauthorized) -> JSONResponse:
     return _json({"ok": False, "error": "unauthorized"}, status_code=401)
+
+
+def api_bad_request_response(_: Request, exc: ApiBadRequest) -> JSONResponse:
+    payload = {"ok": False, "error": exc.error}
+    if exc.field:
+        payload["field"] = exc.field
+    return _json(payload, status_code=400)
 
 
 def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:
@@ -154,6 +173,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         chain: Annotated[str, Query()] = "",
         address: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "5m",
+        post_range: Annotated[str, Query(alias="range")] = "current_window",
         limit: Annotated[int, Query()] = 50,
         scope: Annotated[str, Query()] = "all",
         cursor: Annotated[str, Query()] = "",
@@ -170,11 +190,14 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 address=address or None,
                 window=parsed_window,
                 scope=parsed_scope,
+                post_range=_post_range(post_range),
                 limit=_limit(limit, maximum=200),
                 cursor=cursor or None,
             )
         except TokenPostsIdentityError:
             return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
+        except TokenPostsRangeError:
+            return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)
         except TokenPostsCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
@@ -186,24 +209,23 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         chain: Annotated[str, Query()] = "",
         address: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "1h",
-        bucket: Annotated[str, Query()] = "1m",
         limit: Annotated[int, Query()] = 200,
         scope: Annotated[str, Query()] = "all",
         cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
+        if "bucket" in request.query_params:
+            raise ApiBadRequest("unsupported_query_param", field="bucket")
         if not token_id and not (chain and address):
             return _json({"ok": False, "error": "missing_token_identity"}, status_code=400)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
-        parsed_bucket = _bucket(bucket)
         try:
             data = TokenSocialTimelineService(signals=runtime.read_signals).timeline(
                 token_id=token_id or None,
                 chain=chain or None,
                 address=address or None,
                 window=parsed_window,
-                bucket=parsed_bucket,
                 scope=parsed_scope,
                 limit=_limit(limit, maximum=500),
                 cursor=cursor or None,
@@ -482,11 +504,15 @@ def _scope(value: str) -> str:
 
 
 def _window(value: str) -> str:
-    return value if value in WINDOWS else "5m"
+    if value in WINDOWS:
+        return value
+    raise ApiBadRequest("invalid_window", field="window")
 
 
-def _bucket(value: str) -> str:
-    return value if value in {"30s", "1m", "5m"} else "1m"
+def _post_range(value: str) -> str:
+    if value in {"current_window", "since_ignition", "all_history"}:
+        return value
+    raise ApiBadRequest("invalid_range", field="range")
 
 
 def _horizon(value: str) -> str:

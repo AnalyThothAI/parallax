@@ -193,15 +193,6 @@ export function formatReason(value: string | null | undefined): string {
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
 
-export function formatBucketLabel(value: string | null | undefined): string {
-  const labels: Record<string, string> = {
-    "30s": "30 秒",
-    "1m": "1 分钟",
-    "5m": "5 分钟"
-  };
-  return labels[value ?? ""] ?? (value ?? "-");
-}
-
 function trim(value: number): string {
   return value.toFixed(value >= 10 ? 0 : 1).replace(/\.0$/, "");
 }

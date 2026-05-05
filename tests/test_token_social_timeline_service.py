@@ -32,7 +32,6 @@ def test_token_social_timeline_buckets_posts_and_authors(tmp_path):
         data = TokenSocialTimelineService(signals=signals).timeline(
             token_id=token_item["identity"]["token_id"],
             window="1h",
-            bucket="1m",
             scope="all",
             limit=2,
             now_ms=now_ms,
@@ -43,8 +42,13 @@ def test_token_social_timeline_buckets_posts_and_authors(tmp_path):
     assert data["summary"]["posts"] == 3
     assert data["summary"]["authors"] == 2
     assert data["summary"]["top_author_share"] == pytest.approx(2 / 3)
-    assert len(data["buckets"]) == 2
+    assert data["summary"]["peak_posts_per_bucket"] == 3
+    assert data["summary"]["peak_new_authors_per_bucket"] == 2
+    assert data["summary"]["reproduction_rate"] is not None
+    assert data["query"]["bucket"] == "5m"
+    assert len(data["buckets"]) == 12
     assert sum(bucket["posts"] for bucket in data["buckets"]) == 3
+    assert any(bucket["posts"] == 0 for bucket in data["buckets"])
     assert [author["handle"] for author in data["authors"]] == ["amp", "seed"]
     assert data["authors"][0]["role"] in {"amplifier", "early_amplifier"}
     assert data["authors"][1]["role"] == "watched"
@@ -75,7 +79,6 @@ def test_token_social_timeline_paginates_posts_from_complete_summary(tmp_path):
         first_page = TokenSocialTimelineService(signals=signals).timeline(
             token_id=token_id,
             window="1h",
-            bucket="1m",
             scope="all",
             limit=2,
             now_ms=now_ms,
@@ -83,7 +86,6 @@ def test_token_social_timeline_paginates_posts_from_complete_summary(tmp_path):
         second_page = TokenSocialTimelineService(signals=signals).timeline(
             token_id=token_id,
             window="1h",
-            bucket="1m",
             scope="all",
             limit=2,
             cursor=first_page["next_cursor"],
@@ -142,15 +144,14 @@ def test_token_social_timeline_price_overlay_uses_market_snapshots(tmp_path):
             source_channel="gmgn_openapi_token_info",
         )
         token_id = TokenFlowService(signals=signals, tokens=tokens).token_flow(
-            window="1h",
+            window="5m",
             limit=10,
             now_ms=now_ms,
         )[0]["identity"]["token_id"]
 
         data = TokenSocialTimelineService(signals=signals).timeline(
             token_id=token_id,
-            window="1h",
-            bucket="1m",
+            window="5m",
             scope="all",
             limit=10,
             now_ms=now_ms,
@@ -160,8 +161,14 @@ def test_token_social_timeline_price_overlay_uses_market_snapshots(tmp_path):
 
     prices = [bucket["price"] for bucket in data["buckets"]]
     changes = [bucket["price_change_from_start_pct"] for bucket in data["buckets"]]
-    assert prices == [1.0, 1.2]
-    assert changes == [0.0, 0.2]
+    non_null_prices = [price for price in prices if price is not None]
+    non_null_changes = [change for change in changes if change is not None]
+    assert data["query"]["bucket"] == "30s"
+    assert len(data["buckets"]) == 10
+    assert 1.0 in non_null_prices
+    assert non_null_prices[-1] == 1.2
+    assert 0.0 in non_null_changes
+    assert non_null_changes[-1] == 0.2
 
 
 def test_token_social_timeline_pages_posts_in_sql_not_python(monkeypatch, tmp_path):
@@ -195,7 +202,6 @@ def test_token_social_timeline_pages_posts_in_sql_not_python(monkeypatch, tmp_pa
         data = TokenSocialTimelineService(signals=signals).timeline(
             token_id=token_id,
             window="1h",
-            bucket="1m",
             scope="all",
             limit=2,
             now_ms=now_ms,
@@ -214,7 +220,6 @@ def test_token_social_timeline_requires_token_identity(tmp_path):
         with pytest.raises(TokenSocialTimelineIdentityError):
             TokenSocialTimelineService(signals=signals).timeline(
                 window="1h",
-                bucket="1m",
                 scope="all",
                 limit=10,
             )

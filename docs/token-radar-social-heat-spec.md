@@ -196,9 +196,11 @@ Rules:
 Add:
 
 ```text
-GET /api/token-social-timeline?token_id=...&window=1h&bucket=1m&scope=all&limit=200&cursor=...
-GET /api/token-social-timeline?chain=...&address=...&window=1h&bucket=1m&scope=all&limit=200&cursor=...
+GET /api/token-social-timeline?token_id=...&window=1h&scope=all&limit=200&cursor=...
+GET /api/token-social-timeline?chain=...&address=...&window=1h&scope=all&limit=200&cursor=...
 ```
+
+The service derives the bucket from the observation window: `5m -> 30s`, `1h -> 5m`, `4h -> 15m`, `24h -> 1h`.
 
 Response:
 
@@ -209,7 +211,7 @@ Response:
     "query": {
       "token_id": "token:base:0x...",
       "window": "1h",
-      "bucket": "1m",
+      "bucket": "5m",
       "scope": "all"
     },
     "summary": {

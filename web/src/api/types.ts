@@ -4,12 +4,13 @@ export type ApiResponse<T> = {
   error?: string | null;
 };
 
-export type WindowKey = "5m" | "1h" | "24h";
+export type WindowKey = "5m" | "1h" | "4h" | "24h";
 export type ScopeKey = "matched" | "all";
 export type Decision = "driver" | "watch" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
 export type TokenDetailTab = "timeline" | "posts" | "score" | "lab" | "accounts";
-export type TimelineBucket = "30s" | "1m" | "5m";
+export type TimelineBucket = "30s" | "5m" | "15m" | "1h";
+export type TokenPostRange = "current_window" | "since_ignition" | "all_history";
 
 export type BootstrapData = {
   ws_token: string;
@@ -199,6 +200,7 @@ export type SocialHeatBlock = ScoreBlock & {
   mentions: number;
   mentions_5m?: number;
   mentions_1h?: number;
+  mentions_4h?: number;
   mentions_24h?: number;
   weighted_mentions: number;
   previous_mentions: number;
@@ -285,6 +287,7 @@ export type TokenPostsQuery = {
   address?: string | null;
   window: WindowKey;
   scope: ScopeKey;
+  range?: TokenPostRange;
   sort?: "recent" | string;
 };
 
@@ -293,7 +296,7 @@ export type TokenSocialTimelineQuery = {
   chain?: string | null;
   address?: string | null;
   window: WindowKey;
-  bucket: TimelineBucket;
+  bucket?: TimelineBucket;
   scope: ScopeKey;
 };
 
@@ -329,6 +332,7 @@ export type TokenPostItem = {
 
 export type TokenPostsData = {
   query: TokenPostsQuery;
+  score_window?: { window: WindowKey };
   total_count: number;
   returned_count: number;
   has_more: boolean;
@@ -346,6 +350,7 @@ export type TokenTimelineBucket = {
   start_ms: number;
   end_ms: number;
   posts: number;
+  authors?: number;
   new_authors: number;
   watched_posts: number;
   duplicate_text_share: number;
@@ -386,6 +391,9 @@ export type TokenSocialTimelineData = {
     phase: string;
     top_author_share: number;
     duplicate_text_share: number;
+    peak_posts_per_bucket?: number;
+    peak_new_authors_per_bucket?: number;
+    reproduction_rate?: number | null;
   };
   buckets: TokenTimelineBucket[];
   authors: TokenTimelineAuthor[];

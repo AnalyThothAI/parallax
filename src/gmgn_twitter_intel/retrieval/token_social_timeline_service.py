@@ -16,8 +16,16 @@ from .rolling_token_flow import WINDOW_MS
 
 BUCKET_MS = {
     "30s": 30_000,
-    "1m": 60_000,
     "5m": 300_000,
+    "15m": 15 * 60_000,
+    "1h": 3_600_000,
+}
+
+AUTO_BUCKET_BY_WINDOW = {
+    "5m": "30s",
+    "1h": "5m",
+    "4h": "15m",
+    "24h": "1h",
 }
 
 
@@ -41,7 +49,6 @@ class TokenSocialTimelineService:
         chain: str | None = None,
         address: str | None = None,
         window: str,
-        bucket: str,
         scope: str,
         limit: int,
         cursor: str | None = None,
@@ -50,6 +57,8 @@ class TokenSocialTimelineService:
         reference_ms = now_ms if now_ms is not None else _now_ms()
         window_start_ms = reference_ms - WINDOW_MS[window]
         window_end_ms = reference_ms
+        bucket = AUTO_BUCKET_BY_WINDOW[window]
+        bucket_ms = BUCKET_MS[bucket]
         normalized_chain, normalized_address = _normalized_chain_address(chain=chain, address=address)
         resolved_token_id = token_id or self._token_id_for_chain_address(
             chain=normalized_chain,
@@ -76,7 +85,18 @@ class TokenSocialTimelineService:
             cursor=cursor_value,
         )]
         has_more = len(page_rows) > requested_limit
-        page_items = [_post_item(row) for row in page_rows[:requested_limit]]
+        page_items = [
+            _post_item(row, window_start_ms=window_start_ms, bucket_ms=bucket_ms)
+            for row in page_rows[:requested_limit]
+        ]
+        buckets = _buckets(
+            summary_rows,
+            conn=self.conn,
+            token_id=resolved_token_id,
+            bucket_ms=bucket_ms,
+            window_start_ms=window_start_ms,
+            window_end_ms=window_end_ms,
+        )
         return {
             "query": {
                 "token_id": token_id,
@@ -86,14 +106,8 @@ class TokenSocialTimelineService:
                 "bucket": bucket,
                 "scope": scope,
             },
-            "summary": _summary(summary_rows),
-            "buckets": _buckets(
-                summary_rows,
-                conn=self.conn,
-                token_id=resolved_token_id,
-                bucket_ms=BUCKET_MS[bucket],
-                window_start_ms=window_start_ms,
-            ),
+            "summary": _summary(summary_rows, buckets=buckets),
+            "buckets": buckets,
             "authors": _authors(summary_rows),
             "posts": page_items,
             "returned_count": len(page_items),
@@ -261,7 +275,7 @@ def _base_clauses(
     return clauses, params
 
 
-def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _summary(rows: list[dict[str, Any]], *, buckets: list[dict[str, Any]]) -> dict[str, Any]:
     author_counts = Counter(_handle(row) for row in rows if _handle(row))
     total = len(rows)
     top_author_share = max(author_counts.values(), default=0) / total if total else 0.0
@@ -278,15 +292,28 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     )
     received_values = [int(row["received_at_ms"]) for row in rows if row.get("received_at_ms") is not None]
+    reproduction_rate = _reproduction_rate(buckets)
     return {
         "posts": total,
         "authors": len(author_counts),
         "effective_authors": propagation["effective_authors"],
         "first_seen_ms": min(received_values) if received_values else None,
         "latest_seen_ms": max(received_values) if received_values else None,
-        "phase": propagation["phase"],
+        "phase": _timeline_phase(
+            fallback=str(propagation["phase"]),
+            buckets=buckets,
+            authors=len(author_counts),
+            effective_authors=float(propagation["effective_authors"]),
+            top_author_share=top_author_share,
+            duplicate_text_share=duplicate_text_share,
+            reproduction_rate=reproduction_rate,
+            posts=total,
+        ),
         "top_author_share": top_author_share,
         "duplicate_text_share": duplicate_text_share,
+        "peak_posts_per_bucket": max((int(bucket["posts"]) for bucket in buckets), default=0),
+        "peak_new_authors_per_bucket": max((int(bucket["new_authors"]) for bucket in buckets), default=0),
+        "reproduction_rate": reproduction_rate,
     }
 
 
@@ -297,6 +324,7 @@ def _buckets(
     token_id: str | None,
     bucket_ms: int,
     window_start_ms: int,
+    window_end_ms: int,
 ) -> list[dict[str, Any]]:
     grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
     first_seen_by_author: dict[str, int] = {}
@@ -307,7 +335,7 @@ def _buckets(
         handle = _handle(row)
         if handle and handle not in first_seen_by_author:
             first_seen_by_author[handle] = bucket_start
-    bucket_starts = sorted(grouped)
+    bucket_starts = list(range(window_start_ms, window_end_ms, bucket_ms))
     bucket_prices = _bucket_prices(
         conn=conn,
         token_id=token_id,
@@ -324,12 +352,14 @@ def _buckets(
     buckets = []
     for start_ms in bucket_starts:
         bucket_rows = grouped[start_ms]
+        handles = {_handle(row) for row in bucket_rows if _handle(row)}
         price = bucket_prices.get(start_ms)
         buckets.append(
             {
                 "start_ms": start_ms,
                 "end_ms": start_ms + bucket_ms,
                 "posts": len(bucket_rows),
+                "authors": len(handles),
                 "new_authors": sum(
                     1
                     for handle, first_bucket in first_seen_by_author.items()
@@ -345,6 +375,45 @@ def _buckets(
             }
         )
     return buckets
+
+
+def _reproduction_rate(buckets: list[dict[str, Any]]) -> float | None:
+    if not buckets:
+        return None
+    rates = []
+    for previous, current in zip(buckets, buckets[1:], strict=False):
+        previous_authors = int(previous.get("authors") or 0)
+        if previous_authors <= 0:
+            continue
+        rates.append(int(current.get("new_authors") or 0) / previous_authors)
+    if not rates:
+        return 0.0
+    return round(max(rates), 4)
+
+
+def _timeline_phase(
+    *,
+    fallback: str,
+    buckets: list[dict[str, Any]],
+    authors: int,
+    effective_authors: float,
+    top_author_share: float,
+    duplicate_text_share: float,
+    reproduction_rate: float | None,
+    posts: int,
+) -> str:
+    if posts <= 1 or authors <= 1:
+        return "seed"
+    if top_author_share >= 0.70 or duplicate_text_share >= 0.50:
+        return "concentration"
+    non_empty_indexes = [index for index, bucket in enumerate(buckets) if int(bucket.get("posts") or 0) > 0]
+    if non_empty_indexes and non_empty_indexes[-1] < int(len(buckets) * 0.60):
+        return "fade"
+    if authors >= 5 and effective_authors >= 4 and top_author_share < 0.35 and (reproduction_rate or 0.0) >= 1.0:
+        return "expansion"
+    if authors >= 2:
+        return "ignition"
+    return fallback
 
 
 def _bucket_prices(
@@ -445,7 +514,7 @@ def _authors(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return author_rows
 
 
-def _post_item(row: dict[str, Any]) -> dict[str, Any]:
+def _post_item(row: dict[str, Any], *, window_start_ms: int, bucket_ms: int) -> dict[str, Any]:
     quality = post_quality_score(
         {
             "text": row.get("text_clean") or row.get("search_text"),
@@ -456,11 +525,17 @@ def _post_item(row: dict[str, Any]) -> dict[str, Any]:
             "is_watched": _is_watched(row),
         }
     )
+    received_at_ms = int(row["received_at_ms"]) if row.get("received_at_ms") is not None else None
+    bucket_start_ms = (
+        window_start_ms + ((received_at_ms - window_start_ms) // bucket_ms) * bucket_ms
+        if received_at_ms is not None
+        else None
+    )
     return {
         "event_id": row.get("event_id"),
         "handle": _handle(row),
-        "received_at_ms": row.get("received_at_ms"),
-        "bucket_start_ms": None,
+        "received_at_ms": received_at_ms,
+        "bucket_start_ms": bucket_start_ms,
         "text": row.get("text_clean"),
         "url": row.get("canonical_url"),
         "attribution_status": row.get("attribution_status"),

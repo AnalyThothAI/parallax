@@ -803,8 +803,7 @@ svg {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.event-meta,
-.timeline-post div {
+.event-meta {
   display: flex;
   align-items: center;
   min-width: 0;
@@ -829,15 +828,13 @@ svg {
   font-style: normal;
 }
 
-.event-meta a,
-.timeline-post a {
+.event-meta a {
   display: inline-grid;
   place-items: center;
   color: var(--accent);
 }
 
-.event-row p,
-.timeline-post p {
+.event-row p {
   display: -webkit-box;
   overflow: hidden;
   margin: 5px 0 0;
@@ -1398,7 +1395,7 @@ svg {
 
 .timeline-summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   border: 1px solid var(--line);
   border-radius: 4px;
   overflow: hidden;
@@ -1428,7 +1425,7 @@ svg {
   gap: 7px;
 }
 
-.timeline-controls button,
+.timeline-controls .muted-pill,
 .posts-toolbar label {
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -1437,12 +1434,6 @@ svg {
   padding: 4px 7px;
   font-family: var(--mono);
   font-size: 10px;
-}
-
-.timeline-controls button.active {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
 }
 
 .timeline-chart {
@@ -1480,6 +1471,15 @@ svg {
   bottom: 0;
   width: 38%;
   background: var(--accent);
+}
+
+.timeline-bucket strong {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 34%;
+  border-radius: 2px 2px 0 0;
+  background: rgba(61, 194, 139, 0.82);
 }
 
 .timeline-bucket em {
@@ -1535,13 +1535,11 @@ svg {
   background: var(--accent-soft);
 }
 
-.timeline-post-list,
 .post-list {
   display: grid;
   gap: 7px;
 }
 
-.timeline-post,
 .post-card {
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -1549,7 +1547,6 @@ svg {
   padding: 8px;
 }
 
-.timeline-post div,
 .post-card div {
   display: flex;
   align-items: center;
@@ -1560,7 +1557,6 @@ svg {
   font-size: 10px;
 }
 
-.timeline-post strong,
 .post-card strong {
   color: var(--ink);
 }
@@ -1580,7 +1576,6 @@ svg {
   background: var(--accent-soft);
 }
 
-.timeline-post p,
 .post-card p {
   margin: 7px 0 0;
   color: var(--text);
@@ -1597,6 +1592,20 @@ svg {
   grid-template-columns: repeat(2, 58px);
 }
 
+.segmented.mini.range {
+  grid-template-columns: repeat(3, 72px);
+}
+
+.posts-count-line {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.detail-window-control {
+  margin-top: 10px;
+}
+
 .posts-toolbar input {
   margin: 0 5px 0 0;
   accent-color: var(--accent);
@@ -1608,16 +1617,22 @@ svg {
   padding: 12px;
 }
 
+.score-health,
 .score-overview,
 .score-grid {
   display: grid;
   gap: 7px;
 }
 
+.score-health {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .score-overview {
   grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
+.score-health div,
 .score-overview div,
 .score-card {
   border: 1px solid var(--line);
@@ -1625,11 +1640,13 @@ svg {
   background: #0b1010;
 }
 
+.score-health div,
 .score-overview div {
   min-width: 0;
   padding: 8px;
 }
 
+.score-health span,
 .score-overview span,
 .score-card header span {
   color: var(--faint);
@@ -1638,6 +1655,7 @@ svg {
   text-transform: uppercase;
 }
 
+.score-health b,
 .score-overview b,
 .score-card header b {
   display: block;

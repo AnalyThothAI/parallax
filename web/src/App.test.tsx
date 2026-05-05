@@ -95,7 +95,8 @@ describe("App Token Radar social heat cockpit", () => {
       submittedSearch: "$PEPE",
       radarSortMode: "opportunity",
       detailTab: "timeline",
-      timelineBucket: "1m",
+      detailWindow: "1h",
+      postRange: "current_window",
       postSortMode: "recent",
       hideDuplicateClusters: false,
       watchedPostsOnly: false,
@@ -330,6 +331,57 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).getByText("No Signal Chains in this window")).toBeInTheDocument();
     expect(within(drawer).queryByText("Active Snapshots")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Credit Rows")).not.toBeInTheDocument();
+  });
+
+  it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    const detailWindow = await within(drawer).findByLabelText("selected token detail window");
+
+    expect(within(detailWindow).getByRole("button", { name: "5m" })).toBeInTheDocument();
+    expect(within(detailWindow).getByRole("button", { name: "1h" })).toBeInTheDocument();
+    expect(within(detailWindow).getByRole("button", { name: "4h" })).toBeInTheDocument();
+    expect(within(detailWindow).getByRole("button", { name: "24h" })).toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "30 秒" })).not.toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "1 分钟" })).not.toBeInTheDocument();
+    expect(within(drawer).queryByRole("button", { name: "5 分钟" })).not.toBeInTheDocument();
+    expect(await within(drawer).findByText("auto bucket 5m")).toBeInTheDocument();
+    expect(within(drawer).getByLabelText("social heat timeline")).toBeInTheDocument();
+    expect(within(drawer).queryByText("$UPEG watched account evidence")).not.toBeInTheDocument();
+
+    mockedGetApi.mockClear();
+    fireEvent.click(within(detailWindow).getByRole("button", { name: "4h" }));
+
+    await waitFor(() => {
+      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-social-timeline");
+      expect(timelineCall?.[1]?.params).toMatchObject({ window: "4h" });
+      expect(timelineCall?.[1]?.params).not.toHaveProperty("bucket");
+    });
+  });
+
+  it("keeps Posts as the evidence surface with explicit range controls", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    fireEvent.click(screen.getByRole("button", { name: "Posts" }));
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    const postRange = await within(drawer).findByLabelText("token post range");
+
+    expect(within(postRange).getByRole("button", { name: "window" })).toHaveClass("active");
+    expect(within(postRange).getByRole("button", { name: "ignition" })).toBeInTheDocument();
+    expect(within(postRange).getByRole("button", { name: "history" })).toBeInTheDocument();
+    expect(await within(drawer).findByText("3 total · 3 loaded · score window 1h")).toBeInTheDocument();
+
+    mockedGetApi.mockClear();
+    fireEvent.click(within(postRange).getByRole("button", { name: "history" }));
+
+    await waitFor(() => {
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-posts");
+      expect(postsCall?.[1]?.params).toMatchObject({ range: "all_history" });
+    });
+    expect(await within(drawer).findByText("history does not all participate in current score")).toBeInTheDocument();
   });
 
   it("removes narrative product surface and exposes signal lab entry points", async () => {
@@ -900,6 +952,10 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
       risks: ["public_stream_coverage"],
       window: "1h",
       mentions: 4,
+      mentions_5m: 2,
+      mentions_1h: 4,
+      mentions_4h: 6,
+      mentions_24h: 9,
       weighted_mentions: 3.8,
       previous_mentions: 1,
       mention_delta: 3,
@@ -992,14 +1048,14 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
       risks: []
     },
     evidence_total_count: 4,
-    posts_query: { token_id: tokenId, chain: "eth", address, window: "1h", scope: "all" },
-    timeline_query: { token_id: tokenId, chain: "eth", address, window: "1h", bucket: "1m", scope: "all" }
+    posts_query: { token_id: tokenId, chain: "eth", address, window: "1h", scope: "all", range: "current_window" },
+    timeline_query: { token_id: tokenId, chain: "eth", address, window: "1h", scope: "all" }
   };
 }
 
 function timelineData(): TokenSocialTimelineData {
   return {
-    query: tokenFlowItem().timeline_query,
+    query: { ...tokenFlowItem().timeline_query, bucket: "5m" },
     summary: {
       posts: 3,
       authors: 2,
@@ -1008,11 +1064,14 @@ function timelineData(): TokenSocialTimelineData {
       latest_seen_ms: 1_777_746_060_000,
       phase: "expansion",
       top_author_share: 0.5,
-      duplicate_text_share: 0
+      duplicate_text_share: 0,
+      peak_posts_per_bucket: 2,
+      peak_new_authors_per_bucket: 1,
+      reproduction_rate: 1.5
     },
     buckets: [
-      { start_ms: 1_777_746_000_000, end_ms: 1_777_746_060_000, posts: 2, new_authors: 1, watched_posts: 1, duplicate_text_share: 0, price: null, price_change_from_start_pct: null },
-      { start_ms: 1_777_746_060_000, end_ms: 1_777_746_120_000, posts: 1, new_authors: 1, watched_posts: 0, duplicate_text_share: 0, price: null, price_change_from_start_pct: null }
+      { start_ms: 1_777_746_000_000, end_ms: 1_777_746_300_000, posts: 2, authors: 1, new_authors: 1, watched_posts: 1, duplicate_text_share: 0, price: null, price_change_from_start_pct: null },
+      { start_ms: 1_777_746_300_000, end_ms: 1_777_746_600_000, posts: 1, authors: 1, new_authors: 1, watched_posts: 0, duplicate_text_share: 0, price: null, price_change_from_start_pct: null }
     ],
     authors: [
       { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, posts: 1, followers: 168_905, role: "watched", quality_score: null },
@@ -1028,6 +1087,7 @@ function timelineData(): TokenSocialTimelineData {
 function postsData(): TokenPostsData {
   return {
     query: tokenFlowItem().posts_query,
+    score_window: { window: "1h" },
     total_count: 3,
     returned_count: 3,
     has_more: false,

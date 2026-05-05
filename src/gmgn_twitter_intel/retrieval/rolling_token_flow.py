@@ -10,15 +10,15 @@ from typing import Any
 from .token_baseline import token_baseline
 
 BASELINE_LIMITS = {
-    "1m": 60,
     "5m": 24,
     "1h": 48,
+    "4h": 24,
     "24h": 14,
 }
 WINDOW_MS = {
-    "1m": 60_000,
     "5m": 300_000,
     "1h": 3_600_000,
+    "4h": 4 * 3_600_000,
     "24h": 86_400_000,
 }
 

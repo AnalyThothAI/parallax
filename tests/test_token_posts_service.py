@@ -1,5 +1,7 @@
+import pytest
+
 from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
-from gmgn_twitter_intel.retrieval.token_posts_service import TokenPostsService
+from gmgn_twitter_intel.retrieval.token_posts_service import TokenPostsRangeError, TokenPostsService
 from tests.test_token_rolling_flow import open_runtime, token_event
 
 
@@ -42,6 +44,8 @@ def test_token_posts_returns_distinct_paginated_attributed_posts(tmp_path):
         conn.close()
 
     assert first_page["total_count"] == 3
+    assert first_page["query"]["range"] == "current_window"
+    assert first_page["score_window"] == {"window": "1h"}
     assert first_page["returned_count"] == 2
     assert first_page["has_more"] is True
     assert first_page["next_cursor"]
@@ -87,3 +91,66 @@ def test_token_posts_scope_filters_to_watched_attributions(tmp_path):
 
     assert watched_page["total_count"] == 1
     assert [item["event_id"] for item in watched_page["items"]] == ["event-dog-watched"]
+
+
+def test_token_posts_all_history_range_is_paginated_and_separate_from_score_window(tmp_path):
+    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    try:
+        now_ms = 1_700_000_123_456
+        ingest.ingest_event(
+            token_event("event-dog-old-history", received_at_ms=now_ms - 3 * 60 * 60_000, author_handle="old"),
+            is_watched=False,
+        )
+        ingest.ingest_event(
+            token_event("event-dog-current-window", received_at_ms=now_ms - 5_000, author_handle="new"),
+            is_watched=False,
+        )
+        token_id = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="1h",
+            limit=10,
+            now_ms=now_ms,
+        )[0]["identity"]["token_id"]
+
+        current_window = TokenPostsService(signals=signals).token_posts(
+            token_id=token_id,
+            window="1h",
+            scope="all",
+            limit=10,
+            now_ms=now_ms,
+        )
+        all_history = TokenPostsService(signals=signals).token_posts(
+            token_id=token_id,
+            window="1h",
+            scope="all",
+            post_range="all_history",
+            limit=10,
+            now_ms=now_ms,
+        )
+    finally:
+        conn.close()
+
+    assert current_window["query"]["range"] == "current_window"
+    assert current_window["total_count"] == 1
+    assert [item["event_id"] for item in current_window["items"]] == ["event-dog-current-window"]
+    assert all_history["query"]["range"] == "all_history"
+    assert all_history["score_window"] == {"window": "1h"}
+    assert all_history["total_count"] == 2
+    assert [item["event_id"] for item in all_history["items"]] == [
+        "event-dog-current-window",
+        "event-dog-old-history",
+    ]
+
+
+def test_token_posts_rejects_unknown_range(tmp_path):
+    conn, _, signals, _ = open_runtime(tmp_path)
+    try:
+        with pytest.raises(TokenPostsRangeError):
+            TokenPostsService(signals=signals).token_posts(
+                token_id="token:sol:abc",
+                window="1h",
+                scope="all",
+                post_range="legacy",
+                limit=10,
+            )
+    finally:
+        conn.close()

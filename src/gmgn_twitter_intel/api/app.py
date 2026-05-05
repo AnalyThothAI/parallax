@@ -31,7 +31,7 @@ from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
 from ..storage.sqlite_schema import migrate
 from ..storage.token_repository import TokenRepository
-from .http import ApiUnauthorized, api_unauthorized_response, create_api_router
+from .http import ApiBadRequest, ApiUnauthorized, api_bad_request_response, api_unauthorized_response, create_api_router
 from .ws import PublicWebSocketHub
 
 
@@ -91,6 +91,7 @@ def create_app(
 
     app = FastAPI(title="GMGN Twitter Intel", lifespan=lifespan)
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
+    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(_readiness_payload))
 
     @app.get("/healthz", response_class=PlainTextResponse)

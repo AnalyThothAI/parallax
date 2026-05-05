@@ -9,7 +9,7 @@ from .discussion_quality_scoring import discussion_quality_score
 from .opportunity_scoring import opportunity_score
 from .post_text_quality import post_text_features
 from .propagation_scoring import propagation_score
-from .rolling_token_flow import RollingTokenFlow
+from .rolling_token_flow import WINDOW_MS, RollingTokenFlow
 from .social_heat_scoring import social_heat_score
 from .timing_scoring import timing_score
 from .token_baseline import token_baseline
@@ -17,6 +17,7 @@ from .tradeability_scoring import tradeability_score
 
 FRESH_MARKET_MS = 30 * 60_000
 HARNESS_SEED_LOOKBACK_MS = 24 * 60 * 60_000
+SOCIAL_HEAT_WINDOWS = ("5m", "1h", "4h", "24h")
 
 
 class TokenFlowService:
@@ -45,12 +46,19 @@ class TokenFlowService:
         )
         watched_only = scope == "matched"
         evidence_counts = self._evidence_total_counts(rows, watched_only=watched_only)
+        reference_ms = now_ms if now_ms is not None else (int(rows[0]["window_end_ms"]) if rows else _now_ms())
+        multi_window_counts = self._multi_window_counts(
+            rows,
+            watched_only=watched_only,
+            reference_ms=reference_ms,
+        )
         items = [
             self._token_flow_item(
                 row,
                 window=window,
                 scope=scope,
                 evidence_total_count=evidence_counts.get(str(row.get("token_id")), 0),
+                multi_window_counts=multi_window_counts.get(str(row.get("token_id")), {}),
             )
             for row in rows
         ]
@@ -64,6 +72,7 @@ class TokenFlowService:
         window: str,
         scope: str,
         evidence_total_count: int,
+        multi_window_counts: dict[str, int],
     ) -> dict[str, Any]:
         token = self.tokens.get_token(row.get("token_id"))
         baseline = self._baseline_block(row, window=window)
@@ -73,7 +82,14 @@ class TokenFlowService:
         fresh = self._fresh_block(row, market=market)
         watch = self._watch_block(row)
         identity = self._identity_block(row, token)
-        social_heat = social_heat_score(self._social_heat_features(row, flow=flow, fresh=fresh)) | {
+        social_heat = social_heat_score(
+            self._social_heat_features(
+                row,
+                flow=flow,
+                fresh=fresh,
+                multi_window_counts=multi_window_counts,
+            )
+        ) | {
             "window": window,
             "mentions": flow["mentions"],
         }
@@ -358,14 +374,16 @@ class TokenFlowService:
         *,
         flow: dict[str, Any],
         fresh: dict[str, Any],
+        multi_window_counts: dict[str, int],
     ) -> dict[str, Any]:
         mentions = int(flow.get("mentions") or 0)
         watched_mentions = int(flow.get("watched_mentions") or 0)
         return {
             "mentions": mentions,
-            "mentions_5m": mentions if row.get("window") == "5m" else 0,
-            "mentions_1h": mentions if row.get("window") == "1h" else mentions,
-            "mentions_24h": mentions if row.get("window") == "24h" else 0,
+            "mentions_5m": multi_window_counts.get("5m", 0),
+            "mentions_1h": multi_window_counts.get("1h", 0),
+            "mentions_4h": multi_window_counts.get("4h", 0),
+            "mentions_24h": multi_window_counts.get("24h", 0),
             "weighted_mentions": flow.get("weighted_mentions"),
             "previous_mentions": flow.get("previous_mentions"),
             "mention_delta": flow.get("mention_delta"),
@@ -376,6 +394,51 @@ class TokenFlowService:
             "watched_share": watched_mentions / mentions if mentions else 0.0,
             "is_new_local_evidence": fresh.get("is_new_local_evidence"),
             "is_first_seen_by_watched": fresh.get("is_first_seen_by_watched"),
+        }
+
+    def _multi_window_counts(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        watched_only: bool,
+        reference_ms: int,
+    ) -> dict[str, dict[str, int]]:
+        token_ids = sorted({str(row.get("token_id")) for row in rows if row.get("token_id")})
+        if not token_ids:
+            return {}
+        since_ms = reference_ms - WINDOW_MS["24h"]
+        placeholders = ",".join("?" for _ in token_ids)
+        watched_clause = "AND eta.is_watched = 1" if watched_only else ""
+        mention_rows = self.signals.conn.execute(
+            f"""
+            SELECT eta.token_id, eta.event_id, eta.received_at_ms
+            FROM event_token_attributions eta
+            WHERE eta.received_at_ms >= ?
+              AND eta.received_at_ms < ?
+              AND eta.token_id IN ({placeholders})
+              AND eta.token_id IS NOT NULL
+              AND eta.attribution_status IN ('direct', 'selected')
+              AND eta.attribution_weight > 0
+              AND eta.chain IS NOT NULL
+              AND eta.address IS NOT NULL
+              AND eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')
+              {watched_clause}
+            """,
+            (since_ms, reference_ms, *token_ids),
+        ).fetchall()
+        event_sets: dict[str, dict[str, set[str]]] = {
+            token_id: {window: set() for window in SOCIAL_HEAT_WINDOWS} for token_id in token_ids
+        }
+        for row in mention_rows:
+            token_id = str(row["token_id"])
+            received_at_ms = int(row["received_at_ms"])
+            event_id = str(row["event_id"])
+            for window in SOCIAL_HEAT_WINDOWS:
+                if received_at_ms >= reference_ms - WINDOW_MS[window]:
+                    event_sets[token_id][window].add(event_id)
+        return {
+            token_id: {window: len(events) for window, events in windows.items()}
+            for token_id, windows in event_sets.items()
         }
 
     def _discussion_quality_features(
@@ -503,6 +566,7 @@ class TokenFlowService:
             "address": row.get("address"),
             "window": window,
             "scope": scope,
+            "range": "current_window",
         }
 
     def _timeline_query(self, row: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
@@ -511,7 +575,6 @@ class TokenFlowService:
             "chain": row.get("chain"),
             "address": row.get("address"),
             "window": window,
-            "bucket": "1m",
             "scope": scope,
         }
 

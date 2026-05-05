@@ -504,7 +504,7 @@ def test_api_token_social_timeline_returns_buckets_authors_and_posts(tmp_path):
         missing = client.get("/api/token-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
         response = client.get(
             "/api/token-social-timeline",
-            params={"token_id": token_id, "window": "5m", "bucket": "1m", "scope": "all", "limit": 2},
+            params={"token_id": token_id, "window": "5m", "scope": "all", "limit": 2},
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -512,11 +512,40 @@ def test_api_token_social_timeline_returns_buckets_authors_and_posts(tmp_path):
     assert missing.json() == {"ok": False, "error": "missing_token_identity"}
     assert response.status_code == 200
     data = response.json()["data"]
+    assert data["query"]["bucket"] == "30s"
     assert data["summary"]["posts"] == 3
     assert data["buckets"]
     assert data["authors"]
     assert data["returned_count"] == 2
     assert data["has_more"] is True
+
+
+def test_api_token_social_timeline_rejects_manual_bucket_param(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-social-timeline",
+            params={"token_id": f"token:eth:{PEPE}", "window": "5m", "bucket": "1m"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_query_param", "field": "bucket"}
+
+
+def test_api_rejects_removed_1m_window(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-flow",
+            params={"window": "1m", "limit": 5, "scope": "all"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
 
 
 def test_api_token_posts_rejects_invalid_chain_address_identity(tmp_path):

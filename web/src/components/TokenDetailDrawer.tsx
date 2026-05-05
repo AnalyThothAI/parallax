@@ -1,11 +1,12 @@
 import type {
   AccountQualityData,
   SignalLabChain,
-  TimelineBucket,
+  TokenPostRange,
   TokenDetailTab,
   TokenFlowItem,
   TokenPostsData,
-  TokenSocialTimelineData
+  TokenSocialTimelineData,
+  WindowKey
 } from "../api/types";
 import { gmgnTokenUrl } from "../lib/gmgn";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
@@ -24,6 +25,8 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
   { tab: "accounts", label: "Accounts" }
 ];
 
+const DETAIL_WINDOWS: WindowKey[] = ["5m", "1h", "4h", "24h"];
+
 type TokenDetailDrawerProps = {
   token: TokenFlowItem | null;
   activeTab: TokenDetailTab;
@@ -36,12 +39,14 @@ type TokenDetailDrawerProps = {
   isPostsFetchingNextPage: boolean;
   isAccountQualityLoading: boolean;
   isSignalLabLoading: boolean;
-  timelineBucket: TimelineBucket;
+  detailWindow: WindowKey;
+  postRange: TokenPostRange;
   postSortMode: "recent" | "quality";
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
   onTabChange: (tab: TokenDetailTab) => void;
-  onTimelineBucketChange: (bucket: TimelineBucket) => void;
+  onDetailWindowChange: (window: WindowKey) => void;
+  onPostRangeChange: (range: TokenPostRange) => void;
   onPostSortModeChange: (mode: "recent" | "quality") => void;
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
@@ -61,12 +66,14 @@ export function TokenDetailDrawer({
   isPostsFetchingNextPage,
   isAccountQualityLoading,
   isSignalLabLoading,
-  timelineBucket,
+  detailWindow,
+  postRange,
   postSortMode,
   hideDuplicateClusters,
   watchedPostsOnly,
   onTabChange,
-  onTimelineBucketChange,
+  onDetailWindowChange,
+  onPostRangeChange,
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
@@ -140,6 +147,14 @@ export function TokenDetailDrawer({
             <span key={risk}>{risk}</span>
           ))}
         </div>
+
+        <div className="segmented detail-window-control" aria-label="selected token detail window">
+          {DETAIL_WINDOWS.map((item) => (
+            <button key={item} className={detailWindow === item ? "active" : ""} type="button" onClick={() => onDetailWindowChange(item)}>
+              {item}
+            </button>
+          ))}
+        </div>
       </header>
 
       <nav className="tabs" aria-label="token detail tabs">
@@ -152,27 +167,27 @@ export function TokenDetailDrawer({
 
       {activeTab === "timeline" ? (
         <section className="drawer-section">
-          <div className="section-title">social timeline · {token.timeline_query.window} bucket={timelineBucket}</div>
+          <div className="section-title">heat timeline · {detailWindow}</div>
           <TokenTimeline
-            bucket={timelineBucket}
             isLoading={isTimelineLoading}
             timeline={timeline}
-            onBucketChange={onTimelineBucketChange}
           />
         </section>
       ) : null}
       {activeTab === "posts" ? (
         <section className="drawer-section">
-          <div className="section-title">top posts</div>
+          <div className="section-title">posts · {detailWindow}</div>
           <TokenPostsTab
             hideDuplicateClusters={hideDuplicateClusters}
             isFetchingNextPage={isPostsFetchingNextPage}
             isLoading={isPostsLoading}
             posts={posts}
+            postRange={postRange}
             postSortMode={postSortMode}
             watchedPostsOnly={watchedPostsOnly}
             onHideDuplicateClustersChange={onHideDuplicateClustersChange}
             onLoadMorePosts={onLoadMorePosts}
+            onPostRangeChange={onPostRangeChange}
             onPostSortModeChange={onPostSortModeChange}
             onWatchedPostsOnlyChange={onWatchedPostsOnlyChange}
           />

@@ -1,12 +1,8 @@
-import { ExternalLink } from "lucide-react";
-import type { TimelineBucket, TokenSocialTimelineData } from "../api/types";
+import type { TokenSocialTimelineData } from "../api/types";
 import {
   compactNumber,
-  eventText,
-  formatBucketLabel,
   formatPercentShare,
   formatPropagationPhase,
-  formatRelativeTime,
   formatRisk,
   formatScore
 } from "../lib/format";
@@ -14,13 +10,9 @@ import {
 type TokenTimelineProps = {
   timeline?: TokenSocialTimelineData | null;
   isLoading: boolean;
-  bucket: TimelineBucket;
-  onBucketChange: (bucket: TimelineBucket) => void;
 };
 
-const BUCKETS: TimelineBucket[] = ["30s", "1m", "5m"];
-
-export function TokenTimeline({ timeline, isLoading, bucket, onBucketChange }: TokenTimelineProps) {
+export function TokenTimeline({ timeline, isLoading }: TokenTimelineProps) {
   if (isLoading) {
     return <TimelineSkeleton />;
   }
@@ -48,14 +40,14 @@ export function TokenTimeline({ timeline, isLoading, bucket, onBucketChange }: T
           <span>Top Share</span>
           <b>{formatPercentShare(timeline.summary.top_author_share)}</b>
         </div>
+        <div>
+          <span>Repro</span>
+          <b>{timeline.summary.reproduction_rate === null || timeline.summary.reproduction_rate === undefined ? "-" : timeline.summary.reproduction_rate.toFixed(2)}</b>
+        </div>
       </header>
 
       <div className="timeline-controls">
-        {BUCKETS.map((item) => (
-          <button key={item} className={bucket === item ? "active" : ""} type="button" onClick={() => onBucketChange(item)}>
-            {formatBucketLabel(item)}
-          </button>
-        ))}
+        <span className="muted-pill">auto bucket {timeline.query.bucket}</span>
         {sparse ? <span className="risk-pill">{formatRisk("insufficient_timeline_data")}</span> : null}
         {timeline.buckets.every((item) => item.price == null) ? <span className="muted-pill">price snapshot missing</span> : null}
       </div>
@@ -70,6 +62,7 @@ export function TokenTimeline({ timeline, isLoading, bucket, onBucketChange }: T
                 aria-label={`${item.posts} posts`}
               />
               {item.watched_posts ? <i style={{ height: `${Math.max(8, (item.watched_posts / maxPosts) * 88)}%` }} /> : null}
+              {item.new_authors ? <strong style={{ height: `${Math.max(8, (item.new_authors / maxPosts) * 88)}%` }} /> : null}
               {item.price_change_from_start_pct !== null && item.price_change_from_start_pct !== undefined ? (
                 <em className={item.price_change_from_start_pct >= 0 ? "up" : "down"} />
               ) : null}
@@ -90,24 +83,6 @@ export function TokenTimeline({ timeline, isLoading, bucket, onBucketChange }: T
           </div>
         ))}
         {timeline.authors.length === 0 ? <div className="empty-state">暂无作者 lane</div> : null}
-      </section>
-
-      <section className="timeline-post-list">
-        {timeline.posts.slice(0, 12).map((post) => (
-          <article className="timeline-post" key={post.event_id}>
-            <div>
-              <strong>@{post.handle ?? "unknown"}</strong>
-              <span>{formatScore(post.post_quality.score)}</span>
-              <time>{formatRelativeTime(post.received_at_ms)}</time>
-              {post.url ? (
-                <a href={post.url} target="_blank" rel="noreferrer" aria-label="打开原文">
-                  <ExternalLink aria-hidden />
-                </a>
-              ) : null}
-            </div>
-            <p>{eventText({ event_id: post.event_id, text_clean: post.text })}</p>
-          </article>
-        ))}
       </section>
     </div>
   );

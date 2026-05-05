@@ -65,9 +65,65 @@ def test_token_flow_item_uses_social_heat_contract(tmp_path):
         "chain": "eth",
         "address": item["identity"]["address"],
         "window": "1h",
-        "bucket": "1m",
         "scope": "all",
     }
+
+
+def test_token_flow_social_heat_reports_real_multi_window_mentions(tmp_path):
+    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    try:
+        now_ms = 1_700_000_000_000
+        for event_id, age_ms in [
+            ("event-dog-5m", 60_000),
+            ("event-dog-1h", 50 * 60_000),
+            ("event-dog-4h", 3 * 60 * 60_000),
+        ]:
+            ingest.ingest_event(
+                token_event(
+                    event_id,
+                    received_at_ms=now_ms - age_ms,
+                    author_handle=event_id,
+                    text=f"$DOG multi-window {event_id}",
+                ),
+                is_watched=False,
+            )
+
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=now_ms,
+        )[0]
+    finally:
+        conn.close()
+
+    assert item["flow"]["window"] == "5m"
+    assert item["social_heat"]["mentions"] == 1
+    assert item["social_heat"]["mentions_5m"] == 1
+    assert item["social_heat"]["mentions_1h"] == 2
+    assert item["social_heat"]["mentions_4h"] == 3
+    assert item["social_heat"]["mentions_24h"] == 3
+
+
+def test_token_flow_supports_4h_window(tmp_path):
+    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    try:
+        now_ms = 1_700_000_000_000
+        ingest.ingest_event(
+            token_event("event-dog-4h-window", received_at_ms=now_ms - 3 * 60 * 60_000),
+            is_watched=True,
+        )
+
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="4h",
+            limit=10,
+            now_ms=now_ms,
+        )[0]
+    finally:
+        conn.close()
+
+    assert item["flow"]["window"] == "4h"
+    assert item["flow"]["mentions"] == 1
+    assert item["social_heat"]["mentions_4h"] == 1
 
 
 def test_token_flow_timing_flags_price_move_before_social_start(tmp_path):

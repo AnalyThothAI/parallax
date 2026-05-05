@@ -93,6 +93,7 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
         extra={
             "mentions_5m": safe_int(features.get("mentions_5m"), mentions),
             "mentions_1h": safe_int(features.get("mentions_1h"), mentions),
+            "mentions_4h": safe_int(features.get("mentions_4h")),
             "mentions_24h": safe_int(features.get("mentions_24h")),
             "weighted_mentions": weighted_mentions,
             "stream_share": stream_share,

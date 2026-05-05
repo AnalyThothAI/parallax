@@ -5,9 +5,9 @@ from contextlib import suppress
 from typing import Any
 
 WINDOW_MS = {
-    "1m": 60_000,
     "5m": 300_000,
     "1h": 3_600_000,
+    "4h": 4 * 3_600_000,
     "24h": 86_400_000,
 }
 SIGNAL_LAB_STAGES = {"extracted", "seeded", "frozen", "settled", "credited"}

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { RadarSortMode, ScopeKey, SignalLabInspectorTab, SignalLabStageFilter, TimelineBucket, TokenDetailTab, WindowKey } from "../api/types";
+import type { RadarSortMode, ScopeKey, SignalLabInspectorTab, SignalLabStageFilter, TokenDetailTab, TokenPostRange, WindowKey } from "../api/types";
 
 type PostSortMode = "recent" | "quality";
 type ActiveView = "live" | "signal_lab";
@@ -14,7 +14,8 @@ type TraderState = {
   submittedSearch: string;
   radarSortMode: RadarSortMode;
   detailTab: TokenDetailTab;
-  timelineBucket: TimelineBucket;
+  detailWindow: WindowKey;
+  postRange: TokenPostRange;
   postSortMode: PostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
@@ -34,7 +35,8 @@ type TraderState = {
   runSearch: (search: string) => void;
   setRadarSortMode: (mode: RadarSortMode) => void;
   setDetailTab: (tab: TokenDetailTab) => void;
-  setTimelineBucket: (bucket: TimelineBucket) => void;
+  setDetailWindow: (window: WindowKey) => void;
+  setPostRange: (range: TokenPostRange) => void;
   setPostSortMode: (mode: PostSortMode) => void;
   setHideDuplicateClusters: (enabled: boolean) => void;
   setWatchedPostsOnly: (enabled: boolean) => void;
@@ -56,7 +58,8 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   submittedSearch: "$PEPE",
   radarSortMode: "opportunity",
   detailTab: "timeline",
-  timelineBucket: "1m",
+  detailWindow: "1h",
+  postRange: "current_window",
   postSortMode: "recent",
   hideDuplicateClusters: false,
   watchedPostsOnly: false,
@@ -76,7 +79,8 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   runSearch: (search) => set({ search, submittedSearch: search.trim() }),
   setRadarSortMode: (radarSortMode) => set({ radarSortMode }),
   setDetailTab: (detailTab) => set({ detailTab }),
-  setTimelineBucket: (timelineBucket) => set({ timelineBucket }),
+  setDetailWindow: (detailWindow) => set({ detailWindow }),
+  setPostRange: (postRange) => set({ postRange }),
   setPostSortMode: (postSortMode) => set({ postSortMode }),
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),
   setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly }),

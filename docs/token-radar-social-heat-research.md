@@ -140,7 +140,7 @@ These absences matter for product claims:
 - attribution weight is positive;
 - chain/address are tradeable, not `unknown`, `evm`, or `evm_unknown`.
 
-It builds trailing `1m`, `5m`, `1h`, and `24h` windows, then adds:
+It builds trailing `5m`, `1h`, `4h`, and `24h` observation windows, then adds:
 
 - mention counts and watched mention counts;
 - direct versus selected symbol mentions;

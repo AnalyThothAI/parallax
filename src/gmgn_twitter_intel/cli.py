@@ -59,12 +59,12 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--scope", choices=("all", "matched"), default="all")
 
     token_flow = subcommands.add_parser("token-flow", help="rank token activity windows")
-    token_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="5m")
+    token_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     token_flow.add_argument("--limit", type=int, default=20)
     token_flow.add_argument("--scope", choices=("all", "matched"), default="all")
 
     account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
-    account_alerts.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
+    account_alerts.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
     account_alerts.add_argument("--limit", type=int, default=50)
     account_alerts.add_argument("--handles", default="")
     account_alerts.add_argument(
@@ -77,30 +77,30 @@ def build_parser() -> argparse.ArgumentParser:
     account_quality.add_argument("--handles", default="", help="comma separated account handles")
 
     social_events = subcommands.add_parser("social-events", help="print harness social event read model")
-    social_events.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    social_events.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     social_events.add_argument("--limit", type=int, default=50)
     social_events.add_argument("--handles", default="")
     social_events.add_argument("--event-types", default="")
 
     attention_seeds = subcommands.add_parser("attention-seeds", help="print harness attention seeds")
-    attention_seeds.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    attention_seeds.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     attention_seeds.add_argument("--limit", type=int, default=50)
     attention_seeds.add_argument("--handles", default="")
 
     harness_snapshots = subcommands.add_parser("harness-snapshots", help="print harness snapshots")
-    harness_snapshots.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    harness_snapshots.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     harness_snapshots.add_argument("--horizon", choices=("6h", "24h"), default="6h")
     harness_snapshots.add_argument("--limit", type=int, default=50)
     harness_snapshots.add_argument("--asset", default="")
 
     harness_outcomes = subcommands.add_parser("harness-outcomes", help="print harness outcomes")
-    harness_outcomes.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    harness_outcomes.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     harness_outcomes.add_argument("--horizon", choices=("6h", "24h"), default="6h")
     harness_outcomes.add_argument("--limit", type=int, default=50)
     harness_outcomes.add_argument("--asset", default="")
 
     harness_credits = subcommands.add_parser("harness-credits", help="print harness credits")
-    harness_credits.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    harness_credits.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     harness_credits.add_argument("--horizon", choices=("6h", "24h"), default="6h")
     harness_credits.add_argument("--limit", type=int, default=80)
     harness_credits.add_argument("--asset", default="")
