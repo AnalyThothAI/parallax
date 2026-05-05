@@ -17,6 +17,7 @@ type LiveSignalTapeProps = {
   isLoading: boolean;
   socketStatus: string;
   maxRows?: number;
+  mobileTaskPanel?: "tape";
   onSelect: (item: LiveSignalTapeItem) => void;
 };
 
@@ -26,11 +27,12 @@ export function LiveSignalTape({
   isLoading,
   socketStatus,
   maxRows = 12,
+  mobileTaskPanel,
   onSelect
 }: LiveSignalTapeProps) {
   const visible = items.slice(0, maxRows);
   return (
-    <section className="compact-panel live-signal-tape">
+    <section className="compact-panel live-signal-tape" data-mobile-task-panel={mobileTaskPanel}>
       <header>
         <div>
           <h2>实时信号 Tape</h2>

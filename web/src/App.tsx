@@ -614,28 +614,26 @@ export function App() {
               </section>
 
               <div className="bottom-deck">
-                <section data-mobile-task-panel="tape">
-                  <LiveSignalTape
-                    isLoading={recentQuery.isPending}
-                    items={liveSignalTapeItems}
-                    selectedEventId={selectedTapeEventId}
-                    socketStatus={socket.status}
-                    onSelect={handleTapeSelect}
-                  />
-                </section>
+                <LiveSignalTape
+                  isLoading={recentQuery.isPending}
+                  items={liveSignalTapeItems}
+                  mobileTaskPanel="tape"
+                  selectedEventId={selectedTapeEventId}
+                  socketStatus={socket.status}
+                  onSelect={handleTapeSelect}
+                />
 
-                <section data-mobile-task-panel="lab">
-                  <SignalLabPulse
-                    data={signalLabData}
-                    isLoading={signalLabChainsQuery.isPending}
-                    selectedChainId={selectedSignalChainId}
-                    onOpenLab={() => {
-                      setActiveView("signal_lab");
-                      setMobileTask("lab");
-                    }}
-                    onSelect={selectSignalChain}
-                  />
-                </section>
+                <SignalLabPulse
+                  data={signalLabData}
+                  isLoading={signalLabChainsQuery.isPending}
+                  mobileTaskPanel="lab"
+                  selectedChainId={selectedSignalChainId}
+                  onOpenLab={() => {
+                    setActiveView("signal_lab");
+                    setMobileTask("lab");
+                  }}
+                  onSelect={selectSignalChain}
+                />
               </div>
             </>
           )}

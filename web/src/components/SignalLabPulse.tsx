@@ -6,14 +6,15 @@ type SignalLabPulseProps = {
   data?: SignalLabChainsData;
   isLoading?: boolean;
   selectedChainId?: string | null;
+  mobileTaskPanel?: "lab";
   onOpenLab: () => void;
   onSelect: (chain: SignalLabChain) => void;
 };
 
-export function SignalLabPulse({ data, isLoading, selectedChainId, onOpenLab, onSelect }: SignalLabPulseProps) {
+export function SignalLabPulse({ data, isLoading, selectedChainId, mobileTaskPanel, onOpenLab, onSelect }: SignalLabPulseProps) {
   const pulseItems = [...(data?.items ?? [])].sort((a, b) => signalPulseRank(b) - signalPulseRank(a) || b.updated_at_ms - a.updated_at_ms).slice(0, 5);
   return (
-    <section className="compact-panel signal-lab-pulse">
+    <section className="compact-panel signal-lab-pulse" data-mobile-task-panel={mobileTaskPanel}>
       <header>
         <div>
           <FlaskConical aria-hidden />

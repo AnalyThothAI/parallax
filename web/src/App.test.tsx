@@ -673,8 +673,8 @@ describe("App Token Radar social heat cockpit", () => {
     await screen.findByText("Signal Lab Pulse");
 
     expect(container.querySelector('[data-mobile-task-panel="radar"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-mobile-task-panel="tape"]')).toBeInTheDocument();
-    expect(container.querySelector('[data-mobile-task-panel="lab"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-mobile-task-panel="tape"]')).toHaveClass("compact-panel");
+    expect(container.querySelector('[data-mobile-task-panel="lab"]')).toHaveClass("compact-panel");
     expect(container.querySelector('[data-mobile-task-panel="detail"]')).toBeInTheDocument();
   });
 });
