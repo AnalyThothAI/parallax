@@ -1,0 +1,1223 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Closed Loop Harness Cockpit Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #070909;
+        --panel: #0d1111;
+        --panel-2: #101515;
+        --panel-3: #141a1a;
+        --line: #252b2b;
+        --line-soft: #1a2020;
+        --line-strong: #333b3a;
+        --text: #d9dfdc;
+        --ink: #f5f1e8;
+        --muted: #777f7b;
+        --faint: #4f5753;
+        --amber: #f2a51f;
+        --amber-soft: rgba(242, 165, 31, 0.12);
+        --amber-line: rgba(242, 165, 31, 0.42);
+        --green: #55d887;
+        --red: #ff5f66;
+        --cyan: #63c7dd;
+        --blue-soft: rgba(99, 199, 221, 0.12);
+        --mono: "JetBrains Mono", monospace;
+        --sans: "IBM Plex Sans Condensed", "PingFang SC", system-ui, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--text);
+        background:
+          linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 48px 48px,
+          var(--bg);
+        font-family: var(--sans);
+        font-size: 12px;
+        letter-spacing: 0;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .mono {
+        font-family: var(--mono);
+      }
+
+      .page {
+        min-width: 1024px;
+        min-height: 100vh;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: grid;
+        grid-template-columns: 250px minmax(220px, 1fr) minmax(320px, 520px) auto 30px;
+        gap: 12px;
+        align-items: center;
+        min-height: 46px;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(9, 12, 12, 0.96);
+        backdrop-filter: blur(14px);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        gap: 9px;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 16px;
+        height: 16px;
+        place-items: center;
+        border-radius: 3px;
+        background: var(--amber);
+        box-shadow: 0 0 0 1px var(--amber-line);
+      }
+
+      .brand-mark::after {
+        content: "";
+        width: 7px;
+        height: 7px;
+        border-radius: 1px;
+        background: var(--bg);
+      }
+
+      .brand h1 {
+        margin: 0;
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1;
+      }
+
+      .brand p {
+        margin: 2px 0 0;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .status-pills,
+      .top-stats {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        color: var(--faint);
+        font-family: var(--mono);
+        white-space: nowrap;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      .dot.amber {
+        background: var(--amber);
+      }
+
+      .searchbar {
+        display: grid;
+        grid-template-columns: 16px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        height: 30px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        background: #0a0e0e;
+        padding: 0 8px;
+      }
+
+      .searchbar input {
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        color: var(--ink);
+        background: transparent;
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .kbd,
+      .icon-button {
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+      }
+
+      .kbd {
+        padding: 1px 6px;
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .icon-button {
+        width: 28px;
+        height: 28px;
+        padding: 0;
+      }
+
+      .top-stats {
+        justify-content: flex-end;
+      }
+
+      .top-stats b {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .top-stats .good b {
+        color: var(--green);
+      }
+
+      .top-stats .warn b {
+        color: var(--amber);
+      }
+
+      .cockpit-grid {
+        display: grid;
+        grid-template-columns: 184px minmax(660px, 1fr) 360px;
+        gap: 10px;
+        height: calc(100vh - 46px);
+        padding: 10px;
+      }
+
+      .side-rail,
+      .center-column,
+      .drawer,
+      .panel {
+        min-height: 0;
+      }
+
+      .side-rail,
+      .drawer,
+      .panel {
+        border: 1px solid var(--line);
+        background: rgba(13, 17, 17, 0.96);
+      }
+
+      .side-rail {
+        display: grid;
+        grid-template-rows: auto auto auto auto 1fr auto;
+        gap: 10px;
+        padding: 10px;
+        overflow: hidden;
+        border-radius: 5px;
+      }
+
+      .nav-stack {
+        display: grid;
+        gap: 6px;
+      }
+
+      .nav-item {
+        display: grid;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        min-height: 34px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+        padding: 0 8px;
+        text-align: left;
+      }
+
+      .nav-item.active {
+        color: var(--ink);
+        border-color: var(--amber-line);
+        background: var(--amber-soft);
+      }
+
+      .nav-item span:first-child {
+        color: var(--faint);
+        font-family: var(--mono);
+      }
+
+      .rail-section {
+        display: grid;
+        align-content: start;
+        gap: 7px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft);
+      }
+
+      .rail-title,
+      .section-title,
+      .eyebrow {
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .segmented {
+        display: grid;
+        grid-auto-flow: column;
+        gap: 4px;
+      }
+
+      .segmented button {
+        height: 26px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+      }
+
+      .segmented button.active {
+        color: var(--ink);
+        border-color: var(--amber-line);
+        background: var(--amber-soft);
+      }
+
+      .handle-list {
+        display: grid;
+        align-content: start;
+        gap: 5px;
+      }
+
+      .handle {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--text);
+        font-family: var(--mono);
+      }
+
+      .handle small {
+        color: var(--faint);
+      }
+
+      .mini-health {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 5px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line-soft);
+      }
+
+      .mini-health div {
+        min-height: 42px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        background: #0a0e0e;
+        padding: 6px;
+      }
+
+      .mini-health span {
+        display: block;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 9px;
+      }
+
+      .mini-health b {
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+
+      .center-column {
+        display: grid;
+        grid-template-rows: minmax(420px, 1fr) 310px;
+        gap: 10px;
+        overflow: hidden;
+      }
+
+      .panel {
+        display: flex;
+        min-width: 0;
+        min-height: 0;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 5px;
+      }
+
+      .panel > header,
+      .drawer-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 40px;
+        gap: 10px;
+        border-bottom: 1px solid var(--line);
+        padding: 8px 10px;
+      }
+
+      h2,
+      h3 {
+        margin: 0;
+        color: var(--ink);
+        font-family: var(--mono);
+      }
+
+      h2 {
+        font-size: 12px;
+      }
+
+      h3 {
+        font-size: 11px;
+      }
+
+      .radar-table {
+        display: grid;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .radar-head,
+      .radar-row {
+        display: grid;
+        grid-template-columns: 1.15fr 0.8fr 0.9fr 1fr 0.9fr 0.9fr 1fr 0.75fr;
+        align-items: center;
+        gap: 10px;
+        min-width: 900px;
+        border-bottom: 1px solid var(--line-soft);
+        padding: 0 10px;
+      }
+
+      .radar-head {
+        min-height: 32px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .radar-body {
+        overflow: auto;
+      }
+
+      .radar-row {
+        min-height: 58px;
+        color: var(--text);
+      }
+
+      .radar-row.selected {
+        border-left: 2px solid var(--amber);
+        background: rgba(242, 165, 31, 0.07);
+      }
+
+      .cell {
+        min-width: 0;
+      }
+
+      .cell strong {
+        display: block;
+        overflow: hidden;
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .cell span {
+        display: block;
+        overflow: hidden;
+        color: var(--muted);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .score {
+        color: var(--ink);
+        font-family: var(--mono);
+      }
+
+      .positive {
+        color: var(--green);
+      }
+
+      .negative {
+        color: var(--red);
+      }
+
+      .info {
+        color: var(--cyan);
+      }
+
+      .amber {
+        color: var(--amber);
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        max-width: 145px;
+        height: 20px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+        padding: 0 6px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .tag.hot {
+        color: var(--amber);
+        border-color: var(--amber-line);
+        background: var(--amber-soft);
+      }
+
+      .tag.info {
+        color: var(--cyan);
+        border-color: rgba(99, 199, 221, 0.36);
+        background: var(--blue-soft);
+      }
+
+      .bottom-deck {
+        display: grid;
+        grid-template-columns: minmax(250px, 0.9fr) minmax(320px, 1.1fr) minmax(250px, 0.85fr);
+        gap: 10px;
+        min-height: 0;
+      }
+
+      .compact-list {
+        display: grid;
+        align-content: start;
+        gap: 6px;
+        overflow: auto;
+        padding: 8px;
+      }
+
+      .tape-row,
+      .harness-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px;
+        min-height: 58px;
+        max-height: 76px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        color: var(--text);
+        background: #0a0e0e;
+        padding: 7px;
+        overflow: hidden;
+        text-align: left;
+      }
+
+      .harness-row.selected,
+      .tape-row.selected {
+        border-color: var(--amber-line);
+        background: var(--amber-soft);
+      }
+
+      .kind {
+        width: 42px;
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .row-main {
+        min-width: 0;
+      }
+
+      .row-main strong {
+        display: flex;
+        overflow: hidden;
+        align-items: center;
+        gap: 6px;
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .row-main p,
+      .row-main em {
+        display: block;
+        overflow: hidden;
+        margin: 2px 0 0;
+        color: var(--muted);
+        font-style: normal;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .row-meta {
+        display: grid;
+        align-content: center;
+        justify-items: end;
+        gap: 3px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .health-strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        padding: 8px 8px 0;
+      }
+
+      .health-strip div {
+        min-height: 38px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        background: var(--panel-2);
+        padding: 5px 6px;
+      }
+
+      .health-strip span {
+        display: block;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 9px;
+      }
+
+      .health-strip b {
+        color: var(--ink);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .panel-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+        padding: 8px;
+      }
+
+      .panel-tabs button {
+        height: 26px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+      }
+
+      .panel-tabs button.active {
+        color: var(--ink);
+        border-color: var(--amber-line);
+        background: var(--amber-soft);
+      }
+
+      .chip-line {
+        display: flex;
+        gap: 4px;
+        margin-top: 4px;
+        overflow: hidden;
+      }
+
+      .chip {
+        max-width: 110px;
+        height: 18px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+        padding: 1px 5px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .bucket-table {
+        display: grid;
+        gap: 5px;
+        padding: 8px;
+        overflow: auto;
+      }
+
+      .bucket-row {
+        display: grid;
+        grid-template-columns: 74px 34px minmax(52px, 1fr) 40px;
+        align-items: center;
+        gap: 8px;
+        min-height: 31px;
+        border-bottom: 1px solid var(--line-soft);
+        font-family: var(--mono);
+      }
+
+      .bucket-row.header {
+        color: var(--faint);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .bar {
+        position: relative;
+        height: 7px;
+        border-radius: 2px;
+        background: var(--panel-3);
+        overflow: hidden;
+      }
+
+      .bar span {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        background: var(--green);
+      }
+
+      .bar.negative span {
+        right: 50%;
+        left: auto;
+        background: var(--red);
+      }
+
+      .drawer {
+        display: flex;
+        min-width: 0;
+        min-height: 0;
+        flex-direction: column;
+        overflow: hidden;
+        border-radius: 5px;
+      }
+
+      .drawer-head {
+        align-items: flex-start;
+      }
+
+      .drawer-title {
+        min-width: 0;
+      }
+
+      .drawer-title h2 {
+        overflow: hidden;
+        margin-top: 4px;
+        font-size: 16px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .drawer-title p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-family: var(--mono);
+      }
+
+      .snapshot-score {
+        display: grid;
+        justify-items: end;
+        gap: 5px;
+        color: var(--muted);
+        font-family: var(--mono);
+      }
+
+      .snapshot-score b {
+        color: var(--amber);
+        font-size: 22px;
+      }
+
+      .tabs {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        border-bottom: 1px solid var(--line);
+        padding: 8px;
+      }
+
+      .tabs button {
+        height: 28px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        color: var(--muted);
+        background: var(--panel-2);
+      }
+
+      .tabs button.active {
+        color: var(--ink);
+        border-color: var(--amber-line);
+        background: var(--amber-soft);
+      }
+
+      .drawer-body {
+        display: grid;
+        gap: 10px;
+        overflow: auto;
+        padding: 10px;
+      }
+
+      .trace {
+        display: grid;
+        gap: 8px;
+      }
+
+      .trace-step {
+        display: grid;
+        grid-template-columns: 24px minmax(0, 1fr);
+        gap: 8px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        background: #0a0e0e;
+        padding: 8px;
+      }
+
+      .step-num {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border: 1px solid var(--amber-line);
+        border-radius: 4px;
+        color: var(--amber);
+        font-family: var(--mono);
+      }
+
+      .trace-step strong {
+        color: var(--ink);
+        font-family: var(--mono);
+      }
+
+      .trace-step p {
+        margin: 3px 0 0;
+        color: var(--muted);
+      }
+
+      .ledger {
+        display: grid;
+        gap: 6px;
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        background: var(--panel-2);
+        padding: 8px;
+      }
+
+      .kv {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        font-family: var(--mono);
+      }
+
+      .kv span {
+        color: var(--faint);
+      }
+
+      .kv b {
+        color: var(--ink);
+        font-weight: 500;
+      }
+
+      .note {
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      @media (max-width: 1280px) {
+        .cockpit-grid {
+          grid-template-columns: 168px minmax(580px, 1fr) 340px;
+        }
+
+        .topbar {
+          grid-template-columns: 230px minmax(180px, 1fr) minmax(250px, 440px) auto 30px;
+        }
+
+        .top-stats .hide-narrow {
+          display: none;
+        }
+      }
+
+      @media (max-width: 1080px) {
+        .cockpit-grid {
+          grid-template-columns: 152px minmax(540px, 1fr) 320px;
+        }
+
+        .bottom-deck {
+          grid-template-columns: minmax(190px, 0.8fr) minmax(280px, 1.2fr) minmax(190px, 0.75fr);
+        }
+
+        .row-main em {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <section class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>
+            <h1>intel.cockpit</h1>
+            <p>public_stream · shadow_only</p>
+          </div>
+        </section>
+
+        <section class="status-pills">
+          <span class="pill"><i class="dot"></i> ws live</span>
+          <span class="pill"><i class="dot amber"></i> social-event-v1</span>
+        </section>
+
+        <label class="searchbar">
+          <span class="mono">/</span>
+          <input value="$BNB @cz snapshot" aria-label="search" />
+          <span class="kbd">Enter</span>
+        </label>
+
+        <section class="top-stats">
+          <span>MATCHED <b>6</b></span>
+          <span>SEEDS <b class="amber">12</b></span>
+          <span>SNAP <b>42</b></span>
+          <span class="good">SETTLED <b>73%</b></span>
+          <span class="warn hide-narrow">schema <b>96%</b></span>
+        </section>
+
+        <button class="icon-button" aria-label="refresh">R</button>
+      </header>
+
+      <div class="cockpit-grid">
+        <aside class="side-rail">
+          <nav class="nav-stack" aria-label="main views">
+            <button class="nav-item"><span>1</span><b>Live</b><em class="mono">104</em></button>
+            <button class="nav-item"><span>2</span><b>Tokens</b><em class="mono">48</em></button>
+            <button class="nav-item active"><span>3</span><b>Harness</b><em class="mono">42</em></button>
+            <button class="nav-item"><span>4</span><b>Outcomes</b><em class="mono">31</em></button>
+            <button class="nav-item"><span>5</span><b>Ops</b><em class="mono">20</em></button>
+          </nav>
+
+          <section class="rail-section">
+            <div class="rail-title">window</div>
+            <div class="segmented">
+              <button>5m</button>
+              <button class="active">1h</button>
+              <button>24h</button>
+            </div>
+          </section>
+
+          <section class="rail-section">
+            <div class="rail-title">horizon</div>
+            <div class="segmented">
+              <button class="active">6h</button>
+              <button>24h</button>
+            </div>
+          </section>
+
+          <section class="rail-section">
+            <div class="rail-title">scope</div>
+            <div class="segmented">
+              <button class="active">watched</button>
+              <button>all</button>
+            </div>
+          </section>
+
+          <section class="rail-section">
+            <div class="rail-title">high-value handles</div>
+            <div class="handle-list">
+              <div class="handle"><span>@cz_binance</span><small>5 seed</small></div>
+              <div class="handle"><span>@elonmusk</span><small>3 seed</small></div>
+              <div class="handle"><span>@heyibinance</span><small>4 seed</small></div>
+            </div>
+          </section>
+
+          <section class="mini-health">
+            <div><span>schema</span><b class="positive">96%</b></div>
+            <div><span>pending</span><b class="amber">18</b></div>
+            <div><span>snapshots</span><b>42</b></div>
+            <div><span>coverage</span><b class="positive">73%</b></div>
+          </section>
+        </aside>
+
+        <section class="center-column">
+          <section class="panel">
+            <header>
+              <div>
+                <h2>Token Radar</h2>
+                <div class="eyebrow">tokens with social heat and harness links</div>
+              </div>
+              <div class="segmented">
+                <button class="active">Opportunity</button>
+                <button>Heat</button>
+                <button>Timing</button>
+              </div>
+            </header>
+            <div class="radar-table">
+              <div class="radar-head">
+                <span>Token</span>
+                <span>Heat</span>
+                <span>Quality</span>
+                <span>Propagation</span>
+                <span>Market</span>
+                <span>Timing</span>
+                <span>Harness</span>
+                <span>Decision</span>
+              </div>
+              <div class="radar-body">
+                <article class="radar-row selected">
+                  <div class="cell"><strong>$BNB</strong><span>bsc · resolved_ca</span></div>
+                  <div class="cell"><strong>84 · +18</strong><span>7 posts · z3.8</span></div>
+                  <div class="cell"><strong>71 · 5 acct</strong><span>dup 0% · info 4</span></div>
+                  <div class="cell"><strong>expansion</strong><span>7 author · top 32%</span></div>
+                  <div class="cell"><strong class="positive">+3.8% fresh</strong><span>liq ready</span></div>
+                  <div class="cell"><strong class="info">social leads</strong><span>price +1.1%</span></div>
+                  <div class="cell"><strong>seed 2 · snap 1</strong><span class="amber">outcome pending</span></div>
+                  <div class="cell"><span class="tag hot">watch</span></div>
+                </article>
+                <article class="radar-row">
+                  <div class="cell"><strong>$CAKE</strong><span>bsc · resolved_ca</span></div>
+                  <div class="cell"><strong>67 · +9</strong><span>5 posts · z2.1</span></div>
+                  <div class="cell"><strong>63 · 3 acct</strong><span>direct evidence</span></div>
+                  <div class="cell"><strong>ignition</strong><span>4 author · top 45%</span></div>
+                  <div class="cell"><strong class="positive">+1.6% fresh</strong><span>pool ready</span></div>
+                  <div class="cell"><strong>confirms</strong><span>market after seed</span></div>
+                  <div class="cell"><strong>seed 1 · snap -</strong><span>unknown asset expr</span></div>
+                  <div class="cell"><span class="tag">watch</span></div>
+                </article>
+                <article class="radar-row">
+                  <div class="cell"><strong>$GROK</strong><span>eth · symbol only</span></div>
+                  <div class="cell"><strong>59 · +13</strong><span>11 posts · z2.7</span></div>
+                  <div class="cell"><strong>48 · 2 acct</strong><span>ambiguous symbol</span></div>
+                  <div class="cell"><strong>concentration</strong><span>2 author · top 76%</span></div>
+                  <div class="cell"><strong class="negative">missing</strong><span>market unresolved</span></div>
+                  <div class="cell"><strong>pending</strong><span>market missing</span></div>
+                  <div class="cell"><strong>seed 1 · snap -</strong><span>unresolved_symbol</span></div>
+                  <div class="cell"><span class="tag">discard</span></div>
+                </article>
+                <article class="radar-row">
+                  <div class="cell"><strong>$TST</strong><span>bsc · resolved_ca</span></div>
+                  <div class="cell"><strong>53 · +4</strong><span>3 posts · z1.4</span></div>
+                  <div class="cell"><strong>58 · 2 acct</strong><span>watched quote</span></div>
+                  <div class="cell"><strong>fade</strong><span>3 author · top 61%</span></div>
+                  <div class="cell"><strong class="negative">-2.4%</strong><span>fresh</span></div>
+                  <div class="cell"><strong>price leads</strong><span>pre move high</span></div>
+                  <div class="cell"><strong>seed 1 · snap 1</strong><span class="negative">credit -.08</span></div>
+                  <div class="cell"><span class="tag">discard</span></div>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <section class="bottom-deck">
+            <section class="panel">
+              <header>
+                <h2>Live Tape</h2>
+                <span class="mono">28 rows</span>
+              </header>
+              <div class="compact-list">
+                <button class="tape-row selected">
+                  <span class="kind">SEED</span>
+                  <span class="row-main">
+                    <strong>@cz_binance · meme_phrase_seed</strong>
+                    <p>build on BNB · conf .86</p>
+                    <em>watched account attention seed</em>
+                  </span>
+                  <span class="row-meta"><b class="amber">86</b><span>2m</span></span>
+                </button>
+                <button class="tape-row">
+                  <span class="kind">SNAP</span>
+                  <span class="row-main">
+                    <strong>BNB · shadow LONG_SMALL</strong>
+                    <p>score .42 · horizon 6h</p>
+                    <em>policy NO_TRADE</em>
+                  </span>
+                  <span class="row-meta"><b>42</b><span>4m</span></span>
+                </button>
+                <button class="tape-row">
+                  <span class="kind">TOKEN</span>
+                  <span class="row-main">
+                    <strong>@heyibinance -> $CAKE</strong>
+                    <p>linked seed · 5 public posts</p>
+                    <em>social confirms token uptake</em>
+                  </span>
+                  <span class="row-meta"><b>67</b><span>8m</span></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <header>
+                <div>
+                  <h2>Harness</h2>
+                  <div class="eyebrow">social-event-v1 · shadow loop</div>
+                </div>
+                <span class="tag hot">shadow only</span>
+              </header>
+              <div class="health-strip">
+                <div><span>schema</span><b class="positive">96%</b></div>
+                <div><span>snap</span><b>42</b></div>
+                <div><span>pending</span><b class="amber">18</b></div>
+                <div><span>settled</span><b class="positive">73%</b></div>
+              </div>
+              <div class="panel-tabs">
+                <button class="active">Events</button>
+                <button>Seeds</button>
+                <button>Snapshots</button>
+              </div>
+              <div class="compact-list">
+                <button class="harness-row selected">
+                  <span class="kind">EVT</span>
+                  <span class="row-main">
+                    <strong>@cz_binance · meme_phrase_seed</strong>
+                    <p>build on BNB</p>
+                    <span class="chip-line"><span class="chip">BNB</span><span class="chip">build</span><span class="chip">meme_phrase</span></span>
+                  </span>
+                  <span class="row-meta"><b class="amber">.86</b><span>impact .72</span></span>
+                </button>
+                <button class="harness-row">
+                  <span class="kind">SEED</span>
+                  <span class="row-main">
+                    <strong>@heyibinance · exchange_or_listing_hint</strong>
+                    <p>Binance Alpha · linked BNB, CAKE</p>
+                    <span class="chip-line"><span class="chip">linked</span><span class="chip">unresolved_symbol</span></span>
+                  </span>
+                  <span class="row-meta"><b class="info">2 link</b><span>9m</span></span>
+                </button>
+                <button class="harness-row">
+                  <span class="kind">SNAP</span>
+                  <span class="row-main">
+                    <strong>BNB · 6h · score .42</strong>
+                    <p>shadow LONG_SMALL · policy NO_TRADE</p>
+                    <span class="chip-line"><span class="chip">outcome_pending</span><span class="chip">score-v1</span></span>
+                  </span>
+                  <span class="row-meta"><b>42</b><span>4m</span></span>
+                </button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <header>
+                <div>
+                  <h2>Score Buckets</h2>
+                  <div class="eyebrow">6h · settled shadow</div>
+                </div>
+                <span class="tag info">weak+</span>
+              </header>
+              <div class="bucket-table">
+                <div class="bucket-row header"><span>bucket</span><span>n</span><span>avg y</span><span>hit</span></div>
+                <div class="bucket-row"><span>&lt;=-.8</span><span>12</span><span class="bar negative"><span style="width:31%"></span></span><span>33%</span></div>
+                <div class="bucket-row"><span>-.8~-.4</span><span>31</span><span class="bar negative"><span style="width:12%"></span></span><span>42%</span></div>
+                <div class="bucket-row"><span>-.4~.4</span><span>90</span><span class="bar"><span style="width:1%"></span></span><span>51%</span></div>
+                <div class="bucket-row"><span>.4~.8</span><span>28</span><span class="bar"><span style="width:14%"></span></span><span>61%</span></div>
+                <div class="bucket-row"><span>&gt;=.8</span><span>10</span><span class="bar"><span style="width:29%"></span></span><span>70%</span></div>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <aside class="drawer">
+          <header class="drawer-head">
+            <div class="drawer-title">
+              <div class="eyebrow">selected harness object</div>
+              <h2>@cz_binance · meme_phrase_seed</h2>
+              <p>social-event-v1 · conf .86 · shadow only</p>
+            </div>
+            <div class="snapshot-score">
+              <span>score</span>
+              <b>.42</b>
+              <span class="tag hot">LONG_SMALL</span>
+            </div>
+          </header>
+
+          <nav class="tabs" aria-label="harness detail tabs">
+            <button class="active">Trace</button>
+            <button>Snapshot</button>
+            <button>Outcome</button>
+            <button>Credit</button>
+          </nav>
+
+          <section class="drawer-body">
+            <section class="trace">
+              <article class="trace-step">
+                <span class="step-num">1</span>
+                <div>
+                  <strong>Extracted</strong>
+                  <p>@cz_binance · meme_phrase_seed · anchor "build on BNB"</p>
+                  <p class="mono">impact .72 · novelty .68 · confidence .86</p>
+                </div>
+              </article>
+              <article class="trace-step">
+                <span class="step-num">2</span>
+                <div>
+                  <strong>Seed</strong>
+                  <p>linked · token uptake 2 · BNB, CAKE</p>
+                  <p class="mono">risks: public_stream_coverage</p>
+                </div>
+              </article>
+              <article class="trace-step">
+                <span class="step-num">3</span>
+                <div>
+                  <strong>Snapshot</strong>
+                  <p>BNB · 6h · combined_score .42</p>
+                  <p class="mono">shadow LONG_SMALL · policy NO_TRADE</p>
+                </div>
+              </article>
+              <article class="trace-step">
+                <span class="step-num">4</span>
+                <div>
+                  <strong>Outcome</strong>
+                  <p>pending · horizon not reached</p>
+                  <p class="mono">baseline: eth + crypto_index + momentum</p>
+                </div>
+              </article>
+              <article class="trace-step">
+                <span class="step-num">5</span>
+                <div>
+                  <strong>Credit</strong>
+                  <p>credit not assigned</p>
+                  <p class="note">Predictive credit, not causal proof.</p>
+                </div>
+              </article>
+            </section>
+
+            <section class="ledger">
+              <h3>Snapshot Ledger</h3>
+              <div class="kv"><span>snapshot_id</span><b>BNB-20260504-1040</b></div>
+              <div class="kv"><span>asset</span><b>BNB</b></div>
+              <div class="kv"><span>horizon</span><b>6h</b></div>
+              <div class="kv"><span>config</span><b>social-mvp-v1</b></div>
+              <div class="kv"><span>prompt</span><b>social-event-v1</b></div>
+              <div class="kv"><span>scoring</span><b>harness-score-v1</b></div>
+            </section>
+
+            <section class="ledger">
+              <h3>Outcome Card</h3>
+              <div class="kv"><span>status</span><b class="amber">outcome pending</b></div>
+              <div class="kv"><span>reason</span><b>horizon not reached</b></div>
+              <div class="kv"><span>settlement</span><b>2026-05-04 16:40Z</b></div>
+            </section>
+          </section>
+        </aside>
+      </div>
+    </main>
+  </body>
+</html>

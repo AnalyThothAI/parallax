@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 
 from gmgn_twitter_intel.pipeline.llm_client import OpenAIChatEnrichmentClient
+from gmgn_twitter_intel.pipeline.social_event_extraction import social_event_response_format
 
 
 class FakeCompletions:
@@ -17,21 +18,34 @@ class FakeCompletions:
                     message=SimpleNamespace(
                         content=json.dumps(
                             {
-                                "summary": "TROLL social flow is accelerating.",
-                                "narratives": [
+                                "is_signal_event": True,
+                                "event_type": "meme_phrase_seed",
+                                "source_action": "posted",
+                                "subject": "TROLL social flow",
+                                "direction_hint": "attention_positive",
+                                "attention_mechanism": "meme_phrase",
+                                "impact_hint": 0.74,
+                                "semantic_novelty_hint": 0.63,
+                                "confidence": 0.9,
+                                "anchor_terms": [
                                     {
-                                        "label": "TROLL Social Acceleration",
-                                        "description": "TROLL social attention is accelerating.",
-                                        "seed_family": "token_social_flow",
-                                        "trigger_terms": ["TROLL", "social flow"],
-                                        "market_interpretation": "Market may look for TROLL token flow.",
+                                        "term": "$TROLL social flow",
+                                        "role": "meme_phrase",
                                         "evidence": "$TROLL social flow",
-                                        "confidence": 0.9,
                                     }
                                 ],
-                                "stance": "informational",
-                                "intent": "technical_commentary",
-                                "confidence": 0.9,
+                                "token_candidates": [
+                                    {
+                                        "symbol": "TROLL",
+                                        "project_name": None,
+                                        "chain": None,
+                                        "address": None,
+                                        "evidence": "$TROLL",
+                                        "confidence": 0.86,
+                                    }
+                                ],
+                                "semantic_risks": ["public_stream_coverage"],
+                                "summary_zh": "TROLL 社交流正在加速。",
                             }
                         )
                     )
@@ -46,7 +60,7 @@ class FakeSdkClient:
         self.chat = SimpleNamespace(completions=self.completions)
 
 
-def test_openai_chat_client_uses_sdk_chat_completions_json_mode():
+def test_openai_chat_client_uses_strict_social_event_schema():
     sdk_client = FakeSdkClient()
     client = OpenAIChatEnrichmentClient(
         api_key="sk-test",
@@ -69,6 +83,8 @@ def test_openai_chat_client_uses_sdk_chat_completions_json_mode():
 
     assert sdk_client.completions.kwargs["model"] == "gpt-test"
     assert sdk_client.completions.kwargs["temperature"] == 0
-    assert sdk_client.completions.kwargs["response_format"] == {"type": "json_object"}
+    assert sdk_client.completions.kwargs["response_format"] == social_event_response_format()
     assert sdk_client.completions.kwargs["messages"][0]["role"] == "system"
-    assert result.summary == "TROLL social flow is accelerating."
+    assert result.event_type == "meme_phrase_seed"
+    assert result.subject == "TROLL social flow"
+    assert result.token_candidates[0].symbol == "TROLL"

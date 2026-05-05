@@ -3,12 +3,15 @@ from threading import RLock
 
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Source
+from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.retrieval.rolling_token_flow import RollingTokenFlow
 from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
 from gmgn_twitter_intel.storage.sqlite_schema import migrate
@@ -40,6 +43,11 @@ def open_runtime(tmp_path):
 def open_runtime_with_enrichment(tmp_path):
     conn, ingest, signals, tokens = open_runtime(tmp_path)
     return conn, ingest, signals, tokens, EnrichmentRepository(conn)
+
+
+def open_runtime_with_harness(tmp_path):
+    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    return conn, ingest, signals, tokens, HarnessRepository(conn)
 
 
 def token_event(
@@ -300,69 +308,50 @@ def test_token_flow_watch_block_marks_public_only_without_seed_links(tmp_path):
     assert "public_stream_coverage" in item["opportunity"]["risks"]
 
 
-def test_token_flow_watch_block_marks_seed_linked_without_direct_watch(tmp_path):
-    conn, ingest, signals, tokens, enrichment = open_runtime_with_enrichment(tmp_path)
+def test_token_flow_watch_block_marks_seed_linked_from_harness_snapshot_without_direct_watch(tmp_path):
+    conn, ingest, signals, tokens, harness = open_runtime_with_harness(tmp_path)
     try:
         now_ms = 1_700_000_123_456
         seed_event = make_event(
             "seed-event",
             author_handle="toly",
-            text="AI agent narrative is accelerating",
-            received_at_ms=now_ms - 20_000,
+            text="AI agent DOG thesis is accelerating",
+            received_at_ms=now_ms - 4_000_000,
         )
         ingest.ingest_event(seed_event, is_watched=True)
         ingest.ingest_event(token_event("event-dog-public", received_at_ms=now_ms - 10_000), is_watched=False)
-
-        row = RollingTokenFlow(conn).token_flow(window="1h", limit=10, now_ms=now_ms)[0]
-        seed = enrichment.upsert_narrative_seed(
-            event_id="seed-event",
-            narrative_label="ai_agent",
-            seed_family="ai_agent",
-            seed_terms=["ai agent"],
-            market_interpretation="Market may rotate into AI-agent tokens.",
-            stance="bullish",
-            intent="market_commentary",
-            confidence=0.9,
-            source_weight=1.0,
-            novelty_status="new_global",
-            received_at_ms=seed_event.received_at_ms,
-            author_handle="toly",
-            evidence="AI agent narrative is accelerating",
-            summary="AI agent narrative seed",
-        )
-        enrichment.upsert_narrative_token_link(
-            seed_id=seed["seed_id"],
-            narrative_label="ai_agent",
-            token_identity_key=row["identity_key"],
-            token_id=row["token_id"],
-            identity_status=row["identity_status"],
-            chain=row["chain"],
-            address=row["address"],
-            symbol=row["symbol"],
-            first_linked_event_id="event-dog-public",
-            best_evidence_event_id="event-dog-public",
-            link_reason="seed_term_and_token_mention",
-            matched_terms=["ai agent"],
-            link_confidence=0.8,
-            lag_ms=10_000,
-            window="1h",
-            mention_count_after_seed=1,
-            watched_mention_count_after_seed=0,
-            unique_author_count_after_seed=1,
-            weighted_reach_after_seed=100.0,
-            market_cap=60490.341996,
-            market_status="fresh",
-            price_change_after_seed_pct=None,
-            seed_score=80,
-            diffusion_score=25,
-            token_link_score=65,
-            tradeability_score=50,
-            decision="driver",
-            reasons=["watched_handle_seed"],
-            risks=[],
+        HarnessSnapshotBuilder(harness).materialize(
+            event=seed_event.to_dict(),
+            extraction=SocialEventExtraction(
+                is_signal_event=True,
+                event_type="meme_phrase_seed",
+                source_action="posted",
+                subject="AI agent DOG thesis",
+                direction_hint="attention_positive",
+                attention_mechanism="meme_phrase",
+                impact_hint=0.8,
+                semantic_novelty_hint=0.8,
+                confidence=0.9,
+                anchor_terms=[AnchorTerm(term="AI agent", role="meme_phrase", evidence="AI agent")],
+                token_candidates=[
+                    SocialTokenCandidate(
+                        symbol="DOG",
+                        project_name=None,
+                        chain="eth",
+                        address=TOKEN_ADDRESS,
+                        evidence="DOG",
+                        confidence=0.9,
+                    )
+                ],
+                semantic_risks=["public_stream_coverage"],
+                summary_zh="Toly 提到 AI agent DOG，形成可回放的 harness seed。",
+                raw_response={"ok": True},
+            ),
+            run_id="run-seed",
+            model_version="fake-model",
         )
 
-        item = TokenFlowService(signals=signals, tokens=tokens, enrichment=enrichment).token_flow(
+        item = TokenFlowService(signals=signals, tokens=tokens, harness=harness).token_flow(
             window="1h",
             limit=10,
             now_ms=now_ms,
@@ -371,5 +360,7 @@ def test_token_flow_watch_block_marks_seed_linked_without_direct_watch(tmp_path)
         conn.close()
 
     assert item["flow"]["watched_mentions"] == 0
+    assert item["watch"]["status"] == "seed_linked"
+    assert item["watch"]["top_seed"]["seed_id"].startswith("attention_seed:")
     assert item["propagation"]["score"] > 0
     assert item["opportunity"]["decision"] in {"watch", "driver"}

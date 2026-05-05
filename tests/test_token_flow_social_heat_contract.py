@@ -48,6 +48,7 @@ def test_token_flow_item_uses_social_heat_contract(tmp_path):
         "tradeability",
         "timing",
         "opportunity",
+        "watch",
         "evidence_total_count",
         "posts_query",
         "timeline_query",

@@ -1,6 +1,6 @@
 # GMGN Twitter Intel
 
-监听 GMGN 匿名公共 Twitter WebSocket，把可解析推文写入本地 SQLite WAL 数据库，并在 evidence、entity、token signal、LLM enrichment、narrative signal 层上提供 `/ws` 实时推送、HTTP 健康检查和 JSON CLI 查询。
+监听 GMGN 匿名公共 Twitter WebSocket，把可解析推文写入本地 SQLite WAL 数据库，并在 evidence、entity、token signal、social-event harness 层上提供 `/ws` 实时推送、HTTP 健康检查和 JSON CLI 查询。
 
 ## 运行模型
 
@@ -17,16 +17,22 @@ GMGN public WS
   -> SQLite WAL evidence
   -> deterministic entity extraction
   -> token signal windows
-  -> enrichment jobs
-  -> LLM watched-account enrichment
-  -> narrative signal windows
-  -> watched-handle narrative seeds
-  -> full-stream narrative token links
+  -> watched-account social-event extraction jobs
+  -> strict social-event-v1 LLM extraction
+  -> attention seeds
+  -> event clusters
+  -> immutable harness snapshots
+  -> shadow decisions
+  -> local-market settlement
+  -> credit attribution
+  -> report-only weights
   -> /ws live push + replay
-  -> CLI search / token-flow / account-alerts / narrative-flow / narrative-seeds / attention-frontier
+  -> CLI search / token-flow / account-alerts / social-events / harness-snapshots / harness-credits
 ```
 
-叙事链路有一条硬边界：只有 `handles` 中的 watched accounts 会创建 narrative seed；全量 GMGN public stream 只作为 seed 之后的 token 扩散验证证据，不会被全量送进 LLM。
+Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 LLM social-event-v1 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence，不会被全量送进 LLM。
+
+LLM 不做交易决策，只抽取结构化 social event。Harness 负责落库、快照、shadow decision、结算、信用分配和 report-only 权重。
 
 ## 快速开始
 
@@ -43,7 +49,7 @@ make config
 ~/.gmgn-twitter-intel/logs/
 ```
 
-编辑 `config.yaml` 中的 `handles`，如需启用 watched-account LLM enrichment，再配置 `llm.api_key` 与 `llm.model`。`ws_token` 是本服务的 Web/API 访问令牌；内置 cockpit 会从后端启动配置自动读取，不需要在页面里单独填写。
+编辑 `config.yaml` 中的 `handles`，如需启用 watched-account social-event extraction，再配置 `llm.api_key` 与 `llm.model`。`ws_token` 是本服务的 Web/API 访问令牌；内置 cockpit 会从后端启动配置自动读取，不需要在页面里单独填写。
 
 本地前台运行：
 
@@ -156,7 +162,7 @@ ws://127.0.0.1:8765/ws
 {"type":"subscribe","symbols":["PEPE"],"replay":20}
 ```
 
-推送 payload 包含三层：
+推送 payload 使用同一个可回放读模型：
 
 ```json
 {
@@ -164,7 +170,8 @@ ws://127.0.0.1:8765/ws
   "event": {"event_id": "...", "author": {"handle": "toly"}, "content": {"text": "..."}},
   "entities": [{"entity_type": "symbol", "normalized_value": "PEPE"}],
   "alerts": [{"alert_type": "account_token", "author_handle": "toly"}],
-  "enrichment": null
+  "token_attributions": [],
+  "harness": null
 }
 ```
 
@@ -178,11 +185,13 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/search?q=%24PE
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-flow?window=5m&limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-posts?token_id=token:eth:0x...&window=5m&limit=50"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-alerts?window=24h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-flow?window=1h&limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-narratives?window=24h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-seeds?window=24h&limit=50"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/narrative-token-flow?seed_id=<seed_id>&window=1h&limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/attention-frontier?window=1h&limit=30"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/social-events?window=1h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/attention-seeds?window=1h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-snapshots?horizon=6h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-outcomes?horizon=6h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-credits?horizon=6h&limit=80"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-score-buckets?horizon=6h"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-health"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/enrichment-jobs?limit=50"
 ```
 
@@ -199,14 +208,20 @@ uv run gmgn-twitter-intel search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933
 uv run gmgn-twitter-intel search "base stablecoin" --limit 20
 uv run gmgn-twitter-intel token-flow --window 5m --limit 20
 uv run gmgn-twitter-intel account-alerts --window 24h --limit 50
-uv run gmgn-twitter-intel narrative-flow --window 1h --limit 20
-uv run gmgn-twitter-intel account-narratives --window 24h --limit 50
-uv run gmgn-twitter-intel narrative-seeds --window 24h --limit 50
-uv run gmgn-twitter-intel narrative-token-flow --seed-id <seed_id> --window 1h --limit 20
-uv run gmgn-twitter-intel attention-frontier --window 1h --limit 30
+uv run gmgn-twitter-intel social-events --window 1h --limit 50
+uv run gmgn-twitter-intel attention-seeds --window 1h --limit 50
+uv run gmgn-twitter-intel harness-snapshots --horizon 6h --limit 50
+uv run gmgn-twitter-intel harness-outcomes --horizon 6h --limit 50
+uv run gmgn-twitter-intel harness-credits --horizon 6h --limit 80
+uv run gmgn-twitter-intel harness-weights --horizon 6h --limit 100
+uv run gmgn-twitter-intel harness-score-buckets --horizon 6h
+uv run gmgn-twitter-intel harness-health
 uv run gmgn-twitter-intel enrichment-jobs --limit 50
 uv run gmgn-twitter-intel ops rebuild-attributions --symbol PEPE
-uv run gmgn-twitter-intel ops rebuild-narrative-links --window 1h
+uv run gmgn-twitter-intel ops backfill-harness-jobs --limit 1000
+uv run gmgn-twitter-intel ops settle-harness --horizon 6h
+uv run gmgn-twitter-intel ops attribute-harness-credits --horizon 6h
+uv run gmgn-twitter-intel ops update-harness-weights
 ```
 
 `search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。
@@ -216,12 +231,12 @@ uv run gmgn-twitter-intel ops rebuild-narrative-links --window 1h
 - 所有可解析公共事件都会入库。
 - `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
-- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、market snapshot 和可解释评分模块；narrative signal 来自 watched-account LLM enrichment。
+- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、market snapshot 和可解释评分模块；Harness signal 来自 watched-account social-event-v1 extraction 加确定性 scoring。
+- V1 不接外部新闻源，不自动实盘，不自动推广配置；`harness_weights.status` 先保持 `report_only`。
+- 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v1 抽取队列。
 - `token-flow` 返回 `social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity` 评分块，以及 `posts_query`、`timeline_query`。
 - `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
 - `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。
-- narrative seed 只来自 configured watched handles；全量 public stream 只用于 seed 后的 token uptake/link validation。
-- narrative-token link 必须有确定性 token evidence、link reason、matched terms、lag、scores 和 risks；不会只凭 LLM 语义联想创建可交易 token。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。
 - cashtag 没有 CA 时保持 unresolved symbol，不强行映射成某个 token。
 - `coverage=public_stream` 代表 GMGN 匿名公共流覆盖，不是完整 Twitter firehose。

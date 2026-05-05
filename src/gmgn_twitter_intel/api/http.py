@@ -8,8 +8,7 @@ from fastapi.responses import JSONResponse
 
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.account_quality_service import AccountQualityService
-from ..retrieval.narrative_link_service import NarrativeLinkService
-from ..retrieval.narrative_service import NarrativeService
+from ..retrieval.harness_service import HarnessService
 from ..retrieval.search_service import SearchService
 from ..retrieval.token_flow_service import TokenFlowService
 from ..retrieval.token_posts_service import TokenPostsCursorError, TokenPostsIdentityError, TokenPostsService
@@ -21,10 +20,10 @@ from ..retrieval.token_social_timeline_service import (
 from ..storage.account_quality_repository import AccountQualityRepository
 
 WINDOWS = {"1m", "5m", "1h", "24h"}
-LINK_WINDOWS = {"5m", "1h", "24h"}
 SCOPES = {"all", "matched"}
 ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
+HORIZONS = {"6h", "24h"}
 
 
 class ApiUnauthorized(Exception):
@@ -138,7 +137,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         items = TokenFlowService(
             signals=runtime.read_signals,
             tokens=runtime.read_tokens,
-            enrichment=runtime.read_enrichment,
+            harness=runtime.read_harness,
         ).token_flow(
             window=parsed_window,
             limit=_limit(limit),
@@ -253,32 +252,124 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         ).account_quality_for_handles(sorted(_handle_set(handles)))
         return _json({"ok": True, "data": data})
 
-    @router.get("/narrative-flow")
-    async def narrative_flow(
+    @router.get("/social-events")
+    async def social_events(
         request: Request,
         window: Annotated[str, Query()] = "1h",
-        limit: Annotated[int, Query()] = 20,
+        limit: Annotated[int, Query()] = 50,
+        handles: Annotated[str, Query()] = "",
+        event_types: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        parsed_window = _window(window)
-        items = NarrativeService(runtime.read_enrichment).narrative_flow(window=parsed_window, limit=_limit(limit))
-        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
+        data = HarnessService(runtime.read_harness).social_events(
+            window=_window(window),
+            limit=_limit(limit, maximum=500),
+            handles=_handle_set(handles),
+            event_types=_csv_set(event_types),
+        )
+        return _json({"ok": True, "data": data})
 
-    @router.get("/account-narratives")
-    async def account_narratives(
+    @router.get("/attention-seeds")
+    async def attention_seeds(
         request: Request,
-        window: Annotated[str, Query()] = "24h",
+        window: Annotated[str, Query()] = "1h",
         limit: Annotated[int, Query()] = 50,
         handles: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        parsed_window = _window(window)
-        items = NarrativeService(runtime.read_enrichment).account_narratives(
-            window=parsed_window,
+        data = HarnessService(runtime.read_harness).attention_seeds(
+            window=_window(window),
             limit=_limit(limit, maximum=500),
             handles=_handle_set(handles),
         )
-        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
+        return _json({"ok": True, "data": data})
+
+    @router.get("/harness-snapshots")
+    async def harness_snapshots(
+        request: Request,
+        window: Annotated[str, Query()] = "1h",
+        horizon: Annotated[str, Query()] = "6h",
+        limit: Annotated[int, Query()] = 50,
+        asset: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        data = HarnessService(runtime.read_harness).snapshots(
+            window=_window(window),
+            horizon=_horizon(horizon),
+            limit=_limit(limit, maximum=500),
+            asset=asset or None,
+        )
+        return _json({"ok": True, "data": data})
+
+    @router.get("/harness-outcomes")
+    async def harness_outcomes(
+        request: Request,
+        window: Annotated[str, Query()] = "1h",
+        horizon: Annotated[str, Query()] = "6h",
+        limit: Annotated[int, Query()] = 50,
+        asset: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        data = HarnessService(runtime.read_harness).outcomes(
+            window=_window(window),
+            horizon=_horizon(horizon),
+            limit=_limit(limit, maximum=500),
+            asset=asset or None,
+        )
+        return _json({"ok": True, "data": data})
+
+    @router.get("/harness-credits")
+    async def harness_credits(
+        request: Request,
+        window: Annotated[str, Query()] = "1h",
+        horizon: Annotated[str, Query()] = "6h",
+        limit: Annotated[int, Query()] = 80,
+        asset: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        data = HarnessService(runtime.read_harness).credits(
+            window=_window(window),
+            horizon=_horizon(horizon),
+            limit=_limit(limit, maximum=500),
+            asset=asset or None,
+        )
+        return _json({"ok": True, "data": data})
+
+    @router.get("/harness-weights")
+    async def harness_weights(
+        request: Request,
+        horizon: Annotated[str, Query()] = "",
+        limit: Annotated[int, Query()] = 100,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        data = HarnessService(runtime.read_harness).weights(
+            horizon=_horizon(horizon) if horizon else None,
+            limit=_limit(limit, maximum=500),
+        )
+        return _json({"ok": True, "data": data})
+
+    @router.get("/harness-health")
+    async def harness_health(request: Request) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        job_counts = runtime.read_enrichment.job_counts()
+        data = HarnessService(runtime.read_harness).health(
+            llm_configured=bool(runtime.settings.llm_configured),
+            extractor_running=runtime.enrichment_worker is not None,
+            pending_jobs=int(job_counts.get("pending", 0)),
+            schema_success_rate=None,
+        )
+        return _json({"ok": True, "data": data})
+
+    @router.get("/harness-score-buckets")
+    async def harness_score_buckets(
+        request: Request,
+        horizon: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        data = HarnessService(runtime.read_harness).score_buckets(
+            horizon=_horizon(horizon) if horizon else None,
+        )
+        return _json({"ok": True, "data": data})
 
     @router.get("/enrichment-jobs")
     async def enrichment_jobs(
@@ -297,52 +388,6 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 },
             }
         )
-
-    @router.get("/narrative-seeds")
-    async def narrative_seeds(
-        request: Request,
-        window: Annotated[str, Query()] = "24h",
-        limit: Annotated[int, Query()] = 50,
-        handles: Annotated[str, Query()] = "",
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        parsed_window = _window(window)
-        items = NarrativeLinkService(enrichment=runtime.read_enrichment).narrative_seeds(
-            window=parsed_window,
-            limit=_limit(limit, maximum=500),
-            handles=_handle_set(handles),
-        )
-        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
-
-    @router.get("/narrative-token-flow")
-    async def narrative_token_flow(
-        request: Request,
-        seed_id: Annotated[str, Query()] = "",
-        window: Annotated[str, Query()] = "1h",
-        limit: Annotated[int, Query()] = 20,
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        parsed_window = _link_window(window)
-        item = NarrativeLinkService(enrichment=runtime.read_enrichment).narrative_token_flow(
-            seed_id=seed_id,
-            window=parsed_window,
-            limit=_limit(limit, maximum=500),
-        )
-        return _json({"ok": True, "data": item | {"window": parsed_window}})
-
-    @router.get("/attention-frontier")
-    async def attention_frontier(
-        request: Request,
-        window: Annotated[str, Query()] = "1h",
-        limit: Annotated[int, Query()] = 30,
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        parsed_window = _link_window(window)
-        items = NarrativeLinkService(enrichment=runtime.read_enrichment).attention_frontier(
-            window=parsed_window,
-            limit=_limit(limit, maximum=500),
-        )
-        return _json({"ok": True, "data": {"window": parsed_window, "items": items}})
 
     return router
 
@@ -375,7 +420,7 @@ def _payload_for_event(runtime: Any, event: dict[str, Any]) -> dict[str, Any]:
         "entities": runtime.read_entities.entities_for_event(event_id),
         "alerts": runtime.read_signals.alerts_for_event(event_id),
         "token_attributions": runtime.read_signals.token_attributions_for_event(event_id),
-        "enrichment": runtime.read_enrichment.enrichment_for_event(event_id),
+        "harness": runtime.read_harness.harness_for_event(event_id),
     }
 
 
@@ -391,6 +436,10 @@ def _search_query(*, q: str, symbol: str, ca: str, chain: str, handle: str) -> s
 
 def _handle_set(raw: str) -> set[str]:
     return {item.strip().lstrip("@").lower() for item in raw.split(",") if item.strip()}
+
+
+def _csv_set(raw: str) -> set[str]:
+    return {item.strip() for item in raw.split(",") if item.strip()}
 
 
 def _limit(value: int, *, maximum: int = 1000) -> int:
@@ -409,8 +458,8 @@ def _bucket(value: str) -> str:
     return value if value in {"30s", "1m", "5m"} else "1m"
 
 
-def _link_window(value: str) -> str:
-    return value if value in LINK_WINDOWS else "1h"
+def _horizon(value: str) -> str:
+    return value if value in HORIZONS else "6h"
 
 
 def _alert_type(value: str | None) -> str | None:

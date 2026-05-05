@@ -6,7 +6,8 @@ from fastapi.testclient import TestClient
 from gmgn_twitter_intel.api.app import create_app
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.pipeline.narrative_token_linker import NarrativeTokenLinker
+from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
+from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.settings import Settings
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
@@ -152,6 +153,36 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     with TestClient(app) as client:
         event = make_event("event-1", text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
+        HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
+            event=event.to_dict(),
+            extraction=SocialEventExtraction(
+                is_signal_event=True,
+                event_type="meme_phrase_seed",
+                source_action="posted",
+                subject="PEPE ignition",
+                direction_hint="attention_positive",
+                attention_mechanism="direct_token_mention",
+                impact_hint=0.75,
+                semantic_novelty_hint=0.7,
+                confidence=0.9,
+                anchor_terms=[AnchorTerm(term="$PEPE", role="asset", evidence="$PEPE")],
+                token_candidates=[
+                    SocialTokenCandidate(
+                        symbol="PEPE",
+                        project_name=None,
+                        chain="eth",
+                        address=PEPE,
+                        evidence="$PEPE",
+                        confidence=0.9,
+                    )
+                ],
+                semantic_risks=["public_stream_coverage"],
+                summary_zh="PEPE ignition 形成 harness 事件。",
+                raw_response={"ok": True},
+            ),
+            run_id="run-event-1",
+            model_version="fake-model",
+        )
 
         headers = {"Authorization": "Bearer secret"}
         recent = client.get("/api/recent?limit=5", headers=headers)
@@ -162,6 +193,8 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert recent.status_code == 200
     assert recent.json()["data"]["events"][0]["event_id"] == "event-1"
     assert "token_attributions" in recent.json()["data"]["items"][0]
+    assert recent.json()["data"]["items"][0]["harness"]["social_event"]["event_id"] == "event-1"
+    assert "enrichment" not in recent.json()["data"]["items"][0]
 
     assert search.status_code == 200
     assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
@@ -172,6 +205,31 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
     assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "unresolved_chain_ca"
+
+
+def test_api_exposes_empty_harness_read_models_without_404(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        headers = {"Authorization": "Bearer secret"}
+        responses = [
+            client.get("/api/social-events?window=1h&limit=5", headers=headers),
+            client.get("/api/attention-seeds?window=1h&limit=5", headers=headers),
+            client.get("/api/harness-snapshots?window=1h&horizon=6h&limit=5", headers=headers),
+            client.get("/api/harness-outcomes?window=1h&horizon=6h&limit=5", headers=headers),
+            client.get("/api/harness-credits?window=1h&horizon=6h&limit=5", headers=headers),
+            client.get("/api/harness-health", headers=headers),
+            client.get("/api/harness-score-buckets?horizon=6h", headers=headers),
+        ]
+
+    assert [response.status_code for response in responses] == [200, 200, 200, 200, 200, 200, 200]
+    assert responses[0].json()["data"]["items"] == []
+    assert responses[1].json()["data"]["items"] == []
+    assert responses[2].json()["data"]["items"] == []
+    assert responses[3].json()["data"]["items"] == []
+    assert responses[4].json()["data"]["items"] == []
+    assert responses[5].json()["data"]["snapshots_24h"] == 0
+    assert responses[6].json()["data"]["items"][2]["bucket"] == "-0.4 to 0.4"
 
 
 def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
@@ -339,57 +397,6 @@ def test_api_token_posts_rejects_invalid_chain_address_identity(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_token_identity"}
 
 
-def test_api_token_flow_exposes_seed_linked_watch_status(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
-
-    with TestClient(app) as client:
-        seed_event = make_event("seed-event", text="AI agent narrative is accelerating")
-        public_event = make_token_event(
-            "public-token",
-            symbol="GROK",
-            address="0x44b28991b167582f18ba0259e0173176ca125505",
-            handle="anon",
-            text="$GROK AI agent momentum",
-        )
-        client.app.state.service.ingest.ingest_event(seed_event, is_watched=True)
-        client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
-        seed = client.app.state.service.enrichment.upsert_narrative_seed(
-            event_id="seed-event",
-            narrative_label="ai_agent",
-            seed_family="ai_agent",
-            seed_terms=["ai agent"],
-            market_interpretation="Market may look for AI-agent tokens.",
-            stance="bullish",
-            intent="market_commentary",
-            confidence=0.9,
-            source_weight=0.6,
-            novelty_status="new_global",
-            received_at_ms=seed_event.received_at_ms,
-            author_handle="toly",
-            evidence="AI agent narrative is accelerating",
-            summary="Watched account discussed AI agents.",
-        )
-        NarrativeTokenLinker(
-            evidence=client.app.state.service.evidence,
-            signals=client.app.state.service.signals,
-            enrichment=client.app.state.service.enrichment,
-            tokens=client.app.state.service.tokens,
-        ).link_seed(seed=seed, window="1h")
-
-        response = client.get(
-            "/api/token-flow",
-            params={"window": "1h", "limit": 5, "scope": "all"},
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 200
-    token_item = response.json()["data"]["items"][0]
-    assert token_item["identity"]["symbol"] == "GROK"
-    assert token_item["propagation"]["score"] > 0
-    assert token_item["opportunity"]["decision"] in {"watch", "driver"}
-    assert "signal" not in token_item
-
-
 def test_api_status_exposes_operational_state(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
@@ -404,57 +411,19 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert body["data"]["enrichment"]["llm_configured"] is False
 
 
-def test_api_exposes_narrative_link_read_models(tmp_path):
+def test_api_rejects_removed_narrative_product_surfaces(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        event = make_event("seed-1", text="$GROK Grok is getting scary good")
-        client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        seed = client.app.state.service.enrichment.upsert_narrative_seed(
-            event_id="seed-1",
-            narrative_label="ai_agent_grok",
-            seed_family="ai_agent",
-            seed_terms=["grok"],
-            market_interpretation="Market may look for Grok tokens.",
-            stance="bullish",
-            intent="technical_commentary",
-            confidence=0.9,
-            source_weight=0.6,
-            novelty_status="new_global",
-            received_at_ms=event.received_at_ms,
-            author_handle="toly",
-            evidence="Grok is getting scary good",
-            summary="Watched account discussed Grok.",
-        )
-        NarrativeTokenLinker(
-            evidence=client.app.state.service.evidence,
-            signals=client.app.state.service.signals,
-            enrichment=client.app.state.service.enrichment,
-            tokens=client.app.state.service.tokens,
-        ).link_seed(seed=seed, window="1h")
-
         headers = {"Authorization": "Bearer secret"}
+        narrative_flow = client.get("/api/narrative-flow?window=1h&limit=5", headers=headers)
+        account_narratives = client.get("/api/account-narratives?window=24h&limit=5", headers=headers)
         seeds = client.get("/api/narrative-seeds?window=24h&limit=5", headers=headers)
-        flow = client.get(
-            "/api/narrative-token-flow",
-            params={"seed_id": seed["seed_id"], "window": "1h", "limit": 5},
-            headers=headers,
-        )
-        unsupported_flow_window = client.get(
-            "/api/narrative-token-flow",
-            params={"seed_id": seed["seed_id"], "window": "1m", "limit": 5},
-            headers=headers,
-        )
+        flow = client.get("/api/narrative-token-flow?seed_id=seed&window=1h&limit=5", headers=headers)
         frontier = client.get("/api/attention-frontier?window=1h&limit=5", headers=headers)
 
-    assert seeds.status_code == 200
-    assert seeds.json()["data"]["items"][0]["seed"]["narrative_label"] == "ai_agent_grok"
-
-    assert flow.status_code == 200
-    assert flow.json()["data"]["seed"]["seed_id"] == seed["seed_id"]
-    assert flow.json()["data"]["links"][0]["identity"]["symbol"] == "GROK"
-    assert unsupported_flow_window.status_code == 200
-    assert unsupported_flow_window.json()["data"]["window"] == "1h"
-
-    assert frontier.status_code == 200
-    assert frontier.json()["data"]["items"][0]["seed"]["narrative_label"] == "ai_agent_grok"
+    assert narrative_flow.status_code == 404
+    assert account_narratives.status_code == 404
+    assert seeds.status_code == 404
+    assert flow.status_code == 404
+    assert frontier.status_code == 404

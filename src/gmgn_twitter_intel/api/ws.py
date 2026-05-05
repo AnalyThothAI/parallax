@@ -28,14 +28,14 @@ class PublicWebSocketHub:
         evidence,
         entities,
         signals,
-        enrichment,
+        harness,
         default_replay_limit: int = 100,
     ):
         self.token = token
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
-        self.enrichment = enrichment
+        self.harness = harness
         self.default_replay_limit = default_replay_limit
         self._clients: set[ClientSubscription] = set()
 
@@ -148,7 +148,7 @@ class PublicWebSocketHub:
             "entities": self.entities.entities_for_event(event_id),
             "alerts": self.signals.alerts_for_event(event_id),
             "token_attributions": self.signals.token_attributions_for_event(event_id),
-            "enrichment": self.enrichment.enrichment_for_event(event_id),
+            "harness": self.harness.harness_for_event(event_id),
         }
 
 

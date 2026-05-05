@@ -143,6 +143,7 @@ def test_token_flow_returns_identity_aware_conviction_model(tmp_path):
         "tradeability",
         "timing",
         "opportunity",
+        "watch",
         "evidence_total_count",
         "posts_query",
         "timeline_query",

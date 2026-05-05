@@ -1,7 +1,9 @@
 import type {
   AccountQualityData,
-  AttentionFrontierItem,
-  NarrativeFlowItem,
+  AttentionSeedItem,
+  HarnessCreditItem,
+  HarnessOutcomeItem,
+  HarnessSnapshotItem,
   TimelineBucket,
   TokenDetailTab,
   TokenFlowItem,
@@ -10,7 +12,7 @@ import type {
 } from "../api/types";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { AccountLane } from "./AccountLane";
-import { NarrativePanel } from "./NarrativePanel";
+import { HarnessTokenTab } from "./HarnessTokenTab";
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsTab } from "./TokenPostsTab";
 import { tokenDrawerSummary } from "./TokenRadarRow";
@@ -20,7 +22,7 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
   { tab: "timeline", label: "Timeline" },
   { tab: "posts", label: "Posts" },
   { tab: "score", label: "Score" },
-  { tab: "narratives", label: "Narratives" },
+  { tab: "harness", label: "Harness" },
   { tab: "accounts", label: "Accounts" }
 ];
 
@@ -29,24 +31,27 @@ type TokenDetailDrawerProps = {
   activeTab: TokenDetailTab;
   timeline?: TokenSocialTimelineData | null;
   posts?: TokenPostsData | null;
-  narratives: NarrativeFlowItem[];
-  narrativeLinks: AttentionFrontierItem[];
+  harnessSeeds: AttentionSeedItem[];
+  harnessSnapshots: HarnessSnapshotItem[];
+  harnessOutcomes: HarnessOutcomeItem[];
+  harnessCredits: HarnessCreditItem[];
   accountQuality?: AccountQualityData | null;
   isTimelineLoading: boolean;
   isPostsLoading: boolean;
   isPostsFetchingNextPage: boolean;
   isAccountQualityLoading: boolean;
+  isHarnessLoading: boolean;
   timelineBucket: TimelineBucket;
   postSortMode: "recent" | "quality";
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
-  llmConfigured: boolean;
   onTabChange: (tab: TokenDetailTab) => void;
   onTimelineBucketChange: (bucket: TimelineBucket) => void;
   onPostSortModeChange: (mode: "recent" | "quality") => void;
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
+  onSelectSnapshot: (snapshot: HarnessSnapshotItem) => void;
 };
 
 export function TokenDetailDrawer({
@@ -54,24 +59,27 @@ export function TokenDetailDrawer({
   activeTab,
   timeline,
   posts,
-  narratives,
-  narrativeLinks,
+  harnessSeeds,
+  harnessSnapshots,
+  harnessOutcomes,
+  harnessCredits,
   accountQuality,
   isTimelineLoading,
   isPostsLoading,
   isPostsFetchingNextPage,
   isAccountQualityLoading,
+  isHarnessLoading,
   timelineBucket,
   postSortMode,
   hideDuplicateClusters,
   watchedPostsOnly,
-  llmConfigured,
   onTabChange,
   onTimelineBucketChange,
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
-  onLoadMorePosts
+  onLoadMorePosts,
+  onSelectSnapshot
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
@@ -178,14 +186,17 @@ export function TokenDetailDrawer({
           <ScoreLedger token={token} />
         </section>
       ) : null}
-      {activeTab === "narratives" ? (
+      {activeTab === "harness" ? (
         <section className="drawer-section">
-          <div className="section-title">中文叙事</div>
-            <NarrativePanel
-              frontierItems={narrativeLinks}
-              llmConfigured={llmConfigured}
-              narratives={narratives}
+          <div className="section-title">harness</div>
+            <HarnessTokenTab
+              credits={harnessCredits}
+              isLoading={isHarnessLoading}
+              outcomes={harnessOutcomes}
+              seeds={harnessSeeds}
+              snapshots={harnessSnapshots}
               token={token}
+              onSelectSnapshot={onSelectSnapshot}
             />
         </section>
       ) : null}

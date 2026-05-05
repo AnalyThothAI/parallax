@@ -5,13 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type {
   ApiResponse,
-  AttentionFrontierData,
+  AttentionSeedsData,
   BootstrapData,
+  HarnessCreditsData,
+  HarnessHealthData,
+  HarnessOutcomesData,
+  HarnessSnapshotsData,
   LivePayload,
-  NarrativeFlowData,
-  NarrativeFlowItem,
+  SocialEventsData,
   StatusData,
-  AttentionFrontierItem,
   TokenFlowData,
   TokenFlowItem,
   TokenPostsData,
@@ -100,7 +102,9 @@ describe("App Token Radar social heat cockpit", () => {
       timelineBucket: "1m",
       postSortMode: "recent",
       hideDuplicateClusters: false,
-      watchedPostsOnly: false
+      watchedPostsOnly: false,
+      harnessView: "events",
+      harnessHorizon: "6h"
     });
     mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
     mockApi();
@@ -161,7 +165,7 @@ describe("App Token Radar social heat cockpit", () => {
   });
 
   it("opens Timeline by default, requests timeline/posts, and exposes score ledger tabs", async () => {
-    renderWithQuery(<App />);
+    const { container } = renderWithQuery(<App />);
 
     const tokenButton = await screen.findByRole("button", { name: "select token $UPEG" });
     fireEvent.click(tokenButton);
@@ -179,20 +183,72 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getAllByText("Tradeability").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
     await waitFor(() => expect(screen.getAllByText("样本不足").length).toBeGreaterThan(0));
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    fireEvent.click(within(drawer).getByRole("button", { name: "Harness" }));
+    await waitFor(() => expect(within(drawer).getByText("Linked Seeds · $UPEG")).toBeInTheDocument());
+    expect(within(drawer).getByText("Active Snapshots")).toBeInTheDocument();
+    expect(within(drawer).getByText("Latest Outcome")).toBeInTheDocument();
+    expect(within(drawer).getByText("Credit Rows")).toBeInTheDocument();
   });
 
-  it("shows Chinese narrative display and surfaces missing display as an error state", async () => {
+  it("removes narrative product surface and exposes harness entry points", async () => {
     renderWithQuery(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Narratives" }));
-    await waitFor(() => expect(screen.getAllByText("Grok 叙事带动 UPEG 社交扩散").length).toBeGreaterThan(0));
-    expect(screen.queryByText("ai_agent_upeg")).not.toBeInTheDocument();
+    await screen.findByText("Token");
+    expect(screen.queryByText("Narratives")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Harness").length).toBeGreaterThan(0);
+  });
 
-    cleanup();
-    mockApi({ missingNarrativeDisplay: true });
+  it("keeps settlement horizon inside harness and out of the global token radar rail", async () => {
     renderWithQuery(<App />);
-    fireEvent.click(await screen.findByRole("button", { name: "Narratives" }));
-    await waitFor(() => expect(screen.getAllByText("narrative_display_missing").length).toBeGreaterThan(0));
+
+    await screen.findByText("Token");
+
+    expect(screen.queryByRole("heading", { name: "horizon" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("settlement horizon")).toBeInTheDocument();
+
+    await waitFor(() => {
+      const tokenFlowCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-flow");
+      expect(tokenFlowCall?.[1]?.params).toMatchObject({ window: "1h", limit: 48, scope: "all" });
+      expect(tokenFlowCall?.[1]?.params).not.toHaveProperty("horizon");
+    });
+  });
+
+  it("changes only harness settlement queries when the harness horizon changes", async () => {
+    renderWithQuery(<App />);
+
+    const settlementControl = await screen.findByLabelText("settlement horizon");
+    fireEvent.click(within(settlementControl).getByRole("button", { name: "24h" }));
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/harness-snapshots" && options?.params?.horizon === "24h"
+        )
+      ).toBe(true);
+    });
+
+    const tokenFlowCalls = mockedGetApi.mock.calls.filter(([path]) => path === "/api/token-flow");
+    expect(tokenFlowCalls.length).toBeGreaterThan(0);
+    expect(tokenFlowCalls.every(([, options]) => !Object.hasOwn(options?.params ?? {}, "horizon"))).toBe(true);
+  });
+
+  it("renders social event harness rows and opens the right-side trace", async () => {
+    renderWithQuery(<App />);
+
+    const socialEventRows = await screen.findAllByText("@cz_binance · meme_phrase_seed");
+    expect(socialEventRows.length).toBeGreaterThan(0);
+    expect(screen.getAllByText("schema").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("BNB attention seed").length).toBeGreaterThan(0);
+
+    fireEvent.click(socialEventRows[0]);
+
+    await waitFor(() => expect(screen.getByText("selected harness object")).toBeInTheDocument());
+    expect(screen.getAllByText("Extracted").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Seed").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Snapshot").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Outcome").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Predictive credit, not causal proof.").length).toBeGreaterThan(0);
   });
 
   it("dedupes replay/live tape rows and token tape click does not change sort mode", async () => {
@@ -272,7 +328,6 @@ describe("App Token Radar social heat cockpit", () => {
 });
 
 function mockApi(options: {
-  missingNarrativeDisplay?: boolean;
   missingTokenId?: boolean;
   duplicateSymbol?: boolean;
   insufficientTiming?: boolean;
@@ -323,8 +378,22 @@ function mockApi(options: {
       });
     }
     if (path === "/api/account-alerts") return ok({ window: "24h", alert_type: null, items: [] });
-    if (path === "/api/narrative-flow") return ok<NarrativeFlowData>({ window: "1h", items: [narrativeFlowItem(options)] });
-    if (path === "/api/attention-frontier") return ok<AttentionFrontierData>({ window: "1h", items: [frontierItem(options)] });
+    if (path === "/api/social-events") return ok<SocialEventsData>({ items: [socialEventItem()] });
+    if (path === "/api/attention-seeds") return ok<AttentionSeedsData>({ items: [attentionSeedItem()] });
+    if (path === "/api/harness-snapshots") return ok<HarnessSnapshotsData>({ items: [harnessSnapshotItem()] });
+    if (path === "/api/harness-outcomes") return ok<HarnessOutcomesData>({ items: [harnessOutcomeItem()] });
+    if (path === "/api/harness-credits") return ok<HarnessCreditsData>({ items: [harnessCreditItem()] });
+    if (path === "/api/harness-health") {
+      return ok<HarnessHealthData>({
+        llm_configured: true,
+        extractor_running: true,
+        schema_success_rate: 0.96,
+        pending_jobs: 1,
+        snapshots_24h: 42,
+        pending_outcomes: 18,
+        settlement_coverage: 0.73
+      });
+    }
     if (path === "/api/enrichment-jobs") return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     if (path === "/api/search") {
       return ok({
@@ -475,6 +544,15 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
       risks: ["public_stream_coverage"],
       components: { heat: 86, quality: 78, propagation: 72, tradeability: 80, timing: 70 }
     }),
+    watch: {
+      status: "direct_watch",
+      direct_mentions: 1,
+      direct_authors: 1,
+      seed_link_count: 0,
+      top_seed: null,
+      reasons: ["watched_direct_mention"],
+      risks: []
+    },
     evidence_total_count: 4,
     posts_query: { token_id: tokenId, chain: "eth", address, window: "1h", scope: "all" },
     timeline_query: { token_id: tokenId, chain: "eth", address, window: "1h", bucket: "1m", scope: "all" }
@@ -547,53 +625,107 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
   };
 }
 
-function narrativeFlowItem(options: { missingNarrativeDisplay?: boolean }): NarrativeFlowItem {
+function socialEventItem() {
   return {
-    narrative_label: "ai_agent_upeg",
-    window: "1h",
-    display: display(options),
-    mention_count: 6,
-    watched_mention_count: 1,
-    unique_author_count: 3,
-    velocity: 3,
-    top_authors: [],
-    top_events: []
-  };
-}
-
-function frontierItem(options: { missingNarrativeDisplay?: boolean }): AttentionFrontierItem {
-  return {
-    seed: {
-      seed_id: "seed-upeg",
-      narrative_label: "ai_agent_upeg",
-      author_handle: "traderpow",
-      evidence: "Grok is getting scary good",
-      summary: "watched account seed",
-      display: display(options),
-      received_at_ms: 1_777_746_000_000,
-      seed_terms: ["grok", "ai"]
-    },
-    link: {
-      identity: tokenFlowItem().identity,
-      flow: { window: "1h", mentions: 4, watched_mentions: 1, unique_authors: 2, weighted_reach: 169_125, lag_ms: 30_000 },
-      market: { market_status: "fresh", market_cap: 60490, price_change_after_seed_pct: 0.12 },
-      scores: { seed: 70, diffusion: 72, token_link: 76, tradeability: 80 },
-      signal: { decision: "driver", reasons: ["watched_handle_seed"], risks: ["public_stream_coverage"] },
-      evidence: { first_linked_event_id: "event-upeg-1", best_evidence_event_id: "event-upeg-1", link_reason: "seed_symbol_candidate_confirmed", matched_terms: ["upeg"], link_confidence: 0.65 }
+    extraction_id: "extract-cz-bnb",
+    event_id: "event-cz-bnb",
+    author_handle: "cz_binance",
+    received_at_ms: 1_777_746_020_000,
+    schema_version: "social-event-v1",
+    event_type: "meme_phrase_seed",
+    source_action: "posted",
+    subject: "BNB attention seed",
+    direction_hint: "attention_positive",
+    attention_mechanism: "meme_phrase",
+    impact_hint: 0.72,
+    semantic_novelty_hint: 0.68,
+    confidence: 0.86,
+    is_signal_event: true,
+    anchor_terms: [{ term: "build on BNB", role: "meme_phrase", evidence: "build on BNB" }],
+    token_candidates: [{ symbol: "BNB", evidence: "BNB", confidence: 0.8 }],
+    semantic_risks: ["public_stream_coverage"],
+    summary_zh: "CZ 提到 build on BNB，形成 BNB attention seed。",
+    event: {
+      event_id: "event-cz-bnb",
+      author_handle: "cz_binance",
+      received_at_ms: 1_777_746_020_000,
+      text_clean: "build on BNB",
+      cashtags: ["BNB"],
+      is_watched: 1
     }
   };
 }
 
-function display(options: { missingNarrativeDisplay?: boolean }) {
-  if (options.missingNarrativeDisplay) {
-    return { name_zh: "", headline_zh: "", summary_zh: "", market_interpretation_zh: "", readability_status: "narrative_display_missing" };
-  }
+function attentionSeedItem() {
   return {
-    name_zh: "Grok AI Agent",
-    headline_zh: "Grok 叙事带动 UPEG 社交扩散",
-    summary_zh: "关注账号提到 Grok 后，公开流出现 UPEG 相关讨论。",
-    market_interpretation_zh: "交易员应观察 AI Agent 主题是否继续扩散到独立作者。",
-    readability_status: "ready"
+    seed_id: "seed-cz-bnb",
+    extraction_id: "extract-cz-bnb",
+    event_id: "event-cz-bnb",
+    author_handle: "cz_binance",
+    received_at_ms: 1_777_746_020_000,
+    event_type: "meme_phrase_seed",
+    subject: "BNB attention seed",
+    anchor_terms: [{ term: "build on BNB", role: "meme_phrase", evidence: "build on BNB" }],
+    token_uptake_count: 2,
+    top_linked_symbols: ["BNB"],
+    seed_status: "snapshot_ready",
+    risks: ["public_stream_coverage"]
+  };
+}
+
+function harnessSnapshotItem() {
+  return {
+    snapshot_id: "snapshot-bnb-6h",
+    asset: "BNB",
+    decision_time_ms: 1_777_746_040_000,
+    horizon: "6h",
+    combined_score: 0.42,
+    policy_signal: "NO_TRADE",
+    shadow_signal: "LONG_SMALL",
+    event_clusters: [{ cluster_id: "cluster-cz-bnb", event_type: "meme_phrase_seed", source: "cz_binance", event_score: 0.42 }],
+    market_state: { price_change_before_social_pct: 0.01 },
+    versions: {
+      config_version: "social-mvp-v1",
+      prompt_version: "social-event-v1",
+      schema_version: "social-event-v1",
+      scoring_version: "harness-score-v1",
+      weight_version: "report-only-v1",
+      policy_version: "shadow-v1",
+      risk_version: "risk-v1",
+      baseline_version: "baseline-v1"
+    },
+    outcome_status: "pending",
+    credit_status: "none",
+    risks: ["public_stream_coverage"]
+  };
+}
+
+function harnessOutcomeItem() {
+  return {
+    snapshot_id: "snapshot-bnb-6h",
+    settled_at_ms: 1_777_767_640_000,
+    actual_return: 0.018,
+    expected_return: 0.009,
+    abnormal_return: 0.009,
+    realized_vol: 0.018,
+    normalized_outcome: 0.5,
+    baseline_version: "baseline-v1"
+  };
+}
+
+function harnessCreditItem() {
+  return {
+    credit_id: "credit-cz-bnb",
+    snapshot_id: "snapshot-bnb-6h",
+    cluster_id: "cluster-cz-bnb",
+    asset: "BNB",
+    event_type: "meme_phrase_seed",
+    source: "cz_binance",
+    horizon: "6h",
+    event_score: 0.42,
+    responsibility: 1,
+    credit: 0.5,
+    created_at_ms: 1_777_767_650_000
   };
 }
 
@@ -627,7 +759,7 @@ function liveUpegEvent(options: { tokenId?: string; address?: string } = {}): Li
       }
     ],
     alerts: [],
-    enrichment: null
+    harness: null
   };
 }
 

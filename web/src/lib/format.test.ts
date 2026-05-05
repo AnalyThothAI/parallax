@@ -155,6 +155,15 @@ function sampleToken(): TokenFlowItem {
         timing: 50
       }
     },
+    watch: {
+      status: "direct_watch",
+      direct_mentions: 1,
+      direct_authors: 1,
+      seed_link_count: 0,
+      top_seed: null,
+      reasons: [],
+      risks: []
+    },
     evidence_total_count: 0,
     posts_query: {
       token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
