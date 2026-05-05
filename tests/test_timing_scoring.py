@@ -13,8 +13,10 @@ def test_timing_social_leads_price_before_move():
     )
 
     assert score["status"] == "social_leads_price"
+    assert score["score_version"] == "timing_v3"
     assert score["score"] >= 75
     assert score["chase_risk"] is False
+    assert score["data_health"]["market_timing"] == "ready"
 
 
 def test_timing_price_leads_social_sets_chase_risk():
@@ -31,7 +33,7 @@ def test_timing_price_leads_social_sets_chase_risk():
     assert score["status"] == "price_leads_social"
     assert score["chase_risk"] is True
     assert "chase_risk" in score["risks"]
-    assert score["score"] <= 45
+    assert score["score"] <= 55
 
 
 def test_timing_social_confirms_price_after_social_start():

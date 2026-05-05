@@ -8,20 +8,21 @@ from typing import Any
 from .harness_scoring import base_event_score, combined_score, event_score, policy_signal, shadow_signal
 from .social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 
-SCHEMA_VERSION = "social-event-v1"
+SCHEMA_VERSION = "social-event-v2"
 CONFIG_VERSION = "social-harness-mvp-v1"
-PROMPT_VERSION = "social-event-extractor-v1"
+PROMPT_VERSION = "social-event-extractor-v2"
 SCORING_VERSION = "harness-score-v1"
 WEIGHT_VERSION = "report-only-v1"
 POLICY_VERSION = "shadow-policy-v1"
 RISK_VERSION = "shadow-risk-v1"
-BASELINE_VERSION = "baseline-zero-v0"
+BASELINE_VERSION = "benchmark-zero-v1"
 HORIZONS = ("6h", "24h")
 
 
 class HarnessSnapshotBuilder:
-    def __init__(self, harness):
+    def __init__(self, harness, *, tokens=None):
         self.harness = harness
+        self.tokens = tokens
 
     def materialize(
         self,
@@ -138,12 +139,13 @@ class HarnessSnapshotBuilder:
         commit: bool,
     ) -> dict[str, Any]:
         direction = _direction(extraction.direction_hint)
+        pricedness = self._pricedness(asset=asset, received_at_ms=received_at_ms)
         base_score = base_event_score(
             direction=direction,
             impact=extraction.impact_hint,
             confidence=extraction.confidence,
             novelty=extraction.semantic_novelty_hint,
-            pricedness=0.35,
+            pricedness=pricedness,
         )
         scored = event_score(
             base_score,
@@ -167,7 +169,7 @@ class HarnessSnapshotBuilder:
             impact=extraction.impact_hint,
             confidence=extraction.confidence,
             novelty=extraction.semantic_novelty_hint,
-            pricedness=0.35,
+            pricedness=pricedness,
             base_score=base_score,
             event_score=scored,
             source_list=[author_handle] if author_handle else [],
@@ -176,6 +178,21 @@ class HarnessSnapshotBuilder:
             risks=risks,
             commit=commit,
         )
+
+    def _pricedness(self, *, asset: str, received_at_ms: int) -> float:
+        if self.tokens is None:
+            return 0.0
+        token_id = _token_id_for_asset(self.tokens, asset)
+        if not token_id:
+            return 0.0
+        current = self.tokens.market_snapshot_at_or_before(token_id, received_at_ms)
+        baseline = self.tokens.market_snapshot_at_or_before(token_id, max(0, received_at_ms - 30 * 60_000))
+        current_price = _float_or_none(current.get("price")) if current else None
+        baseline_price = _float_or_none(baseline.get("price")) if baseline else None
+        if current_price is None or not baseline_price:
+            return 0.0
+        pre_move = abs((current_price - baseline_price) / baseline_price)
+        return max(0.0, min(pre_move / 0.20, 1.0))
 
     def _snapshot_and_decision(
         self,
@@ -214,9 +231,9 @@ class HarnessSnapshotBuilder:
             decision_time_ms=decision_time_ms,
             horizon=horizon,
             combined_score=score,
-            policy_signal=policy_signal(score, long_threshold=0.70, short_threshold=-0.70),
-            shadow_signal=shadow_signal(score, long_threshold=0.25, short_threshold=-0.25),
-            market_state={"baseline": "zero", "price_move_penalty": 1.0},
+            policy_signal=policy_signal(score, long_threshold=0.55, short_threshold=-0.55),
+            shadow_signal=shadow_signal(score, long_threshold=0.20, short_threshold=-0.20),
+            market_state={"baseline": "zero", "price_move_penalty": 1.0, "pricedness_version": "pre_move_30m_v1"},
             event_clusters=[cluster_item],
             versions=versions,
             risks=risks,
@@ -303,6 +320,22 @@ def _author_handle(event: dict[str, Any]) -> str | None:
     if isinstance(author, dict) and author.get("handle"):
         return str(author["handle"]).strip().lstrip("@").lower()
     return None
+
+
+def _token_id_for_asset(tokens, asset: str) -> str | None:
+    if asset.startswith("token:"):
+        return asset
+    aliases = tokens.aliases_for_symbol(asset)
+    return aliases[0] if len(aliases) == 1 else None
+
+
+def _float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _id(*parts: str) -> str:

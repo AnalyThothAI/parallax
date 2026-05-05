@@ -5,11 +5,11 @@ from typing import Any
 from .scoring_common import cap, contribution, safe_int, score_payload
 
 WEIGHTS = {
-    "heat": 0.30,
-    "quality": 0.25,
-    "propagation": 0.20,
-    "tradeability": 0.15,
-    "timing": 0.10,
+    "heat": 0.26,
+    "quality": 0.22,
+    "propagation": 0.22,
+    "tradeability": 0.18,
+    "timing": 0.12,
 }
 
 
@@ -31,6 +31,16 @@ def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
 
     if hard_risks:
         risk_caps.append(cap("hard_risk", 40))
+    propagation_phase = str((components.get("propagation") or {}).get("phase") or "")
+    has_watched_confirmation = any(
+        reason in reasons for reason in ("watched_source_present", "watched_author_present", "watched_seed_link")
+    )
+    if "public_stream_coverage" in risks and not has_watched_confirmation:
+        risk_caps.append(cap("public_only_unconfirmed", 68))
+    if "chase_risk" in risks:
+        risk_caps.append(cap("chase_risk", 55))
+    if "repeated_text_cluster" in risks or "duplicate_text_cluster" in risks:
+        risk_caps.append(cap("repeated_text_cluster", 50))
 
     if risks.count("public_stream_coverage") > 1:
         first_coverage_index = risks.index("public_stream_coverage")
@@ -41,25 +51,33 @@ def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
         ]
 
     score_payload_base = score_payload(
-        score_version="social_opportunity_v1",
+        score_version="social_opportunity_v2",
         score=weighted_score,
         reasons=reasons,
         risks=risks,
         contributions=contributions,
         risk_caps=risk_caps,
+        data_health={key: (components.get(key) or {}).get("data_health", {}) for key in WEIGHTS},
     )
     final_score = score_payload_base["score"]
-    if hard_risks or "repeated_text_cluster" in risks:
+    if hard_risks or "repeated_text_cluster" in risks or "duplicate_text_cluster" in risks:
         decision = "discard"
     elif (
-        final_score >= 75
-        and component_scores["heat"] >= 70
-        and component_scores["quality"] >= 65
-        and component_scores["propagation"] >= 60
-        and component_scores["tradeability"] >= 65
+        final_score >= 72
+        and component_scores["heat"] >= 68
+        and component_scores["quality"] >= 62
+        and component_scores["propagation"] >= 62
+        and component_scores["tradeability"] >= 70
+        and component_scores["timing"] >= 55
+        and propagation_phase in {"expansion", "ignition"}
+        and not any(cap_item.get("risk") == "public_only_unconfirmed" for cap_item in risk_caps)
     ):
         decision = "driver"
-    elif final_score >= 45 and component_scores["tradeability"] >= 45:
+    elif (
+        final_score >= 45
+        and component_scores["tradeability"] >= 45
+        and (component_scores["propagation"] >= 45 or component_scores["heat"] >= 55 or has_watched_confirmation)
+    ):
         decision = "watch"
     else:
         decision = "discard"

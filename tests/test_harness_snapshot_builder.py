@@ -65,6 +65,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
     assert materialized["seed"]["seed_status"] == "snapshot_ready"
     assert [snapshot["horizon"] for snapshot in materialized["snapshots"]] == ["6h", "24h"]
     assert materialized["snapshots"][0]["asset"] == "BNB"
+    assert materialized["clusters"][0]["pricedness"] != 0.35
     assert materialized["decisions"][0]["execution_mode"] == "shadow"
     assert materialized["decisions"][0]["signal"] == "LONG_SMALL"
     assert duplicate["snapshots"][0]["snapshot_id"] == materialized["snapshots"][0]["snapshot_id"]

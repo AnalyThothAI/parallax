@@ -41,7 +41,7 @@ def timing_score(features: dict[str, Any]) -> dict[str, Any]:
         status = "price_leads_social"
         chase_risk = True
         risks.append("chase_risk")
-        score = 35.0
+        score = 45.0
     elif price_change is None:
         status = "insufficient_history"
         risks.append("insufficient_history")
@@ -50,6 +50,11 @@ def timing_score(features: dict[str, Any]) -> dict[str, Any]:
         status = "social_fades"
         risks.append("social_fades")
         score = 42.0
+    elif price_change >= 0.20:
+        status = "social_confirms_price"
+        reasons.append("social_and_price_confirm")
+        risks.append("late_after_large_move")
+        score = 55.0
     elif price_change >= 0.08:
         status = "social_confirms_price"
         reasons.append("social_and_price_confirm")
@@ -61,12 +66,13 @@ def timing_score(features: dict[str, Any]) -> dict[str, Any]:
 
     contributions.append(contribution("timing.status", score, status))
     return score_payload(
-        score_version="timing_v2",
+        score_version="timing_v3",
         score=score,
         reasons=reasons,
         risks=risks,
         contributions=contributions,
         risk_caps=[],
+        data_health={"market_timing": "ready" if market_observation_status == "ready" else market_observation_status},
         extra={
             "status": status,
             "social_signal_start_ms": social_signal_start_ms,

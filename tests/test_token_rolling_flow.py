@@ -187,7 +187,9 @@ def test_baseline_zero_fills_silent_slots_and_scores_new_burst(tmp_path):
         conn.close()
 
     assert item["flow"]["mentions"] == 5
-    assert item["flow"]["z_score"] is None
+    assert item["flow"]["z_ewma"] is None
+    assert item["flow"]["robust_z"] is None
+    assert item["flow"]["baseline_version"] == "token_baseline_v2"
     assert item["social_heat"]["new_burst_score"] == item["flow"]["new_burst_score"]
     assert "insufficient_baseline_new_burst" in item["opportunity"]["reasons"]
 

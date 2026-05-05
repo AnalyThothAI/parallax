@@ -107,7 +107,7 @@ class EnrichmentWorker:
         return True
 
     def _materialize_harness(self, *, event: dict, result, run_id: str, commit: bool) -> dict:
-        return HarnessSnapshotBuilder(self.harness).materialize(
+        return HarnessSnapshotBuilder(self.harness, tokens=self.tokens).materialize(
             event=event,
             extraction=result,
             run_id=run_id,

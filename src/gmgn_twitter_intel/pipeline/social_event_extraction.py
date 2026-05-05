@@ -94,7 +94,7 @@ def build_social_event_prompt(*, event: dict[str, Any], entities: list[dict[str,
         {
             "role": "system",
             "content": (
-                "Extract one evidence-bound social attention event from one X/Twitter event. "
+                "Extract one evidence-bound social-event-v2 attention event from one X/Twitter event. "
                 "Return only the strict JSON object requested by the schema. The LLM must not decide trades. "
                 "Every anchor term and token candidate evidence must be an exact substring of the supplied text."
             ),
@@ -107,7 +107,7 @@ def social_event_response_format() -> dict[str, Any]:
     return {
         "type": "json_schema",
         "json_schema": {
-            "name": "social_event_extraction",
+            "name": "social_event_v2",
             "strict": True,
             "schema": {
                 "type": "object",

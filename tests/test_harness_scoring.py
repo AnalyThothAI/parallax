@@ -37,5 +37,6 @@ def test_combined_score_and_policy_layers_are_separate():
     ])
 
     assert score == 0.4
-    assert policy_signal(score, long_threshold=0.7, short_threshold=-0.7) == "NO_TRADE"
-    assert shadow_signal(score, long_threshold=0.25, short_threshold=-0.25) == "LONG_SMALL"
+    assert policy_signal(score, long_threshold=0.55, short_threshold=-0.55) == "NO_TRADE"
+    assert shadow_signal(score, long_threshold=0.20, short_threshold=-0.20) == "LONG_SMALL"
+    assert policy_signal(0.56, long_threshold=0.55, short_threshold=-0.55) == "LONG"

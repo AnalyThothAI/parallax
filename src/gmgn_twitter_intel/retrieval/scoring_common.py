@@ -12,6 +12,7 @@ def score_payload(
     risks: list[str] | None = None,
     contributions: list[dict[str, Any]] | None = None,
     risk_caps: list[dict[str, Any]] | None = None,
+    data_health: dict[str, Any] | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     capped_score = apply_risk_caps(clamp_score(score), risk_caps or [])
@@ -22,6 +23,7 @@ def score_payload(
         "risks": _dedupe(risks or []),
         "contributions": contributions or [],
         "risk_caps": risk_caps or [],
+        "data_health": data_health or {},
     }
     if extra:
         payload.update(extra)

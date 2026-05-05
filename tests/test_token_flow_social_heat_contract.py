@@ -49,16 +49,32 @@ def test_token_flow_item_uses_social_heat_contract(tmp_path):
         "timing",
         "opportunity",
         "watch",
+        "timeline",
+        "score_versions",
+        "data_health",
         "evidence_total_count",
         "posts_query",
         "timeline_query",
     }
-    assert item["social_heat"]["score_version"] == "social_heat_v1"
-    assert item["discussion_quality"]["score_version"] == "discussion_quality_v1"
-    assert item["propagation"]["score_version"] == "propagation_v1"
-    assert item["tradeability"]["score_version"] == "tradeability_v1"
-    assert item["timing"]["score_version"] == "timing_v2"
-    assert item["opportunity"]["score_version"] == "social_opportunity_v1"
+    assert item["social_heat"]["score_version"] == "social_heat_v2"
+    assert item["discussion_quality"]["score_version"] == "discussion_quality_v2"
+    assert item["propagation"]["score_version"] == "propagation_v2"
+    assert item["tradeability"]["score_version"] == "tradeability_v2"
+    assert item["timing"]["score_version"] == "timing_v3"
+    assert item["opportunity"]["score_version"] == "social_opportunity_v2"
+    assert item["social_heat"]["data_health"]
+    assert item["opportunity"]["data_health"]
+    assert item["score_versions"] == {
+        "social_heat": "social_heat_v2",
+        "discussion_quality": "discussion_quality_v2",
+        "propagation": "propagation_v2",
+        "tradeability": "tradeability_v2",
+        "timing": "timing_v3",
+        "opportunity": "social_opportunity_v2",
+    }
+    assert item["data_health"]["market"] in {"fresh", "stale", "missing"}
+    assert item["market"]["snapshot_id"]
+    assert item["market"]["lookahead_risk"] is False
     assert item["opportunity"]["decision"] in {"driver", "watch", "discard"}
     assert item["timeline_query"] == {
         "token_id": item["identity"]["token_id"],
@@ -67,6 +83,34 @@ def test_token_flow_item_uses_social_heat_contract(tmp_path):
         "window": "1h",
         "scope": "all",
     }
+
+
+def test_token_flow_propagation_uses_real_new_author_total(tmp_path):
+    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    try:
+        now_ms = 1_700_000_123_456
+        for index, handle in enumerate(["seed", "seed", "amp"]):
+            ingest.ingest_event(
+                token_event(
+                    f"event-dog-new-author-{index}",
+                    received_at_ms=now_ms - (3 - index) * 20_000,
+                    author_handle=handle,
+                    text=f"$DOG new author {index}",
+                ),
+                is_watched=index == 0,
+            )
+
+        item = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="5m",
+            limit=10,
+            now_ms=now_ms,
+        )[0]
+    finally:
+        conn.close()
+
+    assert item["timeline"]["summary"]["independent_authors"] == 2
+    assert item["timeline"]["summary"]["new_authors_total"] == 2
+    assert item["propagation"]["new_authors"] == 2
 
 
 def test_token_flow_social_heat_reports_real_multi_window_mentions(tmp_path):

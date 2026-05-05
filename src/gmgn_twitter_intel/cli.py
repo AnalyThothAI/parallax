@@ -12,11 +12,14 @@ from .api.app import create_app
 from .logging_setup import setup_logging
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_attribution import TokenAttributionBuilder
+from .pipeline.token_signal_settlement import settle_token_signal_snapshots
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
 from .retrieval.harness_service import HarnessService
 from .retrieval.search_service import SearchService
 from .retrieval.token_flow_service import TokenFlowService
+from .retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
+from .retrieval.token_signal_snapshot_service import TokenSignalSnapshotService
 from .settings import load_settings, write_default_config
 from .storage.account_quality_repository import AccountQualityRepository
 from .storage.enrichment_repository import EnrichmentRepository
@@ -28,6 +31,7 @@ from .storage.signal_repository import SignalRepository
 from .storage.sqlite_client import connect_sqlite
 from .storage.sqlite_schema import migrate
 from .storage.token_repository import TokenRepository
+from .storage.token_signal_repository import TokenSignalRepository
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -62,6 +66,28 @@ def build_parser() -> argparse.ArgumentParser:
     token_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     token_flow.add_argument("--limit", type=int, default=20)
     token_flow.add_argument("--scope", choices=("all", "matched"), default="all")
+
+    token_signal_snapshots = subcommands.add_parser(
+        "token-signal-snapshots",
+        help="print frozen token signal snapshots",
+    )
+    token_signal_snapshots.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="")
+    token_signal_snapshots.add_argument("--limit", type=int, default=50)
+    token_signal_snapshots.add_argument("--scope", choices=("all", "matched"), default="")
+    token_signal_snapshots.add_argument("--token-id", default="")
+
+    token_signal_outcomes = subcommands.add_parser("token-signal-outcomes", help="print token signal outcomes")
+    token_signal_outcomes.add_argument("--horizon", choices=("6h", "24h"), default="")
+    token_signal_outcomes.add_argument("--status", default="")
+    token_signal_outcomes.add_argument("--limit", type=int, default=50)
+
+    token_signal_evaluations = subcommands.add_parser(
+        "token-signal-evaluations",
+        help="evaluate frozen token signal score buckets",
+    )
+    token_signal_evaluations.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    token_signal_evaluations.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
+    token_signal_evaluations.add_argument("--scope", choices=("all", "matched"), default="all")
 
     account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
     account_alerts.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
@@ -156,7 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
     backfill_market_observations.add_argument("--limit", type=int, default=1000)
     backfill_harness_jobs = ops_subcommands.add_parser(
         "backfill-harness-jobs",
-        help="enqueue social-event-v1 extraction jobs for existing watched events",
+        help="enqueue social-event-v2 extraction jobs for existing watched events",
     )
     backfill_harness_jobs.add_argument("--limit", type=int, default=1000)
     settle_harness = ops_subcommands.add_parser(
@@ -174,6 +200,19 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_harness.add_argument("--limit", type=int, default=100)
     update_weights = ops_subcommands.add_parser("update-harness-weights", help="rebuild report-only harness weights")
     update_weights.add_argument("--limit", type=int, default=1000)
+    freeze_token_signals = ops_subcommands.add_parser(
+        "freeze-token-signals",
+        help="freeze ranked token-flow items as token signal snapshots",
+    )
+    freeze_token_signals.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
+    freeze_token_signals.add_argument("--limit", type=int, default=200)
+    freeze_token_signals.add_argument("--scope", choices=("all", "matched"), default="all")
+    settle_token_signals = ops_subcommands.add_parser(
+        "settle-token-signals",
+        help="settle due frozen token signal snapshots",
+    )
+    settle_token_signals.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    settle_token_signals.add_argument("--limit", type=int, default=500)
     return parser
 
 
@@ -255,7 +294,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     with _repositories(settings.sqlite_path) as repos:
-        evidence, entities, signals, tokens, market_observations, enrichment, harness = repos
+        evidence, entities, signals, tokens, market_observations, enrichment, harness, token_signals = repos
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -301,6 +340,53 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             _emit(
                 {"ok": True, "data": {"window": args.window, "scope": args.scope, "items": items}},
+                stdout,
+            )
+            return 0
+
+        if command == "token-signal-snapshots":
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "items": token_signals.list_snapshots(
+                            window=args.window or None,
+                            scope=args.scope or None,
+                            token_id=args.token_id or None,
+                            limit=args.limit,
+                        )
+                    },
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "token-signal-outcomes":
+            _emit(
+                {
+                    "ok": True,
+                    "data": {
+                        "items": token_signals.list_outcomes(
+                            horizon=args.horizon or None,
+                            status=args.status or None,
+                            limit=args.limit,
+                        )
+                    },
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "token-signal-evaluations":
+            _emit(
+                {
+                    "ok": True,
+                    "data": TokenSignalEvaluationService(repository=token_signals).evaluate(
+                        horizon=args.horizon,
+                        window=args.window,
+                        scope=args.scope,
+                    ),
+                },
                 stdout,
             )
             return 0
@@ -571,6 +657,38 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
+        if command == "ops" and args.ops_command == "freeze-token-signals":
+            _emit(
+                {
+                    "ok": True,
+                    "data": TokenSignalSnapshotService(
+                        token_flow=TokenFlowService(signals=signals, tokens=tokens, harness=harness),
+                        repository=token_signals,
+                    ).freeze(
+                        window=args.window,
+                        scope=args.scope,
+                        limit=args.limit,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "ops" and args.ops_command == "settle-token-signals":
+            _emit(
+                {
+                    "ok": True,
+                    "data": settle_token_signal_snapshots(
+                        repository=token_signals,
+                        tokens=tokens,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
     parser.error(f"unknown command: {command}")
     return 2
 
@@ -588,6 +706,7 @@ def _repositories(sqlite_path):
             MarketObservationRepository(conn),
             EnrichmentRepository(conn),
             HarnessRepository(conn),
+            TokenSignalRepository(conn),
         )
     finally:
         conn.close()

@@ -17,6 +17,7 @@ from ..retrieval.token_posts_service import (
     TokenPostsRangeError,
     TokenPostsService,
 )
+from ..retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from ..retrieval.token_social_timeline_service import (
     TokenSocialTimelineCursorError,
     TokenSocialTimelineIdentityError,
@@ -235,6 +236,82 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         except TokenSocialTimelineCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
+
+    @router.get("/token-signal-snapshots")
+    async def token_signal_snapshots(
+        request: Request,
+        window: Annotated[str, Query()] = "",
+        scope: Annotated[str, Query()] = "",
+        token_id: Annotated[str, Query()] = "",
+        limit: Annotated[int, Query()] = 50,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        return _json(
+            {
+                "ok": True,
+                "data": {
+                    "items": runtime.read_token_signals.list_snapshots(
+                        window=_window(window) if window else None,
+                        scope=_scope(scope) if scope else None,
+                        token_id=token_id or None,
+                        limit=_limit(limit, maximum=500),
+                    )
+                },
+            }
+        )
+
+    @router.get("/token-signal-outcomes")
+    async def token_signal_outcomes(
+        request: Request,
+        horizon: Annotated[str, Query()] = "",
+        status: Annotated[str, Query()] = "",
+        limit: Annotated[int, Query()] = 50,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        return _json(
+            {
+                "ok": True,
+                "data": {
+                    "items": runtime.read_token_signals.list_outcomes(
+                        horizon=_horizon(horizon) if horizon else None,
+                        status=status or None,
+                        limit=_limit(limit, maximum=500),
+                    )
+                },
+            }
+        )
+
+    @router.get("/token-signal-evaluations")
+    async def token_signal_evaluations(
+        request: Request,
+        horizon: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "",
+        scope: Annotated[str, Query()] = "",
+        refresh: Annotated[bool, Query()] = False,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_horizon = _horizon(horizon) if horizon else None
+        parsed_window = _window(window) if window else None
+        parsed_scope = _scope(scope) if scope else None
+        if refresh and parsed_horizon and parsed_window and parsed_scope:
+            data = TokenSignalEvaluationService(repository=runtime.token_signals).evaluate(
+                horizon=parsed_horizon,
+                window=parsed_window,
+                scope=parsed_scope,
+            )
+            return _json({"ok": True, "data": data})
+        return _json(
+            {
+                "ok": True,
+                "data": {
+                    "items": runtime.read_token_signals.list_evaluations(
+                        horizon=parsed_horizon,
+                        window=parsed_window,
+                        scope=parsed_scope,
+                    )
+                },
+            }
+        )
 
     @router.get("/account-alerts")
     async def account_alerts(

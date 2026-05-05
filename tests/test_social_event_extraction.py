@@ -67,5 +67,29 @@ def test_social_event_response_format_is_strict_json_schema():
     response_format = social_event_response_format()
 
     assert response_format["type"] == "json_schema"
-    assert response_format["json_schema"]["name"] == "social_event_extraction"
+    assert response_format["json_schema"]["name"] == "social_event_v2"
     assert response_format["json_schema"]["strict"] is True
+
+
+def test_parse_social_event_response_rejects_low_confidence_signal():
+    result = parse_social_event_response(
+        {
+            "is_signal_event": True,
+            "event_type": "meme_phrase_seed",
+            "source_action": "posted",
+            "subject": "BNB attention seed",
+            "direction_hint": "attention_positive",
+            "attention_mechanism": "meme_phrase",
+            "impact_hint": 0.7,
+            "semantic_novelty_hint": 0.7,
+            "confidence": 0.4,
+            "anchor_terms": [{"term": "BNB", "role": "asset", "evidence": "BNB"}],
+            "token_candidates": [{"symbol": "BNB", "evidence": "BNB", "confidence": 0.4}],
+            "semantic_risks": [],
+            "summary_zh": "BNB 注意力。",
+        },
+        event_text="BNB attention",
+    )
+
+    assert result.is_signal_event is False
+    assert result.token_candidates == []

@@ -7,7 +7,7 @@ import time
 from collections import defaultdict
 from typing import Any
 
-from .token_baseline import token_baseline
+from . import baseline_scoring
 
 BASELINE_LIMITS = {
     "5m": 24,
@@ -85,7 +85,11 @@ class RollingTokenFlow:
         )
         for identity_key, group in groups.items():
             slot_counts = baseline_counts.get(identity_key, [0] * BASELINE_LIMITS.get(window, 24))
-            baseline = token_baseline(slot_counts=slot_counts, current_mentions=int(group["mention_count"]))
+            baseline = baseline_scoring.token_baseline_v2(
+                slot_counts=slot_counts,
+                current_mentions=int(group["mention_count"]),
+                current_weighted_mentions=float(group.get("weighted_mention_count") or 0.0),
+            )
             group["baseline"] = baseline
             group["previous_mentions"] = int(slot_counts[-1]) if slot_counts else 0
             bound = bounds.get(identity_key, {})

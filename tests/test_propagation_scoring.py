@@ -12,10 +12,13 @@ def test_propagation_expansion_for_independent_author_growth():
             "duplicate_text_share": 0.08,
             "watched_author_count": 1,
             "seed_lag_ms": 180_000,
+            "reproduction_rate": 0.8,
+            "latest_non_empty_bucket_index": 9,
         }
     )
 
     assert score["phase"] == "expansion"
+    assert score["score_version"] == "propagation_v2"
     assert score["score"] >= 75
     assert "independent_expansion" in score["reasons"]
     assert "low_concentration" in score["reasons"]
@@ -39,3 +42,4 @@ def test_propagation_caps_single_source_concentration():
     assert "author_concentration_high" in score["risks"]
     assert score["score"] <= 65
     assert any(cap["risk"] == "author_concentration_high" for cap in score["risk_caps"])
+    assert score["data_health"]["timeline_features"] == "ready"

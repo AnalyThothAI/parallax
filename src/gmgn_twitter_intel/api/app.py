@@ -31,6 +31,7 @@ from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
 from ..storage.sqlite_schema import migrate
 from ..storage.token_repository import TokenRepository
+from ..storage.token_signal_repository import TokenSignalRepository
 from .http import ApiBadRequest, ApiUnauthorized, api_bad_request_response, api_unauthorized_response, create_api_router
 from .ws import PublicWebSocketHub
 
@@ -45,12 +46,14 @@ class CliRuntime:
     market_observations: MarketObservationRepository
     enrichment: EnrichmentRepository
     harness: HarnessRepository
+    token_signals: TokenSignalRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
     read_signals: SignalRepository
     read_tokens: TokenRepository
     read_enrichment: EnrichmentRepository
     read_harness: HarnessRepository
+    read_token_signals: TokenSignalRepository
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
@@ -169,12 +172,14 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     market_observations = MarketObservationRepository(conn)
     enrichment = EnrichmentRepository(conn)
     harness = HarnessRepository(conn)
+    token_signals = TokenSignalRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
     read_signals = SignalRepository(read_conn)
     read_tokens = TokenRepository(read_conn)
     read_enrichment = EnrichmentRepository(read_conn)
     read_harness = HarnessRepository(read_conn)
+    read_token_signals = TokenSignalRepository(read_conn)
     write_lock = RLock()
     gmgn_client = _gmgn_client(settings)
     ingest = IngestService(
@@ -209,12 +214,14 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         market_observations=market_observations,
         enrichment=enrichment,
         harness=harness,
+        token_signals=token_signals,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
         read_tokens=read_tokens,
         read_enrichment=read_enrichment,
         read_harness=read_harness,
+        read_token_signals=read_token_signals,
         ingest=ingest,
         hub=hub,
         collector=collector,

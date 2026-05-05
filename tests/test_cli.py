@@ -155,6 +155,14 @@ class CliTests(unittest.TestCase):
                     ["token-flow", "--window", "5m", "--limit", "5", "--scope", "all"],
                     stdout=stdout,
                 )
+                freeze_code = main(
+                    ["ops", "freeze-token-signals", "--window", "5m", "--limit", "5", "--scope", "all"],
+                    stdout=stdout,
+                )
+                token_signal_snapshots_code = main(
+                    ["token-signal-snapshots", "--window", "5m", "--limit", "5", "--scope", "all"],
+                    stdout=stdout,
+                )
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
                 jobs_code = main(["enrichment-jobs", "--limit", "5"], stdout=stdout)
                 social_events_code = main(["social-events", "--window", "1h", "--limit", "5"], stdout=stdout)
@@ -167,27 +175,31 @@ class CliTests(unittest.TestCase):
                 recent_code,
                 search_code,
                 token_flow_code,
+                freeze_code,
+                token_signal_snapshots_code,
                 alerts_code,
                 jobs_code,
                 social_events_code,
                 seeds_code,
                 snapshots_code,
             ],
-            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
+        self.assertEqual(lines[3]["data"]["snapshots_written"], 1)
+        self.assertEqual(lines[4]["data"]["items"][0]["score_versions"]["opportunity"], "social_opportunity_v2")
         self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
         self.assertEqual(lines[2]["data"]["items"][0]["opportunity"]["decision"], "watch")
         self.assertEqual(
-            {item["alert_type"] for item in lines[3]["data"]["items"]},
+            {item["alert_type"] for item in lines[5]["data"]["items"]},
             {"account_token"},
         )
-        self.assertEqual(lines[4]["data"]["counts"]["pending"], 1)
-        self.assertEqual(lines[5]["data"]["items"], [])
-        self.assertEqual(lines[6]["data"]["items"], [])
+        self.assertEqual(lines[6]["data"]["counts"]["pending"], 1)
         self.assertEqual(lines[7]["data"]["items"], [])
+        self.assertEqual(lines[8]["data"]["items"], [])
+        self.assertEqual(lines[9]["data"]["items"], [])
 
     def test_obsolete_runtime_commands_are_not_registered(self):
         parser_help = main(["embed"], stdout=io.StringIO())
@@ -203,6 +215,29 @@ class CliTests(unittest.TestCase):
         ]
         for command in obsolete_commands:
             self.assertEqual(main(command, stdout=io.StringIO()), 2)
+
+    def test_token_signal_settlement_cli_commands_return_empty_results(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            write_runtime_config(home, db_path=db_path)
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                settle_code = main(
+                    ["ops", "settle-token-signals", "--horizon", "6h", "--limit", "5"],
+                    stdout=stdout,
+                )
+                outcomes_code = main(["token-signal-outcomes", "--horizon", "6h", "--limit", "5"], stdout=stdout)
+                evaluations_code = main(
+                    ["token-signal-evaluations", "--horizon", "6h", "--window", "5m", "--scope", "all"],
+                    stdout=stdout,
+                )
+
+        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual([settle_code, outcomes_code, evaluations_code], [0, 0, 0])
+        self.assertEqual(lines[0]["data"]["snapshots_scanned"], 0)
+        self.assertEqual(lines[1]["data"]["items"], [])
+        self.assertEqual(lines[2]["data"]["buckets"][0]["snapshot_count"], 0)
 
     def test_ops_rebuild_attributions_materializes_existing_symbol_mentions(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -281,6 +281,71 @@ class TokenRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def market_snapshot_at_or_after(self, token_id: str | None, received_at_ms: int) -> dict[str, Any] | None:
+        if not token_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT * FROM token_market_snapshots
+            WHERE token_id = ?
+              AND received_at_ms >= ?
+            ORDER BY received_at_ms ASC
+            LIMIT 1
+            """,
+            (token_id, received_at_ms),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def market_snapshots_between(
+        self,
+        token_id: str | None,
+        *,
+        start_ms: int,
+        end_ms: int,
+    ) -> list[dict[str, Any]]:
+        if not token_id:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT * FROM token_market_snapshots
+            WHERE token_id = ?
+              AND received_at_ms >= ?
+              AND received_at_ms <= ?
+            ORDER BY received_at_ms ASC
+            """,
+            (token_id, int(start_ms), int(end_ms)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def nearest_market_snapshot(
+        self,
+        token_id: str | None,
+        *,
+        target_ms: int,
+        tolerance_ms: int,
+    ) -> dict[str, Any] | None:
+        if not token_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT *,
+                   abs(received_at_ms - ?) AS distance_ms
+            FROM token_market_snapshots
+            WHERE token_id = ?
+              AND received_at_ms >= ?
+              AND received_at_ms <= ?
+            ORDER BY distance_ms ASC, received_at_ms ASC
+            LIMIT 1
+            """,
+            (
+                int(target_ms),
+                token_id,
+                int(target_ms) - int(tolerance_ms),
+                int(target_ms) + int(tolerance_ms),
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+
     def market_snapshot_for_event(self, *, token_id: str | None, event_id: str) -> dict[str, Any] | None:
         if not token_id:
             return None
