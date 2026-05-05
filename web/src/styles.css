@@ -355,13 +355,6 @@ svg {
   border-color: var(--accent-line);
 }
 
-.window-stack {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
-}
-
-.window-stack button,
 .scope-stack button,
 .segmented button {
   border: 1px solid var(--line);
@@ -372,17 +365,6 @@ svg {
   font-size: 10px;
 }
 
-.window-stack button {
-  display: grid;
-  gap: 2px;
-  padding: 5px 0;
-}
-
-.window-stack span {
-  color: var(--text);
-}
-
-.window-stack button.active,
 .scope-stack button.active,
 .segmented button.active {
   color: var(--accent);
@@ -558,7 +540,7 @@ svg {
 
 .segmented {
   display: grid;
-  grid-template-columns: repeat(3, 42px);
+  grid-template-columns: repeat(4, 42px);
   gap: 4px;
 }
 
@@ -1603,7 +1585,32 @@ svg {
 }
 
 .detail-window-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px;
+  align-items: center;
+  gap: 8px;
   margin-top: 10px;
+}
+
+.detail-window-control span {
+  overflow: hidden;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.detail-window-control select {
+  height: 28px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  color: var(--accent);
+  background: #0a0e0e;
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .posts-toolbar input {
@@ -2757,6 +2764,10 @@ svg {
     margin-top: 0;
   }
 
+  .radar-control-row {
+    display: none;
+  }
+
   .center-column {
     border-right: 0;
   }
@@ -2828,24 +2839,16 @@ svg {
     padding: 8px;
   }
 
-  .responsive-control-panel .segmented,
-  .radar-control-row .segmented {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .responsive-control-panel .segmented {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .responsive-control-panel .scope-toggle,
-  .radar-control-row .scope-toggle {
+  .responsive-control-panel .scope-toggle {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .center-column {
     min-height: 0;
-  }
-
-  .radar-control-row {
-    justify-content: stretch;
-    flex-wrap: wrap;
-    padding: 8px;
   }
 
   .radar-panel {

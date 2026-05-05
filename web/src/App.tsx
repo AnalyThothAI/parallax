@@ -430,18 +430,6 @@ export function App() {
     </RailSection>
   );
 
-  const windowControls = (
-    <RailSection label="window">
-      <div className="window-stack">
-        {WINDOWS.map((item, index) => (
-          <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-            {index + 1}<span>{item}</span>
-          </button>
-        ))}
-      </div>
-    </RailSection>
-  );
-
   const scopeControls = (
     <RailSection label="scope">
       <div className="scope-stack">
@@ -461,7 +449,7 @@ export function App() {
 
   const responsiveControls = (
     <section className="responsive-control-panel" aria-label="cockpit controls">
-      <div className="segmented" aria-label="window">
+      <div className="segmented" aria-label="radar window">
         {WINDOWS.map((item) => (
           <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
             {item}
@@ -546,7 +534,6 @@ export function App() {
       <div className={`cockpit-grid mobile-task-${mobileTask} ${activeView === "signal_lab" ? "signal-lab-mode" : ""}`}>
         <aside className="side-rail desktop-side-rail">
           {viewControls}
-          {windowControls}
           {scopeControls}
 
           <RailSection label="decisions">
@@ -566,7 +553,7 @@ export function App() {
           </RailSection>
 
           <div className="rail-footer">
-            <span>kbd · 1-4 windows · / search</span>
+            <span>kbd · 1-4 radar · / search</span>
           </div>
         </aside>
 
@@ -599,7 +586,7 @@ export function App() {
             <>
               <section className="mobile-task-surface" data-mobile-task-panel="radar">
                 <div className="radar-control-row">
-                  <div className="segmented">
+                  <div className="segmented" aria-label="radar window">
                     {WINDOWS.map((item) => (
                       <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
                         {item}

@@ -148,13 +148,20 @@ export function TokenDetailDrawer({
           ))}
         </div>
 
-        <div className="segmented detail-window-control" aria-label="selected token detail window">
-          {DETAIL_WINDOWS.map((item) => (
-            <button key={item} className={detailWindow === item ? "active" : ""} type="button" onClick={() => onDetailWindowChange(item)}>
-              {item}
-            </button>
-          ))}
-        </div>
+        <label className="detail-window-control">
+          <span>detail window</span>
+          <select
+            aria-label="selected token detail window"
+            value={detailWindow}
+            onChange={(event) => onDetailWindowChange(event.target.value as WindowKey)}
+          >
+            {DETAIL_WINDOWS.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
+        </label>
       </header>
 
       <nav className="tabs" aria-label="token detail tabs">

@@ -338,12 +338,11 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    const detailWindow = await within(drawer).findByLabelText("selected token detail window");
+    const detailWindow = await within(drawer).findByLabelText("selected token detail window") as HTMLSelectElement;
 
-    expect(within(detailWindow).getByRole("button", { name: "5m" })).toBeInTheDocument();
-    expect(within(detailWindow).getByRole("button", { name: "1h" })).toBeInTheDocument();
-    expect(within(detailWindow).getByRole("button", { name: "4h" })).toBeInTheDocument();
-    expect(within(detailWindow).getByRole("button", { name: "24h" })).toBeInTheDocument();
+    expect(detailWindow).toHaveValue("1h");
+    expect(drawer.querySelector(".detail-window-control button")).not.toBeInTheDocument();
+    expect(container.querySelector(".desktop-side-rail .window-stack")).not.toBeInTheDocument();
     expect(within(drawer).queryByRole("button", { name: "30 秒" })).not.toBeInTheDocument();
     expect(within(drawer).queryByRole("button", { name: "1 分钟" })).not.toBeInTheDocument();
     expect(within(drawer).queryByRole("button", { name: "5 分钟" })).not.toBeInTheDocument();
@@ -352,7 +351,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).queryByText("$UPEG watched account evidence")).not.toBeInTheDocument();
 
     mockedGetApi.mockClear();
-    fireEvent.click(within(detailWindow).getByRole("button", { name: "4h" }));
+    fireEvent.change(detailWindow, { target: { value: "4h" } });
 
     await waitFor(() => {
       const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-social-timeline");
