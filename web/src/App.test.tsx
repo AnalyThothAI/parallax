@@ -659,9 +659,11 @@ describe("App Token Radar social heat cockpit", () => {
   it("exposes distinct responsive shell surfaces without duplicating Token Radar rows", async () => {
     const { container } = renderWithQuery(<App />);
     await screen.findByRole("button", { name: "select token $UPEG" });
+    const responsiveControls = container.querySelector(".responsive-control-panel") as HTMLElement;
 
     expect(container.querySelector(".desktop-side-rail")).toBeInTheDocument();
-    expect(container.querySelector(".responsive-control-panel")).toBeInTheDocument();
+    expect(responsiveControls).toBeInTheDocument();
+    expect(responsiveControls).toHaveAttribute("hidden");
     expect(container.querySelector(".mobile-task-surface")).toBeInTheDocument();
     expect(container.querySelectorAll(".token-radar-table .radar-row")).toHaveLength(1);
   });
