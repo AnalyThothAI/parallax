@@ -1,0 +1,1336 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - heading "intel.cockpit" [level=1] [ref=e8]
+      - paragraph [ref=e9]: /ws · localhost:8765
+    - generic [ref=e10]:
+      - generic [ref=e11]: token ready
+      - generic [ref=e12]: connected
+      - generic [ref=e13]: ready
+      - generic [ref=e14]: 1m ago
+    - generic [ref=e15]:
+      - img [ref=e16]
+      - textbox "搜索 CA / $TOKEN / @handle / 文本" [ref=e19]: $PEPE
+      - button "检索" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: MATCHED 22
+      - generic [ref=e23]: flow·1h 48
+      - generic [ref=e24]: seeds 0
+      - generic [ref=e25]: snap 0
+      - generic [ref=e26]: settled -
+    - button "刷新" [ref=e27] [cursor=pointer]:
+      - img [ref=e28]
+  - generic [ref=e33]:
+    - complementary [ref=e34]:
+      - generic [ref=e35]:
+        - heading "views" [level=2] [ref=e36]
+        - button "1 Live 105" [ref=e190] [cursor=pointer]:
+          - generic [ref=e38]: "1"
+          - generic [ref=e39]: Live
+          - emphasis [ref=e40]: "105"
+        - button "2 Tokens 48" [ref=e191] [cursor=pointer]:
+          - generic [ref=e42]: "2"
+          - generic [ref=e43]: Tokens
+          - emphasis [ref=e44]: "48"
+        - button "3 Harness 0" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]: "3"
+          - generic [ref=e47]: Harness
+          - emphasis [ref=e48]: "0"
+        - button "4 Accounts 4" [ref=e192] [cursor=pointer]:
+          - generic [ref=e50]: "4"
+          - generic [ref=e51]: Accounts
+          - emphasis [ref=e52]: "4"
+        - button "5 Jobs/Ops 20" [ref=e193] [cursor=pointer]:
+          - generic [ref=e54]: "5"
+          - generic [ref=e55]: Jobs/Ops
+          - emphasis [ref=e56]: "20"
+      - generic [ref=e57]:
+        - heading "window" [level=2] [ref=e58]
+        - generic [ref=e59]:
+          - button "1 5m" [ref=e60] [cursor=pointer]:
+            - text: "1"
+            - generic [ref=e61]: 5m
+          - button "2 1h" [ref=e62] [cursor=pointer]:
+            - text: "2"
+            - generic [ref=e63]: 1h
+          - button "3 24h" [ref=e64] [cursor=pointer]:
+            - text: "3"
+            - generic [ref=e65]: 24h
+      - generic [ref=e66]:
+        - heading "horizon" [level=2] [ref=e67]
+        - generic [ref=e68]:
+          - button "6h" [ref=e69] [cursor=pointer]
+          - button "24h" [ref=e70] [cursor=pointer]
+      - generic [ref=e71]:
+        - heading "scope" [level=2] [ref=e72]
+        - generic [ref=e73]:
+          - button "watched" [ref=e74] [cursor=pointer]
+          - button "all stream" [ref=e75] [cursor=pointer]
+        - generic [ref=e76]:
+          - img [ref=e77]
+          - textbox [ref=e80]:
+            - /placeholder: toly, ansem
+      - generic [ref=e81]:
+        - heading "decisions" [level=2] [ref=e82]
+        - generic [ref=e83]:
+          - generic [ref=e84]: driver
+          - generic [ref=e85]: "2"
+        - generic [ref=e86]:
+          - generic [ref=e87]: watch
+          - generic [ref=e88]: "46"
+        - generic [ref=e89]:
+          - generic [ref=e90]: discard
+          - generic [ref=e91]: "0"
+      - generic [ref=e92]:
+        - heading "watchlist" [level=2] [ref=e93]
+        - generic [ref=e194]:
+          - button "T @toly" [ref=e195] [cursor=pointer]:
+            - generic [ref=e196]: T
+            - text: "@toly"
+          - button "T @traderpow" [ref=e197] [cursor=pointer]:
+            - generic [ref=e198]: T
+            - text: "@traderpow"
+          - button "T @theunipcs" [ref=e199] [cursor=pointer]:
+            - generic [ref=e200]: T
+            - text: "@theunipcs"
+          - button "D @dotyyds1234" [ref=e201] [cursor=pointer]:
+            - generic [ref=e202]: D
+            - text: "@dotyyds1234"
+          - button "B @brc20niubi" [ref=e203] [cursor=pointer]:
+            - generic [ref=e204]: B
+            - text: "@brc20niubi"
+          - button "J @jessepollak" [ref=e205] [cursor=pointer]:
+            - generic [ref=e206]: J
+            - text: "@jessepollak"
+          - button "C @cz_binance" [ref=e207] [cursor=pointer]:
+            - generic [ref=e208]: C
+            - text: "@cz_binance"
+          - button "H @heyibinance" [ref=e209] [cursor=pointer]:
+            - generic [ref=e210]: H
+            - text: "@heyibinance"
+          - button "E @elonmusk" [ref=e211] [cursor=pointer]:
+            - generic [ref=e212]: E
+            - text: "@elonmusk"
+          - button "C @cookerflips" [ref=e213] [cursor=pointer]:
+            - generic [ref=e214]: C
+            - text: "@cookerflips"
+      - generic [ref=e95]: kbd · 1-3 windows · / search
+    - generic [ref=e96]:
+      - generic [ref=e97]:
+        - generic [ref=e98]:
+          - button "5m" [ref=e99] [cursor=pointer]
+          - button "1h" [ref=e100] [cursor=pointer]
+          - button "24h" [ref=e101] [cursor=pointer]
+        - generic "token flow scope" [ref=e102]:
+          - button "watched" [ref=e103] [cursor=pointer]
+          - button "all" [ref=e104] [cursor=pointer]
+      - region "Token Radar" [ref=e105]:
+        - generic [ref=e106]:
+          - generic [ref=e107]:
+            - heading "Token Radar" [level=2] [ref=e108]
+            - generic [ref=e109]: TOKEN RADAR 48
+          - generic "token radar sort" [ref=e111]:
+            - button "Opportunity" [ref=e112] [cursor=pointer]
+            - button "Heat" [ref=e113] [cursor=pointer]
+            - button "Quality" [ref=e114] [cursor=pointer]
+            - button "Propagation" [ref=e115] [cursor=pointer]
+            - button "Timing" [ref=e116] [cursor=pointer]
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - generic [ref=e119]: Token
+            - generic [ref=e120]: Heat
+            - generic [ref=e121]: Quality
+            - generic [ref=e122]: Propagation
+            - generic [ref=e123]: Market
+            - generic [ref=e124]: Timing
+            - generic [ref=e125]: Decision
+          - button "select token $DMC" [ref=e5350] [cursor=pointer]:
+            - strong [ref=e5352]:
+              - generic [ref=e5354]: $DMC
+              - generic [ref=e5355]: solana · 9BfCxJqV...M6pump
+            - generic [ref=e5356]:
+              - generic [ref=e5357]: 78 · 45 +45
+              - generic [ref=e5358]: 45 posts · new burst · share 9.7%
+            - generic [ref=e5368]:
+              - generic [ref=e5369]: 74 · CA direct
+              - generic [ref=e5370]: dup 2.2% · info 44
+            - generic [ref=e5371]:
+              - generic [ref=e5372]: expansion · 21 author
+              - generic [ref=e5373]: top 16% · repro -
+            - generic [ref=e5374]:
+              - generic [ref=e5375]: $75K
+              - generic [ref=e5376]: +538% fresh
+            - generic [ref=e5377]:
+              - generic [ref=e5378]: social confirms
+              - generic [ref=e5379]: +538% since social
+            - generic [ref=e5381]: driver
+          - button "select token $FAIRY" [ref=e5382] [cursor=pointer]:
+            - strong [ref=e5384]:
+              - generic [ref=e5386]: $FAIRY
+              - generic [ref=e5387]: solana · nQKQA3Xd...Kepump
+            - generic [ref=e5388]:
+              - generic [ref=e5389]: 74 · 12 +12
+              - generic [ref=e5390]: 12 posts · new burst · share 2.6%
+            - generic [ref=e5400]:
+              - generic [ref=e5401]: 71 · CA direct
+              - generic [ref=e5402]: dup 8.3% · info 10
+            - generic [ref=e5403]:
+              - generic [ref=e5404]: expansion · 7 author
+              - generic [ref=e5405]: top 42% · repro -
+            - generic [ref=e5406]:
+              - generic [ref=e5407]: $20K
+              - generic [ref=e5408]: +142% fresh
+            - generic [ref=e5409]:
+              - generic [ref=e5410]: social confirms
+              - generic [ref=e5411]: +142% since social
+            - generic [ref=e5413]: driver
+          - button "select token $DMC" [ref=e5414] [cursor=pointer]:
+            - strong [ref=e5416]:
+              - generic [ref=e5418]: $DMC
+              - generic [ref=e5419]: solana · DmcqxT7W...MXhf3p
+            - generic [ref=e5420]:
+              - generic [ref=e5421]: 76 · 29 +21
+              - generic [ref=e5422]: 29 posts · new burst · share 6.3%
+            - generic [ref=e5432]:
+              - generic [ref=e5433]: 68 · CA direct
+              - generic [ref=e5434]: dup 6.9% · info 19
+            - generic [ref=e5435]:
+              - generic [ref=e5436]: expansion · 21 author
+              - generic [ref=e5437]: top 10% · repro -
+            - generic [ref=e5438]:
+              - generic [ref=e5439]: $395K
+              - generic [ref=e5440]: "-85% fresh"
+            - generic [ref=e5441]:
+              - generic [ref=e5442]: price leads
+              - generic [ref=e5443]: chase risk
+            - generic [ref=e5445]: watch
+          - button "select token $PEPE" [ref=e5446] [cursor=pointer]:
+            - strong [ref=e5448]:
+              - generic [ref=e5450]: $PEPE
+              - generic [ref=e5451]: eth · 0x698250...311933
+            - generic [ref=e5452]:
+              - generic [ref=e5453]: 83 · 8 +6
+              - generic [ref=e5454]: 8 posts · z0.7 · share 1.7%
+            - generic [ref=e5464]:
+              - generic [ref=e5465]: 51 · informative
+              - generic [ref=e5466]: dup 25% · info 6
+            - generic [ref=e5467]:
+              - generic [ref=e5468]: expansion · 4 author
+              - generic [ref=e5469]: top 50% · repro -
+            - generic [ref=e5470]:
+              - generic [ref=e5471]: $1709M
+              - generic [ref=e5472]: +0% fresh
+            - generic [ref=e5473]:
+              - generic [ref=e5474]: social leads
+              - generic [ref=e5475]: price quiet after social
+            - generic [ref=e5477]: watch
+          - button "select token $LOLCAT" [ref=e5478] [cursor=pointer]:
+            - strong [ref=e5480]:
+              - generic [ref=e5482]: $LOLCAT
+              - generic [ref=e5483]: solana · F8R8VWgi...Uspump
+            - generic [ref=e5484]:
+              - generic [ref=e5485]: 71 · 9 +9
+              - generic [ref=e5486]: 9 posts · new burst · share 1.9%
+            - generic [ref=e5496]:
+              - generic [ref=e5497]: 64 · CA direct
+              - generic [ref=e5498]: dup 11% · info 5
+            - generic [ref=e5499]:
+              - generic [ref=e5500]: expansion · 6 author
+              - generic [ref=e5501]: top 22% · repro -
+            - generic [ref=e5502]:
+              - generic [ref=e5503]: $185K
+              - generic [ref=e5504]: +26% fresh
+            - generic [ref=e5505]:
+              - generic [ref=e5506]: social confirms
+              - generic [ref=e5507]: +26% since social
+            - generic [ref=e5509]: watch
+          - button "select token $PUMP" [ref=e5510] [cursor=pointer]:
+            - strong [ref=e5512]:
+              - generic [ref=e5514]: $PUMP
+              - generic [ref=e5515]: solana · Bw9wdurx...zZpump
+            - generic [ref=e5516]:
+              - generic [ref=e5517]: 66 · 5 +5
+              - generic [ref=e5518]: 5 posts · new burst · share 1.1%
+            - generic [ref=e5528]:
+              - generic [ref=e5529]: 82 · CA direct
+              - generic [ref=e5530]: dup 20% · info 5
+            - generic [ref=e5531]:
+              - generic [ref=e5532]: expansion · 4 author
+              - generic [ref=e5533]: top 40% · repro -
+            - generic [ref=e5534]:
+              - generic [ref=e5535]: $185K
+              - generic [ref=e5536]: +85% fresh
+            - generic [ref=e5537]:
+              - generic [ref=e5538]: social confirms
+              - generic [ref=e5539]: +85% since social
+            - generic [ref=e5541]: watch
+          - button "select token $WATERAID" [ref=e5542] [cursor=pointer]:
+            - strong [ref=e5544]:
+              - generic [ref=e5546]: $WATERAID
+              - generic [ref=e5547]: solana · Ck8XDD8c...m6pump
+            - generic [ref=e5548]:
+              - generic [ref=e5549]: 71 · 9 +9
+              - generic [ref=e5550]: 9 posts · new burst · share 1.9%
+            - generic [ref=e5560]:
+              - generic [ref=e5561]: 67 · CA direct
+              - generic [ref=e5562]: dup 22% · info 9
+            - generic [ref=e5563]:
+              - generic [ref=e5564]: expansion · 4 author
+              - generic [ref=e5565]: top 33% · repro -
+            - generic [ref=e5566]:
+              - generic [ref=e5567]: $9.4K
+              - generic [ref=e5568]: +20% fresh
+            - generic [ref=e5569]:
+              - generic [ref=e5570]: social confirms
+              - generic [ref=e5571]: +20% since social
+            - generic [ref=e5573]: watch
+          - button "select token $TROLLPEPE" [ref=e5574] [cursor=pointer]:
+            - strong [ref=e5576]:
+              - generic [ref=e5578]: $TROLLPEPE
+              - generic [ref=e5579]: solana · BDnGfwwz...dxpump
+            - generic [ref=e5580]:
+              - generic [ref=e5581]: 64 · 4 +4
+              - generic [ref=e5582]: 4 posts · new burst · share 0.9%
+            - generic [ref=e5592]:
+              - generic [ref=e5593]: 81 · CA direct
+              - generic [ref=e5594]: dup 25% · info 3
+            - generic [ref=e5595]:
+              - generic [ref=e5596]: ignition · 3 author
+              - generic [ref=e5597]: top 50% · repro -
+            - generic [ref=e5598]:
+              - generic [ref=e5599]: $16K
+              - generic [ref=e5600]: +28% fresh
+            - generic [ref=e5601]:
+              - generic [ref=e5602]: social confirms
+              - generic [ref=e5603]: +28% since social
+            - generic [ref=e5605]: watch
+          - button "select token $DRB" [ref=e5606] [cursor=pointer]:
+            - strong [ref=e5608]:
+              - generic [ref=e5610]: $DRB
+              - generic [ref=e5611]: base · 0x3ec215...d68Ea2
+            - generic [ref=e5612]:
+              - generic [ref=e5613]: 66 · 20 +5
+              - generic [ref=e5614]: 20 posts · z0.6 · share 4.3%
+            - generic [ref=e5624]:
+              - generic [ref=e5625]: 44 · informative
+              - generic [ref=e5626]: dup 30% · info 17
+            - generic [ref=e5627]:
+              - generic [ref=e5628]: expansion · 14 author
+              - generic [ref=e5629]: top 15% · repro -
+            - generic [ref=e5630]:
+              - generic [ref=e5631]: $6.6M
+              - generic [ref=e5632]: 0% fresh
+            - generic [ref=e5633]:
+              - generic [ref=e5634]: social leads
+              - generic [ref=e5635]: price quiet after social
+            - generic [ref=e5637]: watch
+          - button "select token $TRUMPLORIAN" [ref=e5638] [cursor=pointer]:
+            - strong [ref=e5640]:
+              - generic [ref=e5642]: $TRUMPLORIAN
+              - generic [ref=e5643]: solana · BMZkuqpp...Vwpump
+            - generic [ref=e5644]:
+              - generic [ref=e5645]: 62 · 3 +3
+              - generic [ref=e5646]: 3 posts · new burst · share 0.6%
+            - generic [ref=e5656]:
+              - generic [ref=e5657]: 75 · CA direct
+              - generic [ref=e5658]: dup 33% · info 3
+            - generic [ref=e5659]:
+              - generic [ref=e5660]: ignition · 3 author
+              - generic [ref=e5661]: top 33% · repro -
+            - generic [ref=e5662]:
+              - generic [ref=e5663]: $31K
+              - generic [ref=e5664]: 0% fresh
+            - generic [ref=e5665]:
+              - generic [ref=e5666]: social leads
+              - generic [ref=e5667]: price quiet after social
+            - generic [ref=e5669]: watch
+          - button "select token $HYPE" [ref=e5670] [cursor=pointer]:
+            - strong [ref=e5672]:
+              - generic [ref=e5674]: $HYPE
+              - generic [ref=e5675]: eth · 0x85225E...7A15dA
+            - generic [ref=e5676]:
+              - generic [ref=e5677]: 68 · 7 +5
+              - generic [ref=e5678]: 7 posts · new burst · share 1.5%
+            - generic [ref=e5688]:
+              - generic [ref=e5689]: 46 · informative
+              - generic [ref=e5690]: dup 29% · info 4
+            - generic [ref=e5691]:
+              - generic [ref=e5692]: expansion · 6 author
+              - generic [ref=e5693]: top 29% · repro -
+            - generic [ref=e5694]:
+              - generic [ref=e5695]: $153K
+              - generic [ref=e5696]: +2.5% fresh
+            - generic [ref=e5697]:
+              - generic [ref=e5698]: social leads
+              - generic [ref=e5699]: price quiet after social
+            - generic [ref=e5701]: watch
+          - button "select token $MINDFAK" [ref=e5702] [cursor=pointer]:
+            - strong [ref=e5704]:
+              - generic [ref=e5706]: $MINDFAK
+              - generic [ref=e5707]: solana · Db1NgXAC...GHpump
+            - generic [ref=e5708]:
+              - generic [ref=e5709]: 52 · 2 +2
+              - generic [ref=e5710]: 2 posts · new burst · share 0.4%
+            - generic [ref=e5720]:
+              - generic [ref=e5721]: 85 · CA direct
+              - generic [ref=e5722]: dup 50% · info 2
+            - generic [ref=e5723]:
+              - generic [ref=e5724]: ignition · 2 author
+              - generic [ref=e5725]: top 50% · repro -
+            - generic [ref=e5726]:
+              - generic [ref=e5727]: $204K
+              - generic [ref=e5728]: +21% fresh
+            - generic [ref=e5729]:
+              - generic [ref=e5730]: social confirms
+              - generic [ref=e5731]: +21% since social
+            - generic [ref=e5733]: watch
+          - button "select token $DOGE" [ref=e5734] [cursor=pointer]:
+            - strong [ref=e5736]:
+              - generic [ref=e5738]: $DOGE
+              - generic [ref=e5739]: solana · HXeBwt7P...qypump
+            - generic [ref=e5740]:
+              - generic [ref=e5741]: 78 · 6 +4
+              - generic [ref=e5742]: 6 posts · new burst · share 1.3%
+            - generic [ref=e5752]:
+              - generic [ref=e5753]: 39 · watched source present
+              - generic [ref=e5754]: dup 33% · info 2
+            - generic [ref=e5755]:
+              - generic [ref=e5756]: expansion · 5 author
+              - generic [ref=e5757]: top 33% · repro -
+            - generic [ref=e5758]:
+              - generic [ref=e5759]: $66K
+              - generic [ref=e5760]: "-0.7% fresh"
+            - generic [ref=e5761]:
+              - generic [ref=e5762]: fading
+              - generic [ref=e5763]: social fades
+            - generic [ref=e5765]: watch
+          - button "select token $DMC" [ref=e5766] [cursor=pointer]:
+            - strong [ref=e5768]:
+              - generic [ref=e5770]: $DMC
+              - generic [ref=e5771]: solana · CDiLxRkV...5SyNMU
+            - generic [ref=e5772]:
+              - generic [ref=e5773]: 76 · 29 +29
+              - generic [ref=e5774]: 29 posts · new burst · share 6.3%
+            - generic [ref=e5784]:
+              - generic [ref=e5785]: 70 · CA direct
+              - generic [ref=e5786]: dup 6.9% · info 27
+            - generic [ref=e5787]:
+              - generic [ref=e5788]: concentration · 2 author
+              - generic [ref=e5789]: top 97% · repro -
+            - generic [ref=e5790]:
+              - generic [ref=e5791]: $5.8K
+              - generic [ref=e5792]: +85% fresh
+            - generic [ref=e5793]:
+              - generic [ref=e5794]: social confirms
+              - generic [ref=e5795]: +85% since social
+            - generic [ref=e5797]: watch
+          - button "select token $MAXXING" [ref=e5798] [cursor=pointer]:
+            - strong [ref=e5800]:
+              - generic [ref=e5802]: $MAXXING
+              - generic [ref=e5803]: solana · 32CdQdBU...rDpump
+            - generic [ref=e5804]:
+              - generic [ref=e5805]: 66 · 5 +5
+              - generic [ref=e5806]: 5 posts · new burst · share 1.1%
+            - generic [ref=e5816]:
+              - generic [ref=e5817]: 65 · CA direct
+              - generic [ref=e5818]: dup 20% · info 2
+            - generic [ref=e5819]:
+              - generic [ref=e5820]: concentration · 2 author
+              - generic [ref=e5821]: top 80% · repro -
+            - generic [ref=e5822]:
+              - generic [ref=e5823]: $4.1M
+              - generic [ref=e5824]: +2.9% fresh
+            - generic [ref=e5825]:
+              - generic [ref=e5826]: social leads
+              - generic [ref=e5827]: price quiet after social
+            - generic [ref=e5829]: watch
+          - button "select token $SOL" [ref=e5830] [cursor=pointer]:
+            - strong [ref=e5832]:
+              - generic [ref=e5834]: $SOL
+              - generic [ref=e5835]: solana · DRLNhjM7...1Vpump
+            - generic [ref=e5836]:
+              - generic [ref=e5837]: 62 · 7 +4
+              - generic [ref=e5838]: 7 posts · z2.5 · share 1.5%
+            - generic [ref=e5848]:
+              - generic [ref=e5849]: 39 · informative
+              - generic [ref=e5850]: dup 14% · info 4
+            - generic [ref=e5851]:
+              - generic [ref=e5852]: expansion · 7 author
+              - generic [ref=e5853]: top 14% · repro -
+            - generic [ref=e5854]:
+              - generic [ref=e5855]: $251K
+              - generic [ref=e5856]: +0.5% fresh
+            - generic [ref=e5857]:
+              - generic [ref=e5858]: social leads
+              - generic [ref=e5859]: price quiet after social
+            - generic [ref=e5861]: watch
+          - button "select token $GME" [ref=e5862] [cursor=pointer]:
+            - strong [ref=e5864]:
+              - generic [ref=e5866]: $GME
+              - generic [ref=e5867]: eth · 0xc56C7A...4B12b8
+            - generic [ref=e5868]:
+              - generic [ref=e5869]: 59 · 7 +3
+              - generic [ref=e5870]: 7 posts · z1 · share 1.5%
+            - generic [ref=e5880]:
+              - generic [ref=e5881]: 44 · informative
+              - generic [ref=e5882]: dup 14% · info 7
+            - generic [ref=e5883]:
+              - generic [ref=e5884]: expansion · 6 author
+              - generic [ref=e5885]: top 29% · repro -
+            - generic [ref=e5886]:
+              - generic [ref=e5887]: $8M
+              - generic [ref=e5888]: +3.1% fresh
+            - generic [ref=e5889]:
+              - generic [ref=e5890]: social leads
+              - generic [ref=e5891]: price quiet after social
+            - generic [ref=e5893]: watch
+          - button "select token $DMC" [ref=e5894] [cursor=pointer]:
+            - strong [ref=e5896]:
+              - generic [ref=e5898]: $DMC
+              - generic [ref=e5899]: solana · DCRi2mji...sYpump
+            - generic [ref=e5900]:
+              - generic [ref=e5901]: 64 · 4 +4
+              - generic [ref=e5902]: 4 posts · new burst · share 0.9%
+            - generic [ref=e5912]:
+              - generic [ref=e5913]: 81 · CA direct
+              - generic [ref=e5914]: dup 25% · info 4
+            - generic [ref=e5915]:
+              - generic [ref=e5916]: concentration · 2 author
+              - generic [ref=e5917]: top 75% · repro -
+            - generic [ref=e5918]:
+              - generic [ref=e5919]: $12K
+              - generic [ref=e5920]: +126% stale
+            - generic [ref=e5921]:
+              - generic [ref=e5922]: social confirms
+              - generic [ref=e5923]: +126% since social
+            - generic [ref=e5925]: watch
+          - button "select token $DMC" [ref=e5926] [cursor=pointer]:
+            - strong [ref=e5928]:
+              - generic [ref=e5930]: $DMC
+              - generic [ref=e5931]: solana · AYYfLvub...xFvjGg
+            - generic [ref=e5932]:
+              - generic [ref=e5933]: 62 · 3 +3
+              - generic [ref=e5934]: 3 posts · new burst · share 0.6%
+            - generic [ref=e5944]:
+              - generic [ref=e5945]: 75 · CA direct
+              - generic [ref=e5946]: dup 33% · info 3
+            - generic [ref=e5947]:
+              - generic [ref=e5948]: ignition · 2 author
+              - generic [ref=e5949]: top 67% · repro -
+            - generic [ref=e5950]:
+              - generic [ref=e5951]: $6.8K
+              - generic [ref=e5952]: "-8.9% fresh"
+            - generic [ref=e5953]:
+              - generic [ref=e5954]: fading
+              - generic [ref=e5955]: social fades
+            - generic [ref=e5957]: watch
+          - button "select token $GOBLIN" [ref=e5958] [cursor=pointer]:
+            - strong [ref=e5960]:
+              - generic [ref=e5962]: $GOBLIN
+              - generic [ref=e5963]: solana · 3KHMZhpt...Lopump
+            - generic [ref=e5964]:
+              - generic [ref=e5965]: 63 · 3 +2
+              - generic [ref=e5966]: 3 posts · z4.2 · share 0.6%
+            - generic [ref=e5976]:
+              - generic [ref=e5977]: 58 · CA direct
+              - generic [ref=e5978]: dup 33% · info 2
+            - generic [ref=e5979]:
+              - generic [ref=e5980]: ignition · 2 author
+              - generic [ref=e5981]: top 67% · repro -
+            - generic [ref=e5982]:
+              - generic [ref=e5983]: $1.2M
+              - generic [ref=e5984]: +9% fresh
+            - generic [ref=e5985]:
+              - generic [ref=e5986]: social confirms
+              - generic [ref=e5987]: +9% since social
+            - generic [ref=e5989]: watch
+          - button "select token $CARDS" [ref=e5990] [cursor=pointer]:
+            - strong [ref=e5992]:
+              - generic [ref=e5994]: $CARDS
+              - generic [ref=e5995]: solana · CARDSccU...dKxYjp
+            - generic [ref=e5996]:
+              - generic [ref=e5997]: 62 · 3 +3
+              - generic [ref=e5998]: 3 posts · new burst · share 0.6%
+            - generic [ref=e6008]:
+              - generic [ref=e6009]: 59 · CA direct
+              - generic [ref=e6010]: dup 33% · info 2
+            - generic [ref=e6011]:
+              - generic [ref=e6012]: ignition · 3 author
+              - generic [ref=e6013]: top 33% · repro -
+            - generic [ref=e6014]:
+              - generic [ref=e6015]: $253M
+              - generic [ref=e6016]: "-3.7% fresh"
+            - generic [ref=e6017]:
+              - generic [ref=e6018]: fading
+              - generic [ref=e6019]: social fades
+            - generic [ref=e6021]: watch
+          - button "select token $SOCK" [ref=e6022] [cursor=pointer]:
+            - strong [ref=e6024]:
+              - generic [ref=e6026]: $SOCK
+              - generic [ref=e6027]: solana · d96j9d9T...wqpump
+            - generic [ref=e6028]:
+              - generic [ref=e6029]: 61 · 3 +3
+              - generic [ref=e6030]: 3 posts · new burst · share 0.6%
+            - generic [ref=e6040]:
+              - generic [ref=e6041]: 70 · CA direct
+              - generic [ref=e6042]: dup 33% · info 3
+            - generic [ref=e6043]:
+              - generic [ref=e6044]: ignition · 2 author
+              - generic [ref=e6045]: top 67% · repro -
+            - generic [ref=e6046]:
+              - generic [ref=e6047]: $9K
+              - generic [ref=e6048]: "-21% fresh"
+            - generic [ref=e6049]:
+              - generic [ref=e6050]: fading
+              - generic [ref=e6051]: social fades
+            - generic [ref=e6053]: watch
+          - button "select token $PIKEZU" [ref=e6054] [cursor=pointer]:
+            - strong [ref=e6056]:
+              - generic [ref=e6058]: $PIKEZU
+              - generic [ref=e6059]: solana · FzotVLrz...Hhpump
+            - generic [ref=e6060]:
+              - generic [ref=e6061]: 64 · 4 +4
+              - generic [ref=e6062]: 4 posts · new burst · share 0.9%
+            - generic [ref=e6072]:
+              - generic [ref=e6073]: 64 · CA direct
+              - generic [ref=e6074]: dup 25% · info 1
+            - generic [ref=e6075]:
+              - generic [ref=e6076]: concentration · 2 author
+              - generic [ref=e6077]: top 75% · repro -
+            - generic [ref=e6078]:
+              - generic [ref=e6079]: $2.6K
+              - generic [ref=e6080]: "-82% fresh"
+            - generic [ref=e6081]:
+              - generic [ref=e6082]: fading
+              - generic [ref=e6083]: social fades
+            - generic [ref=e6085]: watch
+          - button "select token $咕咕嘎嘎" [ref=e6086] [cursor=pointer]:
+            - strong [ref=e6088]:
+              - generic [ref=e6090]: $咕咕嘎嘎
+              - generic [ref=e6091]: solana · 6cgUrnK8...4Upump
+            - generic [ref=e6092]:
+              - generic [ref=e6093]: 62 · 3 +3
+              - generic [ref=e6094]: 3 posts · new burst · share 0.6%
+            - generic [ref=e6104]:
+              - generic [ref=e6105]: 57 · CA direct
+              - generic [ref=e6106]: dup 33% · info 1
+            - generic [ref=e6107]:
+              - generic [ref=e6108]: ignition · 3 author
+              - generic [ref=e6109]: top 33% · repro -
+            - generic [ref=e6110]:
+              - generic [ref=e6111]: $179K
+              - generic [ref=e6112]: "-9.5% fresh"
+            - generic [ref=e6113]:
+              - generic [ref=e6114]: fading
+              - generic [ref=e6115]: social fades
+            - generic [ref=e6117]: watch
+          - button "select token $TST" [ref=e6118] [cursor=pointer]:
+            - strong [ref=e6120]:
+              - generic [ref=e6122]: $TST
+              - generic [ref=e6123]: solana · 3LBTadZv...bFpump
+            - generic [ref=e6124]:
+              - generic [ref=e6125]: 62 · 3 +3
+              - generic [ref=e6126]: 3 posts · new burst · share 0.6%
+            - generic [ref=e6136]:
+              - generic [ref=e6137]: 65 · CA direct
+              - generic [ref=e6138]: dup 33% · info 3
+            - generic [ref=e6139]:
+              - generic [ref=e6140]: ignition · 2 author
+              - generic [ref=e6141]: top 67% · repro -
+            - generic [ref=e6142]:
+              - generic [ref=e6143]: $11K
+              - generic [ref=e6144]: "-7% fresh"
+            - generic [ref=e6145]:
+              - generic [ref=e6146]: fading
+              - generic [ref=e6147]: social fades
+            - generic [ref=e6149]: watch
+          - button "select token $SAM" [ref=e6150] [cursor=pointer]:
+            - strong [ref=e6152]:
+              - generic [ref=e6154]: $SAM
+              - generic [ref=e6155]: solana · 7WRX5QGu...GJpump
+            - generic [ref=e6156]:
+              - generic [ref=e6157]: 62 · 3 +3
+              - generic [ref=e6158]: 3 posts · new burst · share 0.6%
+            - generic [ref=e6168]:
+              - generic [ref=e6169]: 78 · CA direct
+              - generic [ref=e6170]: dup 33% · info 2
+            - generic [ref=e6171]:
+              - generic [ref=e6172]: concentration · 1 author
+              - generic [ref=e6173]: top 100% · repro -
+            - generic [ref=e6174]:
+              - generic [ref=e6175]: $189K
+              - generic [ref=e6176]: +25% fresh
+            - generic [ref=e6177]:
+              - generic [ref=e6178]: price leads
+              - generic [ref=e6179]: chase risk
+            - generic [ref=e6181]: watch
+          - button "select token $JEDITRUMP" [ref=e6182] [cursor=pointer]:
+            - strong [ref=e6184]:
+              - generic [ref=e6186]: $JEDITRUMP
+              - generic [ref=e6187]: solana · HZfe3PGY...4L18CD
+            - generic [ref=e6188]:
+              - generic [ref=e6189]: 52 · 2 +2
+              - generic [ref=e6190]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6200]:
+              - generic [ref=e6201]: 70 · CA direct
+              - generic [ref=e6202]: dup 50% · info 2
+            - generic [ref=e6203]:
+              - generic [ref=e6204]: concentration · 1 author
+              - generic [ref=e6205]: top 100% · repro -
+            - generic [ref=e6206]:
+              - generic [ref=e6207]: $2.7K
+              - generic [ref=e6208]: 0% fresh
+            - generic [ref=e6209]:
+              - generic [ref=e6210]: social leads
+              - generic [ref=e6211]: price quiet after social
+            - generic [ref=e6213]: watch
+          - button "select token $TROLL" [ref=e6214] [cursor=pointer]:
+            - strong [ref=e6216]:
+              - generic [ref=e6218]: $TROLL
+              - generic [ref=e6219]: solana · 5UUH9RTD...TBhgH2
+            - generic [ref=e6220]:
+              - generic [ref=e6221]: 45 · 7 +4
+              - generic [ref=e6222]: 7 posts · z-0.2 · share 1.5%
+            - generic [ref=e6232]:
+              - generic [ref=e6233]: 53 · informative
+              - generic [ref=e6234]: dup 14% · info 5
+            - generic [ref=e6235]:
+              - generic [ref=e6236]: expansion · 7 author
+              - generic [ref=e6237]: top 14% · repro -
+            - generic [ref=e6238]:
+              - generic [ref=e6239]: $47M
+              - generic [ref=e6240]: "-0.9% fresh"
+            - generic [ref=e6241]:
+              - generic [ref=e6242]: fading
+              - generic [ref=e6243]: social fades
+            - generic [ref=e6245]: watch
+          - button "select token $PETX" [ref=e6246] [cursor=pointer]:
+            - strong [ref=e6248]:
+              - generic [ref=e6250]: $PETX
+              - generic [ref=e6251]: solana · 4E7PVfDv...55pump
+            - generic [ref=e6252]:
+              - generic [ref=e6253]: 52 · 2 +2
+              - generic [ref=e6254]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6264]:
+              - generic [ref=e6265]: 70 · CA direct
+              - generic [ref=e6266]: dup 50% · info 2
+            - generic [ref=e6267]:
+              - generic [ref=e6268]: ignition · 2 author
+              - generic [ref=e6269]: top 50% · repro -
+            - generic [ref=e6270]:
+              - generic [ref=e6271]: $27K
+              - generic [ref=e6272]: "-9.8% fresh"
+            - generic [ref=e6273]:
+              - generic [ref=e6274]: fading
+              - generic [ref=e6275]: social fades
+            - generic [ref=e6277]: watch
+          - button "select token $90S" [ref=e6278] [cursor=pointer]:
+            - strong [ref=e6280]:
+              - generic [ref=e6282]: $90S
+              - generic [ref=e6283]: solana · Dgqwqhxu...qspump
+            - generic [ref=e6284]:
+              - generic [ref=e6285]: 52 · 2 +2
+              - generic [ref=e6286]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6296]:
+              - generic [ref=e6297]: 85 · CA direct
+              - generic [ref=e6298]: dup 50% · info 2
+            - generic [ref=e6299]:
+              - generic [ref=e6300]: concentration · 1 author
+              - generic [ref=e6301]: top 100% · repro -
+            - generic [ref=e6302]:
+              - generic [ref=e6303]: $5K
+              - generic [ref=e6304]: "-10% fresh"
+            - generic [ref=e6305]:
+              - generic [ref=e6306]: fading
+              - generic [ref=e6307]: social fades
+            - generic [ref=e6309]: watch
+          - button "select token $TROLLS" [ref=e6310] [cursor=pointer]:
+            - strong [ref=e6312]:
+              - generic [ref=e6314]: $TROLLS
+              - generic [ref=e6315]: solana · 7CR3CBpi...m6pump
+            - generic [ref=e6316]:
+              - generic [ref=e6317]: 52 · 2 +2
+              - generic [ref=e6318]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6328]:
+              - generic [ref=e6329]: 85 · CA direct
+              - generic [ref=e6330]: dup 50% · info 2
+            - generic [ref=e6331]:
+              - generic [ref=e6332]: concentration · 1 author
+              - generic [ref=e6333]: top 100% · repro -
+            - generic [ref=e6334]:
+              - generic [ref=e6335]: $121K
+              - generic [ref=e6336]: "-8.2% fresh"
+            - generic [ref=e6337]:
+              - generic [ref=e6338]: fading
+              - generic [ref=e6339]: social fades
+            - generic [ref=e6341]: watch
+          - button "select token $MEGA" [ref=e6342] [cursor=pointer]:
+            - strong [ref=e6344]:
+              - generic [ref=e6346]: $MEGA
+              - generic [ref=e6347]: solana · megaA5QD...dnM5kV
+            - generic [ref=e6348]:
+              - generic [ref=e6349]: 50 · 5 +1
+              - generic [ref=e6350]: 5 posts · z0.9 · share 1.1%
+            - generic [ref=e6360]:
+              - generic [ref=e6361]: 51 · informative
+              - generic [ref=e6362]: dup 20% · info 3
+            - generic [ref=e6363]:
+              - generic [ref=e6364]: expansion · 5 author
+              - generic [ref=e6365]: top 20% · repro -
+            - generic [ref=e6366]:
+              - generic [ref=e6367]: $382K
+              - generic [ref=e6368]: "-1.4% fresh"
+            - generic [ref=e6369]:
+              - generic [ref=e6370]: fading
+              - generic [ref=e6371]: social fades
+            - generic [ref=e6373]: watch
+          - button "select token $VIRUS" [ref=e6374] [cursor=pointer]:
+            - strong [ref=e6376]:
+              - generic [ref=e6378]: $VIRUS
+              - generic [ref=e6379]: bsc · 0xA1eD61...647777
+            - generic [ref=e6380]:
+              - generic [ref=e6381]: 50 · 2 +2
+              - generic [ref=e6382]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6392]:
+              - generic [ref=e6393]: 56 · informative
+              - generic [ref=e6394]: dup 50% · info 1
+            - generic [ref=e6395]:
+              - generic [ref=e6396]: ignition · 2 author
+              - generic [ref=e6397]: top 50% · repro -
+            - generic [ref=e6398]:
+              - generic [ref=e6399]: $10M
+              - generic [ref=e6400]: +0.7% fresh
+            - generic [ref=e6401]:
+              - generic [ref=e6402]: social leads
+              - generic [ref=e6403]: price quiet after social
+            - generic [ref=e6405]: watch
+          - button "select token $ASTEROID" [ref=e6406] [cursor=pointer]:
+            - strong [ref=e6408]:
+              - generic [ref=e6410]: $ASTEROID
+              - generic [ref=e6411]: eth · 0xf280B1...694126
+            - generic [ref=e6412]:
+              - generic [ref=e6413]: 32 · 5 -3
+              - generic [ref=e6414]: 5 posts · z-0.5 · share 1.1%
+            - generic [ref=e6424]:
+              - generic [ref=e6425]: 56 · informative
+              - generic [ref=e6426]: dup 20% · info 4
+            - generic [ref=e6427]:
+              - generic [ref=e6428]: expansion · 5 author
+              - generic [ref=e6429]: top 20% · repro -
+            - generic [ref=e6430]:
+              - generic [ref=e6431]: $164M
+              - generic [ref=e6432]: +0.6% fresh
+            - generic [ref=e6433]:
+              - generic [ref=e6434]: social leads
+              - generic [ref=e6435]: price quiet after social
+            - generic [ref=e6437]: watch
+          - button "select token $MANFRED" [ref=e6438] [cursor=pointer]:
+            - strong [ref=e6440]:
+              - generic [ref=e6442]: $MANFRED
+              - generic [ref=e6443]: solana · 2xbBHYkn...Kx4xff
+            - generic [ref=e6444]:
+              - generic [ref=e6445]: 63 · 4 +3
+              - generic [ref=e6446]: 4 posts · new burst · share 0.9%
+            - generic [ref=e6456]:
+              - generic [ref=e6457]: 36 · informative
+              - generic [ref=e6458]: dup 25% · info 2
+            - generic [ref=e6459]:
+              - generic [ref=e6460]: concentration · 2 author
+              - generic [ref=e6461]: top 75% · repro -
+            - generic [ref=e6462]:
+              - generic [ref=e6463]: $31K
+              - generic [ref=e6464]: +0% fresh
+            - generic [ref=e6465]:
+              - generic [ref=e6466]: social leads
+              - generic [ref=e6467]: price quiet after social
+            - generic [ref=e6469]: watch
+          - button "select token $PROTOCOL" [ref=e6470] [cursor=pointer]:
+            - strong [ref=e6472]:
+              - generic [ref=e6474]: $PROTOCOL
+              - generic [ref=e6475]: solana · HzCbCzbM...jrpump
+            - generic [ref=e6476]:
+              - generic [ref=e6477]: 52 · 2 +2
+              - generic [ref=e6478]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6488]:
+              - generic [ref=e6489]: 70 · CA direct
+              - generic [ref=e6490]: dup 50% · info 2
+            - generic [ref=e6491]:
+              - generic [ref=e6492]: concentration · 1 author
+              - generic [ref=e6493]: top 100% · repro -
+            - generic [ref=e6494]:
+              - generic [ref=e6495]: $5.5K
+              - generic [ref=e6496]: +18% fresh
+            - generic [ref=e6497]:
+              - generic [ref=e6498]: social confirms
+              - generic [ref=e6499]: +18% since social
+            - generic [ref=e6501]: watch
+          - button "select token $VIRGIN" [ref=e6502] [cursor=pointer]:
+            - strong [ref=e6504]:
+              - generic [ref=e6506]: $VIRGIN
+              - generic [ref=e6507]: solana · DDiGq2FZ...yrpump
+            - generic [ref=e6508]:
+              - generic [ref=e6509]: 52 · 2 +2
+              - generic [ref=e6510]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6520]:
+              - generic [ref=e6521]: 85 · CA direct
+              - generic [ref=e6522]: dup 50% · info 2
+            - generic [ref=e6523]:
+              - generic [ref=e6524]: concentration · 1 author
+              - generic [ref=e6525]: top 100% · repro -
+            - generic [ref=e6526]:
+              - generic [ref=e6527]: $20K
+              - generic [ref=e6528]: +40% stale
+            - generic [ref=e6529]:
+              - generic [ref=e6530]: social confirms
+              - generic [ref=e6531]: +40% since social
+            - generic [ref=e6533]: watch
+          - button "select token $GPT-5.5" [ref=e6534] [cursor=pointer]:
+            - strong [ref=e6536]:
+              - generic [ref=e6538]: $GPT-5.5
+              - generic [ref=e6539]: solana · 3vkvz2MB...SRpump
+            - generic [ref=e6540]:
+              - generic [ref=e6541]: 51 · 2 +2
+              - generic [ref=e6542]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6552]:
+              - generic [ref=e6553]: 70 · CA direct
+              - generic [ref=e6554]: dup 50% · info 2
+            - generic [ref=e6555]:
+              - generic [ref=e6556]: concentration · 1 author
+              - generic [ref=e6557]: top 100% · repro -
+            - generic [ref=e6558]:
+              - generic [ref=e6559]: $10K
+              - generic [ref=e6560]: +33% fresh
+            - generic [ref=e6561]:
+              - generic [ref=e6562]: social confirms
+              - generic [ref=e6563]: +33% since social
+            - generic [ref=e6565]: watch
+          - button "select token $ALIENS" [ref=e6566] [cursor=pointer]:
+            - strong [ref=e6568]:
+              - generic [ref=e6570]: $ALIENS
+              - generic [ref=e6571]: solana · F5tfztTn...Pbpump
+            - generic [ref=e6572]:
+              - generic [ref=e6573]: 44 · 2 +1
+              - generic [ref=e6574]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6584]:
+              - generic [ref=e6585]: 60 · informative
+              - generic [ref=e6586]: dup 50% · info 2
+            - generic [ref=e6587]:
+              - generic [ref=e6588]: ignition · 2 author
+              - generic [ref=e6589]: top 50% · repro -
+            - generic [ref=e6590]:
+              - generic [ref=e6591]: $506K
+              - generic [ref=e6592]: +0.2% fresh
+            - generic [ref=e6593]:
+              - generic [ref=e6594]: social leads
+              - generic [ref=e6595]: price quiet after social
+            - generic [ref=e6597]: watch
+          - button "select token $MAY4TH" [ref=e6598] [cursor=pointer]:
+            - strong [ref=e6600]:
+              - generic [ref=e6602]: $MAY4TH
+              - generic [ref=e6603]: solana · 7wC7z6Fb...bq5Z89
+            - generic [ref=e6604]:
+              - generic [ref=e6605]: 48 · 5 0
+              - generic [ref=e6606]: 5 posts · new burst · share 1.1%
+            - generic [ref=e6616]:
+              - generic [ref=e6617]: 67 · CA direct
+              - generic [ref=e6618]: dup 20% · info 4
+            - generic [ref=e6619]:
+              - generic [ref=e6620]: concentration · 1 author
+              - generic [ref=e6621]: top 100% · repro -
+            - generic [ref=e6622]:
+              - generic [ref=e6623]: $96K
+              - generic [ref=e6624]: +16% fresh
+            - generic [ref=e6625]:
+              - generic [ref=e6626]: social confirms
+              - generic [ref=e6627]: +16% since social
+            - generic [ref=e6629]: watch
+          - button "select token $CHUNGUS" [ref=e6630] [cursor=pointer]:
+            - strong [ref=e6632]:
+              - generic [ref=e6634]: $CHUNGUS
+              - generic [ref=e6635]: solana · EMuNS94p...e1iQ92
+            - generic [ref=e6636]:
+              - generic [ref=e6637]: 43 · 3 +1
+              - generic [ref=e6638]: 3 posts · z0.3 · share 0.6%
+            - generic [ref=e6648]:
+              - generic [ref=e6649]: 57 · CA direct
+              - generic [ref=e6650]: dup 33% · info 1
+            - generic [ref=e6651]:
+              - generic [ref=e6652]: ignition · 2 author
+              - generic [ref=e6653]: top 67% · repro -
+            - generic [ref=e6654]:
+              - generic [ref=e6655]: $43K
+              - generic [ref=e6656]: +6.3% fresh
+            - generic [ref=e6657]:
+              - generic [ref=e6658]: social leads
+              - generic [ref=e6659]: price quiet after social
+            - generic [ref=e6661]: watch
+          - button "select token $FORKCOIN" [ref=e6662] [cursor=pointer]:
+            - strong [ref=e6664]:
+              - generic [ref=e6666]: $FORKCOIN
+              - generic [ref=e6667]: solana · 5m8qZLFb...hdpump
+            - generic [ref=e6668]:
+              - generic [ref=e6669]: 44 · 3 0
+              - generic [ref=e6670]: 3 posts · z1.2 · share 0.6%
+            - generic [ref=e6680]:
+              - generic [ref=e6681]: 57 · CA direct
+              - generic [ref=e6682]: dup 33% · info 1
+            - generic [ref=e6683]:
+              - generic [ref=e6684]: ignition · 2 author
+              - generic [ref=e6685]: top 67% · repro -
+            - generic [ref=e6686]:
+              - generic [ref=e6687]: $8.1K
+              - generic [ref=e6688]: +113% fresh
+            - generic [ref=e6689]:
+              - generic [ref=e6690]: social confirms
+              - generic [ref=e6691]: +113% since social
+            - generic [ref=e6693]: watch
+          - button "select token $WLFI" [ref=e6694] [cursor=pointer]:
+            - strong [ref=e6696]:
+              - generic [ref=e6698]: $WLFI
+              - generic [ref=e6699]: solana · WLFinEv6...7oC16g
+            - generic [ref=e6700]:
+              - generic [ref=e6701]: 32 · 5 -9
+              - generic [ref=e6702]: 5 posts · z-0.6 · share 1.1%
+            - generic [ref=e6712]:
+              - generic [ref=e6713]: 58 · informative
+              - generic [ref=e6714]: dup 40% · info 4
+            - generic [ref=e6715]:
+              - generic [ref=e6716]: ignition · 3 author
+              - generic [ref=e6717]: top 40% · repro -
+            - generic [ref=e6718]:
+              - generic [ref=e6719]: $188M
+              - generic [ref=e6720]: 0% fresh
+            - generic [ref=e6721]:
+              - generic [ref=e6722]: social leads
+              - generic [ref=e6723]: price quiet after social
+            - generic [ref=e6725]: watch
+          - button "select token $🧠🪱" [ref=e6726] [cursor=pointer]:
+            - strong [ref=e6728]:
+              - generic [ref=e6730]: $🧠🪱
+              - generic [ref=e6731]: solana · GMDG6Uk2...mVX6P3
+            - generic [ref=e6732]:
+              - generic [ref=e6733]: 52 · 2 +2
+              - generic [ref=e6734]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6744]:
+              - generic [ref=e6745]: 70 · CA direct
+              - generic [ref=e6746]: dup 100% · info 2
+            - generic [ref=e6747]:
+              - generic [ref=e6748]: concentration · 1 author
+              - generic [ref=e6749]: top 100% · repro -
+            - generic [ref=e6750]:
+              - generic [ref=e6751]: $3.4K
+              - generic [ref=e6752]: 0% stale
+            - generic [ref=e6753]:
+              - generic [ref=e6754]: social leads
+              - generic [ref=e6755]: price quiet after social
+            - generic [ref=e6757]: watch
+          - button "select token $TRIPLET" [ref=e6758] [cursor=pointer]:
+            - strong [ref=e6760]:
+              - generic [ref=e6762]: $TRIPLET
+              - generic [ref=e6763]: solana · J8PSdNP3...KZpump
+            - generic [ref=e6764]:
+              - generic [ref=e6765]: 51 · 4 +1
+              - generic [ref=e6766]: 4 posts · z1.7 · share 0.9%
+            - generic [ref=e6776]:
+              - generic [ref=e6777]: 56 · informative
+              - generic [ref=e6778]: dup 25% · info 4
+            - generic [ref=e6779]:
+              - generic [ref=e6780]: concentration · 2 author
+              - generic [ref=e6781]: top 75% · repro -
+            - generic [ref=e6782]:
+              - generic [ref=e6783]: $5.8M
+              - generic [ref=e6784]: "-2.9% fresh"
+            - generic [ref=e6785]:
+              - generic [ref=e6786]: fading
+              - generic [ref=e6787]: social fades
+            - generic [ref=e6789]: watch
+          - button "select token $GMEBAY" [ref=e6790] [cursor=pointer]:
+            - strong [ref=e6792]:
+              - generic [ref=e6794]: $GMEBAY
+              - generic [ref=e6795]: solana · 8n58q3pU...aapump
+            - generic [ref=e6796]:
+              - generic [ref=e6797]: 51 · 2 +2
+              - generic [ref=e6798]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6808]:
+              - generic [ref=e6809]: 70 · CA direct
+              - generic [ref=e6810]: dup 50% · info 2
+            - generic [ref=e6811]:
+              - generic [ref=e6812]: concentration · 1 author
+              - generic [ref=e6813]: top 100% · repro -
+            - generic [ref=e6814]:
+              - generic [ref=e6815]: $71K
+              - generic [ref=e6816]: "-23% fresh"
+            - generic [ref=e6817]:
+              - generic [ref=e6818]: price leads
+              - generic [ref=e6819]: chase risk
+            - generic [ref=e6821]: watch
+          - button "select token $PONYO" [ref=e6822] [cursor=pointer]:
+            - strong [ref=e6824]:
+              - generic [ref=e6826]: $PONYO
+              - generic [ref=e6827]: solana · 37a8k7yR...KPpump
+            - generic [ref=e6828]:
+              - generic [ref=e6829]: 52 · 2 +2
+              - generic [ref=e6830]: 2 posts · new burst · share 0.4%
+            - generic [ref=e6840]:
+              - generic [ref=e6841]: 65 · CA direct
+              - generic [ref=e6842]: dup 50% · info 1
+            - generic [ref=e6843]:
+              - generic [ref=e6844]: concentration · 1 author
+              - generic [ref=e6845]: top 100% · repro -
+            - generic [ref=e6846]:
+              - generic [ref=e6847]: $7.1K
+              - generic [ref=e6848]: 0% stale
+            - generic [ref=e6849]:
+              - generic [ref=e6850]: social leads
+              - generic [ref=e6851]: price quiet after social
+            - generic [ref=e6853]: watch
+          - button "select token $CARTEL" [ref=e6854] [cursor=pointer]:
+            - strong [ref=e6856]:
+              - generic [ref=e6858]: $CARTEL
+              - generic [ref=e6859]: solana · 2heMFRGx...CPHCBK
+            - generic [ref=e6860]:
+              - generic [ref=e6861]: 49 · 4 -1
+              - generic [ref=e6862]: 4 posts · new burst · share 0.9%
+            - generic [ref=e6872]:
+              - generic [ref=e6873]: 66 · CA direct
+              - generic [ref=e6874]: dup 25% · info 4
+            - generic [ref=e6875]:
+              - generic [ref=e6876]: concentration · 1 author
+              - generic [ref=e6877]: top 100% · repro -
+            - generic [ref=e6878]:
+              - generic [ref=e6879]: $2.4K
+              - generic [ref=e6880]: 0% stale
+            - generic [ref=e6881]:
+              - generic [ref=e6882]: social leads
+              - generic [ref=e6883]: price quiet after social
+            - generic [ref=e6885]: watch
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - heading "实时信号 Tape" [level=2] [ref=e139]
+            - generic [ref=e140]: 113 条
+          - generic [ref=e141]:
+            - 'button "event @realtuckfrumper -> Survivor 50''s Dee Valladares Survivor 50''s Dee Valladares: ‘I Wasn''t Going Down Without a Fight’ #Newsweek public pulse - 3s" [ref=e6886] [cursor=pointer]':
+              - generic [ref=e6887]: event
+              - generic [ref=e6888]:
+                - strong [ref=e6889]: "@realtuckfrumper -> Survivor 50's Dee Valladares"
+                - paragraph [ref=e6890]: "Survivor 50's Dee Valladares: ‘I Wasn't Going Down Without a Fight’ #Newsweek"
+                - emphasis [ref=e6891]: public pulse
+              - generic [ref=e6892]: "-"
+              - time [ref=e6893]: 3s
+            - button "token @tortillastown -> $DMC lets send the og $dmg higher than everything. CDiLxRkVEgJXmxVCnRSibaKjX6wUUUkuLh7wE55SyNMU PVE. Together. insufficient baseline new burst 65 4s" [ref=e6894] [cursor=pointer]:
+              - generic [ref=e6895]: token
+              - generic [ref=e6896]:
+                - strong [ref=e6897]: "@tortillastown -> $DMC"
+                - paragraph [ref=e6898]: lets send the og $dmg higher than everything. CDiLxRkVEgJXmxVCnRSibaKjX6wUUUkuLh7wE55SyNMU PVE. Together.
+                - emphasis [ref=e6899]: insufficient baseline new burst
+              - generic [ref=e6900]: "65"
+              - time [ref=e6901]: 4s
+            - button "event @zksgu -> 有道理 有道理 public pulse - 5s" [ref=e6902] [cursor=pointer]:
+              - generic [ref=e6903]: event
+              - generic [ref=e6904]:
+                - strong [ref=e6905]: "@zksgu -> 有道理"
+                - paragraph [ref=e6906]: 有道理
+                - emphasis [ref=e6907]: public pulse
+              - generic [ref=e6908]: "-"
+              - time [ref=e6909]: 5s
+            - button "event @farzyness -> This is legitimately absurd This is legitimately absurd lol public pulse - 5s" [ref=e6910] [cursor=pointer]:
+              - generic [ref=e6911]: event
+              - generic [ref=e6912]:
+                - strong [ref=e6913]: "@farzyness -> This is legitimately absurd"
+                - paragraph [ref=e6914]: This is legitimately absurd lol
+                - emphasis [ref=e6915]: public pulse
+              - generic [ref=e6916]: "-"
+              - time [ref=e6917]: 5s
+            - button "event @atrupar -> \"Iran is a perfect example o \"Iran is a perfect example of the perils of Trumpian vanity. He reportedly was shocked to learn that, rather than immediately surrendering after the initial US attacks, Iran instead closed the Strait of Hormuz. But a beginner Stratego player could have predicted [exactly that].\" public pulse - 7s" [ref=e6918] [cursor=pointer]:
+              - generic [ref=e6919]: event
+              - generic [ref=e6920]:
+                - strong [ref=e6921]: "@atrupar -> \"Iran is a perfect example o"
+                - paragraph [ref=e6922]: "\"Iran is a perfect example of the perils of Trumpian vanity. He reportedly was shocked to learn that, rather than immediately surrendering after the initial US attacks, Iran instead closed the Strait of Hormuz. But a beginner Stratego player could have predicted [exactly that].\""
+                - emphasis [ref=e6923]: public pulse
+              - generic [ref=e6924]: "-"
+              - time [ref=e6925]: 7s
+            - 'button "event @economictimes -> #BJP workers raise ‘Jai Shre #BJP workers raise ‘Jai Shree Ram’ #slogans near #MamataBanerjee’s residence Track #WestBengalElectionResults2026 Live Update | #ElectionsWithET public pulse - 8s" [ref=e6926] [cursor=pointer]':
+              - generic [ref=e6927]: event
+              - generic [ref=e6928]:
+                - strong [ref=e6929]: "@economictimes -> #BJP workers raise ‘Jai Shre"
+                - paragraph [ref=e6930]: "#BJP workers raise ‘Jai Shree Ram’ #slogans near #MamataBanerjee’s residence Track #WestBengalElectionResults2026 Live Update | #ElectionsWithET"
+                - emphasis [ref=e6931]: public pulse
+              - generic [ref=e6932]: "-"
+              - time [ref=e6933]: 8s
+            - button "event @digiii -> 6th MAN MODE 6th MAN MODE public pulse - 8s" [ref=e6934] [cursor=pointer]:
+              - generic [ref=e6935]: event
+              - generic [ref=e6936]:
+                - strong [ref=e6937]: "@digiii -> 6th MAN MODE"
+                - paragraph [ref=e6938]: 6th MAN MODE
+                - emphasis [ref=e6939]: public pulse
+              - generic [ref=e6940]: "-"
+              - time [ref=e6941]: 8s
+            - button "event @ace_yexin -> ethereum:0xf280b16ef293d8e53 ethereum:0xf280b16ef293d8e534e370794ef26bf312694126 以太的起飞了164M 0xf280b16ef293d8e534e370794ef26bf312694126 baby-asteroid-2:native 7.6M bsc的能差吗 想想当年的宝贝狗 0xfecbda1b8dbd73c4eea7843c04db816107fa6666 现已正式在欧盟知识产权局（EUIPO）完成注册 public pulse - 9s" [ref=e6942] [cursor=pointer]:
+              - generic [ref=e6943]: event
+              - generic [ref=e6944]:
+                - strong [ref=e6945]: "@ace_yexin -> ethereum:0xf280b16ef293d8e53"
+                - paragraph [ref=e6946]: ethereum:0xf280b16ef293d8e534e370794ef26bf312694126 以太的起飞了164M 0xf280b16ef293d8e534e370794ef26bf312694126 baby-asteroid-2:native 7.6M bsc的能差吗 想想当年的宝贝狗 0xfecbda1b8dbd73c4eea7843c04db816107fa6666 现已正式在欧盟知识产权局（EUIPO）完成注册
+                - emphasis [ref=e6947]: public pulse
+              - generic [ref=e6948]: "-"
+              - time [ref=e6949]: 9s
+            - 'button "event @timesnow -> Assam CM @himantabiswa tweet Assam CM @himantabiswa tweets: \"...पेड़ा ज़रूर बनेगा। एक बार मैं कुछ कह देता हूँ, तो मैं पीछे नहीं हटता।\" public pulse - 10s" [ref=e6950] [cursor=pointer]':
+              - generic [ref=e6951]: event
+              - generic [ref=e6952]:
+                - strong [ref=e6953]: "@timesnow -> Assam CM @himantabiswa tweet"
+                - paragraph [ref=e6954]: "Assam CM @himantabiswa tweets: \"...पेड़ा ज़रूर बनेगा। एक बार मैं कुछ कह देता हूँ, तो मैं पीछे नहीं हटता।\""
+                - emphasis [ref=e6955]: public pulse
+              - generic [ref=e6956]: "-"
+              - time [ref=e6957]: 10s
+            - button "event @theloreguyy -> $LUIGI This meme is all over my timeline and with the movie coming out in a few days, i think were gonna see ALOT more of it $LUIGI 4CtmdkX1d6fTUD9mK4sb9T8X2Ek6sZy72nrdGee7pump public pulse - 10s" [ref=e6958] [cursor=pointer]:
+              - generic [ref=e6959]: event
+              - generic [ref=e6960]:
+                - strong [ref=e6961]: "@theloreguyy -> $LUIGI"
+                - paragraph [ref=e6962]: This meme is all over my timeline and with the movie coming out in a few days, i think were gonna see ALOT more of it $LUIGI 4CtmdkX1d6fTUD9mK4sb9T8X2Ek6sZy72nrdGee7pump
+                - emphasis [ref=e6963]: public pulse
+              - generic [ref=e6964]: "-"
+              - time [ref=e6965]: 10s
+            - button "event @pokeepandaa -> TREASURY 30-YEAR YIELD TOPS TREASURY 30-YEAR YIELD TOPS 5.01% FOR FIRST TIME SINCE JULY public pulse - 12s" [ref=e6966] [cursor=pointer]:
+              - generic [ref=e6967]: event
+              - generic [ref=e6968]:
+                - strong [ref=e6969]: "@pokeepandaa -> TREASURY 30-YEAR YIELD TOPS"
+                - paragraph [ref=e6970]: TREASURY 30-YEAR YIELD TOPS 5.01% FOR FIRST TIME SINCE JULY
+                - emphasis [ref=e6971]: public pulse
+              - generic [ref=e6972]: "-"
+              - time [ref=e6973]: 12s
+            - button "event @turnernovak -> @fintechfrank I’ve never met @fintechfrank I’ve never met her before, and I’m sure she’s great and there’s a great pitch, but this image is one of the closest I’ve ever felt to the top of this cycle public pulse - 12s" [ref=e6974] [cursor=pointer]:
+              - generic [ref=e6975]: event
+              - generic [ref=e6976]:
+                - strong [ref=e6977]: "@turnernovak -> @fintechfrank I’ve never met"
+                - paragraph [ref=e6978]: "@fintechfrank I’ve never met her before, and I’m sure she’s great and there’s a great pitch, but this image is one of the closest I’ve ever felt to the top of this cycle"
+                - emphasis [ref=e6979]: public pulse
+              - generic [ref=e6980]: "-"
+              - time [ref=e6981]: 12s
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - img [ref=e146]
+              - heading "Harness" [level=2] [ref=e149]
+            - generic [ref=e150]: social-event-v1
+          - generic [ref=e151]:
+            - generic "harness health" [ref=e152]:
+              - generic [ref=e153]:
+                - generic [ref=e154]: schema
+                - generic [ref=e155]: "-"
+              - generic [ref=e156]:
+                - generic [ref=e157]: snap
+                - generic [ref=e158]: "0"
+              - generic [ref=e159]:
+                - generic [ref=e160]: pending
+                - generic [ref=e161]: "0"
+              - generic [ref=e162]:
+                - generic [ref=e163]: settled
+                - generic [ref=e164]: "-"
+            - generic "harness panel tabs" [ref=e165]:
+              - button "Events" [ref=e166] [cursor=pointer]
+              - button "Seeds" [ref=e167] [cursor=pointer]
+              - button "Snapshots" [ref=e168] [cursor=pointer]
+            - generic [ref=e6982]: loading harness state
+        - generic [ref=e170]:
+          - generic [ref=e171]:
+            - generic [ref=e172]:
+              - img [ref=e173]
+              - heading "检索结果" [level=2] [ref=e176]
+            - generic [ref=e177]: 8/47 shown
+          - generic [ref=e178]:
+            - button "@kek0x exact_symbol 20m It’s go time Everyone has had a chance to load up on The boys club. And no one will be surprised when they lead the market. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 This is your chance to join the greatest beta trade in history First $PEPE will make its move leaving the entire market in shambles. Then his boys will follow. It’s coming. Very soon. Be Ready" [ref=e5345] [cursor=pointer]:
+              - generic [ref=e1849]:
+                - strong [ref=e1850]: "@kek0x"
+                - generic [ref=e1851]: exact_symbol
+                - time [ref=e1852]: 20m
+              - paragraph [ref=e1853]: It’s go time Everyone has had a chance to load up on The boys club. And no one will be surprised when they lead the market. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 This is your chance to join the greatest beta trade in history First $PEPE will make its move leaving the entire market in shambles. Then his boys will follow. It’s coming. Very soon. Be Ready
+            - button "@kek0x exact_symbol 20m It’s go time Everyone has had a chance to load up on The boys club. And no one will be surprised when they lead the market. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 This is your chance to join the greatest beta trade in…" [ref=e5346] [cursor=pointer]:
+              - generic [ref=e1855]:
+                - strong [ref=e1856]: "@kek0x"
+                - generic [ref=e1857]: exact_symbol
+                - time [ref=e1858]: 20m
+              - paragraph [ref=e1859]: It’s go time Everyone has had a chance to load up on The boys club. And no one will be surprised when they lead the market. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 This is your chance to join the greatest beta trade in…
+            - button "@kek0x exact_symbol 25m Yes and the leaders this cycle are the OGs. The boys club is positioned to be the greatest beta trade in the history of Crypto. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 Load up before they make their big move." [ref=e6983] [cursor=pointer]:
+              - generic [ref=e1861]:
+                - strong [ref=e1862]: "@kek0x"
+                - generic [ref=e1863]: exact_symbol
+                - time [ref=e1864]: 25m
+              - paragraph [ref=e1865]: Yes and the leaders this cycle are the OGs. The boys club is positioned to be the greatest beta trade in the history of Crypto. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 Load up before they make their big move.
+            - button "@kek0x exact_symbol 25m @cepryl Yes and the leaders this cycle are the OGs. The boys club is positioned to be the greatest beta trade in the history of Crypto. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 Load up before they make their big move." [ref=e6984] [cursor=pointer]:
+              - generic [ref=e1867]:
+                - strong [ref=e1868]: "@kek0x"
+                - generic [ref=e1869]: exact_symbol
+                - time [ref=e1870]: 25m
+              - paragraph [ref=e1871]: "@cepryl Yes and the leaders this cycle are the OGs. The boys club is positioned to be the greatest beta trade in the history of Crypto. $PEPE | @pepecoineth $BRETT | @BasedBrett $ANDY | @andycoinonerc $WOLF | @Wolf0x67 Load up before they make their big move."
+            - button [ref=e5347] [cursor=pointer]:
+              - generic [ref=e1873]:
+                - strong [ref=e1874]: "@gmer88"
+                - generic [ref=e1875]: exact_symbol
+                - time [ref=e1876]: 25m
+              - paragraph [ref=e1877]: "Meme 的尽头是熊猫头：为何我们必须回归 OG 叙事？ “币圈完了”，“Meme完了”这是最近圈内最常听到的一句话，事实如此吗？还是我们早就忘了 meme 最初的模样？ 一、 厌倦了“快餐式meme”，我们需要真正的旗帜 现在的 Meme 赛道，已经沦为了一场依赖反应速度与运气的零和博弈。大家买入，只是为了等车头上车、等前排出货，提上裤子便不认人。这种被戏称为 “Fortnite 旋转文化” 的快进快出，正在抽干市场的生命力。 正如 @CrashiusClay69 所说:”“你不能在顶级 Meme 暴跌 98% 的时候去玩新盘。” 市场的复兴，需要一个 OG Meme重新冲破天花板，制造出真正的流动性溢出。“ 如果说西方 Meme 市场的复兴需要 Doge、Pepe 这种图腾来重塑共识，那么在中文互联网的语境下，能扛起这面大旗的“共识之王”，唯有熊猫头。 二、 熊猫头：中文互联网的“meme之神”与万恶之源 从 Meme 的生命周期来看，熊猫头表情包是中国互联网史上最具生命力的。是史上最强 Meme 模板、大众化的 Meme 王者、亚文化的 Meme 之神。 它开启了大规模民间自制、二次创作的“魔性”时代。“万物皆可熊猫头”——这不仅仅是一句口号，而是一种刻在数亿网民骨子里的视觉本能。当一个符号已经成为了社交语言的基础设施，它的 IP 价值便不再需要被证明，只需要被激活。 三、 找回 Meme 的初心：从“零和博弈”回归“文化共鸣” 曾经，这里没有链上监控，没有发射台，没有那么多五花八门的链上科技。大家买一个meme 币，只是因为喜欢它的、认同它的影响力，享受社区一起拼搏的快乐。那种一群人为了一个荒诞且热血的目标奋斗的感觉，那股不服输、不讲理、只讲情义的劲，正是meme 的魅力所在。 大家已经忘记了，meme从来不只是价格曲线，而是共鸣、是归属、是集体创作的浪漫。 $熊猫头 正是这样纯粹的meme，熊猫是中国的国宝；熊猫头，是中文互联网表情包文化的图腾，它在中文表情包里的地位无可置疑。在 当前中文meme逐渐出圈的环境下，这样极具本土化，多变且自带传播潜力的meme，难道不值得建设吗？今年年初，@cz_binance 在币安广场的ama的原话中也提到：真正有价值的 meme coin 应具有历史意义或强烈的叙事相关性。熊猫头开启了互联网表情包时代，至今风靡了16年，也完美契合如今og 文化共鸣的大叙事。 四、 华流才是最屌的：让世界看到中文经典 #熊猫头 是一次对 meme 精神的致敬，我们想回到那个为热爱而战、因共鸣而聚的时代。 如果 $DOGE 和 $PEPE 能惊艳华尔街，$熊猫头 凭什么无法成为华流 meme 走向世界的浓墨重彩一笔呢？ Meme 从未改变，变的只是我们。 而现在，是时候重新认出它了——就在那个任人描绘的熊猫头里。 让中国的OG meme在bsc支棱起来 @cz_binance @heyibinance @binance @BNBCHAIN"
+            - button [ref=e5348] [cursor=pointer]:
+              - generic [ref=e1879]:
+                - strong [ref=e1880]: "@traderpow"
+                - generic [ref=e1881]: exact_symbol
+                - time [ref=e1882]: 26m
+              - paragraph [ref=e1883]: "Meme 的尽头是熊猫头：为何我们必须回归 OG 叙事？ “币圈完了”，“Meme完了”这是最近圈内最常听到的一句话，事实如此吗？还是我们早就忘了 meme 最初的模样？ 一、 厌倦了“快餐式meme”，我们需要真正的旗帜 现在的 Meme 赛道，已经沦为了一场依赖反应速度与运气的零和博弈。大家买入，只是为了等车头上车、等前排出货，提上裤子便不认人。这种被戏称为 “Fortnite 旋转文化” 的快进快出，正在抽干市场的生命力。 正如 @CrashiusClay69 所说:”“你不能在顶级 Meme 暴跌 98% 的时候去玩新盘。” 市场的复兴，需要一个 OG Meme重新冲破天花板，制造出真正的流动性溢出。“ 如果说西方 Meme 市场的复兴需要 Doge、Pepe 这种图腾来重塑共识，那么在中文互联网的语境下，能扛起这面大旗的“共识之王”，唯有熊猫头。 二、 熊猫头：中文互联网的“meme之神”与万恶之源 从 Meme 的生命周期来看，熊猫头表情包是中国互联网史上最具生命力的。是史上最强 Meme 模板、大众化的 Meme 王者、亚文化的 Meme 之神。 它开启了大规模民间自制、二次创作的“魔性”时代。“万物皆可熊猫头”——这不仅仅是一句口号，而是一种刻在数亿网民骨子里的视觉本能。当一个符号已经成为了社交语言的基础设施，它的 IP 价值便不再需要被证明，只需要被激活。 三、 找回 Meme 的初心：从“零和博弈”回归“文化共鸣” 曾经，这里没有链上监控，没有发射台，没有那么多五花八门的链上科技。大家买一个meme 币，只是因为喜欢它的、认同它的影响力，享受社区一起拼搏的快乐。那种一群人为了一个荒诞且热血的目标奋斗的感觉，那股不服输、不讲理、只讲情义的劲，正是meme 的魅力所在。 大家已经忘记了，meme从来不只是价格曲线，而是共鸣、是归属、是集体创作的浪漫。 $熊猫头 正是这样纯粹的meme，熊猫是中国的国宝；熊猫头，是中文互联网表情包文化的图腾，它在中文表情包里的地位无可置疑。在 当前中文meme逐渐出圈的环境下，这样极具本土化，多变且自带传播潜力的meme，难道不值得建设吗？今年年初，@cz_binance 在币安广场的ama的原话中也提到：真正有价值的 meme coin 应具有历史意义或强烈的叙事相关性。熊猫头开启了互联网表情包时代，至今风靡了16年，也完美契合如今og 文化共鸣的大叙事。 四、 华流才是最屌的：让世界看到中文经典 #熊猫头 是一次对 meme 精神的致敬，我们想回到那个为热爱而战、因共鸣而聚的时代。 如果 $DOGE 和 $PEPE 能惊艳华尔街，$熊猫头 凭什么无法成为华流 meme 走向世界的浓墨重彩一笔呢？ Meme 从未改变，变的只是我们。 而现在，是时候重新认出它了——就在那个任人描绘的熊猫头里。 让中国的OG meme在bsc支棱起来 @cz_binance @heyibinance @binance @BNBCHAIN"
+            - button "@traderpow exact_symbol 27m $熊猫头" [ref=e6985] [cursor=pointer]:
+              - generic [ref=e1885]:
+                - strong [ref=e1886]: "@traderpow"
+                - generic [ref=e1887]: exact_symbol
+                - time [ref=e1888]: 27m
+              - paragraph [ref=e1889]: $熊猫头
+            - button "@larskooistra_ exact_symbol 28m $BTC $USDT.D $ETH $PEPE Market update video." [ref=e5349] [cursor=pointer]:
+              - generic [ref=e1891]:
+                - strong [ref=e1892]: "@larskooistra_"
+                - generic [ref=e1893]: exact_symbol
+                - time [ref=e1894]: 28m
+              - paragraph [ref=e1895]: $BTC $USDT.D $ETH $PEPE Market update video.
+    - complementary [ref=e180]:
+      - generic [ref=e181]:
+        - generic [ref=e182]:
+          - generic [ref=e183]:
+            - generic [ref=e184]: selected token
+            - heading "$WATERAID" [level=2] [ref=e1896]
+            - paragraph [ref=e186]: solana · Ck8XDD8c...m6pump · resolved_ca
+          - generic [ref=e187]: "70"
+        - generic [ref=e1897]:
+          - generic [ref=e1898]:
+            - generic [ref=e1899]: heat
+            - generic [ref=e1900]: 71 / new burst
+          - generic [ref=e1901]:
+            - generic [ref=e1902]: quality
+            - generic [ref=e1903]: 67 / direct
+          - generic [ref=e1904]:
+            - generic [ref=e1905]: spread
+            - generic [ref=e1906]: 4 authors
+          - generic [ref=e1907]:
+            - generic [ref=e1908]: timing
+            - generic [ref=e1909]: confirms
+        - generic [ref=e1910]:
+          - generic [ref=e1911]: watch
+          - generic [ref=e1912]: public_stream_coverage
+      - navigation "token detail tabs" [ref=e1913]:
+        - button "Timeline" [ref=e1914] [cursor=pointer]
+        - button "Posts" [ref=e1915] [cursor=pointer]
+        - button "Score" [ref=e1916] [cursor=pointer]
+        - button "Harness" [active] [ref=e1917] [cursor=pointer]
+        - button "Accounts" [ref=e1918] [cursor=pointer]
+      - generic [ref=e6986]:
+        - generic [ref=e6987]: harness
+        - generic [ref=e6988]:
+          - generic [ref=e6989]: loading harness state
+          - generic [ref=e6990]:
+            - heading "Linked Seeds · $WATERAID" [level=3] [ref=e6991]
+            - generic [ref=e6992]: 当前 token 暂无 linked seed
+          - generic [ref=e6993]:
+            - heading "Active Snapshots" [level=3] [ref=e6994]
+            - generic [ref=e6995]: 当前 token 暂无 active snapshot
+          - generic [ref=e6996]:
+            - heading "Latest Outcome" [level=3] [ref=e6997]
+            - generic [ref=e6998]: outcome pending · horizon not reached
+          - generic [ref=e6999]: snapshot_not_selected
+          - generic [ref=e7000]:
+            - heading "Credit Rows" [level=3] [ref=e7001]
+            - paragraph [ref=e7002]: Predictive credit, not causal proof.
+            - generic [ref=e7003]: credit not assigned

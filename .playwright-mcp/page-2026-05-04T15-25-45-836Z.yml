@@ -1,0 +1,161 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - heading "intel.cockpit" [level=1] [ref=e8]
+      - paragraph [ref=e9]: /ws · localhost:8765
+    - generic [ref=e10]:
+      - generic [ref=e11]: token
+      - generic [ref=e12]: idle
+      - generic [ref=e13]: status idle
+      - generic [ref=e14]: no msg
+    - generic [ref=e15]:
+      - img [ref=e16]
+      - textbox "搜索 CA / $TOKEN / @handle / 文本" [ref=e19]: $PEPE
+      - button "检索" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: MATCHED -
+      - generic [ref=e23]: flow·1h 0
+      - generic [ref=e24]: seeds 0
+      - generic [ref=e25]: snap 0
+      - generic [ref=e26]: settled -
+    - button "刷新" [ref=e27] [cursor=pointer]:
+      - img [ref=e28]
+  - generic [ref=e33]:
+    - complementary [ref=e34]:
+      - generic [ref=e35]:
+        - heading "views" [level=2] [ref=e36]
+        - button "1 Live 0" [ref=e37] [cursor=pointer]:
+          - generic [ref=e38]: "1"
+          - generic [ref=e39]: Live
+          - emphasis [ref=e40]: "0"
+        - button "2 Tokens 0" [ref=e41] [cursor=pointer]:
+          - generic [ref=e42]: "2"
+          - generic [ref=e43]: Tokens
+          - emphasis [ref=e44]: "0"
+        - button "3 Harness 0" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]: "3"
+          - generic [ref=e47]: Harness
+          - emphasis [ref=e48]: "0"
+        - button "4 Accounts 0" [ref=e49] [cursor=pointer]:
+          - generic [ref=e50]: "4"
+          - generic [ref=e51]: Accounts
+          - emphasis [ref=e52]: "0"
+        - button "5 Jobs/Ops 0" [ref=e53] [cursor=pointer]:
+          - generic [ref=e54]: "5"
+          - generic [ref=e55]: Jobs/Ops
+          - emphasis [ref=e56]: "0"
+      - generic [ref=e57]:
+        - heading "window" [level=2] [ref=e58]
+        - generic [ref=e59]:
+          - button "1 5m" [ref=e60] [cursor=pointer]:
+            - text: "1"
+            - generic [ref=e61]: 5m
+          - button "2 1h" [ref=e62] [cursor=pointer]:
+            - text: "2"
+            - generic [ref=e63]: 1h
+          - button "3 24h" [ref=e64] [cursor=pointer]:
+            - text: "3"
+            - generic [ref=e65]: 24h
+      - generic [ref=e66]:
+        - heading "horizon" [level=2] [ref=e67]
+        - generic [ref=e68]:
+          - button "6h" [ref=e69] [cursor=pointer]
+          - button "24h" [ref=e70] [cursor=pointer]
+      - generic [ref=e71]:
+        - heading "scope" [level=2] [ref=e72]
+        - generic [ref=e73]:
+          - button "watched" [ref=e74] [cursor=pointer]
+          - button "all stream" [ref=e75] [cursor=pointer]
+        - generic [ref=e76]:
+          - img [ref=e77]
+          - textbox [ref=e80]:
+            - /placeholder: toly, ansem
+      - generic [ref=e81]:
+        - heading "decisions" [level=2] [ref=e82]
+        - generic [ref=e83]:
+          - generic [ref=e84]: driver
+          - generic [ref=e85]: "0"
+        - generic [ref=e86]:
+          - generic [ref=e87]: watch
+          - generic [ref=e88]: "0"
+        - generic [ref=e89]:
+          - generic [ref=e90]: discard
+          - generic [ref=e91]: "0"
+      - heading "watchlist" [level=2] [ref=e93]
+      - generic [ref=e95]: kbd · 1-3 windows · / search
+    - generic [ref=e96]:
+      - generic [ref=e97]:
+        - generic [ref=e98]:
+          - button "5m" [ref=e99] [cursor=pointer]
+          - button "1h" [ref=e100] [cursor=pointer]
+          - button "24h" [ref=e101] [cursor=pointer]
+        - generic "token flow scope" [ref=e102]:
+          - button "watched" [ref=e103] [cursor=pointer]
+          - button "all" [ref=e104] [cursor=pointer]
+      - region "Token Radar" [ref=e105]:
+        - generic [ref=e106]:
+          - generic [ref=e107]:
+            - heading "Token Radar" [level=2] [ref=e108]
+            - generic [ref=e109]: TOKEN RADAR 0
+          - generic "token radar sort" [ref=e111]:
+            - button "Opportunity" [ref=e112] [cursor=pointer]
+            - button "Heat" [ref=e113] [cursor=pointer]
+            - button "Quality" [ref=e114] [cursor=pointer]
+            - button "Propagation" [ref=e115] [cursor=pointer]
+            - button "Timing" [ref=e116] [cursor=pointer]
+        - generic [ref=e117]:
+          - generic [ref=e118]:
+            - generic [ref=e119]: Token
+            - generic [ref=e120]: Heat
+            - generic [ref=e121]: Quality
+            - generic [ref=e122]: Propagation
+            - generic [ref=e123]: Market
+            - generic [ref=e124]: Timing
+            - generic [ref=e125]: Decision
+          - generic "loading token radar" [ref=e126]
+      - generic [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - heading "实时信号 Tape" [level=2] [ref=e139]
+            - generic [ref=e140]: ws disconnected
+          - generic [ref=e142]: 读取 replay 中
+        - generic [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]:
+              - img [ref=e146]
+              - heading "Harness" [level=2] [ref=e149]
+            - generic [ref=e150]: extractor off
+          - generic [ref=e151]:
+            - generic "harness health" [ref=e152]:
+              - generic [ref=e153]:
+                - generic [ref=e154]: schema
+                - generic [ref=e155]: "-"
+              - generic [ref=e156]:
+                - generic [ref=e157]: snap
+                - generic [ref=e158]: "0"
+              - generic [ref=e159]:
+                - generic [ref=e160]: pending
+                - generic [ref=e161]: "0"
+              - generic [ref=e162]:
+                - generic [ref=e163]: settled
+                - generic [ref=e164]: "-"
+            - generic "harness panel tabs" [ref=e165]:
+              - button "Events" [ref=e166] [cursor=pointer]
+              - button "Seeds" [ref=e167] [cursor=pointer]
+              - button "Snapshots" [ref=e168] [cursor=pointer]
+            - generic [ref=e169]: loading harness state
+        - generic [ref=e170]:
+          - generic [ref=e171]:
+            - generic [ref=e172]:
+              - img [ref=e173]
+              - heading "检索结果" [level=2] [ref=e176]
+            - generic [ref=e177]: 0 shown
+          - generic [ref=e179]: 输入 CA、$TOKEN、@handle 或关键词检索
+    - complementary [ref=e180]:
+      - generic [ref=e182]:
+        - generic [ref=e183]:
+          - generic [ref=e184]: selected token
+          - heading "Select Token" [level=2] [ref=e185]
+          - paragraph [ref=e186]: no token selected
+        - generic [ref=e187]: "-"
+      - generic [ref=e189]: 从 Token Radar 或实时信号 Tape 选择一个币
