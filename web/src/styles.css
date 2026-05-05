@@ -677,7 +677,8 @@ svg {
 .bottom-deck {
   display: grid;
   grid-template-columns: minmax(380px, 0.95fr) minmax(400px, 1.05fr);
-  min-height: 368px;
+  height: clamp(420px, 48vh, 520px);
+  min-height: 420px;
   border-top: 1px solid var(--line);
 }
 
@@ -883,7 +884,7 @@ svg {
 }
 
 .token-radar-table {
-  height: clamp(360px, calc(100vh - 430px), 620px);
+  height: clamp(320px, calc(100vh - 520px), 560px);
 }
 
 .radar-head,
@@ -1745,29 +1746,42 @@ svg {
 }
 
 .signal-lab-pulse .signal-chain-list {
-  max-height: 326px;
+  min-height: 0;
+  max-height: none;
   margin: 10px;
 }
 
 .signal-chain-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  width: 100%;
+  border-bottom: 1px solid var(--line-soft);
+  color: inherit;
+  background: transparent;
+  text-align: left;
+}
+
+.signal-chain-select {
+  display: grid;
   grid-template-columns: 98px minmax(0, 1fr) 112px;
   align-items: start;
   gap: 14px;
   width: 100%;
+  min-width: 0;
   min-height: 112px;
   border: 0;
-  border-bottom: 1px solid var(--line-soft);
   color: inherit;
   background: transparent;
   padding: 16px;
   text-align: left;
 }
 
-.signal-chain-list.compact .signal-chain-row {
-  grid-template-columns: 70px minmax(0, 1fr) 72px;
-  min-height: 104px;
-  padding: 11px;
+.signal-chain-list.compact .signal-chain-select {
+  grid-template-columns: 70px minmax(0, 1fr) 58px;
+  gap: 10px;
+  min-height: 118px;
+  padding: 12px 8px 12px 11px;
 }
 
 .signal-chain-list.compact .signal-chain-time {
@@ -1785,6 +1799,36 @@ svg {
     linear-gradient(90deg, rgba(242, 165, 31, 0.16), rgba(242, 165, 31, 0.035) 38%, transparent),
     #101414;
   box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.signal-chain-twitter-link {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  align-self: start;
+  margin: 12px 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--faint);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.signal-chain-twitter-link:hover {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.signal-chain-twitter-link svg {
+  width: 13px;
+  height: 13px;
+}
+
+.signal-chain-list.compact .signal-chain-twitter-link {
+  width: 24px;
+  height: 24px;
+  margin: 10px 10px 0 0;
 }
 
 .signal-stage-badge {
@@ -1815,6 +1859,10 @@ svg {
   gap: 7px;
 }
 
+.signal-chain-list.compact .signal-chain-main {
+  gap: 5px;
+}
+
 .signal-chain-main strong {
   overflow: hidden;
   color: var(--ink);
@@ -1823,6 +1871,10 @@ svg {
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.signal-chain-list.compact .signal-chain-main strong {
+  font-size: 12px;
 }
 
 .signal-chain-main em,
@@ -1848,6 +1900,15 @@ svg {
   line-height: 1.45;
 }
 
+.signal-chain-list.compact .signal-chain-main p {
+  font-size: 11px;
+  line-height: 1.38;
+}
+
+.signal-chain-list.compact .signal-chain-chipline {
+  display: none;
+}
+
 .signal-chain-score {
   display: grid;
   justify-items: end;
@@ -1863,8 +1924,16 @@ svg {
   line-height: 1;
 }
 
+.signal-chain-list.compact .signal-chain-score b {
+  font-size: 18px;
+}
+
 .signal-chain-score small {
   max-width: 104px;
+}
+
+.signal-chain-list.compact .signal-chain-score small {
+  max-width: 58px;
 }
 
 .signal-chain-time {
@@ -2489,11 +2558,14 @@ svg {
 }
 
 .live-signal-tape {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 140px;
 }
 
 .tape-list {
-  max-height: 286px;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
 }
 
@@ -2883,10 +2955,22 @@ svg {
 
   .signal-chain-row,
   .signal-chain-list.compact .signal-chain-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0;
+    min-height: 0;
+  }
+
+  .signal-chain-select,
+  .signal-chain-list.compact .signal-chain-select {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
     min-height: 0;
     padding: 12px;
+  }
+
+  .signal-chain-twitter-link,
+  .signal-chain-list.compact .signal-chain-twitter-link {
+    margin: 10px 10px 0 0;
   }
 
   .signal-chain-score {

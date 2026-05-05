@@ -766,6 +766,17 @@ describe("App Token Radar social heat cockpit", () => {
     expect(container.querySelector('[data-mobile-task-panel="lab"]')).toHaveClass("compact-panel");
     expect(container.querySelector('[data-mobile-task-panel="detail"]')).toBeInTheDocument();
   });
+
+  it("links Signal Lab pulse chains to the source tweet without nesting controls", async () => {
+    renderWithQuery(<App />);
+    const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+
+    expect(await within(pulse).findByRole("button", { name: "open signal chain BNB · 6h" })).toBeInTheDocument();
+    expect(within(pulse).getByRole("link", { name: "open source tweet for BNB · 6h" })).toHaveAttribute(
+      "href",
+      "https://x.com/cz_binance/status/42"
+    );
+  });
 });
 
 function mockApi(options: {
@@ -1144,6 +1155,7 @@ function socialEventItem() {
     summary_zh: "CZ 提到 build on BNB，形成 BNB attention seed。",
     event: {
       event_id: "event-cz-bnb",
+      tweet_id: "42",
       author_handle: "cz_binance",
       received_at_ms: 1_777_746_020_000,
       text_clean: "build on BNB",

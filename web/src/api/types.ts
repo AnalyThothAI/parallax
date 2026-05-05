@@ -20,6 +20,7 @@ export type BootstrapData = {
 
 export type EventRecord = {
   event_id: string;
+  tweet_id?: string | null;
   action?: string | null;
   canonical_url?: string | null;
   received_at_ms?: number | null;
