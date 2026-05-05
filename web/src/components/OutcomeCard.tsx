@@ -1,5 +1,6 @@
 import type { HarnessOutcomeItem, HarnessSnapshotItem } from "../api/types";
 import { formatPercentShare } from "../lib/format";
+import { signalLabLabel } from "../lib/signalLab";
 
 type OutcomeCardProps = {
   outcome?: HarnessOutcomeItem | null;
@@ -23,7 +24,7 @@ export function OutcomeCard({ outcome, status }: OutcomeCardProps) {
       <Metric label="abnormal_return" tone={outcome.abnormal_return >= 0 ? "positive" : "negative"} value={formatPercentShare(outcome.abnormal_return)} />
       <Metric label="realized_vol" value={formatPercentShare(outcome.realized_vol)} />
       <Metric label="normalized_outcome" tone={outcome.normalized_outcome >= 0 ? "positive" : "negative"} value={outcome.normalized_outcome.toFixed(2)} />
-      <Metric label="baseline" value={outcome.baseline_version} />
+      <Metric label="baseline" value={signalLabLabel(outcome.baseline_version)} />
     </div>
   );
 }

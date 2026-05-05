@@ -52,7 +52,7 @@ export function LiveSignalTape({
               type="button"
               onClick={() => onSelect(item)}
             >
-              <span className={`tape-kind ${item.kind}`}>{item.kind}</span>
+              <span className={`tape-kind ${item.kind}`}>{tapeKindLabel(item)}</span>
               <span className="tape-main">
                 <strong>{tapeTitle(item)}</strong>
                 <p>{tapeBody(item)}</p>
@@ -102,6 +102,22 @@ function tapeTitle(item: LiveSignalTapeItem): string {
   const text = eventText(event);
   const token = event.cashtags?.[0] ? `$${event.cashtags[0]}` : text.slice(0, 28);
   return `@${eventHandle(event)} -> ${token || "event"}`;
+}
+
+function tapeKindLabel(item: LiveSignalTapeItem): string {
+  if (item.kind === "token") {
+    return "TOKEN";
+  }
+  if (item.kind === "social_event") {
+    return "SIGNAL";
+  }
+  if (item.kind === "attention_seed") {
+    return "SEED";
+  }
+  if (item.kind === "harness_snapshot") {
+    return "SNAP";
+  }
+  return "POST";
 }
 
 function tapeTime(item: LiveSignalTapeItem): string {

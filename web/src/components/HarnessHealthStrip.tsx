@@ -7,7 +7,7 @@ type HarnessHealthStripProps = {
 
 export function HarnessHealthStrip({ health }: HarnessHealthStripProps) {
   return (
-    <div className="harness-health-strip" aria-label="harness health">
+    <div className="harness-health-strip" aria-label="signal lab health">
       <Metric label="schema" tone={schemaTone(health.schema_success_rate)} value={formatHealthPercent(health.schema_success_rate)} />
       <Metric label="snap" value={compactNumber(health.snapshots_24h)} />
       <Metric label="pending" tone={health.pending_outcomes > 0 ? "warn" : "muted"} value={compactNumber(health.pending_outcomes)} />

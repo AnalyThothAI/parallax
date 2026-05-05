@@ -23,7 +23,6 @@ import type {
   RadarSortMode,
   RecentData,
   SearchData,
-  SearchItem,
   SocialEventItem,
   SocialEventsData,
   StatusData,
@@ -34,6 +33,7 @@ import type {
   WindowKey
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
+import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
 import { HarnessDetailDrawer } from "./components/HarnessDetailDrawer";
 import { HarnessPanel } from "./components/HarnessPanel";
 import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
@@ -41,7 +41,6 @@ import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenRadarTable } from "./components/TokenRadarTable";
 import {
   compactNumber,
-  eventHandle,
   eventText,
   formatRelativeTime,
   tokenKey,
@@ -59,7 +58,6 @@ type SelectedSignal =
   | { kind: "attention_seed"; item: AttentionSeedItem }
   | { kind: "harness_snapshot"; item: HarnessSnapshotItem }
   | { kind: "alert"; item: AlertRecord }
-  | { kind: "search"; item: SearchItem }
   | { kind: "query"; query: string }
   | null;
 
@@ -296,7 +294,6 @@ export function App() {
 
   const searchData = searchQuery.data?.data;
   const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
-  const searchItems = currentSearchData?.items ?? [];
   const socialEvents = socialEventsQuery.data?.data.items ?? [];
   const attentionSeeds = attentionSeedsQuery.data?.data.items ?? [];
   const harnessSnapshots = harnessSnapshotsQuery.data?.data.items ?? [];
@@ -313,6 +310,15 @@ export function App() {
   const selectedHarnessDetails = useMemo(
     () => resolveHarnessDetails(selectedSignal, { attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, socialEvents }),
     [attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, selectedSignal, socialEvents]
+  );
+  const selectedEvidenceDetails = useMemo(
+    () =>
+      resolveEvidenceDetails(selectedSignal, {
+        currentSearchData,
+        searchError: searchQuery.error instanceof Error ? searchQuery.error : null,
+        searchFetching: searchQuery.isFetching
+      }),
+    [currentSearchData, searchQuery.error, searchQuery.isFetching, selectedSignal]
   );
   const selectedTokenHarness = useMemo(
     () => filterHarnessForToken(selectedToken, { attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots }),
@@ -345,21 +351,24 @@ export function App() {
     }
   }, [selectedSignal, setDetailTab, tokenItems]);
 
-  const selectToken = (item: TokenFlowItem) => {
+  const selectToken = (item: TokenFlowItem, tapeId: string | null = null) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailTab("timeline");
+    setSelectedTapeEventId(tapeId);
   };
 
   const submitEvidenceSearch = () => {
     const query = search.trim();
     submitSearch();
     setSelectedSignal(query ? { kind: "query", query } : null);
+    setSelectedTapeEventId(null);
   };
 
   const handleTapeSelect = (item: LiveSignalTapeItem) => {
-    setSelectedTapeEventId(tapeItemId(item));
+    const id = tapeItemId(item);
+    setSelectedTapeEventId(id);
     if (item.kind === "token") {
-      selectToken(item.token);
+      selectToken(item.token, id);
       return;
     }
     if (item.kind === "social_event") {
@@ -458,7 +467,7 @@ export function App() {
           <RailSection label="views">
             <RailButton active label="Live" value={liveItems.length} index="1" />
             <RailButton active label="Tokens" value={tokenItems.length} index="2" />
-            <RailButton label="Harness" value={harnessSnapshots.length || socialEvents.length} index="3" />
+            <RailButton label="Signal Lab" value={harnessSnapshots.length || socialEvents.length} index="3" />
             <RailButton label="Accounts" value={accountQualityQuery.data?.data.accounts.length ?? 0} index="4" />
             <RailButton label="Jobs/Ops" value={enrichmentJobsQuery.data?.data.items.length ?? 0} index="5" />
           </RailSection>
@@ -551,7 +560,7 @@ export function App() {
               <header>
                 <div>
                   <ShieldCheck aria-hidden />
-                  <h2>Harness</h2>
+                  <h2>Signal Lab</h2>
                 </div>
                 <span>{harnessHealth.llm_configured ? "social-event-v1" : "extractor off"}</span>
               </header>
@@ -571,21 +580,6 @@ export function App() {
                 onViewChange={setHarnessView}
               />
             </section>
-
-            <CompactPanel title="检索结果" icon={<Search aria-hidden />} action={searchResultAction(searchItems, currentSearchData)}>
-              <div className="compact-list">
-                {searchItems.slice(0, 8).map((item) => (
-                  <SearchRow
-                    key={`${item.match_type}:${item.event.event_id}`}
-                    item={item}
-                    selected={selectedSignal?.kind === "search" && selectedSignal.item.event.event_id === item.event.event_id}
-                    onSelect={(selected) => setSelectedSignal({ kind: "search", item: selected })}
-                  />
-                ))}
-                {searchQuery.isFetching ? <EmptyState text="检索中" /> : null}
-                {!searchQuery.isFetching && searchItems.length === 0 ? <EmptyState text="输入 CA、$TOKEN、@handle 或关键词检索" /> : null}
-              </div>
-            </CompactPanel>
           </div>
         </section>
 
@@ -597,6 +591,8 @@ export function App() {
             snapshot={selectedHarnessDetails.snapshot}
             socialEvent={selectedHarnessDetails.socialEvent}
           />
+        ) : selectedEvidenceDetails ? (
+          <EvidenceDetailDrawer {...selectedEvidenceDetails} />
         ) : (
           <TokenDetailDrawer
             accountQuality={accountQualityQuery.data?.data}
@@ -713,31 +709,6 @@ function StatusPills({
       </span>
     </div>
   );
-}
-
-function SearchRow({
-  item,
-  selected,
-  onSelect
-}: {
-  item: SearchItem;
-  selected: boolean;
-  onSelect: (item: SearchItem) => void;
-}) {
-  return (
-    <button className={`search-row ${selected ? "is-selected" : ""}`} type="button" onClick={() => onSelect(item)}>
-      <div>
-        <strong>@{eventHandle(item.event)}</strong>
-        <span>{item.match_type}</span>
-        <time>{formatRelativeTime(item.event.received_at_ms)}</time>
-      </div>
-      <p>{eventText(item.event)}</p>
-    </button>
-  );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className="empty-state">{text}</div>;
 }
 
 function readinessLabel({
@@ -983,12 +954,6 @@ function tapeItemId(item: LiveSignalTapeItem): string {
   return item.payload.event.event_id;
 }
 
-function searchResultAction(items: SearchItem[], data: SearchData | null): string {
-  const total = data?.total_count ?? items.length;
-  const shown = Math.min(items.length, 8);
-  return total ? `${compactNumber(shown)}/${compactNumber(total)} shown` : "0 shown";
-}
-
 function jobSummary(counts?: Record<string, number>): string {
   if (!counts) {
     return "-";
@@ -1041,6 +1006,39 @@ function resolveHarnessDetails(
   const outcome = snapshot ? data.harnessOutcomes.find((item) => item.snapshot_id === snapshot.snapshot_id) ?? null : null;
   const credits = snapshot ? data.harnessCredits.filter((item) => item.snapshot_id === snapshot.snapshot_id) : [];
   return { socialEvent, seed, snapshot, outcome, credits };
+}
+
+function resolveEvidenceDetails(
+  signal: SelectedSignal,
+  data: {
+    currentSearchData: SearchData | null;
+    searchError: Error | null;
+    searchFetching: boolean;
+  }
+): EvidenceDetailDrawerProps | null {
+  if (!signal) {
+    return null;
+  }
+  if (signal.kind === "event") {
+    return {
+      mode: "event",
+      event: signal.item.event,
+      entities: signal.item.entities,
+      alerts: signal.item.alerts,
+      tokenAttributions: signal.item.token_attributions ?? [],
+      sourceLabel: "live"
+    };
+  }
+  if (signal.kind === "query") {
+    return {
+      mode: "query",
+      query: signal.query,
+      data: data.currentSearchData,
+      isFetching: data.searchFetching,
+      error: data.searchError
+    };
+  }
+  return null;
 }
 
 function seedForSignal(signal: NonNullable<SelectedSignal>, seeds: AttentionSeedItem[]): AttentionSeedItem | null {

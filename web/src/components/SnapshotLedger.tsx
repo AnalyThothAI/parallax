@@ -1,5 +1,6 @@
 import type { HarnessSnapshotItem } from "../api/types";
 import { formatRelativeTime, formatScore } from "../lib/format";
+import { signalLabLabel } from "../lib/signalLab";
 
 type SnapshotLedgerProps = {
   snapshot: HarnessSnapshotItem | null;
@@ -12,7 +13,7 @@ export function SnapshotLedger({ snapshot }: SnapshotLedgerProps) {
   return (
     <div className="snapshot-ledger ledger-box">
       <h3>Snapshot Ledger</h3>
-      <LedgerRow label="snapshot_id" value={snapshot.snapshot_id} />
+      <LedgerRow label="snapshot_id" value={signalLabLabel(snapshot.snapshot_id)} />
       <LedgerRow label="asset" value={snapshot.asset} />
       <LedgerRow label="horizon" value={snapshot.horizon} />
       <LedgerRow label="combined_score" value={formatScore(snapshot.combined_score * 100)} />
@@ -21,9 +22,9 @@ export function SnapshotLedger({ snapshot }: SnapshotLedgerProps) {
       <LedgerRow label="decision_time" value={formatRelativeTime(snapshot.decision_time_ms)} />
       <LedgerRow label="outcome" value={snapshot.outcome_status} />
       <LedgerRow label="credit" value={snapshot.credit_status} />
-      <LedgerRow label="config" value={snapshot.versions.config_version} />
-      <LedgerRow label="prompt" value={snapshot.versions.prompt_version} />
-      <LedgerRow label="scoring" value={snapshot.versions.scoring_version} />
+      <LedgerRow label="config" value={signalLabLabel(snapshot.versions.config_version)} />
+      <LedgerRow label="prompt" value={signalLabLabel(snapshot.versions.prompt_version)} />
+      <LedgerRow label="scoring" value={signalLabLabel(snapshot.versions.scoring_version)} />
     </div>
   );
 }

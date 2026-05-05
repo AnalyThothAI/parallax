@@ -42,7 +42,7 @@ export function HarnessPanel({
     <div className="harness-panel">
       <HarnessHealthStrip health={health} />
       <div className="harness-toolbar">
-        <div className="harness-tabs" aria-label="harness panel tabs">
+        <div className="harness-tabs" aria-label="signal lab panel tabs">
           <button className={view === "events" ? "active" : ""} type="button" onClick={() => onViewChange("events")}>
             Events
           </button>
@@ -62,12 +62,12 @@ export function HarnessPanel({
           ))}
         </div>
       </div>
-      {isLoading ? <div className="empty-state">loading harness state</div> : null}
+      {isLoading ? <div className="empty-state">loading signal lab state</div> : null}
       {!isLoading && view === "events" ? <SocialEventFeed items={socialEvents} selectedId={selectedId} onSelect={onSelectEvent} /> : null}
       {!isLoading && view === "seeds" ? <AttentionSeedList items={seeds} selectedSeedId={selectedId} onSelect={onSelectSeed} /> : null}
       {!isLoading && view === "snapshots" ? (
         <div className="harness-feed">
-          {snapshots.length === 0 ? <div className="empty-state">当前窗口暂无 harness snapshot</div> : null}
+          {snapshots.length === 0 ? <div className="empty-state">当前窗口暂无 signal snapshot</div> : null}
           {snapshots.map((snapshot) => (
             <button
               className={`harness-row ${selectedId === snapshot.snapshot_id ? "selected" : ""}`}

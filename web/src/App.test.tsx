@@ -141,6 +141,52 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => expect(screen.getAllByText("$UPEG").length).toBeGreaterThan(0));
   });
 
+  it("keeps search results in the evidence drawer instead of a bottom panel", async () => {
+    mockApi({ searchResult: true });
+    const { container } = renderWithQuery(<App />);
+
+    const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
+    fireEvent.change(input, { target: { value: "PEPE ignition" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
+    expect(screen.queryByText("检索结果")).not.toBeInTheDocument();
+    const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
+    await waitFor(() => expect(within(drawer).getByText("PEPE ignition from search")).toBeInTheDocument());
+    expect(within(drawer).getByText("@searcher")).toBeInTheDocument();
+    expect(screen.queryByText("Select Token")).not.toBeInTheDocument();
+  });
+
+  it("opens an evidence drawer from a non-token live tape event", async () => {
+    socketMock.events = [plainLiveEvent()];
+    renderWithQuery(<App />);
+
+    const liveEventTitle = await screen.findByText("@anon -> macro headline without token");
+    fireEvent.click(liveEventTitle.closest("button") as HTMLButtonElement);
+
+    await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
+    expect(screen.getAllByText("macro headline without token").length).toBeGreaterThan(0);
+  });
+
+  it("exposes a GMGN link for resolved radar tokens", async () => {
+    renderWithQuery(<App />);
+
+    const link = await screen.findByRole("link", { name: "Open $UPEG on GMGN" });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://gmgn.ai/eth/token/0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("uses Signal Lab as the trader-facing product label", async () => {
+    renderWithQuery(<App />);
+
+    expect(await screen.findAllByText("Signal Lab")).not.toHaveLength(0);
+    expect(screen.queryByText("Harness")).not.toBeInTheDocument();
+    expect(screen.queryByText("harness_snapshot")).not.toBeInTheDocument();
+  });
+
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
     const { container } = renderWithQuery(<App />);
 
@@ -184,22 +230,22 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
     await waitFor(() => expect(screen.getAllByText("样本不足").length).toBeGreaterThan(0));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    fireEvent.click(within(drawer).getByRole("button", { name: "Harness" }));
+    fireEvent.click(within(drawer).getByRole("button", { name: "Lab" }));
     await waitFor(() => expect(within(drawer).getByText("Linked Seeds · $UPEG")).toBeInTheDocument());
     expect(within(drawer).getByText("Active Snapshots")).toBeInTheDocument();
     expect(within(drawer).getByText("Latest Outcome")).toBeInTheDocument();
     expect(within(drawer).getByText("Credit Rows")).toBeInTheDocument();
   });
 
-  it("removes narrative product surface and exposes harness entry points", async () => {
+  it("removes narrative product surface and exposes signal lab entry points", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("Token");
     expect(screen.queryByText("Narratives")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Harness").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Signal Lab").length).toBeGreaterThan(0);
   });
 
-  it("keeps settlement horizon inside harness and out of the global token radar rail", async () => {
+  it("keeps settlement horizon inside Signal Lab and out of the global token radar rail", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("Token");
@@ -214,7 +260,7 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
-  it("changes only harness settlement queries when the harness horizon changes", async () => {
+  it("changes only signal lab settlement queries when the settlement horizon changes", async () => {
     renderWithQuery(<App />);
 
     const settlementControl = await screen.findByLabelText("settlement horizon");
@@ -233,7 +279,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(tokenFlowCalls.every(([, options]) => !Object.hasOwn(options?.params ?? {}, "horizon"))).toBe(true);
   });
 
-  it("renders social event harness rows and opens the right-side trace", async () => {
+  it("renders social event signal rows and opens the right-side trace", async () => {
     renderWithQuery(<App />);
 
     const socialEventRows = await screen.findAllByText("@cz_binance · meme_phrase_seed");
@@ -243,12 +289,14 @@ describe("App Token Radar social heat cockpit", () => {
 
     fireEvent.click(socialEventRows[0]);
 
-    await waitFor(() => expect(screen.getByText("selected harness object")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("selected signal object")).toBeInTheDocument());
     expect(screen.getAllByText("Extracted").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Seed").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Snapshot").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Outcome").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Predictive credit, not causal proof.").length).toBeGreaterThan(0);
+    expect(screen.getByText("signal-lab-score-v1")).toBeInTheDocument();
+    expect(screen.queryByText("harness-score-v1")).not.toBeInTheDocument();
   });
 
   it("dedupes replay/live tape rows and token tape click does not change sort mode", async () => {
@@ -332,6 +380,7 @@ function mockApi(options: {
   duplicateSymbol?: boolean;
   insufficientTiming?: boolean;
   windowSwapToken?: boolean;
+  searchResult?: boolean;
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -396,6 +445,31 @@ function mockApi(options: {
     }
     if (path === "/api/enrichment-jobs") return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     if (path === "/api/search") {
+      if (options.searchResult) {
+        return ok({
+          query: { kind: "text", text: String(requestOptions?.params?.q ?? ""), scope: "all" },
+          total_count: 1,
+          returned_count: 1,
+          has_more: false,
+          items: [
+            {
+              event: {
+                event_id: "event-pepe-search",
+                canonical_url: "https://x.com/searcher/status/42",
+                author_handle: "searcher",
+                received_at_ms: 1_777_746_080_000,
+                text_clean: "PEPE ignition from search",
+                cashtags: ["PEPE"],
+                hashtags: ["alpha"],
+                mentions: ["watcher"],
+                is_watched: 0
+              },
+              match_type: "fts",
+              score: -2.1
+            }
+          ]
+        });
+      }
       return ok({
         query: { kind: "symbol", text: String(requestOptions?.params?.q ?? ""), scope: "all", symbol: "PEPE" },
         total_count: 0,
@@ -406,6 +480,27 @@ function mockApi(options: {
     }
     throw new Error(`unexpected path ${path}`);
   });
+}
+
+function plainLiveEvent(): LivePayload {
+  return {
+    type: "event",
+    event: {
+      event_id: "event-plain-live",
+      canonical_url: "https://x.com/anon/status/plain",
+      author_handle: "anon",
+      received_at_ms: 1_777_746_090_000,
+      text_clean: "macro headline without token",
+      cashtags: [],
+      hashtags: ["macro"],
+      mentions: [],
+      is_watched: 0
+    },
+    entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 }],
+    token_attributions: [],
+    alerts: [],
+    harness: null
+  };
 }
 
 function tokenFlowItem(options: { tokenId?: string | null; address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {

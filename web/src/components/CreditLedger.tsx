@@ -1,5 +1,6 @@
 import type { HarnessCreditItem } from "../api/types";
 import { formatPercentShare, formatScore } from "../lib/format";
+import { signalLabLabel } from "../lib/signalLab";
 
 type CreditLedgerProps = {
   credits: HarnessCreditItem[];
@@ -14,7 +15,7 @@ export function CreditLedger({ credits }: CreditLedgerProps) {
       {credits.map((credit) => (
         <article className="credit-row" key={credit.credit_id}>
           <strong>
-            {credit.event_type} · {credit.source}
+            {credit.event_type} · {signalLabLabel(credit.source)}
           </strong>
           <span>{credit.horizon}</span>
           <b>{formatScore(credit.event_score * 100)}</b>

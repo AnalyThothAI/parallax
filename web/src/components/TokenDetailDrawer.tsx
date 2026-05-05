@@ -10,6 +10,7 @@ import type {
   TokenPostsData,
   TokenSocialTimelineData
 } from "../api/types";
+import { gmgnTokenUrl } from "../lib/gmgn";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { AccountLane } from "./AccountLane";
 import { HarnessTokenTab } from "./HarnessTokenTab";
@@ -22,7 +23,7 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
   { tab: "timeline", label: "Timeline" },
   { tab: "posts", label: "Posts" },
   { tab: "score", label: "Score" },
-  { tab: "harness", label: "Harness" },
+  { tab: "harness", label: "Lab" },
   { tab: "accounts", label: "Accounts" }
 ];
 
@@ -103,6 +104,7 @@ export function TokenDetailDrawer({
 
   const risks = [...(token.opportunity.hard_risks ?? []), ...token.opportunity.risks];
   const drawerSummary = tokenDrawerSummary(token);
+  const gmgnUrl = gmgnTokenUrl(token.identity.chain, token.identity.address);
   return (
     <aside className="detail-drawer drawer">
       <header className="drawer-head">
@@ -113,6 +115,11 @@ export function TokenDetailDrawer({
             <p>
               {token.identity.chain ?? "unknown"} · {shortAddress(token.identity.address ?? token.identity.identity_key)} · {token.identity.identity_status}
             </p>
+            {gmgnUrl ? (
+              <a aria-label="Open selected token on GMGN" className="gmgn-link drawer-gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
+                GMGN
+              </a>
+            ) : null}
           </div>
           <div className="opportunity-score">{formatScore(token.opportunity.score)}</div>
         </div>
@@ -155,29 +162,29 @@ export function TokenDetailDrawer({
       {activeTab === "timeline" ? (
         <section className="drawer-section">
           <div className="section-title">social timeline · {token.timeline_query.window} bucket={timelineBucket}</div>
-            <TokenTimeline
-              bucket={timelineBucket}
-              isLoading={isTimelineLoading}
-              timeline={timeline}
-              onBucketChange={onTimelineBucketChange}
-            />
+          <TokenTimeline
+            bucket={timelineBucket}
+            isLoading={isTimelineLoading}
+            timeline={timeline}
+            onBucketChange={onTimelineBucketChange}
+          />
         </section>
       ) : null}
       {activeTab === "posts" ? (
         <section className="drawer-section">
           <div className="section-title">top posts</div>
-            <TokenPostsTab
-              hideDuplicateClusters={hideDuplicateClusters}
-              isFetchingNextPage={isPostsFetchingNextPage}
-              isLoading={isPostsLoading}
-              posts={posts}
-              postSortMode={postSortMode}
-              watchedPostsOnly={watchedPostsOnly}
-              onHideDuplicateClustersChange={onHideDuplicateClustersChange}
-              onLoadMorePosts={onLoadMorePosts}
-              onPostSortModeChange={onPostSortModeChange}
-              onWatchedPostsOnlyChange={onWatchedPostsOnlyChange}
-            />
+          <TokenPostsTab
+            hideDuplicateClusters={hideDuplicateClusters}
+            isFetchingNextPage={isPostsFetchingNextPage}
+            isLoading={isPostsLoading}
+            posts={posts}
+            postSortMode={postSortMode}
+            watchedPostsOnly={watchedPostsOnly}
+            onHideDuplicateClustersChange={onHideDuplicateClustersChange}
+            onLoadMorePosts={onLoadMorePosts}
+            onPostSortModeChange={onPostSortModeChange}
+            onWatchedPostsOnlyChange={onWatchedPostsOnlyChange}
+          />
         </section>
       ) : null}
       {activeTab === "score" ? (
@@ -188,26 +195,26 @@ export function TokenDetailDrawer({
       ) : null}
       {activeTab === "harness" ? (
         <section className="drawer-section">
-          <div className="section-title">harness</div>
-            <HarnessTokenTab
-              credits={harnessCredits}
-              isLoading={isHarnessLoading}
-              outcomes={harnessOutcomes}
-              seeds={harnessSeeds}
-              snapshots={harnessSnapshots}
-              token={token}
-              onSelectSnapshot={onSelectSnapshot}
-            />
+          <div className="section-title">signal lab</div>
+          <HarnessTokenTab
+            credits={harnessCredits}
+            isLoading={isHarnessLoading}
+            outcomes={harnessOutcomes}
+            seeds={harnessSeeds}
+            snapshots={harnessSnapshots}
+            token={token}
+            onSelectSnapshot={onSelectSnapshot}
+          />
         </section>
       ) : null}
       {activeTab === "accounts" ? (
         <section className="drawer-section">
           <div className="section-title">accounts</div>
-            <AccountLane
-              accountQuality={accountQuality}
-              isLoading={isAccountQualityLoading}
-              timeline={timeline}
-            />
+          <AccountLane
+            accountQuality={accountQuality}
+            isLoading={isAccountQualityLoading}
+            timeline={timeline}
+          />
         </section>
       ) : null}
     </aside>

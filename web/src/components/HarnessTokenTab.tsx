@@ -19,7 +19,7 @@ export function HarnessTokenTab({ token, seeds, snapshots, outcomes, credits, is
   const latestOutcome = latestSnapshot ? outcomes.find((item) => item.snapshot_id === latestSnapshot.snapshot_id) : null;
   return (
     <div className="harness-token-tab">
-      {isLoading ? <div className="empty-state">loading harness state</div> : null}
+      {isLoading ? <div className="empty-state">loading signal lab state</div> : null}
       <section className="ledger-box">
         <h3>Linked Seeds · {tokenLabel(token)}</h3>
         {seeds.length === 0 ? <div className="empty-state">当前 token 暂无 linked seed</div> : null}

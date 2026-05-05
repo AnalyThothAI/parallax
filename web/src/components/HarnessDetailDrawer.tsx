@@ -14,21 +14,21 @@ type HarnessDetailDrawerProps = {
 };
 
 export function HarnessDetailDrawer({ socialEvent, seed, snapshot, outcome, credits }: HarnessDetailDrawerProps) {
-  const title = snapshot ? `${snapshot.asset} · ${snapshot.horizon}` : socialEvent ? `@${socialEvent.author_handle ?? "watched"} · ${socialEvent.event_type}` : seed ? `@${seed.author_handle ?? "watched"} · ${seed.event_type}` : "Harness";
+  const title = snapshot ? `${snapshot.asset} · ${snapshot.horizon}` : socialEvent ? `@${socialEvent.author_handle ?? "watched"} · ${socialEvent.event_type}` : seed ? `@${seed.author_handle ?? "watched"} · ${seed.event_type}` : "Signal Lab";
   const score = snapshot?.combined_score ?? socialEvent?.confidence ?? null;
   return (
     <aside className="detail-drawer drawer">
       <header className="drawer-head">
         <div className="drawer-title">
           <div>
-            <div className="eyebrow">selected harness object</div>
+            <div className="eyebrow">selected signal object</div>
             <h2>{title}</h2>
             <p>social-event-v1 · shadow only</p>
           </div>
           <div className="opportunity-score">{score === null ? "-" : formatPercentShare(score)}</div>
         </div>
       </header>
-      <nav className="tabs" aria-label="harness detail tabs">
+      <nav className="tabs" aria-label="signal detail tabs">
         <button className="active" type="button">
           Trace
         </button>

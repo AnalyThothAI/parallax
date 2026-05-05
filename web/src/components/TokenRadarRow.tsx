@@ -10,6 +10,7 @@ import {
   shortAddress,
   tokenLabel
 } from "../lib/format";
+import { gmgnTokenUrl } from "../lib/gmgn";
 import { DecisionTag } from "./DecisionTag";
 
 type TokenRadarRowProps = {
@@ -21,54 +22,67 @@ type TokenRadarRowProps = {
 export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) {
   const delta = formatSignedPercent(item.market.price_change_since_social_pct);
   const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
+  const gmgnUrl = gmgnTokenUrl(item.identity.chain, item.identity.address);
   return (
-    <button
-      aria-label={`select token ${tokenLabel(item)}`}
-      className={`radar-row ${selected ? "selected" : ""}`}
-      type="button"
-      onClick={() => onSelect(item)}
-    >
-      <span className="token-cell">
-        <strong className="token-symbol">
-          <span className="symbol-line">
-            <span>{tokenLabel(item)}</span>
-          </span>
-          <small>
-            {item.identity.chain ?? "unknown"} · {shortAddress(item.identity.address ?? item.identity.identity_key)}
-          </small>
-        </strong>
-      </span>
+    <div className={`radar-row ${selected ? "selected" : ""}`}>
+      <button
+        aria-label={`select token ${tokenLabel(item)}`}
+        className={`radar-row-select ${selected ? "selected" : ""}`}
+        type="button"
+        onClick={() => onSelect(item)}
+      >
+        <span className="token-cell">
+          <strong className="token-symbol">
+            <span className="symbol-line">
+              <span>{tokenLabel(item)}</span>
+            </span>
+            <small>
+              {item.identity.chain ?? "unknown"} · {shortAddress(item.identity.address ?? item.identity.identity_key)}
+            </small>
+          </strong>
+        </span>
 
-      <span className="metric">
-        <b className={scoreClass(item.social_heat.score)}>{heatTitle(item)}</b>
-        <small>{heatMeta(item)}</small>
-        <Barline score={item.social_heat.score} />
-      </span>
+        <span className="metric">
+          <b className={scoreClass(item.social_heat.score)}>{heatTitle(item)}</b>
+          <small>{heatMeta(item)}</small>
+          <Barline score={item.social_heat.score} />
+        </span>
 
-      <span className="metric">
-        <b className={scoreClass(item.discussion_quality.score)}>{qualityTitle(item)}</b>
-        <small>{qualityMeta(item)}</small>
-      </span>
+        <span className="metric">
+          <b className={scoreClass(item.discussion_quality.score)}>{qualityTitle(item)}</b>
+          <small>{qualityMeta(item)}</small>
+        </span>
 
-      <span className="phase">
-        <b>{propagationTitle(item)}</b>
-        <small>{propagationMeta(item)}</small>
-      </span>
+        <span className="phase">
+          <b>{propagationTitle(item)}</b>
+          <small>{propagationMeta(item)}</small>
+        </span>
 
-      <span className="metric market-cell">
-        <b>{formatUsdCompact(item.market.market_cap)}</b>
-        <small className={`direction ${direction}`}>{delta} {item.market.market_status}</small>
-      </span>
+        <span className="metric market-cell">
+          <b>{formatUsdCompact(item.market.market_cap)}</b>
+          <small className={`direction ${direction}`}>{delta} {item.market.market_status}</small>
+        </span>
 
-      <span className="phase">
-        <b>{timingTitle(item)}</b>
-        <small>{timingMeta(item)}</small>
-      </span>
+        <span className="phase">
+          <b>{timingTitle(item)}</b>
+          <small>{timingMeta(item)}</small>
+        </span>
 
-      <span className="decision-cell">
-        <DecisionTag decision={item.opportunity.decision} />
+        <span className="decision-cell">
+          <DecisionTag decision={item.opportunity.decision} />
+        </span>
+      </button>
+
+      <span className="gmgn-cell">
+        {gmgnUrl ? (
+          <a aria-label={`Open ${tokenLabel(item)} on GMGN`} className="gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
+            GMGN
+          </a>
+        ) : (
+          <span className="muted">-</span>
+        )}
       </span>
-    </button>
+    </div>
   );
 }
 
