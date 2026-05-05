@@ -4,6 +4,7 @@ import sqlite3
 import time
 
 SCHEMA_VERSION = 12
+NON_DESTRUCTIVE_SCHEMA_VERSIONS = {8, 9, 11}
 
 APP_TABLES = (
     "schema_migrations",
@@ -34,6 +35,10 @@ APP_TABLES = (
     "account_profiles",
     "account_token_call_stats",
     "account_quality_snapshots",
+    "token_signal_snapshots",
+    "token_signal_outcomes",
+    "token_score_evaluations",
+    "llm_enrichment_labels",
 )
 
 LEGACY_TABLES = (
@@ -651,6 +656,104 @@ CREATE TABLE IF NOT EXISTS account_quality_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_account_quality_snapshots_handle_window
   ON account_quality_snapshots(handle, window, updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS token_signal_snapshots (
+  snapshot_id TEXT PRIMARY KEY,
+  token_id TEXT NOT NULL,
+  identity_key TEXT NOT NULL,
+  chain TEXT NOT NULL,
+  address TEXT NOT NULL,
+  symbol TEXT NOT NULL,
+  window TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  decision_time_ms INTEGER NOT NULL,
+  rank INTEGER NOT NULL,
+  decision TEXT NOT NULL,
+  opportunity_score INTEGER NOT NULL,
+  score_versions_json TEXT NOT NULL,
+  component_payload_json TEXT NOT NULL,
+  identity_json TEXT NOT NULL,
+  market_json TEXT NOT NULL,
+  flow_json TEXT NOT NULL,
+  timeline_json TEXT NOT NULL,
+  source_event_ids_json TEXT NOT NULL,
+  market_snapshot_ids_json TEXT NOT NULL,
+  data_health_json TEXT NOT NULL,
+  risks_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE(token_id, window, scope, decision_time_ms)
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_signal_snapshots_decision
+  ON token_signal_snapshots(decision_time_ms, window, scope);
+CREATE INDEX IF NOT EXISTS idx_token_signal_snapshots_token_decision
+  ON token_signal_snapshots(token_id, decision_time_ms);
+
+CREATE TABLE IF NOT EXISTS token_signal_outcomes (
+  outcome_id TEXT PRIMARY KEY,
+  snapshot_id TEXT NOT NULL REFERENCES token_signal_snapshots(snapshot_id) ON DELETE CASCADE,
+  horizon TEXT NOT NULL,
+  status TEXT NOT NULL,
+  entry_snapshot_id TEXT,
+  exit_snapshot_id TEXT,
+  benchmark_snapshot_ids_json TEXT NOT NULL,
+  entry_price REAL,
+  exit_price REAL,
+  benchmark_return REAL,
+  actual_return REAL,
+  abnormal_return REAL,
+  realized_vol REAL,
+  normalized_outcome REAL,
+  market_coverage_status TEXT NOT NULL,
+  settled_at_ms INTEGER NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE(snapshot_id, horizon)
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_signal_outcomes_horizon_status
+  ON token_signal_outcomes(horizon, status, settled_at_ms);
+
+CREATE TABLE IF NOT EXISTS token_score_evaluations (
+  evaluation_id TEXT PRIMARY KEY,
+  horizon TEXT NOT NULL,
+  window TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  score_version TEXT NOT NULL,
+  bucket_label TEXT NOT NULL,
+  bucket_min INTEGER NOT NULL,
+  bucket_max INTEGER NOT NULL,
+  snapshot_count INTEGER NOT NULL,
+  settled_count INTEGER NOT NULL,
+  settlement_coverage REAL NOT NULL,
+  avg_actual_return REAL NOT NULL,
+  avg_abnormal_return REAL NOT NULL,
+  avg_normalized_outcome REAL NOT NULL,
+  directional_hit_rate REAL NOT NULL,
+  wilson_low REAL NOT NULL,
+  wilson_high REAL NOT NULL,
+  generated_at_ms INTEGER NOT NULL,
+  UNIQUE(horizon, window, scope, score_version, bucket_label)
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_score_evaluations_lookup
+  ON token_score_evaluations(horizon, window, scope, score_version);
+
+CREATE TABLE IF NOT EXISTS llm_enrichment_labels (
+  label_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
+  run_id TEXT,
+  schema_version TEXT NOT NULL,
+  model_version TEXT NOT NULL,
+  label_type TEXT NOT NULL,
+  label_json TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  evidence_event_ids_json TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE(event_id, schema_version, label_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_enrichment_labels_event
+  ON llm_enrichment_labels(event_id, schema_version);
 """
 
 def migrate(conn: sqlite3.Connection) -> None:
@@ -671,7 +774,7 @@ def migrate(conn: sqlite3.Connection) -> None:
           name = excluded.name,
           applied_at_ms = excluded.applied_at_ms
         """,
-        (SCHEMA_VERSION, "production_notifications", _now_ms()),
+        (SCHEMA_VERSION, "production_notifications_social_intelligence", _now_ms()),
     )
     conn.commit()
 
@@ -690,9 +793,7 @@ def _should_reset_schema(conn: sqlite3.Connection, *, current_version: int) -> b
         return any(name in existing for name in (*APP_TABLES, *LEGACY_TABLES) if name != "schema_migrations")
     if any(name in existing for name in LEGACY_TABLES):
         return True
-    if current_version in {8, 9}:
-        return _required_columns_missing(conn)
-    if current_version == 11:
+    if current_version in NON_DESTRUCTIVE_SCHEMA_VERSIONS:
         return _required_columns_missing(conn)
     if current_version != SCHEMA_VERSION:
         return True

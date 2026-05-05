@@ -9,7 +9,8 @@ def test_social_heat_burst_scores_abnormal_acceleration():
             "previous_mentions": 1,
             "mention_delta": 8,
             "mention_delta_pct": 8.0,
-            "z_score": 3.4,
+            "z_ewma": 2.8,
+            "robust_z": 3.4,
             "new_burst_score": None,
             "stream_share": 0.18,
             "watched_share": 0.25,
@@ -19,9 +20,11 @@ def test_social_heat_burst_scores_abnormal_acceleration():
     )
 
     assert score["status"] == "burst"
+    assert score["score_version"] == "social_heat_v2"
     assert score["score"] >= 75
-    assert "z_score_above_3" in score["reasons"]
+    assert "robust_z_above_3" in score["reasons"]
     assert "positive_mention_delta" in score["reasons"]
+    assert score["data_health"]["baseline_ready"] is True
     assert score["contributions"]
 
 
@@ -32,7 +35,8 @@ def test_social_heat_marks_single_mention_as_thin():
             "weighted_mentions": 1.0,
             "previous_mentions": 0,
             "mention_delta": 1,
-            "z_score": None,
+            "z_ewma": None,
+            "robust_z": None,
             "new_burst_score": None,
             "stream_share": 0.01,
             "watched_share": 0.0,
@@ -45,3 +49,4 @@ def test_social_heat_marks_single_mention_as_thin():
     assert "thin_mentions" in score["risks"]
     assert score["score"] <= 45
     assert any(cap["risk"] == "thin_mentions" for cap in score["risk_caps"])
+    assert any(cap["risk"] == "thin_public_only" for cap in score["risk_caps"])

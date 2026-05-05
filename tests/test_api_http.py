@@ -9,6 +9,7 @@ from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.settings import Settings
+from tests.test_token_signal_repository import snapshot_payload
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
@@ -110,6 +111,64 @@ def test_api_rejects_protected_reads_without_token(tmp_path):
 
     assert response.status_code == 401
     assert response.json() == {"ok": False, "error": "unauthorized"}
+
+
+def test_api_exposes_token_signal_snapshot_outcome_and_evaluation_reads(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        runtime.evidence.insert_event(make_event("event-1"), is_watched=True)
+        runtime.token_signals.create_snapshot(**snapshot_payload(snapshot_id="snapshot-api"))
+        runtime.token_signals.record_outcome(
+            outcome_id="outcome-api",
+            snapshot_id="snapshot-api",
+            horizon="6h",
+            status="settled",
+            entry_snapshot_id="entry",
+            exit_snapshot_id="exit",
+            benchmark_snapshot_ids=[],
+            entry_price=1.0,
+            exit_price=1.03,
+            benchmark_return=0.0,
+            actual_return=0.03,
+            abnormal_return=0.03,
+            realized_vol=0.06,
+            normalized_outcome=0.5,
+            market_coverage_status="ready",
+            settled_at_ms=1_700_021_600_000,
+        )
+        runtime.token_signals.upsert_evaluation(
+            evaluation_id="evaluation-api",
+            horizon="6h",
+            window="5m",
+            scope="all",
+            score_version="social_opportunity_v2",
+            bucket_label="55-69",
+            bucket_min=55,
+            bucket_max=69,
+            snapshot_count=1,
+            settled_count=1,
+            settlement_coverage=1.0,
+            avg_actual_return=0.03,
+            avg_abnormal_return=0.03,
+            avg_normalized_outcome=0.5,
+            directional_hit_rate=1.0,
+            wilson_low=0.2,
+            wilson_high=1.0,
+            generated_at_ms=1_700_021_700_000,
+        )
+
+        snapshots = client.get("/api/token-signal-snapshots", headers={"Authorization": "Bearer secret"})
+        outcomes = client.get("/api/token-signal-outcomes", headers={"Authorization": "Bearer secret"})
+        evaluations = client.get("/api/token-signal-evaluations", headers={"Authorization": "Bearer secret"})
+
+    assert snapshots.status_code == 200
+    assert snapshots.json()["data"]["items"][0]["score_versions"]["opportunity"] == "social_opportunity_v2"
+    assert outcomes.status_code == 200
+    assert outcomes.json()["data"]["items"][0]["normalized_outcome"] == 0.5
+    assert evaluations.status_code == 200
+    assert evaluations.json()["data"]["items"][0]["bucket_label"] == "55-69"
 
 
 def test_api_status_exposes_market_observation_backlog(tmp_path):

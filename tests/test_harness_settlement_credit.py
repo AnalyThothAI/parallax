@@ -15,6 +15,7 @@ def test_settlement_uses_abnormal_return_and_clipped_normalized_outcome():
     assert expected == 0.025
     assert abnormal_return(actual, expected) == 0.095
     assert normalized_outcome(0.095, realized_vol=0.02) == 1.0
+    assert normalized_outcome(0.015, realized_vol=0.01) == 0.5
 
 
 def test_credit_assignment_splits_responsibility_by_abs_score():

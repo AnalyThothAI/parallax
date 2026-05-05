@@ -17,8 +17,10 @@ GMGN public WS
   -> SQLite WAL evidence
   -> deterministic entity extraction
   -> token signal windows
+  -> deterministic social heat / quality / propagation / tradeability / timing scores
+  -> immutable token signal snapshots
   -> watched-account social-event extraction jobs
-  -> strict social-event-v1 LLM extraction
+  -> strict social-event-v2 LLM extraction
   -> attention seeds
   -> event clusters
   -> immutable harness snapshots
@@ -27,10 +29,10 @@ GMGN public WS
   -> credit attribution
   -> report-only weights
   -> /ws live push + replay
-  -> CLI search / token-flow / account-alerts / social-events / harness-snapshots / harness-credits
+  -> CLI search / token-flow / token-signal-snapshots / social-events / harness-snapshots / harness-credits
 ```
 
-Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 LLM social-event-v1 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence，不会被全量送进 LLM。
+Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 LLM social-event-v2 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence 和 token signal scoring，不会被全量送进 LLM。
 
 LLM 不做交易决策，只抽取结构化 social event。Harness 负责落库、快照、shadow decision、结算、信用分配和 report-only 权重。
 
@@ -192,6 +194,9 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-outcom
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-credits?horizon=6h&limit=80"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-score-buckets?horizon=6h"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/harness-health"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-signal-snapshots?window=5m&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-signal-outcomes?horizon=6h&limit=50"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-signal-evaluations?horizon=6h"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/enrichment-jobs?limit=50"
 ```
 
@@ -216,12 +221,17 @@ uv run gmgn-twitter-intel harness-credits --horizon 6h --limit 80
 uv run gmgn-twitter-intel harness-weights --horizon 6h --limit 100
 uv run gmgn-twitter-intel harness-score-buckets --horizon 6h
 uv run gmgn-twitter-intel harness-health
+uv run gmgn-twitter-intel token-signal-snapshots --window 5m --limit 50
+uv run gmgn-twitter-intel token-signal-outcomes --horizon 6h --limit 50
+uv run gmgn-twitter-intel token-signal-evaluations --horizon 6h
 uv run gmgn-twitter-intel enrichment-jobs --limit 50
 uv run gmgn-twitter-intel ops rebuild-attributions --symbol PEPE
 uv run gmgn-twitter-intel ops backfill-harness-jobs --limit 1000
 uv run gmgn-twitter-intel ops settle-harness --horizon 6h
 uv run gmgn-twitter-intel ops attribute-harness-credits --horizon 6h
 uv run gmgn-twitter-intel ops update-harness-weights
+uv run gmgn-twitter-intel ops freeze-token-signals --window 5m --limit 200
+uv run gmgn-twitter-intel ops settle-token-signals --horizon 6h --limit 500
 ```
 
 `search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。
@@ -231,10 +241,11 @@ uv run gmgn-twitter-intel ops update-harness-weights
 - 所有可解析公共事件都会入库。
 - `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
-- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、market snapshot 和可解释评分模块；Harness signal 来自 watched-account social-event-v1 extraction 加确定性 scoring。
+- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、timeline features、market snapshot 和可解释评分模块；Harness signal 来自 watched-account social-event-v2 extraction 加确定性 scoring。
 - V1 不接外部新闻源，不自动实盘，不自动推广配置；`harness_weights.status` 先保持 `report_only`。
-- 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v1 抽取队列。
-- `token-flow` 返回 `social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity` 评分块，以及 `posts_query`、`timeline_query`。
+- 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v2 抽取队列。
+- `token-flow` 返回 `social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity` 评分块，以及 `score_versions`、`data_health`、`posts_query`、`timeline_query`。
+- `freeze-token-signals` 把当前 token-flow 排名冻结为不可变 snapshot，结算与评估只读取冻结时的 evidence、timeline、component payload、market snapshot id，避免回看偏差。
 - `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
 - `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。

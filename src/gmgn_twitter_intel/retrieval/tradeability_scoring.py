@@ -16,6 +16,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
     market_cap_present = features.get("market_cap") is not None
     liquidity_present = features.get("liquidity") is not None
     pool_present = features.get("pool_status") == "ready"
+    lookahead_risk = bool(features.get("lookahead_risk"))
 
     score = 0.0
     reasons: list[str] = []
@@ -66,14 +67,24 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
         score += 10.0
         reasons.append("pool_present")
         contributions.append(contribution("tradeability.pool", 10.0, "pool_present"))
+    else:
+        risks.append("missing_pool")
+    if lookahead_risk:
+        risks.append("lookahead_risk")
+        hard_risks.append("lookahead_risk")
+        risk_caps.append(cap("lookahead_risk", 40))
 
     return score_payload(
-        score_version="tradeability_v1",
+        score_version="tradeability_v2",
         score=score,
         reasons=reasons,
         risks=risks,
         contributions=contributions,
         risk_caps=risk_caps,
+        data_health={
+            "identity": "resolved" if identity_tradeable else "unresolved",
+            "market": features.get("market_status") or "missing",
+        },
         extra={
             "identity_tradeable": identity_tradeable,
             "market_fresh": market_fresh,

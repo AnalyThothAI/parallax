@@ -42,6 +42,10 @@ def test_sqlite_schema_bootstraps_core_tables(tmp_path):
     assert "notifications" in names
     assert "notification_reads" in names
     assert "notification_deliveries" in names
+    assert "token_signal_snapshots" in names
+    assert "token_signal_outcomes" in names
+    assert "token_score_evaluations" in names
+    assert "llm_enrichment_labels" in names
     assert "event_enrichments" not in names
     assert "event_token_candidates" not in names
     assert "event_narratives" not in names
@@ -188,7 +192,7 @@ def test_migrate_v8_to_v9_adds_market_observations_without_clearing_data(tmp_pat
     assert snapshot_count["count"] == 1
 
 
-def test_migrate_v11_to_v12_adds_notifications_without_clearing_data(tmp_path):
+def test_migrate_v11_to_v12_adds_notification_and_token_signal_tables_without_clearing_data(tmp_path):
     db_path = tmp_path / "twitter_intel.sqlite3"
     conn = connect_sqlite(db_path, read_only=False)
     try:
@@ -196,11 +200,6 @@ def test_migrate_v11_to_v12_adds_notifications_without_clearing_data(tmp_path):
         conn.execute("DROP TABLE notification_deliveries")
         conn.execute("DROP TABLE notification_reads")
         conn.execute("DROP TABLE notifications")
-        conn.execute("DELETE FROM schema_migrations")
-        conn.execute(
-            "INSERT INTO schema_migrations(version, name, applied_at_ms) "
-            "VALUES (11, 'closed_loop_harness', 1)"
-        )
         conn.execute(
             """
             INSERT INTO events(
@@ -214,6 +213,18 @@ def test_migrate_v11_to_v12_adds_notifications_without_clearing_data(tmp_path):
             )
             """
         )
+        for table in (
+            "token_signal_snapshots",
+            "token_signal_outcomes",
+            "token_score_evaluations",
+            "llm_enrichment_labels",
+        ):
+            conn.execute(f"DROP TABLE {table}")
+        conn.execute("DELETE FROM schema_migrations")
+        conn.execute(
+            "INSERT INTO schema_migrations(version, name, applied_at_ms) "
+            "VALUES (11, 'closed_loop_harness', 1)"
+        )
         conn.commit()
 
         migrate(conn)
@@ -226,8 +237,12 @@ def test_migrate_v11_to_v12_adds_notifications_without_clearing_data(tmp_path):
     assert "notifications" in names
     assert "notification_reads" in names
     assert "notification_deliveries" in names
-    assert [row["version"] for row in rows] == [12]
+    assert "token_signal_snapshots" in names
+    assert "token_signal_outcomes" in names
+    assert "token_score_evaluations" in names
+    assert "llm_enrichment_labels" in names
     assert event_count["count"] == 1
+    assert [row["version"] for row in rows] == [12]
 
 
 def test_migrate_resets_legacy_narrative_schema_instead_of_keeping_compat_tables(tmp_path):

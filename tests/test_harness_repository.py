@@ -14,7 +14,7 @@ def test_harness_repository_persists_closed_loop_rows(tmp_path):
             run_id=None,
             author_handle="cz_binance",
             received_at_ms=1_000,
-            schema_version="social-event-v1",
+            schema_version="social-event-v2",
             model_version="test-model",
             event_type="meme_phrase_seed",
             source_action="posted",
@@ -86,7 +86,7 @@ def test_harness_repository_persists_closed_loop_rows(tmp_path):
                     "event_score": 0.31,
                 }
             ],
-            versions={"config_version": "social-mvp-v1", "prompt_version": "social-event-v1"},
+            versions={"config_version": "social-harness-mvp-v1", "prompt_version": "social-event-extractor-v2"},
             risks=["public_stream_coverage"],
         )
         repo.record_decision(
@@ -110,7 +110,7 @@ def test_harness_repository_persists_closed_loop_rows(tmp_path):
             abnormal_return=0.01,
             realized_vol=0.02,
             normalized_outcome=0.5,
-            baseline_version="baseline-zero-v0",
+            baseline_version="benchmark-zero-v1",
         )
         repo.record_credits(
             [

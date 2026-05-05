@@ -11,7 +11,7 @@ HORIZON_MS = {
     "6h": 6 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
 }
-BASELINE_VERSION = "baseline-zero-v0"
+BASELINE_VERSION = "benchmark-zero-v1"
 
 
 def settle_harness_snapshots(
@@ -67,7 +67,7 @@ def settle_harness_snapshots(
             actual = actual_return(entry_price=entry_price, exit_price=exit_price)
             expected = 0.0
             abnormal = abnormal_return(actual, expected)
-            realized_vol = max(abs(actual), 1e-6)
+            realized_vol = max(abs(actual), 0.03)
             existed = _outcome_exists(harness, str(snapshot["snapshot_id"]))
             harness.record_outcome(
                 snapshot_id=snapshot["snapshot_id"],

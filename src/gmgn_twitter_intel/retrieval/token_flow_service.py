@@ -4,6 +4,7 @@ import json
 import time
 from typing import Any
 
+from . import baseline_scoring
 from .diffusion_health import diffusion_health
 from .discussion_quality_scoring import discussion_quality_score
 from .opportunity_scoring import opportunity_score
@@ -11,8 +12,8 @@ from .post_text_quality import post_text_features
 from .propagation_scoring import propagation_score
 from .rolling_token_flow import WINDOW_MS, RollingTokenFlow
 from .social_heat_scoring import social_heat_score
+from .timeline_features import build_timeline_features
 from .timing_scoring import timing_score
-from .token_baseline import token_baseline
 from .tradeability_scoring import tradeability_score
 
 FRESH_MARKET_MS = 30 * 60_000
@@ -79,6 +80,12 @@ class TokenFlowService:
         market = self._market_block(row)
         flow = self._flow_block(row, baseline=baseline)
         diffusion = self._diffusion_block(row)
+        timeline = build_timeline_features(
+            row.get("events_for_diffusion") if isinstance(row.get("events_for_diffusion"), list) else [],
+            window=window,
+            window_start_ms=int(row["window_start_ms"]),
+            window_end_ms=int(row["window_end_ms"]),
+        )
         fresh = self._fresh_block(row, market=market)
         watch = self._watch_block(row)
         identity = self._identity_block(row, token)
@@ -96,7 +103,9 @@ class TokenFlowService:
         discussion_quality = discussion_quality_score(
             self._discussion_quality_features(row, flow=flow, diffusion=diffusion)
         )
-        propagation = propagation_score(self._propagation_features(row, diffusion=diffusion, watch=watch))
+        propagation = propagation_score(
+            self._propagation_features(row, diffusion=diffusion, watch=watch, timeline=timeline)
+        )
         tradeability = tradeability_score(self._tradeability_features(identity=identity, market=market))
         timing = timing_score(self._timing_features(row, market=market, social_heat=social_heat))
         opportunity = opportunity_score(
@@ -108,6 +117,14 @@ class TokenFlowService:
                 "timing": timing,
             }
         )
+        score_versions = {
+            "social_heat": str(social_heat.get("score_version")),
+            "discussion_quality": str(discussion_quality.get("score_version")),
+            "propagation": str(propagation.get("score_version")),
+            "tradeability": str(tradeability.get("score_version")),
+            "timing": str(timing.get("score_version")),
+            "opportunity": str(opportunity.get("score_version")),
+        }
         return {
             "identity": identity,
             "market": market,
@@ -119,6 +136,17 @@ class TokenFlowService:
             "timing": timing,
             "opportunity": opportunity,
             "watch": watch,
+            "timeline": timeline,
+            "score_versions": score_versions,
+            "data_health": self._data_health_summary(
+                market=market,
+                social_heat=social_heat,
+                discussion_quality=discussion_quality,
+                propagation=propagation,
+                tradeability=tradeability,
+                timing=timing,
+                opportunity=opportunity,
+            ),
             "evidence_total_count": evidence_total_count,
             "posts_query": self._posts_query(row, window=window, scope=scope),
             "timeline_query": self._timeline_query(row, window=window, scope=scope),
@@ -137,7 +165,7 @@ class TokenFlowService:
     def _baseline_block(self, row: dict[str, Any], *, window: str) -> dict[str, Any]:
         if isinstance(row.get("baseline"), dict):
             return row["baseline"]
-        return token_baseline(slot_counts=[], current_mentions=int(row.get("mention_count") or 0))
+        return baseline_scoring.token_baseline_v2(slot_counts=[], current_mentions=int(row.get("mention_count") or 0))
 
     def _market_block(self, row: dict[str, Any]) -> dict[str, Any]:
         reference_ms = int(row.get("window_end_ms") or _now_ms())
@@ -155,6 +183,7 @@ class TokenFlowService:
             )
             return {
                 "market_status": "missing",
+                "snapshot_id": None,
                 "price": None,
                 "market_cap": None,
                 "liquidity": None,
@@ -163,6 +192,8 @@ class TokenFlowService:
                 "volume_24h": None,
                 "snapshot_age_ms": None,
                 "snapshot_received_at_ms": None,
+                "start_snapshot_id": None,
+                "before_snapshot_id": None,
                 "social_signal_start_ms": social_start_ms,
                 "reference_ms": reference_ms,
                 "price_at_social_start": None,
@@ -171,6 +202,7 @@ class TokenFlowService:
                 "price_before_social_start": None,
                 "price_change_before_social_pct": None,
                 "market_observation_status": observation_status,
+                "lookahead_risk": False,
                 "price_change_status": _price_change_status(
                     observation_status=observation_status,
                     has_ready_history=False,
@@ -210,6 +242,7 @@ class TokenFlowService:
         pool_address = _first_string(raw, ["pool.pool_address", "pool.address", "pool"])
         return {
             "market_status": market_status,
+            "snapshot_id": end_snapshot.get("snapshot_id"),
             "price": end_price,
             "market_cap": end_snapshot.get("market_cap"),
             "liquidity": liquidity,
@@ -218,6 +251,8 @@ class TokenFlowService:
             "volume_24h": _first_number(raw, ["volume_24h", "volume", "stat.volume_24h", "stat.volume"]),
             "snapshot_age_ms": age_ms,
             "snapshot_received_at_ms": end_snapshot.get("received_at_ms"),
+            "start_snapshot_id": start_snapshot.get("snapshot_id") if start_snapshot else None,
+            "before_snapshot_id": before_snapshot.get("snapshot_id") if before_snapshot else None,
             "social_signal_start_ms": social_start_ms,
             "reference_ms": reference_ms,
             "price_at_social_start": start_price,
@@ -226,6 +261,7 @@ class TokenFlowService:
             "price_before_social_start": before_price,
             "price_change_before_social_pct": price_change_before,
             "market_observation_status": observation_status,
+            "lookahead_risk": int(end_snapshot["received_at_ms"]) > reference_ms,
             "price_change_status": _price_change_status(
                 observation_status=observation_status,
                 has_ready_history=has_ready_history,
@@ -292,11 +328,15 @@ class TokenFlowService:
             "previous_mentions": previous_mentions,
             "mention_delta": mention_delta,
             "mention_delta_pct": mention_delta_pct,
-            "z_score": baseline["z_score"],
+            "baseline_version": baseline.get("baseline_version"),
+            "z_ewma": baseline.get("z_ewma"),
+            "robust_z": baseline.get("robust_z"),
             "new_burst_score": baseline["new_burst_score"],
+            "baseline_data_health": baseline.get("data_health") or {},
             "stream_dominance": row["market_mindshare"],
             "baseline_status": baseline["baseline_status"],
             "baseline_sample_count": baseline["sample_count"],
+            "baseline_nonzero_sample_count": baseline.get("nonzero_sample_count", 0),
         }
 
     def _diffusion_block(self, row: dict[str, Any]) -> dict[str, Any]:
@@ -388,7 +428,9 @@ class TokenFlowService:
             "previous_mentions": flow.get("previous_mentions"),
             "mention_delta": flow.get("mention_delta"),
             "mention_delta_pct": flow.get("mention_delta_pct"),
-            "z_score": flow.get("z_score"),
+            "z_score": flow.get("z_ewma"),
+            "z_ewma": flow.get("z_ewma"),
+            "robust_z": flow.get("robust_z"),
             "new_burst_score": flow.get("new_burst_score"),
             "stream_share": flow.get("stream_dominance"),
             "watched_share": watched_mentions / mentions if mentions else 0.0,
@@ -472,16 +514,22 @@ class TokenFlowService:
         *,
         diffusion: dict[str, Any],
         watch: dict[str, Any],
+        timeline: dict[str, Any],
     ) -> dict[str, Any]:
+        summary = timeline.get("summary") if isinstance(timeline.get("summary"), dict) else {}
         return {
             "mentions": row.get("mention_count"),
-            "independent_authors": diffusion.get("independent_authors"),
-            "effective_authors": diffusion.get("effective_authors"),
-            "new_authors": diffusion.get("independent_authors"),
-            "top_author_share": diffusion.get("top_author_share"),
-            "duplicate_text_share": diffusion.get("duplicate_text_share"),
+            "independent_authors": summary.get("independent_authors", diffusion.get("independent_authors")),
+            "effective_authors": summary.get("effective_authors", diffusion.get("effective_authors")),
+            "new_authors": summary.get("new_authors_total", 0),
+            "top_author_share": summary.get("top_author_share", diffusion.get("top_author_share")),
+            "duplicate_text_share": summary.get("duplicate_text_share", diffusion.get("duplicate_text_share")),
             "watched_author_count": row.get("watched_author_count"),
             "seed_lag_ms": _seed_lag_ms(watch),
+            "watch_status": watch.get("status"),
+            "reproduction_rate": summary.get("peak_reproduction_rate"),
+            "latest_non_empty_bucket_index": summary.get("latest_non_empty_bucket_index"),
+            "phase_hint": summary.get("phase"),
             "top_authors": diffusion.get("top_authors") or row.get("top_authors") or [],
         }
 
@@ -495,6 +543,30 @@ class TokenFlowService:
             "market_cap": market.get("market_cap"),
             "liquidity": market.get("liquidity"),
             "pool_status": market.get("pool_status"),
+            "lookahead_risk": market.get("lookahead_risk"),
+        }
+
+    def _data_health_summary(
+        self,
+        *,
+        market: dict[str, Any],
+        social_heat: dict[str, Any],
+        discussion_quality: dict[str, Any],
+        propagation: dict[str, Any],
+        tradeability: dict[str, Any],
+        timing: dict[str, Any],
+        opportunity: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "market": str(market.get("market_status") or "missing"),
+            "market_observation": str(market.get("market_observation_status") or "missing_observation"),
+            "lookahead_risk": bool(market.get("lookahead_risk")),
+            "social_heat": social_heat.get("data_health") or {},
+            "discussion_quality": discussion_quality.get("data_health") or {},
+            "propagation": propagation.get("data_health") or {},
+            "tradeability": tradeability.get("data_health") or {},
+            "timing": timing.get("data_health") or {},
+            "opportunity": opportunity.get("data_health") or {},
         }
 
     def _timing_features(

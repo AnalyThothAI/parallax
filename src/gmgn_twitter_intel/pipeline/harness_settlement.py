@@ -22,5 +22,5 @@ def abnormal_return(actual: float, expected: float) -> float:
 
 
 def normalized_outcome(abnormal: float, *, realized_vol: float) -> float:
-    denom = max(abs(realized_vol), 1e-6)
+    denom = max(abs(realized_vol), 0.03)
     return max(-1.0, min(round(abnormal / denom, 12), 1.0))

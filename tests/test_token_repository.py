@@ -170,3 +170,55 @@ def test_token_repository_canonicalizes_openapi_evm_address_with_existing_token(
     assert openapi_identity.address == payload_identity.address
     assert token_count == 1
     assert market_count == 2
+
+
+def test_token_repository_market_snapshot_time_helpers(tmp_path):
+    conn, evidence, repo = open_token_repo(tmp_path)
+    try:
+        token_id = None
+        for index, received_at_ms in enumerate(
+            [
+                1_700_000_000_000,
+                1_700_000_060_000,
+                1_700_000_120_000,
+            ],
+            start=1,
+        ):
+            event_id = f"event-{index}"
+            evidence.insert_event(make_event(event_id), is_watched=True)
+            identity = repo.upsert_openapi_token_info(
+                event_id=event_id,
+                info=GmgnTokenInfo(
+                    chain="eth",
+                    address="0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+                    symbol="DOG",
+                    name="Dog",
+                    icon_url=None,
+                    price=float(index),
+                    previous_price=None,
+                    market_cap=70000.0,
+                    raw={"index": index},
+                ),
+                received_at_ms=received_at_ms,
+                source_channel="gmgn_openapi_token_info",
+                commit=True,
+            )
+            token_id = identity.token_id
+
+        at_or_after = repo.market_snapshot_at_or_after(token_id, 1_700_000_030_000)
+        between = repo.market_snapshots_between(
+            token_id,
+            start_ms=1_700_000_030_000,
+            end_ms=1_700_000_130_000,
+        )
+        nearest = repo.nearest_market_snapshot(
+            token_id,
+            target_ms=1_700_000_090_000,
+            tolerance_ms=40_000,
+        )
+    finally:
+        conn.close()
+
+    assert at_or_after["price"] == 2.0
+    assert [row["price"] for row in between] == [2.0, 3.0]
+    assert nearest["price"] == 2.0

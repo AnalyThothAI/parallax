@@ -38,6 +38,7 @@ from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
 from ..storage.sqlite_schema import migrate
 from ..storage.token_repository import TokenRepository
+from ..storage.token_signal_repository import TokenSignalRepository
 from .http import ApiBadRequest, ApiUnauthorized, api_bad_request_response, api_unauthorized_response, create_api_router
 from .ws import PublicWebSocketHub
 
@@ -53,6 +54,7 @@ class CliRuntime:
     enrichment: EnrichmentRepository
     harness: HarnessRepository
     notifications: NotificationRepository
+    token_signals: TokenSignalRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
     read_signals: SignalRepository
@@ -60,6 +62,7 @@ class CliRuntime:
     read_enrichment: EnrichmentRepository
     read_harness: HarnessRepository
     read_notifications: NotificationRepository
+    read_token_signals: TokenSignalRepository
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
@@ -183,6 +186,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     enrichment = EnrichmentRepository(conn)
     harness = HarnessRepository(conn)
     notifications = NotificationRepository(conn)
+    token_signals = TokenSignalRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
     read_signals = SignalRepository(read_conn)
@@ -190,6 +194,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     read_enrichment = EnrichmentRepository(read_conn)
     read_harness = HarnessRepository(read_conn)
     read_notifications = NotificationRepository(read_conn)
+    read_token_signals = TokenSignalRepository(read_conn)
     write_lock = RLock()
     gmgn_client = _gmgn_client(settings)
     ingest = IngestService(
@@ -225,6 +230,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         enrichment=enrichment,
         harness=harness,
         notifications=notifications,
+        token_signals=token_signals,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
@@ -232,6 +238,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         read_enrichment=read_enrichment,
         read_harness=read_harness,
         read_notifications=read_notifications,
+        read_token_signals=read_token_signals,
         ingest=ingest,
         hub=hub,
         collector=collector,
