@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -664,9 +663,6 @@ svg {
   color: var(--muted);
 }
 
-.flow-cell,
-.source-cell,
-.fresh-cell,
 .mono {
   overflow: hidden;
   min-width: 0;
@@ -676,31 +672,6 @@ svg {
 
 .mono {
   font-size: 10px;
-}
-
-.flow-cell,
-.source-cell,
-.fresh-cell {
-  display: grid;
-  gap: 1px;
-  font-family: var(--mono);
-  font-size: 10px;
-}
-
-.flow-cell b,
-.source-cell b,
-.fresh-cell b {
-  color: var(--ink);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.flow-cell small,
-.source-cell small,
-.fresh-cell small {
-  overflow: hidden;
-  color: var(--faint);
-  text-overflow: ellipsis;
 }
 
 .bottom-deck {
@@ -757,75 +728,6 @@ svg {
   font-size: 10px;
 }
 
-.compact-list {
-  max-height: 286px;
-  overflow: auto;
-}
-
-.event-row,
-.alert-row {
-  width: 100%;
-  border: 0;
-  border-bottom: 1px solid var(--line-soft);
-  color: inherit;
-  background: transparent;
-  text-align: left;
-}
-
-.event-row,
-.alert-row {
-  padding: 8px 10px;
-}
-
-.event-row:hover,
-.event-row.is-selected,
-.alert-row:hover,
-.alert-row.is-selected {
-  background: #161c1c;
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.event-meta {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 7px;
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 10px;
-}
-
-.event-meta b,
-.alert-row strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.event-meta em {
-  border: 1px solid var(--accent-line);
-  border-radius: 3px;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 1px 4px;
-  font-style: normal;
-}
-
-.event-meta a {
-  display: inline-grid;
-  place-items: center;
-  color: var(--accent);
-}
-
-.event-row p {
-  display: -webkit-box;
-  overflow: hidden;
-  margin: 5px 0 0;
-  color: var(--text);
-  line-height: 1.42;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .entity-tags {
   display: flex;
   flex-wrap: wrap;
@@ -841,28 +743,6 @@ svg {
   padding: 1px 4px;
   font-family: var(--mono);
   font-size: 9px;
-}
-
-.alert-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.alert-row div {
-  min-width: 0;
-}
-
-.alert-row span,
-.alert-row time {
-  display: block;
-  overflow: hidden;
-  color: var(--faint);
-  font-family: var(--mono);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .detail-drawer {
@@ -924,14 +804,12 @@ svg {
   opacity: 0.6;
 }
 
-.author-strip,
 .risk-strip {
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
 }
 
-.author-strip span,
 .risk-strip span {
   border: 1px solid var(--line);
   border-radius: 999px;

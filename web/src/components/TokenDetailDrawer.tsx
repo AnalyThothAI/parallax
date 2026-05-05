@@ -10,6 +10,7 @@ import type {
 } from "../api/types";
 import { gmgnTokenUrl } from "../lib/gmgn";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
+import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { AccountLane } from "./AccountLane";
 import { ScoreLedger } from "./ScoreLedger";
 import { SignalChainList } from "./SignalChainList";
@@ -24,8 +25,6 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
   { tab: "lab", label: "Lab" },
   { tab: "accounts", label: "Accounts" }
 ];
-
-const DETAIL_WINDOWS: WindowKey[] = ["5m", "1h", "4h", "24h"];
 
 type TokenDetailDrawerProps = {
   token: TokenFlowItem | null;
@@ -155,7 +154,7 @@ export function TokenDetailDrawer({
             value={detailWindow}
             onChange={(event) => onDetailWindowChange(event.target.value as WindowKey)}
           >
-            {DETAIL_WINDOWS.map((item) => (
+            {OBSERVATION_WINDOWS.map((item) => (
               <option key={item} value={item}>
                 {item}
               </option>

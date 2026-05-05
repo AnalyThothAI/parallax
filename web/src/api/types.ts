@@ -198,10 +198,10 @@ export type TokenFlowBlock = {
 export type SocialHeatBlock = ScoreBlock & {
   window: WindowKey;
   mentions: number;
-  mentions_5m?: number;
-  mentions_1h?: number;
-  mentions_4h?: number;
-  mentions_24h?: number;
+  mentions_5m: number;
+  mentions_1h: number;
+  mentions_4h: number;
+  mentions_24h: number;
   weighted_mentions: number;
   previous_mentions: number;
   mention_delta: number;
@@ -287,17 +287,20 @@ export type TokenPostsQuery = {
   address?: string | null;
   window: WindowKey;
   scope: ScopeKey;
-  range?: TokenPostRange;
+  range: TokenPostRange;
   sort?: "recent" | string;
 };
 
-export type TokenSocialTimelineQuery = {
+export type TokenSocialTimelineParams = {
   token_id?: string | null;
   chain?: string | null;
   address?: string | null;
   window: WindowKey;
-  bucket?: TimelineBucket;
   scope: ScopeKey;
+};
+
+export type TokenSocialTimelineQuery = TokenSocialTimelineParams & {
+  bucket: TimelineBucket;
 };
 
 export type TokenFlowItem = {
@@ -313,7 +316,7 @@ export type TokenFlowItem = {
   watch: WatchBlock;
   evidence_total_count: number;
   posts_query: TokenPostsQuery;
-  timeline_query: TokenSocialTimelineQuery;
+  timeline_query: TokenSocialTimelineParams;
 };
 
 export type TokenPostItem = {
@@ -332,7 +335,7 @@ export type TokenPostItem = {
 
 export type TokenPostsData = {
   query: TokenPostsQuery;
-  score_window?: { window: WindowKey };
+  score_window: { window: WindowKey };
   total_count: number;
   returned_count: number;
   has_more: boolean;
@@ -391,9 +394,9 @@ export type TokenSocialTimelineData = {
     phase: string;
     top_author_share: number;
     duplicate_text_share: number;
-    peak_posts_per_bucket?: number;
-    peak_new_authors_per_bucket?: number;
-    reproduction_rate?: number | null;
+    peak_posts_per_bucket: number;
+    peak_new_authors_per_bucket: number;
+    reproduction_rate: number | null;
   };
   buckets: TokenTimelineBucket[];
   authors: TokenTimelineAuthor[];

@@ -85,7 +85,7 @@ export function TokenPostsTab({
       </header>
 
       <div className="posts-count-line">
-        {posts ? `${posts.total_count} total · ${posts.returned_count} loaded · score window ${posts.score_window?.window ?? posts.query.window}` : "0 total · 0 loaded"}
+        {posts ? `${posts.total_count} total · ${posts.returned_count} loaded · score window ${posts.score_window.window}` : "0 total · 0 loaded"}
       </div>
       {postRange === "all_history" ? <div className="filter-note">history does not all participate in current score</div> : null}
       {hideDuplicateClusters ? <div className="filter-note">已隐藏重复文本簇</div> : null}

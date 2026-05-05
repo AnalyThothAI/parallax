@@ -30,6 +30,7 @@ import { MobileTaskNav, type MobileTask } from "./components/MobileTaskNav";
 import { SignalLabInspector } from "./components/SignalLabInspector";
 import { SignalLabPulse } from "./components/SignalLabPulse";
 import { SignalLabWorkbench } from "./components/SignalLabWorkbench";
+import { RadarControls } from "./components/RadarControls";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenRadarTable } from "./components/TokenRadarTable";
 import {
@@ -42,7 +43,6 @@ import { tokenForSearchQuery } from "./lib/searchIntent";
 import { totalChains } from "./lib/signalLabChains";
 import { useTraderStore } from "./store/useTraderStore";
 
-const WINDOWS: WindowKey[] = ["5m", "1h", "4h", "24h"];
 const ACCOUNT_ALERT_WINDOW: WindowKey = "24h";
 
 type SelectedSignal =
@@ -449,25 +449,15 @@ export function App() {
 
   const responsiveControls = (
     <section className="responsive-control-panel" aria-label="cockpit controls">
-      <div className="segmented" aria-label="radar window">
-        {WINDOWS.map((item) => (
-          <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-            {item}
-          </button>
-        ))}
-      </div>
-      <div className="segmented scope-toggle" aria-label="token flow scope">
-        <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-          watched
-        </button>
-        <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-          all
-        </button>
-      </div>
-      <label className="handle-filter compact">
-        <UserRound aria-hidden />
-        <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="handles" />
-      </label>
+      <RadarControls
+        handles={handles}
+        handlePlaceholder="handles"
+        scope={scope}
+        windowKey={windowKey}
+        onHandlesChange={setHandles}
+        onScopeChange={setScope}
+        onWindowChange={setWindow}
+      />
     </section>
   );
 
@@ -586,21 +576,7 @@ export function App() {
             <>
               <section className="mobile-task-surface" data-mobile-task-panel="radar">
                 <div className="radar-control-row">
-                  <div className="segmented" aria-label="radar window">
-                    {WINDOWS.map((item) => (
-                      <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="segmented scope-toggle" aria-label="token flow scope">
-                    <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-                      watched
-                    </button>
-                    <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-                      all
-                    </button>
-                  </div>
+                  <RadarControls scope={scope} windowKey={windowKey} onScopeChange={setScope} onWindowChange={setWindow} />
                 </div>
 
                 <TokenRadarTable
