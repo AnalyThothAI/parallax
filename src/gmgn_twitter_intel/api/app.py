@@ -406,9 +406,14 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
 
 
 def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int, db_status: dict[str, object]) -> list[str]:
-    reasons = _collector_unhealthy_reasons(runtime, now_ms=now_ms)
+    reasons = _watchdog_unhealthy_reasons(runtime, now_ms=now_ms)
     if not db_status.get("ok"):
         reasons.append("database_unhealthy")
+    return reasons
+
+
+def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str]:
+    reasons = _collector_unhealthy_reasons(runtime, now_ms=now_ms)
     if runtime.settings.llm_configured and not _task_running(runtime.enrichment_task):
         reasons.append("enrichment_worker_stopped")
     if not _task_running(runtime.market_observation_task):
@@ -442,8 +447,7 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
 
 def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
-        with runtime.write_lock:
-            return sqlite_health_check(runtime.evidence.conn)
+        return sqlite_health_check(runtime.read_evidence.conn)
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 
@@ -478,10 +482,10 @@ async def _supervise_runtime(runtime: CliRuntime) -> None:
     interval = max(1.0, float(runtime.settings.collector_watchdog_interval))
     while True:
         await asyncio.sleep(interval)
-        payload, status_code = _readiness_payload(runtime)
-        if status_code < 500:
+        reasons = _watchdog_unhealthy_reasons(runtime, now_ms=_now_ms())
+        if not reasons:
             continue
-        logger.error(f"Collector watchdog exiting unhealthy process: reasons={payload['reasons']}")
+        logger.error(f"Collector watchdog exiting unhealthy process: reasons={reasons}")
         os._exit(1)
 
 
