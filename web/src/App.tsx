@@ -354,10 +354,7 @@ export function App() {
     const query = search.trim();
     const tokenMatch = tokenForSearchQuery(query, tokenItems);
     if (tokenMatch) {
-      setSelectedSignal({ kind: "token", key: tokenKey(tokenMatch), item: tokenMatch });
-      setDetailTab("timeline");
-      setSelectedTapeEventId(null);
-      setMobileTask("radar");
+      selectToken(tokenMatch);
       return;
     }
     if (activeView === "signal_lab") {

@@ -190,6 +190,8 @@ describe("App Token Radar social heat cockpit", () => {
       const drawer = container.querySelector(".detail-drawer") as HTMLElement;
       expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     });
+    const mobileNav = screen.getByRole("navigation", { name: "mobile cockpit tasks" });
+    expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page");
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
