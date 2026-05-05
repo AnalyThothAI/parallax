@@ -593,7 +593,7 @@ export function App() {
           )}
         </section>
 
-        {mobileTask === "tape" || mobileTask === "lab" ? null : selectedSignalChain ? (
+        {selectedSignalChain ? (
           <SignalLabInspector
             activeTab={signalLabInspectorTab}
             chain={selectedSignalChain}
@@ -628,13 +628,11 @@ export function App() {
           />
         )}
       </div>
-      {selectedSignal ? (
-        <MobileTaskNav
-          activeTask={mobileTask}
-          detailAvailable={Boolean(selectedSignal || selectedToken)}
-          onTaskChange={setMobileTask}
-        />
-      ) : null}
+      <MobileTaskNav
+        activeTask={mobileTask}
+        detailAvailable={Boolean(selectedSignal || selectedToken)}
+        onTaskChange={setMobileTask}
+      />
     </main>
   );
 }

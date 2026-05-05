@@ -616,9 +616,10 @@ describe("App Token Radar social heat cockpit", () => {
   it("renders mobile task navigation with Token Radar as the default task", async () => {
     renderWithQuery(<App />);
 
-    expect(await screen.findByRole("navigation", { name: "mobile cockpit tasks" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "Detail" })).not.toBeDisabled();
+    const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
+    expect(mobileNav).toBeInTheDocument();
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).not.toBeDisabled());
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
   });
 
@@ -637,15 +638,16 @@ describe("App Token Radar social heat cockpit", () => {
   it("switches mobile tasks without resetting window, scope, or selected token", async () => {
     const { container } = renderWithQuery(<App />);
     await screen.findByRole("button", { name: "select token $UPEG" });
+    const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
 
-    fireEvent.click(screen.getByRole("button", { name: "Tape" }));
-    expect(screen.getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
+    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
 
-    fireEvent.click(screen.getByRole("button", { name: "Lab" }));
-    expect(screen.getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(mobileNav).getByRole("button", { name: "Lab" }));
+    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
 
-    fireEvent.click(screen.getByRole("button", { name: "Radar" }));
-    expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
 
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
