@@ -215,6 +215,19 @@ describe("App Token Radar social heat cockpit", () => {
     expect(link).toHaveAttribute("target", "_blank");
   });
 
+  it("keeps each Token Radar metric in stable responsive slots", async () => {
+    renderWithQuery(<App />);
+
+    const rowButton = await screen.findByRole("button", { name: "select token $UPEG" });
+    const row = rowButton.closest(".radar-row") as HTMLElement;
+    expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +3");
+    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · CA direct");
+    expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
+    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$60K");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("social confirms");
+    expect(row.querySelector('[data-radar-action="gmgn"]')).toBeInTheDocument();
+  });
+
   it("uses Signal Lab as the trader-facing product label", async () => {
     renderWithQuery(<App />);
 

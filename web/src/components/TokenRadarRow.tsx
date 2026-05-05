@@ -42,28 +42,28 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
           </strong>
         </span>
 
-        <span className="metric">
+        <span className="metric heat-cell" data-radar-metric="heat">
           <b className={scoreClass(item.social_heat.score)}>{heatTitle(item)}</b>
           <small>{heatMeta(item)}</small>
           <Barline score={item.social_heat.score} />
         </span>
 
-        <span className="metric">
+        <span className="metric quality-cell" data-radar-metric="quality">
           <b className={scoreClass(item.discussion_quality.score)}>{qualityTitle(item)}</b>
           <small>{qualityMeta(item)}</small>
         </span>
 
-        <span className="phase">
+        <span className="phase propagation-cell" data-radar-metric="propagation">
           <b>{propagationTitle(item)}</b>
           <small>{propagationMeta(item)}</small>
         </span>
 
-        <span className="metric market-cell">
+        <span className="metric market-cell" data-radar-metric="market">
           <b>{formatUsdCompact(item.market.market_cap)}</b>
           <small className={`direction ${direction}`}>{delta} {item.market.market_status}</small>
         </span>
 
-        <span className="phase">
+        <span className="phase timing-cell" data-radar-metric="timing">
           <b>{timingTitle(item)}</b>
           <small>{timingMeta(item)}</small>
         </span>
@@ -73,7 +73,7 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
         </span>
       </button>
 
-      <span className="gmgn-cell">
+      <span className="gmgn-cell" data-radar-action="gmgn">
         {gmgnUrl ? (
           <a aria-label={`Open ${tokenLabel(item)} on GMGN`} className="gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
             GMGN

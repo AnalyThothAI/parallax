@@ -37,7 +37,7 @@ export function TokenRadarTable({
             TOKEN RADAR <b>{items.length}</b>
           </span>
         </div>
-        <div className="toolbar-controls">
+        <div className="toolbar-controls" aria-label="token radar toolbar">
           <div className="segmented sort-toggle" aria-label="token radar sort">
             {SORT_LABELS.map((item) => (
               <button
