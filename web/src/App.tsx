@@ -26,6 +26,7 @@ import type {
 import { useIntelSocket } from "./api/useIntelSocket";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
 import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
+import { MobileTaskNav, type MobileTask } from "./components/MobileTaskNav";
 import { SignalLabInspector } from "./components/SignalLabInspector";
 import { SignalLabPulse } from "./components/SignalLabPulse";
 import { SignalLabWorkbench } from "./components/SignalLabWorkbench";
@@ -95,6 +96,7 @@ export function App() {
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
+  const [mobileTask, setMobileTask] = useState<MobileTask>("radar");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const bootstrapQuery = useQuery({
@@ -334,14 +336,17 @@ export function App() {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailTab("timeline");
     setSelectedTapeEventId(tapeId);
+    setMobileTask("detail");
   };
 
   const selectSignalChain = (item: SignalLabChain, options: { openLab?: boolean } = {}) => {
     setSelectedSignal({ kind: "signal_chain", item });
     setSignalLabInspectorTab("trace");
     setSelectedTapeEventId(item.chain_id);
+    setMobileTask("detail");
     if (options.openLab) {
       setActiveView("signal_lab");
+      setMobileTask("lab");
     }
   };
 
@@ -351,17 +356,20 @@ export function App() {
     if (tokenMatch) {
       selectToken(tokenMatch);
       setSelectedTapeEventId(null);
+      setMobileTask("radar");
       return;
     }
     if (activeView === "signal_lab") {
       setSignalLabSearch(query);
       setSelectedSignal(null);
       setSelectedTapeEventId(null);
+      setMobileTask("lab");
       return;
     }
     submitSearch();
     setSelectedSignal(query ? { kind: "query", query } : null);
     setSelectedTapeEventId(null);
+    setMobileTask(query ? "detail" : "radar");
   };
 
   const handleTapeSelect = (item: LiveSignalTapeItem) => {
@@ -372,6 +380,7 @@ export function App() {
       return;
     }
     setSelectedSignal({ kind: "event", item: item.payload });
+    setMobileTask("detail");
   };
 
   const handleHotkey = (event: KeyboardEvent<HTMLElement>) => {
@@ -450,7 +459,7 @@ export function App() {
         </button>
       </header>
 
-      <div className={`cockpit-grid ${activeView === "signal_lab" ? "signal-lab-mode" : ""}`}>
+      <div className={`cockpit-grid mobile-task-${mobileTask} ${activeView === "signal_lab" ? "signal-lab-mode" : ""}`}>
         <aside className="side-rail">
           <RailSection label="views">
             <RailButton active={activeView === "live"} label="Live" value={liveItems.length} index="1" onClick={() => setActiveView("live")} />
@@ -573,7 +582,10 @@ export function App() {
                   data={signalLabData}
                   isLoading={signalLabChainsQuery.isPending}
                   selectedChainId={selectedSignalChainId}
-                  onOpenLab={() => setActiveView("signal_lab")}
+                  onOpenLab={() => {
+                    setActiveView("signal_lab");
+                    setMobileTask("lab");
+                  }}
                   onSelect={selectSignalChain}
                 />
               </div>
@@ -581,7 +593,7 @@ export function App() {
           )}
         </section>
 
-        {selectedSignalChain ? (
+        {mobileTask === "tape" || mobileTask === "lab" ? null : selectedSignalChain ? (
           <SignalLabInspector
             activeTab={signalLabInspectorTab}
             chain={selectedSignalChain}
@@ -616,6 +628,13 @@ export function App() {
           />
         )}
       </div>
+      {selectedSignal ? (
+        <MobileTaskNav
+          activeTask={mobileTask}
+          detailAvailable={Boolean(selectedSignal || selectedToken)}
+          onTaskChange={setMobileTask}
+        />
+      ) : null}
     </main>
   );
 }

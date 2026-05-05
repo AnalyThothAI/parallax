@@ -612,6 +612,46 @@ describe("App Token Radar social heat cockpit", () => {
       expect(within(drawer).queryByText((content) => content.includes("0x222222"))).not.toBeInTheDocument();
     });
   });
+
+  it("renders mobile task navigation with Token Radar as the default task", async () => {
+    renderWithQuery(<App />);
+
+    expect(await screen.findByRole("navigation", { name: "mobile cockpit tasks" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Detail" })).not.toBeDisabled();
+    expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
+  });
+
+  it("switches mobile task to detail after selecting a token without changing token API params", async () => {
+    renderWithQuery(<App />);
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
+    mockedGetApi.mockClear();
+
+    fireEvent.click(row);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-flow")).toBe(false);
+    expect(screen.getByText("selected token")).toBeInTheDocument();
+  });
+
+  it("switches mobile tasks without resetting window, scope, or selected token", async () => {
+    const { container } = renderWithQuery(<App />);
+    await screen.findByRole("button", { name: "select token $UPEG" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Tape" }));
+    expect(screen.getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getByRole("button", { name: "Lab" }));
+    expect(screen.getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getByRole("button", { name: "Radar" }));
+    expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
+    expect(useTraderStore.getState().window).toBe("1h");
+    expect(useTraderStore.getState().scope).toBe("all");
+  });
 });
 
 function mockApi(options: {
