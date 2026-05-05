@@ -1,6 +1,7 @@
 import asyncio
 from threading import RLock
 
+from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.pipeline.notification_models import NotificationCandidate
 from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
 from gmgn_twitter_intel.settings import NotificationChannelConfig
@@ -142,3 +143,44 @@ def test_process_once_enqueues_log_delivery_without_url(tmp_path):
     assert len(deliveries) == 1
     assert deliveries[0]["channel_id"] == "audit_log"
     assert deliveries[0]["provider"] == "log"
+
+
+def test_duplicate_notification_does_not_block_delivery_claim_transaction(tmp_path):
+    conn, repo, worker = open_worker(
+        tmp_path,
+        candidates=[candidate(channels=("in_app", "audit_log"), severity="warning")],
+        delivery_channels={
+            "audit_log": NotificationChannelConfig(
+                enabled=True,
+                provider="log",
+                min_severity="info",
+            )
+        },
+    )
+    try:
+        inserted = asyncio.run(worker.process_once(now_ms=1_700_000_100_000))
+        duplicate = asyncio.run(worker.process_once(now_ms=1_700_000_100_000))
+
+        assert len(inserted) == 1
+        assert duplicate == []
+        assert conn.in_transaction is False
+
+        delivery_worker = NotificationDeliveryWorker(
+            repository=repo,
+            channels={
+                "audit_log": NotificationChannelConfig(
+                    enabled=True,
+                    provider="log",
+                    min_severity="info",
+                )
+            },
+            write_lock=worker.write_lock,
+            poll_interval=0.2,
+        )
+        processed = asyncio.run(delivery_worker.process_one(now_ms=9_999_999_999_999))
+        deliveries = repo.list_deliveries(limit=10)
+    finally:
+        conn.close()
+
+    assert processed is True
+    assert deliveries[0]["status"] == "delivered"

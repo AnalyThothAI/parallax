@@ -41,45 +41,44 @@ class NotificationRepository:
         notification_id = _id("notification", dedup_key)
         normalized_severity = _normalize_severity(severity)
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
-        try:
-            self.conn.execute(
-                """
-                INSERT INTO notifications(
-                  notification_id, dedup_key, rule_id, severity, title, body, entity_type, entity_key,
-                  author_handle, symbol, chain, address, event_id, source_table, source_id,
-                  occurrence_count, first_seen_at_ms, last_seen_at_ms, payload_json, channels_json,
-                  created_at_ms, updated_at_ms
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    notification_id,
-                    dedup_key,
-                    rule_id,
-                    normalized_severity,
-                    title,
-                    body,
-                    entity_type,
-                    entity_key,
-                    _normalize_handle(author_handle),
-                    _normalize_symbol(symbol),
-                    _normalize_chain(chain),
-                    _normalize_address(address),
-                    event_id,
-                    source_table,
-                    source_id,
-                    1,
-                    int(occurrence_at_ms),
-                    int(occurrence_at_ms),
-                    _json(payload or {}),
-                    _json(list(normalized_channels)),
-                    now_ms,
-                    now_ms,
-                ),
+        cursor = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO notifications(
+              notification_id, dedup_key, rule_id, severity, title, body, entity_type, entity_key,
+              author_handle, symbol, chain, address, event_id, source_table, source_id,
+              occurrence_count, first_seen_at_ms, last_seen_at_ms, payload_json, channels_json,
+              created_at_ms, updated_at_ms
             )
-            if commit:
-                self.conn.commit()
-        except sqlite3.IntegrityError:
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                notification_id,
+                dedup_key,
+                rule_id,
+                normalized_severity,
+                title,
+                body,
+                entity_type,
+                entity_key,
+                _normalize_handle(author_handle),
+                _normalize_symbol(symbol),
+                _normalize_chain(chain),
+                _normalize_address(address),
+                event_id,
+                source_table,
+                source_id,
+                1,
+                int(occurrence_at_ms),
+                int(occurrence_at_ms),
+                _json(payload or {}),
+                _json(list(normalized_channels)),
+                now_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        if cursor.rowcount == 0:
             return None
         return self.notification_by_id(notification_id, subscriber_key=None)
 
@@ -223,34 +222,33 @@ class NotificationRepository:
     ) -> dict[str, Any] | None:
         now_ms = _now_ms()
         delivery_id = _id("delivery", notification_id, channel_id)
-        try:
-            self.conn.execute(
-                """
-                INSERT INTO notification_deliveries(
-                  delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
-                  next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    delivery_id,
-                    notification_id,
-                    channel_id,
-                    provider,
-                    "pending",
-                    0,
-                    max(1, int(max_attempts)),
-                    int(next_run_at_ms if next_run_at_ms is not None else now_ms),
-                    None,
-                    None,
-                    None,
-                    now_ms,
-                    now_ms,
-                ),
+        cursor = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO notification_deliveries(
+              delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
+              next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
             )
-            if commit:
-                self.conn.commit()
-        except sqlite3.IntegrityError:
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                delivery_id,
+                notification_id,
+                channel_id,
+                provider,
+                "pending",
+                0,
+                max(1, int(max_attempts)),
+                int(next_run_at_ms if next_run_at_ms is not None else now_ms),
+                None,
+                None,
+                None,
+                now_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        if cursor.rowcount == 0:
             return None
         return self.delivery_by_id(delivery_id)
 
