@@ -400,6 +400,75 @@ export function App() {
     if (event.key === "3") setWindow("24h");
   };
 
+  const viewControls = (
+    <RailSection label="views">
+      <RailButton active={activeView === "live"} label="Live" value={liveItems.length} index="1" onClick={() => setActiveView("live")} />
+      <RailButton
+        active={activeView === "signal_lab"}
+        label="Signal Lab"
+        value={totalChains(signalLabData?.summary, signalLabChains.length)}
+        index="2"
+        onClick={() => {
+          setActiveView("signal_lab");
+          setMobileTask("lab");
+        }}
+      />
+    </RailSection>
+  );
+
+  const windowControls = (
+    <RailSection label="window">
+      <div className="window-stack">
+        {WINDOWS.map((item, index) => (
+          <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
+            {index + 1}<span>{item}</span>
+          </button>
+        ))}
+      </div>
+    </RailSection>
+  );
+
+  const scopeControls = (
+    <RailSection label="scope">
+      <div className="scope-stack">
+        <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
+          watched
+        </button>
+        <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
+          all stream
+        </button>
+      </div>
+      <label className="handle-filter">
+        <UserRound aria-hidden />
+        <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="toly, ansem" />
+      </label>
+    </RailSection>
+  );
+
+  const responsiveControls = (
+    <section className="responsive-control-panel" aria-label="cockpit controls">
+      <div className="segmented" aria-label="window">
+        {WINDOWS.map((item) => (
+          <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
+            {item}
+          </button>
+        ))}
+      </div>
+      <div className="segmented scope-toggle" aria-label="token flow scope">
+        <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
+          watched
+        </button>
+        <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
+          all
+        </button>
+      </div>
+      <label className="handle-filter compact">
+        <UserRound aria-hidden />
+        <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="handles" />
+      </label>
+    </section>
+  );
+
   return (
     <main className="cockpit-shell" onKeyDown={handleHotkey} tabIndex={-1}>
       <header className="topbar">
@@ -461,42 +530,10 @@ export function App() {
       </header>
 
       <div className={`cockpit-grid mobile-task-${mobileTask} ${activeView === "signal_lab" ? "signal-lab-mode" : ""}`}>
-        <aside className="side-rail">
-          <RailSection label="views">
-            <RailButton active={activeView === "live"} label="Live" value={liveItems.length} index="1" onClick={() => setActiveView("live")} />
-            <RailButton
-              active={activeView === "signal_lab"}
-              label="Signal Lab"
-              value={totalChains(signalLabData?.summary, signalLabChains.length)}
-              index="2"
-              onClick={() => setActiveView("signal_lab")}
-            />
-          </RailSection>
-
-          <RailSection label="window">
-            <div className="window-stack">
-              {WINDOWS.map((item, index) => (
-                <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-                  {index + 1}<span>{item}</span>
-                </button>
-              ))}
-            </div>
-          </RailSection>
-
-          <RailSection label="scope">
-            <div className="scope-stack">
-              <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-                watched
-              </button>
-              <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-                all stream
-              </button>
-            </div>
-            <label className="handle-filter">
-              <UserRound aria-hidden />
-              <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="toly, ansem" />
-            </label>
-          </RailSection>
+        <aside className="side-rail desktop-side-rail">
+          {viewControls}
+          {windowControls}
+          {scopeControls}
 
           <RailSection label="decisions">
             <DecisionCount decision="driver" count={decisionCounts.driver} />
@@ -519,115 +556,127 @@ export function App() {
           </div>
         </aside>
 
+        {responsiveControls}
+
         <section className="center-column">
           {activeView === "signal_lab" ? (
-            <SignalLabWorkbench
-              assetFilter={signalLabAsset}
-              data={signalLabData}
-              handleFilter={signalLabHandle}
-              horizon={signalLabHorizon}
-              isLoading={signalLabChainsQuery.isPending}
-              isFetchingNextPage={signalLabChainsQuery.isFetchingNextPage}
-              hasNextPage={Boolean(signalLabChainsQuery.hasNextPage)}
-              searchFilter={signalLabSearch}
-              selectedChainId={selectedSignalChainId}
-              stageFilter={signalLabStage}
-              onAssetChange={setSignalLabAsset}
-              onHandleChange={setSignalLabHandle}
-              onHorizonChange={setSignalLabHorizon}
-              onLoadMore={() => void signalLabChainsQuery.fetchNextPage()}
-              onSearchChange={setSignalLabSearch}
-              onSelect={selectSignalChain}
-              onStageChange={setSignalLabStage}
-            />
+            <section className="mobile-task-surface signal-lab-task-surface" data-mobile-task-panel="lab">
+              <SignalLabWorkbench
+                assetFilter={signalLabAsset}
+                data={signalLabData}
+                handleFilter={signalLabHandle}
+                horizon={signalLabHorizon}
+                isLoading={signalLabChainsQuery.isPending}
+                isFetchingNextPage={signalLabChainsQuery.isFetchingNextPage}
+                hasNextPage={Boolean(signalLabChainsQuery.hasNextPage)}
+                searchFilter={signalLabSearch}
+                selectedChainId={selectedSignalChainId}
+                stageFilter={signalLabStage}
+                onAssetChange={setSignalLabAsset}
+                onHandleChange={setSignalLabHandle}
+                onHorizonChange={setSignalLabHorizon}
+                onLoadMore={() => void signalLabChainsQuery.fetchNextPage()}
+                onSearchChange={setSignalLabSearch}
+                onSelect={selectSignalChain}
+                onStageChange={setSignalLabStage}
+              />
+            </section>
           ) : (
             <>
-              <div className="radar-control-row">
-                <div className="segmented">
-                  {WINDOWS.map((item) => (
-                    <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-                      {item}
+              <section className="mobile-task-surface" data-mobile-task-panel="radar">
+                <div className="radar-control-row">
+                  <div className="segmented">
+                    {WINDOWS.map((item) => (
+                      <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="segmented scope-toggle" aria-label="token flow scope">
+                    <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
+                      watched
                     </button>
-                  ))}
+                    <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
+                      all
+                    </button>
+                  </div>
                 </div>
-                <div className="segmented scope-toggle" aria-label="token flow scope">
-                  <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-                    watched
-                  </button>
-                  <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-                    all
-                  </button>
-                </div>
-              </div>
 
-              <TokenRadarTable
-                error={tokenFlowQuery.error instanceof Error ? tokenFlowQuery.error : null}
-                isLoading={tokenFlowQuery.isPending}
-                items={tokenItems}
-                selectedKey={selectedTokenKey}
-                sortMode={radarSortMode}
-                onSelect={selectToken}
-                onSortModeChange={setRadarSortMode}
-              />
+                <TokenRadarTable
+                  error={tokenFlowQuery.error instanceof Error ? tokenFlowQuery.error : null}
+                  isLoading={tokenFlowQuery.isPending}
+                  items={tokenItems}
+                  selectedKey={selectedTokenKey}
+                  sortMode={radarSortMode}
+                  onSelect={selectToken}
+                  onSortModeChange={setRadarSortMode}
+                />
+              </section>
 
               <div className="bottom-deck">
-                <LiveSignalTape
-                  isLoading={recentQuery.isPending}
-                  items={liveSignalTapeItems}
-                  selectedEventId={selectedTapeEventId}
-                  socketStatus={socket.status}
-                  onSelect={handleTapeSelect}
-                />
+                <section data-mobile-task-panel="tape">
+                  <LiveSignalTape
+                    isLoading={recentQuery.isPending}
+                    items={liveSignalTapeItems}
+                    selectedEventId={selectedTapeEventId}
+                    socketStatus={socket.status}
+                    onSelect={handleTapeSelect}
+                  />
+                </section>
 
-                <SignalLabPulse
-                  data={signalLabData}
-                  isLoading={signalLabChainsQuery.isPending}
-                  selectedChainId={selectedSignalChainId}
-                  onOpenLab={() => {
-                    setActiveView("signal_lab");
-                    setMobileTask("lab");
-                  }}
-                  onSelect={selectSignalChain}
-                />
+                <section data-mobile-task-panel="lab">
+                  <SignalLabPulse
+                    data={signalLabData}
+                    isLoading={signalLabChainsQuery.isPending}
+                    selectedChainId={selectedSignalChainId}
+                    onOpenLab={() => {
+                      setActiveView("signal_lab");
+                      setMobileTask("lab");
+                    }}
+                    onSelect={selectSignalChain}
+                  />
+                </section>
               </div>
             </>
           )}
         </section>
 
-        {selectedSignalChain ? (
-          <SignalLabInspector
-            activeTab={signalLabInspectorTab}
-            chain={selectedSignalChain}
-            onTabChange={setSignalLabInspectorTab}
-          />
-        ) : selectedEvidenceDetails ? (
-          <EvidenceDetailDrawer {...selectedEvidenceDetails} />
-        ) : (
-          <TokenDetailDrawer
-            accountQuality={accountQualityQuery.data?.data}
-            activeTab={detailTab}
-            hideDuplicateClusters={hideDuplicateClusters}
-            isAccountQualityLoading={accountQualityQuery.isFetching}
-            isSignalLabLoading={signalLabChainsQuery.isFetching}
-            isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
-            isPostsLoading={tokenPostsQuery.isLoading}
-            isTimelineLoading={tokenTimelineQuery.isFetching}
-            postSortMode={postSortMode}
-            posts={tokenPostsData}
-            signalChains={selectedTokenSignalChains}
-            timeline={tokenTimelineQuery.data?.data}
-            timelineBucket={timelineBucket}
-            token={selectedToken}
-            watchedPostsOnly={watchedPostsOnly}
-            onHideDuplicateClustersChange={setHideDuplicateClusters}
-            onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
-            onPostSortModeChange={setPostSortMode}
-            onSelectSignalChain={selectSignalChain}
-            onTabChange={setDetailTab}
-            onTimelineBucketChange={setTimelineBucket}
-            onWatchedPostsOnlyChange={setWatchedPostsOnly}
-          />
-        )}
+        <section className="detail-task-panel" data-mobile-task-panel="detail">
+          {selectedSignalChain ? (
+            <SignalLabInspector
+              activeTab={signalLabInspectorTab}
+              chain={selectedSignalChain}
+              onTabChange={setSignalLabInspectorTab}
+            />
+          ) : selectedEvidenceDetails ? (
+            <EvidenceDetailDrawer {...selectedEvidenceDetails} />
+          ) : (
+            <TokenDetailDrawer
+              accountQuality={accountQualityQuery.data?.data}
+              activeTab={detailTab}
+              hideDuplicateClusters={hideDuplicateClusters}
+              isAccountQualityLoading={accountQualityQuery.isFetching}
+              isSignalLabLoading={signalLabChainsQuery.isFetching}
+              isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
+              isPostsLoading={tokenPostsQuery.isLoading}
+              isTimelineLoading={tokenTimelineQuery.isFetching}
+              postSortMode={postSortMode}
+              posts={tokenPostsData}
+              signalChains={selectedTokenSignalChains}
+              timeline={tokenTimelineQuery.data?.data}
+              timelineBucket={timelineBucket}
+              token={selectedToken}
+              watchedPostsOnly={watchedPostsOnly}
+              onHideDuplicateClustersChange={setHideDuplicateClusters}
+              onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
+              onPostSortModeChange={setPostSortMode}
+              onSelectSignalChain={selectSignalChain}
+              onTabChange={setDetailTab}
+              onTimelineBucketChange={setTimelineBucket}
+              onWatchedPostsOnlyChange={setWatchedPostsOnly}
+            />
+          )}
+        </section>
       </div>
       <MobileTaskNav
         activeTask={mobileTask}

@@ -655,6 +655,26 @@ describe("App Token Radar social heat cockpit", () => {
     expect(useTraderStore.getState().window).toBe("1h");
     expect(useTraderStore.getState().scope).toBe("all");
   });
+
+  it("exposes distinct responsive shell surfaces without duplicating Token Radar rows", async () => {
+    const { container } = renderWithQuery(<App />);
+    await screen.findByRole("button", { name: "select token $UPEG" });
+
+    expect(container.querySelector(".desktop-side-rail")).toBeInTheDocument();
+    expect(container.querySelector(".responsive-control-panel")).toBeInTheDocument();
+    expect(container.querySelector(".mobile-task-surface")).toBeInTheDocument();
+    expect(container.querySelectorAll(".token-radar-table .radar-row")).toHaveLength(1);
+  });
+
+  it("marks mobile task panels so CSS can show one task at a time", async () => {
+    const { container } = renderWithQuery(<App />);
+    await screen.findByText("Signal Lab Pulse");
+
+    expect(container.querySelector('[data-mobile-task-panel="radar"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-mobile-task-panel="tape"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-mobile-task-panel="lab"]')).toBeInTheDocument();
+    expect(container.querySelector('[data-mobile-task-panel="detail"]')).toBeInTheDocument();
+  });
 });
 
 function mockApi(options: {
