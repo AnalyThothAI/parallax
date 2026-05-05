@@ -655,7 +655,8 @@ describe("App Token Radar social heat cockpit", () => {
     const { container } = renderWithQuery(<App />);
 
     await screen.findByRole("button", { name: "select token $UPEG" });
-    fireEvent.click(screen.getAllByRole("button", { name: "5m" })[0]);
+    const radarSurface = container.querySelector('[data-mobile-task-panel="radar"]') as HTMLElement;
+    fireEvent.click(within(radarSurface).getByRole("button", { name: "5m" }));
 
     const altRow = await screen.findByRole("button", { name: "select token $ALT" });
     await waitFor(() => expect(altRow).toHaveClass("selected"));
@@ -832,7 +833,6 @@ function mockApi(options: {
         ]
       });
     }
-    if (path === "/api/account-alerts") return ok({ window: "24h", alert_type: null, items: [] });
     if (path === "/api/signal-lab/chains") {
       const cursor = String(requestOptions?.params?.cursor ?? "");
       return ok(options.signalLabPages?.[cursor] ?? options.signalLabChains ?? signalLabChainsData());

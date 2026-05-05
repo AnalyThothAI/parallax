@@ -12,15 +12,10 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",
-    "@tanstack/react-table": "^8.21.3",
-    "@tanstack/react-virtual": "^3.13.12",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "reconnecting-websocket": "^4.4.0",
-    "tailwind-merge": "^2.6.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

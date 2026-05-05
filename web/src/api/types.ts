@@ -407,12 +407,6 @@ export type TokenSocialTimelineData = {
   next_cursor?: string | null;
 };
 
-export type AccountAlertsData = {
-  window: WindowKey;
-  alert_type?: string | null;
-  items: AlertRecord[];
-};
-
 export type AnchorTerm = {
   term: string;
   role: "subject" | "meme_phrase" | "product" | "asset" | "person" | "venue" | string;

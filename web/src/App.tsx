@@ -4,9 +4,7 @@ import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-quer
 import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import { getApi, getBootstrap } from "./api/client";
 import type {
-  AccountAlertsData,
   AccountQualityData,
-  AlertRecord,
   Decision,
   HarnessHealth,
   HarnessHealthData,
@@ -20,8 +18,7 @@ import type {
   TokenFlowData,
   TokenFlowItem,
   TokenPostsData,
-  TokenSocialTimelineData,
-  WindowKey
+  TokenSocialTimelineData
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
@@ -43,13 +40,10 @@ import { tokenForSearchQuery } from "./lib/searchIntent";
 import { totalChains } from "./lib/signalLabChains";
 import { useTraderStore } from "./store/useTraderStore";
 
-const ACCOUNT_ALERT_WINDOW: WindowKey = "24h";
-
 type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }
   | { kind: "event"; item: LivePayload }
   | { kind: "signal_chain"; item: SignalLabChain }
-  | { kind: "alert"; item: AlertRecord }
   | { kind: "query"; query: string }
   | null;
 
@@ -140,17 +134,6 @@ export function App() {
       getApi<TokenFlowData>("/api/token-flow", {
         token,
         params: { window: windowKey, limit: 48, scope }
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 10_000
-  });
-
-  const alertsQuery = useQuery({
-    queryKey: ["account-alerts", ACCOUNT_ALERT_WINDOW, handles],
-    queryFn: () =>
-      getApi<AccountAlertsData>("/api/account-alerts", {
-        token,
-        params: { window: ACCOUNT_ALERT_WINDOW, limit: 80, handles }
       }),
     enabled: Boolean(token),
     refetchInterval: 10_000
@@ -692,21 +675,6 @@ function DecisionCount({ decision, count }: { decision: Decision; count: number 
   );
 }
 
-function CompactPanel({ title, icon, action, children }: { title: string; icon: ReactNode; action?: string; children: ReactNode }) {
-  return (
-    <section className="compact-panel">
-      <header>
-        <div>
-          {icon}
-          <h2>{title}</h2>
-        </div>
-        {action ? <span>{action}</span> : null}
-      </header>
-      {children}
-    </section>
-  );
-}
-
 function StatusPills({
   socketStatus,
   configReady,
@@ -949,13 +917,6 @@ function tapeItemId(item: LiveSignalTapeItem): string {
     return item.event?.event.event_id ?? item.token.identity.identity_key;
   }
   return item.payload.event.event_id;
-}
-
-function jobSummary(counts?: Record<string, number>): string {
-  if (!counts) {
-    return "-";
-  }
-  return `p${counts.pending ?? 0}/r${counts.running ?? 0}/f${counts.failed ?? 0}/d${counts.dead ?? 0}`;
 }
 
 function defaultSignalLabHealth(status?: StatusData): HarnessHealth {
