@@ -1,30 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, RefreshCw, Search, ShieldCheck, UserRound, Wifi, Zap } from "lucide-react";
+import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import { getApi, getBootstrap } from "./api/client";
 import type {
   AccountAlertsData,
   AccountQualityData,
   AlertRecord,
-  AttentionSeedItem,
-  AttentionSeedsData,
   Decision,
-  EnrichmentJobsData,
-  HarnessCreditItem,
-  HarnessCreditsData,
   HarnessHealth,
   HarnessHealthData,
-  HarnessOutcomeItem,
-  HarnessOutcomesData,
-  HarnessSnapshotItem,
-  HarnessSnapshotsData,
   LivePayload,
   RadarSortMode,
   RecentData,
   SearchData,
-  SocialEventItem,
-  SocialEventsData,
+  SignalLabChain,
+  SignalLabChainsData,
   StatusData,
   TokenFlowData,
   TokenFlowItem,
@@ -34,19 +25,20 @@ import type {
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
-import { HarnessDetailDrawer, type HarnessDetailTab } from "./components/HarnessDetailDrawer";
-import { HarnessPanel } from "./components/HarnessPanel";
 import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
+import { SignalLabInspector } from "./components/SignalLabInspector";
+import { SignalLabPulse } from "./components/SignalLabPulse";
+import { SignalLabWorkbench } from "./components/SignalLabWorkbench";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenRadarTable } from "./components/TokenRadarTable";
 import {
   compactNumber,
   eventText,
   formatRelativeTime,
-  tokenKey,
-  tokenLabel
+  tokenKey
 } from "./lib/format";
 import { tokenForSearchQuery } from "./lib/searchIntent";
+import { totalChains } from "./lib/signalLabChains";
 import { useTraderStore } from "./store/useTraderStore";
 
 const WINDOWS: WindowKey[] = ["5m", "1h", "24h"];
@@ -55,9 +47,7 @@ const ACCOUNT_ALERT_WINDOW: WindowKey = "24h";
 type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }
   | { kind: "event"; item: LivePayload }
-  | { kind: "social_event"; item: SocialEventItem }
-  | { kind: "attention_seed"; item: AttentionSeedItem }
-  | { kind: "harness_snapshot"; item: HarnessSnapshotItem }
+  | { kind: "signal_chain"; item: SignalLabChain }
   | { kind: "alert"; item: AlertRecord }
   | { kind: "query"; query: string }
   | null;
@@ -72,8 +62,13 @@ export function App() {
   const token = useTraderStore((state) => state.token);
   const radarSortMode = useTraderStore((state) => state.radarSortMode);
   const detailTab = useTraderStore((state) => state.detailTab);
-  const harnessView = useTraderStore((state) => state.harnessView);
-  const harnessHorizon = useTraderStore((state) => state.harnessHorizon);
+  const activeView = useTraderStore((state) => state.activeView);
+  const signalLabStage = useTraderStore((state) => state.signalLabStage);
+  const signalLabHorizon = useTraderStore((state) => state.signalLabHorizon);
+  const signalLabAsset = useTraderStore((state) => state.signalLabAsset);
+  const signalLabHandle = useTraderStore((state) => state.signalLabHandle);
+  const signalLabSearch = useTraderStore((state) => state.signalLabSearch);
+  const signalLabInspectorTab = useTraderStore((state) => state.signalLabInspectorTab);
   const timelineBucket = useTraderStore((state) => state.timelineBucket);
   const postSortMode = useTraderStore((state) => state.postSortMode);
   const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
@@ -87,14 +82,18 @@ export function App() {
   const runSearch = useTraderStore((state) => state.runSearch);
   const setRadarSortMode = useTraderStore((state) => state.setRadarSortMode);
   const setDetailTab = useTraderStore((state) => state.setDetailTab);
-  const setHarnessView = useTraderStore((state) => state.setHarnessView);
-  const setHarnessHorizon = useTraderStore((state) => state.setHarnessHorizon);
+  const setActiveView = useTraderStore((state) => state.setActiveView);
+  const setSignalLabStage = useTraderStore((state) => state.setSignalLabStage);
+  const setSignalLabHorizon = useTraderStore((state) => state.setSignalLabHorizon);
+  const setSignalLabAsset = useTraderStore((state) => state.setSignalLabAsset);
+  const setSignalLabHandle = useTraderStore((state) => state.setSignalLabHandle);
+  const setSignalLabInspectorTab = useTraderStore((state) => state.setSignalLabInspectorTab);
+  const setSignalLabSearch = useTraderStore((state) => state.setSignalLabSearch);
   const setTimelineBucket = useTraderStore((state) => state.setTimelineBucket);
   const setPostSortMode = useTraderStore((state) => state.setPostSortMode);
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
-  const [harnessDetailTab, setHarnessDetailTab] = useState<HarnessDetailTab>("trace");
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -153,73 +152,36 @@ export function App() {
     refetchInterval: 10_000
   });
 
-  const socialEventsQuery = useQuery({
-    queryKey: ["social-events", windowKey, handles],
-    queryFn: () =>
-      getApi<SocialEventsData>("/api/social-events", {
-        token,
-        params: { window: windowKey, limit: 50, handles }
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 10_000
-  });
-
-  const attentionSeedsQuery = useQuery({
-    queryKey: ["attention-seeds", windowKey, handles],
-    queryFn: () =>
-      getApi<AttentionSeedsData>("/api/attention-seeds", {
-        token,
-        params: { window: windowKey, limit: 50, handles }
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 10_000
-  });
-
-  const harnessSnapshotsQuery = useQuery({
-    queryKey: ["harness-snapshots", windowKey, harnessHorizon],
-    queryFn: () =>
-      getApi<HarnessSnapshotsData>("/api/harness-snapshots", {
-        token,
-        params: { window: windowKey, horizon: harnessHorizon, limit: 50 }
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 15_000
-  });
-
-  const harnessOutcomesQuery = useQuery({
-    queryKey: ["harness-outcomes", windowKey, harnessHorizon],
-    queryFn: () =>
-      getApi<HarnessOutcomesData>("/api/harness-outcomes", {
-        token,
-        params: { window: windowKey, horizon: harnessHorizon, limit: 50 }
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 30_000
-  });
-
-  const harnessCreditsQuery = useQuery({
-    queryKey: ["harness-credits", windowKey, harnessHorizon],
-    queryFn: () =>
-      getApi<HarnessCreditsData>("/api/harness-credits", {
-        token,
-        params: { window: windowKey, horizon: harnessHorizon, limit: 80 }
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 30_000
-  });
-
-  const harnessHealthQuery = useQuery({
+  const signalLabHealthQuery = useQuery({
     queryKey: ["harness-health"],
     queryFn: () => getApi<HarnessHealthData>("/api/harness-health", { token }),
     enabled: Boolean(token),
     refetchInterval: 15_000
   });
 
-  const enrichmentJobsQuery = useQuery({
-    queryKey: ["enrichment-jobs"],
-    queryFn: () => getApi<EnrichmentJobsData>("/api/enrichment-jobs", { token, params: { limit: 20 } }),
+  const signalLabChainsQuery = useInfiniteQuery({
+    queryKey: ["signal-lab-chains", windowKey, signalLabHorizon, scope, signalLabStage, signalLabAsset, signalLabHandle, signalLabSearch],
+    queryFn: async ({ pageParam }) => {
+      const response = await getApi<SignalLabChainsData>("/api/signal-lab/chains", {
+        token,
+        params: {
+          window: windowKey,
+          horizon: signalLabHorizon,
+          scope,
+          stage: signalLabStage === "all" ? undefined : signalLabStage,
+          asset: signalLabAsset || undefined,
+          handle: signalLabHandle || undefined,
+          q: signalLabSearch || undefined,
+          limit: 80,
+          cursor: pageParam || undefined
+        }
+      });
+      return response.data;
+    },
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     enabled: Boolean(token),
-    refetchInterval: 18_000
+    refetchInterval: 12_000
   });
 
   const searchQuery = useQuery({
@@ -296,23 +258,17 @@ export function App() {
 
   const searchData = searchQuery.data?.data;
   const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
-  const socialEvents = socialEventsQuery.data?.data.items ?? [];
-  const attentionSeeds = attentionSeedsQuery.data?.data.items ?? [];
-  const harnessSnapshots = harnessSnapshotsQuery.data?.data.items ?? [];
-  const harnessOutcomes = harnessOutcomesQuery.data?.data.items ?? [];
-  const harnessCredits = harnessCreditsQuery.data?.data.items ?? [];
-  const harnessHealth = harnessHealthQuery.data?.data ?? defaultHarnessHealth(statusQuery.data?.data);
+  const signalLabHealth = signalLabHealthQuery.data?.data ?? defaultSignalLabHealth(statusQuery.data?.data);
+  const signalLabData = useMemo(() => mergeSignalLabPages(signalLabChainsQuery.data?.pages), [signalLabChainsQuery.data?.pages]);
+  const signalLabChains = signalLabData?.items ?? [];
   const liveSignalTapeItems = useMemo(
-    () => buildLiveSignalTapeItems({ attentionSeeds, harnessSnapshots, liveItems, socialEvents, tokenItems }),
-    [attentionSeeds, harnessSnapshots, liveItems, socialEvents, tokenItems]
+    () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
+    [liveItems, tokenItems]
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
   const tokenPostsData = useMemo(() => mergePostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
-  const selectedHarnessId = selectedHarnessObjectId(selectedSignal);
-  const selectedHarnessDetails = useMemo(
-    () => resolveHarnessDetails(selectedSignal, { attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, socialEvents }),
-    [attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, selectedSignal, socialEvents]
-  );
+  const selectedSignalChainId = selectedSignalChainIdForSelection(selectedSignal);
+  const selectedSignalChain = selectedSignal?.kind === "signal_chain" ? latestSignalChainForSelection(selectedSignal.item, signalLabChains) : null;
   const selectedEvidenceDetails = useMemo(
     () =>
       resolveEvidenceDetails(selectedSignal, {
@@ -322,10 +278,7 @@ export function App() {
       }),
     [currentSearchData, searchQuery.error, searchQuery.isFetching, selectedSignal]
   );
-  const selectedTokenHarness = useMemo(
-    () => filterHarnessForToken(selectedToken, { attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots }),
-    [attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, selectedToken]
-  );
+  const selectedTokenSignalChains = useMemo(() => filterSignalChainsForToken(selectedToken, signalLabChains), [selectedToken, signalLabChains]);
 
   useEffect(() => {
     if (!selectedSignal && tokenItems.length) {
@@ -353,10 +306,43 @@ export function App() {
     }
   }, [selectedSignal, setDetailTab, tokenItems]);
 
+  useEffect(() => {
+    if (selectedSignal?.kind !== "signal_chain") {
+      return;
+    }
+    const latest = signalLabChains.find((item) => item.chain_id === selectedSignal.item.chain_id);
+    if (latest && latest !== selectedSignal.item) {
+      setSelectedSignal({ kind: "signal_chain", item: latest });
+      return;
+    }
+    if (!latest && !signalLabChainsQuery.isFetching) {
+      setSelectedSignal(null);
+    }
+  }, [selectedSignal, signalLabChains, signalLabChainsQuery.isFetching]);
+
+  useEffect(() => {
+    if (activeView !== "signal_lab" || selectedSignal?.kind === "signal_chain" || !signalLabChains.length) {
+      return;
+    }
+    const preferred = preferredSignalChain(signalLabChains);
+    setSelectedSignal({ kind: "signal_chain", item: preferred });
+    setSignalLabInspectorTab("trace");
+    setSelectedTapeEventId(preferred.chain_id);
+  }, [activeView, selectedSignal?.kind, setSignalLabInspectorTab, signalLabChains]);
+
   const selectToken = (item: TokenFlowItem, tapeId: string | null = null) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailTab("timeline");
     setSelectedTapeEventId(tapeId);
+  };
+
+  const selectSignalChain = (item: SignalLabChain, options: { openLab?: boolean } = {}) => {
+    setSelectedSignal({ kind: "signal_chain", item });
+    setSignalLabInspectorTab("trace");
+    setSelectedTapeEventId(item.chain_id);
+    if (options.openLab) {
+      setActiveView("signal_lab");
+    }
   };
 
   const submitEvidenceSearch = () => {
@@ -364,6 +350,12 @@ export function App() {
     const tokenMatch = tokenForSearchQuery(query, tokenItems);
     if (tokenMatch) {
       selectToken(tokenMatch);
+      setSelectedTapeEventId(null);
+      return;
+    }
+    if (activeView === "signal_lab") {
+      setSignalLabSearch(query);
+      setSelectedSignal(null);
       setSelectedTapeEventId(null);
       return;
     }
@@ -377,21 +369,6 @@ export function App() {
     setSelectedTapeEventId(id);
     if (item.kind === "token") {
       selectToken(item.token, id);
-      return;
-    }
-    if (item.kind === "social_event") {
-      setHarnessDetailTab("trace");
-      setSelectedSignal({ kind: "social_event", item: item.item });
-      return;
-    }
-    if (item.kind === "attention_seed") {
-      setHarnessDetailTab("trace");
-      setSelectedSignal({ kind: "attention_seed", item: item.item });
-      return;
-    }
-    if (item.kind === "harness_snapshot") {
-      setHarnessDetailTab("trace");
-      setSelectedSignal({ kind: "harness_snapshot", item: item.item });
       return;
     }
     setSelectedSignal({ kind: "event", item: item.payload });
@@ -458,13 +435,13 @@ export function App() {
             flow·{windowKey} <b>{compactNumber(tokenItems.length)}</b>
           </span>
           <span>
-            seeds <b>{compactNumber(attentionSeeds.length)}</b>
+            seeded <b>{compactNumber(signalLabData?.summary.seeded ?? 0)}</b>
           </span>
           <span>
-            snap <b>{compactNumber(harnessSnapshots.length)}</b>
+            frozen <b>{compactNumber(signalLabData?.summary.frozen ?? 0)}</b>
           </span>
           <span>
-            settled <b>{formatHarnessCoverage(harnessHealth.settlement_coverage)}</b>
+            settled <b>{formatSignalLabCoverage(signalLabHealth.settlement_coverage)}</b>
           </span>
         </div>
 
@@ -473,14 +450,17 @@ export function App() {
         </button>
       </header>
 
-      <div className="cockpit-grid">
+      <div className={`cockpit-grid ${activeView === "signal_lab" ? "signal-lab-mode" : ""}`}>
         <aside className="side-rail">
           <RailSection label="views">
-            <RailButton active label="Live" value={liveItems.length} index="1" />
-            <RailButton active label="Tokens" value={tokenItems.length} index="2" />
-            <RailButton label="Signal Lab" value={harnessSnapshots.length || socialEvents.length} index="3" />
-            <RailButton label="Accounts" value={accountQualityQuery.data?.data.accounts.length ?? 0} index="4" />
-            <RailButton label="Jobs/Ops" value={enrichmentJobsQuery.data?.data.items.length ?? 0} index="5" />
+            <RailButton active={activeView === "live"} label="Live" value={liveItems.length} index="1" onClick={() => setActiveView("live")} />
+            <RailButton
+              active={activeView === "signal_lab"}
+              label="Signal Lab"
+              value={totalChains(signalLabData?.summary, signalLabChains.length)}
+              index="2"
+              onClick={() => setActiveView("signal_lab")}
+            />
           </RailSection>
 
           <RailSection label="window">
@@ -530,88 +510,82 @@ export function App() {
         </aside>
 
         <section className="center-column">
-          <div className="radar-control-row">
-            <div className="segmented">
-              {WINDOWS.map((item) => (
-                <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
-                  {item}
-                </button>
-              ))}
-            </div>
-            <div className="segmented scope-toggle" aria-label="token flow scope">
-              <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-                watched
-              </button>
-              <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-                all
-              </button>
-            </div>
-          </div>
-
-          <TokenRadarTable
-            error={tokenFlowQuery.error instanceof Error ? tokenFlowQuery.error : null}
-            isLoading={tokenFlowQuery.isPending}
-            items={tokenItems}
-            selectedKey={selectedTokenKey}
-            sortMode={radarSortMode}
-            onSelect={selectToken}
-            onSortModeChange={setRadarSortMode}
-          />
-
-          <div className="bottom-deck">
-            <LiveSignalTape
-              isLoading={recentQuery.isPending}
-              items={liveSignalTapeItems}
-              selectedEventId={selectedTapeEventId}
-              socketStatus={socket.status}
-              onSelect={handleTapeSelect}
+          {activeView === "signal_lab" ? (
+            <SignalLabWorkbench
+              assetFilter={signalLabAsset}
+              data={signalLabData}
+              handleFilter={signalLabHandle}
+              horizon={signalLabHorizon}
+              isLoading={signalLabChainsQuery.isPending}
+              isFetchingNextPage={signalLabChainsQuery.isFetchingNextPage}
+              hasNextPage={Boolean(signalLabChainsQuery.hasNextPage)}
+              searchFilter={signalLabSearch}
+              selectedChainId={selectedSignalChainId}
+              stageFilter={signalLabStage}
+              onAssetChange={setSignalLabAsset}
+              onHandleChange={setSignalLabHandle}
+              onHorizonChange={setSignalLabHorizon}
+              onLoadMore={() => void signalLabChainsQuery.fetchNextPage()}
+              onSearchChange={setSignalLabSearch}
+              onSelect={selectSignalChain}
+              onStageChange={setSignalLabStage}
             />
-
-            <section className="compact-panel">
-              <header>
-                <div>
-                  <ShieldCheck aria-hidden />
-                  <h2>Signal Lab</h2>
+          ) : (
+            <>
+              <div className="radar-control-row">
+                <div className="segmented">
+                  {WINDOWS.map((item) => (
+                    <button key={item} className={item === windowKey ? "active" : ""} onClick={() => setWindow(item)} type="button">
+                      {item}
+                    </button>
+                  ))}
                 </div>
-                <span>{harnessHealth.llm_configured ? "social-event-v1" : "extractor off"}</span>
-              </header>
-              <HarnessPanel
-                health={harnessHealth}
-                horizon={harnessHorizon}
-                isLoading={socialEventsQuery.isPending || attentionSeedsQuery.isPending || harnessSnapshotsQuery.isPending}
-                seeds={attentionSeeds}
-                selectedId={selectedHarnessId}
-                snapshots={harnessSnapshots}
-                socialEvents={socialEvents}
-                view={harnessView}
-                onSelectEvent={(item) => {
-                  setHarnessDetailTab("trace");
-                  setSelectedSignal({ kind: "social_event", item });
-                }}
-                onSelectSeed={(item) => {
-                  setHarnessDetailTab("trace");
-                  setSelectedSignal({ kind: "attention_seed", item });
-                }}
-                onSelectSnapshot={(item) => {
-                  setHarnessDetailTab("trace");
-                  setSelectedSignal({ kind: "harness_snapshot", item });
-                }}
-                onHorizonChange={setHarnessHorizon}
-                onViewChange={setHarnessView}
+                <div className="segmented scope-toggle" aria-label="token flow scope">
+                  <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
+                    watched
+                  </button>
+                  <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
+                    all
+                  </button>
+                </div>
+              </div>
+
+              <TokenRadarTable
+                error={tokenFlowQuery.error instanceof Error ? tokenFlowQuery.error : null}
+                isLoading={tokenFlowQuery.isPending}
+                items={tokenItems}
+                selectedKey={selectedTokenKey}
+                sortMode={radarSortMode}
+                onSelect={selectToken}
+                onSortModeChange={setRadarSortMode}
               />
-            </section>
-          </div>
+
+              <div className="bottom-deck">
+                <LiveSignalTape
+                  isLoading={recentQuery.isPending}
+                  items={liveSignalTapeItems}
+                  selectedEventId={selectedTapeEventId}
+                  socketStatus={socket.status}
+                  onSelect={handleTapeSelect}
+                />
+
+                <SignalLabPulse
+                  data={signalLabData}
+                  isLoading={signalLabChainsQuery.isPending}
+                  selectedChainId={selectedSignalChainId}
+                  onOpenLab={() => setActiveView("signal_lab")}
+                  onSelect={selectSignalChain}
+                />
+              </div>
+            </>
+          )}
         </section>
 
-        {selectedHarnessDetails ? (
-          <HarnessDetailDrawer
-            activeTab={harnessDetailTab}
-            credits={selectedHarnessDetails.credits}
-            outcome={selectedHarnessDetails.outcome}
-            seed={selectedHarnessDetails.seed}
-            snapshot={selectedHarnessDetails.snapshot}
-            socialEvent={selectedHarnessDetails.socialEvent}
-            onTabChange={setHarnessDetailTab}
+        {selectedSignalChain ? (
+          <SignalLabInspector
+            activeTab={signalLabInspectorTab}
+            chain={selectedSignalChain}
+            onTabChange={setSignalLabInspectorTab}
           />
         ) : selectedEvidenceDetails ? (
           <EvidenceDetailDrawer {...selectedEvidenceDetails} />
@@ -619,18 +593,15 @@ export function App() {
           <TokenDetailDrawer
             accountQuality={accountQualityQuery.data?.data}
             activeTab={detailTab}
-            harnessCredits={selectedTokenHarness.credits}
-            harnessOutcomes={selectedTokenHarness.outcomes}
-            harnessSeeds={selectedTokenHarness.seeds}
-            harnessSnapshots={selectedTokenHarness.snapshots}
             hideDuplicateClusters={hideDuplicateClusters}
             isAccountQualityLoading={accountQualityQuery.isFetching}
-            isHarnessLoading={attentionSeedsQuery.isFetching || harnessSnapshotsQuery.isFetching || harnessOutcomesQuery.isFetching || harnessCreditsQuery.isFetching}
+            isSignalLabLoading={signalLabChainsQuery.isFetching}
             isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
             isPostsLoading={tokenPostsQuery.isLoading}
             isTimelineLoading={tokenTimelineQuery.isFetching}
             postSortMode={postSortMode}
             posts={tokenPostsData}
+            signalChains={selectedTokenSignalChains}
             timeline={tokenTimelineQuery.data?.data}
             timelineBucket={timelineBucket}
             token={selectedToken}
@@ -638,11 +609,7 @@ export function App() {
             onHideDuplicateClustersChange={setHideDuplicateClusters}
             onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
             onPostSortModeChange={setPostSortMode}
-            onSelectSnapshot={(snapshot) => {
-              setHarnessDetailTab("trace");
-              setSelectedSignal({ kind: "harness_snapshot", item: snapshot });
-              setSelectedTapeEventId(snapshot.snapshot_id);
-            }}
+            onSelectSignalChain={selectSignalChain}
             onTabChange={setDetailTab}
             onTimelineBucketChange={setTimelineBucket}
             onWatchedPostsOnlyChange={setWatchedPostsOnly}
@@ -662,9 +629,9 @@ function RailSection({ label, children }: { label: string; children: ReactNode }
   );
 }
 
-function RailButton({ active, label, value, index }: { active?: boolean; label: string; value: number; index: string }) {
+function RailButton({ active, label, value, index, onClick }: { active?: boolean; label: string; value: number; index: string; onClick: () => void }) {
   return (
-    <button className={`rail-button ${active ? "active" : ""}`} type="button">
+    <button className={`rail-button ${active ? "active" : ""}`} type="button" onClick={onClick}>
       <span>{index}</span>
       <b>{label}</b>
       <em>{compactNumber(value)}</em>
@@ -781,6 +748,10 @@ function latestTokenForSelection(signal: Extract<SelectedSignal, { kind: "token"
   return items.find((item) => tokenKey(item) === signal.key) ?? null;
 }
 
+function latestSignalChainForSelection(selected: SignalLabChain, items: SignalLabChain[]): SignalLabChain {
+  return items.find((item) => item.chain_id === selected.chain_id) ?? selected;
+}
+
 function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {
   return items.reduce<Record<Decision, number>>(
     (counts, item) => {
@@ -806,19 +777,22 @@ function mergePostPages(pages?: TokenPostsData[]): TokenPostsData | null {
   };
 }
 
-function buildLiveSignalTapeItems({
-  attentionSeeds,
-  harnessSnapshots,
-  liveItems,
-  socialEvents,
-  tokenItems
-}: {
-  attentionSeeds: AttentionSeedItem[];
-  harnessSnapshots: HarnessSnapshotItem[];
-  liveItems: LivePayload[];
-  socialEvents: SocialEventItem[];
-  tokenItems: TokenFlowItem[];
-}): LiveSignalTapeItem[] {
+function mergeSignalLabPages(pages?: SignalLabChainsData[]): SignalLabChainsData | undefined {
+  if (!pages?.length) {
+    return undefined;
+  }
+  const first = pages[0];
+  const last = pages[pages.length - 1];
+  return {
+    ...first,
+    returned_count: pages.reduce((total, page) => total + page.returned_count, 0),
+    has_more: last.has_more,
+    next_cursor: last.next_cursor,
+    items: pages.flatMap((page) => page.items)
+  };
+}
+
+function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePayload[]; tokenItems: TokenFlowItem[] }): LiveSignalTapeItem[] {
   const byTokenId = new Map<string, TokenFlowItem>();
   const byCa = new Map<string, TokenFlowItem>();
   const byIdentityKey = new Map<string, TokenFlowItem>();
@@ -840,15 +814,7 @@ function buildLiveSignalTapeItems({
   const rows: LiveSignalTapeItem[] = [];
   for (const payload of liveItems) {
     const tokenMatch = tokenMatchForPayload(payload, { byTokenId, byCa, byIdentityKey, bySymbol });
-    if (payload.harness?.social_event) {
-      rows.push({
-        kind: "social_event",
-        item: payload.harness.social_event,
-        score: payload.harness.social_event.confidence * 100,
-        reason: payload.harness.social_event.event_type.replaceAll("_", " "),
-        body: payload.harness.social_event.summary_zh || eventText(payload.event)
-      });
-    } else if (tokenMatch) {
+    if (tokenMatch) {
       rows.push({
         kind: "token",
         token: tokenMatch,
@@ -869,33 +835,6 @@ function buildLiveSignalTapeItems({
   }
   for (const item of tokenItems.slice(0, 8)) {
     rows.push({ kind: "token", token: item, event: null, score: item.opportunity.score, reason: tokenTapeReason(item), body: tokenTapeBody(item) });
-  }
-  for (const item of socialEvents.slice(0, 8)) {
-    rows.push({
-      kind: "social_event",
-      item,
-      score: item.confidence * 100,
-      reason: item.event_type.replaceAll("_", " "),
-      body: item.summary_zh || item.subject
-    });
-  }
-  for (const item of attentionSeeds.slice(0, 8)) {
-    rows.push({
-      kind: "attention_seed",
-      item,
-      score: item.token_uptake_count ? Math.min(100, item.token_uptake_count * 20) : null,
-      reason: item.seed_status.replaceAll("_", " "),
-      body: `${item.subject} · ${item.top_linked_symbols.join(", ") || "seed only"}`
-    });
-  }
-  for (const item of harnessSnapshots.slice(0, 8)) {
-    rows.push({
-      kind: "harness_snapshot",
-      item,
-      score: item.combined_score * 100,
-      reason: item.shadow_signal.replaceAll("_", " "),
-      body: `${item.asset} · ${item.horizon} · ${item.outcome_status}`
-    });
   }
   const seen = new Set<string>();
   return rows.filter((item) => {
@@ -965,15 +904,6 @@ function tapeItemId(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     return item.event?.event.event_id ?? item.token.identity.identity_key;
   }
-  if (item.kind === "social_event") {
-    return item.item.extraction_id;
-  }
-  if (item.kind === "attention_seed") {
-    return item.item.seed_id;
-  }
-  if (item.kind === "harness_snapshot") {
-    return item.item.snapshot_id;
-  }
   return item.payload.event.event_id;
 }
 
@@ -984,7 +914,7 @@ function jobSummary(counts?: Record<string, number>): string {
   return `p${counts.pending ?? 0}/r${counts.running ?? 0}/f${counts.failed ?? 0}/d${counts.dead ?? 0}`;
 }
 
-function defaultHarnessHealth(status?: StatusData): HarnessHealth {
+function defaultSignalLabHealth(status?: StatusData): HarnessHealth {
   return {
     llm_configured: Boolean(status?.enrichment.llm_configured),
     extractor_running: Boolean(status?.enrichment.worker_running),
@@ -996,53 +926,13 @@ function defaultHarnessHealth(status?: StatusData): HarnessHealth {
   };
 }
 
-function formatHarnessCoverage(value?: number | null): string {
+function formatSignalLabCoverage(value?: number | null): string {
   return value === null || value === undefined ? "-" : `${Math.round(value * 100)}%`;
 }
 
-function selectedHarnessObjectId(signal: SelectedSignal): string | null {
-  if (signal?.kind === "social_event") return signal.item.extraction_id;
-  if (signal?.kind === "attention_seed") return signal.item.seed_id;
-  if (signal?.kind === "harness_snapshot") return signal.item.snapshot_id;
+function selectedSignalChainIdForSelection(signal: SelectedSignal): string | null {
+  if (signal?.kind === "signal_chain") return signal.item.chain_id;
   return null;
-}
-
-function resolveHarnessDetails(
-  signal: SelectedSignal,
-  data: {
-    attentionSeeds: AttentionSeedItem[];
-    harnessCredits: HarnessCreditItem[];
-    harnessOutcomes: HarnessOutcomeItem[];
-    harnessSnapshots: HarnessSnapshotItem[];
-    socialEvents: SocialEventItem[];
-  }
-): { socialEvent: SocialEventItem | null; seed: AttentionSeedItem | null; snapshot: HarnessSnapshotItem | null; outcome: HarnessOutcomeItem | null; credits: HarnessCreditItem[] } | null {
-  if (!signal) {
-    return null;
-  }
-
-  let socialEvent: SocialEventItem | null;
-  let seed: AttentionSeedItem | null;
-  let snapshot: HarnessSnapshotItem | null;
-  if (signal.kind === "social_event") {
-    socialEvent = signal.item;
-    seed = seedForSocialEvent(signal.item, data.attentionSeeds);
-    snapshot = snapshotForSocialEvent(signal.item, seed, data.harnessSnapshots);
-  } else if (signal.kind === "attention_seed") {
-    socialEvent = socialEventForSeed(signal.item, data.socialEvents);
-    seed = signal.item;
-    snapshot = snapshotForSeed(signal.item, data.harnessSnapshots);
-  } else if (signal.kind === "harness_snapshot") {
-    socialEvent = socialEventForSnapshot(signal.item, data.socialEvents, data.attentionSeeds);
-    seed = seedForSnapshot(signal.item, data.attentionSeeds);
-    snapshot = signal.item;
-  } else {
-    return null;
-  }
-
-  const outcome = snapshot ? data.harnessOutcomes.find((item) => item.snapshot_id === snapshot.snapshot_id) ?? null : null;
-  const credits = snapshot ? data.harnessCredits.filter((item) => item.snapshot_id === snapshot.snapshot_id) : [];
-  return { socialEvent, seed, snapshot, outcome, credits };
 }
 
 function resolveEvidenceDetails(
@@ -1078,54 +968,25 @@ function resolveEvidenceDetails(
   return null;
 }
 
-function seedForSocialEvent(socialEvent: SocialEventItem, seeds: AttentionSeedItem[]): AttentionSeedItem | null {
-  return seeds.find((item) => item.extraction_id === socialEvent.extraction_id || item.event_id === socialEvent.event_id) ?? null;
-}
-
-function seedForSnapshot(snapshot: HarnessSnapshotItem, seeds: AttentionSeedItem[]): AttentionSeedItem | null {
-  return snapshot.seed_id ? seeds.find((item) => item.seed_id === snapshot.seed_id) ?? null : null;
-}
-
-function socialEventForSeed(seed: AttentionSeedItem, socialEvents: SocialEventItem[]): SocialEventItem | null {
-  return socialEvents.find((item) => item.extraction_id === seed.extraction_id || item.event_id === seed.event_id) ?? null;
-}
-
-function socialEventForSnapshot(snapshot: HarnessSnapshotItem, socialEvents: SocialEventItem[], seeds: AttentionSeedItem[]): SocialEventItem | null {
-  const seed = seedForSnapshot(snapshot, seeds);
-  if (seed) {
-    return socialEventForSeed(seed, socialEvents);
-  }
-  return snapshot.source_event_id ? socialEvents.find((item) => item.event_id === snapshot.source_event_id) ?? null : null;
-}
-
-function snapshotForSeed(seed: AttentionSeedItem, snapshots: HarnessSnapshotItem[]): HarnessSnapshotItem | null {
-  return snapshots.find((item) => item.seed_id === seed.seed_id || item.source_event_id === seed.event_id) ?? null;
-}
-
-function snapshotForSocialEvent(socialEvent: SocialEventItem, seed: AttentionSeedItem | null, snapshots: HarnessSnapshotItem[]): HarnessSnapshotItem | null {
-  if (seed) {
-    return snapshotForSeed(seed, snapshots);
-  }
-  return snapshots.find((item) => item.source_event_id === socialEvent.event_id) ?? null;
-}
-
-function filterHarnessForToken(
-  token: TokenFlowItem | null,
-  data: {
-    attentionSeeds: AttentionSeedItem[];
-    harnessCredits: HarnessCreditItem[];
-    harnessOutcomes: HarnessOutcomeItem[];
-    harnessSnapshots: HarnessSnapshotItem[];
-  }
-): { seeds: AttentionSeedItem[]; snapshots: HarnessSnapshotItem[]; outcomes: HarnessOutcomeItem[]; credits: HarnessCreditItem[] } {
+function filterSignalChainsForToken(token: TokenFlowItem | null, chains: SignalLabChain[]): SignalLabChain[] {
   if (!token) {
-    return { seeds: [], snapshots: [], outcomes: [], credits: [] };
+    return [];
   }
-  const symbols = new Set([token.identity.symbol?.toUpperCase(), token.identity.address?.toLowerCase(), token.identity.token_id?.toLowerCase()].filter(Boolean));
-  const seeds = data.attentionSeeds.filter((seed) => seed.top_linked_symbols.some((symbol) => symbols.has(symbol.toUpperCase())));
-  const snapshots = data.harnessSnapshots.filter((snapshot) => symbols.has(snapshot.asset.toUpperCase()));
-  const snapshotIds = new Set(snapshots.map((snapshot) => snapshot.snapshot_id));
-  const outcomes = data.harnessOutcomes.filter((outcome) => snapshotIds.has(outcome.snapshot_id));
-  const credits = data.harnessCredits.filter((credit) => snapshotIds.has(credit.snapshot_id));
-  return { seeds, snapshots, outcomes, credits };
+  const identities = new Set([token.identity.symbol?.toUpperCase(), token.identity.address?.toUpperCase(), token.identity.token_id?.toUpperCase()].filter(Boolean));
+  return chains.filter((chain) => {
+    const asset = chain.asset?.toUpperCase();
+    return asset ? identities.has(asset) : false;
+  });
+}
+
+function preferredSignalChain(chains: SignalLabChain[]): SignalLabChain {
+  return [...chains].sort((a, b) => signalChainStageRank(b) - signalChainStageRank(a) || b.updated_at_ms - a.updated_at_ms)[0];
+}
+
+function signalChainStageRank(chain: SignalLabChain): number {
+  if (chain.stage === "credited") return 5;
+  if (chain.stage === "settled") return 4;
+  if (chain.stage === "frozen") return 3;
+  if (chain.stage === "seeded") return 2;
+  return 1;
 }

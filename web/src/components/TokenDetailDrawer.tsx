@@ -1,9 +1,6 @@
 import type {
   AccountQualityData,
-  AttentionSeedItem,
-  HarnessCreditItem,
-  HarnessOutcomeItem,
-  HarnessSnapshotItem,
+  SignalLabChain,
   TimelineBucket,
   TokenDetailTab,
   TokenFlowItem,
@@ -13,8 +10,8 @@ import type {
 import { gmgnTokenUrl } from "../lib/gmgn";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { AccountLane } from "./AccountLane";
-import { HarnessTokenTab } from "./HarnessTokenTab";
 import { ScoreLedger } from "./ScoreLedger";
+import { SignalChainList } from "./SignalChainList";
 import { TokenPostsTab } from "./TokenPostsTab";
 import { tokenDrawerSummary } from "./TokenRadarRow";
 import { TokenTimeline } from "./TokenTimeline";
@@ -23,7 +20,7 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
   { tab: "timeline", label: "Timeline" },
   { tab: "posts", label: "Posts" },
   { tab: "score", label: "Score" },
-  { tab: "harness", label: "Lab" },
+  { tab: "lab", label: "Lab" },
   { tab: "accounts", label: "Accounts" }
 ];
 
@@ -32,16 +29,13 @@ type TokenDetailDrawerProps = {
   activeTab: TokenDetailTab;
   timeline?: TokenSocialTimelineData | null;
   posts?: TokenPostsData | null;
-  harnessSeeds: AttentionSeedItem[];
-  harnessSnapshots: HarnessSnapshotItem[];
-  harnessOutcomes: HarnessOutcomeItem[];
-  harnessCredits: HarnessCreditItem[];
+  signalChains: SignalLabChain[];
   accountQuality?: AccountQualityData | null;
   isTimelineLoading: boolean;
   isPostsLoading: boolean;
   isPostsFetchingNextPage: boolean;
   isAccountQualityLoading: boolean;
-  isHarnessLoading: boolean;
+  isSignalLabLoading: boolean;
   timelineBucket: TimelineBucket;
   postSortMode: "recent" | "quality";
   hideDuplicateClusters: boolean;
@@ -52,7 +46,7 @@ type TokenDetailDrawerProps = {
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
-  onSelectSnapshot: (snapshot: HarnessSnapshotItem) => void;
+  onSelectSignalChain: (chain: SignalLabChain) => void;
 };
 
 export function TokenDetailDrawer({
@@ -60,16 +54,13 @@ export function TokenDetailDrawer({
   activeTab,
   timeline,
   posts,
-  harnessSeeds,
-  harnessSnapshots,
-  harnessOutcomes,
-  harnessCredits,
+  signalChains,
   accountQuality,
   isTimelineLoading,
   isPostsLoading,
   isPostsFetchingNextPage,
   isAccountQualityLoading,
-  isHarnessLoading,
+  isSignalLabLoading,
   timelineBucket,
   postSortMode,
   hideDuplicateClusters,
@@ -80,7 +71,7 @@ export function TokenDetailDrawer({
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
   onLoadMorePosts,
-  onSelectSnapshot
+  onSelectSignalChain
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
@@ -193,18 +184,10 @@ export function TokenDetailDrawer({
           <ScoreLedger token={token} />
         </section>
       ) : null}
-      {activeTab === "harness" ? (
+      {activeTab === "lab" ? (
         <section className="drawer-section">
-          <div className="section-title">signal lab</div>
-          <HarnessTokenTab
-            credits={harnessCredits}
-            isLoading={isHarnessLoading}
-            outcomes={harnessOutcomes}
-            seeds={harnessSeeds}
-            snapshots={harnessSnapshots}
-            token={token}
-            onSelectSnapshot={onSelectSnapshot}
-          />
+          <div className="section-title">Signal Chains · {tokenLabel(token)}</div>
+          <SignalChainList compact isLoading={isSignalLabLoading} items={signalChains} onSelect={onSelectSignalChain} />
         </section>
       ) : null}
       {activeTab === "accounts" ? (

@@ -8,7 +8,7 @@ export type WindowKey = "5m" | "1h" | "24h";
 export type ScopeKey = "matched" | "all";
 export type Decision = "driver" | "watch" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
-export type TokenDetailTab = "timeline" | "posts" | "score" | "harness" | "accounts";
+export type TokenDetailTab = "timeline" | "posts" | "score" | "lab" | "accounts";
 export type TimelineBucket = "30s" | "1m" | "5m";
 
 export type BootstrapData = {
@@ -573,6 +573,59 @@ export type HarnessCreditsData = {
 };
 
 export type HarnessHealthData = HarnessHealth;
+
+export type SignalLabStage = "extracted" | "seeded" | "frozen" | "settled" | "credited";
+export type SignalLabStageFilter = "all" | SignalLabStage;
+export type SignalLabInspectorTab = "trace" | "snapshot" | "outcome" | "credit";
+
+export type SignalLabStageSummary = Record<SignalLabStage, number>;
+
+export type SignalLabChain = {
+  chain_id: string;
+  stage: SignalLabStage;
+  received_at_ms: number;
+  updated_at_ms: number;
+  asset?: string | null;
+  horizon?: string | null;
+  source?: string | null;
+  event_type?: string | null;
+  title: string;
+  summary: string;
+  score?: number | null;
+  outcome_status?: string | null;
+  credit_status?: string | null;
+  risks: string[];
+  evidence_chips?: string[];
+  lineage: {
+    extraction_id?: string | null;
+    event_id?: string | null;
+    seed_id?: string | null;
+    snapshot_id?: string | null;
+    source_event_id?: string | null;
+  };
+  social_event?: SocialEventItem | null;
+  seed?: AttentionSeedItem | null;
+  snapshot?: HarnessSnapshotItem | null;
+  outcome?: HarnessOutcomeItem | null;
+  credits: HarnessCreditItem[];
+};
+
+export type SignalLabChainsData = {
+  query: {
+    window: WindowKey;
+    horizon: string;
+    scope: ScopeKey;
+    stage?: SignalLabStage | null;
+    asset?: string | null;
+    handle?: string | null;
+    q?: string | null;
+  };
+  summary: SignalLabStageSummary;
+  items: SignalLabChain[];
+  returned_count: number;
+  has_more: boolean;
+  next_cursor?: string | null;
+};
 
 export type AccountQualityItem = {
   profile: {

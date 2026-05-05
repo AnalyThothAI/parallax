@@ -1,4 +1,4 @@
-import type { AttentionSeedItem, HarnessSnapshotItem, LivePayload, SocialEventItem, TokenFlowItem } from "../api/types";
+import type { LivePayload, TokenFlowItem } from "../api/types";
 import { compactNumber, eventHandle, eventText, formatRelativeTime, formatScore, tokenLabel } from "../lib/format";
 
 type LiveSignalTapeBase = {
@@ -9,10 +9,7 @@ type LiveSignalTapeBase = {
 
 export type LiveSignalTapeItem =
   | (LiveSignalTapeBase & { kind: "event"; payload: LivePayload })
-  | (LiveSignalTapeBase & { kind: "token"; token: TokenFlowItem; event?: LivePayload | null })
-  | (LiveSignalTapeBase & { kind: "social_event"; item: SocialEventItem })
-  | (LiveSignalTapeBase & { kind: "attention_seed"; item: AttentionSeedItem })
-  | (LiveSignalTapeBase & { kind: "harness_snapshot"; item: HarnessSnapshotItem });
+  | (LiveSignalTapeBase & { kind: "token"; token: TokenFlowItem; event?: LivePayload | null });
 
 type LiveSignalTapeProps = {
   items: LiveSignalTapeItem[];
@@ -72,15 +69,6 @@ function tapeItemId(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     return item.event?.event.event_id ?? item.token.identity.identity_key;
   }
-  if (item.kind === "social_event") {
-    return item.item.extraction_id;
-  }
-  if (item.kind === "attention_seed") {
-    return item.item.seed_id;
-  }
-  if (item.kind === "harness_snapshot") {
-    return item.item.snapshot_id;
-  }
   return item.payload.event.event_id;
 }
 
@@ -88,15 +76,6 @@ function tapeTitle(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     const handle = item.event ? `@${eventHandle(item.event.event)} -> ` : "";
     return `${handle}${tokenLabel(item.token)}`;
-  }
-  if (item.kind === "social_event") {
-    return `@${item.item.author_handle ?? "watched"} · ${item.item.event_type}`;
-  }
-  if (item.kind === "attention_seed") {
-    return `@${item.item.author_handle ?? "watched"} · ${item.item.seed_status}`;
-  }
-  if (item.kind === "harness_snapshot") {
-    return `${item.item.asset} · shadow ${item.item.shadow_signal}`;
   }
   const event = item.payload.event;
   const text = eventText(event);
@@ -108,30 +87,12 @@ function tapeKindLabel(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     return "TOKEN";
   }
-  if (item.kind === "social_event") {
-    return "SIGNAL";
-  }
-  if (item.kind === "attention_seed") {
-    return "SEED";
-  }
-  if (item.kind === "harness_snapshot") {
-    return "SNAP";
-  }
   return "POST";
 }
 
 function tapeTime(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     return item.event ? formatRelativeTime(item.event.event.received_at_ms) : formatRelativeTime(item.token.flow.window_end_ms);
-  }
-  if (item.kind === "social_event") {
-    return formatRelativeTime(item.item.received_at_ms);
-  }
-  if (item.kind === "attention_seed") {
-    return formatRelativeTime(item.item.received_at_ms);
-  }
-  if (item.kind === "harness_snapshot") {
-    return formatRelativeTime(item.item.decision_time_ms);
   }
   return formatRelativeTime(item.payload.event.received_at_ms);
 }
@@ -145,15 +106,6 @@ function tapeBody(item: LiveSignalTapeItem): string {
       return eventText(item.event.event) || tokenTapeReason(item.token);
     }
     return `${compactNumber(item.token.social_heat.mentions)} 帖 · ${tokenTapeReason(item.token)}`;
-  }
-  if (item.kind === "social_event") {
-    return item.item.summary_zh || item.item.subject || "extracted social event";
-  }
-  if (item.kind === "attention_seed") {
-    return `${item.item.subject} · links ${item.item.top_linked_symbols.join(", ") || "-"}`;
-  }
-  if (item.kind === "harness_snapshot") {
-    return `score ${item.item.combined_score.toFixed(2)} · ${item.item.horizon} · ${item.item.outcome_status}`;
   }
   return eventText(item.payload.event) || "public stream event";
 }

@@ -5,15 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type {
   ApiResponse,
-  AttentionSeedsData,
   BootstrapData,
-  HarnessCreditsData,
   HarnessHealthData,
-  HarnessOutcomesData,
-  HarnessSnapshotItem,
-  HarnessSnapshotsData,
   LivePayload,
-  SocialEventsData,
+  SignalLabChainsData,
   StatusData,
   TokenFlowData,
   TokenFlowItem,
@@ -104,8 +99,13 @@ describe("App Token Radar social heat cockpit", () => {
       postSortMode: "recent",
       hideDuplicateClusters: false,
       watchedPostsOnly: false,
-      harnessView: "events",
-      harnessHorizon: "6h"
+      activeView: "live",
+      signalLabStage: "all",
+      signalLabHorizon: "6h",
+      signalLabAsset: "",
+      signalLabHandle: "",
+      signalLabSearch: "",
+      signalLabInspectorTab: "trace"
     });
     mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
     mockApi();
@@ -223,6 +223,50 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.queryByText("harness_snapshot")).not.toBeInTheDocument();
   });
 
+  it("keeps Signal Lab Pulse visible in the live cockpit and opens the shared inspector", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    const pulseTitle = await screen.findByText("Signal Lab Pulse");
+    const pulse = pulseTitle.closest("section") as HTMLElement;
+    expect(await within(pulse).findByText(/BNB · 6h · updated/)).toBeInTheDocument();
+    expect(within(pulse).getByText("CZ 提到 build on BNB，形成 BNB attention seed。")).toBeInTheDocument();
+    expect(within(pulse).queryByText("extractor configured")).not.toBeInTheDocument();
+    expect(within(pulse).queryByLabelText("signal lab pulse stages")).not.toBeInTheDocument();
+    expect(screen.getByText("Token")).toBeInTheDocument();
+
+    fireEvent.click(await within(pulse).findByRole("button", { name: "open signal chain BNB · 6h" }));
+
+    await waitFor(() => expect(screen.getByText("selected signal chain")).toBeInTheDocument());
+    expect(screen.getByText("Token")).toBeInTheDocument();
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(within(drawer).getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true");
+    expect(within(drawer).getByText("snapshot-bnb-6h")).toBeInTheDocument();
+  });
+
+  it("switches the left rail into the Signal Lab workbench without losing the selected chain", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    const rail = container.querySelector(".side-rail") as HTMLElement;
+    fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
+
+    const workbench = await screen.findByText("Audit watched-account social events into snapshots, outcomes, and predictive credit.");
+    expect(workbench).toBeInTheDocument();
+    expect(screen.getByText("Signal Chains")).toBeInTheDocument();
+    const views = within(container.querySelector(".side-rail") as HTMLElement).getByText("views").closest("section") as HTMLElement;
+    expect(within(views).queryByText("Tokens")).not.toBeInTheDocument();
+    expect(within(views).queryByText("Accounts")).not.toBeInTheDocument();
+    expect(within(views).queryByText("Jobs/Ops")).not.toBeInTheDocument();
+    expect(screen.getByText("Extracted")).toBeInTheDocument();
+    expect(screen.getByText("Seeded")).toBeInTheDocument();
+    expect(screen.getByText("Frozen")).toBeInTheDocument();
+    expect(screen.getByText("Settled")).toBeInTheDocument();
+    expect(screen.getByText("Credited")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "open signal chain BNB · 6h" }));
+    expect(await screen.findByText("selected signal chain")).toBeInTheDocument();
+    expect(container.querySelector(".signal-lab-workbench")).toBeInTheDocument();
+  });
+
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
     const { container } = renderWithQuery(<App />);
 
@@ -246,7 +290,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).getByRole("button", { name: "Timeline" })).toHaveClass("active");
   });
 
-  it("opens Timeline by default, requests timeline/posts, and exposes score ledger tabs", async () => {
+  it("opens Timeline by default, requests timeline/posts, and keeps token Lab scoped to Signal Chains", async () => {
     const { container } = renderWithQuery(<App />);
 
     const tokenButton = await screen.findByRole("button", { name: "select token $UPEG" });
@@ -267,10 +311,10 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => expect(screen.getAllByText("样本不足").length).toBeGreaterThan(0));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     fireEvent.click(within(drawer).getByRole("button", { name: "Lab" }));
-    await waitFor(() => expect(within(drawer).getByText("Linked Seeds · $UPEG")).toBeInTheDocument());
-    expect(within(drawer).getByText("Active Snapshots")).toBeInTheDocument();
-    expect(within(drawer).getByText("Latest Outcome")).toBeInTheDocument();
-    expect(within(drawer).getByText("Credit Rows")).toBeInTheDocument();
+    await waitFor(() => expect(within(drawer).getByText("Signal Chains · $UPEG")).toBeInTheDocument());
+    expect(within(drawer).getByText("No Signal Chains in this window")).toBeInTheDocument();
+    expect(within(drawer).queryByText("Active Snapshots")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("Credit Rows")).not.toBeInTheDocument();
   });
 
   it("removes narrative product surface and exposes signal lab entry points", async () => {
@@ -281,13 +325,26 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getAllByText("Signal Lab").length).toBeGreaterThan(0);
   });
 
+  it("uses the chain read model as the only Signal Lab lifecycle source in the UI", async () => {
+    renderWithQuery(<App />);
+
+    await screen.findByText("Signal Lab Pulse");
+
+    await waitFor(() => expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/chains")).toBe(true));
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/social-events")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/attention-seeds")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/harness-snapshots")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/harness-outcomes")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/harness-credits")).toBe(false);
+  });
+
   it("keeps settlement horizon inside Signal Lab and out of the global token radar rail", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("Token");
 
     expect(screen.queryByRole("heading", { name: "horizon" })).not.toBeInTheDocument();
-    expect(screen.getByLabelText("settlement horizon")).toBeInTheDocument();
+    expect(screen.queryByLabelText("settlement horizon")).not.toBeInTheDocument();
 
     await waitFor(() => {
       const tokenFlowCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-flow");
@@ -299,13 +356,15 @@ describe("App Token Radar social heat cockpit", () => {
   it("changes only signal lab settlement queries when the settlement horizon changes", async () => {
     renderWithQuery(<App />);
 
+    const rail = (await screen.findByText("views")).closest("aside") as HTMLElement;
+    fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
     const settlementControl = await screen.findByLabelText("settlement horizon");
     fireEvent.click(within(settlementControl).getByRole("button", { name: "24h" }));
 
     await waitFor(() => {
       expect(
         mockedGetApi.mock.calls.some(
-          ([path, options]) => path === "/api/harness-snapshots" && options?.params?.horizon === "24h"
+          ([path, options]) => path === "/api/signal-lab/chains" && options?.params?.horizon === "24h"
         )
       ).toBe(true);
     });
@@ -315,17 +374,88 @@ describe("App Token Radar social heat cockpit", () => {
     expect(tokenFlowCalls.every(([, options]) => !Object.hasOwn(options?.params ?? {}, "horizon"))).toBe(true);
   });
 
-  it("renders social event signal rows and opens the right-side trace", async () => {
+  it("routes Signal Lab toolbar filters into the chain read model", async () => {
     const { container } = renderWithQuery(<App />);
 
-    const socialEventRows = await screen.findAllByText("@cz_binance · meme_phrase_seed");
-    expect(socialEventRows.length).toBeGreaterThan(0);
-    expect(screen.getAllByText("schema").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("BNB attention seed").length).toBeGreaterThan(0);
+    const rail = container.querySelector(".side-rail") as HTMLElement;
+    fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
-    fireEvent.click(socialEventRows[0]);
+    fireEvent.change(await screen.findByLabelText("Signal Lab asset filter"), { target: { value: "$BNB" } });
+    fireEvent.change(screen.getByLabelText("Signal Lab source filter"), { target: { value: "@cz_binance" } });
+    fireEvent.change(screen.getByLabelText("Signal Lab text filter"), { target: { value: "build on BNB" } });
 
-    await waitFor(() => expect(screen.getByText("selected signal object")).toBeInTheDocument());
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/signal-lab/chains" &&
+            options?.params?.asset === "$BNB" &&
+            options?.params?.handle === "@cz_binance" &&
+            options?.params?.q === "build on BNB"
+        )
+      ).toBe(true);
+    });
+  });
+
+  it("uses the Signal Lab cursor to load additional chains in the workbench", async () => {
+    const firstPage = signalLabChainsData();
+    const secondChain = {
+      ...firstPage.items[0],
+      chain_id: "snapshot:snapshot-sol-24h",
+      asset: "SOL",
+      horizon: "24h",
+      title: "SOL · 24h",
+      summary: "SOL product-launch chain loaded from cursor.",
+      lineage: {
+        ...firstPage.items[0].lineage,
+        snapshot_id: "snapshot-sol-24h"
+      },
+      snapshot: firstPage.items[0].snapshot
+        ? {
+            ...firstPage.items[0].snapshot,
+            snapshot_id: "snapshot-sol-24h",
+            asset: "SOL",
+            horizon: "24h"
+          }
+        : null
+    };
+    mockApi({
+      signalLabPages: {
+        "": { ...firstPage, has_more: true, next_cursor: "80" },
+        "80": {
+          ...firstPage,
+          items: [secondChain],
+          returned_count: 1,
+          has_more: false,
+          next_cursor: null
+        }
+      }
+    });
+    const { container } = renderWithQuery(<App />);
+
+    const rail = container.querySelector(".side-rail") as HTMLElement;
+    fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Load more" }));
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/signal-lab/chains" && options?.params?.cursor === "80"
+        )
+      ).toBe(true);
+    });
+    expect(await screen.findByText("SOL product-launch chain loaded from cursor.")).toBeInTheDocument();
+  });
+
+  it("renders Signal Chain rows and opens the right-side trace", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+    const signalChainRow = await within(pulse).findByRole("button", { name: "open signal chain BNB · 6h" });
+
+    fireEvent.click(signalChainRow);
+
+    await waitFor(() => expect(screen.getByText("selected signal chain")).toBeInTheDocument());
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(within(drawer).getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true");
     expect(within(drawer).getAllByText("Extracted").length).toBeGreaterThan(0);
@@ -334,31 +464,72 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(drawer).getByRole("tab", { name: "Snapshot" }));
     expect(within(drawer).getByText("Snapshot Ledger")).toBeInTheDocument();
     expect(within(drawer).getByText("signal-lab-score-v1")).toBeInTheDocument();
+    expect(within(drawer).getByText("schema_version")).toBeInTheDocument();
+    expect(within(drawer).getByText("report-only-v1")).toBeInTheDocument();
+    expect(within(drawer).getByText("shadow-v1")).toBeInTheDocument();
+    expect(within(drawer).getByText("risk-v1")).toBeInTheDocument();
+    expect(within(drawer).getByText("baseline-v1")).toBeInTheDocument();
+    expect(within(drawer).getByText("cluster-cz-bnb")).toBeInTheDocument();
+    expect(within(drawer).getByText("price_change_before_social_pct")).toBeInTheDocument();
+    expect(within(drawer).getByText("public_stream_coverage")).toBeInTheDocument();
     expect(within(drawer).queryByText("Extracted")).not.toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("tab", { name: "Outcome" }));
     expect(within(drawer).getByText("Latest Outcome")).toBeInTheDocument();
+    expect(within(drawer).getByText("settled_at_ms")).toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole("tab", { name: "Credit" }));
     expect(within(drawer).getByText("Credit Rows")).toBeInTheDocument();
     expect(within(drawer).getByText("Predictive credit, not causal proof.")).toBeInTheDocument();
+    expect(within(drawer).getByText("credit-cz-bnb")).toBeInTheDocument();
+    expect(within(drawer).getByText("cluster-cz-bnb")).toBeInTheDocument();
     expect(screen.queryByText("harness-score-v1")).not.toBeInTheDocument();
   });
 
   it("links Signal Lab details by persisted lineage ids instead of symbol fallback", async () => {
-    const matchingSnapshot = harnessSnapshotItem();
-    const decoySnapshot: HarnessSnapshotItem = {
-      ...harnessSnapshotItem(),
-      snapshot_id: "snapshot-bnb-wrong",
-      source_event_id: "event-other",
-      seed_id: "seed-other",
-      combined_score: 0.91
+    const baseChains = signalLabChainsData();
+    const matchingChain = baseChains.items[0];
+    const decoyChain = {
+      ...matchingChain,
+      chain_id: "snapshot:snapshot-bnb-wrong",
+      lineage: {
+        ...matchingChain.lineage,
+        event_id: "event-other",
+        seed_id: "seed-other",
+        snapshot_id: "snapshot-bnb-wrong",
+        source_event_id: "event-other"
+      },
+      social_event: {
+        ...socialEventItem(),
+        event_id: "event-other",
+        extraction_id: "extract-other"
+      },
+      seed: {
+        ...attentionSeedItem(),
+        seed_id: "seed-other",
+        event_id: "event-other"
+      },
+      snapshot: {
+        ...harnessSnapshotItem(),
+        snapshot_id: "snapshot-bnb-wrong",
+        source_event_id: "event-other",
+        seed_id: "seed-other",
+        combined_score: 0.91
+      }
     };
-    mockApi({ harnessSnapshots: [decoySnapshot, matchingSnapshot] });
+    mockApi({
+      signalLabChains: {
+        ...baseChains,
+        summary: { ...baseChains.summary, frozen: 2 },
+        items: [decoyChain, matchingChain],
+        returned_count: 2
+      }
+    });
     const { container } = renderWithQuery(<App />);
 
-    const socialEventRows = await screen.findAllByText("@cz_binance · meme_phrase_seed");
-    fireEvent.click(socialEventRows[0]);
+    const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+    const signalChainRows = await within(pulse).findAllByRole("button", { name: "open signal chain BNB · 6h" });
+    fireEvent.click(signalChainRows[1]);
 
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     fireEvent.click(await within(drawer).findByRole("tab", { name: "Snapshot" }));
@@ -449,7 +620,8 @@ function mockApi(options: {
   insufficientTiming?: boolean;
   windowSwapToken?: boolean;
   searchResult?: boolean;
-  harnessSnapshots?: HarnessSnapshotItem[];
+  signalLabChains?: SignalLabChainsData;
+  signalLabPages?: Record<string, SignalLabChainsData>;
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -496,11 +668,10 @@ function mockApi(options: {
       });
     }
     if (path === "/api/account-alerts") return ok({ window: "24h", alert_type: null, items: [] });
-    if (path === "/api/social-events") return ok<SocialEventsData>({ items: [socialEventItem()] });
-    if (path === "/api/attention-seeds") return ok<AttentionSeedsData>({ items: [attentionSeedItem()] });
-    if (path === "/api/harness-snapshots") return ok<HarnessSnapshotsData>({ items: options.harnessSnapshots ?? [harnessSnapshotItem()] });
-    if (path === "/api/harness-outcomes") return ok<HarnessOutcomesData>({ items: [harnessOutcomeItem()] });
-    if (path === "/api/harness-credits") return ok<HarnessCreditsData>({ items: [harnessCreditItem()] });
+    if (path === "/api/signal-lab/chains") {
+      const cursor = String(requestOptions?.params?.cursor ?? "");
+      return ok(options.signalLabPages?.[cursor] ?? options.signalLabChains ?? signalLabChainsData());
+    }
     if (path === "/api/harness-health") {
       return ok<HarnessHealthData>({
         llm_configured: true,
@@ -892,6 +1063,55 @@ function harnessCreditItem() {
     responsibility: 1,
     credit: 0.5,
     created_at_ms: 1_777_767_650_000
+  };
+}
+
+function signalLabChainsData(): SignalLabChainsData {
+  return {
+    query: {
+      window: "1h",
+      horizon: "6h",
+      scope: "all",
+      stage: null,
+      asset: null,
+      handle: null,
+      q: null
+    },
+    summary: { extracted: 0, seeded: 0, frozen: 1, settled: 0, credited: 0 },
+    items: [
+      {
+        chain_id: "snapshot:snapshot-bnb-6h",
+        stage: "frozen",
+        received_at_ms: 1_777_746_020_000,
+        updated_at_ms: 1_777_746_040_000,
+        asset: "BNB",
+        horizon: "6h",
+        source: "cz_binance",
+        event_type: "meme_phrase_seed",
+        title: "BNB · 6h",
+        summary: "CZ 提到 build on BNB，形成 BNB attention seed。",
+        score: 0.42,
+        outcome_status: "pending",
+        credit_status: "none",
+        risks: ["public_stream_coverage"],
+        evidence_chips: ["posted", "meme phrase", "LONG SMALL"],
+        lineage: {
+          extraction_id: "extract-cz-bnb",
+          event_id: "event-cz-bnb",
+          seed_id: "seed-cz-bnb",
+          snapshot_id: "snapshot-bnb-6h",
+          source_event_id: "event-cz-bnb"
+        },
+        social_event: socialEventItem(),
+        seed: attentionSeedItem(),
+        snapshot: harnessSnapshotItem(),
+        outcome: harnessOutcomeItem(),
+        credits: [harnessCreditItem()]
+      }
+    ],
+    returned_count: 1,
+    has_more: false,
+    next_cursor: null
   };
 }
 

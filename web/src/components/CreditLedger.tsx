@@ -1,5 +1,5 @@
 import type { HarnessCreditItem } from "../api/types";
-import { formatPercentShare, formatScore } from "../lib/format";
+import { formatPercentShare, formatRelativeTime, formatScore } from "../lib/format";
 import { signalLabLabel } from "../lib/signalLab";
 
 type CreditLedgerProps = {
@@ -14,13 +14,18 @@ export function CreditLedger({ credits }: CreditLedgerProps) {
       {credits.length === 0 ? <div className="empty-state">credit not assigned</div> : null}
       {credits.map((credit) => (
         <article className="credit-row" key={credit.credit_id}>
-          <strong>
-            {credit.event_type} · {signalLabLabel(credit.source)}
-          </strong>
-          <span>{credit.horizon}</span>
+          <strong>{signalLabLabel(credit.credit_id)}</strong>
+          <span>{signalLabLabel(credit.cluster_id)}</span>
+          <span>
+            {signalLabLabel(credit.source)} · {credit.event_type}
+          </span>
+          <span>
+            {credit.asset} · {credit.horizon}
+          </span>
           <b>{formatScore(credit.event_score * 100)}</b>
           <b>{formatPercentShare(credit.responsibility)}</b>
           <b className={credit.credit >= 0 ? "positive" : "negative"}>{credit.credit.toFixed(3)}</b>
+          <span>{formatRelativeTime(credit.created_at_ms)}</span>
         </article>
       ))}
     </div>
