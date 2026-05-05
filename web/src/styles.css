@@ -324,14 +324,26 @@ svg {
 .side-rail {
   position: sticky;
   top: 46px;
+  display: flex;
+  flex-direction: column;
   height: calc(100vh - 46px);
-  overflow: auto;
+  min-height: 0;
+  overflow: hidden;
   border-right: 1px solid var(--line);
 }
 
 .rail-section {
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--line);
   padding: 12px 14px;
+}
+
+.watchlist-section {
+  display: flex;
+  flex: 1 1 180px;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .rail-section h2,
@@ -499,10 +511,12 @@ svg {
 
 .watchlist {
   display: grid;
+  flex: 1 1 auto;
   gap: 4px;
-  max-height: 250px;
+  min-height: 0;
   overflow: auto;
   padding-right: 2px;
+  align-content: start;
 }
 
 .watchlist button {
@@ -510,12 +524,21 @@ svg {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
+  min-height: 28px;
   min-width: 0;
   border: 0;
+  border-radius: 4px;
   color: var(--muted);
   background: transparent;
-  padding: 3px 0;
+  padding: 4px 3px;
   text-align: left;
+}
+
+.watchlist button:hover,
+.watchlist button:focus-visible {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.035);
+  outline: 0;
 }
 
 .watchlist-copy {

@@ -298,6 +298,18 @@ describe("App Token Radar social heat cockpit", () => {
     expect(container.querySelector(".signal-lab-workbench")).toBeInTheDocument();
   });
 
+  it("marks the desktop watchlist as the left rail fill section", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByText("Token");
+    const rail = container.querySelector(".desktop-side-rail") as HTMLElement;
+    const watchlistSection = within(rail).getByText("watchlist").closest("section") as HTMLElement;
+
+    expect(watchlistSection).toHaveClass("watchlist-section");
+    expect(watchlistSection.querySelector(".watchlist")).toBeInTheDocument();
+    expect(rail.querySelector(".rail-footer")?.previousElementSibling).toBe(watchlistSection);
+  });
+
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
     const { container } = renderWithQuery(<App />);
 

@@ -626,7 +626,7 @@ export function App() {
             <DecisionCount decision="discard" count={decisionCounts.discard} />
           </RailSection>
 
-          <RailSection label="watchlist">
+          <RailSection label="watchlist" className="watchlist-section">
             <div className="watchlist">
               {watchlistRows.map((row) => (
                 <button type="button" key={row.handle} onClick={() => runSearch(`@${row.handle}`)}>
@@ -777,9 +777,9 @@ export function App() {
   );
 }
 
-function RailSection({ label, children }: { label: string; children: ReactNode }) {
+function RailSection({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <section className="rail-section">
+    <section className={`rail-section ${className}`.trim()}>
       <h2>{label}</h2>
       {children}
     </section>
