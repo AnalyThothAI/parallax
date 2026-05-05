@@ -6,6 +6,7 @@ from threading import RLock
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Source
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
@@ -105,6 +106,45 @@ def test_ingest_enqueues_pending_observation_for_direct_token_payload_without_ma
     assert rows[0]["event_id"] == "event-direct"
     assert rows[0]["status"] == "pending"
     assert rows[0]["target_received_at_ms"] == 1_700_000_000_000
+
+
+def test_basic_stream_evm_ca_with_chain_hint_enqueues_pending_observation(tmp_path):
+    conn, ingest = open_runtime(tmp_path)
+    try:
+        result = ingest.ingest_event(
+            make_event(
+                "event-basic-bsc-ca",
+                text=(
+                    "币安好友 $EDGE achieved 5.77x CA: "
+                    "0x5aec6340fc1e27893a4c966fae624fc6d3f9ffff Get more: BSC"
+                ),
+                received_at_ms=1_700_000_000_000,
+            ),
+            is_watched=False,
+        )
+        rows = observation_rows(conn)
+        attribution = conn.execute(
+            "SELECT * FROM event_token_attributions WHERE event_id = ?",
+            ("event-basic-bsc-ca",),
+        ).fetchone()
+        flow = TokenFlowService(signals=ingest.signals, tokens=ingest.tokens).token_flow(
+            window="5m",
+            limit=10,
+            scope="all",
+            now_ms=1_700_000_300_000,
+        )
+    finally:
+        conn.close()
+
+    assert result.inserted is True
+    assert len(rows) == 1
+    assert rows[0]["event_id"] == "event-basic-bsc-ca"
+    assert rows[0]["chain"] == "bsc"
+    assert rows[0]["symbol"] == "EDGE"
+    assert attribution["chain"] == "bsc"
+    assert attribution["attribution_status"] == "direct"
+    assert flow[0]["identity"]["chain"] == "bsc"
+    assert flow[0]["identity"]["symbol"] == "EDGE"
 
 
 def test_symbol_only_event_gets_observation_after_later_selected_attribution(tmp_path):
