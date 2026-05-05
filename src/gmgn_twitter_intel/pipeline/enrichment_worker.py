@@ -7,8 +7,7 @@ from threading import RLock
 from loguru import logger
 
 from ..storage.sqlite_client import transaction
-from .narrative_seed_builder import NarrativeSeedBuilder
-from .narrative_token_linker import NarrativeTokenLinker
+from .harness_snapshot_builder import HarnessSnapshotBuilder
 
 
 class EnrichmentWorker:
@@ -19,6 +18,7 @@ class EnrichmentWorker:
         entities,
         signals,
         enrichment,
+        harness,
         tokens,
         client,
         publisher=None,
@@ -29,6 +29,7 @@ class EnrichmentWorker:
         self.entities = entities
         self.signals = signals
         self.enrichment = enrichment
+        self.harness = harness
         self.tokens = tokens
         self.client = client
         self.publisher = publisher
@@ -72,62 +73,47 @@ class EnrichmentWorker:
                 self.enrichment.fail_job(job=job, error=str(exc))
             return True
 
-        with self.write_lock:
-            stored = self.enrichment.complete_job(
-                job=job,
-                event=event,
-                result=result,
-                provider=self.client.provider,
-                model=self.client.model,
-                request=request,
-            )
-
-        seeds: list[dict] = []
-        links: list[dict] = []
         try:
-            with self.write_lock:
-                seeds, links = self._materialize_narrative_links(event=event, result=result)
+            with self.write_lock, transaction(self.enrichment.conn):
+                run = self.enrichment.complete_social_event_job(
+                    job=job,
+                    result=result,
+                    provider=self.client.provider,
+                    model=self.client.model,
+                    request=request,
+                    commit=False,
+                )
+                materialized = self._materialize_harness(
+                    event=event,
+                    result=result,
+                    run_id=str(run["run_id"]),
+                    commit=False,
+                )
         except Exception as exc:
-            logger.exception(f"narrative link materialization failed event_id={event.get('event_id')}: {exc}")
+            logger.exception(f"harness materialization failed event_id={event.get('event_id')}: {exc}")
+            with self.write_lock:
+                self.enrichment.fail_job(job=job, error=str(exc))
+            return True
 
         if self.publisher is not None:
             await self.publisher.publish(
                 {
-                    "type": "enrichment_update",
+                    "type": "harness_update",
                     "event": event,
-                    "enrichment": stored,
-                    "narratives": stored.get("narratives", []),
-                    "alerts": stored.get("alerts", []),
+                    "entities": entities,
+                    **materialized,
                 }
             )
-            if links:
-                await self.publisher.publish(
-                    {
-                        "type": "narrative_link_update",
-                        "event": event,
-                        "seeds": seeds,
-                        "links": links,
-                    }
-                )
         return True
 
-    def _materialize_narrative_links(self, *, event: dict, result) -> tuple[list[dict], list[dict]]:
-        if not event.get("is_watched"):
-            return [], []
-        seed_builder = NarrativeSeedBuilder(self.enrichment)
-        linker = NarrativeTokenLinker(
-            evidence=self.evidence,
-            signals=self.signals,
-            enrichment=self.enrichment,
-            tokens=self.tokens,
+    def _materialize_harness(self, *, event: dict, result, run_id: str, commit: bool) -> dict:
+        return HarnessSnapshotBuilder(self.harness).materialize(
+            event=event,
+            extraction=result,
+            run_id=run_id,
+            model_version=self.client.model,
+            commit=commit,
         )
-        links: list[dict] = []
-        with transaction(self.enrichment.conn):
-            seeds = seed_builder.build_for_event(event=event, result=result)
-            for seed in seeds:
-                for window in ("5m", "1h", "24h"):
-                    links.extend(linker.link_seed(seed=seed, window=window, commit=False))
-        return seeds, links
 
 
 def _now_ms() -> int:

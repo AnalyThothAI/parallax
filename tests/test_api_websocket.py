@@ -2,6 +2,8 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
+from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.settings import Settings
 
 
@@ -60,7 +62,7 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path):
             assert "entities" in replay
             assert "alerts" in replay
             assert "token_attributions" in replay
-            assert "enrichment" in replay
+            assert "harness" in replay
 
             ignored = _ingest_payload(client, make_event("event-2", "elonmusk"), is_watched=True)
             matched = _ingest_payload(client, make_event("event-3", "toly"), is_watched=True)
@@ -97,7 +99,56 @@ def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path):
             assert live["event"]["event_id"] == "event-ca-live"
 
 
-def test_websocket_routes_narrative_link_updates_by_seed_event_handle(tmp_path):
+def test_websocket_replay_includes_harness_state_for_social_event(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        event = make_event("seed-event", "toly", text="Grok DOG is getting scary good")
+        client.app.state.service.ingest.ingest_event(event, is_watched=True)
+        HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
+            event=event.to_dict(),
+            extraction=SocialEventExtraction(
+                is_signal_event=True,
+                event_type="meme_phrase_seed",
+                source_action="posted",
+                subject="Grok DOG attention",
+                direction_hint="attention_positive",
+                attention_mechanism="meme_phrase",
+                impact_hint=0.8,
+                semantic_novelty_hint=0.75,
+                confidence=0.9,
+                anchor_terms=[AnchorTerm(term="Grok", role="meme_phrase", evidence="Grok")],
+                token_candidates=[
+                    SocialTokenCandidate(
+                        symbol="DOG",
+                        project_name=None,
+                        chain="eth",
+                        address=None,
+                        evidence="DOG",
+                        confidence=0.9,
+                    )
+                ],
+                semantic_risks=["public_stream_coverage"],
+                summary_zh="Grok DOG 形成 harness 注意力事件。",
+                raw_response={"ok": True},
+            ),
+            run_id="run-seed",
+            model_version="fake-model",
+        )
+
+        with client.websocket_connect("/ws") as ws:
+            ws.send_json({"type": "auth", "token": "secret"})
+            assert ws.receive_json()["type"] == "ready"
+            ws.send_json({"type": "subscribe", "handles": ["toly"], "replay": 5})
+            replay = ws.receive_json()
+
+    assert replay["type"] == "event"
+    assert replay["harness"]["social_event"]["event_id"] == "seed-event"
+    assert replay["harness"]["attention_seed"]["event_id"] == "seed-event"
+    assert replay["harness"]["snapshots"][0]["asset"] == "DOG"
+
+
+def test_websocket_routes_harness_updates_by_seed_event_handle(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -112,16 +163,17 @@ def test_websocket_routes_narrative_link_updates_by_seed_event_handle(tmp_path):
             client.portal.call(
                 client.app.state.service.hub.publish,
                 {
-                    "type": "narrative_link_update",
+                    "type": "harness_update",
                     "event": event.to_dict(),
-                    "seeds": [{"seed_id": "seed-1", "narrative_label": "ai_agent_grok"}],
-                    "links": [{"symbol": "GROK"}],
+                    "social_event": {"event_id": "seed-event", "event_type": "meme_phrase_seed"},
+                    "seed": {"seed_id": "seed-1", "event_id": "seed-event"},
+                    "snapshots": [{"asset": "DOG"}],
                 },
             )
             update = ws.receive_json()
 
-    assert update["type"] == "narrative_link_update"
-    assert update["seeds"][0]["narrative_label"] == "ai_agent_grok"
+    assert update["type"] == "harness_update"
+    assert update["seed"]["seed_id"] == "seed-1"
 
 
 def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
@@ -132,5 +184,5 @@ def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
         "entities": result.entities,
         "alerts": result.alerts,
         "token_attributions": result.token_attributions,
-        "enrichment": None,
+        "harness": None,
     }

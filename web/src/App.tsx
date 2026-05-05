@@ -1,22 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
+import { Clock3, RefreshCw, Search, ShieldCheck, UserRound, Wifi, Zap } from "lucide-react";
 import { getApi, getBootstrap } from "./api/client";
 import type {
   AccountAlertsData,
   AccountQualityData,
   AlertRecord,
-  AttentionFrontierData,
-  AttentionFrontierItem,
+  AttentionSeedItem,
+  AttentionSeedsData,
   Decision,
   EnrichmentJobsData,
+  HarnessCreditItem,
+  HarnessCreditsData,
+  HarnessHealth,
+  HarnessHealthData,
+  HarnessOutcomeItem,
+  HarnessOutcomesData,
+  HarnessSnapshotItem,
+  HarnessSnapshotsData,
   LivePayload,
-  NarrativeFlowData,
   RadarSortMode,
   RecentData,
   SearchData,
   SearchItem,
+  SocialEventItem,
+  SocialEventsData,
   StatusData,
   TokenFlowData,
   TokenFlowItem,
@@ -25,8 +34,9 @@ import type {
   WindowKey
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
+import { HarnessDetailDrawer } from "./components/HarnessDetailDrawer";
+import { HarnessPanel } from "./components/HarnessPanel";
 import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
-import { NarrativePanel } from "./components/NarrativePanel";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenRadarTable } from "./components/TokenRadarTable";
 import {
@@ -45,7 +55,9 @@ const ACCOUNT_ALERT_WINDOW: WindowKey = "24h";
 type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }
   | { kind: "event"; item: LivePayload }
-  | { kind: "narrative"; item: AttentionFrontierItem }
+  | { kind: "social_event"; item: SocialEventItem }
+  | { kind: "attention_seed"; item: AttentionSeedItem }
+  | { kind: "harness_snapshot"; item: HarnessSnapshotItem }
   | { kind: "alert"; item: AlertRecord }
   | { kind: "search"; item: SearchItem }
   | { kind: "query"; query: string }
@@ -61,6 +73,8 @@ export function App() {
   const token = useTraderStore((state) => state.token);
   const radarSortMode = useTraderStore((state) => state.radarSortMode);
   const detailTab = useTraderStore((state) => state.detailTab);
+  const harnessView = useTraderStore((state) => state.harnessView);
+  const harnessHorizon = useTraderStore((state) => state.harnessHorizon);
   const timelineBucket = useTraderStore((state) => state.timelineBucket);
   const postSortMode = useTraderStore((state) => state.postSortMode);
   const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
@@ -74,6 +88,8 @@ export function App() {
   const runSearch = useTraderStore((state) => state.runSearch);
   const setRadarSortMode = useTraderStore((state) => state.setRadarSortMode);
   const setDetailTab = useTraderStore((state) => state.setDetailTab);
+  const setHarnessView = useTraderStore((state) => state.setHarnessView);
+  const setHarnessHorizon = useTraderStore((state) => state.setHarnessHorizon);
   const setTimelineBucket = useTraderStore((state) => state.setTimelineBucket);
   const setPostSortMode = useTraderStore((state) => state.setPostSortMode);
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
@@ -137,26 +153,66 @@ export function App() {
     refetchInterval: 10_000
   });
 
-  const narrativeQuery = useQuery({
-    queryKey: ["narrative-flow", windowKey],
+  const socialEventsQuery = useQuery({
+    queryKey: ["social-events", windowKey, handles],
     queryFn: () =>
-      getApi<NarrativeFlowData>("/api/narrative-flow", {
+      getApi<SocialEventsData>("/api/social-events", {
         token,
-        params: { window: windowKey, limit: 30 }
+        params: { window: windowKey, limit: 50, handles }
       }),
     enabled: Boolean(token),
-    refetchInterval: 18_000
+    refetchInterval: 10_000
   });
 
-  const frontierQuery = useQuery({
-    queryKey: ["attention-frontier", windowKey],
+  const attentionSeedsQuery = useQuery({
+    queryKey: ["attention-seeds", windowKey, handles],
     queryFn: () =>
-      getApi<AttentionFrontierData>("/api/attention-frontier", {
+      getApi<AttentionSeedsData>("/api/attention-seeds", {
         token,
-        params: { window: windowKey, limit: 30 }
+        params: { window: windowKey, limit: 50, handles }
       }),
     enabled: Boolean(token),
-    refetchInterval: 18_000
+    refetchInterval: 10_000
+  });
+
+  const harnessSnapshotsQuery = useQuery({
+    queryKey: ["harness-snapshots", windowKey, harnessHorizon],
+    queryFn: () =>
+      getApi<HarnessSnapshotsData>("/api/harness-snapshots", {
+        token,
+        params: { window: windowKey, horizon: harnessHorizon, limit: 50 }
+      }),
+    enabled: Boolean(token),
+    refetchInterval: 15_000
+  });
+
+  const harnessOutcomesQuery = useQuery({
+    queryKey: ["harness-outcomes", windowKey, harnessHorizon],
+    queryFn: () =>
+      getApi<HarnessOutcomesData>("/api/harness-outcomes", {
+        token,
+        params: { window: windowKey, horizon: harnessHorizon, limit: 50 }
+      }),
+    enabled: Boolean(token),
+    refetchInterval: 30_000
+  });
+
+  const harnessCreditsQuery = useQuery({
+    queryKey: ["harness-credits", windowKey, harnessHorizon],
+    queryFn: () =>
+      getApi<HarnessCreditsData>("/api/harness-credits", {
+        token,
+        params: { window: windowKey, horizon: harnessHorizon, limit: 80 }
+      }),
+    enabled: Boolean(token),
+    refetchInterval: 30_000
+  });
+
+  const harnessHealthQuery = useQuery({
+    queryKey: ["harness-health"],
+    queryFn: () => getApi<HarnessHealthData>("/api/harness-health", { token }),
+    enabled: Boolean(token),
+    refetchInterval: 15_000
   });
 
   const enrichmentJobsQuery = useQuery({
@@ -241,14 +297,27 @@ export function App() {
   const searchData = searchQuery.data?.data;
   const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
   const searchItems = currentSearchData?.items ?? [];
-  const frontierItems = frontierQuery.data?.data.items ?? [];
-  const narratives = narrativeQuery.data?.data.items ?? [];
+  const socialEvents = socialEventsQuery.data?.data.items ?? [];
+  const attentionSeeds = attentionSeedsQuery.data?.data.items ?? [];
+  const harnessSnapshots = harnessSnapshotsQuery.data?.data.items ?? [];
+  const harnessOutcomes = harnessOutcomesQuery.data?.data.items ?? [];
+  const harnessCredits = harnessCreditsQuery.data?.data.items ?? [];
+  const harnessHealth = harnessHealthQuery.data?.data ?? defaultHarnessHealth(statusQuery.data?.data);
   const liveSignalTapeItems = useMemo(
-    () => buildLiveSignalTapeItems({ liveItems, tokenItems, frontierItems }),
-    [frontierItems, liveItems, tokenItems]
+    () => buildLiveSignalTapeItems({ attentionSeeds, harnessSnapshots, liveItems, socialEvents, tokenItems }),
+    [attentionSeeds, harnessSnapshots, liveItems, socialEvents, tokenItems]
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
   const tokenPostsData = useMemo(() => mergePostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
+  const selectedHarnessId = selectedHarnessObjectId(selectedSignal);
+  const selectedHarnessDetails = useMemo(
+    () => resolveHarnessDetails(selectedSignal, { attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, socialEvents }),
+    [attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, selectedSignal, socialEvents]
+  );
+  const selectedTokenHarness = useMemo(
+    () => filterHarnessForToken(selectedToken, { attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots }),
+    [attentionSeeds, harnessCredits, harnessOutcomes, harnessSnapshots, selectedToken]
+  );
 
   useEffect(() => {
     if (!selectedSignal && tokenItems.length) {
@@ -293,13 +362,16 @@ export function App() {
       selectToken(item.token);
       return;
     }
-    if (item.kind === "narrative") {
-      setSelectedSignal({ kind: "narrative", item: item.item });
-      const tokenMatch = tokenItems.find((tokenItem) => frontierMatchesToken(item.item, tokenItem));
-      if (tokenMatch) {
-        setSelectedSignal({ kind: "token", key: tokenKey(tokenMatch), item: tokenMatch });
-        setDetailTab("narratives");
-      }
+    if (item.kind === "social_event") {
+      setSelectedSignal({ kind: "social_event", item: item.item });
+      return;
+    }
+    if (item.kind === "attention_seed") {
+      setSelectedSignal({ kind: "attention_seed", item: item.item });
+      return;
+    }
+    if (item.kind === "harness_snapshot") {
+      setSelectedSignal({ kind: "harness_snapshot", item: item.item });
       return;
     }
     setSelectedSignal({ kind: "event", item: item.payload });
@@ -366,7 +438,13 @@ export function App() {
             flow·{windowKey} <b>{compactNumber(tokenItems.length)}</b>
           </span>
           <span>
-            enrich <b>{jobSummary(enrichmentJobsQuery.data?.data.counts)}</b>
+            seeds <b>{compactNumber(attentionSeeds.length)}</b>
+          </span>
+          <span>
+            snap <b>{compactNumber(harnessSnapshots.length)}</b>
+          </span>
+          <span>
+            settled <b>{formatHarnessCoverage(harnessHealth.settlement_coverage)}</b>
           </span>
         </div>
 
@@ -380,7 +458,7 @@ export function App() {
           <RailSection label="views">
             <RailButton active label="Live" value={liveItems.length} index="1" />
             <RailButton active label="Tokens" value={tokenItems.length} index="2" />
-            <RailButton label="Narratives" value={narratives.length} index="3" />
+            <RailButton label="Harness" value={harnessSnapshots.length || socialEvents.length} index="3" />
             <RailButton label="Accounts" value={accountQualityQuery.data?.data.accounts.length ?? 0} index="4" />
             <RailButton label="Jobs/Ops" value={enrichmentJobsQuery.data?.data.items.length ?? 0} index="5" />
           </RailSection>
@@ -472,16 +550,25 @@ export function App() {
             <section className="compact-panel">
               <header>
                 <div>
-                  <Brain aria-hidden />
-                  <h2>叙事流</h2>
+                  <ShieldCheck aria-hidden />
+                  <h2>Harness</h2>
                 </div>
-                <span>{statusQuery.data?.data.enrichment.llm_configured ? "LLM on" : "LLM off"}</span>
+                <span>{harnessHealth.llm_configured ? "social-event-v1" : "extractor off"}</span>
               </header>
-              <NarrativePanel
-                frontierItems={frontierItems}
-                isLoading={narrativeQuery.isPending || frontierQuery.isPending}
-                llmConfigured={Boolean(statusQuery.data?.data.enrichment.llm_configured)}
-                narratives={narratives}
+              <HarnessPanel
+                health={harnessHealth}
+                horizon={harnessHorizon}
+                isLoading={socialEventsQuery.isPending || attentionSeedsQuery.isPending || harnessSnapshotsQuery.isPending}
+                seeds={attentionSeeds}
+                selectedId={selectedHarnessId}
+                snapshots={harnessSnapshots}
+                socialEvents={socialEvents}
+                view={harnessView}
+                onSelectEvent={(item) => setSelectedSignal({ kind: "social_event", item })}
+                onSelectSeed={(item) => setSelectedSignal({ kind: "attention_seed", item })}
+                onSelectSnapshot={(item) => setSelectedSignal({ kind: "harness_snapshot", item })}
+                onHorizonChange={setHarnessHorizon}
+                onViewChange={setHarnessView}
               />
             </section>
 
@@ -502,30 +589,46 @@ export function App() {
           </div>
         </section>
 
-        <TokenDetailDrawer
-          accountQuality={accountQualityQuery.data?.data}
-          activeTab={detailTab}
-          hideDuplicateClusters={hideDuplicateClusters}
-          isAccountQualityLoading={accountQualityQuery.isFetching}
-          isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
-          isPostsLoading={tokenPostsQuery.isLoading}
-          isTimelineLoading={tokenTimelineQuery.isFetching}
-          llmConfigured={Boolean(statusQuery.data?.data.enrichment.llm_configured)}
-          narrativeLinks={frontierItems}
-          narratives={narratives}
-          postSortMode={postSortMode}
-          posts={tokenPostsData}
-          timeline={tokenTimelineQuery.data?.data}
-          timelineBucket={timelineBucket}
-          token={selectedToken}
-          watchedPostsOnly={watchedPostsOnly}
-          onHideDuplicateClustersChange={setHideDuplicateClusters}
-          onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
-          onPostSortModeChange={setPostSortMode}
-          onTabChange={setDetailTab}
-          onTimelineBucketChange={setTimelineBucket}
-          onWatchedPostsOnlyChange={setWatchedPostsOnly}
-        />
+        {selectedHarnessDetails ? (
+          <HarnessDetailDrawer
+            credits={selectedHarnessDetails.credits}
+            outcome={selectedHarnessDetails.outcome}
+            seed={selectedHarnessDetails.seed}
+            snapshot={selectedHarnessDetails.snapshot}
+            socialEvent={selectedHarnessDetails.socialEvent}
+          />
+        ) : (
+          <TokenDetailDrawer
+            accountQuality={accountQualityQuery.data?.data}
+            activeTab={detailTab}
+            harnessCredits={selectedTokenHarness.credits}
+            harnessOutcomes={selectedTokenHarness.outcomes}
+            harnessSeeds={selectedTokenHarness.seeds}
+            harnessSnapshots={selectedTokenHarness.snapshots}
+            hideDuplicateClusters={hideDuplicateClusters}
+            isAccountQualityLoading={accountQualityQuery.isFetching}
+            isHarnessLoading={attentionSeedsQuery.isFetching || harnessSnapshotsQuery.isFetching || harnessOutcomesQuery.isFetching || harnessCreditsQuery.isFetching}
+            isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
+            isPostsLoading={tokenPostsQuery.isLoading}
+            isTimelineLoading={tokenTimelineQuery.isFetching}
+            postSortMode={postSortMode}
+            posts={tokenPostsData}
+            timeline={tokenTimelineQuery.data?.data}
+            timelineBucket={timelineBucket}
+            token={selectedToken}
+            watchedPostsOnly={watchedPostsOnly}
+            onHideDuplicateClustersChange={setHideDuplicateClusters}
+            onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
+            onPostSortModeChange={setPostSortMode}
+            onSelectSnapshot={(snapshot) => {
+              setSelectedSignal({ kind: "harness_snapshot", item: snapshot });
+              setSelectedTapeEventId(snapshot.snapshot_id);
+            }}
+            onTabChange={setDetailTab}
+            onTimelineBucketChange={setTimelineBucket}
+            onWatchedPostsOnlyChange={setWatchedPostsOnly}
+          />
+        )}
       </div>
     </main>
   );
@@ -709,28 +812,18 @@ function mergePostPages(pages?: TokenPostsData[]): TokenPostsData | null {
   };
 }
 
-function frontierMatchesToken(item: AttentionFrontierItem, token: TokenFlowItem): boolean {
-  const keys = new Set(frontierTokenKeys(token.identity));
-  return frontierTokenKeys(item.link.identity).some((key) => keys.has(key));
-}
-
-function frontierTokenKeys(identity: TokenFlowItem["identity"]): string[] {
-  return [
-    `identity:${identity.identity_key}`,
-    identity.token_id ? `token:${identity.token_id}` : "",
-    identity.address ? `address:${identity.address.toLowerCase()}` : "",
-    identity.symbol ? `symbol:${identity.symbol.toUpperCase()}` : ""
-  ].filter(Boolean);
-}
-
 function buildLiveSignalTapeItems({
+  attentionSeeds,
+  harnessSnapshots,
   liveItems,
-  tokenItems,
-  frontierItems
+  socialEvents,
+  tokenItems
 }: {
+  attentionSeeds: AttentionSeedItem[];
+  harnessSnapshots: HarnessSnapshotItem[];
   liveItems: LivePayload[];
+  socialEvents: SocialEventItem[];
   tokenItems: TokenFlowItem[];
-  frontierItems: AttentionFrontierItem[];
 }): LiveSignalTapeItem[] {
   const byTokenId = new Map<string, TokenFlowItem>();
   const byCa = new Map<string, TokenFlowItem>();
@@ -753,7 +846,15 @@ function buildLiveSignalTapeItems({
   const rows: LiveSignalTapeItem[] = [];
   for (const payload of liveItems) {
     const tokenMatch = tokenMatchForPayload(payload, { byTokenId, byCa, byIdentityKey, bySymbol });
-    if (tokenMatch) {
+    if (payload.harness?.social_event) {
+      rows.push({
+        kind: "social_event",
+        item: payload.harness.social_event,
+        score: payload.harness.social_event.confidence * 100,
+        reason: payload.harness.social_event.event_type.replaceAll("_", " "),
+        body: payload.harness.social_event.summary_zh || eventText(payload.event)
+      });
+    } else if (tokenMatch) {
       rows.push({
         kind: "token",
         token: tokenMatch,
@@ -761,14 +862,6 @@ function buildLiveSignalTapeItems({
         score: tokenMatch.opportunity.score,
         reason: tokenTapeReason(tokenMatch),
         body: eventText(payload.event) || tokenTapeBody(tokenMatch)
-      });
-    } else if (payload.enrichment?.summary_zh || payload.enrichment?.summary) {
-      rows.push({
-        kind: "enrichment",
-        payload,
-        score: payload.enrichment.confidence ? payload.enrichment.confidence * 100 : null,
-        reason: "watched enrichment",
-        body: payload.enrichment.summary_zh || payload.enrichment.summary || eventText(payload.event)
       });
     } else {
       rows.push({
@@ -783,13 +876,31 @@ function buildLiveSignalTapeItems({
   for (const item of tokenItems.slice(0, 8)) {
     rows.push({ kind: "token", token: item, event: null, score: item.opportunity.score, reason: tokenTapeReason(item), body: tokenTapeBody(item) });
   }
-  for (const item of frontierItems.slice(0, 8)) {
+  for (const item of socialEvents.slice(0, 8)) {
     rows.push({
-      kind: "narrative",
+      kind: "social_event",
       item,
-      score: item.link.scores.token_link,
-      reason: item.link.evidence.link_reason ?? "watched seed",
-      body: item.seed.display?.summary_zh || item.seed.display?.market_interpretation_zh || item.seed.evidence
+      score: item.confidence * 100,
+      reason: item.event_type.replaceAll("_", " "),
+      body: item.summary_zh || item.subject
+    });
+  }
+  for (const item of attentionSeeds.slice(0, 8)) {
+    rows.push({
+      kind: "attention_seed",
+      item,
+      score: item.token_uptake_count ? Math.min(100, item.token_uptake_count * 20) : null,
+      reason: item.seed_status.replaceAll("_", " "),
+      body: `${item.subject} · ${item.top_linked_symbols.join(", ") || "seed only"}`
+    });
+  }
+  for (const item of harnessSnapshots.slice(0, 8)) {
+    rows.push({
+      kind: "harness_snapshot",
+      item,
+      score: item.combined_score * 100,
+      reason: item.shadow_signal.replaceAll("_", " "),
+      body: `${item.asset} · ${item.horizon} · ${item.outcome_status}`
     });
   }
   const seen = new Set<string>();
@@ -860,8 +971,14 @@ function tapeItemId(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     return item.event?.event.event_id ?? item.token.identity.identity_key;
   }
-  if (item.kind === "narrative") {
-    return item.item.seed.seed_id;
+  if (item.kind === "social_event") {
+    return item.item.extraction_id;
+  }
+  if (item.kind === "attention_seed") {
+    return item.item.seed_id;
+  }
+  if (item.kind === "harness_snapshot") {
+    return item.item.snapshot_id;
   }
   return item.payload.event.event_id;
 }
@@ -877,4 +994,79 @@ function jobSummary(counts?: Record<string, number>): string {
     return "-";
   }
   return `p${counts.pending ?? 0}/r${counts.running ?? 0}/f${counts.failed ?? 0}/d${counts.dead ?? 0}`;
+}
+
+function defaultHarnessHealth(status?: StatusData): HarnessHealth {
+  return {
+    llm_configured: Boolean(status?.enrichment.llm_configured),
+    extractor_running: Boolean(status?.enrichment.worker_running),
+    schema_success_rate: null,
+    pending_jobs: status?.enrichment.job_counts.pending ?? 0,
+    snapshots_24h: 0,
+    pending_outcomes: 0,
+    settlement_coverage: null
+  };
+}
+
+function formatHarnessCoverage(value?: number | null): string {
+  return value === null || value === undefined ? "-" : `${Math.round(value * 100)}%`;
+}
+
+function selectedHarnessObjectId(signal: SelectedSignal): string | null {
+  if (signal?.kind === "social_event") return signal.item.extraction_id;
+  if (signal?.kind === "attention_seed") return signal.item.seed_id;
+  if (signal?.kind === "harness_snapshot") return signal.item.snapshot_id;
+  return null;
+}
+
+function resolveHarnessDetails(
+  signal: SelectedSignal,
+  data: {
+    attentionSeeds: AttentionSeedItem[];
+    harnessCredits: HarnessCreditItem[];
+    harnessOutcomes: HarnessOutcomeItem[];
+    harnessSnapshots: HarnessSnapshotItem[];
+    socialEvents: SocialEventItem[];
+  }
+): { socialEvent: SocialEventItem | null; seed: AttentionSeedItem | null; snapshot: HarnessSnapshotItem | null; outcome: HarnessOutcomeItem | null; credits: HarnessCreditItem[] } | null {
+  if (!signal || !["social_event", "attention_seed", "harness_snapshot"].includes(signal.kind)) {
+    return null;
+  }
+  const socialEvent = signal.kind === "social_event" ? signal.item : data.socialEvents.find((item) => item.extraction_id === seedForSignal(signal, data.attentionSeeds)?.extraction_id) ?? null;
+  const seed = seedForSignal(signal, data.attentionSeeds);
+  const snapshot =
+    signal.kind === "harness_snapshot"
+      ? signal.item
+      : data.harnessSnapshots.find((item) => seed?.top_linked_symbols.some((symbol) => symbol.toUpperCase() === item.asset.toUpperCase())) ?? null;
+  const outcome = snapshot ? data.harnessOutcomes.find((item) => item.snapshot_id === snapshot.snapshot_id) ?? null : null;
+  const credits = snapshot ? data.harnessCredits.filter((item) => item.snapshot_id === snapshot.snapshot_id) : [];
+  return { socialEvent, seed, snapshot, outcome, credits };
+}
+
+function seedForSignal(signal: NonNullable<SelectedSignal>, seeds: AttentionSeedItem[]): AttentionSeedItem | null {
+  if (signal.kind === "attention_seed") return signal.item;
+  if (signal.kind === "social_event") return seeds.find((item) => item.extraction_id === signal.item.extraction_id) ?? null;
+  if (signal.kind === "harness_snapshot") return seeds.find((item) => item.top_linked_symbols.some((symbol) => symbol.toUpperCase() === signal.item.asset.toUpperCase())) ?? null;
+  return null;
+}
+
+function filterHarnessForToken(
+  token: TokenFlowItem | null,
+  data: {
+    attentionSeeds: AttentionSeedItem[];
+    harnessCredits: HarnessCreditItem[];
+    harnessOutcomes: HarnessOutcomeItem[];
+    harnessSnapshots: HarnessSnapshotItem[];
+  }
+): { seeds: AttentionSeedItem[]; snapshots: HarnessSnapshotItem[]; outcomes: HarnessOutcomeItem[]; credits: HarnessCreditItem[] } {
+  if (!token) {
+    return { seeds: [], snapshots: [], outcomes: [], credits: [] };
+  }
+  const symbols = new Set([token.identity.symbol?.toUpperCase(), token.identity.address?.toLowerCase(), token.identity.token_id?.toLowerCase()].filter(Boolean));
+  const seeds = data.attentionSeeds.filter((seed) => seed.top_linked_symbols.some((symbol) => symbols.has(symbol.toUpperCase())));
+  const snapshots = data.harnessSnapshots.filter((snapshot) => symbols.has(snapshot.asset.toUpperCase()));
+  const snapshotIds = new Set(snapshots.map((snapshot) => snapshot.snapshot_id));
+  const outcomes = data.harnessOutcomes.filter((outcome) => snapshotIds.has(outcome.snapshot_id));
+  const credits = data.harnessCredits.filter((credit) => snapshotIds.has(credit.snapshot_id));
+  return { seeds, snapshots, outcomes, credits };
 }

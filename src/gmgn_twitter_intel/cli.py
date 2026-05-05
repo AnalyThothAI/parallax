@@ -10,12 +10,11 @@ import uvicorn
 
 from .api.app import create_app
 from .logging_setup import setup_logging
-from .pipeline.narrative_token_linker import NarrativeTokenLinker
+from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_attribution import TokenAttributionBuilder
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
-from .retrieval.narrative_link_service import NarrativeLinkService
-from .retrieval.narrative_service import NarrativeService
+from .retrieval.harness_service import HarnessService
 from .retrieval.search_service import SearchService
 from .retrieval.token_flow_service import TokenFlowService
 from .settings import load_settings, write_default_config
@@ -23,6 +22,7 @@ from .storage.account_quality_repository import AccountQualityRepository
 from .storage.enrichment_repository import EnrichmentRepository
 from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
+from .storage.harness_repository import HarnessRepository
 from .storage.market_observation_repository import MarketObservationRepository
 from .storage.signal_repository import SignalRepository
 from .storage.sqlite_client import connect_sqlite
@@ -63,10 +63,6 @@ def build_parser() -> argparse.ArgumentParser:
     token_flow.add_argument("--limit", type=int, default=20)
     token_flow.add_argument("--scope", choices=("all", "matched"), default="all")
 
-    narrative_flow = subcommands.add_parser("narrative-flow", help="rank LLM narrative activity windows")
-    narrative_flow.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
-    narrative_flow.add_argument("--limit", type=int, default=20)
-
     account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
     account_alerts.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
     account_alerts.add_argument("--limit", type=int, default=50)
@@ -77,13 +73,46 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
     )
 
-    account_narratives = subcommands.add_parser("account-narratives", help="print watched-account narrative alerts")
-    account_narratives.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
-    account_narratives.add_argument("--limit", type=int, default=50)
-    account_narratives.add_argument("--handles", default="")
-
     account_quality = subcommands.add_parser("account-quality", help="print account quality profiles")
     account_quality.add_argument("--handles", default="", help="comma separated account handles")
+
+    social_events = subcommands.add_parser("social-events", help="print harness social event read model")
+    social_events.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    social_events.add_argument("--limit", type=int, default=50)
+    social_events.add_argument("--handles", default="")
+    social_events.add_argument("--event-types", default="")
+
+    attention_seeds = subcommands.add_parser("attention-seeds", help="print harness attention seeds")
+    attention_seeds.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    attention_seeds.add_argument("--limit", type=int, default=50)
+    attention_seeds.add_argument("--handles", default="")
+
+    harness_snapshots = subcommands.add_parser("harness-snapshots", help="print harness snapshots")
+    harness_snapshots.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    harness_snapshots.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    harness_snapshots.add_argument("--limit", type=int, default=50)
+    harness_snapshots.add_argument("--asset", default="")
+
+    harness_outcomes = subcommands.add_parser("harness-outcomes", help="print harness outcomes")
+    harness_outcomes.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    harness_outcomes.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    harness_outcomes.add_argument("--limit", type=int, default=50)
+    harness_outcomes.add_argument("--asset", default="")
+
+    harness_credits = subcommands.add_parser("harness-credits", help="print harness credits")
+    harness_credits.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="1h")
+    harness_credits.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    harness_credits.add_argument("--limit", type=int, default=80)
+    harness_credits.add_argument("--asset", default="")
+
+    harness_weights = subcommands.add_parser("harness-weights", help="print harness weights")
+    harness_weights.add_argument("--horizon", choices=("6h", "24h"), default="")
+    harness_weights.add_argument("--limit", type=int, default=100)
+
+    harness_score_buckets = subcommands.add_parser("harness-score-buckets", help="print harness score bucket report")
+    harness_score_buckets.add_argument("--horizon", choices=("6h", "24h"), default="")
+
+    subcommands.add_parser("harness-health", help="print harness health summary")
 
     enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect LLM enrichment job backlog")
     enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
@@ -107,34 +136,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     market_observations.add_argument("--limit", type=int, default=50)
 
-    narrative_seeds = subcommands.add_parser("narrative-seeds", help="print watched-handle narrative seeds")
-    narrative_seeds.add_argument("--window", choices=("1m", "5m", "1h", "24h"), default="24h")
-    narrative_seeds.add_argument("--limit", type=int, default=50)
-    narrative_seeds.add_argument("--handles", default="")
-
-    narrative_token_flow = subcommands.add_parser(
-        "narrative-token-flow",
-        help="print tokens linked to a watched-handle narrative seed",
-    )
-    narrative_token_flow.add_argument("--seed-id", required=True)
-    narrative_token_flow.add_argument("--window", choices=("5m", "1h", "24h"), default="1h")
-    narrative_token_flow.add_argument("--limit", type=int, default=20)
-
-    attention_frontier = subcommands.add_parser(
-        "attention-frontier",
-        help="rank recent watched-handle narrative token links",
-    )
-    attention_frontier.add_argument("--window", choices=("5m", "1h", "24h"), default="1h")
-    attention_frontier.add_argument("--limit", type=int, default=30)
-
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
-    rebuild_narrative_links = ops_subcommands.add_parser(
-        "rebuild-narrative-links",
-        help="rebuild watched-handle narrative token links from existing seeds",
-    )
-    rebuild_narrative_links.add_argument("--window", choices=("5m", "1h", "24h"), default="1h")
-    rebuild_narrative_links.add_argument("--limit", type=int, default=1000)
     rebuild_attributions = ops_subcommands.add_parser(
         "rebuild-attributions",
         help="rebuild explicit token attributions from existing token mentions",
@@ -151,6 +154,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="enqueue missing market observations for existing direct/selected token attributions",
     )
     backfill_market_observations.add_argument("--limit", type=int, default=1000)
+    backfill_harness_jobs = ops_subcommands.add_parser(
+        "backfill-harness-jobs",
+        help="enqueue social-event-v1 extraction jobs for existing watched events",
+    )
+    backfill_harness_jobs.add_argument("--limit", type=int, default=1000)
+    settle_harness = ops_subcommands.add_parser(
+        "settle-harness",
+        help="settle due harness snapshots from local market snapshots",
+    )
+    settle_harness.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    settle_harness.add_argument("--limit", type=int, default=100)
+    settle_harness.add_argument("--now-ms", type=int, default=None, help=argparse.SUPPRESS)
+    attribute_harness = ops_subcommands.add_parser(
+        "attribute-harness-credits",
+        help="assign event credit for settled harness snapshots",
+    )
+    attribute_harness.add_argument("--horizon", choices=("6h", "24h"), default="6h")
+    attribute_harness.add_argument("--limit", type=int, default=100)
+    update_weights = ops_subcommands.add_parser("update-harness-weights", help="rebuild report-only harness weights")
+    update_weights.add_argument("--limit", type=int, default=1000)
     return parser
 
 
@@ -232,7 +255,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     with _repositories(settings.sqlite_path) as repos:
-        evidence, entities, signals, tokens, market_observations, enrichment = repos
+        evidence, entities, signals, tokens, market_observations, enrichment, harness = repos
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -270,7 +293,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "token-flow":
-            items = TokenFlowService(signals=signals, tokens=tokens, enrichment=enrichment).token_flow(
+            items = TokenFlowService(signals=signals, tokens=tokens, harness=harness).token_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
@@ -279,11 +302,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 {"ok": True, "data": {"window": args.window, "scope": args.scope, "items": items}},
                 stdout,
             )
-            return 0
-
-        if command == "narrative-flow":
-            items = NarrativeService(enrichment).narrative_flow(window=args.window, limit=args.limit)
-            _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
             return 0
 
         if command == "account-alerts":
@@ -296,15 +314,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
             return 0
 
-        if command == "account-narratives":
-            items = NarrativeService(enrichment).account_narratives(
-                window=args.window,
-                limit=args.limit,
-                handles=_handle_set(args.handles),
-            )
-            _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
-            return 0
-
         if command == "account-quality":
             handles = sorted(_handle_set(args.handles))
             data = AccountQualityService(
@@ -312,6 +321,118 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 repository=AccountQualityRepository(signals.conn),
             ).account_quality_for_handles(handles)
             _emit({"ok": True, "data": data}, stdout)
+            return 0
+
+        if command == "social-events":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).social_events(
+                        window=args.window,
+                        limit=args.limit,
+                        handles=_handle_set(args.handles),
+                        event_types=_csv_set(args.event_types),
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "attention-seeds":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).attention_seeds(
+                        window=args.window,
+                        limit=args.limit,
+                        handles=_handle_set(args.handles),
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "harness-snapshots":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).snapshots(
+                        window=args.window,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                        asset=args.asset or None,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "harness-outcomes":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).outcomes(
+                        window=args.window,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                        asset=args.asset or None,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "harness-credits":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).credits(
+                        window=args.window,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                        asset=args.asset or None,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "harness-weights":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).weights(
+                        horizon=args.horizon or None,
+                        limit=args.limit,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "harness-health":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).health(
+                        llm_configured=settings.llm_configured,
+                        extractor_running=bool(settings.llm_configured),
+                        pending_jobs=enrichment.job_counts().get("pending", 0),
+                        schema_success_rate=None,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "harness-score-buckets":
+            _emit(
+                {
+                    "ok": True,
+                    "data": HarnessService(harness).score_buckets(horizon=args.horizon or None),
+                },
+                stdout,
+            )
             return 0
 
         if command == "enrichment-jobs":
@@ -335,57 +456,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     "data": {
                         "items": market_observations.list_observations(limit=args.limit, status=args.status),
                         "counts": market_observations.counts(),
-                    },
-                },
-                stdout,
-            )
-            return 0
-
-        if command == "narrative-seeds":
-            items = NarrativeLinkService(enrichment=enrichment).narrative_seeds(
-                window=args.window,
-                limit=args.limit,
-                handles=_handle_set(args.handles),
-            )
-            _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
-            return 0
-
-        if command == "narrative-token-flow":
-            data = NarrativeLinkService(enrichment=enrichment).narrative_token_flow(
-                seed_id=args.seed_id,
-                window=args.window,
-                limit=args.limit,
-            )
-            _emit({"ok": True, "data": data | {"window": args.window}}, stdout)
-            return 0
-
-        if command == "attention-frontier":
-            items = NarrativeLinkService(enrichment=enrichment).attention_frontier(
-                window=args.window,
-                limit=args.limit,
-            )
-            _emit({"ok": True, "data": {"window": args.window, "items": items}}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "rebuild-narrative-links":
-            seeds = _all_narrative_seeds(enrichment, limit=args.limit)
-            linker = NarrativeTokenLinker(
-                evidence=evidence,
-                signals=signals,
-                enrichment=enrichment,
-                tokens=tokens,
-            )
-            links_upserted = 0
-            for seed in seeds:
-                links_upserted += len(linker.link_seed(seed=seed, window=args.window, commit=False))
-            enrichment.conn.commit()
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "window": args.window,
-                        "seeds_scanned": len(seeds),
-                        "links_upserted": links_upserted,
                     },
                 },
                 stdout,
@@ -456,6 +526,50 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
+        if command == "ops" and args.ops_command == "backfill-harness-jobs":
+            _emit({"ok": True, "data": enrichment.enqueue_missing_watched_events(limit=args.limit)}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "settle-harness":
+            _emit(
+                {
+                    "ok": True,
+                    "data": settle_harness_snapshots(
+                        harness=harness,
+                        tokens=tokens,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                        now_ms=args.now_ms,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "ops" and args.ops_command == "attribute-harness-credits":
+            _emit(
+                {
+                    "ok": True,
+                    "data": attribute_harness_credits(
+                        harness=harness,
+                        horizon=args.horizon,
+                        limit=args.limit,
+                    ),
+                },
+                stdout,
+            )
+            return 0
+
+        if command == "ops" and args.ops_command == "update-harness-weights":
+            _emit(
+                {
+                    "ok": True,
+                    "data": update_harness_weights(harness=harness, limit=args.limit),
+                },
+                stdout,
+            )
+            return 0
+
     parser.error(f"unknown command: {command}")
     return 2
 
@@ -472,6 +586,7 @@ def _repositories(sqlite_path):
             TokenRepository(conn),
             MarketObservationRepository(conn),
             EnrichmentRepository(conn),
+            HarnessRepository(conn),
         )
     finally:
         conn.close()
@@ -495,17 +610,5 @@ def _handle_set(raw: str) -> set[str]:
     return {item.strip().lstrip("@").lower() for item in raw.split(",") if item.strip()}
 
 
-def _all_narrative_seeds(enrichment: EnrichmentRepository, *, limit: int) -> list[dict]:
-    rows = enrichment.conn.execute(
-        """
-        SELECT seed_id FROM narrative_seeds
-        ORDER BY received_at_ms DESC
-        LIMIT ?
-        """,
-        (max(0, int(limit)),),
-    ).fetchall()
-    return [
-        seed
-        for row in rows
-        if (seed := enrichment.narrative_seed(str(row["seed_id"]))) is not None
-    ]
+def _csv_set(raw: str) -> set[str]:
+    return {item.strip() for item in raw.split(",") if item.strip()}

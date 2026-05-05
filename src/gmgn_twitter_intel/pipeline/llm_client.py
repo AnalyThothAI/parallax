@@ -4,7 +4,11 @@ from typing import Any, Protocol
 
 from openai import APIError, AsyncOpenAI, OpenAIError
 
-from .llm_enrichment import build_enrichment_prompt, parse_enrichment_response
+from .social_event_extraction import (
+    build_social_event_prompt,
+    parse_social_event_response,
+    social_event_response_format,
+)
 
 
 class EnrichmentClientProtocol(Protocol):
@@ -38,20 +42,20 @@ class OpenAIChatEnrichmentClient:
         )
 
     async def enrich_event(self, *, event: dict, entities: list[dict]):
-        messages = build_enrichment_prompt(event=event, entities=entities)
+        messages = build_social_event_prompt(event=event, entities=entities)
         try:
             completion = await self._client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0,
-                response_format={"type": "json_object"},
+                response_format=social_event_response_format(),
             )
         except APIError as exc:
             raise RuntimeError(f"LLM request failed: {exc.status_code} {exc.message}") from exc
         except OpenAIError as exc:
             raise RuntimeError(f"LLM request failed: {exc}") from exc
         content = completion.choices[0].message.content or ""
-        return parse_enrichment_response(content, event_text=_event_text(event))
+        return parse_social_event_response(content, event_text=_event_text(event))
 
 
 def _event_text(event: dict) -> str:

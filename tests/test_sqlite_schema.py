@@ -31,11 +31,21 @@ def test_sqlite_schema_bootstraps_core_tables(tmp_path):
     assert "token_windows" not in names
     assert "enrichment_jobs" in names
     assert "model_runs" in names
-    assert "event_enrichments" in names
-    assert "event_token_candidates" in names
-    assert "event_narratives" in names
-    assert "account_narrative_alerts" in names
-    assert "narrative_windows" in names
+    assert "social_event_extractions" in names
+    assert "attention_seeds" in names
+    assert "event_clusters" in names
+    assert "harness_snapshots" in names
+    assert "harness_decisions" in names
+    assert "harness_outcomes" in names
+    assert "harness_credits" in names
+    assert "harness_weights" in names
+    assert "event_enrichments" not in names
+    assert "event_token_candidates" not in names
+    assert "event_narratives" not in names
+    assert "account_narrative_alerts" not in names
+    assert "narrative_windows" not in names
+    assert "narrative_seeds" not in names
+    assert "narrative_token_links" not in names
     assert "account_keyword_alerts" not in names
     assert "keyword_windows" not in names
 
@@ -70,7 +80,7 @@ def test_migrations_are_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version"] for row in rows] == [9]
+    assert [row["version"] for row in rows] == [11]
 
 
 def test_migrate_v8_to_v9_adds_market_observations_without_clearing_data(tmp_path):
@@ -169,13 +179,13 @@ def test_migrate_v8_to_v9_adds_market_observations_without_clearing_data(tmp_pat
         conn.close()
 
     assert "token_market_observations" in names
-    assert [row["version"] for row in rows] == [9]
+    assert [row["version"] for row in rows] == [11]
     assert event_count["count"] == 1
     assert attribution_count["count"] == 1
     assert snapshot_count["count"] == 1
 
 
-def test_migrate_resets_incompatible_app_schema_instead_of_keeping_old_columns(tmp_path):
+def test_migrate_resets_legacy_narrative_schema_instead_of_keeping_compat_tables(tmp_path):
     db_path = tmp_path / "twitter_intel.sqlite3"
     conn = connect_sqlite(db_path, read_only=False)
     try:
@@ -189,15 +199,10 @@ def test_migrate_resets_incompatible_app_schema_instead_of_keeping_old_columns(t
         conn.commit()
 
         migrate(conn)
-        columns = {
-            row["name"]
-            for row in conn.execute("PRAGMA table_info(event_enrichments)").fetchall()
-        }
+        names = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
         rows = conn.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
-        old_rows = conn.execute("SELECT COUNT(*) AS count FROM event_enrichments").fetchone()
     finally:
         conn.close()
 
-    assert "summary_zh" in columns
-    assert [row["version"] for row in rows] == [9]
-    assert old_rows["count"] == 0
+    assert "event_enrichments" not in names
+    assert [row["version"] for row in rows] == [11]

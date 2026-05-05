@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 import time
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 11
 
 APP_TABLES = (
     "schema_migrations",
@@ -20,6 +20,20 @@ APP_TABLES = (
     "token_market_observations",
     "enrichment_jobs",
     "model_runs",
+    "social_event_extractions",
+    "attention_seeds",
+    "event_clusters",
+    "harness_snapshots",
+    "harness_decisions",
+    "harness_outcomes",
+    "harness_credits",
+    "harness_weights",
+    "account_profiles",
+    "account_token_call_stats",
+    "account_quality_snapshots",
+)
+
+LEGACY_TABLES = (
     "event_enrichments",
     "event_token_candidates",
     "event_narratives",
@@ -27,16 +41,9 @@ APP_TABLES = (
     "narrative_windows",
     "narrative_seeds",
     "narrative_token_links",
-    "account_profiles",
-    "account_token_call_stats",
-    "account_quality_snapshots",
 )
 
-REQUIRED_COLUMNS = {
-    "event_enrichments": {"summary_zh"},
-    "event_narratives": {"display_name_zh", "headline_zh", "description_zh", "market_interpretation_zh"},
-    "narrative_seeds": {"display_name_zh", "headline_zh", "market_interpretation_zh"},
-}
+REQUIRED_COLUMNS: dict[str, set[str]] = {}
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -358,189 +365,178 @@ CREATE TABLE IF NOT EXISTS model_runs (
 
 CREATE INDEX IF NOT EXISTS idx_model_runs_event ON model_runs(event_id, finished_at_ms);
 
-CREATE TABLE IF NOT EXISTS event_enrichments (
-  event_id TEXT PRIMARY KEY REFERENCES events(event_id) ON DELETE CASCADE,
-  run_id TEXT NOT NULL REFERENCES model_runs(run_id) ON DELETE CASCADE,
-  provider TEXT NOT NULL,
-  model TEXT NOT NULL,
-  summary TEXT NOT NULL,
-  summary_zh TEXT NOT NULL DEFAULT '',
-  stance TEXT NOT NULL,
-  intent TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS social_event_extractions (
+  extraction_id TEXT PRIMARY KEY,
+  event_id TEXT NOT NULL UNIQUE,
+  run_id TEXT,
+  author_handle TEXT,
+  received_at_ms INTEGER NOT NULL,
+  schema_version TEXT NOT NULL,
+  model_version TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  source_action TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  direction_hint TEXT NOT NULL,
+  attention_mechanism TEXT NOT NULL,
+  impact_hint REAL NOT NULL,
+  semantic_novelty_hint REAL NOT NULL,
   confidence REAL NOT NULL,
+  is_signal_event INTEGER NOT NULL,
+  anchor_terms_json TEXT NOT NULL,
+  token_candidates_json TEXT NOT NULL,
+  semantic_risks_json TEXT NOT NULL,
+  summary_zh TEXT NOT NULL,
   raw_response_json TEXT NOT NULL,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS event_token_candidates (
-  candidate_id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  symbol TEXT,
-  project_name TEXT,
-  chain TEXT,
-  address TEXT,
-  evidence TEXT NOT NULL,
-  confidence REAL NOT NULL,
-  resolution_status TEXT NOT NULL,
-  created_at_ms INTEGER NOT NULL
-);
+CREATE INDEX IF NOT EXISTS idx_social_event_extractions_received
+  ON social_event_extractions(received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_social_event_extractions_author_received
+  ON social_event_extractions(author_handle, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_social_event_extractions_type_received
+  ON social_event_extractions(event_type, received_at_ms);
 
-CREATE INDEX IF NOT EXISTS idx_event_token_candidates_symbol
-  ON event_token_candidates(symbol, created_at_ms);
-
-CREATE TABLE IF NOT EXISTS event_narratives (
-  narrative_id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  narrative_label TEXT NOT NULL,
-  description TEXT NOT NULL,
-  display_name_zh TEXT NOT NULL DEFAULT '',
-  headline_zh TEXT NOT NULL DEFAULT '',
-  description_zh TEXT NOT NULL DEFAULT '',
-  market_interpretation_zh TEXT NOT NULL DEFAULT '',
-  evidence TEXT NOT NULL,
-  confidence REAL NOT NULL,
-  stance TEXT NOT NULL,
-  intent TEXT NOT NULL,
-  received_at_ms INTEGER NOT NULL,
-  author_handle TEXT,
-  is_watched INTEGER NOT NULL DEFAULT 0,
-  created_at_ms INTEGER NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_event_narratives_event_label
-  ON event_narratives(event_id, narrative_label);
-CREATE INDEX IF NOT EXISTS idx_event_narratives_label_received
-  ON event_narratives(narrative_label, received_at_ms);
-CREATE INDEX IF NOT EXISTS idx_event_narratives_watched_received
-  ON event_narratives(is_watched, received_at_ms);
-
-CREATE TABLE IF NOT EXISTS account_narrative_alerts (
-  alert_id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  author_handle TEXT NOT NULL,
-  narrative_label TEXT NOT NULL,
-  stance TEXT NOT NULL,
-  intent TEXT NOT NULL,
-  confidence REAL NOT NULL,
-  summary TEXT NOT NULL,
-  evidence TEXT NOT NULL,
-  is_first_seen_global INTEGER NOT NULL,
-  is_first_seen_by_author INTEGER NOT NULL,
-  received_at_ms INTEGER NOT NULL,
-  created_at_ms INTEGER NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_account_narrative_alert_event_label
-  ON account_narrative_alerts(event_id, narrative_label);
-CREATE INDEX IF NOT EXISTS idx_account_narrative_alerts_received
-  ON account_narrative_alerts(received_at_ms);
-CREATE INDEX IF NOT EXISTS idx_account_narrative_alerts_author_received
-  ON account_narrative_alerts(author_handle, received_at_ms);
-
-CREATE TABLE IF NOT EXISTS narrative_windows (
-  window_id TEXT PRIMARY KEY,
-  narrative_label TEXT NOT NULL,
-  window TEXT NOT NULL,
-  window_start_ms INTEGER NOT NULL,
-  window_end_ms INTEGER NOT NULL,
-  mention_count INTEGER NOT NULL,
-  watched_mention_count INTEGER NOT NULL,
-  unique_author_count INTEGER NOT NULL,
-  weighted_reach REAL NOT NULL,
-  market_mindshare REAL NOT NULL,
-  watched_mindshare REAL NOT NULL,
-  velocity REAL NOT NULL,
-  top_authors_json TEXT NOT NULL DEFAULT '[]',
-  top_events_json TEXT NOT NULL DEFAULT '[]',
-  created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_windows_label_window_start
-  ON narrative_windows(narrative_label, window, window_start_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_windows_window_end
-  ON narrative_windows(window, window_end_ms);
-
-CREATE TABLE IF NOT EXISTS narrative_seeds (
+CREATE TABLE IF NOT EXISTS attention_seeds (
   seed_id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  narrative_label TEXT NOT NULL,
-  seed_family TEXT,
-  seed_terms_json TEXT NOT NULL DEFAULT '[]',
-  market_interpretation TEXT NOT NULL DEFAULT '',
-  display_name_zh TEXT NOT NULL DEFAULT '',
-  headline_zh TEXT NOT NULL DEFAULT '',
-  market_interpretation_zh TEXT NOT NULL DEFAULT '',
-  stance TEXT NOT NULL,
-  intent TEXT NOT NULL,
-  confidence REAL NOT NULL,
-  source_weight REAL NOT NULL,
-  novelty_status TEXT NOT NULL,
+  extraction_id TEXT NOT NULL REFERENCES social_event_extractions(extraction_id) ON DELETE CASCADE,
+  event_id TEXT NOT NULL,
+  author_handle TEXT,
   received_at_ms INTEGER NOT NULL,
-  author_handle TEXT NOT NULL,
-  evidence TEXT NOT NULL,
-  summary TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  anchor_terms_json TEXT NOT NULL,
+  token_uptake_count INTEGER NOT NULL DEFAULT 0,
+  top_linked_symbols_json TEXT NOT NULL DEFAULT '[]',
+  seed_status TEXT NOT NULL,
+  risks_json TEXT NOT NULL DEFAULT '[]',
   created_at_ms INTEGER NOT NULL,
-  updated_at_ms INTEGER NOT NULL
+  updated_at_ms INTEGER NOT NULL,
+  UNIQUE(extraction_id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_seeds_event_label
-  ON narrative_seeds(event_id, narrative_label);
-CREATE INDEX IF NOT EXISTS idx_narrative_seeds_received
-  ON narrative_seeds(received_at_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_seeds_label_received
-  ON narrative_seeds(narrative_label, received_at_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_seeds_author_received
-  ON narrative_seeds(author_handle, received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_attention_seeds_received ON attention_seeds(received_at_ms);
+CREATE INDEX IF NOT EXISTS idx_attention_seeds_author_received ON attention_seeds(author_handle, received_at_ms);
 
-CREATE TABLE IF NOT EXISTS narrative_token_links (
-  link_id TEXT PRIMARY KEY,
-  seed_id TEXT NOT NULL REFERENCES narrative_seeds(seed_id) ON DELETE CASCADE,
-  narrative_label TEXT NOT NULL,
-  token_identity_key TEXT NOT NULL,
-  token_id TEXT,
-  identity_status TEXT NOT NULL,
-  chain TEXT,
-  address TEXT,
-  symbol TEXT NOT NULL,
-  first_linked_event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  best_evidence_event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  link_reason TEXT NOT NULL,
-  matched_terms_json TEXT NOT NULL DEFAULT '[]',
-  link_confidence REAL NOT NULL,
-  lag_ms INTEGER NOT NULL,
-  window TEXT NOT NULL,
-  mention_count_after_seed INTEGER NOT NULL,
-  watched_mention_count_after_seed INTEGER NOT NULL,
-  unique_author_count_after_seed INTEGER NOT NULL,
-  weighted_reach_after_seed REAL NOT NULL,
-  market_cap REAL,
-  market_status TEXT NOT NULL,
-  price_change_after_seed_pct REAL,
-  seed_score INTEGER NOT NULL,
-  diffusion_score INTEGER NOT NULL,
-  token_link_score INTEGER NOT NULL,
-  tradeability_score INTEGER NOT NULL,
-  decision TEXT NOT NULL,
-  reasons_json TEXT NOT NULL DEFAULT '[]',
+CREATE TABLE IF NOT EXISTS event_clusters (
+  cluster_id TEXT PRIMARY KEY,
+  seed_id TEXT REFERENCES attention_seeds(seed_id) ON DELETE SET NULL,
+  extraction_id TEXT REFERENCES social_event_extractions(extraction_id) ON DELETE SET NULL,
+  event_id TEXT,
+  asset TEXT,
+  event_type TEXT NOT NULL,
+  source TEXT,
+  first_seen_at_ms INTEGER NOT NULL,
+  last_seen_at_ms INTEGER NOT NULL,
+  direction INTEGER NOT NULL,
+  impact REAL NOT NULL,
+  confidence REAL NOT NULL,
+  novelty REAL NOT NULL,
+  pricedness REAL NOT NULL,
+  base_score REAL NOT NULL,
+  event_score REAL NOT NULL,
+  source_list_json TEXT NOT NULL DEFAULT '[]',
+  raw_event_ids_json TEXT NOT NULL DEFAULT '[]',
+  representative_text TEXT NOT NULL,
   risks_json TEXT NOT NULL DEFAULT '[]',
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_narrative_token_links_seed_token_window
-  ON narrative_token_links(seed_id, token_identity_key, window);
-CREATE INDEX IF NOT EXISTS idx_narrative_token_links_label_decision
-  ON narrative_token_links(narrative_label, decision, updated_at_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_token_links_token
-  ON narrative_token_links(token_identity_key, updated_at_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_token_links_token_id_updated
-  ON narrative_token_links(token_id, updated_at_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_token_links_chain_address_updated
-  ON narrative_token_links(chain, lower(address), updated_at_ms);
-CREATE INDEX IF NOT EXISTS idx_narrative_token_links_symbol_updated
-  ON narrative_token_links(symbol, updated_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_clusters_asset_seen ON event_clusters(asset, first_seen_at_ms);
+CREATE INDEX IF NOT EXISTS idx_event_clusters_type_seen ON event_clusters(event_type, first_seen_at_ms);
+
+CREATE TABLE IF NOT EXISTS harness_snapshots (
+  snapshot_id TEXT PRIMARY KEY,
+  source_event_id TEXT,
+  seed_id TEXT REFERENCES attention_seeds(seed_id) ON DELETE SET NULL,
+  asset TEXT NOT NULL,
+  decision_time_ms INTEGER NOT NULL,
+  horizon TEXT NOT NULL,
+  combined_score REAL NOT NULL,
+  policy_signal TEXT NOT NULL,
+  shadow_signal TEXT NOT NULL,
+  market_state_json TEXT NOT NULL,
+  event_clusters_json TEXT NOT NULL,
+  versions_json TEXT NOT NULL,
+  config_version TEXT NOT NULL,
+  outcome_status TEXT NOT NULL DEFAULT 'pending',
+  credit_status TEXT NOT NULL DEFAULT 'none',
+  risks_json TEXT NOT NULL DEFAULT '[]',
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE(source_event_id, asset, horizon, config_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_snapshots_decision ON harness_snapshots(decision_time_ms);
+CREATE INDEX IF NOT EXISTS idx_harness_snapshots_asset_horizon ON harness_snapshots(asset, horizon, decision_time_ms);
+CREATE INDEX IF NOT EXISTS idx_harness_snapshots_status ON harness_snapshots(outcome_status, horizon, decision_time_ms);
+
+CREATE TABLE IF NOT EXISTS harness_decisions (
+  decision_id TEXT PRIMARY KEY,
+  snapshot_id TEXT NOT NULL REFERENCES harness_snapshots(snapshot_id) ON DELETE CASCADE,
+  asset TEXT NOT NULL,
+  decision_time_ms INTEGER NOT NULL,
+  execution_mode TEXT NOT NULL,
+  signal TEXT NOT NULL,
+  side TEXT NOT NULL,
+  size REAL NOT NULL DEFAULT 0,
+  entry_price REAL,
+  risk_reject_reason TEXT,
+  config_version TEXT NOT NULL,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_decisions_snapshot ON harness_decisions(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_harness_decisions_mode_time ON harness_decisions(execution_mode, decision_time_ms);
+
+CREATE TABLE IF NOT EXISTS harness_outcomes (
+  snapshot_id TEXT PRIMARY KEY REFERENCES harness_snapshots(snapshot_id) ON DELETE CASCADE,
+  settled_at_ms INTEGER NOT NULL,
+  actual_return REAL NOT NULL,
+  expected_return REAL NOT NULL,
+  abnormal_return REAL NOT NULL,
+  realized_vol REAL NOT NULL,
+  normalized_outcome REAL NOT NULL,
+  baseline_version TEXT NOT NULL,
+  fees REAL NOT NULL DEFAULT 0,
+  slippage REAL NOT NULL DEFAULT 0,
+  created_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_outcomes_settled ON harness_outcomes(settled_at_ms);
+
+CREATE TABLE IF NOT EXISTS harness_credits (
+  credit_id TEXT PRIMARY KEY,
+  snapshot_id TEXT NOT NULL REFERENCES harness_snapshots(snapshot_id) ON DELETE CASCADE,
+  cluster_id TEXT NOT NULL,
+  asset TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  source TEXT NOT NULL,
+  horizon TEXT NOT NULL,
+  event_score REAL NOT NULL,
+  responsibility REAL NOT NULL,
+  credit REAL NOT NULL,
+  created_at_ms INTEGER NOT NULL,
+  UNIQUE(snapshot_id, cluster_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_credits_created ON harness_credits(created_at_ms);
+CREATE INDEX IF NOT EXISTS idx_harness_credits_asset_horizon ON harness_credits(asset, horizon, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS harness_weights (
+  key TEXT PRIMARY KEY,
+  weight_type TEXT NOT NULL,
+  asset TEXT,
+  horizon TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  mean_credit REAL NOT NULL,
+  weight REAL NOT NULL,
+  status TEXT NOT NULL,
+  updated_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_harness_weights_type_horizon ON harness_weights(weight_type, horizon);
 
 CREATE TABLE IF NOT EXISTS account_profiles (
   handle TEXT PRIMARY KEY,
@@ -604,7 +600,7 @@ def migrate(conn: sqlite3.Connection) -> None:
           name = excluded.name,
           applied_at_ms = excluded.applied_at_ms
         """,
-        (SCHEMA_VERSION, "token_attribution_radar", _now_ms()),
+        (SCHEMA_VERSION, "closed_loop_harness", _now_ms()),
     )
     conn.commit()
 
@@ -620,8 +616,10 @@ def _current_schema_version(conn: sqlite3.Connection) -> int:
 def _should_reset_schema(conn: sqlite3.Connection, *, current_version: int) -> bool:
     existing = _existing_tables(conn)
     if "schema_migrations" not in existing:
-        return any(name in existing for name in APP_TABLES if name != "schema_migrations")
-    if current_version == 8:
+        return any(name in existing for name in (*APP_TABLES, *LEGACY_TABLES) if name != "schema_migrations")
+    if any(name in existing for name in LEGACY_TABLES):
+        return True
+    if current_version in {8, 9}:
         return _required_columns_missing(conn)
     if current_version != SCHEMA_VERSION:
         return True
@@ -683,7 +681,7 @@ def _reset_app_schema(conn: sqlite3.Connection) -> None:
         if "event_fts" in existing:
             conn.execute("DROP TABLE IF EXISTS event_fts")
             existing = _existing_tables(conn)
-        for table in reversed(APP_TABLES):
+        for table in reversed((*APP_TABLES, *LEGACY_TABLES)):
             if table != "event_fts" and table in existing:
                 conn.execute(f"DROP TABLE IF EXISTS {_quote_identifier(table)}")
         for table in sorted(name for name in _existing_tables(conn) if name.startswith("event_fts_")):

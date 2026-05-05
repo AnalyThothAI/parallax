@@ -25,6 +25,7 @@ from ..settings import Settings, load_settings
 from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository
+from ..storage.harness_repository import HarnessRepository
 from ..storage.market_observation_repository import MarketObservationRepository
 from ..storage.signal_repository import SignalRepository
 from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
@@ -43,11 +44,13 @@ class CliRuntime:
     tokens: TokenRepository
     market_observations: MarketObservationRepository
     enrichment: EnrichmentRepository
+    harness: HarnessRepository
     read_evidence: EvidenceRepository
     read_entities: EntityRepository
     read_signals: SignalRepository
     read_tokens: TokenRepository
     read_enrichment: EnrichmentRepository
+    read_harness: HarnessRepository
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
@@ -164,11 +167,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     tokens = TokenRepository(conn)
     market_observations = MarketObservationRepository(conn)
     enrichment = EnrichmentRepository(conn)
+    harness = HarnessRepository(conn)
     read_evidence = EvidenceRepository(read_conn)
     read_entities = EntityRepository(read_conn)
     read_signals = SignalRepository(read_conn)
     read_tokens = TokenRepository(read_conn)
     read_enrichment = EnrichmentRepository(read_conn)
+    read_harness = HarnessRepository(read_conn)
     write_lock = RLock()
     gmgn_client = _gmgn_client(settings)
     ingest = IngestService(
@@ -185,7 +190,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         evidence=read_evidence,
         entities=read_entities,
         signals=read_signals,
-        enrichment=read_enrichment,
+        harness=read_harness,
         default_replay_limit=settings.replay_limit,
     )
     collector = CollectorService(
@@ -202,11 +207,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         tokens=tokens,
         market_observations=market_observations,
         enrichment=enrichment,
+        harness=harness,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
         read_tokens=read_tokens,
         read_enrichment=read_enrichment,
+        read_harness=read_harness,
         ingest=ingest,
         hub=hub,
         collector=collector,
@@ -232,6 +239,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             entities=entities,
             signals=signals,
             enrichment=enrichment,
+            harness=harness,
             tokens=tokens,
             client=client,
             publisher=hub,

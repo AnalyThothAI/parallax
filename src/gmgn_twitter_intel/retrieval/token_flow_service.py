@@ -16,13 +16,14 @@ from .token_baseline import token_baseline
 from .tradeability_scoring import tradeability_score
 
 FRESH_MARKET_MS = 30 * 60_000
+HARNESS_SEED_LOOKBACK_MS = 24 * 60 * 60_000
 
 
 class TokenFlowService:
-    def __init__(self, *, signals, tokens, enrichment=None):
+    def __init__(self, *, signals, tokens, harness=None):
         self.signals = signals
         self.tokens = tokens
-        self.enrichment = enrichment
+        self.harness = harness
 
     def token_flow(
         self,
@@ -101,6 +102,7 @@ class TokenFlowService:
             "tradeability": tradeability,
             "timing": timing,
             "opportunity": opportunity,
+            "watch": watch,
             "evidence_total_count": evidence_total_count,
             "posts_query": self._posts_query(row, window=window, scope=scope),
             "timeline_query": self._timeline_query(row, window=window, scope=scope),
@@ -449,15 +451,18 @@ class TokenFlowService:
         }
 
     def _seed_links(self, row: dict[str, Any]) -> list[dict[str, Any]]:
-        if self.enrichment is None:
+        if self.harness is None:
             return []
-        return self.enrichment.seed_links_for_token(
+        token_seen_ms = _int_or_none(row.get("first_seen_ms")) or _int_or_none(row.get("window_start_ms"))
+        since_ms = max(0, int(token_seen_ms or row["window_start_ms"]) - HARNESS_SEED_LOOKBACK_MS)
+        return self.harness.seed_links_for_token(
             identity_key=str(row["identity_key"]),
             token_id=row.get("token_id"),
             chain=row.get("chain"),
             address=row.get("address"),
             symbol=row.get("symbol"),
-            since_ms=int(row["window_start_ms"]),
+            since_ms=since_ms,
+            token_seen_ms=token_seen_ms,
             limit=5,
         )
 

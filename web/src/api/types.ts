@@ -8,7 +8,7 @@ export type WindowKey = "5m" | "1h" | "24h";
 export type ScopeKey = "matched" | "all";
 export type Decision = "driver" | "watch" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
-export type TokenDetailTab = "timeline" | "posts" | "score" | "narratives" | "accounts";
+export type TokenDetailTab = "timeline" | "posts" | "score" | "harness" | "accounts";
 export type TimelineBucket = "30s" | "1m" | "5m";
 
 export type BootstrapData = {
@@ -65,7 +65,6 @@ export type AlertRecord = {
   normalized_value?: string | null;
   chain?: string | null;
   token_resolution_status?: string | null;
-  narrative_label?: string | null;
   received_at_ms?: number | null;
   is_first_seen_global?: number | boolean | null;
   is_first_seen_by_author?: number | boolean | null;
@@ -95,24 +94,13 @@ export type TokenAttributionRecord = {
   is_watched?: number | boolean | null;
 };
 
-export type EnrichmentRecord = {
-  summary?: string | null;
-  summary_zh?: string | null;
-  stance?: string | null;
-  intent?: string | null;
-  confidence?: number | null;
-  token_candidates?: Array<Record<string, unknown>>;
-  narratives?: Array<Record<string, unknown>>;
-  alerts?: AlertRecord[];
-};
-
 export type LivePayload = {
   type: "event";
   event: EventRecord;
   entities: EntityRecord[];
   alerts: AlertRecord[];
   token_attributions?: TokenAttributionRecord[];
-  enrichment?: EnrichmentRecord | null;
+  harness?: HarnessEventState | null;
 };
 
 export type RecentData = {
@@ -280,6 +268,16 @@ export type OpportunityBlock = ScoreBlock & {
   };
 };
 
+export type WatchBlock = {
+  status: "direct_watch" | "seed_linked" | "public_only" | string;
+  direct_mentions: number;
+  direct_authors: number;
+  seed_link_count: number;
+  top_seed?: Record<string, unknown> | null;
+  reasons: string[];
+  risks: string[];
+};
+
 export type TokenPostsQuery = {
   token_id?: string | null;
   chain?: string | null;
@@ -308,6 +306,7 @@ export type TokenFlowItem = {
   tradeability: TradeabilityBlock;
   timing: TimingBlock;
   opportunity: OpportunityBlock;
+  watch: WatchBlock;
   evidence_total_count: number;
   posts_query: TokenPostsQuery;
   timeline_query: TokenSocialTimelineQuery;
@@ -401,88 +400,176 @@ export type AccountAlertsData = {
   items: AlertRecord[];
 };
 
-export type NarrativeDisplay = {
-  name_zh: string;
-  headline_zh: string;
-  summary_zh: string;
-  market_interpretation_zh: string;
-  readability_status: "ready" | "narrative_display_missing" | string;
+export type AnchorTerm = {
+  term: string;
+  role: "subject" | "meme_phrase" | "product" | "asset" | "person" | "venue" | string;
+  evidence: string;
 };
 
-export type NarrativeFlowItem = {
-  narrative_label: string;
-  window: WindowKey;
-  display: NarrativeDisplay;
-  mention_count: number;
-  watched_mention_count: number;
-  unique_author_count: number;
-  velocity?: number | null;
-  top_authors?: Array<{ handle?: string; count?: number; followers?: number | null }>;
-  top_events?: Array<{ event_id?: string; author_handle?: string; received_at_ms?: number }>;
+export type SocialTokenCandidate = {
+  symbol?: string | null;
+  project_name?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  evidence: string;
+  confidence: number;
 };
 
-export type NarrativeFlowData = {
-  window: WindowKey;
-  items: NarrativeFlowItem[];
-};
-
-export type NarrativeSeed = {
-  seed_id: string;
-  narrative_label: string;
-  display: NarrativeDisplay;
-  seed_family?: string | null;
-  seed_terms?: string[];
-  market_interpretation?: string | null;
+export type SocialEventItem = {
+  extraction_id: string;
+  event_id: string;
   author_handle?: string | null;
-  evidence?: string | null;
-  summary?: string | null;
-  received_at_ms?: number | null;
+  received_at_ms: number;
+  schema_version: string;
+  event_type: string;
+  source_action: string;
+  subject: string;
+  direction_hint: string;
+  attention_mechanism: string;
+  impact_hint: number;
+  semantic_novelty_hint: number;
+  confidence: number;
+  is_signal_event: boolean;
+  anchor_terms: AnchorTerm[];
+  token_candidates: SocialTokenCandidate[];
+  semantic_risks: string[];
+  summary_zh: string;
+  event?: EventRecord | null;
 };
 
-export type NarrativeTokenLinkItem = {
-  identity: TokenIdentityBlock;
-  flow: {
-    window: WindowKey;
-    mentions: number;
-    watched_mentions: number;
-    unique_authors: number;
-    weighted_reach?: number | null;
-    lag_ms?: number | null;
-  };
-  market: {
-    market_status: string;
-    market_cap?: number | null;
-    price_change_after_seed_pct?: number | null;
-  };
-  scores: {
-    seed: number;
-    diffusion: number;
-    token_link: number;
-    tradeability: number;
-  };
-  signal: {
-    decision: Decision;
-    reasons: string[];
-    risks: string[];
-  };
-  evidence: {
-    first_linked_event_id?: string | null;
-    best_evidence_event_id?: string | null;
-    link_reason?: string | null;
-    matched_terms?: string[];
-    link_confidence?: number | null;
-  };
+export type HarnessEventState = {
+  social_event?: SocialEventItem | null;
+  attention_seed?: AttentionSeedItem | null;
+  clusters?: HarnessClusterSummary[];
+  snapshots?: HarnessSnapshotItem[];
 };
 
-export type AttentionFrontierItem = {
-  seed: NarrativeSeed;
-  link: NarrativeTokenLinkItem;
+export type AttentionSeedItem = {
+  seed_id: string;
+  extraction_id: string;
+  event_id: string;
+  author_handle?: string | null;
+  received_at_ms: number;
+  event_type: string;
+  subject: string;
+  anchor_terms: AnchorTerm[];
+  token_uptake_count: number;
+  top_linked_symbols: string[];
+  seed_status: "seed_only" | "linked" | "snapshot_ready" | "outcome_pending" | "settled" | string;
+  risks: string[];
 };
 
-export type AttentionFrontierData = {
-  window: WindowKey;
-  items: AttentionFrontierItem[];
+export type HarnessClusterSummary = {
+  cluster_id: string;
+  event_type: string;
+  source?: string | null;
+  event_score: number;
 };
+
+export type HarnessVersionBlock = {
+  config_version: string;
+  prompt_version: string;
+  schema_version: string;
+  scoring_version: string;
+  weight_version: string;
+  policy_version: string;
+  risk_version: string;
+  baseline_version: string;
+};
+
+export type HarnessSnapshotItem = {
+  snapshot_id: string;
+  asset: string;
+  decision_time_ms: number;
+  horizon: "6h" | "24h" | string;
+  combined_score: number;
+  policy_signal: "NO_TRADE" | "LONG" | "SHORT_OR_AVOID" | string;
+  shadow_signal: "NO_TRADE" | "LONG_SMALL" | "SHORT_SMALL" | string;
+  event_clusters: HarnessClusterSummary[];
+  market_state: Record<string, unknown>;
+  versions: HarnessVersionBlock;
+  outcome_status: "pending" | "settled" | "missing_market" | "insufficient_market_data" | string;
+  credit_status: "none" | "assigned" | string;
+  risks: string[];
+};
+
+export type HarnessOutcomeItem = {
+  snapshot_id: string;
+  settled_at_ms: number;
+  actual_return: number;
+  expected_return: number;
+  abnormal_return: number;
+  realized_vol: number;
+  normalized_outcome: number;
+  baseline_version: string;
+};
+
+export type HarnessCreditItem = {
+  credit_id: string;
+  snapshot_id: string;
+  cluster_id: string;
+  asset: string;
+  event_type: string;
+  source: string;
+  horizon: string;
+  event_score: number;
+  responsibility: number;
+  credit: number;
+  created_at_ms: number;
+};
+
+export type HarnessHealth = {
+  llm_configured: boolean;
+  extractor_running: boolean;
+  schema_success_rate?: number | null;
+  pending_jobs: number;
+  snapshots_24h: number;
+  pending_outcomes: number;
+  settlement_coverage?: number | null;
+};
+
+export type ScoreBucketItem = {
+  bucket: string;
+  sample_count: number;
+  avg_normalized_outcome: number;
+  avg_abnormal_return: number;
+  hit_rate: number;
+  settled_count: number;
+  pending_count: number;
+};
+
+export type HarnessWeightItem = {
+  key: string;
+  weight_type: string;
+  asset?: string | null;
+  horizon: string;
+  n: number;
+  mean_credit: number;
+  weight: number;
+  status: "report_only" | "candidate" | "active" | string;
+};
+
+export type SocialEventsData = {
+  items: SocialEventItem[];
+};
+
+export type AttentionSeedsData = {
+  items: AttentionSeedItem[];
+};
+
+export type HarnessSnapshotsData = {
+  items: HarnessSnapshotItem[];
+};
+
+export type HarnessOutcomesData = {
+  items: HarnessOutcomeItem[];
+};
+
+export type HarnessCreditsData = {
+  items: HarnessCreditItem[];
+};
+
+export type HarnessHealthData = HarnessHealth;
 
 export type AccountQualityItem = {
   profile: {

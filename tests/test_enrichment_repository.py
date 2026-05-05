@@ -63,7 +63,7 @@ def open_repositories(tmp_path):
     return conn, evidence, enrichment, ingest
 
 
-def test_migration_creates_current_enrichment_tables(tmp_path):
+def test_migration_creates_current_llm_job_tables(tmp_path):
     conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
@@ -79,186 +79,7 @@ def test_migration_creates_current_enrichment_tables(tmp_path):
     assert {
         "enrichment_jobs",
         "model_runs",
-        "event_enrichments",
-        "event_token_candidates",
-        "event_narratives",
-        "narrative_windows",
-        "account_narrative_alerts",
-        "narrative_seeds",
-        "narrative_token_links",
     }.issubset(tables)
-
-
-def test_narrative_seed_and_link_upserts_are_idempotent(tmp_path):
-    conn, evidence, enrichment, ingest = open_repositories(tmp_path)
-    try:
-        event = make_event("seed-event")
-        ingest.ingest_event(event, is_watched=True)
-        seed = enrichment.upsert_narrative_seed(
-            event_id="seed-event",
-            narrative_label="ai_agent_grok",
-            seed_family="ai_agent",
-            seed_terms=["grok", "ai agent"],
-            market_interpretation="Market may look for Grok and AI-agent tokens.",
-            stance="bullish",
-            intent="technical_commentary",
-            confidence=0.91,
-            source_weight=1.0,
-            novelty_status="new_global",
-            received_at_ms=event.received_at_ms,
-            author_handle="toly",
-            evidence="Solana XDP",
-            summary="seed summary",
-        )
-        duplicate = enrichment.upsert_narrative_seed(
-            event_id="seed-event",
-            narrative_label="ai_agent_grok",
-            seed_family="ai_agent",
-            seed_terms=["grok"],
-            market_interpretation="Updated interpretation.",
-            stance="bullish",
-            intent="technical_commentary",
-            confidence=0.92,
-            source_weight=1.0,
-            novelty_status="new_global",
-            received_at_ms=event.received_at_ms,
-            author_handle="toly",
-            evidence="Solana XDP",
-            summary="updated summary",
-        )
-        link = enrichment.upsert_narrative_token_link(
-            seed_id=seed["seed_id"],
-            narrative_label="ai_agent_grok",
-            token_identity_key="symbol:GROK",
-            token_id=None,
-            identity_status="unresolved_symbol",
-            chain=None,
-            address=None,
-            symbol="GROK",
-            first_linked_event_id="seed-event",
-            best_evidence_event_id="seed-event",
-            link_reason="seed_term_and_token_mention",
-            matched_terms=["grok"],
-            link_confidence=0.7,
-            lag_ms=0,
-            window="1h",
-            mention_count_after_seed=1,
-            watched_mention_count_after_seed=1,
-            unique_author_count_after_seed=1,
-            weighted_reach_after_seed=100.0,
-            market_cap=None,
-            market_status="missing",
-            price_change_after_seed_pct=None,
-            seed_score=70,
-            diffusion_score=25,
-            token_link_score=60,
-            tradeability_score=10,
-            decision="discard",
-            reasons=["watched_handle_seed"],
-            risks=["unresolved_symbol", "market_missing"],
-        )
-        duplicate_link = enrichment.upsert_narrative_token_link(**{
-            **link,
-            "link_confidence": 0.8,
-            "matched_terms": ["grok", "ai agent"],
-            "reasons": ["watched_handle_seed", "seed_term_and_token_mention"],
-            "risks": ["unresolved_symbol", "market_missing"],
-        })
-        seeds = enrichment.narrative_seeds(window_ms=86_400_000, limit=10, now_ms=event.received_at_ms + 1)
-        links = enrichment.narrative_token_links(seed_id=seed["seed_id"], window="1h", limit=10)
-    finally:
-        conn.close()
-
-    assert seed["seed_id"] == duplicate["seed_id"]
-    assert link["link_id"] == duplicate_link["link_id"]
-    assert len(seeds) == 1
-    assert seeds[0]["seed_terms"] == ["grok"]
-    assert seeds[0]["summary"] == "updated summary"
-    assert len(links) == 1
-    assert links[0]["matched_terms"] == ["grok", "ai agent"]
-    assert links[0]["link_confidence"] == 0.8
-
-
-def test_seed_links_for_token_requires_chain_for_address_fallback(tmp_path):
-    conn, _evidence, enrichment, ingest = open_repositories(tmp_path)
-    try:
-        seed_event = make_event("seed-event")
-        linked_event = make_event("linked-event", is_watched=False)
-        ingest.ingest_event(seed_event, is_watched=True)
-        ingest.ingest_event(linked_event, is_watched=False)
-        seed = enrichment.upsert_narrative_seed(
-            event_id="seed-event",
-            narrative_label="same_address",
-            seed_family="test",
-            seed_terms=["same address"],
-            market_interpretation="Address collision test.",
-            stance="neutral",
-            intent="test",
-            confidence=0.9,
-            source_weight=1.0,
-            novelty_status="new_global",
-            received_at_ms=seed_event.received_at_ms,
-            author_handle="toly",
-            evidence="same address",
-            summary="seed summary",
-        )
-        address = "0x1111111111111111111111111111111111111111"
-        enrichment.upsert_narrative_token_link(
-            seed_id=seed["seed_id"],
-            narrative_label="same_address",
-            token_identity_key=f"token:bsc:{address}",
-            token_id=f"token:bsc:{address}",
-            identity_status="resolved_ca",
-            chain="bsc",
-            address=address,
-            symbol="DOG",
-            first_linked_event_id="linked-event",
-            best_evidence_event_id="linked-event",
-            link_reason="seed_term_and_token_mention",
-            matched_terms=["same address"],
-            link_confidence=0.7,
-            lag_ms=1,
-            window="1h",
-            mention_count_after_seed=1,
-            watched_mention_count_after_seed=0,
-            unique_author_count_after_seed=1,
-            weighted_reach_after_seed=100.0,
-            market_cap=1000.0,
-            market_status="fresh",
-            price_change_after_seed_pct=None,
-            seed_score=70,
-            diffusion_score=25,
-            token_link_score=60,
-            tradeability_score=50,
-            decision="watch",
-            reasons=["watched_handle_seed"],
-            risks=[],
-        )
-
-        eth_links = enrichment.seed_links_for_token(
-            identity_key=f"token:eth:{address}",
-            token_id=f"token:eth:{address}",
-            chain="eth",
-            address=address,
-            symbol="DOG",
-            since_ms=seed_event.received_at_ms - 1,
-            limit=5,
-        )
-        bsc_links = enrichment.seed_links_for_token(
-            identity_key=f"token:bsc:{address}",
-            token_id=f"token:bsc:{address}",
-            chain="bsc",
-            address=address,
-            symbol="DOG",
-            since_ms=seed_event.received_at_ms - 1,
-            limit=5,
-        )
-    finally:
-        conn.close()
-
-    assert eth_links == []
-    assert len(bsc_links) == 1
-    assert bsc_links[0]["link"]["chain"] == "bsc"
 
 
 def test_watched_ingest_enqueues_one_durable_enrichment_job(tmp_path):
@@ -299,6 +120,21 @@ def test_duplicate_watched_event_does_not_duplicate_enrichment_job(tmp_path):
         conn.close()
 
     assert [job["event_id"] for job in jobs] == ["dup"]
+
+
+def test_backfill_missing_watched_events_enqueues_existing_raw_events_without_legacy_reads(tmp_path):
+    conn, evidence, enrichment, _ = open_repositories(tmp_path)
+    try:
+        assert evidence.insert_event(make_event("old-watched"), is_watched=True) is True
+        assert evidence.insert_event(make_event("old-public"), is_watched=False) is True
+        result = enrichment.enqueue_missing_watched_events(limit=10)
+        jobs = enrichment.list_jobs(limit=10)
+    finally:
+        conn.close()
+
+    assert result["watched_events_scanned"] == 1
+    assert result["jobs_enqueued"] == 1
+    assert [job["event_id"] for job in jobs] == ["old-watched"]
 
 
 def test_claim_next_job_marks_running_and_respects_status(tmp_path):
