@@ -694,6 +694,39 @@ class AssetRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def asset_seen_before(
+        self,
+        *,
+        asset_id: str,
+        author_handle: str | None,
+        before_ms: int,
+    ) -> tuple[bool, bool]:
+        global_row = self.conn.execute(
+            """
+            SELECT 1 AS found
+            FROM asset_attributions
+            WHERE asset_id = %s AND decision_time_ms < %s
+            LIMIT 1
+            """,
+            (asset_id, int(before_ms)),
+        ).fetchone()
+        author_seen = False
+        if author_handle:
+            author_row = self.conn.execute(
+                """
+                SELECT 1 AS found
+                FROM asset_attributions
+                JOIN events ON events.event_id = asset_attributions.event_id
+                WHERE asset_attributions.asset_id = %s
+                  AND asset_attributions.decision_time_ms < %s
+                  AND events.author_handle = %s
+                LIMIT 1
+                """,
+                (asset_id, int(before_ms), author_handle),
+            ).fetchone()
+            author_seen = bool(author_row)
+        return bool(global_row), author_seen
+
     def _upsert_asset(
         self,
         *,
