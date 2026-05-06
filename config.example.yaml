@@ -41,7 +41,13 @@ gmgn:
   openapi_base_url: "https://openapi.gmgn.ai"
   timeout_seconds: 5
   token_info_cache_ttl_seconds: 60
-  evm_candidate_chains: ["base", "bsc", "eth"]
+
+providers:
+  okx:
+    cex_base_url: "https://www.okx.com"
+    dex_base_url: "https://web3.okx.com"
+    dex_chain_indexes: ["501", "1", "56", "8453"]
+    timeout_seconds: 15
 
 upstream:
   chains: ["sol", "eth", "base", "bsc"]

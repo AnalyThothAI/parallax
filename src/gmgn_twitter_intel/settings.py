@@ -102,7 +102,6 @@ class GmgnConfig(BaseModel):
     openapi_base_url: str = "https://openapi.gmgn.ai"
     timeout_seconds: float = 5.0
     token_info_cache_ttl_seconds: int = 60
-    evm_candidate_chains: tuple[str, ...] = ("base", "bsc", "eth")
 
     @field_validator("api_key", mode="before")
     @classmethod
@@ -117,11 +116,6 @@ class GmgnConfig(BaseModel):
     def parse_openapi_base_url(cls, value: Any) -> str:
         normalized = str(value or "https://openapi.gmgn.ai").strip().rstrip("/")
         return normalized or "https://openapi.gmgn.ai"
-
-    @field_validator("evm_candidate_chains", mode="before")
-    @classmethod
-    def parse_chain_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class UpstreamConfig(BaseModel):
@@ -248,6 +242,32 @@ class NotificationsConfig(BaseModel):
         return merged
 
 
+class OkxProviderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cex_base_url: str = "https://www.okx.com"
+    dex_base_url: str = "https://web3.okx.com"
+    dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453")
+    timeout_seconds: float = 15.0
+
+    @field_validator("cex_base_url", "dex_base_url", mode="before")
+    @classmethod
+    def parse_base_url(cls, value: Any) -> str:
+        normalized = str(value or "").strip().rstrip("/")
+        return normalized
+
+    @field_validator("dex_chain_indexes", mode="before")
+    @classmethod
+    def parse_chain_indexes(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value)) or ("501", "1", "56", "8453")
+
+
+class ProvidersConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    okx: OkxProviderConfig = Field(default_factory=OkxProviderConfig)
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -259,6 +279,7 @@ class Settings(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     llm: LlmConfig = Field(default_factory=LlmConfig)
     gmgn: GmgnConfig = Field(default_factory=GmgnConfig)
+    providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     upstream: UpstreamConfig = Field(default_factory=UpstreamConfig)
     collector: CollectorConfig = Field(default_factory=CollectorConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
@@ -365,12 +386,24 @@ class Settings(BaseModel):
         return self.gmgn.token_info_cache_ttl_seconds
 
     @property
-    def gmgn_evm_candidate_chains(self) -> tuple[str, ...]:
-        return self.gmgn.evm_candidate_chains
-
-    @property
     def gmgn_configured(self) -> bool:
         return bool(self.gmgn_api_key)
+
+    @property
+    def okx_cex_base_url(self) -> str:
+        return self.providers.okx.cex_base_url
+
+    @property
+    def okx_dex_base_url(self) -> str:
+        return self.providers.okx.dex_base_url
+
+    @property
+    def okx_dex_chain_indexes(self) -> tuple[str, ...]:
+        return self.providers.okx.dex_chain_indexes
+
+    @property
+    def okx_timeout_seconds(self) -> float:
+        return self.providers.okx.timeout_seconds
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:
@@ -498,7 +531,13 @@ gmgn:
   openapi_base_url: "https://openapi.gmgn.ai"
   timeout_seconds: 5
   token_info_cache_ttl_seconds: 60
-  evm_candidate_chains: ["base", "bsc", "eth"]
+
+providers:
+  okx:
+    cex_base_url: "https://www.okx.com"
+    dex_base_url: "https://web3.okx.com"
+    dex_chain_indexes: ["501", "1", "56", "8453"]
+    timeout_seconds: 15
 
 upstream:
   chains: ["sol", "eth", "base", "bsc"]

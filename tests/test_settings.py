@@ -116,7 +116,14 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
                 "openapi_base_url": "https://openapi.example.test/",
                 "timeout_seconds": 3,
                 "token_info_cache_ttl_seconds": 60,
-                "evm_candidate_chains": ["base", "bsc", "eth"],
+            },
+            "providers": {
+                "okx": {
+                    "cex_base_url": "https://okx.example.test/",
+                    "dex_base_url": "https://web3-okx.example.test/",
+                    "dex_chain_indexes": ["501", "1"],
+                    "timeout_seconds": 9,
+                }
             },
         },
     )
@@ -128,7 +135,10 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.gmgn_openapi_base_url == "https://openapi.example.test"
     assert settings.gmgn_timeout_seconds == 3
     assert settings.gmgn_token_info_cache_ttl_seconds == 60
-    assert settings.gmgn_evm_candidate_chains == ("base", "bsc", "eth")
+    assert settings.okx_cex_base_url == "https://okx.example.test"
+    assert settings.okx_dex_base_url == "https://web3-okx.example.test"
+    assert settings.okx_dex_chain_indexes == ("501", "1")
+    assert settings.okx_timeout_seconds == 9
 
 
 def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path, monkeypatch):
