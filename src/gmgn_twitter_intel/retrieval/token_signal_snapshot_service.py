@@ -38,11 +38,17 @@ class TokenSignalSnapshotService:
                 continue
             flow = item.get("flow") or {}
             decision_time_ms = int(flow.get("window_end_ms") or now_ms or 0)
+            opportunity_version = str(
+                (item.get("score_versions") or {}).get("opportunity")
+                or (item.get("opportunity") or {}).get("score_version")
+                or "unknown"
+            )
             snapshot_id = _snapshot_id(
                 token_id=str(token_id),
                 window=window,
                 scope=scope,
                 decision_time_ms=decision_time_ms,
+                opportunity_version=opportunity_version,
             )
             market = item.get("market") or {}
             snapshot = self.repository.create_snapshot(
@@ -85,9 +91,16 @@ class TokenSignalSnapshotService:
         return counts
 
 
-def _snapshot_id(*, token_id: str, window: str, scope: str, decision_time_ms: int) -> str:
+def _snapshot_id(
+    *,
+    token_id: str,
+    window: str,
+    scope: str,
+    decision_time_ms: int,
+    opportunity_version: str,
+) -> str:
     return hashlib.sha256(
-        f"token_signal_snapshot|{token_id}|{window}|{scope}|{decision_time_ms}|social_opportunity_v2".encode()
+        f"token_signal_snapshot|{token_id}|{window}|{scope}|{decision_time_ms}|{opportunity_version}".encode()
     ).hexdigest()
 
 

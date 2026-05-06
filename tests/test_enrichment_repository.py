@@ -1,5 +1,4 @@
 import time
-from threading import RLock
 
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
@@ -45,7 +44,7 @@ def make_event(
 
 
 def open_repositories(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -58,19 +57,18 @@ def open_repositories(tmp_path):
         signals=signals,
         enrichment=enrichment,
         tokens=tokens,
-        write_lock=RLock(),
     )
     return conn, evidence, enrichment, ingest
 
 
 def test_migration_creates_current_llm_job_tables(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         tables = {
             row[0]
             for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+                "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public'"
             ).fetchall()
         }
     finally:
@@ -151,3 +149,66 @@ def test_claim_next_job_marks_running_and_respects_status(tmp_path):
     assert claimed["event_id"] == "claim-me"
     assert second_claim is None
     assert stored["status"] == "running"
+
+
+def test_claim_next_job_reclaims_stale_running_job(tmp_path):
+    conn, _, enrichment, ingest = open_repositories(tmp_path)
+    try:
+        ingest.ingest_event(make_event("stale-running"), is_watched=True)
+        now_ms = int(time.time() * 1000) + 1_000
+        first_claim = enrichment.claim_next_job(now_ms=now_ms)
+        conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET updated_at_ms = %s
+            WHERE job_id = %s
+            """,
+            (now_ms - 10_000, first_claim["job_id"]),
+        )
+        conn.commit()
+
+        reclaimed = EnrichmentRepository(conn, running_timeout_ms=1_000).claim_next_job(now_ms=now_ms)
+        stored = enrichment.list_jobs(limit=10)[0]
+    finally:
+        conn.close()
+
+    assert reclaimed is not None
+    assert reclaimed["event_id"] == "stale-running"
+    assert reclaimed["attempt_count"] == 2
+    assert stored["status"] == "running"
+
+
+def test_claim_next_job_skips_row_locked_by_another_worker(tmp_path):
+    conn, _, enrichment, ingest = open_repositories(tmp_path)
+    second_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        ingest.ingest_event(make_event("locked-job"), is_watched=True)
+        ingest.ingest_event(make_event("available-job"), is_watched=True)
+        conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET priority = 100, next_run_at_ms = 1_700_000_000_000, created_at_ms = 1_700_000_000_000
+            WHERE event_id = 'locked-job'
+            """
+        )
+        conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET priority = 100, next_run_at_ms = 1_700_000_000_000, created_at_ms = 1_700_000_000_001
+            WHERE event_id = 'available-job'
+            """
+        )
+        conn.commit()
+        conn.execute("BEGIN")
+        conn.execute("SELECT job_id FROM enrichment_jobs WHERE event_id = %s FOR UPDATE", ("locked-job",))
+        second_conn.execute("SET statement_timeout TO 200")
+
+        claimed = EnrichmentRepository(second_conn).claim_next_job(now_ms=1_700_000_000_100)
+    finally:
+        conn.execute("ROLLBACK")
+        second_conn.execute("RESET statement_timeout")
+        second_conn.close()
+        conn.close()
+
+    assert claimed is not None
+    assert claimed["event_id"] == "available-job"

@@ -8,7 +8,7 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
-from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_market_observation_repository import insert_direct_attribution
 
@@ -29,7 +29,7 @@ class FakeClient:
 
 
 def open_worker_runtime(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     signals = SignalRepository(conn)
@@ -77,7 +77,10 @@ def test_worker_writes_snapshot_and_marks_observation_ready(tmp_path):
     try:
         enqueue_observation(evidence, signals, tokens, observations)
         client = FakeClient([GmgnTokenInfoLookup(info=token_info(), cache_status="miss")])
-        worker = MarketObservationWorker(observations=observations, tokens=tokens, client=client)
+        worker = MarketObservationWorker(
+            client=client,
+            repository_session=lambda: repository_session_for_connection(conn),
+        )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
         observation = conn.execute("SELECT * FROM token_market_observations").fetchone()
@@ -117,7 +120,10 @@ def test_worker_writes_event_time_snapshot_for_cache_hit(tmp_path):
                 GmgnTokenInfoLookup(info=token_info(price=1.0), cache_status="hit"),
             ]
         )
-        worker = MarketObservationWorker(observations=observations, tokens=tokens, client=client)
+        worker = MarketObservationWorker(
+            client=client,
+            repository_session=lambda: repository_session_for_connection(conn),
+        )
 
         assert asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
         assert asyncio.run(worker.process_one(now_ms=1_700_000_060_100))
@@ -141,7 +147,10 @@ def test_worker_marks_provider_not_configured_without_leaving_pending(tmp_path):
     conn, evidence, signals, tokens, observations = open_worker_runtime(tmp_path)
     try:
         enqueue_observation(evidence, signals, tokens, observations)
-        worker = MarketObservationWorker(observations=observations, tokens=tokens, client=None)
+        worker = MarketObservationWorker(
+            client=None,
+            repository_session=lambda: repository_session_for_connection(conn),
+        )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
         observation = conn.execute("SELECT * FROM token_market_observations").fetchone()
@@ -157,9 +166,8 @@ def test_worker_marks_provider_not_found(tmp_path):
     try:
         enqueue_observation(evidence, signals, tokens, observations)
         worker = MarketObservationWorker(
-            observations=observations,
-            tokens=tokens,
             client=FakeClient([GmgnTokenInfoLookup(info=None, cache_status="miss")]),
+            repository_session=lambda: repository_session_for_connection(conn),
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
@@ -176,9 +184,8 @@ def test_worker_provider_error_backoffs(tmp_path):
     try:
         enqueue_observation(evidence, signals, tokens, observations)
         worker = MarketObservationWorker(
-            observations=observations,
-            tokens=tokens,
             client=FakeClient([GmgnOpenApiError("timeout")]),
+            repository_session=lambda: repository_session_for_connection(conn),
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))
@@ -197,9 +204,8 @@ def test_worker_rate_limit_uses_rate_limited_status(tmp_path):
     try:
         enqueue_observation(evidence, signals, tokens, observations)
         worker = MarketObservationWorker(
-            observations=observations,
-            tokens=tokens,
             client=FakeClient([GmgnOpenApiError("HTTP 429 rate limit")]),
+            repository_session=lambda: repository_session_for_connection(conn),
         )
 
         processed = asyncio.run(worker.process_one(now_ms=1_700_000_000_100))

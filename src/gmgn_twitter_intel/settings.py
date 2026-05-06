@@ -35,7 +35,7 @@ class ApiConfig(BaseModel):
 class PostgresConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    dsn: str = "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    dsn: str = "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     password_file: str | None = "postgres_password"
     pool_min_size: int = 1
     pool_max_size: int = 10
@@ -45,7 +45,7 @@ class PostgresConfig(BaseModel):
     @classmethod
     def parse_dsn(cls, value: Any) -> str:
         normalized = str(value or "").strip()
-        return normalized or "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+        return normalized or "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
 
     @field_validator("password_file", mode="before")
     @classmethod
@@ -479,7 +479,7 @@ api:
 
 storage:
   postgres:
-    dsn: "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    dsn: "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     password_file: "postgres_password"
     pool_min_size: 1
     pool_max_size: 10

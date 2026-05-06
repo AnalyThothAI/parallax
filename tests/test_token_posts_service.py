@@ -141,6 +141,76 @@ def test_token_posts_all_history_range_is_paginated_and_separate_from_score_wind
     ]
 
 
+def test_token_posts_catalyst_sort_ranks_independent_followups_over_copy_pasta(tmp_path):
+    conn, ingest, signals, tokens = open_runtime(tmp_path)
+    try:
+        now_ms = 1_700_000_600_000
+        root_ms = now_ms - 40 * 60_000
+        spam_ms = now_ms - 35 * 60_000
+        ingest.ingest_event(
+            token_event(
+                "event-dog-catalyst-root",
+                received_at_ms=root_ms,
+                author_handle="origin",
+                text="$DOG original thesis",
+            ),
+            is_watched=False,
+        )
+        for index in range(5):
+            ingest.ingest_event(
+                token_event(
+                    f"event-dog-independent-{index}",
+                    received_at_ms=root_ms + (index + 1) * 60_000,
+                    author_handle=f"independent{index}",
+                    text=f"$DOG independent follow-up {index}",
+                ),
+                is_watched=False,
+            )
+        ingest.ingest_event(
+            token_event(
+                "event-dog-spam-root",
+                received_at_ms=spam_ms,
+                author_handle="spamroot",
+                text="$DOG spam seed",
+            ),
+            is_watched=False,
+        )
+        for index in range(30):
+            ingest.ingest_event(
+                token_event(
+                    f"event-dog-copy-{index}",
+                    received_at_ms=spam_ms + (index + 1) * 1_000,
+                    author_handle="copypasta",
+                    text="$DOG copy paste raid",
+                ),
+                is_watched=False,
+            )
+        token_id = TokenFlowService(signals=signals, tokens=tokens).token_flow(
+            window="1h",
+            limit=10,
+            now_ms=now_ms,
+        )[0]["identity"]["token_id"]
+
+        catalyst_page = TokenPostsService(signals=signals).token_posts(
+            token_id=token_id,
+            window="1h",
+            scope="all",
+            limit=10,
+            sort="catalyst",
+            now_ms=now_ms,
+        )
+    finally:
+        conn.close()
+
+    scores = {item["event_id"]: item["catalyst_score"] for item in catalyst_page["items"]}
+    assert catalyst_page["query"]["sort"] == "catalyst"
+    assert catalyst_page["has_more"] is False
+    assert catalyst_page["next_cursor"] is None
+    assert catalyst_page["items"][0]["event_id"] == "event-dog-catalyst-root"
+    assert scores["event-dog-catalyst-root"] >= scores["event-dog-spam-root"] * 3
+    assert catalyst_page["items"][0]["catalyst_components"]["independent_authors"] == 7
+
+
 def test_token_posts_rejects_unknown_range(tmp_path):
     conn, _, signals, _ = open_runtime(tmp_path)
     try:

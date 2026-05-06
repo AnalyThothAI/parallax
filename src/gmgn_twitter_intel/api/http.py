@@ -17,6 +17,7 @@ from ..retrieval.token_posts_service import (
     TokenPostsIdentityError,
     TokenPostsRangeError,
     TokenPostsService,
+    TokenPostsSortError,
 )
 from ..retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from ..retrieval.token_social_timeline_service import (
@@ -92,21 +93,23 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_scope = _scope(scope)
-        events = runtime.read_evidence.recent_events(
-            limit=_limit(limit),
-            handles=_handle_set(handles),
-            ca=ca or None,
-            chain=chain or None,
-            symbol=symbol or None,
-            watched_only=parsed_scope == "matched",
-        )
+        with runtime.repositories() as repos:
+            events = repos.evidence.recent_events(
+                limit=_limit(limit),
+                handles=_handle_set(handles),
+                ca=ca or None,
+                chain=chain or None,
+                symbol=symbol or None,
+                watched_only=parsed_scope == "matched",
+            )
+            items = [_payload_for_event(repos, event) for event in events]
         return _json(
             {
                 "ok": True,
                 "data": {
                     "scope": parsed_scope,
                     "events": events,
-                    "items": [_payload_for_event(runtime, event) for event in events],
+                    "items": items,
                 },
             }
         )
@@ -124,15 +127,16 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         query = _search_query(q=q, symbol=symbol, ca=ca, chain=chain, handle=handle)
-        results = SearchService(
-            evidence=runtime.read_evidence,
-            signals=runtime.read_signals,
-            tokens=runtime.read_tokens,
-        ).search(
-            query,
-            limit=_limit(limit),
-            scope=_scope(scope),
-        )
+        with runtime.repositories() as repos:
+            results = SearchService(
+                evidence=repos.evidence,
+                signals=repos.signals,
+                tokens=repos.tokens,
+            ).search(
+                query,
+                limit=_limit(limit),
+                scope=_scope(scope),
+            )
         return _json(
             {
                 "ok": results.ok,
@@ -158,15 +162,16 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
-        items = TokenFlowService(
-            signals=runtime.read_signals,
-            tokens=runtime.read_tokens,
-            harness=runtime.read_harness,
-        ).token_flow(
-            window=parsed_window,
-            limit=_limit(limit),
-            scope=parsed_scope,
-        )
+        with runtime.repositories() as repos:
+            items = TokenFlowService(
+                signals=repos.signals,
+                tokens=repos.tokens,
+                harness=repos.harness,
+            ).token_flow(
+                window=parsed_window,
+                limit=_limit(limit),
+                scope=parsed_scope,
+            )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "items": items}})
 
     @router.get("/token-posts")
@@ -177,6 +182,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         address: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "5m",
         post_range: Annotated[str, Query(alias="range")] = "current_window",
+        sort: Annotated[str, Query()] = "recent",
         limit: Annotated[int, Query()] = 50,
         scope: Annotated[str, Query()] = "all",
         cursor: Annotated[str, Query()] = "",
@@ -187,20 +193,24 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         try:
-            data = TokenPostsService(signals=runtime.read_signals).token_posts(
-                token_id=token_id or None,
-                chain=chain or None,
-                address=address or None,
-                window=parsed_window,
-                scope=parsed_scope,
-                post_range=_post_range(post_range),
-                limit=_limit(limit, maximum=200),
-                cursor=cursor or None,
-            )
+            with runtime.repositories() as repos:
+                data = TokenPostsService(signals=repos.signals).token_posts(
+                    token_id=token_id or None,
+                    chain=chain or None,
+                    address=address or None,
+                    window=parsed_window,
+                    scope=parsed_scope,
+                    post_range=_post_range(post_range),
+                    sort=sort,
+                    limit=_limit(limit, maximum=200),
+                    cursor=cursor or None,
+                )
         except TokenPostsIdentityError:
             return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
         except TokenPostsRangeError:
             return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)
+        except TokenPostsSortError:
+            return _json({"ok": False, "error": "invalid_sort", "field": "sort"}, status_code=400)
         except TokenPostsCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
@@ -224,15 +234,16 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         try:
-            data = TokenSocialTimelineService(signals=runtime.read_signals).timeline(
-                token_id=token_id or None,
-                chain=chain or None,
-                address=address or None,
-                window=parsed_window,
-                scope=parsed_scope,
-                limit=_limit(limit, maximum=500),
-                cursor=cursor or None,
-            )
+            with runtime.repositories() as repos:
+                data = TokenSocialTimelineService(signals=repos.signals).timeline(
+                    token_id=token_id or None,
+                    chain=chain or None,
+                    address=address or None,
+                    window=parsed_window,
+                    scope=parsed_scope,
+                    limit=_limit(limit, maximum=500),
+                    cursor=cursor or None,
+                )
         except TokenSocialTimelineIdentityError:
             return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
         except TokenSocialTimelineCursorError:
@@ -248,16 +259,18 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         limit: Annotated[int, Query()] = 50,
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
+        with runtime.repositories() as repos:
+            items = repos.token_signals.list_snapshots(
+                window=_window(window) if window else None,
+                scope=_scope(scope) if scope else None,
+                token_id=token_id or None,
+                limit=_limit(limit, maximum=500),
+            )
         return _json(
             {
                 "ok": True,
                 "data": {
-                    "items": runtime.read_token_signals.list_snapshots(
-                        window=_window(window) if window else None,
-                        scope=_scope(scope) if scope else None,
-                        token_id=token_id or None,
-                        limit=_limit(limit, maximum=500),
-                    )
+                    "items": items,
                 },
             }
         )
@@ -270,15 +283,17 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         limit: Annotated[int, Query()] = 50,
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
+        with runtime.repositories() as repos:
+            items = repos.token_signals.list_outcomes(
+                horizon=_horizon(horizon) if horizon else None,
+                status=status or None,
+                limit=_limit(limit, maximum=500),
+            )
         return _json(
             {
                 "ok": True,
                 "data": {
-                    "items": runtime.read_token_signals.list_outcomes(
-                        horizon=_horizon(horizon) if horizon else None,
-                        status=status or None,
-                        limit=_limit(limit, maximum=500),
-                    )
+                    "items": items,
                 },
             }
         )
@@ -296,21 +311,24 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window) if window else None
         parsed_scope = _scope(scope) if scope else None
         if refresh and parsed_horizon and parsed_window and parsed_scope:
-            data = TokenSignalEvaluationService(repository=runtime.token_signals).evaluate(
+            with runtime.repositories() as repos:
+                data = TokenSignalEvaluationService(repository=repos.token_signals).evaluate(
+                    horizon=parsed_horizon,
+                    window=parsed_window,
+                    scope=parsed_scope,
+                )
+            return _json({"ok": True, "data": data})
+        with runtime.repositories() as repos:
+            items = repos.token_signals.list_evaluations(
                 horizon=parsed_horizon,
                 window=parsed_window,
                 scope=parsed_scope,
             )
-            return _json({"ok": True, "data": data})
         return _json(
             {
                 "ok": True,
                 "data": {
-                    "items": runtime.read_token_signals.list_evaluations(
-                        horizon=parsed_horizon,
-                        window=parsed_window,
-                        scope=parsed_scope,
-                    )
+                    "items": items,
                 },
             }
         )
@@ -326,12 +344,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_alert_type = _alert_type(alert_type)
-        items = AccountAlertService(runtime.read_signals).account_alerts(
-            window=parsed_window,
-            limit=_limit(limit, maximum=500),
-            handles=_handle_set(handles),
-            alert_type=parsed_alert_type,
-        )
+        with runtime.repositories() as repos:
+            items = AccountAlertService(repos.signals).account_alerts(
+                window=parsed_window,
+                limit=_limit(limit, maximum=500),
+                handles=_handle_set(handles),
+                alert_type=parsed_alert_type,
+            )
         return _json(
             {
                 "ok": True,
@@ -349,10 +368,11 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         handles: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = AccountQualityService(
-            signals=runtime.read_signals,
-            repository=AccountQualityRepository(runtime.read_signals.conn),
-        ).account_quality_for_handles(sorted(_handle_set(handles)))
+        with runtime.repositories() as repos:
+            data = AccountQualityService(
+                signals=repos.signals,
+                repository=AccountQualityRepository(repos.conn),
+            ).account_quality_for_handles(sorted(_handle_set(handles)))
         return _json({"ok": True, "data": data})
 
     @router.get("/notifications")
@@ -363,18 +383,20 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         rule_id: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        rows = runtime.read_notifications.list_notifications(
-            limit=_limit(limit, maximum=500),
-            subscriber_key="local",
-            unread_only=bool(unread_only),
-            rule_id=rule_id or None,
-        )
+        with runtime.repositories() as repos:
+            rows = repos.notifications.list_notifications(
+                limit=_limit(limit, maximum=500),
+                subscriber_key="local",
+                unread_only=bool(unread_only),
+                rule_id=rule_id or None,
+            )
+            summary = repos.notifications.summary(subscriber_key="local")
         return _json(
             {
                 "ok": True,
                 "data": {
                     "items": [_notification_payload(row) for row in rows],
-                    "summary": runtime.read_notifications.summary(subscriber_key="local"),
+                    "summary": summary,
                 },
             }
         )
@@ -382,7 +404,9 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     @router.get("/notification-summary")
     async def notification_summary(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        return _json({"ok": True, "data": runtime.read_notifications.summary(subscriber_key="local")})
+        with runtime.repositories() as repos:
+            data = repos.notifications.summary(subscriber_key="local")
+        return _json({"ok": True, "data": data})
 
     @router.get("/notification-deliveries")
     async def notification_deliveries(
@@ -391,14 +415,16 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         status: Annotated[str | None, Query()] = None,
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
+        with runtime.repositories() as repos:
+            items = repos.notifications.list_deliveries(
+                limit=_limit(limit, maximum=500),
+                status=_delivery_status(status),
+            )
         return _json(
             {
                 "ok": True,
                 "data": {
-                    "items": runtime.read_notifications.list_deliveries(
-                        limit=_limit(limit, maximum=500),
-                        status=_delivery_status(status),
-                    )
+                    "items": items,
                 },
             }
         )
@@ -406,15 +432,15 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     @router.post("/notifications/{notification_id}/read")
     async def mark_notification_read(request: Request, notification_id: str) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        with runtime.write_lock:
-            updated = runtime.notifications.mark_read(notification_id=notification_id, subscriber_key="local")
+        with runtime.repositories() as repos:
+            updated = repos.notifications.mark_read(notification_id=notification_id, subscriber_key="local")
         return _json({"ok": True, "data": {"notification_id": notification_id, "updated": updated}})
 
     @router.post("/notifications/read-all")
     async def mark_all_notifications_read(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        with runtime.write_lock:
-            updated_count = runtime.notifications.mark_all_read(subscriber_key="local")
+        with runtime.repositories() as repos:
+            updated_count = repos.notifications.mark_all_read(subscriber_key="local")
         return _json({"ok": True, "data": {"updated_count": updated_count}})
 
     @router.get("/social-events")
@@ -426,12 +452,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         event_types: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).social_events(
-            window=_window(window),
-            limit=_limit(limit, maximum=500),
-            handles=_handle_set(handles),
-            event_types=_csv_set(event_types),
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).social_events(
+                window=_window(window),
+                limit=_limit(limit, maximum=500),
+                handles=_handle_set(handles),
+                event_types=_csv_set(event_types),
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/attention-seeds")
@@ -442,11 +469,12 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         handles: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).attention_seeds(
-            window=_window(window),
-            limit=_limit(limit, maximum=500),
-            handles=_handle_set(handles),
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).attention_seeds(
+                window=_window(window),
+                limit=_limit(limit, maximum=500),
+                handles=_handle_set(handles),
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-snapshots")
@@ -458,12 +486,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         asset: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).snapshots(
-            window=_window(window),
-            horizon=_horizon(horizon),
-            limit=_limit(limit, maximum=500),
-            asset=asset or None,
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).snapshots(
+                window=_window(window),
+                horizon=_horizon(horizon),
+                limit=_limit(limit, maximum=500),
+                asset=asset or None,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-outcomes")
@@ -475,12 +504,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         asset: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).outcomes(
-            window=_window(window),
-            horizon=_horizon(horizon),
-            limit=_limit(limit, maximum=500),
-            asset=asset or None,
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).outcomes(
+                window=_window(window),
+                horizon=_horizon(horizon),
+                limit=_limit(limit, maximum=500),
+                asset=asset or None,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-credits")
@@ -492,12 +522,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         asset: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).credits(
-            window=_window(window),
-            horizon=_horizon(horizon),
-            limit=_limit(limit, maximum=500),
-            asset=asset or None,
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).credits(
+                window=_window(window),
+                horizon=_horizon(horizon),
+                limit=_limit(limit, maximum=500),
+                asset=asset or None,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/signal-lab/chains")
@@ -515,18 +546,19 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_scope = _scope(scope)
-        data = HarnessService(runtime.read_harness).chains(
-            window=_window(window),
-            horizon=_horizon(horizon),
-            scope=parsed_scope,
-            stage=_signal_lab_stage(stage),
-            asset=asset or None,
-            handle=handle or None,
-            q=q or None,
-            handles=set(runtime.settings.handles) if parsed_scope == "matched" else None,
-            limit=_limit(limit, maximum=500),
-            cursor=cursor or None,
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).chains(
+                window=_window(window),
+                horizon=_horizon(horizon),
+                scope=parsed_scope,
+                stage=_signal_lab_stage(stage),
+                asset=asset or None,
+                handle=handle or None,
+                q=q or None,
+                handles=set(runtime.settings.handles) if parsed_scope == "matched" else None,
+                limit=_limit(limit, maximum=500),
+                cursor=cursor or None,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-weights")
@@ -536,22 +568,24 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         limit: Annotated[int, Query()] = 100,
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).weights(
-            horizon=_horizon(horizon) if horizon else None,
-            limit=_limit(limit, maximum=500),
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).weights(
+                horizon=_horizon(horizon) if horizon else None,
+                limit=_limit(limit, maximum=500),
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-health")
     async def harness_health(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        job_counts = runtime.read_enrichment.job_counts()
-        data = HarnessService(runtime.read_harness).health(
-            llm_configured=bool(runtime.settings.llm_configured),
-            extractor_running=runtime.enrichment_worker is not None,
-            pending_jobs=int(job_counts.get("pending", 0)),
-            schema_success_rate=None,
-        )
+        with runtime.repositories() as repos:
+            job_counts = repos.enrichment.job_counts()
+            data = HarnessService(repos.harness).health(
+                llm_configured=bool(runtime.settings.llm_configured),
+                extractor_running=runtime.enrichment_worker is not None,
+                pending_jobs=int(job_counts.get("pending", 0)),
+                schema_success_rate=None,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-score-buckets")
@@ -560,9 +594,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         horizon: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = HarnessService(runtime.read_harness).score_buckets(
-            horizon=_horizon(horizon) if horizon else None,
-        )
+        with runtime.repositories() as repos:
+            data = HarnessService(repos.harness).score_buckets(
+                horizon=_horizon(horizon) if horizon else None,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/enrichment-jobs")
@@ -573,12 +608,15 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_status = _job_status(status)
+        with runtime.repositories() as repos:
+            items = repos.enrichment.list_jobs(limit=_limit(limit, maximum=500), status=parsed_status)
+            counts = repos.enrichment.job_counts()
         return _json(
             {
                 "ok": True,
                 "data": {
-                    "items": runtime.read_enrichment.list_jobs(limit=_limit(limit, maximum=500), status=parsed_status),
-                    "counts": runtime.read_enrichment.job_counts(),
+                    "items": items,
+                    "counts": counts,
                 },
             }
         )
@@ -606,15 +644,15 @@ def _request_token(request: Request) -> str | None:
     return token.strip() if token else None
 
 
-def _payload_for_event(runtime: Any, event: dict[str, Any]) -> dict[str, Any]:
+def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
     event_id = str(event["event_id"])
     return {
         "type": "event",
         "event": event,
-        "entities": runtime.read_entities.entities_for_event(event_id),
-        "alerts": runtime.read_signals.alerts_for_event(event_id),
-        "token_attributions": runtime.read_signals.token_attributions_for_event(event_id),
-        "harness": runtime.read_harness.harness_for_event(event_id),
+        "entities": repos.entities.entities_for_event(event_id),
+        "alerts": repos.signals.alerts_for_event(event_id),
+        "token_attributions": repos.signals.token_attributions_for_event(event_id),
+        "harness": repos.harness.harness_for_event(event_id),
     }
 
 

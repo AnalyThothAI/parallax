@@ -111,6 +111,9 @@ describe("App Token Radar social heat cockpit", () => {
       radarSortMode: "opportunity",
       detailTab: "timeline",
       detailWindow: "1h",
+      detailMode: "compact",
+      selectedBucketStartMs: null,
+      selectedEventId: null,
       postRange: "current_window",
       postSortMode: "recent",
       hideDuplicateClusters: false,
@@ -149,7 +152,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
     expect(within(row).getByText("top 50% · repro 1.5")).toBeInTheDocument();
     expect(within(row).getByText("+12% fresh")).toBeInTheDocument();
-    expect(within(row).getByText("social confirms")).toBeInTheDocument();
+    expect(within(row).getByText("neutral")).toBeInTheDocument();
     expect(within(row).getByText("+12% since social")).toBeInTheDocument();
     expect(row.querySelector(".barline")).toBeInTheDocument();
     expect(screen.getAllByText("driver").length).toBeGreaterThan(0);
@@ -242,7 +245,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · CA direct");
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$60K");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("social confirms");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("neutral");
     expect(row.querySelector('[data-radar-action="gmgn"]')).toBeInTheDocument();
   });
 
@@ -324,7 +327,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).getByText("86 / burst")).toBeInTheDocument();
     expect(within(drawer).getByText("78 / direct")).toBeInTheDocument();
     expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
-    expect(within(drawer).getByText("confirms")).toBeInTheDocument();
+    expect(within(drawer).getByText("neutral")).toBeInTheDocument();
     expect(within(drawer).getByText("driver")).toBeInTheDocument();
     expect(within(drawer).getByText("public_stream_coverage")).toBeInTheDocument();
     expect(drawer.querySelector(".tabs")).toBeInTheDocument();
@@ -387,6 +390,21 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
+  it("opens replay focus mode by clicking a timeline bucket", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    const bucket = await within(drawer).findByRole("button", { name: /open replay bucket .*2 posts/i });
+
+    fireEvent.click(bucket);
+
+    await waitFor(() => expect(within(drawer).getByText("Replay Focus")).toBeInTheDocument());
+    expect(within(drawer).getByText("selected bucket · 2 posts · 1 new author")).toBeInTheDocument();
+    expect(within(drawer).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
+    expect(within(drawer).getByRole("button", { name: "Back to timeline" })).toBeInTheDocument();
+  });
+
   it("keeps Posts as the evidence surface with explicit range controls", async () => {
     const { container } = renderWithQuery(<App />);
 
@@ -408,6 +426,23 @@ describe("App Token Radar social heat cockpit", () => {
       expect(postsCall?.[1]?.params).toMatchObject({ range: "all_history" });
     });
     expect(await within(drawer).findByText("history does not all participate in current score")).toBeInTheDocument();
+  });
+
+  it("requests catalyst post sorting from the server", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    fireEvent.click(screen.getByRole("button", { name: "Posts" }));
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    const sortControl = await within(drawer).findByLabelText("token post sort");
+
+    mockedGetApi.mockClear();
+    fireEvent.click(within(sortControl).getByRole("button", { name: "catalyst" }));
+
+    await waitFor(() => {
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-posts");
+      expect(postsCall?.[1]?.params).toMatchObject({ sort: "catalyst", cursor: undefined });
+    });
   });
 
   it("removes narrative product surface and exposes signal lab entry points", async () => {
@@ -1049,8 +1084,8 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
     }),
     timing: options.insufficientTiming
       ? {
-          score_version: "timing_v2",
-          score: 50,
+          score_version: "timing_v4",
+          score: 45,
           status: "market_pending",
           chase_risk: false,
           social_signal_start_ms: 1_777_746_000_000,
@@ -1061,25 +1096,25 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
           risks: ["market_observation_pending"]
         }
       : {
-          score_version: "timing_v2",
-          score: 70,
-          status: "social_confirms_price",
+          score_version: "timing_v4",
+          score: 50,
+          status: "neutral",
           chase_risk: false,
           social_signal_start_ms: 1_777_746_000_000,
           price_change_since_social_pct: 0.12,
           price_change_before_social_pct: 0.111111,
           market_observation_status: "ready",
-          reasons: ["social_and_price_confirm"],
+          reasons: [],
           risks: []
         },
     opportunity: scoreBlock({
-      score_version: "social_opportunity_v1",
+      score_version: "social_opportunity_v3",
       score: options.score ?? 79,
       decision: "driver",
       decision_priority: 3,
       reasons: ["z_score_above_3", "independent_expansion"],
       risks: ["public_stream_coverage"],
-      components: { heat: 86, quality: 78, propagation: 72, tradeability: 80, timing: 70 }
+      components: { heat: 86, quality: 78, propagation: 72, tradeability: 80, timing: 50 }
     }),
     watch: {
       status: "direct_watch",
@@ -1120,7 +1155,23 @@ function timelineData(): TokenSocialTimelineData {
       { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, posts: 1, followers: 168_905, role: "watched", quality_score: null },
       { handle: "alien19710628", first_seen_ms: 1_777_746_060_000, latest_seen_ms: 1_777_746_060_000, posts: 2, followers: 220, role: "amplifier", quality_score: null }
     ],
-    posts: postsData().items.map((item) => ({ ...item, bucket_start_ms: 1_777_746_000_000 })),
+    posts: postsData().items.map((item, index) => ({
+      ...item,
+      bucket_start_ms: index < 2 ? 1_777_746_000_000 : 1_777_746_300_000
+    })),
+    cascade: {
+      edges: [
+        {
+          event_id: "event-upeg-2",
+          parent_event_id: "event-upeg-1",
+          parent_tweet_id: "tweet-upeg-1",
+          edge_type: "quote",
+          parent_author_handle: "traderpow",
+          resolved: true
+        }
+      ],
+      unresolved_parents: []
+    },
     returned_count: 3,
     has_more: false,
     next_cursor: null
@@ -1146,6 +1197,7 @@ function postsData(): TokenPostsData {
 function post(eventId: string, handle: string, text: string, watched: boolean, score: number) {
   return {
     event_id: eventId,
+    tweet_id: eventId.replace("event", "tweet"),
     handle,
     received_at_ms: 1_777_746_010_000,
     text,
@@ -1155,6 +1207,9 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
     attribution_confidence: 1,
     attribution_weight: 1,
     is_watched: watched,
+    is_first_seen_by_watched_for_token: watched,
+    event_type: watched ? "watched_token_call" : "public_followup",
+    reference: eventId === "event-upeg-2" ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" } : null,
     post_quality: {
       score_version: "post_quality_v1",
       score,

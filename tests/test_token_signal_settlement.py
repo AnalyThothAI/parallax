@@ -7,12 +7,12 @@ from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from gmgn_twitter_intel.storage.token_signal_repository import TokenSignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 from tests.test_token_signal_repository import snapshot_payload
 
 
 def open_settlement_repos(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     tokens = TokenRepository(conn)

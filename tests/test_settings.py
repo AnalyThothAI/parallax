@@ -30,7 +30,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.api_host == "0.0.0.0"
     assert settings.api_port == 8765
     assert settings.ws_token == "secret"
-    assert settings.postgres_dsn == "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "postgres_password"
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
@@ -199,4 +199,4 @@ def test_init_creates_single_config_file_and_runtime_directories(tmp_path, monke
     assert (tmp_path / ".gmgn-twitter-intel" / "logs").is_dir()
     settings = load_settings()
     assert settings.ws_token
-    assert settings.postgres_dsn == "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"

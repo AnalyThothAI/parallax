@@ -31,8 +31,8 @@ def test_freeze_token_signal_writes_ranked_snapshot_with_versions_and_health(tmp
     assert result["snapshots_written"] == 1
     assert len(snapshots) == 1
     snapshot = snapshots[0]
-    assert snapshot["score_versions"]["opportunity"] == "social_opportunity_v2"
-    assert snapshot["component_payload"]["opportunity"]["score_version"] == "social_opportunity_v2"
+    assert snapshot["score_versions"]["opportunity"] == "social_opportunity_v3"
+    assert snapshot["component_payload"]["opportunity"]["score_version"] == "social_opportunity_v3"
     assert snapshot["timeline"]["summary"]["new_authors_total"] == 3
     assert sorted(snapshot["source_event_ids"]) == [
         "event-dog-freeze-0",

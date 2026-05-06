@@ -72,6 +72,9 @@ export function App() {
   const signalLabSearch = useTraderStore((state) => state.signalLabSearch);
   const signalLabInspectorTab = useTraderStore((state) => state.signalLabInspectorTab);
   const detailWindow = useTraderStore((state) => state.detailWindow);
+  const detailMode = useTraderStore((state) => state.detailMode);
+  const selectedBucketStartMs = useTraderStore((state) => state.selectedBucketStartMs);
+  const selectedEventId = useTraderStore((state) => state.selectedEventId);
   const postRange = useTraderStore((state) => state.postRange);
   const postSortMode = useTraderStore((state) => state.postSortMode);
   const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
@@ -93,6 +96,9 @@ export function App() {
   const setSignalLabInspectorTab = useTraderStore((state) => state.setSignalLabInspectorTab);
   const setSignalLabSearch = useTraderStore((state) => state.setSignalLabSearch);
   const setDetailWindow = useTraderStore((state) => state.setDetailWindow);
+  const setDetailMode = useTraderStore((state) => state.setDetailMode);
+  const setSelectedBucketStartMs = useTraderStore((state) => state.setSelectedBucketStartMs);
+  const setSelectedEventId = useTraderStore((state) => state.setSelectedEventId);
   const setPostRange = useTraderStore((state) => state.setPostRange);
   const setPostSortMode = useTraderStore((state) => state.setPostSortMode);
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
@@ -210,7 +216,8 @@ export function App() {
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const tokenTimelineParams = selectedToken ? { ...selectedToken.timeline_query, window: detailWindow } : null;
-  const tokenPostParams = selectedToken ? { ...selectedToken.posts_query, window: detailWindow, range: postRange } : null;
+  const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
+  const tokenPostParams = selectedToken ? { ...selectedToken.posts_query, window: detailWindow, range: postRange, sort: tokenPostRequestSort } : null;
 
   const tokenTimelineQuery = useQuery({
     queryKey: ["token-social-timeline", tokenTimelineParams],
@@ -234,14 +241,15 @@ export function App() {
           window: tokenPostParams?.window,
           scope: tokenPostParams?.scope,
           range: tokenPostParams?.range,
+          sort: tokenPostParams?.sort,
           limit: 24,
-          cursor: pageParam || undefined
+          cursor: tokenPostParams?.sort === "catalyst" ? undefined : pageParam || undefined
         }
       });
       return response.data;
     },
     initialPageParam: "",
-    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
+    getNextPageParam: (lastPage) => lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
     enabled: Boolean(token && hasTokenIdentity(tokenPostParams))
   });
 
@@ -348,9 +356,12 @@ export function App() {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
       setDetailTab("timeline");
       setDetailWindow(windowKey);
+      setDetailMode("compact");
+      setSelectedBucketStartMs(null);
+      setSelectedEventId(null);
       setPostRange("current_window");
     }
-  }, [selectedSignal, setDetailTab, setDetailWindow, setPostRange, tokenItems, windowKey]);
+  }, [selectedSignal, setDetailMode, setDetailTab, setDetailWindow, setPostRange, setSelectedBucketStartMs, setSelectedEventId, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "token") {
@@ -365,13 +376,16 @@ export function App() {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
       setDetailTab("timeline");
       setDetailWindow(windowKey);
+      setDetailMode("compact");
+      setSelectedBucketStartMs(null);
+      setSelectedEventId(null);
       setPostRange("current_window");
       return;
     }
     if (!latest) {
       setSelectedSignal(null);
     }
-  }, [selectedSignal, setDetailTab, setDetailWindow, setPostRange, tokenItems, windowKey]);
+  }, [selectedSignal, setDetailMode, setDetailTab, setDetailWindow, setPostRange, setSelectedBucketStartMs, setSelectedEventId, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "signal_chain") {
@@ -401,6 +415,9 @@ export function App() {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailTab("timeline");
     setDetailWindow(windowKey);
+    setDetailMode("compact");
+    setSelectedBucketStartMs(null);
+    setSelectedEventId(null);
     setPostRange("current_window");
     setSelectedTapeEventId(tapeId);
     setMobileTask("detail");
@@ -433,6 +450,9 @@ export function App() {
     }
     submitSearch();
     setSelectedSignal(query ? { kind: "query", query } : null);
+    setDetailMode("compact");
+    setSelectedBucketStartMs(null);
+    setSelectedEventId(null);
     setSelectedTapeEventId(null);
     setMobileTask(query ? "detail" : "radar");
   };
@@ -452,6 +472,38 @@ export function App() {
     setMobileTask(task);
     if (task === "radar" || task === "tape") {
       setActiveView("live");
+    }
+  };
+
+  const handleDetailTabChange = (tab: typeof detailTab) => {
+    onTimelineExit(tab);
+    setDetailTab(tab);
+  };
+
+  const handleDetailWindowChange = (window: typeof detailWindow) => {
+    setDetailWindow(window);
+    setDetailMode("compact");
+    setSelectedBucketStartMs(null);
+    setSelectedEventId(null);
+  };
+
+  const handleTimelineBucketSelect = (bucketStartMs: number) => {
+    setDetailTab("timeline");
+    setSelectedBucketStartMs(bucketStartMs);
+    setSelectedEventId(null);
+    setDetailMode("replay");
+  };
+
+  const handleTimelineBack = () => {
+    setDetailMode("compact");
+    setSelectedEventId(null);
+  };
+
+  const onTimelineExit = (tab: typeof detailTab) => {
+    if (tab !== "timeline") {
+      setDetailMode("compact");
+      setSelectedBucketStartMs(null);
+      setSelectedEventId(null);
     }
   };
 
@@ -728,6 +780,7 @@ export function App() {
             <TokenDetailDrawer
               accountQuality={accountQualityQuery.data?.data}
               activeTab={detailTab}
+              detailMode={detailMode}
               detailWindow={detailWindow}
               hideDuplicateClusters={hideDuplicateClusters}
               isAccountQualityLoading={accountQualityQuery.isFetching}
@@ -738,17 +791,22 @@ export function App() {
               postRange={postRange}
               postSortMode={postSortMode}
               posts={tokenPostsData}
+              selectedBucketStartMs={selectedBucketStartMs}
+              selectedEventId={selectedEventId}
               signalChains={selectedTokenSignalChains}
               timeline={tokenTimelineQuery.data?.data}
               token={selectedToken}
               watchedPostsOnly={watchedPostsOnly}
               onHideDuplicateClustersChange={setHideDuplicateClusters}
-              onDetailWindowChange={setDetailWindow}
+              onBackToTimeline={handleTimelineBack}
+              onDetailWindowChange={handleDetailWindowChange}
               onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
               onPostRangeChange={setPostRange}
               onPostSortModeChange={setPostSortMode}
+              onSelectedEventChange={setSelectedEventId}
               onSelectSignalChain={selectSignalChain}
-              onTabChange={setDetailTab}
+              onTabChange={handleDetailTabChange}
+              onTimelineBucketSelect={handleTimelineBucketSelect}
               onWatchedPostsOnlyChange={setWatchedPostsOnly}
             />
           )}

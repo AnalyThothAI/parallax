@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -26,17 +28,11 @@ class PublicWebSocketHub:
         self,
         *,
         token: str,
-        evidence,
-        entities,
-        signals,
-        harness,
+        repository_session: Callable[[], AbstractContextManager[Any]],
         default_replay_limit: int = 100,
     ):
         self.token = token
-        self.evidence = evidence
-        self.entities = entities
-        self.signals = signals
-        self.harness = harness
+        self.repository_session = repository_session
         self.default_replay_limit = default_replay_limit
         self._clients: set[ClientSubscription] = set()
 
@@ -112,20 +108,21 @@ class PublicWebSocketHub:
 
     def _replay_events(self, client: ClientSubscription, limit: int) -> list[dict[str, Any]]:
         collected: dict[str, dict[str, Any]] = {}
-        if client.cas or client.symbols:
-            for chain, ca in client.cas:
-                for event in self.evidence.recent_events(limit=limit, ca=ca, chain=chain):
-                    collected[event["event_id"]] = self._payload_for_event(event)
-            for symbol in client.symbols:
-                for event in self.evidence.recent_events(limit=limit, symbol=symbol):
-                    collected[event["event_id"]] = self._payload_for_event(event)
-            payloads = list(collected.values())
-            payloads.sort(key=lambda item: item["event"].get("received_at_ms") or 0, reverse=True)
-            return payloads[:limit]
-        return [
-            self._payload_for_event(event)
-            for event in self.evidence.recent_events(limit=limit, handles=client.handles)
-        ]
+        with self.repository_session() as repos:
+            if client.cas or client.symbols:
+                for chain, ca in client.cas:
+                    for event in repos.evidence.recent_events(limit=limit, ca=ca, chain=chain):
+                        collected[event["event_id"]] = self._payload_for_event(repos, event)
+                for symbol in client.symbols:
+                    for event in repos.evidence.recent_events(limit=limit, symbol=symbol):
+                        collected[event["event_id"]] = self._payload_for_event(repos, event)
+                payloads = list(collected.values())
+                payloads.sort(key=lambda item: item["event"].get("received_at_ms") or 0, reverse=True)
+                return payloads[:limit]
+            return [
+                self._payload_for_event(repos, event)
+                for event in repos.evidence.recent_events(limit=limit, handles=client.handles)
+            ]
 
     def _payload_matches_subscription(self, payload: dict[str, Any], client: ClientSubscription) -> bool:
         if payload.get("type") == "notification":
@@ -144,15 +141,16 @@ class PublicWebSocketHub:
                 return True
         return False
 
-    def _payload_for_event(self, event: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _payload_for_event(repos, event: dict[str, Any]) -> dict[str, Any]:
         event_id = str(event["event_id"])
         return {
             "type": "event",
             "event": event,
-            "entities": self.entities.entities_for_event(event_id),
-            "alerts": self.signals.alerts_for_event(event_id),
-            "token_attributions": self.signals.token_attributions_for_event(event_id),
-            "harness": self.harness.harness_for_event(event_id),
+            "entities": repos.entities.entities_for_event(event_id),
+            "alerts": repos.signals.alerts_for_event(event_id),
+            "token_attributions": repos.signals.token_attributions_for_event(event_id),
+            "harness": repos.harness.harness_for_event(event_id),
         }
 
 

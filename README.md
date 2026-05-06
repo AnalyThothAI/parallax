@@ -111,7 +111,7 @@ docker compose exec app gmgn-twitter-intel db health
 
 ## 配置
 
-唯一应用配置源是 `~/.gmgn-twitter-intel/config.yaml`。服务不读取 `.env`、`SQLITE_PATH`、`MONITOR_HANDLES`、`WS_TOKEN` 等环境变量。PostgreSQL 容器自身使用 Compose `environment` 初始化数据库名、用户和 password secret；应用仍只从 YAML 读取数据库连接。
+唯一应用配置源是 `~/.gmgn-twitter-intel/config.yaml`。服务不读取 `.env`、`SQLITE_PATH`、`MONITOR_HANDLES`、`WS_TOKEN` 等环境变量。PostgreSQL 容器自身使用 Compose `environment` 初始化数据库名、用户和 password secret；应用从 YAML 读取数据库连接，并通过 `password_file` 注入 secret，不在 DSN 中写密码。
 
 核心字段：
 
@@ -126,7 +126,7 @@ api:
   replay_limit: 100
 storage:
   postgres:
-    dsn: "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    dsn: "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"
     password_file: "postgres_password"
     pool_min_size: 1
     pool_max_size: 10
@@ -140,7 +140,7 @@ llm:
   enrichment_poll_interval: 2
 ```
 
-`storage.postgres.password_file` 相对 `~/.gmgn-twitter-intel` 解析；`make init` 会创建该 secret 文件。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
+`storage.postgres.password_file` 相对 `~/.gmgn-twitter-intel` 解析；`make init` 会创建该 secret 文件。PostgreSQL 不向宿主机暴露端口，但仍使用容器内 SCRAM 认证，避免同一 Docker 网络内的非预期客户端无认证访问数据库。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
 
 ## 外部调用
 

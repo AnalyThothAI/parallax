@@ -13,7 +13,7 @@ class FakeCursor:
 
     def fetchone(self):
         if "alembic_version" in self.last_sql:
-            return {"version_num": "20260506_0001"}
+            return {"version_num": "20260506_0003"}
         return {"ok": 1}
 
 
@@ -36,11 +36,23 @@ def test_with_password_from_file_replaces_password(tmp_path):
     assert "old-pass" not in dsn
 
 
+def test_with_password_from_file_injects_password_into_passwordless_dsn(tmp_path):
+    password_file = tmp_path / "pg_password"
+    password_file.write_text("secret-pass\n", encoding="utf-8")
+
+    dsn = with_password_from_file(
+        "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel",
+        password_file,
+    )
+
+    assert dsn == "postgresql://gmgn_app:secret-pass@postgres:5432/gmgn_twitter_intel"
+
+
 def test_postgres_health_check_reports_liveness_and_migration_version():
     payload = postgres_health_check(FakeConn())
 
     assert payload == {
         "ok": True,
         "probe": "postgres_liveness",
-        "migration_version": "20260506_0001",
+        "migration_version": "20260506_0003",
     }

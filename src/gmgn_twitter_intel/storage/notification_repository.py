@@ -264,38 +264,34 @@ class NotificationRepository:
 
     def claim_next_delivery(self, *, now_ms: int | None = None) -> dict[str, Any] | None:
         now = int(now_ms if now_ms is not None else _now_ms())
-        with transaction(self.conn):
-            row = self.conn.execute(
-                """
-                SELECT *
-                FROM notification_deliveries
-                WHERE status IN ('pending', 'failed')
-                  AND attempt_count < max_attempts
-                  AND next_run_at_ms <= %s
-                ORDER BY next_run_at_ms ASC, created_at_ms ASC
-                LIMIT 1
-                """,
-                (now,),
-            ).fetchone()
-            if row is None:
-                return None
-            self.conn.execute(
-                """
-                UPDATE notification_deliveries
-                SET status = 'running',
-                    attempt_count = attempt_count + 1,
-                    last_attempt_at_ms = %s,
-                    updated_at_ms = %s,
-                    last_error = NULL
-                WHERE delivery_id = %s
-                """,
-                (now, now, row["delivery_id"]),
+        row = self.conn.execute(
+            """
+            WITH picked AS (
+              SELECT delivery_id
+              FROM notification_deliveries
+              WHERE status IN ('pending', 'failed')
+                AND attempt_count < max_attempts
+                AND next_run_at_ms <= %s
+              ORDER BY next_run_at_ms ASC, created_at_ms ASC, delivery_id ASC
+              LIMIT 1
+              FOR UPDATE SKIP LOCKED
             )
-            claimed = self.conn.execute(
-                "SELECT * FROM notification_deliveries WHERE delivery_id = %s",
-                (row["delivery_id"],),
-            ).fetchone()
-        return dict(claimed) if claimed else None
+            UPDATE notification_deliveries AS delivery
+            SET status = 'running',
+                attempt_count = delivery.attempt_count + 1,
+                last_attempt_at_ms = %s,
+                updated_at_ms = %s,
+                last_error = NULL
+            FROM picked
+            WHERE delivery.delivery_id = picked.delivery_id
+              AND delivery.status IN ('pending', 'failed')
+              AND delivery.attempt_count < delivery.max_attempts
+              AND delivery.next_run_at_ms <= %s
+            RETURNING delivery.*
+            """,
+            (now, now, now, now),
+        ).fetchone()
+        return dict(row) if row else None
 
     def complete_delivery(self, delivery: dict[str, Any], *, delivered_at_ms: int | None = None) -> None:
         now = int(delivered_at_ms if delivered_at_ms is not None else _now_ms())

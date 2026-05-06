@@ -1,7 +1,9 @@
 import type {
   AccountQualityData,
   SignalLabChain,
+  TokenDetailMode,
   TokenPostRange,
+  TokenPostSortMode,
   TokenDetailTab,
   TokenFlowItem,
   TokenPostsData,
@@ -15,6 +17,7 @@ import { AccountLane } from "./AccountLane";
 import { ScoreLedger } from "./ScoreLedger";
 import { SignalChainList } from "./SignalChainList";
 import { TokenPostsTab } from "./TokenPostsTab";
+import { TokenReplayFocus } from "./TokenReplayFocus";
 import { tokenDrawerSummary } from "./TokenRadarRow";
 import { TokenTimeline } from "./TokenTimeline";
 
@@ -39,14 +42,20 @@ type TokenDetailDrawerProps = {
   isAccountQualityLoading: boolean;
   isSignalLabLoading: boolean;
   detailWindow: WindowKey;
+  detailMode: TokenDetailMode;
+  selectedBucketStartMs: number | null;
+  selectedEventId: string | null;
   postRange: TokenPostRange;
-  postSortMode: "recent" | "quality";
+  postSortMode: TokenPostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
   onTabChange: (tab: TokenDetailTab) => void;
   onDetailWindowChange: (window: WindowKey) => void;
+  onTimelineBucketSelect: (bucketStartMs: number) => void;
+  onBackToTimeline: () => void;
+  onSelectedEventChange: (eventId: string | null) => void;
   onPostRangeChange: (range: TokenPostRange) => void;
-  onPostSortModeChange: (mode: "recent" | "quality") => void;
+  onPostSortModeChange: (mode: TokenPostSortMode) => void;
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
@@ -66,12 +75,18 @@ export function TokenDetailDrawer({
   isAccountQualityLoading,
   isSignalLabLoading,
   detailWindow,
+  detailMode,
+  selectedBucketStartMs,
+  selectedEventId,
   postRange,
   postSortMode,
   hideDuplicateClusters,
   watchedPostsOnly,
   onTabChange,
   onDetailWindowChange,
+  onTimelineBucketSelect,
+  onBackToTimeline,
+  onSelectedEventChange,
   onPostRangeChange,
   onPostSortModeChange,
   onHideDuplicateClustersChange,
@@ -173,11 +188,26 @@ export function TokenDetailDrawer({
 
       {activeTab === "timeline" ? (
         <section className="drawer-section">
-          <div className="section-title">heat timeline · {detailWindow}</div>
-          <TokenTimeline
-            isLoading={isTimelineLoading}
-            timeline={timeline}
-          />
+          {detailMode === "replay" ? (
+            <TokenReplayFocus
+              isLoading={isTimelineLoading}
+              selectedBucketStartMs={selectedBucketStartMs}
+              selectedEventId={selectedEventId}
+              timeline={timeline}
+              onBack={onBackToTimeline}
+              onSelectedEventChange={onSelectedEventChange}
+            />
+          ) : (
+            <>
+              <div className="section-title">heat timeline · {detailWindow}</div>
+              <TokenTimeline
+                isLoading={isTimelineLoading}
+                selectedBucketStartMs={selectedBucketStartMs}
+                timeline={timeline}
+                onBucketSelect={onTimelineBucketSelect}
+              />
+            </>
+          )}
         </section>
       ) : null}
       {activeTab === "posts" ? (

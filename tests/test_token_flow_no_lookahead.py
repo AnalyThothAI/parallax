@@ -1,6 +1,6 @@
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 from tests.test_token_rolling_flow import open_runtime, token_event
 
 
@@ -69,5 +69,5 @@ def test_token_flow_market_block_never_uses_future_snapshot(tmp_path):
     assert item["market"]["snapshot_received_at_ms"] == social_ms
     assert item["market"]["lookahead_risk"] is False
     assert item["tradeability"]["hard_risks"] == []
-    assert item["score_versions"]["opportunity"] == "social_opportunity_v2"
+    assert item["score_versions"]["opportunity"] == "social_opportunity_v3"
     assert item["data_health"]["market"] == "fresh"

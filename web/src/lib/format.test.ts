@@ -43,8 +43,8 @@ describe("format helpers", () => {
   });
 
   it("formats social heat rebuild labels", () => {
-    expect(formatTimingStatus("social_leads_price")).toBe("社交领先");
-    expect(formatTimingStatus("price_leads_social")).toBe("价格先动");
+    expect(formatTimingStatus("neutral")).toBe("中性");
+    expect(formatTimingStatus("chase_risk")).toBe("追高风险");
     expect(formatPropagationPhase("expansion")).toBe("扩散");
     expect(formatRisk("author_concentration_high")).toBe("作者集中");
     expect(formatScoreDelta(11)).toBe("+11");
@@ -136,15 +136,15 @@ function sampleToken(): TokenFlowItem {
       pool_present: false
     },
     timing: {
-      score_version: "timing_v2",
+      score_version: "timing_v4",
       score: 50,
-      status: "insufficient_history",
+      status: "neutral",
       chase_risk: false,
       reasons: [],
       risks: []
     },
     opportunity: {
-      score_version: "social_opportunity_v1",
+      score_version: "social_opportunity_v3",
       score: 50,
       decision: "watch",
       reasons: [],

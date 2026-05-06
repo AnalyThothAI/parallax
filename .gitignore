@@ -16,6 +16,8 @@ web/dist/
 web/.vite/
 web/coverage/
 .worktrees/
+.codex/
+.superpowers/
 
 # IDE & OS
 .vscode/

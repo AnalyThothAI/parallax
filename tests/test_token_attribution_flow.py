@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from threading import RLock
 
 import pytest
 
@@ -17,11 +16,11 @@ from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 
 
 def open_runtime(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -34,7 +33,6 @@ def open_runtime(tmp_path):
         signals=signals,
         enrichment=enrichment,
         tokens=tokens,
-        write_lock=RLock(),
     )
     return conn, ingest, evidence, entities, signals, tokens
 
@@ -180,7 +178,7 @@ def test_ambiguous_symbol_flow_selects_best_market_candidate_without_symbol_buck
             """
             SELECT candidate_count, reasons_json
             FROM event_token_attributions
-            WHERE token_id = ?
+            WHERE token_id = %s
               AND attribution_status = 'selected'
             LIMIT 1
             """,

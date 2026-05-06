@@ -9,7 +9,7 @@ from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertServi
 from gmgn_twitter_intel.retrieval.search_service import SearchService
 from gmgn_twitter_intel.retrieval.token_flow_service import TokenFlowService
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
-from tests.test_sqlite_repositories import make_event, open_repositories
+from tests.test_postgres_repositories import make_event, open_repositories
 
 
 def seed_event(tmp_path):

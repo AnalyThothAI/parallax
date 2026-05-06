@@ -1,7 +1,7 @@
 from gmgn_twitter_intel.retrieval.timing_scoring import timing_score
 
 
-def test_timing_social_leads_price_before_move():
+def test_timing_ready_market_is_neutral_not_alpha_boost():
     score = timing_score(
         {
             "social_signal_start_ms": 1_700_000_000_000,
@@ -12,10 +12,11 @@ def test_timing_social_leads_price_before_move():
         }
     )
 
-    assert score["status"] == "social_leads_price"
-    assert score["score_version"] == "timing_v3"
-    assert score["score"] >= 75
+    assert score["status"] == "neutral"
+    assert score["score_version"] == "timing_v4"
+    assert score["score"] == 50
     assert score["chase_risk"] is False
+    assert "social_before_price_move" not in score["reasons"]
     assert score["data_health"]["market_timing"] == "ready"
 
 
@@ -30,13 +31,13 @@ def test_timing_price_leads_social_sets_chase_risk():
         }
     )
 
-    assert score["status"] == "price_leads_social"
+    assert score["status"] == "chase_risk"
     assert score["chase_risk"] is True
     assert "chase_risk" in score["risks"]
-    assert score["score"] <= 55
+    assert score["score"] < 50
 
 
-def test_timing_social_confirms_price_after_social_start():
+def test_timing_large_post_social_move_stays_neutral():
     score = timing_score(
         {
             "social_signal_start_ms": 1_700_000_000_000,
@@ -47,8 +48,8 @@ def test_timing_social_confirms_price_after_social_start():
         }
     )
 
-    assert score["status"] == "social_confirms_price"
-    assert "social_and_price_confirm" in score["reasons"]
+    assert score["status"] == "neutral"
+    assert "social_and_price_confirm" not in score["reasons"]
 
 
 def test_timing_market_pending_uses_observation_status():
@@ -79,3 +80,16 @@ def test_timing_provider_failure_is_market_unavailable():
 
     assert score["status"] == "market_unavailable"
     assert "dead" in score["risks"]
+
+
+def test_timing_accepts_string_social_signal_start_ms():
+    score = timing_score(
+        {
+            "social_signal_start_ms": "1700000000000",
+            "price_change_since_social_pct": None,
+            "price_change_before_social_pct": None,
+            "market_observation_status": "ready",
+        }
+    )
+
+    assert score["social_signal_start_ms"] == 1_700_000_000_000

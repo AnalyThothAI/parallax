@@ -54,13 +54,30 @@ def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
     runtime = _build_runtime(settings, start_collector=False)
 
     try:
-        status = postgres_health_check(runtime.evidence.conn)
+        with runtime.db_pool.connection() as conn:
+            status = postgres_health_check(conn)
     finally:
         stop_runtime(runtime)
 
     assert status["ok"] is True
     assert status["probe"] == "postgres_liveness"
-    assert status["migration_version"] == "20260506_0001"
+    assert status["migration_version"] == "20260506_0003"
+
+
+def test_runtime_uses_pool_sessions_without_pinned_connections(tmp_path):
+    settings = make_settings(tmp_path)
+    runtime = _build_runtime(settings, start_collector=False)
+
+    try:
+        assert not hasattr(runtime, "write_conn")
+        assert not hasattr(runtime, "read_conn")
+        assert not hasattr(runtime, "write_lock")
+        with runtime.repositories() as repos:
+            status = postgres_health_check(repos.conn)
+    finally:
+        stop_runtime(runtime)
+
+    assert status["ok"] is True
 
 
 def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
@@ -90,12 +107,12 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
 def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
     settings = make_settings(tmp_path)
     runtime = _build_runtime(settings, start_collector=False)
-    runtime.read_evidence.conn.close()
+    runtime.db_pool.close()
 
     try:
         payload, status_code = _readiness_payload(runtime)
     finally:
-        runtime.db_pool.close()
+        pass
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -118,12 +135,12 @@ def test_watchdog_reasons_do_not_probe_database(tmp_path):
     runtime.market_observation_task = RunningTask()
     runtime.notification_task = RunningTask()
     runtime.collector.status.started_at_ms = 1_000
-    runtime.evidence.conn.close()
+    runtime.db_pool.close()
 
     try:
         assert hasattr(app_module, "_watchdog_unhealthy_reasons")
         reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
     finally:
-        runtime.db_pool.close()
+        pass
 
     assert reasons == ["no_upstream_frames"]

@@ -114,6 +114,7 @@ class TokenSocialTimelineService:
             "buckets": buckets,
             "authors": _authors(summary_rows),
             "posts": page_items,
+            "cascade": _cascade(summary_rows),
             "returned_count": len(page_items),
             "has_more": has_more,
             "next_cursor": _encode_cursor(page_items[-1]) if has_more and page_items else None,
@@ -159,12 +160,32 @@ class TokenSocialTimelineService:
             SELECT
               ranked.*,
               e.author_handle AS event_author_handle,
+              e.tweet_id,
               e.text_clean,
               e.search_text,
               e.canonical_url,
-              e.is_watched AS event_is_watched
+              e.reference_json,
+              e.is_watched AS event_is_watched,
+              see.event_type,
+              CASE
+                WHEN ranked.is_watched = true THEN NOT EXISTS (
+                  SELECT 1
+                  FROM event_token_attributions previous
+                  WHERE previous.identity_key = ranked.identity_key
+                    AND previous.received_at_ms < ranked.received_at_ms
+                    AND previous.is_watched = true
+                    AND previous.token_id IS NOT NULL
+                    AND previous.attribution_status IN ('direct', 'selected')
+                    AND previous.attribution_weight > 0
+                    AND previous.chain IS NOT NULL
+                    AND previous.address IS NOT NULL
+                    AND previous.chain NOT IN ('unknown', 'evm', 'evm_unknown')
+                )
+                ELSE false
+              END AS is_first_seen_by_watched_for_token
             FROM ranked
             LEFT JOIN events e ON e.event_id = ranked.event_id
+            LEFT JOIN social_event_extractions see ON see.event_id = ranked.event_id
             WHERE ranked.rn = 1
             ORDER BY ranked.received_at_ms DESC, ranked.event_id DESC
             """,
@@ -232,12 +253,32 @@ class TokenSocialTimelineService:
             SELECT
               ranked.*,
               e.author_handle AS event_author_handle,
+              e.tweet_id,
               e.text_clean,
               e.search_text,
               e.canonical_url,
-              e.is_watched AS event_is_watched
+              e.reference_json,
+              e.is_watched AS event_is_watched,
+              see.event_type,
+              CASE
+                WHEN ranked.is_watched = true THEN NOT EXISTS (
+                  SELECT 1
+                  FROM event_token_attributions previous
+                  WHERE previous.identity_key = ranked.identity_key
+                    AND previous.received_at_ms < ranked.received_at_ms
+                    AND previous.is_watched = true
+                    AND previous.token_id IS NOT NULL
+                    AND previous.attribution_status IN ('direct', 'selected')
+                    AND previous.attribution_weight > 0
+                    AND previous.chain IS NOT NULL
+                    AND previous.address IS NOT NULL
+                    AND previous.chain NOT IN ('unknown', 'evm', 'evm_unknown')
+                )
+                ELSE false
+              END AS is_first_seen_by_watched_for_token
             FROM ranked
             LEFT JOIN events e ON e.event_id = ranked.event_id
+            LEFT JOIN social_event_extractions see ON see.event_id = ranked.event_id
             WHERE ranked.rn = 1
             ORDER BY ranked.received_at_ms DESC, ranked.event_id DESC
             LIMIT %s
@@ -455,6 +496,41 @@ def _authors(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return author_rows
 
 
+def _cascade(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    tweet_to_event_id = {
+        str(row["tweet_id"]): str(row["event_id"])
+        for row in rows
+        if row.get("tweet_id") and row.get("event_id")
+    }
+    edges = []
+    unresolved = []
+    for row in sorted(rows, key=lambda item: (int(item.get("received_at_ms") or 0), str(item.get("event_id") or ""))):
+        reference = _reference(row.get("reference_json"))
+        if not reference or not reference.get("tweet_id"):
+            continue
+        parent_tweet_id = str(reference["tweet_id"])
+        parent_event_id = tweet_to_event_id.get(parent_tweet_id)
+        edge = {
+            "event_id": row.get("event_id"),
+            "parent_event_id": parent_event_id,
+            "parent_tweet_id": parent_tweet_id,
+            "edge_type": reference.get("type") or "referenced",
+            "parent_author_handle": reference.get("author_handle"),
+            "resolved": parent_event_id is not None,
+        }
+        edges.append(edge)
+        if parent_event_id is None:
+            unresolved.append(
+                {
+                    "event_id": row.get("event_id"),
+                    "parent_tweet_id": parent_tweet_id,
+                    "edge_type": edge["edge_type"],
+                    "parent_author_handle": edge["parent_author_handle"],
+                }
+            )
+    return {"edges": edges, "unresolved_parents": unresolved}
+
+
 def _post_item(row: dict[str, Any], *, window_start_ms: int, bucket_ms: int) -> dict[str, Any]:
     quality = post_quality_score(
         {
@@ -481,7 +557,32 @@ def _post_item(row: dict[str, Any], *, window_start_ms: int, bucket_ms: int) -> 
         "url": row.get("canonical_url"),
         "attribution_status": row.get("attribution_status"),
         "is_watched": _is_watched(row),
+        "is_first_seen_by_watched_for_token": bool(row.get("is_first_seen_by_watched_for_token")),
+        "event_type": row.get("event_type"),
+        "reference": _reference(row.get("reference_json")),
         "post_quality": quality,
+    }
+
+
+def _reference(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(value, dict):
+        return None
+    tweet_id = value.get("tweet_id")
+    author_handle = value.get("author_handle")
+    reference_type = value.get("type")
+    if not tweet_id and not author_handle and not reference_type:
+        return None
+    return {
+        "tweet_id": str(tweet_id) if tweet_id is not None else None,
+        "author_handle": str(author_handle).strip().lstrip("@").lower() if author_handle else None,
+        "type": str(reference_type) if reference_type is not None else None,
     }
 
 

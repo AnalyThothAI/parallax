@@ -101,13 +101,10 @@ export function formatScoreDelta(value: number | null | undefined): string {
 
 export function formatTimingStatus(value: string | null | undefined): string {
   const labels: Record<string, string> = {
-    social_leads_price: "社交领先",
-    social_confirms_price: "社交确认",
-    price_leads_social: "价格先动",
-    social_fades: "热度衰退",
+    neutral: "中性",
     market_pending: "市场观测中",
     market_unavailable: "市场不可用",
-    insufficient_history: "历史不足"
+    chase_risk: "追高风险"
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
@@ -148,7 +145,6 @@ export function formatRisk(value: string | null | undefined): string {
     author_concentration_high: "作者集中",
     duplicate_text_cluster: "重复文本",
     repeated_text_cluster: "重复文本簇",
-    price_leads_social: "价格先动",
     market_missing: "市场缺失",
     missing_market: "市场缺失",
     no_watched_confirmation: "缺少关注确认",

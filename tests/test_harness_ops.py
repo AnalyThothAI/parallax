@@ -15,7 +15,7 @@ ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
 
 
 def test_harness_ops_settle_attribute_and_update_weights(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -76,7 +76,7 @@ def test_harness_ops_settle_attribute_and_update_weights(tmp_path):
 
 
 def test_harness_ops_skip_missing_market_without_fabricating_outcome(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)

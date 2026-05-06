@@ -8,7 +8,7 @@ from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 
 TOKEN_ID = "token:eth:0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
 TOKEN_ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
@@ -16,7 +16,7 @@ CHECKSUM_TOKEN_ADDRESS = "0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
 
 
 def open_repositories(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     return (
         conn,
@@ -131,6 +131,60 @@ def test_claim_next_marks_pending_observation_running(tmp_path):
     assert claimed["attribution_id"] == attribution["attribution_id"]
     assert claimed["status"] == "running"
     assert stored["status"] == "running"
+
+
+def test_claim_next_skips_row_locked_by_another_worker(tmp_path):
+    conn, evidence, signals, tokens, observations = open_repositories(tmp_path)
+    second_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        locked = insert_direct_attribution(
+            evidence,
+            signals,
+            tokens,
+            event_id="event-locked-observation",
+            received_at_ms=1_700_000_000_000,
+        )
+        available = insert_direct_attribution(
+            evidence,
+            signals,
+            tokens,
+            event_id="event-available-observation",
+            received_at_ms=1_700_000_000_500,
+        )
+        observations.enqueue_for_attributions([locked, available], now_ms=1_700_000_001_000)
+        conn.execute(
+            """
+            UPDATE token_market_observations
+            SET priority = 100, next_run_at_ms = 1_700_000_001_000, created_at_ms = 1_700_000_001_000
+            WHERE attribution_id = %s
+            """,
+            (locked["attribution_id"],),
+        )
+        conn.execute(
+            """
+            UPDATE token_market_observations
+            SET priority = 100, next_run_at_ms = 1_700_000_001_000, created_at_ms = 1_700_000_001_001
+            WHERE attribution_id = %s
+            """,
+            (available["attribution_id"],),
+        )
+        conn.commit()
+        conn.execute("BEGIN")
+        conn.execute(
+            "SELECT observation_id FROM token_market_observations WHERE attribution_id = %s FOR UPDATE",
+            (locked["attribution_id"],),
+        )
+        second_conn.execute("SET statement_timeout TO 200")
+
+        claimed = MarketObservationRepository(second_conn).claim_next(now_ms=1_700_000_001_500)
+    finally:
+        conn.execute("ROLLBACK")
+        second_conn.execute("RESET statement_timeout")
+        second_conn.close()
+        conn.close()
+
+    assert claimed is not None
+    assert claimed["attribution_id"] == available["attribution_id"]
 
 
 def test_claim_next_reclaims_stale_running_observation(tmp_path):

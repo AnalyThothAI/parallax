@@ -4,7 +4,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_account_quality_repository_upserts_profiles_stats_and_snapshots(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = AccountQualityRepository(conn)

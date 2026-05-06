@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import time
-from threading import RLock
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Any
 
 from loguru import logger
@@ -15,16 +16,12 @@ class MarketObservationWorker:
     def __init__(
         self,
         *,
-        observations,
-        tokens,
         client,
-        write_lock: RLock | None = None,
+        repository_session: Callable[[], AbstractContextManager[Any]],
         poll_interval: float = 1.0,
     ):
-        self.observations = observations
-        self.tokens = tokens
+        self.repository_session = repository_session
         self.client = client
-        self.write_lock = write_lock or RLock()
         self.poll_interval = max(0.2, float(poll_interval))
         self._stopped = asyncio.Event()
 
@@ -43,14 +40,14 @@ class MarketObservationWorker:
 
     async def process_one(self, *, now_ms: int | None = None) -> bool:
         now = now_ms if now_ms is not None else _now_ms()
-        with self.write_lock:
-            observation = self.observations.claim_next(now_ms=now)
+        with self.repository_session() as repos:
+            observation = repos.market_observations.claim_next(now_ms=now)
         if observation is None:
             return False
 
         if self.client is None:
-            with self.write_lock:
-                self.observations.complete(
+            with self.repository_session() as repos:
+                repos.market_observations.complete(
                     observation,
                     snapshot_id=None,
                     status="provider_not_configured",
@@ -65,8 +62,8 @@ class MarketObservationWorker:
                 address=str(observation["address"]),
             )
         except GmgnOpenApiError as exc:
-            with self.write_lock:
-                self.observations.fail(
+            with self.repository_session() as repos:
+                repos.market_observations.fail(
                     observation,
                     error=str(exc),
                     status="rate_limited" if _is_rate_limited(exc) else "provider_error",
@@ -74,13 +71,13 @@ class MarketObservationWorker:
                 )
             return True
         except Exception as exc:
-            with self.write_lock:
-                self.observations.fail(observation, error=str(exc), status="provider_error", now_ms=now)
+            with self.repository_session() as repos:
+                repos.market_observations.fail(observation, error=str(exc), status="provider_error", now_ms=now)
             return True
 
         if lookup.info is None:
-            with self.write_lock:
-                self.observations.complete(
+            with self.repository_session() as repos:
+                repos.market_observations.complete(
                     observation,
                     snapshot_id=None,
                     status="provider_not_found",
@@ -90,19 +87,19 @@ class MarketObservationWorker:
             return True
 
         status = "cached" if lookup.cache_status == "hit" else "ready"
-        with self.write_lock, transaction(self.tokens.conn):
-            identity = self.tokens.upsert_openapi_token_info(
+        with self.repository_session() as repos, transaction(repos.conn):
+            identity = repos.tokens.upsert_openapi_token_info(
                 event_id=str(observation["event_id"]),
                 info=lookup.info,
                 received_at_ms=int(observation["target_received_at_ms"]),
                 source_channel=str(observation["source_channel"]),
                 commit=False,
             )
-            snapshot = self.tokens.market_snapshot_for_event(
+            snapshot = repos.tokens.market_snapshot_for_event(
                 token_id=identity.token_id,
                 event_id=str(observation["event_id"]),
             )
-            self.observations.complete(
+            repos.market_observations.complete(
                 observation,
                 snapshot_id=str(snapshot["snapshot_id"]) if snapshot else None,
                 status=status,

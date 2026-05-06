@@ -27,19 +27,19 @@ def test_opportunity_driver_for_balanced_high_quality_setup():
             "quality": _component(82),
             "propagation": _component(78, phase="expansion"),
             "tradeability": _component(86),
-            "timing": _component(74),
+            "timing": _component(50),
         }
     )
 
     assert score["decision"] == "driver"
-    assert score["score_version"] == "social_opportunity_v2"
-    assert score["score"] >= 80
+    assert score["score_version"] == "social_opportunity_v3"
+    assert score["score"] >= 75
     assert score["components"] == {
         "heat": 88,
         "quality": 82,
         "propagation": 78,
         "tradeability": 86,
-        "timing": 74,
+        "timing": 50,
     }
 
 

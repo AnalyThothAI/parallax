@@ -62,9 +62,10 @@ class MarketObservationRepository:
         stale_before = now - self.running_timeout_ms
         row = self.conn.execute(
             """
-            SELECT *
-            FROM token_market_observations
-            WHERE (
+            WITH picked AS (
+              SELECT observation_id, status AS picked_status
+              FROM token_market_observations
+              WHERE (
                 status IN ('pending', 'provider_error', 'rate_limited')
                 AND next_run_at_ms <= %s
               )
@@ -72,30 +73,34 @@ class MarketObservationRepository:
                 status = 'running'
                 AND updated_at_ms < %s
               )
-            ORDER BY priority ASC, next_run_at_ms ASC, created_at_ms ASC
-            LIMIT 1
-            """,
-            (now, stale_before),
-        ).fetchone()
-        if row is None:
-            return None
-        should_count_reclaim = str(row["status"]) == "running"
-        self.conn.execute(
-            """
-            UPDATE token_market_observations
+              ORDER BY priority ASC, next_run_at_ms ASC, created_at_ms ASC, observation_id ASC
+              LIMIT 1
+              FOR UPDATE SKIP LOCKED
+            )
+            UPDATE token_market_observations AS observation
             SET status = 'running',
-                attempt_count = attempt_count + %s,
+                attempt_count = observation.attempt_count + CASE
+                  WHEN picked.picked_status = 'running' THEN 1
+                  ELSE 0
+                END,
                 updated_at_ms = %s
-            WHERE observation_id = %s
+            FROM picked
+            WHERE observation.observation_id = picked.observation_id
+              AND (
+                (
+                  observation.status IN ('pending', 'provider_error', 'rate_limited')
+                  AND observation.next_run_at_ms <= %s
+                )
+                OR (
+                  observation.status = 'running'
+                  AND observation.updated_at_ms < %s
+                )
+              )
+            RETURNING observation.*
             """,
-            (1 if should_count_reclaim else 0, now, row["observation_id"]),
-        )
-        self.conn.commit()
-        updated = self.conn.execute(
-            "SELECT * FROM token_market_observations WHERE observation_id = %s",
-            (row["observation_id"],),
+            (now, stale_before, now, now, stale_before),
         ).fetchone()
-        return dict(updated) if updated else None
+        return dict(row) if row else None
 
     def complete(
         self,

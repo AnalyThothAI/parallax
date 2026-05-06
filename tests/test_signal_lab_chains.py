@@ -167,7 +167,7 @@ def test_signal_lab_chains_cursor_paginates_visible_chains(tmp_path):
 
 
 def _repo(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     return HarnessRepository(conn), conn
 

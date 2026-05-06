@@ -1,4 +1,3 @@
-from threading import RLock
 
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
@@ -11,7 +10,7 @@ from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 from tests.test_token_rolling_flow import open_runtime, token_event
 
 
@@ -60,8 +59,8 @@ def test_token_flow_item_uses_social_heat_contract(tmp_path):
     assert item["discussion_quality"]["score_version"] == "discussion_quality_v2"
     assert item["propagation"]["score_version"] == "propagation_v2"
     assert item["tradeability"]["score_version"] == "tradeability_v2"
-    assert item["timing"]["score_version"] == "timing_v3"
-    assert item["opportunity"]["score_version"] == "social_opportunity_v2"
+    assert item["timing"]["score_version"] == "timing_v4"
+    assert item["opportunity"]["score_version"] == "social_opportunity_v3"
     assert item["social_heat"]["data_health"]
     assert item["opportunity"]["data_health"]
     assert item["score_versions"] == {
@@ -69,8 +68,8 @@ def test_token_flow_item_uses_social_heat_contract(tmp_path):
         "discussion_quality": "discussion_quality_v2",
         "propagation": "propagation_v2",
         "tradeability": "tradeability_v2",
-        "timing": "timing_v3",
-        "opportunity": "social_opportunity_v2",
+        "timing": "timing_v4",
+        "opportunity": "social_opportunity_v3",
     }
     assert item["data_health"]["market"] in {"fresh", "stale", "missing"}
     assert item["market"]["snapshot_id"]
@@ -239,7 +238,7 @@ def test_token_flow_timing_flags_price_move_before_social_start(tmp_path):
     finally:
         conn.close()
 
-    assert item["timing"]["status"] == "price_leads_social"
+    assert item["timing"]["status"] == "chase_risk"
     assert item["timing"]["chase_risk"] is True
     assert item["timing"]["price_change_before_social_pct"] >= 0.3
 
@@ -323,7 +322,7 @@ def test_token_flow_market_delta_uses_social_start_not_window_start(tmp_path):
 
 
 def test_token_flow_ready_price_history_is_not_masked_by_later_pending_observations(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -338,7 +337,6 @@ def test_token_flow_ready_price_history_is_not_masked_by_later_pending_observati
             enrichment=EnrichmentRepository(conn),
             tokens=tokens,
             market_observations=observations,
-            write_lock=RLock(),
         )
         now_ms = 1_700_000_600_000
         social_start_ms = now_ms - 180_000
@@ -395,11 +393,11 @@ def test_token_flow_ready_price_history_is_not_masked_by_later_pending_observati
     assert item["market"]["price_change_since_social_pct"] == 0.2
     assert item["market"]["market_observation_status"] == "ready"
     assert item["market"]["price_change_status"] == "ready"
-    assert item["timing"]["status"] == "social_confirms_price"
+    assert item["timing"]["status"] == "neutral"
 
 
 def test_token_flow_pending_observation_surfaces_market_status(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -414,7 +412,6 @@ def test_token_flow_pending_observation_surfaces_market_status(tmp_path):
             enrichment=EnrichmentRepository(conn),
             tokens=tokens,
             market_observations=observations,
-            write_lock=RLock(),
         )
         now_ms = 1_700_000_600_000
         ingest.ingest_event(
@@ -440,7 +437,7 @@ def test_token_flow_pending_observation_surfaces_market_status(tmp_path):
 
 
 def test_token_flow_provider_failure_status_is_visible(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -455,7 +452,6 @@ def test_token_flow_provider_failure_status_is_visible(tmp_path):
             enrichment=EnrichmentRepository(conn),
             tokens=tokens,
             market_observations=observations,
-            write_lock=RLock(),
         )
         now_ms = 1_700_000_600_000
         ingest.ingest_event(

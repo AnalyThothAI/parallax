@@ -3,11 +3,11 @@ from __future__ import annotations
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 
 
 def test_postgres_schema_bootstraps_core_tables(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         names = {
@@ -33,7 +33,7 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
 
 
 def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         EvidenceRepository(conn).insert_event(
@@ -55,7 +55,7 @@ def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
 
 
 def test_alembic_migration_is_idempotent(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         migrate(conn)
@@ -63,4 +63,4 @@ def test_alembic_migration_is_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version_num"] for row in rows] == ["20260506_0001"]
+    assert [row["version_num"] for row in rows] == ["20260506_0003"]

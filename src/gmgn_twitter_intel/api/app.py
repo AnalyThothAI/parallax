@@ -7,7 +7,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from threading import RLock
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -35,6 +34,7 @@ from ..storage.harness_repository import HarnessRepository
 from ..storage.market_observation_repository import MarketObservationRepository
 from ..storage.notification_repository import NotificationRepository
 from ..storage.postgres_client import create_pool, postgres_health_check, with_password_from_file
+from ..storage.repository_session import PooledRepository, repository_session
 from ..storage.signal_repository import SignalRepository
 from ..storage.token_repository import TokenRepository
 from ..storage.token_signal_repository import TokenSignalRepository
@@ -46,29 +46,26 @@ from .ws import PublicWebSocketHub
 class CliRuntime:
     settings: Settings
     db_pool: object
-    write_conn: object
-    read_conn: object
-    evidence: EvidenceRepository
-    entities: EntityRepository
-    signals: SignalRepository
-    tokens: TokenRepository
-    market_observations: MarketObservationRepository
-    enrichment: EnrichmentRepository
-    harness: HarnessRepository
-    notifications: NotificationRepository
-    token_signals: TokenSignalRepository
-    read_evidence: EvidenceRepository
-    read_entities: EntityRepository
-    read_signals: SignalRepository
-    read_tokens: TokenRepository
-    read_enrichment: EnrichmentRepository
-    read_harness: HarnessRepository
-    read_notifications: NotificationRepository
-    read_token_signals: TokenSignalRepository
+    evidence: object
+    entities: object
+    signals: object
+    tokens: object
+    market_observations: object
+    enrichment: object
+    harness: object
+    notifications: object
+    token_signals: object
+    read_evidence: object
+    read_entities: object
+    read_signals: object
+    read_tokens: object
+    read_enrichment: object
+    read_harness: object
+    read_notifications: object
+    read_token_signals: object
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
-    write_lock: RLock
     start_collector: bool
     enrichment_worker: EnrichmentWorker | None = None
     market_observation_worker: MarketObservationWorker | None = None
@@ -81,6 +78,9 @@ class CliRuntime:
     market_observation_task: asyncio.Task | None = None
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
+
+    def repositories(self):
+        return repository_session(self.db_pool)
 
 
 def create_app(
@@ -171,6 +171,27 @@ def _frontend_dist_dir(frontend_dist: str | Path | None = None) -> Path | None:
     return None
 
 
+class _PooledIngestStore:
+    def __init__(self, db_pool: object):
+        self.db_pool = db_pool
+
+    def insert_raw_frame(self, **kwargs) -> bool:
+        with repository_session(self.db_pool) as repos:
+            return repos.evidence.insert_raw_frame(**kwargs)
+
+    def ingest_event(self, event, *, is_watched: bool):
+        with repository_session(self.db_pool) as repos:
+            ingest = IngestService(
+                evidence=repos.evidence,
+                entities=repos.entities,
+                signals=repos.signals,
+                enrichment=repos.enrichment,
+                tokens=repos.tokens,
+                market_observations=repos.market_observations,
+            )
+            return ingest.ingest_event(event, is_watched=is_watched)
+
+
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     if not settings.ws_token:
         raise ValueError("ws_token is required in config.yaml")
@@ -181,48 +202,33 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         max_size=settings.postgres_pool_max_size,
         connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
     )
-    conn = db_pool.getconn()
-    read_conn = db_pool.getconn()
-    startup_db = postgres_health_check(conn)
+    with db_pool.connection() as conn:
+        startup_db = postgres_health_check(conn)
     if not startup_db.get("ok"):
-        db_pool.putconn(conn)
-        db_pool.putconn(read_conn)
         db_pool.close()
         raise RuntimeError(f"postgres health check failed: {startup_db}")
-    evidence = EvidenceRepository(conn)
-    entities = EntityRepository(conn)
-    signals = SignalRepository(conn)
-    tokens = TokenRepository(conn)
-    market_observations = MarketObservationRepository(conn)
-    enrichment = EnrichmentRepository(conn)
-    harness = HarnessRepository(conn)
-    notifications = NotificationRepository(conn)
-    token_signals = TokenSignalRepository(conn)
-    read_evidence = EvidenceRepository(read_conn)
-    read_entities = EntityRepository(read_conn)
-    read_signals = SignalRepository(read_conn)
-    read_tokens = TokenRepository(read_conn)
-    read_enrichment = EnrichmentRepository(read_conn)
-    read_harness = HarnessRepository(read_conn)
-    read_notifications = NotificationRepository(read_conn)
-    read_token_signals = TokenSignalRepository(read_conn)
-    write_lock = RLock()
+    evidence = PooledRepository(db_pool, EvidenceRepository)
+    entities = PooledRepository(db_pool, EntityRepository)
+    signals = PooledRepository(db_pool, SignalRepository)
+    tokens = PooledRepository(db_pool, TokenRepository)
+    market_observations = PooledRepository(db_pool, MarketObservationRepository)
+    enrichment = PooledRepository(db_pool, EnrichmentRepository)
+    harness = PooledRepository(db_pool, HarnessRepository)
+    notifications = PooledRepository(db_pool, NotificationRepository)
+    token_signals = PooledRepository(db_pool, TokenSignalRepository)
+    read_evidence = evidence
+    read_entities = entities
+    read_signals = signals
+    read_tokens = tokens
+    read_enrichment = enrichment
+    read_harness = harness
+    read_notifications = notifications
+    read_token_signals = token_signals
     gmgn_client = _gmgn_client(settings)
-    ingest = IngestService(
-        evidence=evidence,
-        entities=entities,
-        signals=signals,
-        enrichment=enrichment,
-        tokens=tokens,
-        market_observations=market_observations,
-        write_lock=write_lock,
-    )
+    ingest = _PooledIngestStore(db_pool)
     hub = PublicWebSocketHub(
         token=settings.ws_token,
-        evidence=read_evidence,
-        entities=read_entities,
-        signals=read_signals,
-        harness=read_harness,
+        repository_session=lambda: repository_session(db_pool),
         default_replay_limit=settings.replay_limit,
     )
     collector = CollectorService(
@@ -234,8 +240,6 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     runtime = CliRuntime(
         settings=settings,
         db_pool=db_pool,
-        write_conn=conn,
-        read_conn=read_conn,
         evidence=evidence,
         entities=entities,
         signals=signals,
@@ -256,29 +260,19 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         ingest=ingest,
         hub=hub,
         collector=collector,
-        write_lock=write_lock,
         start_collector=start_collector,
         gmgn_client=gmgn_client,
     )
     runtime.market_observation_worker = MarketObservationWorker(
-        observations=market_observations,
-        tokens=tokens,
         client=gmgn_client,
-        write_lock=write_lock,
+        repository_session=lambda: repository_session(db_pool),
     )
     if settings.notifications.enabled:
         runtime.notification_worker = NotificationWorker(
-            repository=notifications,
-            rule_engine=NotificationRuleEngine(
-                settings=settings,
-                evidence=evidence,
-                account_alerts=AccountAlertService(signals),
-                token_flow=TokenFlowService(signals=signals, tokens=tokens, harness=harness),
-                harness=HarnessService(harness),
-            ),
+            repository_session=lambda: repository_session(db_pool),
+            rule_engine_factory=lambda repos: _notification_rule_engine(settings, repos),
             publisher=hub,
             delivery_channels=settings.notifications.channels,
-            write_lock=write_lock,
             poll_interval=settings.notifications.poll_interval_seconds,
         )
         if any(
@@ -286,9 +280,8 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             for channel in settings.notifications.channels.values()
         ):
             runtime.notification_delivery_worker = NotificationDeliveryWorker(
-                repository=notifications,
                 channels=settings.notifications.channels,
-                write_lock=write_lock,
+                repository_session=lambda: repository_session(db_pool),
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
     if settings.llm_configured:
@@ -299,15 +292,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             timeout_seconds=settings.llm_timeout_seconds,
         )
         runtime.enrichment_worker = EnrichmentWorker(
-            evidence=evidence,
-            entities=entities,
-            signals=signals,
-            enrichment=enrichment,
-            harness=harness,
-            tokens=tokens,
             client=client,
             publisher=hub,
-            write_lock=write_lock,
+            repository_session=lambda: repository_session(db_pool),
             poll_interval=settings.enrichment_poll_interval,
         )
     if start_collector:
@@ -323,6 +310,16 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         )
         collector.upstream_client = upstream
     return runtime
+
+
+def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngine:
+    return NotificationRuleEngine(
+        settings=settings,
+        evidence=repos.evidence,
+        account_alerts=AccountAlertService(repos.signals),
+        token_flow=TokenFlowService(signals=repos.signals, tokens=repos.tokens, harness=repos.harness),
+        harness=HarnessService(repos.harness),
+    )
 
 
 def _start_runtime_tasks(runtime: CliRuntime) -> None:
@@ -369,8 +366,6 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.gmgn_client is not None:
         runtime.gmgn_client.close()
-    runtime.db_pool.putconn(runtime.write_conn)
-    runtime.db_pool.putconn(runtime.read_conn)
     runtime.db_pool.close()
 
 
@@ -462,29 +457,32 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
 
 def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
-        return postgres_health_check(runtime.read_evidence.conn)
+        with runtime.db_pool.connection() as conn:
+            return postgres_health_check(conn)
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 
 
 def _enrichment_job_counts(runtime: CliRuntime) -> dict[str, int]:
     try:
-        return runtime.read_enrichment.job_counts()
+        with runtime.repositories() as repos:
+            return repos.enrichment.job_counts()
     except Exception:
         return {}
 
 
 def _market_observation_counts(runtime: CliRuntime) -> dict[str, int]:
     try:
-        with runtime.write_lock:
-            return runtime.market_observations.counts()
+        with runtime.repositories() as repos:
+            return repos.market_observations.counts()
     except Exception:
         return {}
 
 
 def _notification_summary(runtime: CliRuntime) -> dict[str, object]:
     try:
-        return runtime.read_notifications.summary(subscriber_key="local")
+        with runtime.repositories() as repos:
+            return repos.notifications.summary(subscriber_key="local")
     except Exception:
         return {}
 

@@ -1,12 +1,11 @@
 import asyncio
-from threading import RLock
 
 from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.pipeline.notification_models import NotificationCandidate
 from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
 from gmgn_twitter_intel.settings import NotificationChannelConfig
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
-from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
@@ -47,15 +46,14 @@ def candidate(dedup_key="watched_account_activity:event:event-1", channels=("in_
 
 
 def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     repo = NotificationRepository(conn)
     worker = NotificationWorker(
-        repository=repo,
         rule_engine=StaticRuleEngine(candidates),
         publisher=publisher,
         delivery_channels=delivery_channels or {},
-        write_lock=RLock(),
+        repository_session=lambda: repository_session_for_connection(conn),
         poll_interval=0.2,
     )
     return conn, repo, worker
@@ -166,7 +164,6 @@ def test_duplicate_notification_does_not_block_delivery_claim_transaction(tmp_pa
         assert conn.in_transaction is False
 
         delivery_worker = NotificationDeliveryWorker(
-            repository=repo,
             channels={
                 "audit_log": NotificationChannelConfig(
                     enabled=True,
@@ -174,7 +171,7 @@ def test_duplicate_notification_does_not_block_delivery_claim_transaction(tmp_pa
                     min_severity="info",
                 )
             },
-            write_lock=worker.write_lock,
+            repository_session=lambda: repository_session_for_connection(conn),
             poll_interval=0.2,
         )
         processed = asyncio.run(delivery_worker.process_one(now_ms=9_999_999_999_999))

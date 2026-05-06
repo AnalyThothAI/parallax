@@ -11,6 +11,9 @@ export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" |
 export type TokenDetailTab = "timeline" | "posts" | "score" | "lab" | "accounts";
 export type TimelineBucket = "30s" | "5m" | "15m" | "1h";
 export type TokenPostRange = "current_window" | "since_ignition" | "all_history";
+export type TokenPostSortMode = "recent" | "quality" | "catalyst";
+export type TokenPostServerSort = "recent" | "catalyst";
+export type TokenDetailMode = "compact" | "replay";
 
 export type BootstrapData = {
   ws_token: string;
@@ -294,7 +297,7 @@ export type TradeabilityBlock = ScoreBlock & {
 export type TimingBlock = {
   score: number;
   score_version: string;
-  status: "social_leads_price" | "social_confirms_price" | "price_leads_social" | "social_fades" | "market_pending" | "market_unavailable" | "insufficient_history" | string;
+  status: "neutral" | "market_pending" | "market_unavailable" | "chase_risk";
   social_signal_start_ms?: number | null;
   price_change_since_social_pct?: number | null;
   price_change_before_social_pct?: number | null;
@@ -336,7 +339,7 @@ export type TokenPostsQuery = {
   window: WindowKey;
   scope: ScopeKey;
   range: TokenPostRange;
-  sort?: "recent" | string;
+  sort?: TokenPostServerSort;
 };
 
 export type TokenSocialTimelineParams = {
@@ -369,6 +372,7 @@ export type TokenFlowItem = {
 
 export type TokenPostItem = {
   event_id: string;
+  tweet_id?: string | null;
   handle?: string | null;
   text?: string | null;
   url?: string | null;
@@ -378,6 +382,11 @@ export type TokenPostItem = {
   attribution_confidence?: number | null;
   attribution_weight?: number | null;
   is_watched?: boolean | number | null;
+  is_first_seen_by_watched_for_token?: boolean | number | null;
+  event_type?: string | null;
+  reference?: TokenReference | null;
+  catalyst_score?: number | null;
+  catalyst_components?: CatalystComponents | null;
   post_quality: ScoreBlock;
 };
 
@@ -421,6 +430,7 @@ export type TokenTimelineAuthor = {
 
 export type TokenTimelinePost = {
   event_id: string;
+  tweet_id?: string | null;
   handle?: string | null;
   received_at_ms?: number | null;
   bucket_start_ms?: number | null;
@@ -428,7 +438,48 @@ export type TokenTimelinePost = {
   url?: string | null;
   attribution_status?: string | null;
   is_watched?: boolean | number | null;
+  is_first_seen_by_watched_for_token?: boolean | number | null;
+  event_type?: string | null;
+  reference?: TokenReference | null;
   post_quality: ScoreBlock;
+};
+
+export type TokenReference = {
+  tweet_id?: string | null;
+  author_handle?: string | null;
+  type?: string | null;
+};
+
+export type TokenTimelineCascadeEdge = {
+  event_id?: string | null;
+  parent_event_id?: string | null;
+  parent_tweet_id?: string | null;
+  edge_type?: string | null;
+  parent_author_handle?: string | null;
+  resolved: boolean;
+};
+
+export type TokenTimelineCascade = {
+  edges: TokenTimelineCascadeEdge[];
+  unresolved_parents: TokenTimelineCascadeEdge[];
+};
+
+export type CatalystComponents = {
+  observation_window_ms?: number;
+  baseline_window_ms?: number;
+  followup_count?: number;
+  independent_authors?: number;
+  baseline_mentions_per_min?: number;
+  excess_followups?: number;
+  excess_score?: number;
+  independence_score?: number;
+  explicit_cascade_followups?: number;
+  cascade_grip?: number;
+  time_to_k_authors?: number;
+  time_to_k_authors_ms?: number | null;
+  time_to_k_score?: number;
+  structural_virality_score?: number;
+  avg_followup_quality?: number;
 };
 
 export type TokenSocialTimelineData = {
@@ -449,6 +500,7 @@ export type TokenSocialTimelineData = {
   buckets: TokenTimelineBucket[];
   authors: TokenTimelineAuthor[];
   posts: TokenTimelinePost[];
+  cascade: TokenTimelineCascade;
   returned_count: number;
   has_more: boolean;
   next_cursor?: string | null;

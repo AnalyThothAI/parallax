@@ -1,7 +1,6 @@
 import asyncio
 import time
 from dataclasses import replace
-from threading import RLock
 
 import pytest
 
@@ -13,10 +12,13 @@ from gmgn_twitter_intel.pipeline.token_identity_resolver import TokenIdentityRes
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.storage.postgres_client import create_pool
+from gmgn_twitter_intel.storage.repository_session import repository_session
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
 
 
 def make_event(
@@ -97,7 +99,7 @@ def make_token_event(
 
 
 def open_repositories(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -125,6 +127,27 @@ def test_evidence_repository_writes_event_and_fts_in_one_transaction(tmp_path):
 
     assert [item["event_id"] for item in results] == ["event-1"]
     assert results[0]["is_watched"] == 1
+
+
+def test_logical_duplicate_event_is_treated_as_duplicate(tmp_path):
+    conn, evidence, _, _, _ = open_repositories(tmp_path)
+    try:
+        event = make_event("event-logical-1")
+        duplicate = replace(
+            event,
+            event_id="event-logical-2",
+            internal_id="event-logical-2",
+        )
+
+        first = evidence.insert_event(event, is_watched=True)
+        second = evidence.insert_event(duplicate, is_watched=True)
+        counts = evidence.counts()
+    finally:
+        conn.close()
+
+    assert first is True
+    assert second is False
+    assert counts["events"] == 1
 
 
 def test_search_fts_sanitizes_user_query_syntax(tmp_path):
@@ -193,7 +216,6 @@ def test_duplicate_raw_frame_does_not_poison_next_ingest_transaction(tmp_path):
             signals=signal_repo,
             enrichment=enrichment_repo,
             tokens=TokenRepository(conn),
-            write_lock=RLock(),
         )
         assert ingest.insert_raw_frame(
             source="gmgn",
@@ -249,11 +271,16 @@ def test_signal_builder_materializes_account_alerts_and_token_mentions(tmp_path)
         alerts = signal_repo.account_alerts(window_ms=86_400_000, now_ms=event.received_at_ms + 1, limit=10)
         token_flow = signal_repo.token_flow(window="5m", limit=10, now_ms=event.received_at_ms + 1)
         token_mention = conn.execute(
-            "SELECT * FROM event_token_mentions WHERE event_id = ?",
+            "SELECT * FROM event_token_mentions WHERE event_id = %s",
             (event.event_id,),
         ).fetchone()
         token_window_table = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'token_windows'"
+            """
+            SELECT table_name AS name
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name = 'token_windows'
+            """
         ).fetchone()
     finally:
         conn.close()
@@ -391,35 +418,39 @@ def test_token_flow_can_filter_to_watched_mentions(tmp_path):
     assert [item["symbol"] for item in watched_flow] == ["PEPE"]
 
 
-def test_ingest_service_serializes_concurrent_sqlite_writes(tmp_path):
+def test_ingest_service_handles_concurrent_postgres_ingests_with_pool_sessions(tmp_path):
     from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 
-    conn, evidence, entity_repo, signal_repo, enrichment_repo = open_repositories(tmp_path)
+    conn, _, _, _, _ = open_repositories(tmp_path)
+    pool = create_pool(
+        postgres_test_dsn(),
+        min_size=1,
+        max_size=5,
+        connect_timeout_seconds=5.0,
+    )
     try:
-        ingest = IngestService(
-            evidence=evidence,
-            entities=entity_repo,
-            signals=signal_repo,
-            enrichment=enrichment_repo,
-            tokens=TokenRepository(conn),
-            write_lock=RLock(),
-        )
+        def ingest_one(index: int) -> None:
+            with repository_session(pool) as repos:
+                IngestService(
+                    evidence=repos.evidence,
+                    entities=repos.entities,
+                    signals=repos.signals,
+                    enrichment=repos.enrichment,
+                    tokens=repos.tokens,
+                    market_observations=repos.market_observations,
+                ).ingest_event(
+                    make_event(f"event-{index}", text=f"$PEPE mainnet {index}"),
+                    is_watched=True,
+                )
 
         async def scenario():
-            await asyncio.gather(
-                *[
-                    asyncio.to_thread(
-                        ingest.ingest_event,
-                        make_event(f"event-{index}", text=f"$PEPE mainnet {index}"),
-                        is_watched=True,
-                    )
-                    for index in range(20)
-                ]
-            )
+            await asyncio.gather(*[asyncio.to_thread(ingest_one, index) for index in range(20)])
 
         asyncio.run(scenario())
-        counts = evidence.counts()
+        with repository_session(pool) as repos:
+            counts = repos.evidence.counts()
     finally:
+        pool.close()
         conn.close()
 
     assert counts["events"] == 20
@@ -440,7 +471,6 @@ def test_ingest_service_rolls_back_event_when_signal_build_fails(tmp_path):
             signals=signal_repo,
             enrichment=enrichment_repo,
             tokens=TokenRepository(conn),
-            write_lock=RLock(),
         )
         ingest.signal_builder = FailingSignalBuilder()
 

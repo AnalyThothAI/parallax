@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import type { TokenPostItem, TokenPostRange, TokenPostsData } from "../api/types";
+import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData } from "../api/types";
 import { eventText, formatReason, formatRelativeTime, formatRisk, formatScore } from "../lib/format";
 
 type TokenPostsTabProps = {
@@ -7,11 +7,11 @@ type TokenPostsTabProps = {
   isLoading: boolean;
   isFetchingNextPage: boolean;
   postRange: TokenPostRange;
-  postSortMode: "recent" | "quality";
+  postSortMode: TokenPostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
   onPostRangeChange: (range: TokenPostRange) => void;
-  onPostSortModeChange: (mode: "recent" | "quality") => void;
+  onPostSortModeChange: (mode: TokenPostSortMode) => void;
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
@@ -58,9 +58,12 @@ export function TokenPostsTab({
             history
           </button>
         </div>
-        <div className="segmented mini">
+        <div className="segmented mini post-sort" aria-label="token post sort">
           <button className={postSortMode === "recent" ? "active" : ""} type="button" onClick={() => onPostSortModeChange("recent")}>
             recent
+          </button>
+          <button className={postSortMode === "catalyst" ? "active" : ""} type="button" onClick={() => onPostSortModeChange("catalyst")}>
+            catalyst
           </button>
           <button className={postSortMode === "quality" ? "active" : ""} type="button" onClick={() => onPostSortModeChange("quality")}>
             quality
@@ -113,6 +116,7 @@ function PostCard({ item }: { item: TokenPostItem }) {
         <strong>@{item.handle ?? "unknown"}</strong>
         <span>{formatScore(item.post_quality.score)}</span>
         <em>{topReason ? formatReason(topReason) : "post quality"}</em>
+        {item.catalyst_score !== null && item.catalyst_score !== undefined ? <i className="catalyst-chip">cat {formatScore(item.catalyst_score)}</i> : null}
         {item.post_quality.risks.slice(0, 2).map((risk) => (
           <i key={risk}>{formatRisk(risk)}</i>
         ))}
@@ -124,12 +128,22 @@ function PostCard({ item }: { item: TokenPostItem }) {
         ) : null}
       </div>
       <p>{eventText({ event_id: item.event_id, text_clean: item.text })}</p>
+      {item.catalyst_components ? (
+        <div className="catalyst-components">
+          <span>{formatScore(item.catalyst_components.followup_count)} followups</span>
+          <span>{formatScore(item.catalyst_components.independent_authors)} authors</span>
+          <span>{formatScore(item.catalyst_components.explicit_cascade_followups)} refs</span>
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function sortPosts(items: TokenPostItem[], mode: "recent" | "quality"): TokenPostItem[] {
+function sortPosts(items: TokenPostItem[], mode: TokenPostSortMode): TokenPostItem[] {
   const copy = [...items];
+  if (mode === "catalyst") {
+    return copy.sort((a, b) => Number(b.catalyst_score ?? 0) - Number(a.catalyst_score ?? 0));
+  }
   if (mode === "quality") {
     return copy.sort((a, b) => b.post_quality.score - a.post_quality.score);
   }

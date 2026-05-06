@@ -5,7 +5,6 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from threading import RLock
 from unittest.mock import patch
 
 import yaml
@@ -76,7 +75,6 @@ def seed_postgres(db_path: Path) -> None:
             enrichment=enrichment,
             tokens=tokens,
             market_observations=observations,
-            write_lock=RLock(),
         )
         snapshot = parse_gmgn_token_payload(
             {
@@ -125,7 +123,7 @@ class CliTests(unittest.TestCase):
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path, ws_token="secret", llm=True)
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
@@ -181,10 +179,10 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["notifications"]["channels"]["pushdeer"]["url_configured"])
         self.assertEqual(payload["data"]["notifications"]["channels"]["pushdeer"]["provider"], "apprise")
 
-    def test_recent_search_token_flow_harness_and_alerts_use_sqlite_runtime_store(self):
+    def test_recent_search_token_flow_harness_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             seed_postgres(db_path)
             stdout = io.StringIO()
@@ -229,7 +227,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
         self.assertEqual(lines[3]["data"]["snapshots_written"], 1)
-        self.assertEqual(lines[4]["data"]["items"][0]["score_versions"]["opportunity"], "social_opportunity_v2")
+        self.assertEqual(lines[4]["data"]["items"][0]["score_versions"]["opportunity"], "social_opportunity_v3")
         self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
         self.assertEqual(lines[2]["data"]["items"][0]["opportunity"]["decision"], "watch")
         self.assertEqual(
@@ -244,7 +242,7 @@ class CliTests(unittest.TestCase):
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -302,7 +300,7 @@ class CliTests(unittest.TestCase):
     def test_token_signal_settlement_cli_commands_return_empty_results(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
@@ -325,7 +323,7 @@ class CliTests(unittest.TestCase):
     def test_ops_rebuild_attributions_materializes_existing_symbol_mentions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -341,7 +339,6 @@ class CliTests(unittest.TestCase):
                     signals=signals,
                     enrichment=enrichment,
                     tokens=tokens,
-                    write_lock=RLock(),
                 )
                 base_ms = int(time.time() * 1000) - 10_000
                 ingest.ingest_event(
@@ -397,7 +394,7 @@ class CliTests(unittest.TestCase):
     def test_market_observations_cli_lists_counts_and_backfills_missing_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -413,7 +410,6 @@ class CliTests(unittest.TestCase):
                     signals=signals,
                     enrichment=enrichment,
                     tokens=tokens,
-                    write_lock=RLock(),
                 )
                 snapshot = parse_gmgn_token_payload(
                     {
@@ -457,9 +453,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[2]["data"]["counts"]["pending"], 1)
         self.assertEqual(lines[2]["data"]["items"][0]["event_id"], "event-market-backfill")
 
-def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monkeypatch):
+def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
-    db_path = app_home / "twitter_intel.sqlite3"
+    db_path = app_home / "postgres_test_db"
     write_runtime_config(tmp_path, db_path=db_path)
     seed_postgres(db_path)
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -474,7 +470,7 @@ def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monk
 
 def test_harness_cli_reports_empty_read_models_without_error(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
-    db_path = app_home / "twitter_intel.sqlite3"
+    db_path = app_home / "postgres_test_db"
     write_runtime_config(tmp_path, db_path=db_path)
     conn = connect_postgres_test(db_path, read_only=False)
     try:

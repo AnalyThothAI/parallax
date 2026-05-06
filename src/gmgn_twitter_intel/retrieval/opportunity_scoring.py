@@ -7,9 +7,9 @@ from .scoring_common import cap, contribution, safe_int, score_payload
 WEIGHTS = {
     "heat": 0.26,
     "quality": 0.22,
-    "propagation": 0.22,
+    "propagation": 0.28,
     "tradeability": 0.18,
-    "timing": 0.12,
+    "timing": 0.06,
 }
 
 
@@ -38,7 +38,7 @@ def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
     if "public_stream_coverage" in risks and not has_watched_confirmation:
         risk_caps.append(cap("public_only_unconfirmed", 68))
     if "chase_risk" in risks:
-        risk_caps.append(cap("chase_risk", 55))
+        risk_caps.append(cap("chase_risk", 50))
     if "repeated_text_cluster" in risks or "duplicate_text_cluster" in risks:
         risk_caps.append(cap("repeated_text_cluster", 50))
 
@@ -51,7 +51,7 @@ def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
         ]
 
     score_payload_base = score_payload(
-        score_version="social_opportunity_v2",
+        score_version="social_opportunity_v3",
         score=weighted_score,
         reasons=reasons,
         risks=risks,
@@ -68,7 +68,7 @@ def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
         and component_scores["quality"] >= 62
         and component_scores["propagation"] >= 62
         and component_scores["tradeability"] >= 70
-        and component_scores["timing"] >= 55
+        and component_scores["timing"] >= 50
         and propagation_phase in {"expansion", "ignition"}
         and not any(cap_item.get("risk") == "public_only_unconfirmed" for cap_item in risk_caps)
     ):

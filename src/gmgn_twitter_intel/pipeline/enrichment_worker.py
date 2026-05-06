@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from threading import RLock
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import Any
 
 from loguru import logger
 
@@ -14,26 +16,14 @@ class EnrichmentWorker:
     def __init__(
         self,
         *,
-        evidence,
-        entities,
-        signals,
-        enrichment,
-        harness,
-        tokens,
         client,
         publisher=None,
-        write_lock: RLock | None = None,
+        repository_session: Callable[[], AbstractContextManager[Any]],
         poll_interval: float = 2.0,
     ):
-        self.evidence = evidence
-        self.entities = entities
-        self.signals = signals
-        self.enrichment = enrichment
-        self.harness = harness
-        self.tokens = tokens
+        self.repository_session = repository_session
         self.client = client
         self.publisher = publisher
-        self.write_lock = write_lock or RLock()
         self.poll_interval = max(0.2, float(poll_interval))
         self._stopped = asyncio.Event()
 
@@ -51,31 +41,39 @@ class EnrichmentWorker:
         self._stopped.set()
 
     async def process_one(self, *, now_ms: int | None = None) -> bool:
-        with self.write_lock:
-            job = self.enrichment.claim_next_job(now_ms=now_ms or _now_ms())
+        with self.repository_session() as repos:
+            job = repos.enrichment.claim_next_job(now_ms=now_ms or _now_ms())
         if job is None:
             return False
 
-        with self.write_lock:
-            event = self.evidence.events_by_ids([str(job["event_id"])]).get(str(job["event_id"]))
+        with self.repository_session() as repos:
+            event = repos.evidence.events_by_ids([str(job["event_id"])]).get(str(job["event_id"]))
         if event is None:
-            with self.write_lock:
-                self.enrichment.fail_job(job=job, error="event_not_found")
+            with self.repository_session() as repos:
+                repos.enrichment.fail_job(job=job, error="event_not_found")
             return True
 
-        with self.write_lock:
-            entities = self.entities.entities_for_event(str(job["event_id"]))
+        with self.repository_session() as repos:
+            entities = repos.entities.entities_for_event(str(job["event_id"]))
         request = {"event_id": job["event_id"], "job_type": job["job_type"]}
         try:
-            result = await self.client.enrich_event(event=event, entities=entities)
+            timeout_seconds = max(0.1, float(getattr(self.client, "timeout_seconds", 30.0) or 30.0))
+            result = await asyncio.wait_for(
+                self.client.enrich_event(event=event, entities=entities),
+                timeout=timeout_seconds,
+            )
+        except TimeoutError:
+            with self.repository_session() as repos:
+                repos.enrichment.fail_job(job=job, error=f"LLM request timed out after {timeout_seconds:g}s")
+            return True
         except Exception as exc:
-            with self.write_lock:
-                self.enrichment.fail_job(job=job, error=str(exc))
+            with self.repository_session() as repos:
+                repos.enrichment.fail_job(job=job, error=str(exc))
             return True
 
         try:
-            with self.write_lock, transaction(self.enrichment.conn):
-                run = self.enrichment.complete_social_event_job(
+            with self.repository_session() as repos, transaction(repos.conn):
+                run = repos.enrichment.complete_social_event_job(
                     job=job,
                     result=result,
                     provider=self.client.provider,
@@ -83,16 +81,17 @@ class EnrichmentWorker:
                     request=request,
                     commit=False,
                 )
-                materialized = self._materialize_harness(
+                materialized = HarnessSnapshotBuilder(repos.harness, tokens=repos.tokens).materialize(
                     event=event,
-                    result=result,
+                    extraction=result,
                     run_id=str(run["run_id"]),
+                    model_version=self.client.model,
                     commit=False,
                 )
         except Exception as exc:
             logger.exception(f"harness materialization failed event_id={event.get('event_id')}: {exc}")
-            with self.write_lock:
-                self.enrichment.fail_job(job=job, error=str(exc))
+            with self.repository_session() as repos:
+                repos.enrichment.fail_job(job=job, error=str(exc))
             return True
 
         if self.publisher is not None:
@@ -105,15 +104,6 @@ class EnrichmentWorker:
                 }
             )
         return True
-
-    def _materialize_harness(self, *, event: dict, result, run_id: str, commit: bool) -> dict:
-        return HarnessSnapshotBuilder(self.harness, tokens=self.tokens).materialize(
-            event=event,
-            extraction=result,
-            run_id=run_id,
-            model_version=self.client.model,
-            commit=commit,
-        )
 
 
 def _now_ms() -> int:

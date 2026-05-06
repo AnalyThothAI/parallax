@@ -26,7 +26,7 @@ class TokenSignalEvaluationService:
         horizon: str,
         window: str,
         scope: str,
-        score_version: str = "social_opportunity_v2",
+        score_version: str = "social_opportunity_v3",
     ) -> dict[str, Any]:
         rows = self.repository.conn.execute(
             """

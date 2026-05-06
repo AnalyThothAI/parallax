@@ -10,9 +10,11 @@ import {
 type TokenTimelineProps = {
   timeline?: TokenSocialTimelineData | null;
   isLoading: boolean;
+  selectedBucketStartMs?: number | null;
+  onBucketSelect?: (bucketStartMs: number) => void;
 };
 
-export function TokenTimeline({ timeline, isLoading }: TokenTimelineProps) {
+export function TokenTimeline({ timeline, isLoading, selectedBucketStartMs, onBucketSelect }: TokenTimelineProps) {
   if (isLoading) {
     return <TimelineSkeleton />;
   }
@@ -55,7 +57,14 @@ export function TokenTimeline({ timeline, isLoading }: TokenTimelineProps) {
       <section className="timeline-chart" aria-label="social heat timeline">
         {timeline.buckets.length ? (
           timeline.buckets.map((item) => (
-            <div className="timeline-bucket" key={item.start_ms} title={`${item.posts} posts / ${item.new_authors} new authors`}>
+            <button
+              aria-label={`open replay bucket ${item.start_ms} ${item.posts} posts`}
+              className={`timeline-bucket ${selectedBucketStartMs === item.start_ms ? "selected" : ""}`}
+              key={item.start_ms}
+              title={`${item.posts} posts / ${item.new_authors} new authors`}
+              type="button"
+              onClick={() => onBucketSelect?.(item.start_ms)}
+            >
               <span
                 className="bucket-bar"
                 style={{ height: `${Math.max(8, (item.posts / maxPosts) * 88)}%` }}
@@ -66,7 +75,7 @@ export function TokenTimeline({ timeline, isLoading }: TokenTimelineProps) {
               {item.price_change_from_start_pct !== null && item.price_change_from_start_pct !== undefined ? (
                 <em className={item.price_change_from_start_pct >= 0 ? "up" : "down"} />
               ) : null}
-            </div>
+            </button>
           ))
         ) : (
           <div className="empty-state">该窗口暂无传播时间线</div>

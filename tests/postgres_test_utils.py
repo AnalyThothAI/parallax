@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import pytest
@@ -9,6 +11,7 @@ from psycopg.rows import RowMaker
 
 from gmgn_twitter_intel.storage.postgres_client import connect_postgres
 from gmgn_twitter_intel.storage.postgres_migrations import upgrade_head
+from gmgn_twitter_intel.storage.repository_session import RepositorySession, repositories_for_connection
 
 DEFAULT_TEST_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/gmgn_twitter_intel_test"
 
@@ -49,6 +52,11 @@ def reset_postgres_schema(conn) -> None:
     conn.execute("GRANT ALL ON SCHEMA public TO public")
     conn.commit()
     upgrade_head(test_postgres_dsn())
+
+
+@contextmanager
+def repository_session_for_connection(conn: Any) -> Iterator[RepositorySession]:
+    yield repositories_for_connection(conn)
 
 
 def _read_only(conn) -> bool:
@@ -92,15 +100,4 @@ class _TestConnection:
 
 
 def _postgres_sql(sql: str) -> str:
-    text = str(sql)
-    if "sqlite_master" in text:
-        if "token_windows" in text:
-            return (
-                "SELECT table_name AS name FROM information_schema.tables "
-                "WHERE table_schema = 'public' AND table_name = 'token_windows'"
-            )
-        return (
-            "SELECT table_name AS name FROM information_schema.tables "
-            "WHERE table_schema = 'public'"
-        )
-    return text.replace("?", "%s")
+    return str(sql)

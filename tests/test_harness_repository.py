@@ -4,7 +4,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_harness_repository_persists_closed_loop_rows(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = HarnessRepository(conn)
@@ -141,7 +141,7 @@ def test_harness_repository_persists_closed_loop_rows(tmp_path):
     finally:
         conn.close()
 
-    read_conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=True)
+    read_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=True)
     try:
         read_repo = HarnessRepository(read_conn)
         social_events = read_repo.list_social_events(window_ms=10_000, now_ms=2_000, limit=5)

@@ -4,7 +4,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def repository(tmp_path) -> NotificationRepository:
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     return NotificationRepository(conn)
 
@@ -133,3 +133,90 @@ def test_mark_all_read_only_affects_selected_subscriber(tmp_path):
     assert count == 1
     assert repo.summary(subscriber_key="alice")["unread_count"] == 0
     assert repo.summary(subscriber_key="bob")["unread_count"] == 1
+
+
+def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    migrate(conn)
+    second_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        repo = NotificationRepository(conn)
+        locked_notification = repo.insert_notification(
+            dedup_key="delivery:locked",
+            rule_id="hot_quality_token_5m",
+            severity="high",
+            title="locked",
+            body="locked",
+            entity_type="token",
+            entity_key="token:eth:locked",
+            source_table="token_flow",
+            source_id="token:eth:locked",
+            occurrence_at_ms=1_700_000_000_000,
+            payload={},
+            channels=["pushdeer"],
+        )
+        available_notification = repo.insert_notification(
+            dedup_key="delivery:available",
+            rule_id="hot_quality_token_5m",
+            severity="high",
+            title="available",
+            body="available",
+            entity_type="token",
+            entity_key="token:eth:available",
+            source_table="token_flow",
+            source_id="token:eth:available",
+            occurrence_at_ms=1_700_000_000_001,
+            payload={},
+            channels=["pushdeer"],
+        )
+        assert locked_notification is not None
+        assert available_notification is not None
+        locked = repo.enqueue_delivery(
+            notification_id=locked_notification["notification_id"],
+            channel_id="pushdeer",
+            provider="apprise",
+            max_attempts=5,
+            next_run_at_ms=1_700_000_000_000,
+        )
+        available = repo.enqueue_delivery(
+            notification_id=available_notification["notification_id"],
+            channel_id="pushdeer",
+            provider="apprise",
+            max_attempts=5,
+            next_run_at_ms=1_700_000_000_000,
+        )
+        assert locked is not None
+        assert available is not None
+        conn.execute(
+            """
+            UPDATE notification_deliveries
+            SET next_run_at_ms = 1_700_000_000_000, created_at_ms = 1_700_000_000_000
+            WHERE delivery_id = %s
+            """,
+            (locked["delivery_id"],),
+        )
+        conn.execute(
+            """
+            UPDATE notification_deliveries
+            SET next_run_at_ms = 1_700_000_000_000, created_at_ms = 1_700_000_000_001
+            WHERE delivery_id = %s
+            """,
+            (available["delivery_id"],),
+        )
+        conn.commit()
+        conn.execute("BEGIN")
+        conn.execute(
+            "SELECT delivery_id FROM notification_deliveries WHERE delivery_id = %s FOR UPDATE",
+            (locked["delivery_id"],),
+        )
+        second_conn.execute("SET statement_timeout TO 200")
+
+        claimed = NotificationRepository(second_conn).claim_next_delivery(now_ms=1_700_000_000_100)
+    finally:
+        conn.execute("ROLLBACK")
+        second_conn.execute("RESET statement_timeout")
+        second_conn.close()
+        conn.close()
+
+    assert claimed is not None
+    assert claimed["delivery_id"] == available["delivery_id"]

@@ -151,20 +151,16 @@ function propagationMeta(item: TokenFlowItem): string {
 
 function timingTitle(item: TokenFlowItem): string {
   const labels: Record<string, string> = {
-    social_leads_price: "social leads",
-    social_confirms_price: "social confirms",
-    price_leads_social: "price leads",
-    social_fades: "fading",
+    neutral: "neutral",
     market_pending: "market pending",
     market_unavailable: "market unavailable",
-    insufficient_history: "history thin"
+    chase_risk: "chase risk"
   };
   return labels[item.timing.status] ?? compactLabel(item.timing.status);
 }
 
 function timingDrawerLabel(item: TokenFlowItem): string {
-  const title = timingTitle(item);
-  return title === "social confirms" ? "confirms" : title;
+  return timingTitle(item);
 }
 
 function timingMeta(item: TokenFlowItem): string {
@@ -174,24 +170,16 @@ function timingMeta(item: TokenFlowItem): string {
   if (item.timing.status === "market_unavailable") {
     return formatRisk(item.timing.market_observation_status ?? item.market.market_observation_status ?? item.timing.risks[0]);
   }
-  if (item.timing.status === "insufficient_history") {
-    return "price history thin";
-  }
-  if (item.timing.status === "social_leads_price") {
-    return "price quiet after social";
-  }
-  if (item.timing.status === "social_confirms_price") {
-    return `${formatSignedPercent(item.timing.price_change_since_social_pct ?? item.market.price_change_since_social_pct)} since social`;
-  }
-  if (item.timing.chase_risk || item.timing.status === "price_leads_social") {
-    return "chase risk";
+  if (item.timing.chase_risk || item.timing.status === "chase_risk") {
+    return `${formatSignedPercent(item.timing.price_change_before_social_pct ?? item.market.price_change_before_social_pct)} before social`;
   }
   const risk = item.timing.risks[0] ?? item.timing.reasons[0];
   if (risk) {
     return formatRisk(risk);
   }
-  if (item.timing.chase_risk) {
-    return formatRisk("price_leads_social");
+  const change = item.timing.price_change_since_social_pct ?? item.market.price_change_since_social_pct;
+  if (change !== null && change !== undefined) {
+    return `${formatSignedPercent(change)} since social`;
   }
   if (item.market.price_change_status !== "ready") {
     return formatRisk(item.market.price_change_status);

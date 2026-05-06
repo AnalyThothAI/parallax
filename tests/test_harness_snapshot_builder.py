@@ -6,7 +6,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)
@@ -69,7 +69,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
     assert materialized["decisions"][0]["execution_mode"] == "shadow"
     assert materialized["decisions"][0]["signal"] == "LONG_SMALL"
     assert duplicate["snapshots"][0]["snapshot_id"] == materialized["snapshots"][0]["snapshot_id"]
-    read_conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=True)
+    read_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=True)
     try:
         snapshots = HarnessRepository(read_conn).list_snapshots(
             window_ms=10_000,
@@ -83,7 +83,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
 
 
 def test_snapshot_builder_stores_non_signal_without_snapshot(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)
@@ -120,7 +120,7 @@ def test_snapshot_builder_stores_non_signal_without_snapshot(tmp_path):
 
 
 def test_snapshot_builder_uses_anchor_terms_for_seed_only_signal_snapshots(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)

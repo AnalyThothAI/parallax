@@ -1,6 +1,5 @@
 import asyncio
 import time
-from threading import RLock
 
 from gmgn_twitter_intel.pipeline.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
@@ -11,7 +10,7 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
-from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_enrichment_repository import make_event
 
@@ -51,6 +50,15 @@ class FakeClient:
         return self.result
 
 
+class HangingClient:
+    provider = "fake"
+    model = "fake-model"
+    timeout_seconds = 0.01
+
+    async def enrich_event(self, *, event, entities):
+        await asyncio.sleep(60)
+
+
 class RecordingPublisher:
     def __init__(self):
         self.messages = []
@@ -60,7 +68,7 @@ class RecordingPublisher:
 
 
 def open_runtime(tmp_path, *, client=None, publisher=None):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -68,25 +76,17 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
     enrichment = EnrichmentRepository(conn)
     harness = HarnessRepository(conn)
     tokens = TokenRepository(conn)
-    write_lock = RLock()
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
         tokens=tokens,
-        write_lock=write_lock,
     )
     worker = EnrichmentWorker(
-        evidence=evidence,
-        entities=entities,
-        signals=signals,
-        enrichment=enrichment,
-        harness=harness,
-        tokens=tokens,
         client=client or FakeClient(),
         publisher=publisher,
-        write_lock=write_lock,
+        repository_session=lambda: repository_session_for_connection(conn),
     )
     return conn, ingest, worker, enrichment, harness
 
@@ -152,3 +152,18 @@ def test_enrichment_worker_stores_non_signal_extraction_without_snapshot(tmp_pat
     assert jobs[0]["status"] == "done"
     assert social_events[0]["is_signal_event"] is False
     assert snapshots == []
+
+
+def test_enrichment_worker_times_out_hung_llm_job(tmp_path):
+    conn, ingest, worker, enrichment, _ = open_runtime(tmp_path, client=HangingClient())
+    try:
+        ingest.ingest_event(make_event("event-worker-timeout", text="Solana XDP timeout test"), is_watched=True)
+
+        processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000) + 1_000))
+        job = enrichment.list_jobs(limit=10)[0]
+    finally:
+        conn.close()
+
+    assert processed is True
+    assert job["status"] == "failed"
+    assert "timed out" in job["last_error"].lower()

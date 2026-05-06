@@ -70,7 +70,7 @@ class EvidenceRepository:
               %(hashtags_json)s, %(mentions_json)s, %(media_json)s, %(reference_json)s, %(matched_handles_json)s,
               %(is_watched)s, %(matched_at_ms)s, %(raw_json)s, %(event_json)s, %(created_at_ms)s, %(updated_at_ms)s
             )
-            ON CONFLICT(event_id) DO NOTHING
+            ON CONFLICT DO NOTHING
             """,
             row,
         )

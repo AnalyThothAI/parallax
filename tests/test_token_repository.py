@@ -4,11 +4,11 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 
 
 def open_token_repo(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     return conn, EvidenceRepository(conn), TokenRepository(conn)
 
@@ -160,7 +160,7 @@ def test_token_repository_canonicalizes_openapi_evm_address_with_existing_token(
         )
         token_count = conn.execute("SELECT COUNT(*) FROM tokens").fetchone()[0]
         market_count = conn.execute(
-            "SELECT COUNT(*) FROM token_market_snapshots WHERE token_id = ?",
+            "SELECT COUNT(*) FROM token_market_snapshots WHERE token_id = %s",
             (payload_identity.token_id,),
         ).fetchone()[0]
     finally:

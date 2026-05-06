@@ -10,10 +10,13 @@ from psycopg.types.json import Jsonb
 from ..pipeline.social_event_extraction import SocialEventExtraction
 from .postgres_client import transaction
 
+RUNNING_TIMEOUT_MS = 120_000
+
 
 class EnrichmentRepository:
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any, *, running_timeout_ms: int = RUNNING_TIMEOUT_MS):
         self.conn = conn
+        self.running_timeout_ms = running_timeout_ms
 
     def enqueue_watched_event(
         self,
@@ -56,36 +59,62 @@ class EnrichmentRepository:
 
     def claim_next_job(self, *, now_ms: int | None = None) -> dict[str, Any] | None:
         now = now_ms if now_ms is not None else _now_ms()
-        with transaction(self.conn):
-            row = self.conn.execute(
-                """
-                SELECT * FROM enrichment_jobs
-                WHERE status IN ('pending', 'failed')
-                  AND attempt_count < max_attempts
-                  AND next_run_at_ms <= %s
-                ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC
-                LIMIT 1
-                """,
-                (now,),
-            ).fetchone()
-            if row is None:
-                return None
-            self.conn.execute(
-                """
-                UPDATE enrichment_jobs
-                SET status = 'running',
-                    attempt_count = attempt_count + 1,
-                    updated_at_ms = %s,
-                    last_error = NULL
-                WHERE job_id = %s
-                """,
-                (now, row["job_id"]),
+        stale_before = now - self.running_timeout_ms
+        self.conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET status = 'dead',
+                last_error = 'stale_running_timeout',
+                updated_at_ms = %s
+            WHERE status = 'running'
+              AND updated_at_ms < %s
+              AND attempt_count >= max_attempts
+            """,
+            (now, stale_before),
+        )
+        row = self.conn.execute(
+            """
+            WITH picked AS (
+              SELECT job_id, status AS picked_status
+              FROM enrichment_jobs
+              WHERE (
+                status IN ('pending', 'failed')
+                AND attempt_count < max_attempts
+                AND next_run_at_ms <= %s
+              )
+              OR (
+                status = 'running'
+                AND updated_at_ms < %s
+                AND attempt_count < max_attempts
+              )
+              ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC, job_id ASC
+              LIMIT 1
+              FOR UPDATE SKIP LOCKED
             )
-            claimed = self.conn.execute(
-                "SELECT * FROM enrichment_jobs WHERE job_id = %s",
-                (row["job_id"],),
-            ).fetchone()
-        return dict(claimed) if claimed else None
+            UPDATE enrichment_jobs AS job
+            SET status = 'running',
+                attempt_count = job.attempt_count + 1,
+                updated_at_ms = %s,
+                last_error = NULL
+            FROM picked
+            WHERE job.job_id = picked.job_id
+              AND (
+                (
+                  job.status IN ('pending', 'failed')
+                  AND job.attempt_count < job.max_attempts
+                  AND job.next_run_at_ms <= %s
+                )
+                OR (
+                  job.status = 'running'
+                  AND job.updated_at_ms < %s
+                  AND job.attempt_count < job.max_attempts
+                )
+              )
+            RETURNING job.*
+            """,
+            (now, stale_before, now, now, stale_before),
+        ).fetchone()
+        return dict(row) if row else None
 
     def complete_social_event_job(
         self,

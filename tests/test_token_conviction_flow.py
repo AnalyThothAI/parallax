@@ -1,6 +1,5 @@
 import time
 from dataclasses import replace
-from threading import RLock
 
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Source
@@ -14,11 +13,11 @@ from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_sqlite_repositories import make_event
+from tests.test_postgres_repositories import make_event
 
 
 def open_runtime(tmp_path):
-    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -31,7 +30,6 @@ def open_runtime(tmp_path):
         signals=signals,
         enrichment=enrichment,
         tokens=tokens,
-        write_lock=RLock(),
     )
     return conn, ingest, evidence, entities, signals, tokens
 

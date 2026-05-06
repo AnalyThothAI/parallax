@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from threading import RLock
+from collections.abc import Callable
+from contextlib import AbstractContextManager
+from typing import Any
 
 from loguru import logger
 
@@ -15,18 +17,18 @@ class NotificationWorker:
     def __init__(
         self,
         *,
-        repository,
-        rule_engine,
+        rule_engine=None,
         publisher=None,
         delivery_channels: dict | None = None,
-        write_lock: RLock | None = None,
+        repository_session: Callable[[], AbstractContextManager[Any]],
+        rule_engine_factory: Callable[[Any], Any] | None = None,
         poll_interval: float = 5.0,
     ):
-        self.repository = repository
+        self.repository_session = repository_session
+        self.rule_engine_factory = rule_engine_factory
         self.rule_engine = rule_engine
         self.publisher = publisher
         self.delivery_channels = delivery_channels or {}
-        self.write_lock = write_lock or RLock()
         self.poll_interval = max(0.5, float(poll_interval))
         self._stopped = asyncio.Event()
 
@@ -45,14 +47,15 @@ class NotificationWorker:
 
     async def process_once(self, *, now_ms: int | None = None) -> list[dict]:
         now = int(now_ms if now_ms is not None else _now_ms())
-        with self.write_lock:
-            candidates = self.rule_engine.evaluate(now_ms=now)
+        with self.repository_session() as repos:
+            rule_engine = self.rule_engine_factory(repos) if self.rule_engine_factory is not None else self.rule_engine
+            candidates = rule_engine.evaluate(now_ms=now)
             created: list[dict] = []
             for candidate in candidates:
-                row = self._insert_candidate(candidate)
+                row = self._insert_candidate_with_repository(repos.notifications, candidate)
                 if row is None:
                     continue
-                self._enqueue_external_deliveries(row, candidate)
+                self._enqueue_external_deliveries_with_repository(repos.notifications, row, candidate)
                 created.append(row)
 
         if self.publisher is not None:
@@ -60,8 +63,9 @@ class NotificationWorker:
                 await self.publisher.publish({"type": "notification", "notification": row})
         return created
 
-    def _insert_candidate(self, candidate: NotificationCandidate) -> dict | None:
-        return self.repository.insert_notification(
+    @staticmethod
+    def _insert_candidate_with_repository(repository, candidate: NotificationCandidate) -> dict | None:
+        return repository.insert_notification(
             dedup_key=candidate.dedup_key,
             rule_id=candidate.rule_id,
             severity=candidate.severity,
@@ -81,7 +85,12 @@ class NotificationWorker:
             channels=candidate.channels,
         )
 
-    def _enqueue_external_deliveries(self, row: dict, candidate: NotificationCandidate) -> None:
+    def _enqueue_external_deliveries_with_repository(
+        self,
+        repository,
+        row: dict,
+        candidate: NotificationCandidate,
+    ) -> None:
         for channel_id in candidate.channels:
             if channel_id == "in_app":
                 continue
@@ -92,14 +101,14 @@ class NotificationWorker:
                 continue
             if SEVERITY_RANK.get(candidate.severity, 0) < SEVERITY_RANK.get(channel.min_severity, 1):
                 continue
-            self.repository.enqueue_delivery(
+            repository.enqueue_delivery(
                 notification_id=str(row["notification_id"]),
                 channel_id=channel_id,
                 provider=channel.provider,
                 max_attempts=channel.max_attempts,
                 commit=False,
             )
-        self.repository.conn.commit()
+        repository.conn.commit()
 
 
 def _now_ms() -> int:

@@ -1,7 +1,16 @@
 import { create } from "zustand";
-import type { RadarSortMode, ScopeKey, SignalLabInspectorTab, SignalLabStageFilter, TokenDetailTab, TokenPostRange, WindowKey } from "../api/types";
+import type {
+  RadarSortMode,
+  ScopeKey,
+  SignalLabInspectorTab,
+  SignalLabStageFilter,
+  TokenDetailMode,
+  TokenDetailTab,
+  TokenPostRange,
+  TokenPostSortMode,
+  WindowKey
+} from "../api/types";
 
-type PostSortMode = "recent" | "quality";
 type ActiveView = "live" | "signal_lab";
 type SignalLabHorizon = "6h" | "24h";
 
@@ -15,8 +24,11 @@ type TraderState = {
   radarSortMode: RadarSortMode;
   detailTab: TokenDetailTab;
   detailWindow: WindowKey;
+  detailMode: TokenDetailMode;
+  selectedBucketStartMs: number | null;
+  selectedEventId: string | null;
   postRange: TokenPostRange;
-  postSortMode: PostSortMode;
+  postSortMode: TokenPostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
   activeView: ActiveView;
@@ -36,8 +48,11 @@ type TraderState = {
   setRadarSortMode: (mode: RadarSortMode) => void;
   setDetailTab: (tab: TokenDetailTab) => void;
   setDetailWindow: (window: WindowKey) => void;
+  setDetailMode: (mode: TokenDetailMode) => void;
+  setSelectedBucketStartMs: (bucketStartMs: number | null) => void;
+  setSelectedEventId: (eventId: string | null) => void;
   setPostRange: (range: TokenPostRange) => void;
-  setPostSortMode: (mode: PostSortMode) => void;
+  setPostSortMode: (mode: TokenPostSortMode) => void;
   setHideDuplicateClusters: (enabled: boolean) => void;
   setWatchedPostsOnly: (enabled: boolean) => void;
   setActiveView: (view: ActiveView) => void;
@@ -59,6 +74,9 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   radarSortMode: "opportunity",
   detailTab: "timeline",
   detailWindow: "1h",
+  detailMode: "compact",
+  selectedBucketStartMs: null,
+  selectedEventId: null,
   postRange: "current_window",
   postSortMode: "recent",
   hideDuplicateClusters: false,
@@ -80,6 +98,9 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setRadarSortMode: (radarSortMode) => set({ radarSortMode }),
   setDetailTab: (detailTab) => set({ detailTab }),
   setDetailWindow: (detailWindow) => set({ detailWindow }),
+  setDetailMode: (detailMode) => set({ detailMode }),
+  setSelectedBucketStartMs: (selectedBucketStartMs) => set({ selectedBucketStartMs }),
+  setSelectedEventId: (selectedEventId) => set({ selectedEventId }),
   setPostRange: (postRange) => set({ postRange }),
   setPostSortMode: (postSortMode) => set({ postSortMode }),
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),

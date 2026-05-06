@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from threading import RLock
 from typing import Any
 
 from ..models import TwitterEvent
@@ -35,7 +34,6 @@ class IngestService:
         enrichment,
         tokens,
         market_observations=None,
-        write_lock: RLock | None = None,
     ):
         self.evidence = evidence
         self.entities = entities
@@ -49,42 +47,39 @@ class IngestService:
             commit=False,
         )
         self.token_resolver = TokenIdentityResolver(tokens)
-        self._lock = write_lock or RLock()
 
     def insert_raw_frame(self, **kwargs) -> bool:
-        with self._lock:
-            return self.evidence.insert_raw_frame(**kwargs)
+        return self.evidence.insert_raw_frame(**kwargs)
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
-        with self._lock:
-            extracted = extract_entities(_event_text(event))
-            with transaction(self.evidence.conn):
-                row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
-                inserted = self.evidence.insert_event_without_commit(row)
-                if not inserted:
-                    return IngestedEvent(event=event, entities=[], alerts=[], token_attributions=[], inserted=False)
-                self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
-                token_mentions = self.token_resolver.resolve_event_mentions(event, extracted, commit=False)
-                signal_result = self.signal_builder.build_for_event(
-                    event,
-                    token_mentions,
-                    is_watched=is_watched,
-                )
-                enrichment_job_id = None
-                if is_watched and _event_text(event):
-                    enrichment_job_id = self.enrichment.enqueue_watched_event(
-                        event_id=event.event_id,
-                        received_at_ms=event.received_at_ms,
-                        commit=False,
-                    )
-            return IngestedEvent(
-                event=event,
-                entities=[_entity_payload(entity) for entity in extracted],
-                alerts=signal_result.alerts,
-                token_attributions=signal_result.token_attributions,
-                inserted=True,
-                enrichment_job_id=enrichment_job_id,
+        extracted = extract_entities(_event_text(event))
+        with transaction(self.evidence.conn):
+            row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
+            inserted = self.evidence.insert_event_without_commit(row)
+            if not inserted:
+                return IngestedEvent(event=event, entities=[], alerts=[], token_attributions=[], inserted=False)
+            self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
+            token_mentions = self.token_resolver.resolve_event_mentions(event, extracted, commit=False)
+            signal_result = self.signal_builder.build_for_event(
+                event,
+                token_mentions,
+                is_watched=is_watched,
             )
+            enrichment_job_id = None
+            if is_watched and _event_text(event):
+                enrichment_job_id = self.enrichment.enqueue_watched_event(
+                    event_id=event.event_id,
+                    received_at_ms=event.received_at_ms,
+                    commit=False,
+                )
+        return IngestedEvent(
+            event=event,
+            entities=[_entity_payload(entity) for entity in extracted],
+            alerts=signal_result.alerts,
+            token_attributions=signal_result.token_attributions,
+            inserted=True,
+            enrichment_job_id=enrichment_job_id,
+        )
 
 
 def _event_text(event: TwitterEvent) -> str | None:
