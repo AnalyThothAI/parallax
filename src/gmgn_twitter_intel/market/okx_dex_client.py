@@ -3,13 +3,17 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import json
+import re
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
 
 from .okx_cex_client import OkxClientError, _rows_from_response
-from .okx_models import OkxDexTokenCandidate
+from .okx_models import OkxDexTokenCandidate, OkxDexTokenPrice
+
+EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$", re.IGNORECASE)
 
 
 class OkxDexClient:
@@ -33,7 +37,7 @@ class OkxDexClient:
         self._client.close()
 
     def search_tokens(self, *, query: str, chain_indexes: list[str] | tuple[str, ...]) -> list[OkxDexTokenCandidate]:
-        keyword = query.strip().lstrip("$").upper()
+        keyword = _search_keyword(query)
         chains = ",".join(str(chain).strip() for chain in chain_indexes if str(chain).strip())
         if not keyword:
             return []
@@ -48,9 +52,34 @@ class OkxDexClient:
                 candidates.append(candidate)
         return candidates
 
+    def token_prices(self, tokens: list[dict[str, str]]) -> list[OkxDexTokenPrice]:
+        body_items = [_price_request_item(token) for token in tokens]
+        body_items = [item for item in body_items if item is not None]
+        if not body_items:
+            return []
+        rows = self._post("/api/v6/dex/market/price", body=body_items)
+        prices: list[OkxDexTokenPrice] = []
+        for row in rows:
+            price = _price_from_row(row)
+            if price is not None:
+                prices.append(price)
+        return prices
+
     def _get(self, path: str, *, params: dict[str, str]) -> list[dict[str, Any]]:
         request = self._client.build_request("GET", path, params={key: value for key, value in params.items() if value})
         self._sign_request(request, body="")
+        response = self._client.send(request)
+        return _rows_from_response(response, endpoint=path)
+
+    def _post(self, path: str, *, body: list[dict[str, str]]) -> list[dict[str, Any]]:
+        raw_body = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
+        request = self._client.build_request(
+            "POST",
+            path,
+            content=raw_body,
+            headers={"Content-Type": "application/json"},
+        )
+        self._sign_request(request, body=raw_body)
         response = self._client.send(request)
         return _rows_from_response(response, endpoint=path)
 
@@ -90,6 +119,42 @@ def _candidate_from_row(row: dict[str, Any]) -> OkxDexTokenCandidate | None:
         community_recognized=_community_recognized(row),
         raw=dict(row),
     )
+
+
+def _price_from_row(row: dict[str, Any]) -> OkxDexTokenPrice | None:
+    chain_index = _text(row.get("chainIndex") or row.get("chain_index"))
+    address = _text(row.get("tokenContractAddress") or row.get("tokenAddress") or row.get("address"))
+    observed_at_ms = _int(row.get("time") or row.get("observedAtMs") or row.get("observed_at_ms"))
+    if not chain_index or not address or observed_at_ms is None:
+        return None
+    normalized_address = address.lower() if EVM_ADDRESS_RE.match(address) else address
+    return OkxDexTokenPrice(
+        chain_index=chain_index,
+        address=normalized_address,
+        observed_at_ms=observed_at_ms,
+        price_usd=_float(row.get("price") or row.get("priceUsd")),
+        raw=dict(row),
+    )
+
+
+def _search_keyword(query: str) -> str:
+    stripped = query.strip().lstrip("$")
+    if not stripped:
+        return ""
+    if EVM_ADDRESS_RE.match(stripped):
+        return stripped.lower()
+    return stripped.upper() if stripped.isascii() else stripped
+
+
+def _price_request_item(token: dict[str, str]) -> dict[str, str] | None:
+    chain_index = _text(token.get("chainIndex") or token.get("chain_index"))
+    address = _text(token.get("tokenContractAddress") or token.get("token_address") or token.get("address"))
+    if not chain_index or not address:
+        return None
+    return {
+        "chainIndex": chain_index,
+        "tokenContractAddress": address.lower() if EVM_ADDRESS_RE.match(address) else address,
+    }
 
 
 def _text(value: Any) -> str | None:

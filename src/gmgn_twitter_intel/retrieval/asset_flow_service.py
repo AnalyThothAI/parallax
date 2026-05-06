@@ -115,7 +115,7 @@ def _venue(row: dict[str, Any]) -> dict[str, Any]:
 
 def _market(row: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
     observed_at_ms = _int_or_none(row.get("market_observed_at_ms"))
-    if observed_at_ms is None:
+    if observed_at_ms is None or not _has_market_data(row):
         return {
             "market_status": "missing",
             "provider": None,
@@ -147,6 +147,20 @@ def _market(row: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
         "price_change_1h_pct": row.get("market_price_change_1h_pct"),
         "price_change_24h_pct": row.get("market_price_change_24h_pct"),
     }
+
+
+def _has_market_data(row: dict[str, Any]) -> bool:
+    return any(
+        row.get(key) is not None
+        for key in (
+            "market_price_usd",
+            "market_cap_usd",
+            "market_liquidity_usd",
+            "market_volume_24h_usd",
+            "market_open_interest_usd",
+            "market_holders",
+        )
+    )
 
 
 def _sort_key(row: dict[str, Any]) -> tuple[int, int]:

@@ -120,6 +120,66 @@ def test_okx_dex_client_normalizes_token_search_candidates():
     assert candidates[0].community_recognized is True
 
 
+def test_okx_dex_client_preserves_contract_search_as_lowercase_address():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v6/dex/market/token/search"
+        assert request.url.params["search"] == "0x8f32420f2e3728c49399b00dd0a796602d984444"
+        return httpx.Response(200, json={"code": "0", "data": []})
+
+    client = OkxDexClient(base_url="https://web3.okx.com", transport=httpx.MockTransport(handler))
+    try:
+        assert (
+            client.search_tokens(query="0X8F32420F2E3728C49399B00DD0A796602D984444", chain_indexes=["56"]) == []
+        )
+    finally:
+        client.close()
+
+
+def test_okx_dex_client_fetches_batch_prices_with_lowercase_evm_addresses():
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert request.url.path == "/api/v6/dex/market/price"
+        assert request.headers["content-type"] == "application/json"
+        assert request.read().decode("utf-8") == (
+            '[{"chainIndex":"56","tokenContractAddress":"0x8f32420f2e3728c49399b00dd0a796602d984444"}]'
+        )
+        return httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    {
+                        "chainIndex": "56",
+                        "tokenContractAddress": "0x8f32420f2e3728c49399b00dd0a796602d984444",
+                        "time": "1778085000000",
+                        "price": "0.00002237",
+                    }
+                ],
+            },
+        )
+
+    client = OkxDexClient(base_url="https://web3.okx.com", transport=httpx.MockTransport(handler))
+    try:
+        prices = client.token_prices(
+            [
+                {
+                    "chainIndex": "56",
+                    "tokenContractAddress": "0x8F32420F2E3728C49399b00DD0A796602d984444",
+                }
+            ]
+        )
+    finally:
+        client.close()
+
+    assert len(requests) == 1
+    assert prices[0].chain_index == "56"
+    assert prices[0].address == "0x8f32420f2e3728c49399b00dd0a796602d984444"
+    assert prices[0].price_usd == 0.00002237
+    assert prices[0].observed_at_ms == 1_778_085_000_000
+
+
 def test_okx_dex_client_signs_web3_requests_when_credentials_are_configured():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["OK-ACCESS-KEY"] == "api-key"

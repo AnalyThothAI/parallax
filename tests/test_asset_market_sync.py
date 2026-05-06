@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.market.okx_models import OkxCexInstrument, OkxCexTicker
-from gmgn_twitter_intel.pipeline.asset_market_sync import sync_okx_cex_universe
+from gmgn_twitter_intel.market.okx_models import OkxCexInstrument, OkxCexTicker, OkxDexTokenPrice
+from gmgn_twitter_intel.pipeline.asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
 from gmgn_twitter_intel.pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 
 
@@ -34,6 +34,9 @@ def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
             "price_usd": 69000.0,
             "volume_24h_usd": 1234567.0,
             "open_interest_usd": None,
+            "market_cap_usd": None,
+            "liquidity_usd": None,
+            "holders": None,
         }
     ]
 
@@ -54,6 +57,46 @@ def test_asset_market_sync_worker_runs_one_cex_sync_cycle():
     assert result["market_snapshots_written"] == 1
     assert worker.last_result is None
     assert assets.market_snapshots[0]["price_usd"] == 69000.0
+
+
+def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
+    assets = FakeAssets()
+    assets.dex_refresh_rows = [
+        {
+            "asset_id": "asset:dex:bsc:0x8f32420f2e3728c49399b00dd0a796602d984444",
+            "venue_id": "venue:dex:bsc:0x8f32420f2e3728c49399b00dd0a796602d984444",
+            "chain": "bsc",
+            "address": "0x8F32420F2E3728C49399b00DD0A796602d984444",
+            "market_cap_usd": 22_000.0,
+            "liquidity_usd": 9_000.0,
+            "holders": 123,
+        }
+    ]
+    client = FakeOkxDexPriceClient()
+
+    result = sync_okx_dex_prices(
+        assets=assets,
+        client=client,
+        observed_at_ms=1_778_085_100_000,
+        stale_after_ms=300_000,
+        limit=100,
+    )
+
+    assert result == {"venues_scanned": 1, "price_requests": 1, "market_snapshots_written": 1}
+    assert client.price_requests == [
+        [{"chainIndex": "56", "tokenContractAddress": "0x8f32420f2e3728c49399b00dd0a796602d984444"}]
+    ]
+    assert assets.market_snapshots[-1] == {
+        "asset_id": "asset:dex:bsc:0x8f32420f2e3728c49399b00dd0a796602d984444",
+        "venue_id": "venue:dex:bsc:0x8f32420f2e3728c49399b00dd0a796602d984444",
+        "provider": "okx_dex_price",
+        "price_usd": 0.00002237,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "market_cap_usd": 22_000.0,
+        "liquidity_usd": 9_000.0,
+        "holders": 123,
+    }
 
 
 class FakeOkxCexClient:
@@ -82,10 +125,28 @@ class FakeOkxCexClient:
         ]
 
 
+class FakeOkxDexPriceClient:
+    def __init__(self):
+        self.price_requests = []
+
+    def token_prices(self, tokens):
+        self.price_requests.append(tokens)
+        return [
+            OkxDexTokenPrice(
+                chain_index="56",
+                address="0x8f32420f2e3728c49399b00dd0a796602d984444",
+                observed_at_ms=1_778_085_000_000,
+                price_usd=0.00002237,
+                raw={"price": "0.00002237"},
+            )
+        ]
+
+
 class FakeAssets:
     def __init__(self):
         self.instruments = []
         self.market_snapshots = []
+        self.dex_refresh_rows = []
         self.conn = FakeConn()
 
     def upsert_cex_instrument(
@@ -129,9 +190,15 @@ class FakeAssets:
                 "price_usd": kwargs["price_usd"],
                 "volume_24h_usd": kwargs["volume_24h_usd"],
                 "open_interest_usd": kwargs["open_interest_usd"],
+                "market_cap_usd": kwargs.get("market_cap_usd"),
+                "liquidity_usd": kwargs.get("liquidity_usd"),
+                "holders": kwargs.get("holders"),
             }
         )
         return kwargs
+
+    def dex_venues_needing_market_refresh(self, *, stale_before_ms, limit):
+        return self.dex_refresh_rows[:limit]
 
 
 class FakeAssetResolutionResult:

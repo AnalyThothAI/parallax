@@ -904,6 +904,8 @@ def _redacted_postgres_dsn(dsn: str) -> str:
 
 def _search_query(args: argparse.Namespace) -> str:
     if args.ca:
+        if args.chain:
+            return f"{args.chain.strip()}:{args.ca}"
         return args.ca
     if args.symbol:
         return f"${args.symbol.strip().lstrip('$')}"

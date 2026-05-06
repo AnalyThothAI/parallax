@@ -37,3 +37,12 @@ class OkxDexTokenCandidate:
     holders: int | None
     community_recognized: bool | None
     raw: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class OkxDexTokenPrice:
+    chain_index: str
+    address: str
+    observed_at_ms: int
+    price_usd: float | None
+    raw: dict[str, Any]

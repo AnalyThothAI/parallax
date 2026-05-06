@@ -8,6 +8,17 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+MARKET_DATA_CLAUSE = """
+(
+  price_usd IS NOT NULL
+  OR market_cap_usd IS NOT NULL
+  OR liquidity_usd IS NOT NULL
+  OR volume_24h_usd IS NOT NULL
+  OR open_interest_usd IS NOT NULL
+  OR holders IS NOT NULL
+)
+"""
+
 
 @dataclass(frozen=True, slots=True)
 class AssetResolutionResult:
@@ -647,10 +658,11 @@ class AssetRepository:
         if not asset_id:
             return None
         row = self.conn.execute(
-            """
+            f"""
             SELECT *
             FROM asset_market_snapshots
             WHERE asset_id = %s AND observed_at_ms <= %s
+              AND {MARKET_DATA_CLAUSE}
             ORDER BY observed_at_ms DESC, snapshot_id DESC
             LIMIT 1
             """,
@@ -662,10 +674,11 @@ class AssetRepository:
         if not asset_id:
             return None
         row = self.conn.execute(
-            """
+            f"""
             SELECT *
             FROM asset_market_snapshots
             WHERE asset_id = %s AND observed_at_ms >= %s
+              AND {MARKET_DATA_CLAUSE}
             ORDER BY observed_at_ms ASC, snapshot_id ASC
             LIMIT 1
             """,
@@ -677,10 +690,11 @@ class AssetRepository:
         if not asset_id:
             return []
         rows = self.conn.execute(
-            """
+            f"""
             SELECT *
             FROM asset_market_snapshots
             WHERE asset_id = %s AND observed_at_ms BETWEEN %s AND %s
+              AND {MARKET_DATA_CLAUSE}
             ORDER BY observed_at_ms ASC, snapshot_id ASC
             """,
             (asset_id, int(start_ms), int(end_ms)),
@@ -697,18 +711,61 @@ class AssetRepository:
         if not asset_id:
             return None
         row = self.conn.execute(
-            """
+            f"""
             SELECT *,
                    ABS(observed_at_ms - %s) AS distance_ms
             FROM asset_market_snapshots
             WHERE asset_id = %s
               AND observed_at_ms BETWEEN %s AND %s
+              AND {MARKET_DATA_CLAUSE}
             ORDER BY distance_ms ASC, observed_at_ms ASC, snapshot_id ASC
             LIMIT 1
             """,
             (int(target_ms), asset_id, int(target_ms - tolerance_ms), int(target_ms + tolerance_ms)),
         ).fetchone()
         return dict(row) if row else None
+
+    def dex_venues_needing_market_refresh(self, *, stale_before_ms: int, limit: int = 500) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              asset_venues.asset_id,
+              asset_venues.venue_id,
+              asset_venues.chain,
+              asset_venues.address,
+              asset_venues.updated_at_ms AS venue_updated_at_ms,
+              latest_market.observed_at_ms AS latest_market_observed_at_ms,
+              latest_market.market_cap_usd,
+              latest_market.liquidity_usd,
+              latest_market.holders,
+              latest_market.volume_24h_usd,
+              latest_market.open_interest_usd
+            FROM asset_venues
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM asset_market_snapshots
+              WHERE asset_market_snapshots.venue_id = asset_venues.venue_id
+                AND {MARKET_DATA_CLAUSE}
+              ORDER BY observed_at_ms DESC, snapshot_id DESC
+              LIMIT 1
+            ) latest_market ON true
+            WHERE asset_venues.venue_type = 'dex'
+              AND asset_venues.is_active = true
+              AND asset_venues.chain IS NOT NULL
+              AND asset_venues.address IS NOT NULL
+              AND (
+                latest_market.observed_at_ms IS NULL
+                OR latest_market.observed_at_ms < %s
+              )
+            ORDER BY
+              latest_market.observed_at_ms NULLS FIRST,
+              asset_venues.updated_at_ms DESC,
+              asset_venues.venue_id ASC
+            LIMIT %s
+            """,
+            (int(stale_before_ms), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def queue_resolution_job(
         self,
@@ -746,7 +803,7 @@ class AssetRepository:
             self.conn.commit()
         return self._row_by_id("asset_resolution_jobs", "job_id", job_id) or {}
 
-    def claim_resolution_job(self, *, now_ms: int) -> dict[str, Any] | None:
+    def claim_resolution_job(self, *, now_ms: int, stale_running_after_ms: int = 120_000) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
             UPDATE asset_resolution_jobs
@@ -756,14 +813,27 @@ class AssetRepository:
             WHERE job_id = (
               SELECT job_id
               FROM asset_resolution_jobs
-              WHERE status IN ('queued', 'failed') AND next_run_at_ms <= %s
-              ORDER BY next_run_at_ms ASC, job_id ASC
+              WHERE (
+                  status IN ('queued', 'failed') AND next_run_at_ms <= %s
+                )
+                OR (
+                  status = 'running' AND updated_at_ms <= %s
+                )
+              ORDER BY
+                CASE
+                  WHEN status = 'running' THEN 0
+                  WHEN job_type = 'ca_resolution' THEN 1
+                  ELSE 2
+                END ASC,
+                attempt_count ASC,
+                next_run_at_ms ASC,
+                job_id ASC
               FOR UPDATE SKIP LOCKED
               LIMIT 1
             )
             RETURNING *
             """,
-            (int(now_ms), int(now_ms)),
+            (int(now_ms), int(now_ms), int(now_ms) - int(stale_running_after_ms)),
         ).fetchone()
         return dict(row) if row else None
 
@@ -1226,6 +1296,7 @@ class AssetRepository:
                 SELECT *
                 FROM asset_market_snapshots
                 WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                  AND {MARKET_DATA_CLAUSE}
                 ORDER BY observed_at_ms DESC, snapshot_id DESC
                 LIMIT 1
               ) latest_market ON true

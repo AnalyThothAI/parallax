@@ -8,14 +8,12 @@ from typing import Any
 
 from loguru import logger
 
+from ..market.okx_cex_client import OkxClientError
+from ..market.okx_chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from ..market.okx_models import OkxDexTokenCandidate
 
-OKX_CHAIN_INDEX_TO_CHAIN = {
-    "1": "ethereum",
-    "56": "bsc",
-    "501": "solana",
-    "8453": "base",
-}
+RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000
+DEFAULT_FAILURE_BACKOFF_MS = 60 * 1000
 
 
 class AssetResolutionWorker:
@@ -71,11 +69,12 @@ class AssetResolutionWorker:
         try:
             result = self._process_job(assets, job=job, now_ms=now_ms)
         except Exception as exc:
+            backoff_ms = RATE_LIMIT_BACKOFF_MS if _is_rate_limited_error(exc) else DEFAULT_FAILURE_BACKOFF_MS
             assets.finish_resolution_job(
                 job_id=job_id,
                 status="failed",
                 error=str(exc),
-                next_run_at_ms=now_ms + 60_000,
+                next_run_at_ms=now_ms + backoff_ms,
                 commit=True,
             )
             return {"processed": True, "job_id": job_id, "status": "failed", "error": str(exc)}
@@ -111,7 +110,10 @@ class AssetResolutionWorker:
         address = str(job.get("address_hint") or "").strip()
         if not address:
             return {"candidate_count": 0, "ignored": "missing_address"}
-        candidates = self.client.search_tokens(query=address, chain_indexes=self.chain_indexes)
+        candidates = self.client.search_tokens(
+            query=address,
+            chain_indexes=_chain_indexes_for_job(job, self.chain_indexes),
+        )
         rows = self._write_candidates(assets, symbol=None, candidates=candidates, now_ms=now_ms)
         selected = _single_resolved_ca_candidate(rows)
         if selected is not None:
@@ -185,6 +187,8 @@ class AssetResolutionWorker:
     ) -> None:
         if not venue_id:
             return
+        if not _candidate_has_market_data(candidate):
+            return
         assets.insert_market_snapshot(
             asset_id=asset_id,
             venue_id=venue_id,
@@ -239,6 +243,32 @@ def _candidate_score(candidate: OkxDexTokenCandidate) -> float:
     if candidate.holders and candidate.holders > 0:
         score += 0.05
     return min(score, 1.0)
+
+
+def _candidate_has_market_data(candidate: OkxDexTokenCandidate) -> bool:
+    return any(
+        value is not None
+        for value in (
+            candidate.price_usd,
+            candidate.market_cap_usd,
+            candidate.liquidity_usd,
+            candidate.holders,
+        )
+    )
+
+
+def _chain_indexes_for_job(job: dict[str, Any], fallback: tuple[str, ...]) -> tuple[str, ...]:
+    chain_hint = str(job.get("chain_hint") or "").strip().lower()
+    chain_index = OKX_CHAIN_TO_CHAIN_INDEX.get(chain_hint)
+    if chain_index:
+        return (chain_index,)
+    return fallback
+
+
+def _is_rate_limited_error(exc: Exception) -> bool:
+    if isinstance(exc, OkxClientError) and "429" in str(exc):
+        return True
+    return "429" in str(exc)
 
 
 def _normalize_symbol(value: Any) -> str:

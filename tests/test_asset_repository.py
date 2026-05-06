@@ -79,6 +79,52 @@ def test_candidates_for_ca_filters_by_chain_without_sql_parameter_mismatch(tmp_p
     assert candidates[0]["venue_id"] == result.venue["venue_id"]
 
 
+def test_resolution_claim_prioritizes_contract_address_jobs_over_symbols(tmp_path):
+    conn, _, repo = open_asset_repo(tmp_path)
+    try:
+        repo.queue_resolution_job(
+            job_type="symbol_resolution",
+            normalized_symbol="USDUC",
+            next_run_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        repo.queue_resolution_job(
+            job_type="ca_resolution",
+            chain_hint="bsc",
+            address_hint="0x8f32420f2e3728c49399b00dd0a796602d984444",
+            next_run_at_ms=1_700_000_100_000,
+            commit=True,
+        )
+
+        job = repo.claim_resolution_job(now_ms=1_700_000_200_000)
+    finally:
+        conn.close()
+
+    assert job is not None
+    assert job["job_type"] == "ca_resolution"
+    assert job["chain_hint"] == "bsc"
+
+
+def test_resolution_claim_recovers_stale_running_jobs(tmp_path):
+    conn, _, repo = open_asset_repo(tmp_path)
+    try:
+        repo.queue_resolution_job(
+            job_type="symbol_resolution",
+            normalized_symbol="USDUC",
+            next_run_at_ms=1_700_000_000_000,
+        )
+        first = repo.claim_resolution_job(now_ms=1_700_000_000_100)
+        second = repo.claim_resolution_job(now_ms=1_700_000_300_100)
+    finally:
+        conn.close()
+
+    assert first is not None
+    assert first["status"] == "running"
+    assert second is not None
+    assert second["job_id"] == first["job_id"]
+    assert second["attempt_count"] == 2
+
+
 def test_record_unresolved_attribution_and_find_symbol_mentions(tmp_path):
     conn, evidence, repo = open_asset_repo(tmp_path)
     try:

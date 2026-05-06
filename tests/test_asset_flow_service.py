@@ -74,6 +74,33 @@ def test_asset_flow_exposes_latest_market_snapshot_health():
     assert market["snapshot_age_ms"] == 60_000
 
 
+def test_asset_flow_treats_empty_market_snapshot_as_missing():
+    service = AssetFlowService(
+        assets=FakeAssets(
+            rows=[
+                {
+                    **resolved_row(symbol="TEST", asset_id="asset:dex:base:test", venue_id="venue:dex:base:test"),
+                    "market_provider": "okx_dex",
+                    "market_observed_at_ms": 1_700_000_000_000,
+                    "market_price_usd": None,
+                    "market_cap_usd": None,
+                    "market_liquidity_usd": None,
+                    "market_volume_24h_usd": None,
+                    "market_open_interest_usd": None,
+                    "market_holders": None,
+                }
+            ]
+        )
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    market = result["resolved_assets"][0]["market"]
+    assert market["market_status"] == "missing"
+    assert market["provider"] is None
+    assert market["snapshot_observed_at_ms"] is None
+
+
 class FakeAssets:
     def __init__(self, *, rows):
         self.rows = rows

@@ -286,13 +286,29 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
                 repository_session=lambda: repository_session(db_pool),
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
-    if start_collector and settings.okx_cex_sync_enabled:
-        okx_cex_client = OkxCexClient(
-            base_url=settings.okx_cex_base_url,
-            timeout_seconds=settings.okx_timeout_seconds,
+    if start_collector and (settings.okx_cex_sync_enabled or settings.okx_dex_configured):
+        okx_cex_client = (
+            OkxCexClient(
+                base_url=settings.okx_cex_base_url,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            if settings.okx_cex_sync_enabled
+            else None
+        )
+        okx_dex_price_client = (
+            OkxDexClient(
+                base_url=settings.okx_dex_base_url,
+                api_key=settings.okx_dex_api_key,
+                secret_key=settings.okx_dex_secret_key,
+                passphrase=settings.okx_dex_passphrase,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            if settings.okx_dex_configured
+            else None
         )
         runtime.asset_market_sync_worker = AssetMarketSyncWorker(
             client=okx_cex_client,
+            dex_client=okx_dex_price_client,
             repository_session=lambda: repository_session(db_pool),
             inst_types=settings.okx_cex_inst_types,
             interval_seconds=settings.okx_cex_sync_interval_seconds,

@@ -83,6 +83,35 @@ def test_ca_resolution_job_backfills_unresolved_ca_attributions():
     ]
 
 
+def test_resolution_worker_does_not_write_empty_market_snapshots():
+    assets = FakeAssets(
+        job={"job_id": "job-1", "job_type": "symbol_resolution", "normalized_symbol": "TEST"}
+    )
+    client = FakeDexClient(
+        [
+            OkxDexTokenCandidate(
+                chain_index="8453",
+                chain="base",
+                address="0x1111111111111111111111111111111111111111",
+                symbol="TEST",
+                name="Test",
+                price_usd=None,
+                market_cap_usd=None,
+                liquidity_usd=None,
+                holders=None,
+                community_recognized=False,
+                raw={"tokenSymbol": "TEST"},
+            )
+        ]
+    )
+    worker = AssetResolutionWorker(client=client, assets=assets, chain_indexes=("8453",), poll_interval=0)
+
+    result = worker.process_one(now_ms=1_700_000_000_000)
+
+    assert result["candidate_count"] == 1
+    assert assets.market_snapshots == []
+
+
 class FakeDexClient:
     def __init__(self, candidates):
         self.candidates = candidates
