@@ -9,8 +9,8 @@ from fastapi.responses import JSONResponse
 
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.account_quality_service import AccountQualityService
+from ..retrieval.asset_search_service import AssetSearchService
 from ..retrieval.harness_service import HarnessService
-from ..retrieval.search_service import SearchService
 from ..retrieval.token_flow_service import TokenFlowService
 from ..retrieval.token_posts_service import (
     TokenPostsCursorError,
@@ -128,10 +128,9 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         query = _search_query(q=q, symbol=symbol, ca=ca, chain=chain, handle=handle)
         with runtime.repositories() as repos:
-            results = SearchService(
+            results = AssetSearchService(
                 evidence=repos.evidence,
-                signals=repos.signals,
-                tokens=repos.tokens,
+                assets=repos.assets,
             ).search(
                 query,
                 limit=_limit(limit),
@@ -145,6 +144,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                     "total_count": results.total_count,
                     "returned_count": results.returned_count,
                     "has_more": results.has_more,
+                    "resolution": results.resolution,
                     "candidates": results.candidates,
                     "items": results.items,
                 },
