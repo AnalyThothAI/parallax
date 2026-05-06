@@ -41,7 +41,7 @@ class AssetResolutionWorker:
     async def run(self) -> None:
         while not self._stopped:
             try:
-                self.last_result = self.process_one(now_ms=_now_ms())
+                self.last_result = await asyncio.to_thread(self.process_one, now_ms=_now_ms())
                 self.last_run_at_ms = _now_ms()
             except Exception as exc:  # pragma: no cover - watchdog path
                 logger.exception(f"Asset resolution worker failed: {exc}")

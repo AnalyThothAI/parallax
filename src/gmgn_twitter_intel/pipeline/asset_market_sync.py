@@ -6,7 +6,7 @@ from typing import Any
 
 from ..market.okx_chains import OKX_CHAIN_TO_CHAIN_INDEX
 
-DEX_PRICE_BATCH_SIZE = 100
+DEX_PRICE_BATCH_SIZE = 20
 
 
 def sync_okx_cex_universe(
@@ -20,22 +20,26 @@ def sync_okx_cex_universe(
     venues_written = 0
     snapshots_written = 0
     for inst_type in normalized_inst_types:
-        for instrument in client.instruments(inst_type=inst_type):
-            if str(instrument.state).lower() not in {"live", "preopen", "test"}:
+        for ticker in client.tickers(inst_type=inst_type):
+            base_symbol, quote_symbol = _base_quote_from_inst_id(ticker.inst_id)
+            if not base_symbol or not quote_symbol:
                 continue
-            assets.upsert_cex_instrument(
+            result = assets.upsert_cex_instrument(
                 exchange="okx",
-                inst_type=instrument.inst_type,
-                inst_id=instrument.inst_id,
-                base_symbol=instrument.base_symbol,
-                quote_symbol=instrument.quote_symbol,
+                inst_type=ticker.inst_type,
+                inst_id=ticker.inst_id,
+                base_symbol=base_symbol,
+                quote_symbol=quote_symbol,
                 observed_at_ms=observed_at_ms,
-                source_payload_hash=_payload_hash(instrument.raw),
+                source_payload_hash=_payload_hash(ticker.raw),
                 commit=False,
             )
             venues_written += 1
-        for ticker in client.tickers(inst_type=inst_type):
-            venue = assets.venue_for_cex_instrument(exchange="okx", inst_type=ticker.inst_type, inst_id=ticker.inst_id)
+            venue = result.venue or assets.venue_for_cex_instrument(
+                exchange="okx",
+                inst_type=ticker.inst_type,
+                inst_id=ticker.inst_id,
+            )
             if not venue:
                 continue
             assets.insert_market_snapshot(
@@ -122,6 +126,13 @@ def sync_okx_dex_prices(
 def _payload_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _base_quote_from_inst_id(inst_id: str) -> tuple[str | None, str | None]:
+    parts = [part.strip().upper() for part in str(inst_id).split("-") if part.strip()]
+    if len(parts) < 2:
+        return None, None
+    return parts[0], parts[1]
 
 
 def _chunks(items: list[dict[str, str]], size: int):

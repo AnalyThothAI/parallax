@@ -222,7 +222,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getAllByText("macro headline without token").length).toBeGreaterThan(0);
   });
 
-  it("exposes a GMGN link for resolved radar tokens", async () => {
+  it("exposes a venue link for resolved radar tokens", async () => {
     renderWithQuery(<App />);
 
     const link = await screen.findByRole("link", { name: "Open $UPEG on GMGN" });
@@ -243,7 +243,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- missing");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("market pending");
-    expect(row.querySelector('[data-radar-action="gmgn"]')).toBeInTheDocument();
+    expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
   });
 
   it("renders fresh CEX asset-flow market as tradeable instead of pending", async () => {
@@ -290,7 +290,48 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$69K");
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("fresh");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("neutral");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("fresh");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("历史不足");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("market pending");
+    expect(await screen.findByRole("link", { name: "Open $BTC on OKX" })).toHaveAttribute(
+      "href",
+      "https://www.okx.com/trade-spot/btc-usdt"
+    );
+  });
+
+  it("renders asset-flow timing changes from backend market baselines", async () => {
+    mockApi({
+      assetFlowRows: [
+        assetFlowRow({
+          symbol: "USDUC",
+          market: {
+            market_status: "fresh",
+            provider: "okx_dex",
+            price_usd: 0.02,
+            market_cap_usd: 20_000_000,
+            liquidity_usd: 1_000_000,
+            volume_24h_usd: null,
+            open_interest_usd: null,
+            holders: 16_000,
+            snapshot_age_ms: 30_000,
+            snapshot_observed_at_ms: 1_777_746_270_000,
+            price_change_5m_pct: 0.1,
+            price_change_1h_pct: 0.2,
+            price_change_24h_pct: null,
+            price_at_social_start: 0.018,
+            price_change_since_social_pct: 0.111111,
+            price_before_social_start: 0.017,
+            price_change_before_social_pct: 0.058823,
+            price_change_status: "ready"
+          }
+        })
+      ]
+    });
+
+    renderWithQuery(<App />);
+
+    const rowButton = await screen.findByRole("button", { name: "select token $USDUC" });
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("+11% since social");
   });
 
   it("uses Signal Lab as the trader-facing product label", async () => {

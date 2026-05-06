@@ -1164,7 +1164,7 @@ svg {
 .token-cell,
 .metric,
 .decision-cell,
-.gmgn-cell {
+.venue-cell {
   min-width: 0;
 }
 
@@ -1246,13 +1246,13 @@ svg {
   white-space: nowrap;
 }
 
-.gmgn-cell {
+.venue-cell {
   display: grid;
   align-items: center;
   justify-items: end;
 }
 
-.gmgn-link,
+.venue-link,
 .external-row {
   display: inline-flex;
   align-items: center;
@@ -1271,13 +1271,13 @@ svg {
   white-space: nowrap;
 }
 
-.gmgn-link:hover,
+.venue-link:hover,
 .external-row:hover {
   border-color: var(--accent-line);
   background: var(--accent-soft);
 }
 
-.drawer-gmgn-link {
+.drawer-venue-link {
   width: max-content;
   margin-top: 7px;
 }
@@ -3612,12 +3612,12 @@ svg {
     min-width: 0;
   }
 
-  .gmgn-cell {
+  .venue-cell {
     justify-items: stretch;
     padding: 0 10px 10px 12px;
   }
 
-  .gmgn-link {
+  .venue-link {
     width: 100%;
     min-height: 32px;
   }

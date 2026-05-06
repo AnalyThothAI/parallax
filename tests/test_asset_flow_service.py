@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from gmgn_twitter_intel.retrieval.asset_flow_service import AssetFlowService
 
 
@@ -99,6 +101,83 @@ def test_asset_flow_treats_empty_market_snapshot_as_missing():
     assert market["market_status"] == "missing"
     assert market["provider"] is None
     assert market["snapshot_observed_at_ms"] is None
+
+
+def test_asset_flow_uses_provider_symbol_alias_instead_of_contract_address_display():
+    address = "CB9dDufT3ZuQXqqSfa1c5kY935TEreyBw9XJXxHKpump"
+    row = {
+        **resolved_row(
+            symbol=address.upper(),
+            asset_id=f"asset:dex:solana:{address.lower()}",
+            venue_id=f"venue:dex:solana:{address.lower()}",
+        ),
+        "asset_type": "dex_asset",
+        "venue_type": "dex",
+        "exchange": None,
+        "inst_id": None,
+        "chain": "solana",
+        "address": address,
+        "display_symbol": "USDUC",
+    }
+    service = AssetFlowService(assets=FakeAssets(rows=[row]))
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["resolved_assets"][0]["asset"]["symbol"] == "USDUC"
+
+
+def test_asset_flow_omits_address_like_symbol_when_provider_symbol_is_unknown():
+    address = "CTc4y2eHbTApoCAo2rNJFHkvPFHMnNygqEcBMyNcpump"
+    row = {
+        **resolved_row(
+            symbol=address.upper(),
+            asset_id=f"asset:dex:solana:{address.lower()}",
+            venue_id=f"venue:dex:solana:{address.lower()}",
+        ),
+        "asset_type": "dex_asset",
+        "venue_type": "dex",
+        "exchange": None,
+        "inst_id": None,
+        "chain": "solana",
+        "address": address,
+    }
+    service = AssetFlowService(assets=FakeAssets(rows=[row]))
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["resolved_assets"][0]["asset"]["symbol"] is None
+
+
+def test_asset_flow_exposes_market_timing_changes_from_snapshot_baselines():
+    service = AssetFlowService(
+        assets=FakeAssets(
+            rows=[
+                {
+                    **resolved_row(symbol="BTC", asset_id="asset:cex:BTC", venue_id="venue:cex:okx:SPOT:BTC-USDT"),
+                    "market_provider": "okx_cex",
+                    "market_observed_at_ms": 1_700_000_000_000,
+                    "market_price_usd": 100.0,
+                    "market_volume_24h_usd": 123_000_000.0,
+                    "market_price_5m_ago": 80.0,
+                    "market_price_1h_ago": 50.0,
+                    "market_price_24h_ago": 40.0,
+                    "market_price_at_social_start": 90.0,
+                    "market_price_before_social_start": 75.0,
+                }
+            ]
+        )
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    market = result["resolved_assets"][0]["market"]
+    assert market["price_change_status"] == "ready"
+    assert market["price_change_5m_pct"] == pytest.approx(0.25)
+    assert market["price_change_1h_pct"] == pytest.approx(1.0)
+    assert market["price_change_24h_pct"] == pytest.approx(1.5)
+    assert market["price_at_social_start"] == 90.0
+    assert market["price_change_since_social_pct"] == pytest.approx(1 / 9)
+    assert market["price_change_before_social_pct"] == pytest.approx(0.2)
 
 
 class FakeAssets:

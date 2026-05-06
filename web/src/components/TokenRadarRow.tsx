@@ -10,7 +10,7 @@ import {
   shortAddress,
   tokenLabel
 } from "../lib/format";
-import { gmgnTokenUrl } from "../lib/gmgn";
+import { tokenVenueAction } from "../lib/venue";
 import { DecisionTag } from "./DecisionTag";
 
 type TokenRadarRowProps = {
@@ -22,7 +22,7 @@ type TokenRadarRowProps = {
 export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) {
   const delta = formatSignedPercent(item.market.price_change_since_social_pct);
   const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
-  const gmgnUrl = gmgnTokenUrl(item.identity.chain, item.identity.address);
+  const venueAction = tokenVenueAction(item);
   return (
     <div className={`radar-row ${selected ? "selected" : ""}`}>
       <button
@@ -71,10 +71,10 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
         </span>
       </button>
 
-      <span className="gmgn-cell" data-radar-action="gmgn">
-        {gmgnUrl ? (
-          <a aria-label={`Open ${tokenLabel(item)} on GMGN`} className="gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
-            GMGN
+      <span className="venue-cell" data-radar-action="venue">
+        {venueAction ? (
+          <a aria-label={`Open ${tokenLabel(item)} on ${venueAction.label}`} className="venue-link" href={venueAction.url} rel="noreferrer" target="_blank">
+            {venueAction.label}
           </a>
         ) : (
           <span className="muted">-</span>
@@ -196,7 +196,11 @@ function timingMeta(item: TokenFlowItem): string {
   if (change !== null && change !== undefined) {
     return `${formatSignedPercent(change)} since social`;
   }
-  if (item.market.price_change_status !== "ready") {
+  if (
+    item.market.price_change_status &&
+    item.market.price_change_status !== "ready" &&
+    item.market.price_change_status !== "insufficient_history"
+  ) {
     return formatRisk(item.market.price_change_status);
   }
   return item.market.market_status;

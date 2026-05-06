@@ -463,10 +463,15 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         "asset_market_sync": {
             "okx_cex_sync_enabled": runtime.settings.okx_cex_sync_enabled,
             "worker_running": _task_running(runtime.asset_market_sync_task),
+            "last_started_at_ms": runtime.asset_market_sync_worker.last_started_at_ms
+            if runtime.asset_market_sync_worker
+            else None,
             "last_run_at_ms": runtime.asset_market_sync_worker.last_run_at_ms
             if runtime.asset_market_sync_worker
             else None,
             "last_result": runtime.asset_market_sync_worker.last_result if runtime.asset_market_sync_worker else None,
+            "last_error": runtime.asset_market_sync_worker.last_error if runtime.asset_market_sync_worker else None,
+            "providers": runtime.asset_market_sync_worker.provider_states if runtime.asset_market_sync_worker else {},
         },
     }
     return payload, 503 if reasons else 200

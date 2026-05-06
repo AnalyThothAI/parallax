@@ -1007,11 +1007,13 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
   const qualityScore = resolved ? Math.min(100, 70 + watched * 8) : Math.min(70, 35 + mentions * 8);
   const propagationScore = Math.min(100, 30 + authors * 14);
   const tradeabilityScore = resolved ? 80 : row.resolution.status === "ambiguous" ? 35 : 20;
-  const timingScore = marketReady ? 55 : resolved ? 50 : 35;
-  const timingStatus = marketReady ? "neutral" : resolved ? "market_pending" : "market_unavailable";
-  const timingRisks = marketReady ? [] : resolved ? ["market_observation_pending"] : ["provider_not_found"];
-  const marketObservationStatus = marketReady ? "ready" : resolved ? "pending" : "provider_not_found";
-  const priceChangeStatus = marketReady ? "insufficient_history" : resolved ? "pending_observation" : "provider_not_found";
+  const marketObservationStatus = market?.market_observation_status ?? (marketReady ? "ready" : resolved ? "pending" : "provider_not_found");
+  const priceChangeStatus = market?.price_change_status ?? (marketReady ? "ready" : resolved ? "pending_observation" : "provider_not_found");
+  const priceChangeBeforeSocial = market?.price_change_before_social_pct ?? null;
+  const chaseRisk = marketObservationStatus === "ready" && (priceChangeBeforeSocial ?? 0) >= 0.15;
+  const timingScore = chaseRisk ? 38 : marketReady ? 55 : resolved ? 50 : 35;
+  const timingStatus = chaseRisk ? "chase_risk" : marketReady ? "neutral" : resolved ? "market_pending" : "market_unavailable";
+  const timingRisks = chaseRisk ? ["chase_risk"] : marketReady ? [] : resolved ? ["market_observation_pending"] : ["provider_not_found"];
   const opportunityScore = Math.round(
     heatScore * 0.4 + qualityScore * 0.25 + propagationScore * 0.2 + tradeabilityScore * 0.1 + timingScore * 0.05
   );
@@ -1025,6 +1027,7 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       venue_type: venue?.venue_type ?? null,
       exchange: venue?.exchange ?? null,
       inst_id: venue?.inst_id ?? null,
+      inst_type: venue?.inst_type ?? null,
       token_id: null,
       chain: isDex ? venue?.chain ?? null : null,
       address: isDex ? venue?.address ?? null : null,
@@ -1042,11 +1045,11 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       snapshot_received_at_ms: market?.snapshot_observed_at_ms ?? null,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
       reference_ms: row.attention.latest_seen_ms ?? null,
-      price_at_social_start: null,
+      price_at_social_start: market?.price_at_social_start ?? null,
       price_at_reference: market?.price_usd ?? null,
-      price_change_since_social_pct: market?.price_change_5m_pct ?? null,
-      price_before_social_start: null,
-      price_change_before_social_pct: null,
+      price_change_since_social_pct: market?.price_change_since_social_pct ?? null,
+      price_before_social_start: market?.price_before_social_start ?? null,
+      price_change_before_social_pct: market?.price_change_before_social_pct ?? null,
       market_observation_status: marketObservationStatus,
       price_change_status: priceChangeStatus
     },
@@ -1122,10 +1125,10 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       score_version: "asset_timing_v1",
       status: timingStatus,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
-      price_change_since_social_pct: market?.price_change_5m_pct ?? null,
-      price_change_before_social_pct: null,
+      price_change_since_social_pct: market?.price_change_since_social_pct ?? null,
+      price_change_before_social_pct: market?.price_change_before_social_pct ?? null,
       market_observation_status: marketObservationStatus,
-      chase_risk: false,
+      chase_risk: chaseRisk,
       reasons: [],
       risks: timingRisks,
       contributions: [],

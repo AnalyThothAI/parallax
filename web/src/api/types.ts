@@ -222,6 +222,12 @@ export type AssetFlowRow = {
     price_change_5m_pct?: number | null;
     price_change_1h_pct?: number | null;
     price_change_24h_pct?: number | null;
+    price_at_social_start?: number | null;
+    price_before_social_start?: number | null;
+    price_change_since_social_pct?: number | null;
+    price_change_before_social_pct?: number | null;
+    market_observation_status?: string | null;
+    price_change_status?: string | null;
   };
   resolution: {
     status: "resolved" | "unresolved" | "ambiguous" | string;
@@ -272,6 +278,7 @@ export type TokenIdentityBlock = {
   venue_type?: string | null;
   exchange?: string | null;
   inst_id?: string | null;
+  inst_type?: string | null;
   token_id?: string | null;
   chain?: string | null;
   address?: string | null;

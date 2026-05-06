@@ -28,6 +28,7 @@ class EvidenceRepository:
         received_at_ms: int,
         raw_payload_json: str,
     ) -> bool:
+        raw_payload_json = _sanitize_postgres_value(raw_payload_json)
         payload_hash = hashlib.sha256(raw_payload_json.encode("utf-8")).hexdigest()
         frame_id = f"{source}:{channel}:{payload_hash}"
         cursor = self.conn.execute(
@@ -191,7 +192,7 @@ def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[
     reference_text = event.reference.text if event.reference else None
     projection = build_text_projection(event.content.text, reference_text=reference_text)
     matched_handles = [handle.lower() for handle in event.matched_handles]
-    return {
+    return _sanitize_postgres_value({
         "event_id": event.event_id,
         "logical_dedup_key": logical_dedup_key(event),
         "canonical_url": canonical_tweet_url(event),
@@ -227,7 +228,7 @@ def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[
         "event_json": _json(event_dict),
         "created_at_ms": now_ms,
         "updated_at_ms": now_ms,
-    }
+    })
 
 
 def decode_event_row(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
@@ -262,7 +263,25 @@ def _fts_query(query: str) -> str:
 
 
 def _json(value: Any) -> Jsonb:
-    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
+    return Jsonb(
+        _sanitize_postgres_value(value),
+        dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True),
+    )
+
+
+def _sanitize_postgres_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, dict):
+        return {
+            _sanitize_postgres_value(key): _sanitize_postgres_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_postgres_value(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_postgres_value(item) for item in value)
+    return value
 
 
 def _json_loads(value: Any, default: Any) -> Any:

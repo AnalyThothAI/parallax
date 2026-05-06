@@ -36,7 +36,7 @@ class HarnessOpsWorker:
     async def run(self) -> None:
         while not self._stopped.is_set():
             try:
-                self.process_once()
+                await asyncio.to_thread(self.process_once)
             except Exception as exc:
                 logger.exception(f"harness ops worker loop failed: {exc}")
             await asyncio.sleep(self.poll_interval)

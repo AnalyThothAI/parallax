@@ -18,6 +18,7 @@ MARKET_DATA_CLAUSE = """
   OR holders IS NOT NULL
 )
 """
+ADDRESS_LIKE_SYMBOL_SQL_RE = r"(^0X[0-9A-F]{20,}$)|(^[A-Z0-9]{32,}(PUMP)?$)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -308,6 +309,12 @@ class AssetRepository:
         normalized_symbol = _normalize_symbol(symbol)
         asset_id = f"asset:dex:{normalized_chain}:{normalized_address.lower()}"
         venue_id = f"venue:dex:{normalized_chain}:{normalized_address.lower()}"
+        incoming_symbol_is_address_like = _is_address_like_symbol(normalized_symbol)
+        current_asset = self.get_asset(asset_id)
+        if current_asset and incoming_symbol_is_address_like:
+            current_symbol = str(current_asset.get("canonical_symbol") or "")
+            if current_symbol and not _is_address_like_symbol(current_symbol):
+                normalized_symbol = _normalize_symbol(current_symbol)
         asset = self._upsert_asset(
             asset_id=asset_id,
             asset_type="dex_asset",
@@ -344,16 +351,20 @@ class AssetRepository:
                 _now_ms(),
             ),
         )
-        aliases = [
-            self._upsert_alias(
-                asset_id=asset_id,
-                alias_type="symbol",
-                alias_value=normalized_symbol,
-                normalized_alias=normalized_symbol,
-                source=provider,
-                confidence=0.95,
-                created_at_ms=observed_at_ms,
-            ),
+        aliases = []
+        if not incoming_symbol_is_address_like:
+            aliases.append(
+                self._upsert_alias(
+                    asset_id=asset_id,
+                    alias_type="symbol",
+                    alias_value=normalized_symbol,
+                    normalized_alias=normalized_symbol,
+                    source=provider,
+                    confidence=0.95,
+                    created_at_ms=observed_at_ms,
+                )
+            )
+        aliases.append(
             self._upsert_alias(
                 asset_id=asset_id,
                 alias_type="ca",
@@ -362,8 +373,8 @@ class AssetRepository:
                 source=provider,
                 confidence=1.0,
                 created_at_ms=observed_at_ms,
-            ),
-        ]
+            )
+        )
         if commit:
             self.conn.commit()
         return AssetResolutionResult(asset=asset, venue=self.get_venue(venue_id), aliases=aliases)
@@ -744,12 +755,25 @@ class AssetRepository:
     def dex_venues_needing_market_refresh(self, *, stale_before_ms: int, limit: int = 500) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             f"""
+            WITH recent_attention AS (
+              SELECT
+                asset_attributions.venue_id,
+                MAX(asset_attributions.decision_time_ms) AS latest_seen_ms,
+                COUNT(*) FILTER (WHERE asset_attributions.decision_time_ms >= %s) AS mentions_1h
+              FROM asset_attributions
+              WHERE asset_attributions.venue_id IS NOT NULL
+                AND asset_attributions.attribution_status <> 'superseded'
+                AND asset_attributions.decision_time_ms >= %s
+              GROUP BY asset_attributions.venue_id
+            )
             SELECT
               asset_venues.asset_id,
               asset_venues.venue_id,
               asset_venues.chain,
               asset_venues.address,
               asset_venues.updated_at_ms AS venue_updated_at_ms,
+              recent_attention.latest_seen_ms,
+              recent_attention.mentions_1h,
               latest_market.observed_at_ms AS latest_market_observed_at_ms,
               latest_market.market_cap_usd,
               latest_market.liquidity_usd,
@@ -765,6 +789,8 @@ class AssetRepository:
               ORDER BY observed_at_ms DESC, snapshot_id DESC
               LIMIT 1
             ) latest_market ON true
+            LEFT JOIN recent_attention
+              ON recent_attention.venue_id = asset_venues.venue_id
             WHERE asset_venues.venue_type = 'dex'
               AND asset_venues.is_active = true
               AND asset_venues.chain IS NOT NULL
@@ -774,12 +800,19 @@ class AssetRepository:
                 OR latest_market.observed_at_ms < %s
               )
             ORDER BY
+              recent_attention.latest_seen_ms DESC NULLS LAST,
+              recent_attention.mentions_1h DESC,
               latest_market.observed_at_ms NULLS FIRST,
               asset_venues.updated_at_ms DESC,
               asset_venues.venue_id ASC
             LIMIT %s
             """,
-            (int(stale_before_ms), max(0, int(limit))),
+            (
+                int(stale_before_ms) - 55 * 60 * 1000,
+                int(stale_before_ms) - 55 * 60 * 1000,
+                int(stale_before_ms),
+                max(0, int(limit)),
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1252,6 +1285,7 @@ class AssetRepository:
                 COUNT(*) FILTER (WHERE is_watched = true) AS watched_mentions,
                 COUNT(DISTINCT event_id) FILTER (WHERE decision_time_ms >= %s) AS mentions_5m,
                 COUNT(DISTINCT event_id) FILTER (WHERE decision_time_ms >= %s) AS mentions_1h,
+                MIN(decision_time_ms) AS first_seen_ms,
                 MAX(decision_time_ms) AS latest_seen_ms,
                 MAX(received_at_ms) AS source_max_received_at_ms
               FROM filtered
@@ -1270,6 +1304,7 @@ class AssetRepository:
                 grouped.watched_mentions,
                 grouped.mentions_5m,
                 grouped.mentions_1h,
+                grouped.first_seen_ms,
                 grouped.latest_seen_ms,
                 grouped.source_max_received_at_ms,
                 CASE
@@ -1296,6 +1331,7 @@ class AssetRepository:
             FROM (
               SELECT
                 ranked.*,
+                display_alias.normalized_alias AS display_symbol,
                 preferred_venue.venue_id AS primary_venue_id,
                 preferred_venue.venue_type AS primary_venue_type,
                 preferred_venue.provider AS primary_venue_provider,
@@ -1316,8 +1352,30 @@ class AssetRepository:
                 latest_market.holders AS market_holders,
                 latest_market.price_change_5m_pct AS market_price_change_5m_pct,
                 latest_market.price_change_1h_pct AS market_price_change_1h_pct,
-                latest_market.price_change_24h_pct AS market_price_change_24h_pct
+                latest_market.price_change_24h_pct AS market_price_change_24h_pct,
+                market_5m_ago.price_usd AS market_price_5m_ago,
+                market_1h_ago.price_usd AS market_price_1h_ago,
+                market_24h_ago.price_usd AS market_price_24h_ago,
+                market_at_social_start.price_usd AS market_price_at_social_start,
+                market_before_social_start.price_usd AS market_price_before_social_start
               FROM ranked
+              LEFT JOIN LATERAL (
+                SELECT asset_aliases.normalized_alias
+                FROM asset_aliases
+                WHERE asset_aliases.asset_id = ranked.asset_id
+                  AND asset_aliases.alias_type = 'symbol'
+                  AND NOT (upper(asset_aliases.normalized_alias) ~ '{ADDRESS_LIKE_SYMBOL_SQL_RE}')
+                ORDER BY
+                  CASE
+                    WHEN LEFT(asset_aliases.source, 4) = 'okx_' THEN 0
+                    WHEN LEFT(asset_aliases.source, 4) = 'gmgn' THEN 1
+                    ELSE 2
+                  END,
+                  asset_aliases.confidence DESC,
+                  asset_aliases.created_at_ms DESC,
+                  asset_aliases.normalized_alias ASC
+                LIMIT 1
+              ) display_alias ON true
               LEFT JOIN LATERAL (
                 SELECT *
                 FROM asset_venues
@@ -1370,6 +1428,61 @@ class AssetRepository:
                   snapshot_id DESC
                 LIMIT 1
               ) latest_market ON true
+              LEFT JOIN LATERAL (
+                SELECT price_usd
+                FROM asset_market_snapshots
+                WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                  AND asset_market_snapshots.venue_id = latest_market.venue_id
+                  AND asset_market_snapshots.price_usd IS NOT NULL
+                  AND latest_market.observed_at_ms IS NOT NULL
+                  AND asset_market_snapshots.observed_at_ms <= latest_market.observed_at_ms - 300000
+                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                LIMIT 1
+              ) market_5m_ago ON true
+              LEFT JOIN LATERAL (
+                SELECT price_usd
+                FROM asset_market_snapshots
+                WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                  AND asset_market_snapshots.venue_id = latest_market.venue_id
+                  AND asset_market_snapshots.price_usd IS NOT NULL
+                  AND latest_market.observed_at_ms IS NOT NULL
+                  AND asset_market_snapshots.observed_at_ms <= latest_market.observed_at_ms - 3600000
+                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                LIMIT 1
+              ) market_1h_ago ON true
+              LEFT JOIN LATERAL (
+                SELECT price_usd
+                FROM asset_market_snapshots
+                WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                  AND asset_market_snapshots.venue_id = latest_market.venue_id
+                  AND asset_market_snapshots.price_usd IS NOT NULL
+                  AND latest_market.observed_at_ms IS NOT NULL
+                  AND asset_market_snapshots.observed_at_ms <= latest_market.observed_at_ms - 86400000
+                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                LIMIT 1
+              ) market_24h_ago ON true
+              LEFT JOIN LATERAL (
+                SELECT price_usd
+                FROM asset_market_snapshots
+                WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                  AND asset_market_snapshots.venue_id = latest_market.venue_id
+                  AND asset_market_snapshots.price_usd IS NOT NULL
+                  AND ranked.first_seen_ms IS NOT NULL
+                  AND asset_market_snapshots.observed_at_ms <= ranked.first_seen_ms
+                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                LIMIT 1
+              ) market_at_social_start ON true
+              LEFT JOIN LATERAL (
+                SELECT price_usd
+                FROM asset_market_snapshots
+                WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                  AND asset_market_snapshots.venue_id = latest_market.venue_id
+                  AND asset_market_snapshots.price_usd IS NOT NULL
+                  AND ranked.first_seen_ms IS NOT NULL
+                  AND asset_market_snapshots.observed_at_ms <= ranked.first_seen_ms - 300000
+                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                LIMIT 1
+              ) market_before_social_start ON true
             ) ranked_with_market
             WHERE lane_rank <= %s
             ORDER BY flow_lane ASC, lane_rank ASC
@@ -1563,6 +1676,19 @@ class AssetRepository:
 
 def _normalize_symbol(symbol: str) -> str:
     return symbol.strip().upper()
+
+
+def _is_address_like_symbol(symbol: str | None) -> bool:
+    if not symbol:
+        return False
+    value = symbol.strip().upper()
+    if value.startswith("0X") and len(value) >= 22:
+        return all(char in "0123456789ABCDEF" for char in value[2:])
+    if len(value) < 32:
+        return False
+    if value.endswith("PUMP"):
+        value = value[:-4]
+    return all(char.isdigit() or ("A" <= char <= "Z") for char in value)
 
 
 def _normalize_key(value: str) -> str:

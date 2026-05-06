@@ -170,6 +170,64 @@ def test_asset_flow_rows_use_preferred_cex_usdt_venue_and_market(tmp_path):
     assert rows[0]["market_price_usd"] == 69_000.0
 
 
+def test_asset_flow_rows_expose_non_address_symbol_alias_for_legacy_dex_assets(tmp_path):
+    conn, evidence, repo = open_asset_repo(tmp_path)
+    address = "CB9dDufT3ZuQXqqSfa1c5kY935TEreyBw9XJXxHKpump"
+    asset_id = f"asset:dex:solana:{address.lower()}"
+    try:
+        result = repo.upsert_dex_asset(
+            chain="solana",
+            address=address,
+            symbol="USDUC",
+            observed_at_ms=1_700_000_000_000,
+            provider="okx_dex",
+            commit=False,
+        )
+        conn.execute(
+            "UPDATE assets SET canonical_symbol = %s, display_name = %s WHERE asset_id = %s",
+            (address.upper(), address.upper(), asset_id),
+        )
+        evidence.insert_event(make_event("event-usduc", text=address), is_watched=False)
+        mention = repo.insert_mention(
+            event_id="event-usduc",
+            mention_type="ca",
+            raw_value=address,
+            chain_hint="solana",
+            address_hint=address,
+            source="deterministic_extractor",
+            mention_confidence=1.0,
+            created_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        repo.insert_attribution(
+            event_id="event-usduc",
+            mention_id=mention["mention_id"],
+            asset_id=result.asset["asset_id"],
+            venue_id=result.venue["venue_id"],
+            attribution_status="direct",
+            attribution_weight=1.0,
+            confidence=0.95,
+            identity_status="resolved",
+            reasons=["direct_ca"],
+            risks=[],
+            decision_time_ms=1_700_000_000_000,
+            created_at_ms=1_700_000_000_000,
+            commit=True,
+        )
+
+        rows = repo.asset_flow_rows(
+            since_ms=1_699_999_900_000,
+            watched_only=False,
+            limit=20,
+            now_ms=1_700_000_020_000,
+        )
+    finally:
+        conn.close()
+
+    assert rows[0]["canonical_symbol"] == address.upper()
+    assert rows[0]["display_symbol"] == "USDUC"
+
+
 def test_candidates_for_ca_filters_by_chain_without_sql_parameter_mismatch(tmp_path):
     conn, _, repo = open_asset_repo(tmp_path)
     try:
@@ -186,6 +244,36 @@ def test_candidates_for_ca_filters_by_chain_without_sql_parameter_mismatch(tmp_p
 
     assert [candidate["asset_id"] for candidate in candidates] == [result.asset["asset_id"]]
     assert candidates[0]["venue_id"] == result.venue["venue_id"]
+
+
+def test_dex_asset_provider_symbol_survives_later_ca_only_upsert(tmp_path):
+    conn, _, repo = open_asset_repo(tmp_path)
+    address = "CB9dDufT3ZuQXqqSfa1c5kY935TEreyBw9XJXxHKpump"
+    try:
+        provider = repo.upsert_dex_asset(
+            chain="solana",
+            address=address,
+            symbol="USDUC",
+            observed_at_ms=1_700_000_000_000,
+            provider="okx_dex",
+            commit=False,
+        )
+        later_direct_ca = repo.upsert_dex_asset(
+            chain="solana",
+            address=address,
+            symbol=address,
+            observed_at_ms=1_700_000_060_000,
+            provider="deterministic",
+            commit=True,
+        )
+        candidates_for_address_as_symbol = repo.candidates_for_symbol(address)
+    finally:
+        conn.close()
+
+    assert later_direct_ca.asset["asset_id"] == provider.asset["asset_id"]
+    assert later_direct_ca.asset["canonical_symbol"] == "USDUC"
+    assert later_direct_ca.asset["display_name"] == "USDUC"
+    assert candidates_for_address_as_symbol == []
 
 
 def test_resolution_claim_prioritizes_contract_address_jobs_over_symbols(tmp_path):

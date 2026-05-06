@@ -9,9 +9,9 @@ import type {
   TokenSocialTimelineData,
   WindowKey
 } from "../api/types";
-import { gmgnTokenUrl } from "../lib/gmgn";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
+import { tokenVenueAction } from "../lib/venue";
 import { AccountLane } from "./AccountLane";
 import {
   DetailDrawerHeader,
@@ -109,14 +109,14 @@ export function TokenDetailDrawer({
 
   const risks = [...(token.opportunity.hard_risks ?? []), ...token.opportunity.risks];
   const drawerSummary = tokenDrawerSummary(token);
-  const gmgnUrl = gmgnTokenUrl(token.identity.chain, token.identity.address);
+  const venueAction = tokenVenueAction(token);
   return (
     <DetailDrawerShell>
       <DetailDrawerHeader
         actions={
-          gmgnUrl ? (
-            <a aria-label="Open selected token on GMGN" className="gmgn-link drawer-gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
-              GMGN
+          venueAction ? (
+            <a aria-label={`Open selected token on ${venueAction.label}`} className="venue-link drawer-venue-link" href={venueAction.url} rel="noreferrer" target="_blank">
+              {venueAction.label}
             </a>
           ) : null
         }
