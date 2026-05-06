@@ -32,10 +32,34 @@ class ApiConfig(BaseModel):
     replay_limit: int = 100
 
 
+class PostgresConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dsn: str = "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    password_file: str | None = "postgres_password"
+    pool_min_size: int = 1
+    pool_max_size: int = 10
+    connect_timeout_seconds: float = 5.0
+
+    @field_validator("dsn", mode="before")
+    @classmethod
+    def parse_dsn(cls, value: Any) -> str:
+        normalized = str(value or "").strip()
+        return normalized or "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+
+    @field_validator("password_file", mode="before")
+    @classmethod
+    def parse_optional_path(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    sqlite_path: str = "data/twitter_intel.sqlite3"
+    postgres: PostgresConfig = Field(default_factory=PostgresConfig)
 
 
 class LlmConfig(BaseModel):
@@ -251,11 +275,30 @@ class Settings(BaseModel):
         return self.config_dir
 
     @property
-    def sqlite_path(self) -> Path:
-        configured = Path(self.storage.sqlite_path).expanduser()
+    def postgres_dsn(self) -> str:
+        return self.storage.postgres.dsn
+
+    @property
+    def postgres_password_file(self) -> Path | None:
+        value = self.storage.postgres.password_file
+        if not value:
+            return None
+        configured = Path(value).expanduser()
         if configured.is_absolute():
             return configured
         return self.config_dir / configured
+
+    @property
+    def postgres_pool_min_size(self) -> int:
+        return self.storage.postgres.pool_min_size
+
+    @property
+    def postgres_pool_max_size(self) -> int:
+        return self.storage.postgres.pool_max_size
+
+    @property
+    def postgres_connect_timeout_seconds(self) -> float:
+        return self.storage.postgres.connect_timeout_seconds
 
     @property
     def log_file(self) -> Path:
@@ -435,7 +478,12 @@ api:
   replay_limit: 100
 
 storage:
-  sqlite_path: "data/twitter_intel.sqlite3"
+  postgres:
+    dsn: "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    password_file: "postgres_password"
+    pool_min_size: 1
+    pool_max_size: 10
+    connect_timeout_seconds: 5
 
 llm:
   provider: "openai"

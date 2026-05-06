@@ -1,15 +1,49 @@
 name: gmgn-twitter-intel
 
 services:
+  postgres:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    shm_size: 256mb
+    environment:
+      POSTGRES_DB: gmgn_twitter_intel
+      POSTGRES_USER: gmgn_app
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
+    secrets:
+      - postgres_password
+    volumes:
+      - gmgn-twitter-intel-postgres:/var/lib/postgresql/18/docker
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gmgn_app -d gmgn_twitter_intel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  migrate:
+    build: .
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel
+    command: ["gmgn-twitter-intel", "db", "migrate"]
+
   app:
     build: .
     init: true
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8765:8765"
     volumes:
       - ${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel
-      - gmgn-twitter-intel-data:/root/.gmgn-twitter-intel/data
     healthcheck:
       test:
         [
@@ -24,4 +58,8 @@ services:
       start_period: 20s
 
 volumes:
-  gmgn-twitter-intel-data:
+  gmgn-twitter-intel-postgres:
+
+secrets:
+  postgres_password:
+    file: ${HOME}/.gmgn-twitter-intel/postgres_password

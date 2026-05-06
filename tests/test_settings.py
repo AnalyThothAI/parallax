@@ -30,7 +30,8 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.api_host == "0.0.0.0"
     assert settings.api_port == 8765
     assert settings.ws_token == "secret"
-    assert settings.sqlite_path == tmp_path / ".gmgn-twitter-intel" / "data" / "twitter_intel.sqlite3"
+    assert settings.postgres_dsn == "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
+    assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "postgres_password"
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
     assert settings.gmgn_configured is False
@@ -61,15 +62,22 @@ def test_load_settings_rejects_unknown_top_level_keys(tmp_path, monkeypatch):
         load_settings()
 
 
-def test_sqlite_path_and_llm_enrichment_can_be_explicitly_configured(tmp_path, monkeypatch):
-    configured_path = tmp_path / "custom.sqlite3"
+def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
         {
             "ws_token": "secret",
             "handles": ["toly"],
-            "storage": {"sqlite_path": str(configured_path)},
+            "storage": {
+                "postgres": {
+                    "dsn": "postgresql://gmgn_app:secret@postgres:5432/gmgn_twitter_intel",
+                    "password_file": "pg_password",
+                    "pool_min_size": 2,
+                    "pool_max_size": 12,
+                    "connect_timeout_seconds": 4,
+                }
+            },
             "llm": {
                 "provider": "openai",
                 "api_key": "sk-test",
@@ -83,7 +91,12 @@ def test_sqlite_path_and_llm_enrichment_can_be_explicitly_configured(tmp_path, m
 
     settings = load_settings()
 
-    assert settings.sqlite_path == configured_path
+    assert settings.postgres_dsn == "postgresql://gmgn_app:secret@postgres:5432/gmgn_twitter_intel"
+    assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "pg_password"
+    assert settings.postgres_pool_min_size == 2
+    assert settings.postgres_pool_max_size == 12
+    assert settings.postgres_connect_timeout_seconds == 4
+    assert not hasattr(settings, "sqlite_path")
     assert settings.llm_configured is True
     assert settings.llm_model == "gpt-test"
     assert settings.llm_base_url == "https://example.test/v1"
@@ -186,4 +199,4 @@ def test_init_creates_single_config_file_and_runtime_directories(tmp_path, monke
     assert (tmp_path / ".gmgn-twitter-intel" / "logs").is_dir()
     settings = load_settings()
     assert settings.ws_token
-    assert settings.sqlite_path == tmp_path / ".gmgn-twitter-intel" / "data" / "twitter_intel.sqlite3"
+    assert settings.postgres_dsn == "postgresql://gmgn_app:gmgn_app@postgres:5432/gmgn_twitter_intel"
