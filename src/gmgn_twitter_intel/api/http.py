@@ -11,6 +11,7 @@ from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.account_quality_service import AccountQualityService
 from ..retrieval.asset_flow_service import AssetFlowService
 from ..retrieval.asset_search_service import AssetSearchService
+from ..retrieval.asset_social_timeline_service import AssetSocialTimelineService
 from ..retrieval.harness_service import HarnessService
 from ..retrieval.token_flow_service import TokenFlowService
 from ..retrieval.token_posts_service import (
@@ -232,6 +233,30 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             return _json({"ok": False, "error": "invalid_sort", "field": "sort"}, status_code=400)
         except TokenPostsCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
+        return _json({"ok": True, "data": data})
+
+    @router.get("/asset-social-timeline")
+    async def asset_social_timeline(
+        request: Request,
+        asset_id: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "1h",
+        scope: Annotated[str, Query()] = "all",
+        limit: Annotated[int, Query()] = 200,
+        cursor_ms: Annotated[int | None, Query()] = None,
+    ) -> JSONResponse:
+        if not asset_id:
+            raise ApiBadRequest("asset_id_required", field="asset_id")
+        runtime = _authenticated_runtime(request)
+        parsed_window = _window(window)
+        parsed_scope = _scope(scope)
+        with runtime.repositories() as repos:
+            data = AssetSocialTimelineService(assets=repos.assets).timeline(
+                asset_id=asset_id,
+                window=parsed_window,
+                scope=parsed_scope,
+                limit=_limit(limit),
+                cursor_ms=cursor_ms,
+            )
         return _json({"ok": True, "data": data})
 
     @router.get("/token-social-timeline")

@@ -736,6 +736,58 @@ class AssetRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def asset_timeline_rows(
+        self,
+        *,
+        asset_id: str,
+        since_ms: int,
+        watched_only: bool,
+        limit: int,
+        cursor_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        clauses = ["asset_attributions.asset_id = %s", "events.received_at_ms >= %s"]
+        params: list[Any] = [asset_id, int(since_ms)]
+        if cursor_ms is not None:
+            clauses.append("events.received_at_ms < %s")
+            params.append(int(cursor_ms))
+        if watched_only:
+            clauses.append("events.is_watched = true")
+        params.append(max(0, int(limit)))
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              events.event_id,
+              events.author_handle,
+              events.text,
+              events.is_watched,
+              events.received_at_ms,
+              asset_attributions.asset_id,
+              asset_attributions.attribution_status,
+              asset_attributions.confidence,
+              assets.asset_type,
+              assets.canonical_symbol,
+              assets.identity_status,
+              asset_venues.venue_id,
+              asset_venues.venue_type,
+              asset_venues.exchange,
+              asset_venues.chain,
+              asset_venues.address,
+              asset_venues.inst_id,
+              asset_venues.base_symbol,
+              asset_venues.quote_symbol,
+              asset_venues.inst_type
+            FROM asset_attributions
+            JOIN events ON events.event_id = asset_attributions.event_id
+            JOIN assets ON assets.asset_id = asset_attributions.asset_id
+            LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY events.received_at_ms DESC, events.event_id ASC
+            LIMIT %s
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def asset_seen_before(
         self,
         *,
