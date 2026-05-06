@@ -173,6 +173,42 @@ class AssetRepository:
             self.conn.commit()
         return asset
 
+    def upsert_unresolved_ca(
+        self,
+        address: str,
+        *,
+        event_id: str,
+        observed_at_ms: int,
+        chain_hint: str | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        normalized_address = (_normalize_address(address) or address).lower()
+        asset_id = f"asset:unresolved_ca:{normalized_address}"
+        display_name = f"{chain_hint}:{address}" if chain_hint else address
+        asset = self._upsert_asset(
+            asset_id=asset_id,
+            asset_type="unresolved_ca",
+            canonical_symbol=normalized_address,
+            display_name=display_name,
+            identity_status="unresolved",
+            confidence=0.35,
+            primary_source="deterministic",
+            first_seen_event_id=event_id,
+            first_seen_at_ms=observed_at_ms,
+        )
+        self._upsert_alias(
+            asset_id=asset_id,
+            alias_type="ca",
+            alias_value=address,
+            normalized_alias=normalized_address,
+            source="deterministic",
+            confidence=0.7,
+            created_at_ms=observed_at_ms,
+        )
+        if commit:
+            self.conn.commit()
+        return asset
+
     def upsert_cex_instrument(
         self,
         *,
