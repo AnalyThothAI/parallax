@@ -112,6 +112,61 @@ def test_trading_attention_keeps_keyword_as_topic_without_tokenizing(tmp_path):
     assert item["title"] == "Grok"
 
 
+def test_trading_attention_query_treats_comma_terms_as_alternatives(tmp_path):
+    conn, evidence, signals, tokens, _ = _runtime(tmp_path)
+    try:
+        grok = make_event(
+            "event-grok",
+            author_handle="elonmusk",
+            text="Grok is getting spicy",
+            received_at_ms=10_000,
+        )
+        build = make_event(
+            "event-build",
+            author_handle="toly",
+            text="Solana builders keep shipping",
+            received_at_ms=10_100,
+        )
+        evidence.insert_event(grok, is_watched=True)
+        evidence.insert_event(build, is_watched=True)
+        _social_event(
+            conn,
+            event_id="event-grok",
+            extraction_id="extract-grok",
+            author_handle="elonmusk",
+            received_at_ms=10_000,
+            event_type="meme_phrase_seed",
+            subject="Grok",
+            direction_hint="attention_positive",
+            anchor_terms=[{"term": "Grok", "role": "keyword", "evidence": "Grok"}],
+            summary_zh="Musk 提到 Grok，形成 AI 相关关键词热度。",
+        )
+        _social_event(
+            conn,
+            event_id="event-build",
+            extraction_id="extract-build",
+            author_handle="toly",
+            received_at_ms=10_100,
+            event_type="ecosystem_boost",
+            subject="Solana builders",
+            direction_hint="attention_positive",
+            anchor_terms=[{"term": "Solana builders", "role": "ecosystem", "evidence": "Solana builders"}],
+            summary_zh="Solana builders 继续发货。",
+        )
+
+        data = TradingAttentionService(evidence=evidence, signals=signals, tokens=tokens).pulse(
+            window="1h",
+            scope="all",
+            limit=10,
+            q="grok, build",
+            now_ms=11_000,
+        )
+    finally:
+        conn.close()
+
+    assert {item["event"]["event_id"] for item in data["items"]} == {"event-grok", "event-build"}
+
+
 def test_trading_attention_classifies_market_structure_and_risk(tmp_path):
     conn, evidence, signals, tokens, _ = _runtime(tmp_path)
     try:

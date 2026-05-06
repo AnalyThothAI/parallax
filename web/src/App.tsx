@@ -56,6 +56,7 @@ export function App() {
   const windowKey = useTraderStore((state) => state.window);
   const scope = useTraderStore((state) => state.scope);
   const signalLabScope = "matched";
+  const signalLabWindow = "24h";
   const handles = useTraderStore((state) => state.handles);
   const search = useTraderStore((state) => state.search);
   const submittedSearch = useTraderStore((state) => state.submittedSearch);
@@ -146,12 +147,12 @@ export function App() {
   });
 
   const tradingAttentionQuery = useInfiniteQuery({
-    queryKey: ["signal-lab-pulse", windowKey, signalLabScope, signalLabKind, signalLabHandle, signalLabSearch],
+    queryKey: ["signal-lab-pulse", signalLabWindow, signalLabScope, signalLabKind, signalLabHandle, signalLabSearch],
     queryFn: async ({ pageParam }) => {
       const response = await getApi<TradingAttentionData>("/api/signal-lab/pulse", {
         token,
         params: {
-          window: windowKey,
+          window: signalLabWindow,
           scope: signalLabScope,
           kind: signalLabKind === "all" ? undefined : signalLabKind,
           handle: signalLabHandle || undefined,
@@ -164,6 +165,21 @@ export function App() {
     },
     initialPageParam: "",
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
+    enabled: Boolean(token),
+    refetchInterval: 12_000
+  });
+
+  const tradingAttentionOverviewQuery = useQuery({
+    queryKey: ["signal-lab-overview", signalLabWindow, signalLabScope],
+    queryFn: () =>
+      getApi<TradingAttentionData>("/api/signal-lab/pulse", {
+        token,
+        params: {
+          window: signalLabWindow,
+          scope: signalLabScope,
+          limit: 1
+        }
+      }),
     enabled: Boolean(token),
     refetchInterval: 12_000
   });
@@ -291,7 +307,9 @@ export function App() {
   const searchData = searchQuery.data?.data;
   const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
   const tradingAttentionData = useMemo(() => mergeTradingAttentionPages(tradingAttentionQuery.data?.pages), [tradingAttentionQuery.data?.pages]);
-  const signalLabPulseData = signalLabPulseQuery.data?.data ?? tradingAttentionData;
+  const signalLabOverviewData = tradingAttentionOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data ?? tradingAttentionData;
+  const signalLabPulseData = signalLabPulseQuery.data?.data ?? signalLabOverviewData;
+  const signalLabAttentionTotal = attentionKindTotal(signalLabOverviewData?.summary);
   const tradingAttentionItems = tradingAttentionData?.items ?? [];
   const liveSignalTapeItems = useMemo(
     () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
@@ -322,6 +340,7 @@ export function App() {
       }),
     [bootstrapQuery.data?.data.handles, liveItems, notificationSummary?.account_unread_counts, statusQuery.data?.data.handles]
   );
+  const activeWatchHandle = normalizedHandle(signalLabHandle);
 
   useEffect(() => {
     if (!latestSocketNotificationId) {
@@ -410,6 +429,30 @@ export function App() {
       setActiveView("signal_lab");
       setMobileTask("lab");
     }
+  };
+
+  const clearSignalLabFilters = () => {
+    setSignalLabKind("all");
+    setSignalLabHandle("");
+    setSignalLabSearch("");
+    setSelectedSignal(null);
+    setSelectedTapeEventId(null);
+    setMobileTask("lab");
+  };
+
+  const focusWatchHandle = (handle: string) => {
+    const normalized = normalizedHandle(handle);
+    if (!normalized) {
+      return;
+    }
+    setActiveView("signal_lab");
+    setMobileTask("lab");
+    setSignalLabKind("all");
+    setSignalLabHandle(`@${normalized}`);
+    setSignalLabSearch("");
+    runSearch(`@${normalized}`);
+    setSelectedSignal(null);
+    setSelectedTapeEventId(null);
   };
 
   const submitEvidenceSearch = () => {
@@ -542,7 +585,7 @@ export function App() {
       <RailButton
         active={activeView === "signal_lab"}
         label="Signal Lab"
-        value={tradingAttentionItems.length}
+        value={signalLabAttentionTotal}
         index="2"
         onClick={() => {
           setActiveView("signal_lab");
@@ -628,13 +671,13 @@ export function App() {
             flow·{windowKey} <b>{compactNumber(tokenItems.length)}</b>
           </span>
           <span>
-            direct <b>{compactNumber(tradingAttentionData?.summary.direct_token ?? 0)}</b>
+            direct <b>{compactNumber(signalLabOverviewData?.summary.direct_token ?? 0)}</b>
           </span>
           <span>
-            topics <b>{compactNumber(tradingAttentionData?.summary.topic_heat ?? 0)}</b>
+            topics <b>{compactNumber(signalLabOverviewData?.summary.topic_heat ?? 0)}</b>
           </span>
           <span>
-            risk <b>{compactNumber(tradingAttentionData?.summary.risk_alert ?? 0)}</b>
+            risk <b>{compactNumber(signalLabOverviewData?.summary.risk_alert ?? 0)}</b>
           </span>
         </div>
 
@@ -663,7 +706,12 @@ export function App() {
           <RailSection label="watchlist" className="watchlist-section">
             <div className="watchlist">
               {watchlistRows.map((row) => (
-                <button type="button" key={row.handle} onClick={() => runSearch(`@${row.handle}`)}>
+                <button
+                  className={activeView === "signal_lab" && activeWatchHandle === row.handle ? "active" : ""}
+                  type="button"
+                  key={row.handle}
+                  onClick={() => focusWatchHandle(row.handle)}
+                >
                   <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
                   <span className="watchlist-copy">
                     <b>@{row.handle}</b>
@@ -692,8 +740,11 @@ export function App() {
                 isFetchingNextPage={tradingAttentionQuery.isFetchingNextPage}
                 hasNextPage={Boolean(tradingAttentionQuery.hasNextPage)}
                 kindFilter={signalLabKind}
+                overviewData={signalLabOverviewData}
                 searchFilter={signalLabSearch}
                 selectedItemId={selectedAttentionItemId}
+                windowLabel={signalLabWindow}
+                onClearFilters={clearSignalLabFilters}
                 onHandleChange={setSignalLabHandle}
                 onKindChange={setSignalLabKind}
                 onLoadMore={() => void tradingAttentionQuery.fetchNextPage()}
@@ -932,6 +983,23 @@ function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {
     },
     { driver: 0, watch: 0, discard: 0 }
   );
+}
+
+function attentionKindTotal(summary?: TradingAttentionData["summary"]): number {
+  if (!summary) {
+    return 0;
+  }
+  return (
+    Number(summary.direct_token ?? 0) +
+    Number(summary.topic_heat ?? 0) +
+    Number(summary.ecosystem_signal ?? 0) +
+    Number(summary.market_structure ?? 0) +
+    Number(summary.risk_alert ?? 0)
+  );
+}
+
+function normalizedHandle(handle: string): string {
+  return handle.trim().replace(/^@/, "").toLowerCase();
 }
 
 function mergePostPages(pages?: TokenPostsData[]): TokenPostsData | null {

@@ -535,10 +535,15 @@ svg {
 }
 
 .watchlist button:hover,
-.watchlist button:focus-visible {
+.watchlist button:focus-visible,
+.watchlist button.active {
   color: var(--text);
   background: rgba(255, 255, 255, 0.035);
   outline: 0;
+}
+
+.watchlist button.active {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .watchlist-copy {
@@ -2466,6 +2471,9 @@ svg {
 
 .signal-lab-workbench-head {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 16px;
   border-bottom: 1px solid var(--line);
   padding: 18px 22px 14px;
 }
@@ -2485,9 +2493,35 @@ svg {
   font-size: 13px;
 }
 
+.signal-lab-workbench-state {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.signal-lab-workbench-state span {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--faint);
+  background: #090d0d;
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.signal-lab-workbench-state b {
+  color: var(--accent);
+}
+
 .signal-filter-bar {
   display: grid;
-  grid-template-columns: minmax(120px, 0.72fr) minmax(104px, 0.62fr) minmax(110px, 0.62fr) minmax(126px, 0.72fr) minmax(190px, 2fr) 92px;
+  grid-template-columns: minmax(120px, 0.75fr) minmax(126px, 0.8fr) minmax(190px, 1.4fr) minmax(104px, 0.62fr) 78px;
   gap: 10px;
   border-bottom: 1px solid var(--line);
   padding: 10px 22px 16px;
@@ -2534,6 +2568,25 @@ svg {
 
 .signal-filter-cell input::placeholder {
   color: var(--faint);
+}
+
+.signal-clear-filters {
+  min-width: 0;
+  min-height: 100%;
+  border: 1px solid var(--accent-line);
+  border-radius: 6px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.signal-clear-filters:disabled {
+  cursor: default;
+  border-color: var(--line);
+  color: var(--faint);
+  background: #090d0d;
 }
 
 .signal-stage-grid {
@@ -2633,6 +2686,35 @@ svg {
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
+}
+
+.signal-empty-panel {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  min-height: 280px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #070b0b;
+}
+
+.signal-empty-panel b {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.signal-empty-panel button {
+  min-height: 28px;
+  border: 1px solid var(--accent-line);
+  border-radius: 4px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .signal-load-more:disabled {

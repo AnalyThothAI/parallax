@@ -16,8 +16,11 @@ type SignalLabWorkbenchProps = {
   isFetchingNextPage?: boolean;
   isLoading?: boolean;
   kindFilter: TradingAttentionKindFilter;
+  overviewData?: TradingAttentionData;
   searchFilter: string;
   selectedItemId?: string | null;
+  windowLabel: string;
+  onClearFilters: () => void;
   onHandleChange: (handle: string) => void;
   onKindChange: (kind: TradingAttentionKindFilter) => void;
   onLoadMore: () => void;
@@ -32,20 +35,39 @@ export function SignalLabWorkbench({
   isFetchingNextPage,
   isLoading,
   kindFilter,
+  overviewData,
   searchFilter,
   selectedItemId,
+  windowLabel,
+  onClearFilters,
   onHandleChange,
   onKindChange,
   onLoadMore,
   onSearchChange,
   onSelect
 }: SignalLabWorkbenchProps) {
+  const items = data?.items ?? [];
+  const summary = overviewData?.summary ?? data?.summary;
+  const hasActiveFilters = kindFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
+  const categoryLabel = kindFilter === "all" ? "all categories" : labelForKind(kindFilter);
+  const totalAttention = totalByKind(summary);
   return (
     <section className="signal-lab-workbench">
       <header className="signal-lab-workbench-head">
         <div>
           <h2>Signal Lab</h2>
           <p>Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.</p>
+        </div>
+        <div className="signal-lab-workbench-state">
+          <span>
+            window <b>{windowLabel}</b>
+          </span>
+          <span>
+            total <b>{totalAttention}</b>
+          </span>
+          <span>
+            shown <b>{items.length}</b>
+          </span>
         </div>
       </header>
 
@@ -58,7 +80,7 @@ export function SignalLabWorkbench({
             onClick={() => onKindChange(kindFilter === item.kind ? "all" : item.kind)}
           >
             <span>{item.label}</span>
-            <b>{data?.summary[item.kind] ?? 0}</b>
+            <b>{summary?.[item.kind] ?? 0}</b>
             <em>{item.description}</em>
           </button>
         ))}
@@ -87,14 +109,23 @@ export function SignalLabWorkbench({
           <span>Sort</span>
           <b>Heat</b>
         </div>
+        <button className="signal-clear-filters" disabled={!hasActiveFilters} type="button" onClick={onClearFilters}>
+          Reset
+        </button>
       </div>
 
       <section className="signal-chain-workbench-list">
         <header>
           <h3>Trading Attention</h3>
-          <span>{kindFilter === "all" ? "all categories" : ATTENTION_KINDS.find((item) => item.kind === kindFilter)?.label}</span>
+          <span>
+            {items.length} shown · {categoryLabel}
+          </span>
         </header>
-        <TradingAttentionList isLoading={isLoading} items={data?.items ?? []} selectedItemId={selectedItemId} onSelect={onSelect} />
+        {!isLoading && !items.length ? (
+          <SignalLabEmptyState hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
+        ) : (
+          <TradingAttentionList isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
+        )}
         {hasNextPage ? (
           <button className="signal-load-more" disabled={isFetchingNextPage} type="button" onClick={onLoadMore}>
             {isFetchingNextPage ? "Loading..." : "Load more"}
@@ -103,6 +134,29 @@ export function SignalLabWorkbench({
       </section>
     </section>
   );
+}
+
+function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFilters: boolean; onClearFilters: () => void }) {
+  return (
+    <div className="signal-empty-panel">
+      <b>{hasActiveFilters ? "No matching trading attention" : "No trading attention in this window"}</b>
+      {hasActiveFilters ? (
+        <button type="button" onClick={onClearFilters}>
+          Clear filters
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function labelForKind(kind: TradingAttentionKindFilter): string {
+  if (kind === "all") return "all categories";
+  return ATTENTION_KINDS.find((item) => item.kind === kind)?.label ?? kind;
+}
+
+function totalByKind(summary?: TradingAttentionData["summary"]): number {
+  if (!summary) return 0;
+  return ATTENTION_KINDS.reduce((total, item) => total + Number(summary[item.kind] ?? 0), 0);
 }
 
 function FilterField({

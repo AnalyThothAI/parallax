@@ -309,6 +309,32 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rail.querySelector(".rail-footer")?.previousElementSibling).toBe(watchlistSection);
   });
 
+  it("uses watchlist clicks as a Signal Lab account lens", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByText("Token");
+    const rail = container.querySelector(".desktop-side-rail") as HTMLElement;
+    const traderpowButton = await within(rail).findByRole("button", { name: /@traderpow/ });
+
+    fireEvent.click(traderpowButton);
+
+    expect(await screen.findByRole("heading", { name: "Signal Lab" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("@traderpow");
+    expect(screen.getByLabelText("Signal Lab text filter")).toHaveValue("");
+    expect(traderpowButton).toHaveClass("active");
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/signal-lab/pulse" &&
+            options?.params?.window === "24h" &&
+            options?.params?.handle === "@traderpow" &&
+            options?.params?.q === undefined
+        )
+      ).toBe(true);
+    });
+  });
+
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
     const { container } = renderWithQuery(<App />);
 
@@ -496,6 +522,7 @@ describe("App Token Radar social heat cockpit", () => {
         mockedGetApi.mock.calls.some(
           ([path, options]) =>
             path === "/api/signal-lab/pulse" &&
+            options?.params?.window === "24h" &&
             options?.params?.kind === "topic_heat" &&
             options?.params?.handle === "@cz_binance" &&
             options?.params?.q === "build on BNB"

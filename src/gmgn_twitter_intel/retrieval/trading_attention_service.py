@@ -515,9 +515,14 @@ def _filter_items(
     if kind in KINDS:
         filtered = [item for item in filtered if item["kind"] == kind]
     if q and q.strip():
-        needle = q.strip().lower().lstrip("@")
-        filtered = [item for item in filtered if needle in _search_text(item)]
+        terms = _query_terms(q)
+        if terms:
+            filtered = [item for item in filtered if any(term in _search_text(item) for term in terms)]
     return filtered
+
+
+def _query_terms(q: str) -> list[str]:
+    return [term.strip().lower().lstrip("@") for term in re.split(r"[,\n]+", q) if term.strip()]
 
 
 def _search_text(item: dict[str, Any]) -> str:
