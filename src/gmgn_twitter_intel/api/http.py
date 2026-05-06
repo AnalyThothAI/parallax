@@ -690,7 +690,9 @@ def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
 def _json_loads(value: Any, default: Any) -> Any:
     if value is None:
         return default
+    if not isinstance(value, str):
+        return value
     try:
-        return json.loads(str(value))
+        return json.loads(value)
     except json.JSONDecodeError:
         return default

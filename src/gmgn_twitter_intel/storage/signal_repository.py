@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import time
 from dataclasses import asdict, dataclass
 from typing import Any
+
+from psycopg.types.json import Jsonb
 
 from ..pipeline.entity_extractor import EVM_QUERY_CHAINS
 
@@ -23,15 +24,15 @@ class SignalAlert:
 
 
 class SignalRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def token_seen_before(self, *, identity_key: str, author_handle: str | None, before_ms: int) -> tuple[bool, bool]:
         global_seen = self.conn.execute(
             """
             SELECT 1 FROM event_token_mentions
-            WHERE identity_key = ?
-              AND received_at_ms < ?
+            WHERE identity_key = %s
+              AND received_at_ms < %s
             LIMIT 1
             """,
             (identity_key, before_ms),
@@ -42,9 +43,9 @@ class SignalRepository:
                 self.conn.execute(
                     """
                     SELECT 1 FROM event_token_mentions
-                    WHERE identity_key = ?
-                      AND author_handle = ?
-                      AND received_at_ms < ?
+                    WHERE identity_key = %s
+                      AND author_handle = %s
+                      AND received_at_ms < %s
                     LIMIT 1
                     """,
                     (identity_key, author_handle, before_ms),
@@ -70,33 +71,33 @@ class SignalRepository:
     ) -> SignalAlert | None:
         now_ms = _now_ms()
         alert_id = _id("account_token", event_id, entity_key)
-        try:
-            self.conn.execute(
-                """
-                INSERT INTO account_token_alerts(
-                  alert_id, event_id, author_handle, entity_key, entity_type, normalized_value, chain,
-                  token_resolution_status, is_first_seen_global, is_first_seen_by_author, received_at_ms, created_at_ms
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    alert_id,
-                    event_id,
-                    author_handle,
-                    entity_key,
-                    entity_type,
-                    normalized_value,
-                    chain,
-                    token_resolution_status,
-                    1 if is_first_seen_global else 0,
-                    1 if is_first_seen_by_author else 0,
-                    received_at_ms,
-                    now_ms,
-                ),
+        cursor = self.conn.execute(
+            """
+            INSERT INTO account_token_alerts(
+              alert_id, event_id, author_handle, entity_key, entity_type, normalized_value, chain,
+              token_resolution_status, is_first_seen_global, is_first_seen_by_author, received_at_ms, created_at_ms
             )
-            if commit:
-                self.conn.commit()
-        except sqlite3.IntegrityError:
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(alert_id) DO NOTHING
+            """,
+            (
+                alert_id,
+                event_id,
+                author_handle,
+                entity_key,
+                entity_type,
+                normalized_value,
+                chain,
+                token_resolution_status,
+                is_first_seen_global,
+                is_first_seen_by_author,
+                received_at_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        if cursor.rowcount == 0:
             return None
         return SignalAlert(
             alert_type="account_token",
@@ -123,35 +124,33 @@ class SignalRepository:
         now_ms = _now_ms()
         inserted = 0
         for mention in token_mentions:
-            try:
-                self.conn.execute(
-                    """
-                    INSERT INTO event_token_mentions(
-                      mention_id, event_id, identity_key, token_id, identity_status, chain, address, symbol,
-                      source, received_at_ms, author_handle, author_followers, is_watched, created_at_ms
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        _id("event_token_mention", event_id, mention.identity_key),
-                        event_id,
-                        mention.identity_key,
-                        mention.token_id,
-                        mention.identity_status,
-                        mention.chain,
-                        mention.address,
-                        mention.symbol,
-                        mention.source,
-                        received_at_ms,
-                        author_handle,
-                        author_followers,
-                        1 if is_watched else 0,
-                        now_ms,
-                    ),
+            cursor = self.conn.execute(
+                """
+                INSERT INTO event_token_mentions(
+                  mention_id, event_id, identity_key, token_id, identity_status, chain, address, symbol,
+                  source, received_at_ms, author_handle, author_followers, is_watched, created_at_ms
                 )
-                inserted += 1
-            except sqlite3.IntegrityError:
-                continue
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(mention_id) DO NOTHING
+                """,
+                (
+                    _id("event_token_mention", event_id, mention.identity_key),
+                    event_id,
+                    mention.identity_key,
+                    mention.token_id,
+                    mention.identity_status,
+                    mention.chain,
+                    mention.address,
+                    mention.symbol,
+                    mention.source,
+                    received_at_ms,
+                    author_handle,
+                    author_followers,
+                    is_watched,
+                    now_ms,
+                ),
+            )
+            inserted += int(cursor.rowcount == 1)
         if commit:
             self.conn.commit()
         return inserted
@@ -161,7 +160,7 @@ class SignalRepository:
             """
             SELECT *
             FROM event_token_mentions
-            WHERE event_id = ?
+            WHERE event_id = %s
             ORDER BY received_at_ms, mention_id
             """,
             (event_id,),
@@ -173,9 +172,9 @@ class SignalRepository:
             """
             SELECT *
             FROM event_token_mentions
-            WHERE symbol = ?
+            WHERE symbol = %s
               AND token_id IS NULL
-              AND identity_key = ?
+              AND identity_key = %s
             ORDER BY received_at_ms, mention_id
             """,
             (_normalize_symbol(symbol), f"symbol:{_normalize_symbol(symbol)}"),
@@ -193,20 +192,20 @@ class SignalRepository:
         clauses = []
         params: list[Any] = []
         if symbol:
-            clauses.append("symbol = ?")
+            clauses.append("symbol = %s")
             params.append(_normalize_symbol(symbol))
         if direct_only:
             clauses.append("token_id IS NOT NULL")
         if symbol_only:
             clauses.append("token_id IS NULL")
             if symbol:
-                clauses.append("identity_key = ?")
+                clauses.append("identity_key = %s")
                 params.append(f"symbol:{_normalize_symbol(symbol)}")
             else:
                 clauses.append("identity_key LIKE 'symbol:%'")
         limit_clause = ""
         if limit is not None:
-            limit_clause = "LIMIT ?"
+            limit_clause = "LIMIT %s"
             params.append(max(0, int(limit)))
         where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
@@ -230,7 +229,7 @@ class SignalRepository:
     ) -> int:
         if not mention_ids:
             return 0
-        placeholders = ",".join("?" for _ in mention_ids)
+        placeholders = ",".join("%s" for _ in mention_ids)
         self.conn.execute(
             f"DELETE FROM event_token_attributions WHERE mention_id IN ({placeholders})",
             mention_ids,
@@ -249,11 +248,12 @@ class SignalRepository:
                   author_followers, is_watched, created_at_ms
                 )
                 VALUES (
-                  :attribution_id, :mention_id, :event_id, :mention_identity_key, :identity_key, :token_id,
-                  :identity_status, :chain, :address, :symbol, :source, :attribution_status,
-                  :attribution_confidence, :attribution_weight, :attribution_rank, :candidate_count,
-                  :score_features_json, :reasons_json, :risks_json, :received_at_ms, :author_handle,
-                  :author_followers, :is_watched, :created_at_ms
+                  %(attribution_id)s, %(mention_id)s, %(event_id)s, %(mention_identity_key)s, %(identity_key)s,
+                  %(token_id)s,
+                  %(identity_status)s, %(chain)s, %(address)s, %(symbol)s, %(source)s, %(attribution_status)s,
+                  %(attribution_confidence)s, %(attribution_weight)s, %(attribution_rank)s, %(candidate_count)s,
+                  %(score_features_json)s, %(reasons_json)s, %(risks_json)s, %(received_at_ms)s, %(author_handle)s,
+                  %(author_followers)s, %(is_watched)s, %(created_at_ms)s
                 )
                 """,
                 payload,
@@ -269,9 +269,9 @@ class SignalRepository:
             SELECT
               MIN(received_at_ms) AS first_seen_ms,
               MAX(received_at_ms) AS latest_seen_ms,
-              MIN(CASE WHEN is_watched = 1 THEN received_at_ms END) AS first_watched_seen_ms
+              MIN(CASE WHEN is_watched = true THEN received_at_ms END) AS first_watched_seen_ms
             FROM event_token_attributions
-            WHERE identity_key = ?
+            WHERE identity_key = %s
               AND token_id IS NOT NULL
               AND attribution_status IN ('direct', 'selected')
               AND attribution_weight > 0
@@ -291,9 +291,9 @@ class SignalRepository:
             """
             SELECT COUNT(*) AS count
             FROM event_token_attributions
-            WHERE token_id = ?
-              AND received_at_ms >= ?
-              AND received_at_ms < ?
+            WHERE token_id = %s
+              AND received_at_ms >= %s
+              AND received_at_ms < %s
               AND attribution_status = 'direct'
             """,
             (token_id, since_ms, before_ms),
@@ -342,24 +342,24 @@ class SignalRepository:
         limit: int,
         watched_only: bool = False,
     ) -> list[dict[str, Any]]:
-        clauses = ["etm.address = ?"]
+        clauses = ["etm.address = %s"]
         params: list[Any] = [address]
         if chain == "evm_unknown":
-            placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+            placeholders = ",".join("%s" for _ in EVM_QUERY_CHAINS)
             clauses.append(f"etm.chain IN ({placeholders})")
             params.extend(sorted(EVM_QUERY_CHAINS))
         else:
-            clauses.append("etm.chain = ?")
+            clauses.append("etm.chain = %s")
             params.append(chain)
         if watched_only:
-            clauses.append("etm.is_watched = 1")
+            clauses.append("etm.is_watched = true")
         rows = self.conn.execute(
             f"""
             SELECT etm.*
             FROM event_token_mentions etm
             WHERE {" AND ".join(clauses)}
             ORDER BY etm.received_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -372,17 +372,17 @@ class SignalRepository:
         limit: int,
         watched_only: bool = False,
     ) -> list[dict[str, Any]]:
-        clauses = ["etm.symbol = ?"]
+        clauses = ["etm.symbol = %s"]
         params: list[Any] = [symbol.strip().lstrip("$").upper()]
         if watched_only:
-            clauses.append("etm.is_watched = 1")
+            clauses.append("etm.is_watched = true")
         rows = self.conn.execute(
             f"""
             SELECT etm.*
             FROM event_token_mentions etm
             WHERE {" AND ".join(clauses)}
             ORDER BY etm.received_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -396,7 +396,7 @@ class SignalRepository:
         watched_only: bool = False,
     ) -> list[dict[str, Any]]:
         clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
-        clauses.append("eta.token_id = ?")
+        clauses.append("eta.token_id = %s")
         params.append(token_id)
         rows = self.conn.execute(
             f"""
@@ -404,7 +404,7 @@ class SignalRepository:
             FROM event_token_attributions eta
             WHERE {" AND ".join(clauses)}
             ORDER BY eta.received_at_ms DESC, eta.event_id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -412,7 +412,7 @@ class SignalRepository:
 
     def token_attribution_count_by_token_id(self, *, token_id: str, watched_only: bool = False) -> int:
         clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
-        clauses.append("eta.token_id = ?")
+        clauses.append("eta.token_id = %s")
         params.append(token_id)
         row = self.conn.execute(
             f"""
@@ -433,7 +433,7 @@ class SignalRepository:
         watched_only: bool = False,
     ) -> list[dict[str, Any]]:
         clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
-        clauses.append("eta.address = ?")
+        clauses.append("eta.address = %s")
         params.append(address)
         chain_clause, chain_params = _attribution_chain_clause("eta.chain", chain)
         clauses.append(chain_clause)
@@ -444,7 +444,7 @@ class SignalRepository:
             FROM event_token_attributions eta
             WHERE {" AND ".join(clauses)}
             ORDER BY eta.received_at_ms DESC, eta.event_id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -452,7 +452,7 @@ class SignalRepository:
 
     def token_attribution_count_by_ca(self, *, chain: str, address: str, watched_only: bool = False) -> int:
         clauses, params = _resolved_attribution_clauses(watched_only=watched_only)
-        clauses.append("eta.address = ?")
+        clauses.append("eta.address = %s")
         params.append(address)
         chain_clause, chain_params = _attribution_chain_clause("eta.chain", chain)
         clauses.append(chain_clause)
@@ -469,7 +469,7 @@ class SignalRepository:
 
     def alerts_for_event(self, event_id: str) -> list[dict[str, Any]]:
         token_rows = self.conn.execute(
-            "SELECT 'account_token' AS alert_type, * FROM account_token_alerts WHERE event_id = ?",
+            "SELECT 'account_token' AS alert_type, * FROM account_token_alerts WHERE event_id = %s",
             (event_id,),
         ).fetchall()
         rows = [dict(row) for row in token_rows]
@@ -500,7 +500,7 @@ class SignalRepository:
               author_followers,
               is_watched
             FROM event_token_attributions
-            WHERE event_id = ?
+            WHERE event_id = %s
               AND attribution_status IN ('direct', 'selected')
               AND attribution_weight > 0
             ORDER BY attribution_weight DESC, attribution_confidence DESC, attribution_rank ASC
@@ -510,12 +510,12 @@ class SignalRepository:
         return [dict(row) for row in rows]
 
     def _account_token_alerts(self, *, since_ms: int, limit: int, handles: set[str] | None) -> list[dict[str, Any]]:
-        clauses = ["received_at_ms >= ?"]
+        clauses = ["received_at_ms >= %s"]
         params: list[Any] = [since_ms]
         if handles:
             normalized = sorted(handle.strip().lstrip("@").lower() for handle in handles if handle.strip())
             if normalized:
-                placeholders = ",".join("?" for _ in normalized)
+                placeholders = ",".join("%s" for _ in normalized)
                 clauses.append(f"author_handle IN ({placeholders})")
                 params.extend(normalized)
         rows = self.conn.execute(
@@ -523,7 +523,7 @@ class SignalRepository:
             SELECT 'account_token' AS alert_type, * FROM account_token_alerts
             WHERE {" AND ".join(clauses)}
             ORDER BY received_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -552,15 +552,15 @@ def _resolved_attribution_clauses(*, watched_only: bool) -> tuple[list[str], lis
         "eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')",
     ]
     if watched_only:
-        clauses.append("eta.is_watched = 1")
+        clauses.append("eta.is_watched = true")
     return clauses, []
 
 
 def _attribution_chain_clause(column: str, chain: str) -> tuple[str, list[Any]]:
     if chain == "evm_unknown":
-        placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+        placeholders = ",".join("%s" for _ in EVM_QUERY_CHAINS)
         return f"{column} IN ({placeholders})", sorted(EVM_QUERY_CHAINS)
-    return f"{column} = ?", [chain]
+    return f"{column} = %s", [chain]
 
 
 def _attribution_payload(attribution: Any, *, now_ms: int) -> dict[str, Any]:
@@ -570,9 +570,13 @@ def _attribution_payload(attribution: Any, *, now_ms: int) -> dict[str, Any]:
         data = dict(attribution.__dict__)
     else:
         data = dict(attribution)
-    data["score_features_json"] = json.dumps(data.pop("score_features", {}), ensure_ascii=False, sort_keys=True)
-    data["reasons_json"] = json.dumps(data.pop("reasons", []), ensure_ascii=False, sort_keys=True)
-    data["risks_json"] = json.dumps(data.pop("risks", []), ensure_ascii=False, sort_keys=True)
-    data["is_watched"] = 1 if data.get("is_watched") else 0
+    data["score_features_json"] = _jsonb(data.pop("score_features", {}))
+    data["reasons_json"] = _jsonb(data.pop("reasons", []))
+    data["risks_json"] = _jsonb(data.pop("risks", []))
+    data["is_watched"] = bool(data.get("is_watched"))
     data["created_at_ms"] = now_ms
     return data
+
+
+def _jsonb(value: Any) -> Jsonb:
+    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))

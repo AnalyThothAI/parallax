@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import time
 from typing import Any
 
@@ -10,7 +9,7 @@ from ..pipeline.entity_extractor import EVM_QUERY_CHAINS, ExtractedEntity, norma
 
 
 class EntityRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def insert_event_entities(
@@ -25,42 +24,40 @@ class EntityRepository:
         now_ms = _now_ms()
         author = event.author.handle.lower() if event.author.handle else None
         for entity in entities:
-            try:
-                self.conn.execute(
-                    """
-                    INSERT INTO event_entities(
-                      entity_id, event_id, entity_type, raw_value, normalized_value, chain,
-                      token_resolution_status, confidence, source, received_at_ms, author_handle,
-                      is_watched, created_at_ms
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        _entity_id(event.event_id, entity),
-                        event.event_id,
-                        entity.entity_type,
-                        entity.raw_value,
-                        entity.normalized_value,
-                        entity.chain,
-                        entity.token_resolution_status,
-                        entity.confidence,
-                        entity.source,
-                        event.received_at_ms,
-                        author,
-                        1 if is_watched else 0,
-                        now_ms,
-                    ),
+            cursor = self.conn.execute(
+                """
+                INSERT INTO event_entities(
+                  entity_id, event_id, entity_type, raw_value, normalized_value, chain,
+                  token_resolution_status, confidence, source, received_at_ms, author_handle,
+                  is_watched, created_at_ms
                 )
-                inserted += 1
-            except sqlite3.IntegrityError:
-                continue
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    _entity_id(event.event_id, entity),
+                    event.event_id,
+                    entity.entity_type,
+                    entity.raw_value,
+                    entity.normalized_value,
+                    entity.chain,
+                    entity.token_resolution_status,
+                    entity.confidence,
+                    entity.source,
+                    event.received_at_ms,
+                    author,
+                    is_watched,
+                    now_ms,
+                ),
+            )
+            inserted += int(cursor.rowcount == 1)
         if commit:
             self.conn.commit()
         return inserted
 
     def entities_for_event(self, event_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            "SELECT * FROM event_entities WHERE event_id = ? ORDER BY entity_type, normalized_value",
+            "SELECT * FROM event_entities WHERE event_id = %s ORDER BY entity_type, normalized_value",
             (event_id,),
         ).fetchall()
         return [dict(row) for row in rows]
@@ -100,25 +97,25 @@ class EntityRepository:
         limit: int,
         watched_only: bool,
     ) -> list[dict[str, Any]]:
-        clauses = ["entity_type = ?", "normalized_value = ?"]
+        clauses = ["entity_type = %s", "normalized_value = %s"]
         params: list[Any] = [entity_type, normalized_value]
         if chain is None:
             clauses.append("chain IS NULL")
         elif chain == "evm_unknown" and entity_type == "ca":
-            placeholders = ",".join("?" for _ in EVM_QUERY_CHAINS)
+            placeholders = ",".join("%s" for _ in EVM_QUERY_CHAINS)
             clauses.append(f"chain IN ({placeholders})")
             params.extend(sorted(EVM_QUERY_CHAINS))
         else:
-            clauses.append("chain = ?")
+            clauses.append("chain = %s")
             params.append(chain)
         if watched_only:
-            clauses.append("is_watched = 1")
+            clauses.append("is_watched = true")
         rows = self.conn.execute(
             f"""
             SELECT * FROM event_entities
             WHERE {" AND ".join(clauses)}
             ORDER BY received_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()

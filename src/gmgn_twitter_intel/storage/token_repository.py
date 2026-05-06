@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from eth_utils import is_address, to_checksum_address
+from psycopg.types.json import Jsonb
 
 from ..market.gmgn_openapi_client import GmgnTokenInfo
 from ..models import TokenSnapshot
@@ -43,7 +43,7 @@ class TokenIdentity:
 
 
 class TokenRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def upsert_snapshot(
@@ -66,7 +66,7 @@ class TokenRepository:
               token_id, chain, address, symbol, name, icon_url, identity_status,
               first_seen_event_id, first_seen_ms, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, NULL, ?, 'resolved_ca', ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, NULL, %s, 'resolved_ca', %s, %s, %s, %s)
             ON CONFLICT(chain, address) DO UPDATE SET
               symbol = excluded.symbol,
               icon_url = COALESCE(excluded.icon_url, tokens.icon_url),
@@ -133,7 +133,7 @@ class TokenRepository:
               token_id, chain, address, symbol, name, icon_url, identity_status,
               first_seen_event_id, first_seen_ms, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, 'resolved_ca', ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, 'resolved_ca', %s, %s, %s, %s)
             ON CONFLICT(chain, address) DO UPDATE SET
               symbol = excluded.symbol,
               name = COALESCE(excluded.name, tokens.name),
@@ -185,7 +185,7 @@ class TokenRepository:
     def get_token(self, token_id: str | None) -> dict[str, Any] | None:
         if not token_id:
             return None
-        row = self.conn.execute("SELECT * FROM tokens WHERE token_id = ?", (token_id,)).fetchone()
+        row = self.conn.execute("SELECT * FROM tokens WHERE token_id = %s", (token_id,)).fetchone()
         return _canonical_token_row(dict(row)) if row else None
 
     def upsert_ca(
@@ -210,7 +210,7 @@ class TokenRepository:
               token_id, chain, address, symbol, name, icon_url, identity_status,
               first_seen_event_id, first_seen_ms, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, NULL, NULL, %s, %s, %s, %s, %s)
             ON CONFLICT(chain, address) DO UPDATE SET
               symbol = CASE
                 WHEN tokens.symbol = tokens.address THEN excluded.symbol
@@ -258,7 +258,7 @@ class TokenRepository:
         row = self.conn.execute(
             """
             SELECT * FROM token_market_snapshots
-            WHERE token_id = ?
+            WHERE token_id = %s
             ORDER BY received_at_ms DESC
             LIMIT 1
             """,
@@ -272,8 +272,8 @@ class TokenRepository:
         row = self.conn.execute(
             """
             SELECT * FROM token_market_snapshots
-            WHERE token_id = ?
-              AND received_at_ms <= ?
+            WHERE token_id = %s
+              AND received_at_ms <= %s
             ORDER BY received_at_ms DESC
             LIMIT 1
             """,
@@ -287,8 +287,8 @@ class TokenRepository:
         row = self.conn.execute(
             """
             SELECT * FROM token_market_snapshots
-            WHERE token_id = ?
-              AND received_at_ms >= ?
+            WHERE token_id = %s
+              AND received_at_ms >= %s
             ORDER BY received_at_ms ASC
             LIMIT 1
             """,
@@ -308,9 +308,9 @@ class TokenRepository:
         rows = self.conn.execute(
             """
             SELECT * FROM token_market_snapshots
-            WHERE token_id = ?
-              AND received_at_ms >= ?
-              AND received_at_ms <= ?
+            WHERE token_id = %s
+              AND received_at_ms >= %s
+              AND received_at_ms <= %s
             ORDER BY received_at_ms ASC
             """,
             (token_id, int(start_ms), int(end_ms)),
@@ -329,11 +329,11 @@ class TokenRepository:
         row = self.conn.execute(
             """
             SELECT *,
-                   abs(received_at_ms - ?) AS distance_ms
+                   abs(received_at_ms - %s) AS distance_ms
             FROM token_market_snapshots
-            WHERE token_id = ?
-              AND received_at_ms >= ?
-              AND received_at_ms <= ?
+            WHERE token_id = %s
+              AND received_at_ms >= %s
+              AND received_at_ms <= %s
             ORDER BY distance_ms ASC, received_at_ms ASC
             LIMIT 1
             """,
@@ -352,8 +352,8 @@ class TokenRepository:
         row = self.conn.execute(
             """
             SELECT * FROM token_market_snapshots
-            WHERE token_id = ?
-              AND event_id = ?
+            WHERE token_id = %s
+              AND event_id = %s
             LIMIT 1
             """,
             (token_id, event_id),
@@ -364,7 +364,7 @@ class TokenRepository:
         rows = self.conn.execute(
             """
             SELECT token_id FROM token_aliases
-            WHERE symbol = ?
+            WHERE symbol = %s
             ORDER BY token_id
             """,
             (_normalize_symbol(symbol),),
@@ -377,7 +377,7 @@ class TokenRepository:
             SELECT t.*
             FROM token_aliases ta
             JOIN tokens t ON t.token_id = ta.token_id
-            WHERE ta.symbol = ?
+            WHERE ta.symbol = %s
             ORDER BY ta.confidence DESC, t.first_seen_ms DESC, t.token_id
             """,
             (_normalize_symbol(symbol),),
@@ -423,7 +423,7 @@ class TokenRepository:
             INSERT INTO token_aliases(
               alias_id, symbol, token_id, chain, address, source, confidence, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(symbol, token_id) DO UPDATE SET
               chain = excluded.chain,
               address = excluded.address,
@@ -459,7 +459,7 @@ class TokenRepository:
               snapshot_id, token_id, event_id, price, previous_price, market_cap,
               source_channel, received_at_ms, raw_json, created_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(token_id, event_id) DO UPDATE SET
               price = excluded.price,
               previous_price = excluded.previous_price,
@@ -477,7 +477,7 @@ class TokenRepository:
                 snapshot.market_cap,
                 source_channel,
                 received_at_ms,
-                json.dumps(snapshot.raw, ensure_ascii=False, sort_keys=True),
+                _json(snapshot.raw),
                 now_ms,
             ),
         )
@@ -498,7 +498,7 @@ class TokenRepository:
               snapshot_id, token_id, event_id, price, previous_price, market_cap,
               source_channel, received_at_ms, raw_json, created_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(token_id, event_id) DO UPDATE SET
               price = excluded.price,
               previous_price = excluded.previous_price,
@@ -516,7 +516,7 @@ class TokenRepository:
                 info.market_cap,
                 source_channel,
                 received_at_ms,
-                json.dumps(info.raw, ensure_ascii=False, sort_keys=True),
+                _json(info.raw),
                 now_ms,
             ),
         )
@@ -573,6 +573,10 @@ def _alias_id(symbol: str, token_id: str) -> str:
 
 def _snapshot_id(token_id: str, event_id: str) -> str:
     return _id("market", token_id, event_id)
+
+
+def _json(value: Any) -> Jsonb:
+    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
 
 
 def _id(*parts: str) -> str:

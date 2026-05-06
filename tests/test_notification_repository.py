@@ -1,12 +1,10 @@
-import json
-
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def repository(tmp_path) -> NotificationRepository:
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     return NotificationRepository(conn)
 
@@ -54,7 +52,7 @@ def test_insert_notification_is_idempotent_by_dedup_key(tmp_path):
     assert len(rows) == 1
     assert rows[0]["notification_id"] == first["notification_id"]
     assert rows[0]["read_at_ms"] is None
-    assert json.loads(rows[0]["payload_json"]) == {"event_id": "event-1"}
+    assert rows[0]["payload_json"] == {"event_id": "event-1"}
 
 
 def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):

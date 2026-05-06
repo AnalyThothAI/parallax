@@ -284,9 +284,9 @@ class TokenFlowService:
             """
             SELECT status, COUNT(*) AS count
             FROM token_market_observations
-            WHERE token_id = ?
-              AND target_received_at_ms >= ?
-              AND target_received_at_ms <= ?
+            WHERE token_id = %s
+              AND target_received_at_ms >= %s
+              AND target_received_at_ms <= %s
             GROUP BY status
             """,
             (token_id, start_ms, end_ms),
@@ -449,14 +449,14 @@ class TokenFlowService:
         if not token_ids:
             return {}
         since_ms = reference_ms - WINDOW_MS["24h"]
-        placeholders = ",".join("?" for _ in token_ids)
-        watched_clause = "AND eta.is_watched = 1" if watched_only else ""
+        placeholders = ",".join("%s" for _ in token_ids)
+        watched_clause = "AND eta.is_watched = true" if watched_only else ""
         mention_rows = self.signals.conn.execute(
             f"""
             SELECT eta.token_id, eta.event_id, eta.received_at_ms
             FROM event_token_attributions eta
-            WHERE eta.received_at_ms >= ?
-              AND eta.received_at_ms < ?
+            WHERE eta.received_at_ms >= %s
+              AND eta.received_at_ms < %s
               AND eta.token_id IN ({placeholders})
               AND eta.token_id IS NOT NULL
               AND eta.attribution_status IN ('direct', 'selected')
@@ -607,16 +607,16 @@ class TokenFlowService:
         token_ids = sorted({str(row.get("token_id")) for row in rows if row.get("token_id")})
         if not token_ids:
             return {}
-        watched_clause = "AND eta.is_watched = 1" if watched_only else ""
-        placeholders = ",".join("?" for _ in token_ids)
+        watched_clause = "AND eta.is_watched = true" if watched_only else ""
+        placeholders = ",".join("%s" for _ in token_ids)
         window_start_ms = int(rows[0]["window_start_ms"])
         window_end_ms = int(rows[0]["window_end_ms"])
         results = self.signals.conn.execute(
             f"""
             SELECT eta.token_id, COUNT(DISTINCT eta.event_id) AS count
             FROM event_token_attributions eta
-            WHERE eta.received_at_ms >= ?
-              AND eta.received_at_ms < ?
+            WHERE eta.received_at_ms >= %s
+              AND eta.received_at_ms < %s
               AND eta.token_id IN ({placeholders})
               AND eta.token_id IS NOT NULL
               AND eta.attribution_status IN ('direct', 'selected')
@@ -728,6 +728,8 @@ def _raw_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
     if not snapshot:
         return {}
     raw_json = snapshot.get("raw_json")
+    if isinstance(raw_json, dict):
+        return raw_json
     if not isinstance(raw_json, str):
         return {}
     try:

@@ -12,6 +12,7 @@ def test_compose_runs_postgres_and_migration_before_app() -> None:
     assert "postgres" in services
     assert "migrate" in services
     assert services["postgres"]["image"].startswith("postgres:")
+    assert "gmgn-twitter-intel-postgres:/var/lib/postgresql" in services["postgres"]["volumes"]
     assert services["postgres"]["healthcheck"]["test"][0] == "CMD-SHELL"
     assert "pg_isready" in services["postgres"]["healthcheck"]["test"][1]
 

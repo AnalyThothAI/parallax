@@ -46,7 +46,7 @@ const statusData: StatusData = {
   ok: true,
   reasons: [],
   handles: ["toly", "traderpow"],
-  store: "/root/.gmgn-twitter-intel/twitter_intel.sqlite3",
+  store: "postgresql",
   collector: {
     started_at_ms: 1_777_770_000_000,
     frames_received: 88,

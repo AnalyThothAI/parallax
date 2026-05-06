@@ -7,9 +7,9 @@ from gmgn_twitter_intel.pipeline.market_observation_worker import MarketObservat
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_market_observation_repository import insert_direct_attribution
 
 
@@ -29,7 +29,7 @@ class FakeClient:
 
 
 def open_worker_runtime(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     signals = SignalRepository(conn)

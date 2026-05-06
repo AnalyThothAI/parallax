@@ -1,7 +1,7 @@
 [project]
 name = "gmgn-twitter-intel"
 version = "0.1.0"
-description = "Evidence-first GMGN Twitter intelligence service with SQLite-backed entity and signal retrieval."
+description = "Evidence-first GMGN Twitter intelligence service with PostgreSQL-backed entity and signal retrieval."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [

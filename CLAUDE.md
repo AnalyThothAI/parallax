@@ -31,7 +31,7 @@ uv run gmgn-twitter-intel account-narratives --window 24h --limit 50
 
 ## Architecture
 
-This repository is a standard `uv + src/` Python service backed by SQLite WAL:
+This repository is a standard `uv + src/` Python service backed by PostgreSQL:
 
 - `src/gmgn_twitter_intel/settings.py`: YAML config loader and typed runtime settings.
 - `src/gmgn_twitter_intel/api/app.py`: FastAPI app, `/healthz`, `/readyz`, `/ws`, lifespan background tasks.
@@ -42,10 +42,10 @@ This repository is a standard `uv + src/` Python service backed by SQLite WAL:
 - `src/gmgn_twitter_intel/pipeline/entity_extractor.py`: deterministic entity extraction.
 - `src/gmgn_twitter_intel/pipeline/ingest_service.py`: evidence/entity/signal ingest orchestration.
 - `src/gmgn_twitter_intel/pipeline/signal_builder.py`: account token alerts and token windows.
-- `src/gmgn_twitter_intel/pipeline/llm_enrichment.py`: evidence-bound LLM enrichment parsing.
+- `src/gmgn_twitter_intel/pipeline/social_event_extraction.py`: strict social-event extraction parsing.
 - `src/gmgn_twitter_intel/pipeline/enrichment_worker.py`: async watched-account enrichment jobs.
-- `src/gmgn_twitter_intel/retrieval/*`: SQLite-backed search, token-flow, account-alert, and narrative services.
-- `src/gmgn_twitter_intel/storage/*`: SQLite client, schema, and repositories.
+- `src/gmgn_twitter_intel/retrieval/*`: PostgreSQL-backed search, token-flow, account-alert, and harness services.
+- `src/gmgn_twitter_intel/storage/*`: PostgreSQL client, Alembic migrations, and repositories.
 - `src/gmgn_twitter_intel/cli.py`: `serve`, query, signal, and ops commands.
 
 External users pass handles, symbols, or CAs to this service. GMGN chains/channels are internal collector strategy.
@@ -60,5 +60,5 @@ External users pass handles, symbols, or CAs to this service. GMGN chains/channe
 - There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
 - The only application config source is `~/.gmgn-twitter-intel/config.yaml`.
 - Docker Compose bind-mounts host `~/.gmgn-twitter-intel` to container `/root/.gmgn-twitter-intel`.
-- Local foreground and Docker use the same host config and SQLite file under `~/.gmgn-twitter-intel`.
+- Local foreground and Docker use the same host config. Docker Compose runs PostgreSQL with the `gmgn-twitter-intel-postgres` named volume.
 - MCP/FastMCP is optional control/query infrastructure only, not the live event push mechanism.

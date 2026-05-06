@@ -10,9 +10,9 @@ from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_enrichment_repository import make_event
 
 
@@ -60,7 +60,7 @@ class RecordingPublisher:
 
 
 def open_runtime(tmp_path, *, client=None, publisher=None):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)

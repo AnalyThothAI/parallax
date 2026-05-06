@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import time
 from typing import Any
 
@@ -10,7 +9,7 @@ UNTRADEABLE_CHAINS = {"unknown", "evm", "evm_unknown"}
 
 
 class MarketObservationRepository:
-    def __init__(self, conn: sqlite3.Connection, *, running_timeout_ms: int = RUNNING_TIMEOUT_MS):
+    def __init__(self, conn: Any, *, running_timeout_ms: int = RUNNING_TIMEOUT_MS):
         self.conn = conn
         self.running_timeout_ms = running_timeout_ms
 
@@ -28,15 +27,16 @@ class MarketObservationRepository:
                 continue
             cursor = self.conn.execute(
                 """
-                INSERT OR IGNORE INTO token_market_observations(
+                INSERT INTO token_market_observations(
                   observation_id, attribution_id, event_id, token_id, chain, address, symbol,
                   target_received_at_ms, status, priority, provider, source_channel, snapshot_id,
                   attempt_count, max_attempts, next_run_at_ms, last_error, created_at_ms, updated_at_ms
                 )
                 VALUES (
-                  ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 100, NULL,
-                  'gmgn_openapi_token_info', NULL, 0, 5, ?, NULL, ?, ?
+                  %s, %s, %s, %s, %s, %s, %s, %s, 'pending', 100, NULL,
+                  'gmgn_openapi_token_info', NULL, 0, 5, %s, NULL, %s, %s
                 )
+                ON CONFLICT(attribution_id) DO NOTHING
                 """,
                 (
                     _id("market_observation", str(attribution["attribution_id"])),
@@ -66,11 +66,11 @@ class MarketObservationRepository:
             FROM token_market_observations
             WHERE (
                 status IN ('pending', 'provider_error', 'rate_limited')
-                AND next_run_at_ms <= ?
+                AND next_run_at_ms <= %s
               )
               OR (
                 status = 'running'
-                AND updated_at_ms < ?
+                AND updated_at_ms < %s
               )
             ORDER BY priority ASC, next_run_at_ms ASC, created_at_ms ASC
             LIMIT 1
@@ -84,15 +84,15 @@ class MarketObservationRepository:
             """
             UPDATE token_market_observations
             SET status = 'running',
-                attempt_count = attempt_count + ?,
-                updated_at_ms = ?
-            WHERE observation_id = ?
+                attempt_count = attempt_count + %s,
+                updated_at_ms = %s
+            WHERE observation_id = %s
             """,
             (1 if should_count_reclaim else 0, now, row["observation_id"]),
         )
         self.conn.commit()
         updated = self.conn.execute(
-            "SELECT * FROM token_market_observations WHERE observation_id = ?",
+            "SELECT * FROM token_market_observations WHERE observation_id = %s",
             (row["observation_id"],),
         ).fetchone()
         return dict(updated) if updated else None
@@ -111,12 +111,12 @@ class MarketObservationRepository:
         self.conn.execute(
             """
             UPDATE token_market_observations
-            SET status = ?,
-                provider = ?,
-                snapshot_id = ?,
+            SET status = %s,
+                provider = %s,
+                snapshot_id = %s,
                 last_error = NULL,
-                updated_at_ms = ?
-            WHERE observation_id = ?
+                updated_at_ms = %s
+            WHERE observation_id = %s
             """,
             (status, provider, snapshot_id, now, observation["observation_id"]),
         )
@@ -147,12 +147,12 @@ class MarketObservationRepository:
         self.conn.execute(
             """
             UPDATE token_market_observations
-            SET status = ?,
-                attempt_count = ?,
-                next_run_at_ms = ?,
-                last_error = ?,
-                updated_at_ms = ?
-            WHERE observation_id = ?
+            SET status = %s,
+                attempt_count = %s,
+                next_run_at_ms = %s,
+                last_error = %s,
+                updated_at_ms = %s
+            WHERE observation_id = %s
             """,
             (next_status, next_attempt_count, next_run_at_ms, error, now, observation["observation_id"]),
         )
@@ -186,7 +186,7 @@ class MarketObservationRepository:
         clauses = []
         params: list[Any] = []
         if status:
-            clauses.append("status = ?")
+            clauses.append("status = %s")
             params.append(status)
         where_clause = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         params.append(max(0, int(limit)))
@@ -196,7 +196,7 @@ class MarketObservationRepository:
             FROM token_market_observations
             {where_clause}
             ORDER BY updated_at_ms DESC, target_received_at_ms DESC, observation_id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             params,
         ).fetchall()
@@ -216,7 +216,7 @@ class MarketObservationRepository:
               AND eta.address IS NOT NULL
               AND eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')
             ORDER BY eta.received_at_ms ASC, eta.attribution_id ASC
-            LIMIT ?
+            LIMIT %s
             """,
             (max(0, int(limit)),),
         ).fetchall()

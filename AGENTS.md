@@ -40,7 +40,7 @@ uv run gmgn-twitter-intel ops backfill-harness-jobs --limit 1000
 
 This is a standard `uv` project using `src/gmgn_twitter_intel`.
 
-The service consumes GMGN anonymous public Twitter WebSocket channels, normalizes events into a SQLite WAL evidence store, extracts deterministic entities, materializes token signals, enqueues watched-account social-event extraction jobs, materializes closed-loop harness state, and exposes an authenticated FastAPI WebSocket API at `/ws`.
+The service consumes GMGN anonymous public Twitter WebSocket channels, normalizes events into PostgreSQL, extracts deterministic entities, materializes token signals, enqueues watched-account social-event extraction jobs, materializes closed-loop harness state, and exposes an authenticated FastAPI WebSocket API at `/ws`.
 
 The public configuration surface is intentionally small:
 
@@ -48,7 +48,7 @@ The public configuration surface is intentionally small:
 - `handles`: watched Twitter handles.
 - `ws_token`: public WebSocket API token.
 - `api`: FastAPI bind address and replay settings.
-- `storage.sqlite_path`: SQLite runtime database path, `data/twitter_intel.sqlite3` by default.
+- `storage.postgres`: PostgreSQL DSN, password file, pool, and timeout settings.
 - `llm.openai_api_key` / `llm.openai_model`: optional watched-account social-event extraction credentials.
 
 GMGN chains, channels, app versions, and protocol frames are internal collector strategy, not user-facing subscription concepts.
@@ -69,12 +69,12 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - `src/gmgn_twitter_intel/pipeline/harness_snapshot_builder.py`: social extraction to seed, cluster, snapshot, and shadow decision materialization.
 - `src/gmgn_twitter_intel/pipeline/harness_ops.py`: settlement, credit attribution, and report-only weight maintenance.
 - `src/gmgn_twitter_intel/pipeline/enrichment_worker.py`: async social-event extraction job processor.
-- `src/gmgn_twitter_intel/retrieval/search_service.py`: exact CA/symbol/handle and SQLite FTS5 retrieval.
+- `src/gmgn_twitter_intel/retrieval/search_service.py`: exact CA/symbol/handle and PostgreSQL full-text retrieval.
 - `src/gmgn_twitter_intel/retrieval/token_flow_service.py`: token social window reads.
 - `src/gmgn_twitter_intel/retrieval/account_alert_service.py`: watched-account alert reads.
 - `src/gmgn_twitter_intel/retrieval/harness_service.py`: social event, seed, snapshot, outcome, credit, weight, health, and score-bucket reads.
-- `src/gmgn_twitter_intel/storage/sqlite_client.py`: SQLite connection helpers and WAL pragmas.
-- `src/gmgn_twitter_intel/storage/sqlite_schema.py`: schema and migrations.
+- `src/gmgn_twitter_intel/storage/postgres_client.py`: PostgreSQL connection and health helpers.
+- `src/gmgn_twitter_intel/storage/postgres_migrations.py`: Alembic migration runner.
 - `src/gmgn_twitter_intel/storage/evidence_repository.py`: raw frame, normalized event, and FTS persistence.
 - `src/gmgn_twitter_intel/storage/entity_repository.py`: deterministic entity persistence and lookups.
 - `src/gmgn_twitter_intel/storage/signal_repository.py`: alert and window persistence.
@@ -90,8 +90,8 @@ GMGN chains, channels, app versions, and protocol frames are internal collector 
 - `coverage=public_stream` means events are filtered from GMGN's anonymous public stream; it is not a full Twitter firehose guarantee.
 - Run one ASGI worker unless the collector and API are split into separate processes.
 - There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
-- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` for config, and mounts the live SQLite directory `/root/.gmgn-twitter-intel/data` from the `gmgn-twitter-intel-data` named volume.
-- Local foreground and Docker use the same host config but separate live SQLite files; query Docker data through `/api/*`, `/ws`, or `docker compose exec app gmgn-twitter-intel ...`.
+- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` for config and secrets, and stores PostgreSQL data in the `gmgn-twitter-intel-postgres` named volume.
+- Local foreground and Docker use the same host config; query Docker data through `/api/*`, `/ws`, or `docker compose exec app gmgn-twitter-intel ...`.
 
 ## MCP
 

@@ -33,7 +33,7 @@ class TokenSignalEvaluationService:
             SELECT
               s.snapshot_id,
               s.opportunity_score,
-              s.window,
+              s."window",
               s.scope,
               o.status AS outcome_status,
               o.actual_return,
@@ -42,9 +42,9 @@ class TokenSignalEvaluationService:
             FROM token_signal_snapshots s
             LEFT JOIN token_signal_outcomes o
               ON o.snapshot_id = s.snapshot_id
-             AND o.horizon = ?
-            WHERE s.window = ?
-              AND s.scope = ?
+             AND o.horizon = %s
+            WHERE s."window" = %s
+              AND s.scope = %s
             """,
             (horizon, window, scope),
         ).fetchall()

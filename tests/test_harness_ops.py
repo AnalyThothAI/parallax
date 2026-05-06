@@ -6,16 +6,16 @@ from gmgn_twitter_intel.pipeline.harness_ops import (
 )
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_api_http import make_event
 
 ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
 
 
 def test_harness_ops_settle_attribute_and_update_weights(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -76,7 +76,7 @@ def test_harness_ops_settle_attribute_and_update_weights(tmp_path):
 
 
 def test_harness_ops_skip_missing_market_without_fabricating_outcome(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)

@@ -6,7 +6,7 @@ from threading import RLock
 
 from loguru import logger
 
-from ..storage.sqlite_client import transaction
+from ..storage.postgres_client import transaction
 from .harness_snapshot_builder import HarnessSnapshotBuilder
 
 

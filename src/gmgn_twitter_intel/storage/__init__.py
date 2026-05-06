@@ -1,1 +1,1 @@
-"""SQLite-backed storage for Twitter intelligence."""
+"""PostgreSQL-backed storage for Twitter intelligence."""

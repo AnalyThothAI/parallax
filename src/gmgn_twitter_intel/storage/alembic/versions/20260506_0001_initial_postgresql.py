@@ -425,7 +425,7 @@ CREATE TABLE IF NOT EXISTS harness_snapshots (
   credit_status TEXT NOT NULL DEFAULT 'none',
   risks_json JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at_ms BIGINT NOT NULL,
-  UNIQUE(source_event_id, asset, horizon, config_version)
+  UNIQUE NULLS NOT DISTINCT (source_event_id, asset, horizon, config_version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_harness_snapshots_decision ON harness_snapshots(decision_time_ms);
@@ -518,7 +518,7 @@ CREATE TABLE IF NOT EXISTS notifications (
   first_seen_at_ms BIGINT NOT NULL,
   last_seen_at_ms BIGINT NOT NULL,
   payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-  channels_json JSONB NOT NULL DEFAULT '[\"in_app\"]'::jsonb,
+  channels_json JSONB NOT NULL DEFAULT '["in_app"]'::jsonb,
   created_at_ms BIGINT NOT NULL,
   updated_at_ms BIGINT NOT NULL
 );
@@ -597,7 +597,7 @@ CREATE INDEX IF NOT EXISTS idx_account_token_call_stats_token
 CREATE TABLE IF NOT EXISTS account_quality_snapshots (
   snapshot_id TEXT PRIMARY KEY,
   handle TEXT NOT NULL,
-  window TEXT NOT NULL,
+  "window" TEXT NOT NULL,
   precision_score DOUBLE PRECISION,
   early_call_score DOUBLE PRECISION,
   spam_risk_score DOUBLE PRECISION,
@@ -607,7 +607,7 @@ CREATE TABLE IF NOT EXISTS account_quality_snapshots (
 );
 
 CREATE INDEX IF NOT EXISTS idx_account_quality_snapshots_handle_window
-  ON account_quality_snapshots(handle, window, updated_at_ms DESC);
+  ON account_quality_snapshots(handle, "window", updated_at_ms DESC);
 
 CREATE TABLE IF NOT EXISTS token_signal_snapshots (
   snapshot_id TEXT PRIMARY KEY,
@@ -616,7 +616,7 @@ CREATE TABLE IF NOT EXISTS token_signal_snapshots (
   chain TEXT NOT NULL,
   address TEXT NOT NULL,
   symbol TEXT NOT NULL,
-  window TEXT NOT NULL,
+  "window" TEXT NOT NULL,
   scope TEXT NOT NULL,
   decision_time_ms BIGINT NOT NULL,
   rank BIGINT NOT NULL,
@@ -633,11 +633,11 @@ CREATE TABLE IF NOT EXISTS token_signal_snapshots (
   data_health_json JSONB NOT NULL,
   risks_json JSONB NOT NULL,
   created_at_ms BIGINT NOT NULL,
-  UNIQUE(token_id, window, scope, decision_time_ms)
+  UNIQUE(token_id, "window", scope, decision_time_ms)
 );
 
 CREATE INDEX IF NOT EXISTS idx_token_signal_snapshots_decision
-  ON token_signal_snapshots(decision_time_ms, window, scope);
+  ON token_signal_snapshots(decision_time_ms, "window", scope);
 CREATE INDEX IF NOT EXISTS idx_token_signal_snapshots_token_decision
   ON token_signal_snapshots(token_id, decision_time_ms);
 
@@ -668,7 +668,7 @@ CREATE INDEX IF NOT EXISTS idx_token_signal_outcomes_horizon_status
 CREATE TABLE IF NOT EXISTS token_score_evaluations (
   evaluation_id TEXT PRIMARY KEY,
   horizon TEXT NOT NULL,
-  window TEXT NOT NULL,
+  "window" TEXT NOT NULL,
   scope TEXT NOT NULL,
   score_version TEXT NOT NULL,
   bucket_label TEXT NOT NULL,
@@ -684,11 +684,11 @@ CREATE TABLE IF NOT EXISTS token_score_evaluations (
   wilson_low DOUBLE PRECISION NOT NULL,
   wilson_high DOUBLE PRECISION NOT NULL,
   generated_at_ms BIGINT NOT NULL,
-  UNIQUE(horizon, window, scope, score_version, bucket_label)
+  UNIQUE(horizon, "window", scope, score_version, bucket_label)
 );
 
 CREATE INDEX IF NOT EXISTS idx_token_score_evaluations_lookup
-  ON token_score_evaluations(horizon, window, scope, score_version);
+  ON token_score_evaluations(horizon, "window", scope, score_version);
 
 CREATE TABLE IF NOT EXISTS llm_enrichment_labels (
   label_id TEXT PRIMARY KEY,

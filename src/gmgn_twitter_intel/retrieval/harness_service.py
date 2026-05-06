@@ -178,7 +178,7 @@ class HarnessService:
         clauses: list[str] = []
         params: list[Any] = []
         if horizon:
-            clauses.append("hs.horizon = ?")
+            clauses.append("hs.horizon = %s")
             params.append(horizon)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.harness.conn.execute(
@@ -249,13 +249,13 @@ class HarnessService:
         handles: set[str] | None,
     ) -> list[dict[str, Any]]:
         now = now_ms if now_ms is not None else int(time.time() * 1000)
-        clauses = ["se.received_at_ms >= ?"]
+        clauses = ["se.received_at_ms >= %s"]
         params: list[Any] = [now - window_ms]
         if handles is not None:
             if not handles:
                 return []
             normalized = sorted(handle.lower().lstrip("@") for handle in handles)
-            clauses.append(f"lower(se.author_handle) IN ({','.join('?' for _ in normalized)})")
+            clauses.append(f"lower(se.author_handle) IN ({','.join('%s' for _ in normalized)})")
             params.extend(normalized)
         rows = self.harness.conn.execute(
             f"""
@@ -277,10 +277,10 @@ class HarnessService:
         clauses: list[str] = []
         params: list[Any] = []
         if extraction_ids:
-            clauses.append(f"extraction_id IN ({','.join('?' for _ in extraction_ids)})")
+            clauses.append(f"extraction_id IN ({','.join('%s' for _ in extraction_ids)})")
             params.extend(extraction_ids)
         if event_ids:
-            clauses.append(f"event_id IN ({','.join('?' for _ in event_ids)})")
+            clauses.append(f"event_id IN ({','.join('%s' for _ in event_ids)})")
             params.extend(event_ids)
         if not clauses:
             return {}, {}
@@ -306,16 +306,16 @@ class HarnessService:
         seed_ids: set[str],
         event_ids: set[str],
     ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
-        clauses = ["horizon = ?"]
+        clauses = ["horizon = %s"]
         params: list[Any] = [horizon]
         lineage_clauses: list[str] = []
         sorted_seed_ids = sorted(seed_ids)
         sorted_event_ids = sorted(event_ids)
         if sorted_seed_ids:
-            lineage_clauses.append(f"seed_id IN ({','.join('?' for _ in sorted_seed_ids)})")
+            lineage_clauses.append(f"seed_id IN ({','.join('%s' for _ in sorted_seed_ids)})")
             params.extend(sorted_seed_ids)
         if sorted_event_ids:
-            lineage_clauses.append(f"source_event_id IN ({','.join('?' for _ in sorted_event_ids)})")
+            lineage_clauses.append(f"source_event_id IN ({','.join('%s' for _ in sorted_event_ids)})")
             params.extend(sorted_event_ids)
         if not lineage_clauses:
             return {}, {}
@@ -347,7 +347,7 @@ class HarnessService:
             f"""
             SELECT *
             FROM harness_outcomes
-            WHERE snapshot_id IN ({','.join('?' for _ in ids)})
+            WHERE snapshot_id IN ({','.join('%s' for _ in ids)})
             """,
             ids,
         ).fetchall()
@@ -361,7 +361,7 @@ class HarnessService:
             f"""
             SELECT *
             FROM harness_credits
-            WHERE snapshot_id IN ({','.join('?' for _ in ids)})
+            WHERE snapshot_id IN ({','.join('%s' for _ in ids)})
             ORDER BY created_at_ms DESC
             """,
             ids,

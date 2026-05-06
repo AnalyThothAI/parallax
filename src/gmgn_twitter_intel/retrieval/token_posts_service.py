@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import sqlite3
 import time
 from typing import Any
 
@@ -28,7 +27,7 @@ class TokenPostsRangeError(ValueError):
 class TokenPostsService:
     def __init__(self, *, signals):
         self.signals = signals
-        self.conn: sqlite3.Connection = signals.conn
+        self.conn: Any = signals.conn
 
     def token_posts(
         self,
@@ -166,7 +165,7 @@ class TokenPostsService:
         watched_only: bool,
         limit: int,
         cursor: tuple[int, str] | None,
-    ) -> list[sqlite3.Row]:
+    ) -> list[dict[str, Any]]:
         clauses, params = _base_clauses(
             token_id=token_id,
             chain=chain,
@@ -177,7 +176,7 @@ class TokenPostsService:
         )
         if cursor is not None:
             cursor_ms, cursor_event_id = cursor
-            clauses.append("(eta.received_at_ms < ? OR (eta.received_at_ms = ? AND eta.event_id < ?))")
+            clauses.append("(eta.received_at_ms < %s OR (eta.received_at_ms = %s AND eta.event_id < %s))")
             params.extend([cursor_ms, cursor_ms, cursor_event_id])
         where = " AND ".join(clauses)
         return self.conn.execute(
@@ -209,7 +208,7 @@ class TokenPostsService:
             LEFT JOIN events e ON e.event_id = ranked.event_id
             WHERE ranked.rn = 1
             ORDER BY ranked.received_at_ms DESC, ranked.event_id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -253,7 +252,7 @@ def _base_clauses(
     watched_only: bool,
 ) -> tuple[list[str], list[Any]]:
     clauses = [
-        "eta.received_at_ms < ?",
+        "eta.received_at_ms < %s",
         "eta.token_id IS NOT NULL",
         "eta.attribution_status IN ('direct', 'selected')",
         "eta.attribution_weight > 0",
@@ -263,18 +262,18 @@ def _base_clauses(
     ]
     params: list[Any] = [window_end_ms]
     if window_start_ms is not None:
-        clauses.insert(0, "eta.received_at_ms >= ?")
+        clauses.insert(0, "eta.received_at_ms >= %s")
         params.insert(0, window_start_ms)
     if token_id:
-        clauses.append("eta.token_id = ?")
+        clauses.append("eta.token_id = %s")
         params.append(token_id)
     elif chain and address:
-        clauses.extend(["eta.chain = ?", "eta.address = ?"])
+        clauses.extend(["eta.chain = %s", "eta.address = %s"])
         params.extend([chain, address])
     else:
         raise TokenPostsIdentityError("missing_token_identity")
     if watched_only:
-        clauses.append("eta.is_watched = 1")
+        clauses.append("eta.is_watched = true")
     return clauses, params
 
 

@@ -14,9 +14,9 @@ from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepositor
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def make_event(
@@ -97,7 +97,7 @@ def make_token_event(
 
 
 def open_repositories(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
@@ -449,10 +449,13 @@ def test_ingest_service_rolls_back_event_when_signal_build_fails(tmp_path):
 
         counts = evidence.counts()
         entity_count = conn.execute("SELECT COUNT(*) FROM event_entities").fetchone()[0]
-        fts_count = conn.execute("SELECT COUNT(*) FROM event_fts").fetchone()[0]
+        search_count = conn.execute(
+            "SELECT COUNT(*) FROM events WHERE search_tsv @@ websearch_to_tsquery('simple', %s)",
+            ("mainnet",),
+        ).fetchone()[0]
     finally:
         conn.close()
 
     assert counts["events"] == 0
     assert entity_count == 0
-    assert fts_count == 0
+    assert search_count == 0

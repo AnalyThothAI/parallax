@@ -2,15 +2,15 @@ import pytest
 
 from gmgn_twitter_intel.retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_signal_repository import TokenSignalRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_sqlite_repositories import make_event
 from tests.test_token_signal_repository import snapshot_payload
 
 
 def test_token_signal_evaluation_excludes_pending_from_hit_rate_denominator(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         EvidenceRepository(conn).insert_event(make_event("event-1"), is_watched=True)

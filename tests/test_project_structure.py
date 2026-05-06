@@ -1,6 +1,8 @@
 import tomllib
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -33,8 +35,8 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_flow_service.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "account_alert_service.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "harness_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_client.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_schema.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_client.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_migrations.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "evidence_repository.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "entity_repository.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "signal_repository.py").is_file()
@@ -42,6 +44,8 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "harness_repository.py").is_file()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / ("lance" + "db_client.py")).exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / ("embed" + "ding.py")).exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_client.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_schema.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "store" / "sqlite.py").exists()
     assert (ROOT / "Makefile").is_file()
     assert (ROOT / "Dockerfile").is_file()
@@ -71,9 +75,12 @@ def test_makefile_exposes_global_cli_install_targets():
 
 def test_compose_bind_mounts_local_runtime_home_without_env_config_sources():
     compose = (ROOT / "compose.yaml").read_text()
+    data = yaml.safe_load(compose)
+    services = data["services"]
 
     assert "env_file:" not in compose
-    assert "environment:" not in compose
+    assert "environment" not in services["app"]
+    assert "environment" not in services["migrate"]
     assert "${HOME}/.gmgn-twitter-intel:/root/.gmgn-twitter-intel" in compose
     assert "gmgn-twitter-intel_data" not in compose
     assert ("LANCE" + "_") not in compose

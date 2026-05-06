@@ -34,9 +34,8 @@ from ..storage.evidence_repository import EvidenceRepository
 from ..storage.harness_repository import HarnessRepository
 from ..storage.market_observation_repository import MarketObservationRepository
 from ..storage.notification_repository import NotificationRepository
+from ..storage.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from ..storage.signal_repository import SignalRepository
-from ..storage.sqlite_client import connect_sqlite, sqlite_health_check
-from ..storage.sqlite_schema import migrate
 from ..storage.token_repository import TokenRepository
 from ..storage.token_signal_repository import TokenSignalRepository
 from .http import ApiBadRequest, ApiUnauthorized, api_bad_request_response, api_unauthorized_response, create_api_router
@@ -46,6 +45,9 @@ from .ws import PublicWebSocketHub
 @dataclass(slots=True)
 class CliRuntime:
     settings: Settings
+    db_pool: object
+    write_conn: object
+    read_conn: object
     evidence: EvidenceRepository
     entities: EntityRepository
     signals: SignalRepository
@@ -98,7 +100,7 @@ def create_app(
             "Starting GMGN Twitter Intel | "
             f"handles={','.join(resolved_settings.handles) or 'all'} "
             f"channels={','.join(resolved_settings.upstream_channels)} "
-            f"sqlite={resolved_settings.sqlite_path}"
+            "storage=postgresql"
         )
         try:
             yield
@@ -172,12 +174,21 @@ def _frontend_dist_dir(frontend_dist: str | Path | None = None) -> Path | None:
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     if not settings.ws_token:
         raise ValueError("ws_token is required in config.yaml")
-    conn = connect_sqlite(settings.sqlite_path, read_only=False)
-    migrate(conn)
-    startup_db = sqlite_health_check(conn)
+    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
+    db_pool = create_pool(
+        dsn,
+        min_size=settings.postgres_pool_min_size,
+        max_size=settings.postgres_pool_max_size,
+        connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
+    )
+    conn = db_pool.getconn()
+    read_conn = db_pool.getconn()
+    startup_db = postgres_health_check(conn)
     if not startup_db.get("ok"):
-        raise RuntimeError(f"sqlite health check failed: {startup_db}")
-    read_conn = connect_sqlite(settings.sqlite_path, read_only=True)
+        db_pool.putconn(conn)
+        db_pool.putconn(read_conn)
+        db_pool.close()
+        raise RuntimeError(f"postgres health check failed: {startup_db}")
     evidence = EvidenceRepository(conn)
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
@@ -222,6 +233,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     )
     runtime = CliRuntime(
         settings=settings,
+        db_pool=db_pool,
+        write_conn=conn,
+        read_conn=read_conn,
         evidence=evidence,
         entities=entities,
         signals=signals,
@@ -355,8 +369,9 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.gmgn_client is not None:
         runtime.gmgn_client.close()
-    runtime.evidence.close()
-    runtime.read_evidence.close()
+    runtime.db_pool.putconn(runtime.write_conn)
+    runtime.db_pool.putconn(runtime.read_conn)
+    runtime.db_pool.close()
 
 
 def _gmgn_client(settings: Settings) -> GmgnOpenApiClient | None:
@@ -380,7 +395,7 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         "reasons": reasons,
         "collector": collector_status,
         "handles": list(runtime.settings.handles),
-        "store": str(runtime.settings.sqlite_path),
+        "store": "postgresql",
         "db": db_status,
         "enrichment": {
             "llm_configured": runtime.settings.llm_configured,
@@ -447,7 +462,7 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
 
 def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
-        return sqlite_health_check(runtime.read_evidence.conn)
+        return postgres_health_check(runtime.read_evidence.conn)
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 

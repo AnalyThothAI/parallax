@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import json
-import sqlite3
 import time
 from collections import defaultdict
 from typing import Any
@@ -38,7 +37,7 @@ class TokenSocialTimelineIdentityError(ValueError):
 class TokenSocialTimelineService:
     def __init__(self, *, signals):
         self.signals = signals
-        self.conn: sqlite3.Connection = signals.conn
+        self.conn: Any = signals.conn
 
     def timeline(
         self,
@@ -129,7 +128,7 @@ class TokenSocialTimelineService:
         window_start_ms: int,
         window_end_ms: int,
         watched_only: bool,
-    ) -> list[sqlite3.Row]:
+    ) -> list[dict[str, Any]]:
         clauses, params = _base_clauses(
             token_id=token_id,
             chain=chain,
@@ -179,8 +178,8 @@ class TokenSocialTimelineService:
             """
             SELECT token_id
             FROM tokens
-            WHERE chain = ?
-              AND address = ?
+            WHERE chain = %s
+              AND address = %s
             LIMIT 1
             """,
             (chain, address),
@@ -198,7 +197,7 @@ class TokenSocialTimelineService:
         watched_only: bool,
         limit: int,
         cursor: tuple[int, str] | None,
-    ) -> list[sqlite3.Row]:
+    ) -> list[dict[str, Any]]:
         clauses, params = _base_clauses(
             token_id=token_id,
             chain=chain,
@@ -209,7 +208,7 @@ class TokenSocialTimelineService:
         )
         if cursor is not None:
             cursor_ms, cursor_event_id = cursor
-            clauses.append("(eta.received_at_ms < ? OR (eta.received_at_ms = ? AND eta.event_id < ?))")
+            clauses.append("(eta.received_at_ms < %s OR (eta.received_at_ms = %s AND eta.event_id < %s))")
             params.extend([cursor_ms, cursor_ms, cursor_event_id])
         return self.conn.execute(
             f"""
@@ -241,7 +240,7 @@ class TokenSocialTimelineService:
             LEFT JOIN events e ON e.event_id = ranked.event_id
             WHERE ranked.rn = 1
             ORDER BY ranked.received_at_ms DESC, ranked.event_id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -257,8 +256,8 @@ def _base_clauses(
     watched_only: bool,
 ) -> tuple[list[str], list[Any]]:
     clauses = [
-        "eta.received_at_ms >= ?",
-        "eta.received_at_ms < ?",
+        "eta.received_at_ms >= %s",
+        "eta.received_at_ms < %s",
         "eta.token_id IS NOT NULL",
         "eta.attribution_status IN ('direct', 'selected')",
         "eta.attribution_weight > 0",
@@ -268,15 +267,15 @@ def _base_clauses(
     ]
     params: list[Any] = [window_start_ms, window_end_ms]
     if token_id:
-        clauses.append("eta.token_id = ?")
+        clauses.append("eta.token_id = %s")
         params.append(token_id)
     elif chain and address:
-        clauses.extend(["eta.chain = ?", "eta.address = ?"])
+        clauses.extend(["eta.chain = %s", "eta.address = %s"])
         params.extend([chain, address])
     else:
         raise TokenSocialTimelineIdentityError("missing_token_identity")
     if watched_only:
-        clauses.append("eta.is_watched = 1")
+        clauses.append("eta.is_watched = true")
     return clauses, params
 
 
@@ -305,7 +304,7 @@ def _summary(
 def _buckets(
     rows: list[dict[str, Any]],
     *,
-    conn: sqlite3.Connection,
+    conn: Any,
     token_id: str | None,
     window: str,
     bucket_ms: int,
@@ -360,7 +359,7 @@ def _buckets(
 
 def _bucket_prices(
     *,
-    conn: sqlite3.Connection,
+    conn: Any,
     token_id: str | None,
     bucket_starts: list[int],
     bucket_ms: int,
@@ -378,7 +377,7 @@ def _bucket_prices(
 
 def _timeline_baseline_price(
     *,
-    conn: sqlite3.Connection,
+    conn: Any,
     token_id: str | None,
     window_start_ms: int,
     bucket_prices: dict[int, float | None],
@@ -396,7 +395,7 @@ def _timeline_baseline_price(
 
 def _snapshot_at_or_before(
     *,
-    conn: sqlite3.Connection,
+    conn: Any,
     token_id: str,
     received_at_ms: int,
 ) -> dict[str, Any] | None:
@@ -404,8 +403,8 @@ def _snapshot_at_or_before(
         """
         SELECT *
         FROM token_market_snapshots
-        WHERE token_id = ?
-          AND received_at_ms <= ?
+        WHERE token_id = %s
+          AND received_at_ms <= %s
         ORDER BY received_at_ms DESC
         LIMIT 1
         """,

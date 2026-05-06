@@ -1,6 +1,6 @@
 GMGN := uv run gmgn-twitter-intel
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config serve status recent token-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent token-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -33,6 +33,12 @@ init: ## create ~/.gmgn-twitter-intel/config.yaml
 
 config: ## print effective runtime config
 	@$(GMGN) config
+
+db-migrate: ## apply PostgreSQL migrations
+	@$(GMGN) db migrate
+
+db-health: ## check PostgreSQL liveness and migration version
+	@$(GMGN) db health
 
 serve: ## run collector and API in foreground
 	@$(GMGN) serve

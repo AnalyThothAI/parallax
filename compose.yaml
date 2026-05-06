@@ -13,7 +13,7 @@ services:
     secrets:
       - postgres_password
     volumes:
-      - gmgn-twitter-intel-postgres:/var/lib/postgresql/18/docker
+      - gmgn-twitter-intel-postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U gmgn_app -d gmgn_twitter_intel"]
       interval: 10s

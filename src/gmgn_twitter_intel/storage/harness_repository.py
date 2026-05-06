@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import time
-from contextlib import suppress
 from typing import Any
+
+from psycopg.types.json import Jsonb
 
 
 class HarnessRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def upsert_social_event_extraction(
@@ -46,7 +46,7 @@ class HarnessRepository:
               semantic_novelty_hint, confidence, is_signal_event, anchor_terms_json, token_candidates_json,
               semantic_risks_json, summary_zh, raw_response_json, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(event_id) DO UPDATE SET
               run_id = excluded.run_id,
               author_handle = excluded.author_handle,
@@ -85,7 +85,7 @@ class HarnessRepository:
                 float(impact_hint),
                 float(semantic_novelty_hint),
                 float(confidence),
-                1 if is_signal_event else 0,
+                is_signal_event,
                 _json(anchor_terms),
                 _json(token_candidates),
                 _json(semantic_risks),
@@ -101,7 +101,7 @@ class HarnessRepository:
 
     def social_event_for_event(self, event_id: str) -> dict[str, Any] | None:
         rows = self.conn.execute(
-            "SELECT * FROM social_event_extractions WHERE event_id = ?",
+            "SELECT * FROM social_event_extractions WHERE event_id = %s",
             (event_id,),
         ).fetchall()
         return self._decode_social_event(dict(rows[0])) if rows else None
@@ -116,15 +116,15 @@ class HarnessRepository:
         event_types: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         now = now_ms if now_ms is not None else _now_ms()
-        clauses = ["se.received_at_ms >= ?"]
+        clauses = ["se.received_at_ms >= %s"]
         params: list[Any] = [now - window_ms]
         if handles:
             normalized = sorted(handle.lower().lstrip("@") for handle in handles)
-            clauses.append(f"lower(se.author_handle) IN ({','.join('?' for _ in normalized)})")
+            clauses.append(f"lower(se.author_handle) IN ({','.join('%s' for _ in normalized)})")
             params.extend(normalized)
         if event_types:
             normalized_types = sorted(event_types)
-            clauses.append(f"se.event_type IN ({','.join('?' for _ in normalized_types)})")
+            clauses.append(f"se.event_type IN ({','.join('%s' for _ in normalized_types)})")
             params.extend(normalized_types)
         rows = self.conn.execute(
             f"""
@@ -133,7 +133,7 @@ class HarnessRepository:
             LEFT JOIN events e ON e.event_id = se.event_id
             WHERE {" AND ".join(clauses)}
             ORDER BY se.received_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -164,7 +164,7 @@ class HarnessRepository:
               anchor_terms_json, token_uptake_count, top_linked_symbols_json, seed_status, risks_json,
               created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(extraction_id) DO UPDATE SET
               author_handle = excluded.author_handle,
               received_at_ms = excluded.received_at_ms,
@@ -199,15 +199,15 @@ class HarnessRepository:
         return self.attention_seed(seed_id) or self.attention_seed_for_extraction(extraction_id) or {}
 
     def attention_seed(self, seed_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute("SELECT * FROM attention_seeds WHERE seed_id = ?", (seed_id,)).fetchone()
+        row = self.conn.execute("SELECT * FROM attention_seeds WHERE seed_id = %s", (seed_id,)).fetchone()
         return self._decode_seed(dict(row)) if row else None
 
     def attention_seed_for_extraction(self, extraction_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute("SELECT * FROM attention_seeds WHERE extraction_id = ?", (extraction_id,)).fetchone()
+        row = self.conn.execute("SELECT * FROM attention_seeds WHERE extraction_id = %s", (extraction_id,)).fetchone()
         return self._decode_seed(dict(row)) if row else None
 
     def attention_seed_for_event(self, event_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute("SELECT * FROM attention_seeds WHERE event_id = ?", (event_id,)).fetchone()
+        row = self.conn.execute("SELECT * FROM attention_seeds WHERE event_id = %s", (event_id,)).fetchone()
         return self._decode_seed(dict(row)) if row else None
 
     def list_attention_seeds(
@@ -219,18 +219,18 @@ class HarnessRepository:
         handles: set[str] | None = None,
     ) -> list[dict[str, Any]]:
         now = now_ms if now_ms is not None else _now_ms()
-        clauses = ["received_at_ms >= ?"]
+        clauses = ["received_at_ms >= %s"]
         params: list[Any] = [now - window_ms]
         if handles:
             normalized = sorted(handle.lower().lstrip("@") for handle in handles)
-            clauses.append(f"lower(author_handle) IN ({','.join('?' for _ in normalized)})")
+            clauses.append(f"lower(author_handle) IN ({','.join('%s' for _ in normalized)})")
             params.extend(normalized)
         rows = self.conn.execute(
             f"""
             SELECT * FROM attention_seeds
             WHERE {" AND ".join(clauses)}
             ORDER BY received_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -245,7 +245,7 @@ class HarnessRepository:
               last_seen_at_ms, direction, impact, confidence, novelty, pricedness, base_score, event_score,
               source_list_json, raw_event_ids_json, representative_text, risks_json, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(cluster_id) DO UPDATE SET
               last_seen_at_ms = excluded.last_seen_at_ms,
               asset = excluded.asset,
@@ -282,47 +282,47 @@ class HarnessRepository:
         )
         if commit:
             self.conn.commit()
-        row = self.conn.execute("SELECT * FROM event_clusters WHERE cluster_id = ?", (data["cluster_id"],)).fetchone()
+        row = self.conn.execute("SELECT * FROM event_clusters WHERE cluster_id = %s", (data["cluster_id"],)).fetchone()
         return self._decode_cluster(dict(row)) if row else {}
 
     def create_snapshot(self, *, commit: bool = True, **data: Any) -> dict[str, Any]:
         now_ms = _now_ms()
         versions = dict(data.get("versions") or {})
         config_version = str(versions.get("config_version") or "unknown")
-        with suppress(sqlite3.IntegrityError):
-            self.conn.execute(
-                """
-                INSERT INTO harness_snapshots(
-                  snapshot_id, source_event_id, seed_id, asset, decision_time_ms, horizon, combined_score,
-                  policy_signal, shadow_signal, market_state_json, event_clusters_json, versions_json,
-                  config_version, outcome_status, credit_status, risks_json, created_at_ms
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'none', ?, ?)
-                """,
-                (
-                    data["snapshot_id"],
-                    data.get("source_event_id"),
-                    data.get("seed_id"),
-                    data["asset"],
-                    int(data["decision_time_ms"]),
-                    data["horizon"],
-                    float(data["combined_score"]),
-                    data["policy_signal"],
-                    data["shadow_signal"],
-                    _json(data.get("market_state", {})),
-                    _json(data.get("event_clusters", [])),
-                    _json(versions),
-                    config_version,
-                    _json(data.get("risks", [])),
-                    now_ms,
-                ),
+        self.conn.execute(
+            """
+            INSERT INTO harness_snapshots(
+              snapshot_id, source_event_id, seed_id, asset, decision_time_ms, horizon, combined_score,
+              policy_signal, shadow_signal, market_state_json, event_clusters_json, versions_json,
+              config_version, outcome_status, credit_status, risks_json, created_at_ms
             )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', 'none', %s, %s)
+            ON CONFLICT DO NOTHING
+            """,
+            (
+                data["snapshot_id"],
+                data.get("source_event_id"),
+                data.get("seed_id"),
+                data["asset"],
+                int(data["decision_time_ms"]),
+                data["horizon"],
+                float(data["combined_score"]),
+                data["policy_signal"],
+                data["shadow_signal"],
+                _json(data.get("market_state", {})),
+                _json(data.get("event_clusters", [])),
+                _json(versions),
+                config_version,
+                _json(data.get("risks", [])),
+                now_ms,
+            ),
+        )
         if commit:
             self.conn.commit()
         return self.snapshot_by_id(str(data["snapshot_id"])) or self._snapshot_by_unique(data, config_version) or {}
 
     def snapshot_by_id(self, snapshot_id: str) -> dict[str, Any] | None:
-        row = self.conn.execute("SELECT * FROM harness_snapshots WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+        row = self.conn.execute("SELECT * FROM harness_snapshots WHERE snapshot_id = %s", (snapshot_id,)).fetchone()
         return self._decode_snapshot(dict(row)) if row else None
 
     def list_snapshots(
@@ -335,20 +335,20 @@ class HarnessRepository:
         asset: str | None = None,
     ) -> list[dict[str, Any]]:
         now = now_ms if now_ms is not None else _now_ms()
-        clauses = ["decision_time_ms >= ?"]
+        clauses = ["decision_time_ms >= %s"]
         params: list[Any] = [now - window_ms]
         if horizon:
-            clauses.append("horizon = ?")
+            clauses.append("horizon = %s")
             params.append(horizon)
         if asset:
-            clauses.append("upper(asset) = ?")
+            clauses.append("upper(asset) = %s")
             params.append(asset.upper())
         rows = self.conn.execute(
             f"""
             SELECT * FROM harness_snapshots
             WHERE {" AND ".join(clauses)}
             ORDER BY decision_time_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -358,7 +358,7 @@ class HarnessRepository:
         rows = self.conn.execute(
             """
             SELECT * FROM harness_snapshots
-            WHERE source_event_id = ?
+            WHERE source_event_id = %s
             ORDER BY decision_time_ms DESC, horizon ASC
             """,
             (event_id,),
@@ -369,7 +369,7 @@ class HarnessRepository:
         rows = self.conn.execute(
             """
             SELECT * FROM event_clusters
-            WHERE event_id = ?
+            WHERE event_id = %s
             ORDER BY first_seen_at_ms DESC
             """,
             (event_id,),
@@ -411,10 +411,10 @@ class HarnessRepository:
         )
         if not clauses:
             return []
-        time_clauses = ["hs.decision_time_ms >= ?"]
+        time_clauses = ["hs.decision_time_ms >= %s"]
         time_params: list[Any] = [int(since_ms)]
         if token_seen_ms is not None:
-            time_clauses.append("hs.decision_time_ms <= ?")
+            time_clauses.append("hs.decision_time_ms <= %s")
             time_params.append(int(token_seen_ms))
         rows = self.conn.execute(
             f"""
@@ -434,7 +434,7 @@ class HarnessRepository:
               hs.shadow_signal != 'NO_TRADE' DESC,
               ABS(hs.combined_score) DESC,
               hs.decision_time_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*time_params, *params, max(0, int(limit))),
         ).fetchall()
@@ -469,11 +469,12 @@ class HarnessRepository:
         now_ms = _now_ms()
         self.conn.execute(
             """
-            INSERT OR IGNORE INTO harness_decisions(
+            INSERT INTO harness_decisions(
               decision_id, snapshot_id, asset, decision_time_ms, execution_mode, signal, side, size,
               entry_price, risk_reject_reason, config_version, created_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(decision_id) DO NOTHING
             """,
             (
                 data["decision_id"],
@@ -493,7 +494,7 @@ class HarnessRepository:
         if commit:
             self.conn.commit()
         row = self.conn.execute(
-            "SELECT * FROM harness_decisions WHERE decision_id = ?",
+            "SELECT * FROM harness_decisions WHERE decision_id = %s",
             (data["decision_id"],),
         ).fetchone()
         return dict(row) if row else {}
@@ -502,11 +503,12 @@ class HarnessRepository:
         now_ms = _now_ms()
         self.conn.execute(
             """
-            INSERT OR IGNORE INTO harness_outcomes(
+            INSERT INTO harness_outcomes(
               snapshot_id, settled_at_ms, actual_return, expected_return, abnormal_return, realized_vol,
               normalized_outcome, baseline_version, fees, slippage, created_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(snapshot_id) DO NOTHING
             """,
             (
                 data["snapshot_id"],
@@ -523,13 +525,13 @@ class HarnessRepository:
             ),
         )
         self.conn.execute(
-            "UPDATE harness_snapshots SET outcome_status = 'settled' WHERE snapshot_id = ?",
+            "UPDATE harness_snapshots SET outcome_status = 'settled' WHERE snapshot_id = %s",
             (data["snapshot_id"],),
         )
         if commit:
             self.conn.commit()
         row = self.conn.execute(
-            "SELECT * FROM harness_outcomes WHERE snapshot_id = ?",
+            "SELECT * FROM harness_outcomes WHERE snapshot_id = %s",
             (data["snapshot_id"],),
         ).fetchone()
         return dict(row) if row else {}
@@ -558,11 +560,12 @@ class HarnessRepository:
         for credit in credits:
             self.conn.execute(
                 """
-                INSERT OR IGNORE INTO harness_credits(
+                INSERT INTO harness_credits(
                   credit_id, snapshot_id, cluster_id, asset, event_type, source, horizon, event_score,
                   responsibility, credit, created_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(credit_id) DO NOTHING
                 """,
                 (
                     credit["credit_id"],
@@ -579,13 +582,13 @@ class HarnessRepository:
                 ),
             )
             self.conn.execute(
-                "UPDATE harness_snapshots SET credit_status = 'assigned' WHERE snapshot_id = ?",
+                "UPDATE harness_snapshots SET credit_status = 'assigned' WHERE snapshot_id = %s",
                 (credit["snapshot_id"],),
             )
         if commit:
             self.conn.commit()
         rows = self.conn.execute(
-            "SELECT * FROM harness_credits WHERE created_at_ms = ?",
+            "SELECT * FROM harness_credits WHERE created_at_ms = %s",
             (now_ms,),
         ).fetchall()
         return [dict(row) for row in rows]
@@ -614,7 +617,7 @@ class HarnessRepository:
         self.conn.execute(
             """
             INSERT INTO harness_weights(key, weight_type, asset, horizon, n, mean_credit, weight, status, updated_at_ms)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(key) DO UPDATE SET
               weight_type = excluded.weight_type,
               asset = excluded.asset,
@@ -639,18 +642,18 @@ class HarnessRepository:
         )
         if commit:
             self.conn.commit()
-        row = self.conn.execute("SELECT * FROM harness_weights WHERE key = ?", (data["key"],)).fetchone()
+        row = self.conn.execute("SELECT * FROM harness_weights WHERE key = %s", (data["key"],)).fetchone()
         return dict(row) if row else {}
 
     def list_weights(self, *, limit: int, horizon: str | None = None) -> list[dict[str, Any]]:
         if horizon:
             rows = self.conn.execute(
-                "SELECT * FROM harness_weights WHERE horizon = ? ORDER BY updated_at_ms DESC LIMIT ?",
+                "SELECT * FROM harness_weights WHERE horizon = %s ORDER BY updated_at_ms DESC LIMIT %s",
                 (horizon, max(0, int(limit))),
             ).fetchall()
         else:
             rows = self.conn.execute(
-                "SELECT * FROM harness_weights ORDER BY updated_at_ms DESC LIMIT ?",
+                "SELECT * FROM harness_weights ORDER BY updated_at_ms DESC LIMIT %s",
                 (max(0, int(limit)),),
             ).fetchall()
         return [dict(row) for row in rows]
@@ -659,7 +662,7 @@ class HarnessRepository:
         now = now_ms if now_ms is not None else _now_ms()
         since_24h = now - 86_400_000
         snapshots_24h = self.conn.execute(
-            "SELECT COUNT(*) AS count FROM harness_snapshots WHERE decision_time_ms >= ?",
+            "SELECT COUNT(*) AS count FROM harness_snapshots WHERE decision_time_ms >= %s",
             (since_24h,),
         ).fetchone()["count"]
         pending_outcomes = self.conn.execute(
@@ -670,7 +673,7 @@ class HarnessRepository:
             SELECT COUNT(*) AS count
             FROM harness_snapshots
             WHERE outcome_status = 'settled'
-              AND decision_time_ms >= ?
+              AND decision_time_ms >= %s
             """,
             (since_24h,),
         ).fetchone()["count"]
@@ -685,7 +688,10 @@ class HarnessRepository:
         row = self.conn.execute(
             """
             SELECT * FROM harness_snapshots
-            WHERE source_event_id IS ? AND asset = ? AND horizon = ? AND config_version = ?
+            WHERE source_event_id IS NOT DISTINCT FROM %s
+              AND asset = %s
+              AND horizon = %s
+              AND config_version = %s
             """,
             (data.get("source_event_id"), data["asset"], data["horizon"], config_version),
         ).fetchone()
@@ -703,13 +709,13 @@ class HarnessRepository:
         asset: str | None,
     ) -> list[dict[str, Any]]:
         now = now_ms if now_ms is not None else _now_ms()
-        clauses = [f"{table}.{time_column} >= ?"]
+        clauses = [f"{table}.{time_column} >= %s"]
         params: list[Any] = [now - window_ms]
         if horizon:
-            clauses.append("harness_snapshots.horizon = ?")
+            clauses.append("harness_snapshots.horizon = %s")
             params.append(horizon)
         if asset:
-            clauses.append("upper(harness_snapshots.asset) = ?")
+            clauses.append("upper(harness_snapshots.asset) = %s")
             params.append(asset.upper())
         rows = self.conn.execute(
             f"""
@@ -718,7 +724,7 @@ class HarnessRepository:
             JOIN harness_snapshots ON harness_snapshots.snapshot_id = {table}.snapshot_id
             WHERE {" AND ".join(clauses)}
             ORDER BY {table}.{time_column} DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -754,13 +760,15 @@ class HarnessRepository:
         return row
 
 
-def _json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+def _json(value: Any) -> Jsonb:
+    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
 
 
-def _json_loads(value: str | None, default: Any) -> Any:
+def _json_loads(value: Any, default: Any) -> Any:
     if value is None:
         return default
+    if not isinstance(value, str):
+        return value
     try:
         return json.loads(value)
     except json.JSONDecodeError:
@@ -779,13 +787,13 @@ def _snapshot_asset_match_clauses(
     params: list[Any] = []
     for value in (token_id, identity_key):
         if value:
-            clauses.append("upper(hs.asset) = ?")
+            clauses.append("upper(hs.asset) = %s")
             params.append(str(value).upper())
     if chain and address:
-        clauses.append("lower(hs.asset) = ?")
+        clauses.append("lower(hs.asset) = %s")
         params.append(str(address).lower())
     if symbol:
-        clauses.append("upper(hs.asset) = ?")
+        clauses.append("upper(hs.asset) = %s")
         params.append(str(symbol).lstrip("$").upper())
     return clauses, params
 

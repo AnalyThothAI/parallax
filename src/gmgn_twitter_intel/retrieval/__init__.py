@@ -1,1 +1,1 @@
-"""Retrieval services over SQLite tweet intelligence."""
+"""Retrieval services over PostgreSQL tweet intelligence."""

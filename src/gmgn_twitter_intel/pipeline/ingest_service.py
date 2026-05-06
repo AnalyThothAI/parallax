@@ -8,8 +8,8 @@ from typing import Any
 from ..models import TwitterEvent
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository, event_to_row
+from ..storage.postgres_client import transaction
 from ..storage.signal_repository import SignalRepository
-from ..storage.sqlite_client import transaction
 from .entity_extractor import extract_entities
 from .signal_builder import SignalBuilder
 from .token_identity_resolver import TokenIdentityResolver

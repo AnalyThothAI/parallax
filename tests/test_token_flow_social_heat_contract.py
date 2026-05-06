@@ -8,9 +8,9 @@ from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_sqlite_repositories import make_event
 from tests.test_token_rolling_flow import open_runtime, token_event
 
@@ -323,7 +323,7 @@ def test_token_flow_market_delta_uses_social_start_not_window_start(tmp_path):
 
 
 def test_token_flow_ready_price_history_is_not_masked_by_later_pending_observations(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -399,7 +399,7 @@ def test_token_flow_ready_price_history_is_not_masked_by_later_pending_observati
 
 
 def test_token_flow_pending_observation_surfaces_market_status(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -440,7 +440,7 @@ def test_token_flow_pending_observation_surfaces_market_status(tmp_path):
 
 
 def test_token_flow_provider_failure_status_is_visible(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)

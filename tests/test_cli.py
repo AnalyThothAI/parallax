@@ -20,9 +20,10 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
@@ -58,8 +59,8 @@ def make_event(
     )
 
 
-def seed_sqlite(db_path: Path) -> None:
-    conn = connect_sqlite(db_path, read_only=False)
+def seed_postgres(db_path: Path) -> None:
+    conn = connect_postgres_test(db_path, read_only=False)
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
@@ -109,7 +110,7 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     app_home.mkdir(parents=True, exist_ok=True)
     payload = {
         "handles": ["toly", "traderpow"],
-        "storage": {"sqlite_path": str(db_path)},
+        "storage": {"postgres": {"dsn": postgres_test_dsn(), "password_file": None}},
     }
     if ws_token is not None:
         payload["ws_token"] = ws_token
@@ -139,13 +140,13 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["enrichment"]["llm_configured"])
         self.assertEqual(payload["data"]["enrichment"]["model"], "gpt-test")
         self.assertEqual(payload["data"]["enrichment"]["provider"], "openai")
-        self.assertTrue(payload["data"]["store"]["sqlite_path"].endswith("twitter_intel.sqlite3"))
+        self.assertEqual(payload["data"]["store"]["engine"], "postgresql")
+        self.assertIn("postgres_dsn", payload["data"]["store"])
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
 
     def test_config_redacts_notification_channel_urls(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
             app_home = home / ".gmgn-twitter-intel"
             app_home.mkdir(parents=True, exist_ok=True)
             (app_home / "config.yaml").write_text(
@@ -153,7 +154,7 @@ class CliTests(unittest.TestCase):
                     {
                         "ws_token": "secret",
                         "handles": ["toly"],
-                        "storage": {"sqlite_path": str(db_path)},
+                        "storage": {"postgres": {"dsn": postgres_test_dsn(), "password_file": None}},
                         "notifications": {
                             "channels": {
                                 "pushdeer": {
@@ -185,7 +186,7 @@ class CliTests(unittest.TestCase):
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
             write_runtime_config(home, db_path=db_path)
-            seed_sqlite(db_path)
+            seed_postgres(db_path)
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
@@ -245,7 +246,7 @@ class CliTests(unittest.TestCase):
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
             write_runtime_config(home, db_path=db_path)
-            conn = connect_sqlite(db_path, read_only=False)
+            conn = connect_postgres_test(db_path, read_only=False)
             try:
                 migrate(conn)
                 notifications = NotificationRepository(conn)
@@ -326,7 +327,7 @@ class CliTests(unittest.TestCase):
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
             write_runtime_config(home, db_path=db_path)
-            conn = connect_sqlite(db_path, read_only=False)
+            conn = connect_postgres_test(db_path, read_only=False)
             try:
                 migrate(conn)
                 evidence = EvidenceRepository(conn)
@@ -398,7 +399,7 @@ class CliTests(unittest.TestCase):
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "twitter_intel.sqlite3"
             write_runtime_config(home, db_path=db_path)
-            conn = connect_sqlite(db_path, read_only=False)
+            conn = connect_postgres_test(db_path, read_only=False)
             try:
                 migrate(conn)
                 evidence = EvidenceRepository(conn)
@@ -460,7 +461,7 @@ def test_recent_defaults_to_runtime_sqlite_store_without_ws_token(tmp_path, monk
     app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "twitter_intel.sqlite3"
     write_runtime_config(tmp_path, db_path=db_path)
-    seed_sqlite(db_path)
+    seed_postgres(db_path)
     monkeypatch.setenv("HOME", str(tmp_path))
     stdout = io.StringIO()
 
@@ -475,7 +476,7 @@ def test_harness_cli_reports_empty_read_models_without_error(tmp_path, monkeypat
     app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "twitter_intel.sqlite3"
     write_runtime_config(tmp_path, db_path=db_path)
-    conn = connect_sqlite(db_path, read_only=False)
+    conn = connect_postgres_test(db_path, read_only=False)
     try:
         migrate(conn)
     finally:

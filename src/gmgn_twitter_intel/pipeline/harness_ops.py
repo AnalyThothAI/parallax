@@ -28,11 +28,11 @@ def settle_harness_snapshots(
         """
         SELECT *
         FROM harness_snapshots
-        WHERE horizon = ?
+        WHERE horizon = %s
           AND outcome_status = 'pending'
-          AND decision_time_ms + ? <= ?
+          AND decision_time_ms + %s <= %s
         ORDER BY decision_time_ms ASC
-        LIMIT ?
+        LIMIT %s
         """,
         (horizon, horizon_ms, now, max(0, int(limit))),
     ).fetchall()
@@ -91,11 +91,11 @@ def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dic
         """
         SELECT *
         FROM harness_snapshots
-        WHERE horizon = ?
+        WHERE horizon = %s
           AND outcome_status = 'settled'
           AND credit_status != 'assigned'
         ORDER BY decision_time_ms ASC
-        LIMIT ?
+        LIMIT %s
         """,
         (horizon, max(0, int(limit))),
     ).fetchall()
@@ -129,7 +129,7 @@ def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dic
                 counts["credits_written"] += len(credits)
             else:
                 harness.conn.execute(
-                    "UPDATE harness_snapshots SET credit_status = 'assigned' WHERE snapshot_id = ?",
+                    "UPDATE harness_snapshots SET credit_status = 'assigned' WHERE snapshot_id = %s",
                     (snapshot["snapshot_id"],),
                 )
                 harness.conn.commit()
@@ -166,7 +166,7 @@ def _credit_groups(harness, *, limit: int) -> list[dict[str, Any]]:
         SELECT credit_id, asset, event_type, source, horizon, credit
         FROM harness_credits
         ORDER BY created_at_ms ASC
-        LIMIT ?
+        LIMIT %s
         """,
         (max(0, int(limit)),),
     ).fetchall()
@@ -208,17 +208,17 @@ def _token_id_for_asset(tokens, asset: str) -> str | None:
 
 
 def _outcome_exists(harness, snapshot_id: str) -> bool:
-    row = harness.conn.execute("SELECT 1 FROM harness_outcomes WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+    row = harness.conn.execute("SELECT 1 FROM harness_outcomes WHERE snapshot_id = %s", (snapshot_id,)).fetchone()
     return row is not None
 
 
 def _credit_exists(harness, credit_id: str) -> bool:
-    row = harness.conn.execute("SELECT 1 FROM harness_credits WHERE credit_id = ?", (credit_id,)).fetchone()
+    row = harness.conn.execute("SELECT 1 FROM harness_credits WHERE credit_id = %s", (credit_id,)).fetchone()
     return row is not None
 
 
 def _outcome_for_snapshot(harness, snapshot_id: str) -> dict[str, Any] | None:
-    row = harness.conn.execute("SELECT * FROM harness_outcomes WHERE snapshot_id = ?", (snapshot_id,)).fetchone()
+    row = harness.conn.execute("SELECT * FROM harness_outcomes WHERE snapshot_id = %s", (snapshot_id,)).fetchone()
     return dict(row) if row else None
 
 

@@ -149,10 +149,10 @@ def _query(parsed, *, scope: str) -> dict[str, Any]:
 
 
 def _handle_count(conn, *, handle: str, watched_only: bool) -> int:
-    clauses = ["author_handle = ?"]
+    clauses = ["author_handle = %s"]
     params: list[Any] = [handle]
     if watched_only:
-        clauses.append("is_watched = 1")
+        clauses.append("is_watched = true")
     row = conn.execute(
         f"SELECT COUNT(*) AS count FROM events WHERE {' AND '.join(clauses)}",
         params,

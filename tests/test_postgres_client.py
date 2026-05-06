@@ -31,6 +31,7 @@ def test_with_password_from_file_replaces_password(tmp_path):
         password_file,
     )
 
+    assert dsn.startswith("postgresql://")
     assert "secret-pass" in dsn
     assert "old-pass" not in dsn
 

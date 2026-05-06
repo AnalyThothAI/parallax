@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import time
 from typing import Any
 
+from psycopg.types.json import Jsonb
+
 from ..pipeline.social_event_extraction import SocialEventExtraction
-from .sqlite_client import transaction
+from .postgres_client import transaction
 
 
 class EnrichmentRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def enqueue_watched_event(
@@ -24,32 +25,32 @@ class EnrichmentRepository:
     ) -> str | None:
         job_id = _id("job", event_id, "watched_event_enrichment")
         now_ms = _now_ms()
-        try:
-            self.conn.execute(
-                """
-                INSERT INTO enrichment_jobs(
-                  job_id, event_id, job_type, priority, status, attempt_count, max_attempts,
-                  next_run_at_ms, last_error, created_at_ms, updated_at_ms
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    event_id,
-                    "watched_event_enrichment",
-                    priority,
-                    "pending",
-                    0,
-                    3,
-                    int(received_at_ms),
-                    None,
-                    now_ms,
-                    now_ms,
-                ),
+        cursor = self.conn.execute(
+            """
+            INSERT INTO enrichment_jobs(
+              job_id, event_id, job_type, priority, status, attempt_count, max_attempts,
+              next_run_at_ms, last_error, created_at_ms, updated_at_ms
             )
-            if commit:
-                self.conn.commit()
-        except sqlite3.IntegrityError:
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(event_id, job_type) DO NOTHING
+            """,
+            (
+                job_id,
+                event_id,
+                "watched_event_enrichment",
+                priority,
+                "pending",
+                0,
+                3,
+                int(received_at_ms),
+                None,
+                now_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        if cursor.rowcount == 0:
             return self._job_id_for_event(event_id, "watched_event_enrichment")
         return job_id
 
@@ -61,7 +62,7 @@ class EnrichmentRepository:
                 SELECT * FROM enrichment_jobs
                 WHERE status IN ('pending', 'failed')
                   AND attempt_count < max_attempts
-                  AND next_run_at_ms <= ?
+                  AND next_run_at_ms <= %s
                 ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC
                 LIMIT 1
                 """,
@@ -74,14 +75,14 @@ class EnrichmentRepository:
                 UPDATE enrichment_jobs
                 SET status = 'running',
                     attempt_count = attempt_count + 1,
-                    updated_at_ms = ?,
+                    updated_at_ms = %s,
                     last_error = NULL
-                WHERE job_id = ?
+                WHERE job_id = %s
                 """,
                 (now, row["job_id"]),
             )
             claimed = self.conn.execute(
-                "SELECT * FROM enrichment_jobs WHERE job_id = ?",
+                "SELECT * FROM enrichment_jobs WHERE job_id = %s",
                 (row["job_id"],),
             ).fetchone()
         return dict(claimed) if claimed else None
@@ -106,7 +107,7 @@ class EnrichmentRepository:
                   run_id, job_id, event_id, provider, model, status, request_json,
                   response_json, error, started_at_ms, finished_at_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     run_id,
@@ -125,8 +126,8 @@ class EnrichmentRepository:
             self.conn.execute(
                 """
                 UPDATE enrichment_jobs
-                SET status = 'done', updated_at_ms = ?, last_error = NULL
-                WHERE job_id = ?
+                SET status = 'done', updated_at_ms = %s, last_error = NULL
+                WHERE job_id = %s
                 """,
                 (now_ms, job["job_id"]),
             )
@@ -136,7 +137,7 @@ class EnrichmentRepository:
                 write()
         else:
             write()
-        row = self.conn.execute("SELECT * FROM model_runs WHERE run_id = ?", (run_id,)).fetchone()
+        row = self.conn.execute("SELECT * FROM model_runs WHERE run_id = %s", (run_id,)).fetchone()
         return dict(row) if row else {"run_id": run_id}
 
     def fail_job(self, *, job: dict[str, Any], error: str) -> None:
@@ -148,8 +149,8 @@ class EnrichmentRepository:
         self.conn.execute(
             """
             UPDATE enrichment_jobs
-            SET status = ?, last_error = ?, next_run_at_ms = ?, updated_at_ms = ?
-            WHERE job_id = ?
+            SET status = %s, last_error = %s, next_run_at_ms = %s, updated_at_ms = %s
+            WHERE job_id = %s
             """,
             (status, error[:1000], now_ms + delay_ms, now_ms, job["job_id"]),
         )
@@ -159,7 +160,7 @@ class EnrichmentRepository:
         clauses: list[str] = []
         params: list[Any] = []
         if status:
-            clauses.append("status = ?")
+            clauses.append("status = %s")
             params.append(status)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
@@ -167,7 +168,7 @@ class EnrichmentRepository:
             SELECT * FROM enrichment_jobs
             {where}
             ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -187,7 +188,7 @@ class EnrichmentRepository:
             """
             SELECT e.event_id, e.received_at_ms
             FROM events e
-            WHERE e.is_watched = 1
+            WHERE e.is_watched = true
               AND COALESCE(NULLIF(e.search_text, ''), NULLIF(e.text_clean, ''), NULLIF(e.text, '')) IS NOT NULL
               AND NOT EXISTS (
                 SELECT 1
@@ -201,7 +202,7 @@ class EnrichmentRepository:
                 WHERE se.event_id = e.event_id
               )
             ORDER BY e.received_at_ms ASC
-            LIMIT ?
+            LIMIT %s
             """,
             (max(0, int(limit)),),
         ).fetchall()
@@ -223,14 +224,14 @@ class EnrichmentRepository:
 
     def _job_id_for_event(self, event_id: str, job_type: str) -> str | None:
         row = self.conn.execute(
-            "SELECT job_id FROM enrichment_jobs WHERE event_id = ? AND job_type = ?",
+            "SELECT job_id FROM enrichment_jobs WHERE event_id = %s AND job_type = %s",
             (event_id, job_type),
         ).fetchone()
         return str(row["job_id"]) if row else None
 
 
-def _json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+def _json(value: Any) -> Jsonb:
+    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
 
 
 def _id(*parts: str) -> str:

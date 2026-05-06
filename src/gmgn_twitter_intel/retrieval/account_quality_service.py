@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from collections import defaultdict
 from typing import Any
 
@@ -14,7 +13,7 @@ class AccountQualityService:
     def __init__(self, *, signals, repository: AccountQualityRepository):
         self.signals = signals
         self.repository = repository
-        self.conn: sqlite3.Connection = signals.conn
+        self.conn: Any = signals.conn
 
     def backfill_account_token_call_stats(self, *, limit: int = 1000) -> dict[str, Any]:
         rows = self._account_token_rows(limit=limit)
@@ -105,13 +104,13 @@ class AccountQualityService:
               MAX(f.received_at_ms) AS latest_mention_ms,
               COUNT(DISTINCT f.event_id) AS mention_count,
               MAX(f.author_followers) AS follower_max,
-              SUM(CASE WHEN f.is_watched = 1 THEN 1 ELSE 0 END) AS watched_count,
-              tf.global_first_mention_ms
+              SUM(CASE WHEN f.is_watched = true THEN 1 ELSE 0 END) AS watched_count,
+              MIN(tf.global_first_mention_ms) AS global_first_mention_ms
             FROM filtered f
             JOIN token_first tf ON tf.token_id = f.token_id
             GROUP BY f.handle, f.token_id
             ORDER BY first_mention_ms DESC, f.handle, f.token_id
-            LIMIT ?
+            LIMIT %s
             """,
             (max(0, int(limit)),),
         ).fetchall()
@@ -122,9 +121,9 @@ class AccountQualityService:
             """
             SELECT price, received_at_ms
             FROM token_market_snapshots
-            WHERE token_id = ?
-              AND received_at_ms >= ?
-              AND received_at_ms <= ?
+            WHERE token_id = %s
+              AND received_at_ms >= %s
+              AND received_at_ms <= %s
               AND price IS NOT NULL
             ORDER BY received_at_ms ASC
             """,
@@ -214,7 +213,7 @@ def _account_quality_payload(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _price_change_at(rows: list[sqlite3.Row], *, start_price: float, target_ms: int) -> float | None:
+def _price_change_at(rows: list[dict[str, Any]], *, start_price: float, target_ms: int) -> float | None:
     candidate = None
     for row in rows:
         if int(row["received_at_ms"]) <= target_ms:
@@ -229,7 +228,7 @@ def _price_change_at(rows: list[sqlite3.Row], *, start_price: float, target_ms: 
     return round((price - start_price) / start_price, 12)
 
 
-def _max_drawdown(rows: list[sqlite3.Row], *, start_price: float, before_ms: int) -> float | None:
+def _max_drawdown(rows: list[dict[str, Any]], *, start_price: float, before_ms: int) -> float | None:
     prices = [
         price
         for row in rows

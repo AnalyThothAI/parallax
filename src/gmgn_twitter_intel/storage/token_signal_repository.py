@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import time
 from typing import Any
 
+from psycopg.types.json import Jsonb
+
 
 class TokenSignalRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def create_snapshot(self, *, commit: bool = True, **data: Any) -> dict[str, Any]:
@@ -16,14 +17,14 @@ class TokenSignalRepository:
         self.conn.execute(
             """
             INSERT INTO token_signal_snapshots(
-              snapshot_id, token_id, identity_key, chain, address, symbol, window, scope,
+              snapshot_id, token_id, identity_key, chain, address, symbol, "window", scope,
               decision_time_ms, rank, decision, opportunity_score, score_versions_json,
               component_payload_json, identity_json, market_json, flow_json, timeline_json,
               source_event_ids_json, market_snapshot_ids_json, data_health_json, risks_json,
               created_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(token_id, window, scope, decision_time_ms) DO UPDATE SET
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(token_id, "window", scope, decision_time_ms) DO UPDATE SET
               snapshot_id = excluded.snapshot_id,
               identity_key = excluded.identity_key,
               chain = excluded.chain,
@@ -77,7 +78,7 @@ class TokenSignalRepository:
 
     def snapshot_by_id(self, snapshot_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            "SELECT * FROM token_signal_snapshots WHERE snapshot_id = ?",
+            "SELECT * FROM token_signal_snapshots WHERE snapshot_id = %s",
             (snapshot_id,),
         ).fetchone()
         return _decode_snapshot(dict(row)) if row else None
@@ -93,13 +94,13 @@ class TokenSignalRepository:
         clauses: list[str] = []
         params: list[Any] = []
         if window:
-            clauses.append("window = ?")
+            clauses.append('"window" = %s')
             params.append(window)
         if scope:
-            clauses.append("scope = ?")
+            clauses.append("scope = %s")
             params.append(scope)
         if token_id:
-            clauses.append("token_id = ?")
+            clauses.append("token_id = %s")
             params.append(token_id)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
@@ -107,7 +108,7 @@ class TokenSignalRepository:
             SELECT * FROM token_signal_snapshots
             {where}
             ORDER BY decision_time_ms DESC, rank ASC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -121,11 +122,11 @@ class TokenSignalRepository:
             WHERE NOT EXISTS (
               SELECT 1 FROM token_signal_outcomes o
               WHERE o.snapshot_id = s.snapshot_id
-                AND o.horizon = ?
+                AND o.horizon = %s
             )
-              AND s.decision_time_ms <= ?
+              AND s.decision_time_ms <= %s
             ORDER BY s.decision_time_ms ASC
-            LIMIT ?
+            LIMIT %s
             """,
             (horizon, int(now_ms), max(0, int(limit))),
         ).fetchall()
@@ -141,7 +142,7 @@ class TokenSignalRepository:
               actual_return, abnormal_return, realized_vol, normalized_outcome,
               market_coverage_status, settled_at_ms, created_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(snapshot_id, horizon) DO UPDATE SET
               outcome_id = excluded.outcome_id,
               status = excluded.status,
@@ -185,7 +186,7 @@ class TokenSignalRepository:
 
     def outcome_by_id(self, outcome_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            "SELECT * FROM token_signal_outcomes WHERE outcome_id = ?",
+            "SELECT * FROM token_signal_outcomes WHERE outcome_id = %s",
             (outcome_id,),
         ).fetchone()
         return _decode_outcome(dict(row)) if row else None
@@ -200,10 +201,10 @@ class TokenSignalRepository:
         clauses: list[str] = []
         params: list[Any] = []
         if horizon:
-            clauses.append("horizon = ?")
+            clauses.append("horizon = %s")
             params.append(horizon)
         if status:
-            clauses.append("status = ?")
+            clauses.append("status = %s")
             params.append(status)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
@@ -211,7 +212,7 @@ class TokenSignalRepository:
             SELECT * FROM token_signal_outcomes
             {where}
             ORDER BY settled_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -221,13 +222,13 @@ class TokenSignalRepository:
         self.conn.execute(
             """
             INSERT INTO token_score_evaluations(
-              evaluation_id, horizon, window, scope, score_version, bucket_label, bucket_min,
+              evaluation_id, horizon, "window", scope, score_version, bucket_label, bucket_min,
               bucket_max, snapshot_count, settled_count, settlement_coverage,
               avg_actual_return, avg_abnormal_return, avg_normalized_outcome,
               directional_hit_rate, wilson_low, wilson_high, generated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(horizon, window, scope, score_version, bucket_label) DO UPDATE SET
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(horizon, "window", scope, score_version, bucket_label) DO UPDATE SET
               evaluation_id = excluded.evaluation_id,
               bucket_min = excluded.bucket_min,
               bucket_max = excluded.bucket_max,
@@ -269,7 +270,7 @@ class TokenSignalRepository:
 
     def evaluation_by_id(self, evaluation_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            "SELECT * FROM token_score_evaluations WHERE evaluation_id = ?",
+            "SELECT * FROM token_score_evaluations WHERE evaluation_id = %s",
             (evaluation_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -284,13 +285,13 @@ class TokenSignalRepository:
         clauses: list[str] = []
         params: list[Any] = []
         if horizon:
-            clauses.append("horizon = ?")
+            clauses.append("horizon = %s")
             params.append(horizon)
         if window:
-            clauses.append("window = ?")
+            clauses.append('"window" = %s')
             params.append(window)
         if scope:
-            clauses.append("scope = ?")
+            clauses.append("scope = %s")
             params.append(scope)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
@@ -326,8 +327,8 @@ def _decode_outcome(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def _json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+def _json(value: Any) -> Jsonb:
+    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
 
 
 def _loads(value: Any) -> Any:

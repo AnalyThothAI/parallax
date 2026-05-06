@@ -1,7 +1,7 @@
 from gmgn_twitter_intel.retrieval.harness_service import HarnessService
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_signal_lab_chains_join_snapshots_by_persisted_lineage_ids(tmp_path):
@@ -167,7 +167,7 @@ def test_signal_lab_chains_cursor_paginates_visible_chains(tmp_path):
 
 
 def _repo(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     return HarnessRepository(conn), conn
 

@@ -17,13 +17,23 @@ target_metadata = None
 
 
 def _database_url() -> str:
+    configured = config.attributes.get("database_url")
+    if configured:
+        return str(configured)
     settings = load_settings(require_ws_token=False)
     return with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
 
 
+def _sqlalchemy_database_url() -> str:
+    url = _database_url()
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url.removeprefix("postgresql://")
+    return url
+
+
 def run_migrations_offline() -> None:
     context.configure(
-        url=_database_url(),
+        url=_sqlalchemy_database_url(),
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -34,7 +44,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     section = config.get_section(config.config_ini_section) or {}
-    section["sqlalchemy.url"] = _database_url()
+    section["sqlalchemy.url"] = _sqlalchemy_database_url()
     connectable = engine_from_config(
         section,
         prefix="sqlalchemy.",

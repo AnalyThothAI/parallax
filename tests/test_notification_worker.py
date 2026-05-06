@@ -6,8 +6,8 @@ from gmgn_twitter_intel.pipeline.notification_models import NotificationCandidat
 from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
 from gmgn_twitter_intel.settings import NotificationChannelConfig
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 class StaticRuleEngine:
@@ -47,7 +47,7 @@ def candidate(dedup_key="watched_account_activity:event:event-1", channels=("in_
 
 
 def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     repo = NotificationRepository(conn)
     worker = NotificationWorker(

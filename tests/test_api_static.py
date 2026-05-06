@@ -2,10 +2,12 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
 from gmgn_twitter_intel.settings import Settings
+from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 
 def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
-    settings = Settings(handles=("toly",), ws_token="secret")
+    prepare_postgres_database()
+    settings = Settings(handles=("toly",), ws_token="secret", storage=postgres_settings_storage())
     settings.set_config_dir(tmp_path / "app-home")
     dist = tmp_path / "dist"
     assets = dist / "assets"

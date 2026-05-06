@@ -9,15 +9,18 @@ from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.settings import Settings
+from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 from tests.test_token_signal_repository import snapshot_payload
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
 
 def make_settings(tmp_path) -> Settings:
+    prepare_postgres_database()
     settings = Settings(
         handles=("toly", "elonmusk"),
         ws_token="secret",
+        storage=postgres_settings_storage(),
     )
     settings.set_config_dir(tmp_path / "app-home")
     return settings

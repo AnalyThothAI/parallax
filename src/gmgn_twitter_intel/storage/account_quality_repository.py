@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import sqlite3
 import time
 from typing import Any
 
 
 class AccountQualityRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def upsert_profile(
@@ -27,14 +26,14 @@ class AccountQualityRepository:
             INSERT INTO account_profiles(
               handle, first_seen_ms, latest_seen_ms, follower_max, watched_status, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(handle) DO UPDATE SET
-              first_seen_ms = min(account_profiles.first_seen_ms, excluded.first_seen_ms),
-              latest_seen_ms = max(account_profiles.latest_seen_ms, excluded.latest_seen_ms),
+              first_seen_ms = LEAST(account_profiles.first_seen_ms, excluded.first_seen_ms),
+              latest_seen_ms = GREATEST(account_profiles.latest_seen_ms, excluded.latest_seen_ms),
               follower_max = CASE
                 WHEN account_profiles.follower_max IS NULL THEN excluded.follower_max
                 WHEN excluded.follower_max IS NULL THEN account_profiles.follower_max
-                ELSE max(account_profiles.follower_max, excluded.follower_max)
+                ELSE GREATEST(account_profiles.follower_max, excluded.follower_max)
               END,
               watched_status = CASE
                 WHEN account_profiles.watched_status = 'watched' OR excluded.watched_status = 'watched'
@@ -71,11 +70,11 @@ class AccountQualityRepository:
               price_change_5m_pct, price_change_1h_pct, price_change_24h_pct, max_drawdown_1h_pct,
               outcome_status, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(handle, token_id) DO UPDATE SET
-              first_mention_ms = min(account_token_call_stats.first_mention_ms, excluded.first_mention_ms),
+              first_mention_ms = LEAST(account_token_call_stats.first_mention_ms, excluded.first_mention_ms),
               mention_count = excluded.mention_count,
-              was_early_author = max(account_token_call_stats.was_early_author, excluded.was_early_author),
+              was_early_author = account_token_call_stats.was_early_author OR excluded.was_early_author,
               price_change_5m_pct = excluded.price_change_5m_pct,
               price_change_1h_pct = excluded.price_change_1h_pct,
               price_change_24h_pct = excluded.price_change_24h_pct,
@@ -88,7 +87,7 @@ class AccountQualityRepository:
                 token_id,
                 int(first_mention_ms),
                 int(mention_count),
-                1 if was_early_author else 0,
+                was_early_author,
                 price_change_5m_pct,
                 price_change_1h_pct,
                 price_change_24h_pct,
@@ -118,10 +117,10 @@ class AccountQualityRepository:
         self.conn.execute(
             """
             INSERT INTO account_quality_snapshots(
-              snapshot_id, handle, window, precision_score, early_call_score, spam_risk_score,
+              snapshot_id, handle, "window", precision_score, early_call_score, spam_risk_score,
               avg_realized_return, sample_size, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 snapshot_id,
@@ -145,7 +144,7 @@ class AccountQualityRepository:
             """
             SELECT *
             FROM account_profiles
-            WHERE handle = ?
+            WHERE handle = %s
             """,
             (normalized,),
         ).fetchone()
@@ -153,7 +152,7 @@ class AccountQualityRepository:
             """
             SELECT *
             FROM account_token_call_stats
-            WHERE handle = ?
+            WHERE handle = %s
             ORDER BY first_mention_ms DESC, token_id
             LIMIT 50
             """,
@@ -163,8 +162,8 @@ class AccountQualityRepository:
             """
             SELECT *
             FROM account_quality_snapshots
-            WHERE handle = ?
-            ORDER BY updated_at_ms DESC, window
+            WHERE handle = %s
+            ORDER BY updated_at_ms DESC, "window"
             LIMIT 20
             """,
             (normalized,),

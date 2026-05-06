@@ -8,7 +8,7 @@ from typing import Any
 from loguru import logger
 
 from ..market.gmgn_openapi_client import GmgnOpenApiError
-from ..storage.sqlite_client import transaction
+from ..storage.postgres_client import transaction
 
 
 class MarketObservationWorker:

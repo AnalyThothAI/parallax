@@ -5,9 +5,9 @@ from gmgn_twitter_intel.pipeline.token_identity_resolver import TokenMention
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_sqlite_repositories import make_event
 
 TOKEN_ID = "token:eth:0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
@@ -16,7 +16,7 @@ CHECKSUM_TOKEN_ADDRESS = "0xd0667d0618Dc9B6d2a0A55f428b47C64Bcf00416"
 
 
 def open_repositories(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     migrate(conn)
     return (
         conn,

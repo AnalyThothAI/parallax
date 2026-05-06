@@ -1,12 +1,12 @@
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
-from gmgn_twitter_intel.storage.sqlite_client import connect_sqlite
-from gmgn_twitter_intel.storage.sqlite_schema import migrate
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)
@@ -69,7 +69,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
     assert materialized["decisions"][0]["execution_mode"] == "shadow"
     assert materialized["decisions"][0]["signal"] == "LONG_SMALL"
     assert duplicate["snapshots"][0]["snapshot_id"] == materialized["snapshots"][0]["snapshot_id"]
-    read_conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=True)
+    read_conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=True)
     try:
         snapshots = HarnessRepository(read_conn).list_snapshots(
             window_ms=10_000,
@@ -83,7 +83,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
 
 
 def test_snapshot_builder_stores_non_signal_without_snapshot(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)
@@ -120,7 +120,7 @@ def test_snapshot_builder_stores_non_signal_without_snapshot(tmp_path):
 
 
 def test_snapshot_builder_uses_anchor_terms_for_seed_only_signal_snapshots(tmp_path):
-    conn = connect_sqlite(tmp_path / "twitter_intel.sqlite3", read_only=False)
+    conn = connect_postgres_test(tmp_path / "twitter_intel.sqlite3", read_only=False)
     try:
         migrate(conn)
         harness = HarnessRepository(conn)

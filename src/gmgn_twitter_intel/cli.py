@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import sys
 from contextlib import contextmanager
 from typing import TextIO
@@ -28,9 +29,9 @@ from .storage.evidence_repository import EvidenceRepository
 from .storage.harness_repository import HarnessRepository
 from .storage.market_observation_repository import MarketObservationRepository
 from .storage.notification_repository import NotificationRepository
+from .storage.postgres_client import connect_postgres, postgres_health_check, with_password_from_file
+from .storage.postgres_migrations import upgrade_head
 from .storage.signal_repository import SignalRepository
-from .storage.sqlite_client import connect_sqlite
-from .storage.sqlite_schema import migrate
 from .storage.token_repository import TokenRepository
 from .storage.token_signal_repository import TokenSignalRepository
 
@@ -45,6 +46,11 @@ def build_parser() -> argparse.ArgumentParser:
     init.add_argument("--force", action="store_true", help="overwrite existing config.yaml")
 
     subcommands.add_parser("config", help="print effective runtime configuration")
+
+    db = subcommands.add_parser("db", help="database lifecycle commands")
+    db_subcommands = db.add_subparsers(dest="db_command", required=True)
+    db_subcommands.add_parser("migrate", help="apply PostgreSQL migrations")
+    db_subcommands.add_parser("health", help="check PostgreSQL liveness and migration version")
 
     recent = subcommands.add_parser("recent", help="print recent stored events")
     recent.add_argument("--limit", type=int, default=20)
@@ -241,12 +247,14 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
         existed = config_path().exists()
         path = write_default_config(force=args.force)
+        password_path = _ensure_postgres_password_file(path.parent)
         _emit(
             {
                 "ok": True,
                 "data": {
                     "config_path": str(path),
                     "app_home": str(path.parent),
+                    "postgres_password_file": str(password_path),
                     "created": args.force or not existed,
                 },
             },
@@ -284,7 +292,13 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     },
                     "store": {
                         "app_home": str(settings.app_home),
-                        "sqlite_path": str(settings.sqlite_path),
+                        "engine": "postgresql",
+                        "postgres_dsn": _redacted_postgres_dsn(settings.postgres_dsn),
+                        "postgres_password_file": (
+                            str(settings.postgres_password_file) if settings.postgres_password_file else None
+                        ),
+                        "pool_min_size": settings.postgres_pool_min_size,
+                        "pool_max_size": settings.postgres_pool_max_size,
                         "log_file": str(settings.log_file),
                     },
                     "upstream": {
@@ -325,7 +339,17 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0
 
     settings = load_settings(require_ws_token=False)
-    with _repositories(settings.sqlite_path) as repos:
+    if command == "db" and args.db_command == "migrate":
+        upgrade_head(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
+        _emit({"ok": True, "data": {"migration": "head"}}, stdout)
+        return 0
+    if command == "db" and args.db_command == "health":
+        with _postgres_connection(settings) as conn:
+            health = postgres_health_check(conn)
+        _emit({"ok": bool(health.get("ok")), "data": health}, stdout)
+        return 0 if health.get("ok") else 1
+
+    with _repositories(settings) as repos:
         (
             evidence,
             entities,
@@ -748,10 +772,18 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
 
 @contextmanager
-def _repositories(sqlite_path):
-    conn = connect_sqlite(sqlite_path, read_only=False)
+def _postgres_connection(settings):
+    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
+    conn = connect_postgres(dsn, connect_timeout_seconds=settings.postgres_connect_timeout_seconds)
     try:
-        migrate(conn)
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
+def _repositories(settings):
+    with _postgres_connection(settings) as conn:
         yield (
             EvidenceRepository(conn),
             EntityRepository(conn),
@@ -763,12 +795,30 @@ def _repositories(sqlite_path):
             NotificationRepository(conn),
             TokenSignalRepository(conn),
         )
-    finally:
-        conn.close()
 
 
 def _emit(payload: dict, stdout: TextIO) -> None:
     stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+
+
+def _ensure_postgres_password_file(app_home) -> object:
+    path = app_home / "postgres_password"
+    if not path.exists():
+        path.write_text(secrets.token_urlsafe(32) + "\n", encoding="utf-8")
+        path.chmod(0o600)
+    return path
+
+
+def _redacted_postgres_dsn(dsn: str) -> str:
+    from psycopg import conninfo
+
+    try:
+        parts = conninfo.conninfo_to_dict(dsn)
+        if parts.get("password"):
+            parts["password"] = "********"
+        return conninfo.make_conninfo(**parts)
+    except Exception:
+        return dsn
 
 
 def _search_query(args: argparse.Namespace) -> str:

@@ -388,6 +388,8 @@ def _raw_snapshot(snapshot: dict[str, Any] | None) -> dict[str, Any]:
     if not snapshot:
         return {}
     raw_json = snapshot.get("raw_json")
+    if isinstance(raw_json, dict):
+        return raw_json
     if not isinstance(raw_json, str):
         return {}
     try:

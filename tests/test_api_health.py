@@ -1,17 +1,32 @@
+import asyncio
+
 from fastapi.testclient import TestClient
 
 import gmgn_twitter_intel.api.app as app_module
 from gmgn_twitter_intel.api.app import _build_runtime, _readiness_payload, create_app
 from gmgn_twitter_intel.settings import CollectorConfig, Settings
-from gmgn_twitter_intel.storage.sqlite_client import sqlite_health_check
+from gmgn_twitter_intel.storage.postgres_client import postgres_health_check
+from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
+
+
+def make_settings(tmp_path, **kwargs) -> Settings:
+    prepare_postgres_database()
+    settings = Settings(
+        handles=kwargs.pop("handles", ("toly",)),
+        ws_token=kwargs.pop("ws_token", "secret"),
+        storage=postgres_settings_storage(),
+        **kwargs,
+    )
+    settings.set_config_dir(tmp_path / "app-home")
+    return settings
+
+
+def stop_runtime(runtime) -> None:
+    asyncio.run(app_module._stop_runtime(runtime))
 
 
 def test_healthz_and_readyz_return_status(tmp_path):
-    settings = Settings(
-        handles=("toly",),
-        ws_token="secret",
-    )
-    settings.set_config_dir(tmp_path / "app-home")
+    settings = make_settings(tmp_path)
     app = create_app(
         settings=settings,
         start_collector=False,
@@ -25,32 +40,27 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert health.text == "ok\n"
     assert ready.status_code == 200
     assert ready.json()["collector"]["frames_received"] == 0
-    assert ready.json()["store"].endswith("twitter_intel.sqlite3")
+    assert ready.json()["store"] == "postgresql"
     assert ready.json()["db"]["ok"] is True
-    assert ready.json()["db"]["probe"] == "sqlite_liveness"
+    assert ready.json()["db"]["probe"] == "postgres_liveness"
     assert ready.json()["enrichment"]["llm_configured"] is False
     assert ready.json()["enrichment"]["worker_running"] is False
     assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
     assert "provider_status" not in ready.json()
 
 
-def test_runtime_sqlite_health_check_does_not_run_integrity_scan(tmp_path):
-    settings = Settings(handles=("toly",), ws_token="secret")
-    settings.set_config_dir(tmp_path / "app-home")
+def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
+    settings = make_settings(tmp_path)
     runtime = _build_runtime(settings, start_collector=False)
-    statements: list[str] = []
-    runtime.evidence.conn.set_trace_callback(statements.append)
 
     try:
-        status = sqlite_health_check(runtime.evidence.conn)
+        status = postgres_health_check(runtime.evidence.conn)
     finally:
-        runtime.evidence.close()
-        runtime.read_evidence.close()
+        stop_runtime(runtime)
 
     assert status["ok"] is True
-    assert status["probe"] == "sqlite_liveness"
-    assert all("quick_check" not in statement.lower() for statement in statements)
-    assert all("integrity_check" not in statement.lower() for statement in statements)
+    assert status["probe"] == "postgres_liveness"
+    assert status["migration_version"] == "20260506_0001"
 
 
 def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
@@ -58,12 +68,10 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
         def done(self):
             return False
 
-    settings = Settings(
-        handles=("toly",),
-        ws_token="secret",
-        collector=CollectorConfig(stale_timeout=10),
-    )
-    settings.set_config_dir(tmp_path / "app-home")
+        def cancel(self):
+            return None
+
+    settings = make_settings(tmp_path, collector=CollectorConfig(stale_timeout=10))
     runtime = _build_runtime(settings, start_collector=False)
     runtime.start_collector = True
     runtime.collector_task = RunningTask()
@@ -72,8 +80,7 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
     try:
         payload, status_code = _readiness_payload(runtime, now_ms=12_001)
     finally:
-        runtime.evidence.close()
-        runtime.read_evidence.close()
+        runtime.db_pool.close()
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -81,18 +88,14 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
 
 
 def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
-    settings = Settings(
-        handles=("toly",),
-        ws_token="secret",
-    )
-    settings.set_config_dir(tmp_path / "app-home")
+    settings = make_settings(tmp_path)
     runtime = _build_runtime(settings, start_collector=False)
     runtime.read_evidence.conn.close()
 
     try:
         payload, status_code = _readiness_payload(runtime)
     finally:
-        runtime.evidence.close()
+        runtime.db_pool.close()
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -105,12 +108,10 @@ def test_watchdog_reasons_do_not_probe_database(tmp_path):
         def done(self):
             return False
 
-    settings = Settings(
-        handles=("toly",),
-        ws_token="secret",
-        collector=CollectorConfig(stale_timeout=10),
-    )
-    settings.set_config_dir(tmp_path / "app-home")
+        def cancel(self):
+            return None
+
+    settings = make_settings(tmp_path, collector=CollectorConfig(stale_timeout=10))
     runtime = _build_runtime(settings, start_collector=False)
     runtime.start_collector = True
     runtime.collector_task = RunningTask()
@@ -123,6 +124,6 @@ def test_watchdog_reasons_do_not_probe_database(tmp_path):
         assert hasattr(app_module, "_watchdog_unhealthy_reasons")
         reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
     finally:
-        runtime.read_evidence.close()
+        runtime.db_pool.close()
 
     assert reasons == ["no_upstream_frames"]

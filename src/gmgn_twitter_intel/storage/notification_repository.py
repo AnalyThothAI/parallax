@@ -2,17 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import time
 from typing import Any
 
-from .sqlite_client import transaction
+from psycopg.types.json import Jsonb
+
+from .postgres_client import transaction
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
 
 
 class NotificationRepository:
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Any):
         self.conn = conn
 
     def insert_notification(
@@ -43,13 +44,14 @@ class NotificationRepository:
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
         cursor = self.conn.execute(
             """
-            INSERT OR IGNORE INTO notifications(
+            INSERT INTO notifications(
               notification_id, dedup_key, rule_id, severity, title, body, entity_type, entity_key,
               author_handle, symbol, chain, address, event_id, source_table, source_id,
               occurrence_count, first_seen_at_ms, last_seen_at_ms, payload_json, channels_json,
               created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(dedup_key) DO NOTHING
             """,
             (
                 notification_id,
@@ -89,7 +91,7 @@ class NotificationRepository:
         subscriber_key: str | None = "local",
     ) -> dict[str, Any] | None:
         rows = self._select_notifications(
-            where="n.notification_id = ?",
+            where="n.notification_id = %s",
             params=[notification_id],
             limit=1,
             subscriber_key=subscriber_key,
@@ -108,10 +110,10 @@ class NotificationRepository:
         clauses: list[str] = []
         params: list[Any] = []
         if since_ms is not None:
-            clauses.append("n.last_seen_at_ms >= ?")
+            clauses.append("n.last_seen_at_ms >= %s")
             params.append(int(since_ms))
         if rule_id:
-            clauses.append("n.rule_id = ?")
+            clauses.append("n.rule_id = %s")
             params.append(rule_id)
         if unread_only:
             clauses.append("r.read_at_ms IS NULL")
@@ -127,7 +129,7 @@ class NotificationRepository:
         clauses = ["r.read_at_ms IS NULL"]
         params: list[Any] = [subscriber_key]
         if since_ms is not None:
-            clauses.append("n.last_seen_at_ms >= ?")
+            clauses.append("n.last_seen_at_ms >= %s")
             params.append(int(since_ms))
         where = " AND ".join(clauses)
         rows = self.conn.execute(
@@ -136,7 +138,7 @@ class NotificationRepository:
             FROM notifications n
             LEFT JOIN notification_reads r
               ON r.notification_id = n.notification_id
-             AND r.subscriber_key = ?
+             AND r.subscriber_key = %s
             WHERE {where}
             """,
             params,
@@ -167,7 +169,7 @@ class NotificationRepository:
 
     def mark_read(self, *, notification_id: str, subscriber_key: str = "local", read_at_ms: int | None = None) -> bool:
         row = self.conn.execute(
-            "SELECT notification_id FROM notifications WHERE notification_id = ?",
+            "SELECT notification_id FROM notifications WHERE notification_id = %s",
             (notification_id,),
         ).fetchone()
         if row is None:
@@ -175,7 +177,7 @@ class NotificationRepository:
         self.conn.execute(
             """
             INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
             ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
               read_at_ms = excluded.read_at_ms
             """,
@@ -192,7 +194,7 @@ class NotificationRepository:
             FROM notifications n
             LEFT JOIN notification_reads r
               ON r.notification_id = n.notification_id
-             AND r.subscriber_key = ?
+             AND r.subscriber_key = %s
             WHERE r.read_at_ms IS NULL
             """,
             (subscriber_key,),
@@ -202,7 +204,7 @@ class NotificationRepository:
                 self.conn.execute(
                     """
                     INSERT INTO notification_reads(notification_id, subscriber_key, read_at_ms)
-                    VALUES (?, ?, ?)
+                    VALUES (%s, %s, %s)
                     ON CONFLICT(notification_id, subscriber_key) DO UPDATE SET
                       read_at_ms = excluded.read_at_ms
                     """,
@@ -224,11 +226,12 @@ class NotificationRepository:
         delivery_id = _id("delivery", notification_id, channel_id)
         cursor = self.conn.execute(
             """
-            INSERT OR IGNORE INTO notification_deliveries(
+            INSERT INTO notification_deliveries(
               delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
               next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(notification_id, channel_id) DO NOTHING
             """,
             (
                 delivery_id,
@@ -254,7 +257,7 @@ class NotificationRepository:
 
     def delivery_by_id(self, delivery_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            "SELECT * FROM notification_deliveries WHERE delivery_id = ?",
+            "SELECT * FROM notification_deliveries WHERE delivery_id = %s",
             (delivery_id,),
         ).fetchone()
         return dict(row) if row else None
@@ -268,7 +271,7 @@ class NotificationRepository:
                 FROM notification_deliveries
                 WHERE status IN ('pending', 'failed')
                   AND attempt_count < max_attempts
-                  AND next_run_at_ms <= ?
+                  AND next_run_at_ms <= %s
                 ORDER BY next_run_at_ms ASC, created_at_ms ASC
                 LIMIT 1
                 """,
@@ -281,15 +284,15 @@ class NotificationRepository:
                 UPDATE notification_deliveries
                 SET status = 'running',
                     attempt_count = attempt_count + 1,
-                    last_attempt_at_ms = ?,
-                    updated_at_ms = ?,
+                    last_attempt_at_ms = %s,
+                    updated_at_ms = %s,
                     last_error = NULL
-                WHERE delivery_id = ?
+                WHERE delivery_id = %s
                 """,
                 (now, now, row["delivery_id"]),
             )
             claimed = self.conn.execute(
-                "SELECT * FROM notification_deliveries WHERE delivery_id = ?",
+                "SELECT * FROM notification_deliveries WHERE delivery_id = %s",
                 (row["delivery_id"],),
             ).fetchone()
         return dict(claimed) if claimed else None
@@ -300,10 +303,10 @@ class NotificationRepository:
             """
             UPDATE notification_deliveries
             SET status = 'delivered',
-                delivered_at_ms = ?,
+                delivered_at_ms = %s,
                 last_error = NULL,
-                updated_at_ms = ?
-            WHERE delivery_id = ?
+                updated_at_ms = %s
+            WHERE delivery_id = %s
             """,
             (now, now, delivery["delivery_id"]),
         )
@@ -318,11 +321,11 @@ class NotificationRepository:
         self.conn.execute(
             """
             UPDATE notification_deliveries
-            SET status = ?,
-                next_run_at_ms = ?,
-                last_error = ?,
-                updated_at_ms = ?
-            WHERE delivery_id = ?
+            SET status = %s,
+                next_run_at_ms = %s,
+                last_error = %s,
+                updated_at_ms = %s
+            WHERE delivery_id = %s
             """,
             (status, now + delay_ms, str(error)[:1000], now, delivery["delivery_id"]),
         )
@@ -332,7 +335,7 @@ class NotificationRepository:
         clauses: list[str] = []
         params: list[Any] = []
         if status:
-            clauses.append("status = ?")
+            clauses.append("status = %s")
             params.append(status)
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = self.conn.execute(
@@ -341,7 +344,7 @@ class NotificationRepository:
             FROM notification_deliveries
             {where}
             ORDER BY updated_at_ms DESC, created_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, max(0, int(limit))),
         ).fetchall()
@@ -362,7 +365,7 @@ class NotificationRepository:
             join = """
             LEFT JOIN notification_reads r
               ON r.notification_id = n.notification_id
-             AND r.subscriber_key = ?
+             AND r.subscriber_key = %s
             """
             select_read = "r.read_at_ms AS read_at_ms"
             query_params = [subscriber_key, *query_params]
@@ -374,15 +377,15 @@ class NotificationRepository:
             {join}
             {where_clause}
             ORDER BY n.last_seen_at_ms DESC, n.created_at_ms DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*query_params, max(0, int(limit))),
         ).fetchall()
         return [dict(row) for row in rows]
 
 
-def _json(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+def _json(value: Any) -> Jsonb:
+    return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
 
 
 def _id(*parts: str) -> str:

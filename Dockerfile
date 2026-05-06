@@ -19,7 +19,7 @@ WORKDIR /app
 
 RUN python -m pip install --no-cache-dir uv
 
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml uv.lock README.md alembic.ini ./
 COPY src ./src
 COPY --from=web-builder /app/web/dist ./src/gmgn_twitter_intel/web/dist
 
