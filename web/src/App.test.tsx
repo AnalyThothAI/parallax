@@ -4,18 +4,17 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type {
-	  ApiResponse,
-	  AssetFlowData,
-	  AssetFlowRow,
-	  BootstrapData,
-  HarnessHealthData,
+  ApiResponse,
+  AssetFlowData,
+  AssetFlowRow,
+  BootstrapData,
   LivePayload,
   NotificationLivePayload,
-  SignalLabChainsData,
   StatusData,
-	  TokenFlowItem,
+  TokenFlowItem,
   TokenPostsData,
-  TokenSocialTimelineData
+  TokenSocialTimelineData,
+  TradingAttentionData
 } from "./api/types";
 import { getApi, getBootstrap } from "./api/client";
 import { useTraderStore } from "./store/useTraderStore";
@@ -120,12 +119,9 @@ describe("App Token Radar social heat cockpit", () => {
       hideDuplicateClusters: false,
       watchedPostsOnly: false,
       activeView: "live",
-      signalLabStage: "all",
-      signalLabHorizon: "6h",
-      signalLabAsset: "",
+      signalLabKind: "all",
       signalLabHandle: "",
-      signalLabSearch: "",
-      signalLabInspectorTab: "trace"
+      signalLabSearch: ""
     });
     mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
     mockApi();
@@ -263,42 +259,42 @@ describe("App Token Radar social heat cockpit", () => {
 
     const pulseTitle = await screen.findByText("Signal Lab Pulse");
     const pulse = pulseTitle.closest("section") as HTMLElement;
-    expect(await within(pulse).findByText(/BNB · 6h · updated/)).toBeInTheDocument();
-    expect(within(pulse).getByText("CZ 提到 build on BNB，形成 BNB attention seed。")).toBeInTheDocument();
+    expect(await within(pulse).findByText(/positive · phrase/)).toBeInTheDocument();
+    expect(within(pulse).getByText("CZ 提到 build on BNB，形成 BNB 生态关注。")).toBeInTheDocument();
     expect(within(pulse).queryByText("extractor configured")).not.toBeInTheDocument();
     expect(within(pulse).queryByLabelText("signal lab pulse stages")).not.toBeInTheDocument();
     expect(screen.getByText("Token")).toBeInTheDocument();
 
-    fireEvent.click(await within(pulse).findByRole("button", { name: "open signal chain BNB · 6h" }));
+    fireEvent.click(await within(pulse).findByRole("button", { name: "open trading attention BNB" }));
 
-    await waitFor(() => expect(screen.getByText("selected signal chain")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("selected trading attention")).toBeInTheDocument());
     expect(screen.getByText("Token")).toBeInTheDocument();
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    expect(within(drawer).getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true");
-    expect(within(drawer).getByText("snapshot-bnb-6h")).toBeInTheDocument();
+    expect(within(drawer).getByText("Why it matters")).toBeInTheDocument();
+    expect(within(drawer).getByText("Linked tokens")).toBeInTheDocument();
   });
 
-  it("switches the left rail into the Signal Lab workbench without losing the selected chain", async () => {
+  it("switches the left rail into the Signal Lab workbench without losing the selected attention item", async () => {
     const { container } = renderWithQuery(<App />);
 
     const rail = container.querySelector(".side-rail") as HTMLElement;
     fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
-    const workbench = await screen.findByText("Audit watched-account social events into snapshots, outcomes, and predictive credit.");
+    const workbench = await screen.findByText("Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.");
     expect(workbench).toBeInTheDocument();
-    expect(screen.getByText("Signal Chains")).toBeInTheDocument();
+    expect(screen.getByText("Trading Attention")).toBeInTheDocument();
     const views = within(container.querySelector(".side-rail") as HTMLElement).getByText("views").closest("section") as HTMLElement;
     expect(within(views).queryByText("Tokens")).not.toBeInTheDocument();
     expect(within(views).queryByText("Accounts")).not.toBeInTheDocument();
     expect(within(views).queryByText("Jobs/Ops")).not.toBeInTheDocument();
-    expect(screen.getByText("Extracted")).toBeInTheDocument();
-    expect(screen.getByText("Seeded")).toBeInTheDocument();
-    expect(screen.getByText("Frozen")).toBeInTheDocument();
-    expect(screen.getByText("Settled")).toBeInTheDocument();
-    expect(screen.getByText("Credited")).toBeInTheDocument();
+    expect(screen.getByText("Direct token")).toBeInTheDocument();
+    expect(screen.getByText("Topic heat")).toBeInTheDocument();
+    expect(screen.getByText("Ecosystem")).toBeInTheDocument();
+    expect(screen.getByText("Structure")).toBeInTheDocument();
+    expect(screen.getByText("Risk")).toBeInTheDocument();
 
-    fireEvent.click(await screen.findByRole("button", { name: "open signal chain BNB · 6h" }));
-    expect(await screen.findByText("selected signal chain")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "open trading attention BNB" }));
+    expect(await screen.findByText("selected trading attention")).toBeInTheDocument();
     expect(container.querySelector(".signal-lab-workbench")).toBeInTheDocument();
   });
 
@@ -312,6 +308,32 @@ describe("App Token Radar social heat cockpit", () => {
     expect(watchlistSection).toHaveClass("watchlist-section");
     expect(watchlistSection.querySelector(".watchlist")).toBeInTheDocument();
     expect(rail.querySelector(".rail-footer")?.previousElementSibling).toBe(watchlistSection);
+  });
+
+  it("uses watchlist clicks as a Signal Lab account lens", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByText("Token");
+    const rail = container.querySelector(".desktop-side-rail") as HTMLElement;
+    const traderpowButton = await within(rail).findByRole("button", { name: /@traderpow/ });
+
+    fireEvent.click(traderpowButton);
+
+    expect(await screen.findByRole("heading", { name: "Signal Lab" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("@traderpow");
+    expect(screen.getByLabelText("Signal Lab text filter")).toHaveValue("");
+    expect(traderpowButton).toHaveClass("active");
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/signal-lab/pulse" &&
+            options?.params?.window === "24h" &&
+            options?.params?.handle === "@traderpow" &&
+            options?.params?.q === undefined
+        )
+      ).toBe(true);
+    });
   });
 
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
@@ -337,7 +359,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).getByRole("button", { name: "Timeline" })).toHaveClass("active");
   });
 
-  it("opens Timeline by default, requests timeline/posts, and keeps token Lab scoped to Signal Chains", async () => {
+  it("opens Timeline by default, requests timeline/posts, and keeps token Lab as a pointer into Signal Lab", async () => {
     const { container } = renderWithQuery(<App />);
 
     const tokenButton = await screen.findByRole("button", { name: "select token $UPEG" });
@@ -358,8 +380,11 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => expect(screen.getAllByText("样本不足").length).toBeGreaterThan(0));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     fireEvent.click(within(drawer).getByRole("button", { name: "Lab" }));
-    await waitFor(() => expect(within(drawer).getByText("Signal Chains · $UPEG")).toBeInTheDocument());
-    expect(within(drawer).getByText("No Signal Chains in this window")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        within(drawer).getByText("Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.")
+      ).toBeInTheDocument()
+    );
     expect(within(drawer).queryByText("Active Snapshots")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Credit Rows")).not.toBeInTheDocument();
   });
@@ -454,12 +479,13 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getAllByText("Signal Lab").length).toBeGreaterThan(0);
   });
 
-  it("uses the chain read model as the only Signal Lab lifecycle source in the UI", async () => {
+  it("uses the trading-attention read model as the only Signal Lab product source in the UI", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("Signal Lab Pulse");
 
-    await waitFor(() => expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/chains")).toBe(true));
+    await waitFor(() => expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/pulse")).toBe(true));
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/chains")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/social-events")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/attention-seeds")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/harness-snapshots")).toBe(false);
@@ -467,7 +493,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/harness-credits")).toBe(false);
   });
 
-  it("keeps settlement horizon inside Signal Lab and out of the global token radar rail", async () => {
+  it("keeps settlement horizons out of the trader-facing Signal Lab and global token radar rail", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("Token");
@@ -482,34 +508,13 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
-  it("changes only signal lab settlement queries when the settlement horizon changes", async () => {
-    renderWithQuery(<App />);
-
-    const rail = (await screen.findByText("views")).closest("aside") as HTMLElement;
-    fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
-    const settlementControl = await screen.findByLabelText("settlement horizon");
-    fireEvent.click(within(settlementControl).getByRole("button", { name: "24h" }));
-
-    await waitFor(() => {
-      expect(
-        mockedGetApi.mock.calls.some(
-          ([path, options]) => path === "/api/signal-lab/chains" && options?.params?.horizon === "24h"
-        )
-      ).toBe(true);
-    });
-
-    const tokenFlowCalls = mockedGetApi.mock.calls.filter(([path]) => path === "/api/asset-flow");
-    expect(tokenFlowCalls.length).toBeGreaterThan(0);
-    expect(tokenFlowCalls.every(([, options]) => !Object.hasOwn(options?.params ?? {}, "horizon"))).toBe(true);
-  });
-
-  it("routes Signal Lab toolbar filters into the chain read model", async () => {
+  it("routes Signal Lab toolbar filters into the trading-attention read model", async () => {
     const { container } = renderWithQuery(<App />);
 
     const rail = container.querySelector(".side-rail") as HTMLElement;
     fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
-    fireEvent.change(await screen.findByLabelText("Signal Lab asset filter"), { target: { value: "$BNB" } });
+    fireEvent.click(await screen.findByRole("button", { name: /Topic heat/ }));
     fireEvent.change(screen.getByLabelText("Signal Lab source filter"), { target: { value: "@cz_binance" } });
     fireEvent.change(screen.getByLabelText("Signal Lab text filter"), { target: { value: "build on BNB" } });
 
@@ -517,8 +522,9 @@ describe("App Token Radar social heat cockpit", () => {
       expect(
         mockedGetApi.mock.calls.some(
           ([path, options]) =>
-            path === "/api/signal-lab/chains" &&
-            options?.params?.asset === "$BNB" &&
+            path === "/api/signal-lab/pulse" &&
+            options?.params?.window === "24h" &&
+            options?.params?.kind === "topic_heat" &&
             options?.params?.handle === "@cz_binance" &&
             options?.params?.q === "build on BNB"
         )
@@ -526,34 +532,22 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
-  it("uses the Signal Lab cursor to load additional chains in the workbench", async () => {
-    const firstPage = signalLabChainsData();
-    const secondChain = {
+  it("uses the Signal Lab cursor to load additional attention items in the workbench", async () => {
+    const firstPage = tradingAttentionData();
+    const secondItem = {
       ...firstPage.items[0],
-      chain_id: "snapshot:snapshot-sol-24h",
-      asset: "SOL",
-      horizon: "24h",
-      title: "SOL · 24h",
-      summary: "SOL product-launch chain loaded from cursor.",
-      lineage: {
-        ...firstPage.items[0].lineage,
-        snapshot_id: "snapshot-sol-24h"
-      },
-      snapshot: firstPage.items[0].snapshot
-        ? {
-            ...firstPage.items[0].snapshot,
-            snapshot_id: "snapshot-sol-24h",
-            asset: "SOL",
-            horizon: "24h"
-          }
-        : null
+      item_id: "attention-sol-product",
+      title: "SOL",
+      summary: "SOL ecosystem attention loaded from cursor.",
+      linked_tokens: [],
+      linked_topics: [{ key: "sol", label: "SOL", role: "asset" }]
     };
     mockApi({
-      signalLabPages: {
+      tradingAttentionPages: {
         "": { ...firstPage, has_more: true, next_cursor: "80" },
         "80": {
           ...firstPage,
-          items: [secondChain],
+          items: [secondItem],
           returned_count: 1,
           has_more: false,
           next_cursor: null
@@ -569,102 +563,33 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => {
       expect(
         mockedGetApi.mock.calls.some(
-          ([path, options]) => path === "/api/signal-lab/chains" && options?.params?.cursor === "80"
+          ([path, options]) => path === "/api/signal-lab/pulse" && options?.params?.cursor === "80"
         )
       ).toBe(true);
     });
-    expect(await screen.findByText("SOL product-launch chain loaded from cursor.")).toBeInTheDocument();
+    expect(await screen.findByText("SOL ecosystem attention loaded from cursor.")).toBeInTheDocument();
   });
 
-  it("renders Signal Chain rows and opens the right-side trace", async () => {
+  it("renders trading-attention rows and opens the right-side inspector", async () => {
     const { container } = renderWithQuery(<App />);
 
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
-    const signalChainRow = await within(pulse).findByRole("button", { name: "open signal chain BNB · 6h" });
+    const signalChainRow = await within(pulse).findByRole("button", { name: "open trading attention BNB" });
 
     fireEvent.click(signalChainRow);
 
-    await waitFor(() => expect(screen.getByText("selected signal chain")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("selected trading attention")).toBeInTheDocument());
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    expect(within(drawer).getByRole("tab", { name: "Trace" })).toHaveAttribute("aria-selected", "true");
-    expect(within(drawer).getAllByText("Extracted").length).toBeGreaterThan(0);
+    expect(drawer.querySelectorAll(".detail-drawer-card")).toHaveLength(5);
+    expect(drawer.querySelector(".detail-drawer-field")).toBeInTheDocument();
+    expect(within(drawer).getByText("Why it matters")).toBeInTheDocument();
+    expect(within(drawer).getByText("Original post")).toBeInTheDocument();
+    expect(within(drawer).getByText("Linked tokens")).toBeInTheDocument();
+    expect(within(drawer).getByText("Linked topics")).toBeInTheDocument();
+    expect(within(drawer).getByText("Risks")).toBeInTheDocument();
+    expect(within(drawer).queryByRole("tab", { name: "Trace" })).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Snapshot Ledger")).not.toBeInTheDocument();
-
-    fireEvent.click(within(drawer).getByRole("tab", { name: "Snapshot" }));
-    expect(within(drawer).getByText("Snapshot Ledger")).toBeInTheDocument();
-    expect(within(drawer).getByText("signal-lab-score-v1")).toBeInTheDocument();
-    expect(within(drawer).getByText("schema_version")).toBeInTheDocument();
-    expect(within(drawer).getByText("report-only-v1")).toBeInTheDocument();
-    expect(within(drawer).getByText("shadow-v1")).toBeInTheDocument();
-    expect(within(drawer).getByText("risk-v1")).toBeInTheDocument();
-    expect(within(drawer).getByText("baseline-v1")).toBeInTheDocument();
-    expect(within(drawer).getByText("cluster-cz-bnb")).toBeInTheDocument();
-    expect(within(drawer).getByText("price_change_before_social_pct")).toBeInTheDocument();
-    expect(within(drawer).getByText("public_stream_coverage")).toBeInTheDocument();
-    expect(within(drawer).queryByText("Extracted")).not.toBeInTheDocument();
-
-    fireEvent.click(within(drawer).getByRole("tab", { name: "Outcome" }));
-    expect(within(drawer).getByText("Latest Outcome")).toBeInTheDocument();
-    expect(within(drawer).getByText("settled_at_ms")).toBeInTheDocument();
-
-    fireEvent.click(within(drawer).getByRole("tab", { name: "Credit" }));
-    expect(within(drawer).getByText("Credit Rows")).toBeInTheDocument();
-    expect(within(drawer).getByText("Predictive credit, not causal proof.")).toBeInTheDocument();
-    expect(within(drawer).getByText("credit-cz-bnb")).toBeInTheDocument();
-    expect(within(drawer).getByText("cluster-cz-bnb")).toBeInTheDocument();
     expect(screen.queryByText("harness-score-v1")).not.toBeInTheDocument();
-  });
-
-  it("links Signal Lab details by persisted lineage ids instead of symbol fallback", async () => {
-    const baseChains = signalLabChainsData();
-    const matchingChain = baseChains.items[0];
-    const decoyChain = {
-      ...matchingChain,
-      chain_id: "snapshot:snapshot-bnb-wrong",
-      lineage: {
-        ...matchingChain.lineage,
-        event_id: "event-other",
-        seed_id: "seed-other",
-        snapshot_id: "snapshot-bnb-wrong",
-        source_event_id: "event-other"
-      },
-      social_event: {
-        ...socialEventItem(),
-        event_id: "event-other",
-        extraction_id: "extract-other"
-      },
-      seed: {
-        ...attentionSeedItem(),
-        seed_id: "seed-other",
-        event_id: "event-other"
-      },
-      snapshot: {
-        ...harnessSnapshotItem(),
-        snapshot_id: "snapshot-bnb-wrong",
-        source_event_id: "event-other",
-        seed_id: "seed-other",
-        combined_score: 0.91
-      }
-    };
-    mockApi({
-      signalLabChains: {
-        ...baseChains,
-        summary: { ...baseChains.summary, frozen: 2 },
-        items: [decoyChain, matchingChain],
-        returned_count: 2
-      }
-    });
-    const { container } = renderWithQuery(<App />);
-
-    const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
-    const signalChainRows = await within(pulse).findAllByRole("button", { name: "open signal chain BNB · 6h" });
-    fireEvent.click(signalChainRows[1]);
-
-    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    fireEvent.click(await within(drawer).findByRole("tab", { name: "Snapshot" }));
-
-    expect(within(drawer).getByText("snapshot-bnb-6h")).toBeInTheDocument();
-    expect(within(drawer).queryByText("snapshot-bnb-wrong")).not.toBeInTheDocument();
   });
 
   it("dedupes replay/live tape rows and token tape click does not change sort mode", async () => {
@@ -792,7 +717,7 @@ describe("App Token Radar social heat cockpit", () => {
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
 
     fireEvent.click(within(pulse).getByRole("button", { name: "Open Lab" }));
-    await screen.findByText("Audit watched-account social events into snapshots, outcomes, and predictive credit.");
+    await screen.findByText("Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.");
     expect(useTraderStore.getState().activeView).toBe("signal_lab");
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
@@ -802,7 +727,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const livePulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
     fireEvent.click(within(livePulse).getByRole("button", { name: "Open Lab" }));
-    await screen.findByText("Audit watched-account social events into snapshots, outcomes, and predictive credit.");
+    await screen.findByText("Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.");
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
     expect(useTraderStore.getState().activeView).toBe("live");
     expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
@@ -831,12 +756,12 @@ describe("App Token Radar social heat cockpit", () => {
     expect(container.querySelector('[data-mobile-task-panel="detail"]')).toBeInTheDocument();
   });
 
-  it("links Signal Lab pulse chains to the source tweet without nesting controls", async () => {
+  it("links Signal Lab pulse attention to the source tweet without nesting controls", async () => {
     renderWithQuery(<App />);
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
 
-    expect(await within(pulse).findByRole("button", { name: "open signal chain BNB · 6h" })).toBeInTheDocument();
-    expect(within(pulse).getByRole("link", { name: "open source tweet for BNB · 6h" })).toHaveAttribute(
+    expect(await within(pulse).findByRole("button", { name: "open trading attention BNB" })).toBeInTheDocument();
+    expect(within(pulse).getByRole("link", { name: "open source post for BNB" })).toHaveAttribute(
       "href",
       "https://x.com/cz_binance/status/42"
     );
@@ -849,8 +774,8 @@ function mockApi(options: {
   insufficientTiming?: boolean;
   windowSwapToken?: boolean;
   searchResult?: boolean;
-  signalLabChains?: SignalLabChainsData;
-  signalLabPages?: Record<string, SignalLabChainsData>;
+  tradingAttention?: TradingAttentionData;
+  tradingAttentionPages?: Record<string, TradingAttentionData>;
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -904,20 +829,9 @@ function mockApi(options: {
         ]
       });
     }
-    if (path === "/api/signal-lab/chains") {
+    if (path === "/api/signal-lab/pulse") {
       const cursor = String(requestOptions?.params?.cursor ?? "");
-      return ok(options.signalLabPages?.[cursor] ?? options.signalLabChains ?? signalLabChainsData());
-    }
-    if (path === "/api/harness-health") {
-      return ok<HarnessHealthData>({
-        llm_configured: true,
-        extractor_running: true,
-        schema_success_rate: 0.96,
-        pending_jobs: 1,
-        snapshots_24h: 42,
-        pending_outcomes: 18,
-        settlement_coverage: 0.73
-      });
+      return ok(options.tradingAttentionPages?.[cursor] ?? options.tradingAttention ?? tradingAttentionData());
     }
     if (path === "/api/enrichment-jobs") return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     if (path === "/api/search") {
@@ -1273,154 +1187,81 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
   };
 }
 
-function socialEventItem() {
-  return {
-    extraction_id: "extract-cz-bnb",
-    event_id: "event-cz-bnb",
-    author_handle: "cz_binance",
-    received_at_ms: 1_777_746_020_000,
-    schema_version: "social-event-v1",
-    event_type: "meme_phrase_seed",
-    source_action: "posted",
-    subject: "BNB attention seed",
-    direction_hint: "attention_positive",
-    attention_mechanism: "meme_phrase",
-    impact_hint: 0.72,
-    semantic_novelty_hint: 0.68,
-    confidence: 0.86,
-    is_signal_event: true,
-    anchor_terms: [{ term: "build on BNB", role: "meme_phrase", evidence: "build on BNB" }],
-    token_candidates: [{ symbol: "BNB", evidence: "BNB", confidence: 0.8 }],
-    semantic_risks: ["public_stream_coverage"],
-    summary_zh: "CZ 提到 build on BNB，形成 BNB attention seed。",
-    event: {
-      event_id: "event-cz-bnb",
-      tweet_id: "42",
-      author_handle: "cz_binance",
-      received_at_ms: 1_777_746_020_000,
-      text_clean: "build on BNB",
-      cashtags: ["BNB"],
-      is_watched: 1
-    }
-  };
-}
-
-function attentionSeedItem() {
-  return {
-    seed_id: "seed-cz-bnb",
-    extraction_id: "extract-cz-bnb",
-    event_id: "event-cz-bnb",
-    author_handle: "cz_binance",
-    received_at_ms: 1_777_746_020_000,
-    event_type: "meme_phrase_seed",
-    subject: "BNB attention seed",
-    anchor_terms: [{ term: "build on BNB", role: "meme_phrase", evidence: "build on BNB" }],
-    token_uptake_count: 2,
-    top_linked_symbols: ["BNB"],
-    seed_status: "snapshot_ready",
-    risks: ["public_stream_coverage"]
-  };
-}
-
-function harnessSnapshotItem() {
-  return {
-    snapshot_id: "snapshot-bnb-6h",
-    source_event_id: "event-cz-bnb",
-    seed_id: "seed-cz-bnb",
-    asset: "BNB",
-    decision_time_ms: 1_777_746_040_000,
-    horizon: "6h",
-    combined_score: 0.42,
-    policy_signal: "NO_TRADE",
-    shadow_signal: "LONG_SMALL",
-    event_clusters: [{ cluster_id: "cluster-cz-bnb", event_type: "meme_phrase_seed", source: "cz_binance", event_score: 0.42 }],
-    market_state: { price_change_before_social_pct: 0.01 },
-    versions: {
-      config_version: "social-mvp-v1",
-      prompt_version: "social-event-v1",
-      schema_version: "social-event-v1",
-      scoring_version: "harness-score-v1",
-      weight_version: "report-only-v1",
-      policy_version: "shadow-v1",
-      risk_version: "risk-v1",
-      baseline_version: "baseline-v1"
-    },
-    outcome_status: "pending",
-    credit_status: "none",
-    risks: ["public_stream_coverage"]
-  };
-}
-
-function harnessOutcomeItem() {
-  return {
-    snapshot_id: "snapshot-bnb-6h",
-    settled_at_ms: 1_777_767_640_000,
-    actual_return: 0.018,
-    expected_return: 0.009,
-    abnormal_return: 0.009,
-    realized_vol: 0.018,
-    normalized_outcome: 0.5,
-    baseline_version: "baseline-v1"
-  };
-}
-
-function harnessCreditItem() {
-  return {
-    credit_id: "credit-cz-bnb",
-    snapshot_id: "snapshot-bnb-6h",
-    cluster_id: "cluster-cz-bnb",
-    asset: "BNB",
-    event_type: "meme_phrase_seed",
-    source: "cz_binance",
-    horizon: "6h",
-    event_score: 0.42,
-    responsibility: 1,
-    credit: 0.5,
-    created_at_ms: 1_777_767_650_000
-  };
-}
-
-function signalLabChainsData(): SignalLabChainsData {
+function tradingAttentionData(): TradingAttentionData {
   return {
     query: {
       window: "1h",
-      horizon: "6h",
       scope: "all",
-      stage: null,
-      asset: null,
+      kind: null,
       handle: null,
       q: null
     },
-    summary: { extracted: 0, seeded: 0, frozen: 1, settled: 0, credited: 0 },
+    summary: {
+      direct_token: 1,
+      topic_heat: 1,
+      ecosystem_signal: 1,
+      market_structure: 0,
+      risk_alert: 0,
+      low_signal: 0,
+      hot: 0,
+      watch: 2,
+      context: 1,
+      muted: 0
+    },
     items: [
       {
-        chain_id: "snapshot:snapshot-bnb-6h",
-        stage: "frozen",
+        item_id: "attention-bnb",
+        kind: "ecosystem_signal",
+        kind_label: "Ecosystem",
+        priority: "watch",
+        heat_score: 72,
         received_at_ms: 1_777_746_020_000,
         updated_at_ms: 1_777_746_040_000,
-        asset: "BNB",
-        horizon: "6h",
-        source: "cz_binance",
-        event_type: "meme_phrase_seed",
-        title: "BNB · 6h",
-        summary: "CZ 提到 build on BNB，形成 BNB attention seed。",
-        score: 0.42,
-        outcome_status: "pending",
-        credit_status: "none",
-        risks: ["public_stream_coverage"],
-        evidence_chips: ["posted", "meme phrase", "LONG SMALL"],
-        lineage: {
-          extraction_id: "extract-cz-bnb",
+        source: { handle: "cz_binance", followers: 9_000_000 },
+        event: {
           event_id: "event-cz-bnb",
-          seed_id: "seed-cz-bnb",
-          snapshot_id: "snapshot-bnb-6h",
-          source_event_id: "event-cz-bnb"
+          tweet_id: "42",
+          canonical_url: "https://x.com/cz_binance/status/42",
+          author_handle: "cz_binance",
+          text: "build on BNB",
+          received_at_ms: 1_777_746_020_000
         },
-        social_event: socialEventItem(),
-        seed: attentionSeedItem(),
-        snapshot: harnessSnapshotItem(),
-        outcome: harnessOutcomeItem(),
-        credits: [harnessCreditItem()]
+        event_type: "meme_phrase_seed",
+        direction_hint: "attention_positive",
+        attention_mechanism: "meme_phrase",
+        title: "BNB",
+        summary: "CZ 提到 build on BNB，形成 BNB 生态关注。",
+        why_it_matters: "Watched account attention can pull liquidity into the BNB ecosystem without forcing a trade label.",
+        linked_tokens: [
+          {
+            asset_id: "asset:cex:okx:BNB-USDT",
+            venue_id: "venue:cex:okx:BNB-USDT",
+            identity_key: "asset:cex:okx:BNB-USDT",
+            symbol: "BNB",
+            venue_type: "cex",
+            exchange: "okx",
+            inst_id: "BNB-USDT",
+            chain: null,
+            address: null,
+            relation: "candidate",
+            confidence: 0.82,
+            status: "resolved",
+            source: "asset_attributions"
+          }
+        ],
+        linked_topics: [{ key: "build-on-bnb", label: "build on BNB", role: "meme_phrase" }],
+        metrics: {
+          impact: 72,
+          novelty: 68,
+          confidence: 0.86,
+          direct_token_count: 1,
+          topic_count: 1,
+          account_alert_count: 0,
+          window_mentions: 2,
+          watched_author_count: 1
+        },
+        risks: ["public_stream_coverage"],
+        next_action: "Inspect BNB ecosystem tape and confirm whether mentions broaden across watched accounts."
       }
     ],
     returned_count: 1,
@@ -1458,8 +1299,7 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
         confidence: 1
       }
     ],
-    alerts: [],
-    harness: null
+    alerts: []
   };
 }
 

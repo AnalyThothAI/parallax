@@ -1,6 +1,13 @@
 import { ExternalLink } from "lucide-react";
 import type { AlertRecord, AssetAttributionRecord, EntityRecord, EventRecord, SearchData } from "../api/types";
 import { eventHandle, eventText, formatRelativeTime, shortAddress } from "../lib/format";
+import {
+  DetailDrawerHeader,
+  DetailDrawerMetric,
+  DetailDrawerMetricGrid,
+  DetailDrawerSection,
+  DetailDrawerShell
+} from "./DetailDrawer";
 
 export type EvidenceDetailDrawerProps =
   | {
@@ -27,22 +34,19 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
   }
   const chips = evidenceChips(props.event, props.entities);
   return (
-    <aside className="detail-drawer drawer evidence-drawer">
-      <header className="drawer-head">
-        <div className="drawer-title">
-          <div>
-            <div className="eyebrow">selected evidence</div>
-            <h2>@{eventHandle(props.event)}</h2>
-            <p>
-              {props.sourceLabel} · {props.matchType ?? "stream"} · {formatRelativeTime(props.event.received_at_ms)}
-            </p>
-          </div>
-          <div className="opportunity-score">{props.score === null || props.score === undefined ? "-" : Math.round(props.score)}</div>
-        </div>
-      </header>
+    <DetailDrawerShell className="evidence-drawer">
+      <DetailDrawerHeader
+        badge={props.score === null || props.score === undefined ? "-" : Math.round(props.score)}
+        eyebrow="selected evidence"
+        subtitle={
+          <>
+            {props.sourceLabel} · {props.matchType ?? "stream"} · {formatRelativeTime(props.event.received_at_ms)}
+          </>
+        }
+        title={`@${eventHandle(props.event)}`}
+      />
 
-      <section className="drawer-section evidence-body">
-        <div className="section-title">post</div>
+      <DetailDrawerSection className="evidence-body" title="post">
         <p className="evidence-text">{eventText(props.event) || "no text"}</p>
         {props.event.canonical_url ? (
           <a className="external-row" href={props.event.canonical_url} rel="noreferrer" target="_blank">
@@ -50,10 +54,9 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
             Open source post
           </a>
         ) : null}
-      </section>
+      </DetailDrawerSection>
 
-      <section className="drawer-section">
-        <div className="section-title">entities</div>
+      <DetailDrawerSection title="entities">
         {chips.length ? (
           <div className="entity-tags evidence-tags">
             {chips.map((chip) => (
@@ -65,10 +68,9 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         ) : (
           <div className="empty-state compact">no extracted entities</div>
         )}
-      </section>
+      </DetailDrawerSection>
 
-      <section className="drawer-section">
-        <div className="section-title">asset attribution</div>
+      <DetailDrawerSection title="asset attribution">
         {props.assetAttributions.length ? (
           <div className="evidence-list">
             {props.assetAttributions.map((item) => (
@@ -83,10 +85,9 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         ) : (
           <div className="empty-state compact">no asset attribution</div>
         )}
-      </section>
+      </DetailDrawerSection>
 
-      <section className="drawer-section">
-        <div className="section-title">alerts</div>
+      <DetailDrawerSection title="alerts">
         {props.alerts.length ? (
           <div className="evidence-list">
             {props.alerts.map((item) => (
@@ -99,8 +100,8 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         ) : (
           <div className="empty-state compact">no watched-account alert</div>
         )}
-      </section>
-    </aside>
+      </DetailDrawerSection>
+    </DetailDrawerShell>
   );
 }
 
@@ -109,44 +110,28 @@ function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceD
   const returned = data?.returned_count ?? 0;
   const items = data?.items ?? [];
   return (
-    <aside className="detail-drawer drawer evidence-drawer">
-      <header className="drawer-head">
-        <div className="drawer-title">
-          <div>
-            <div className="eyebrow">selected evidence</div>
-            <h2>Search</h2>
-            <p>{query || "empty query"}</p>
-          </div>
-          <div className="opportunity-score">{isFetching ? "..." : total}</div>
-        </div>
-        <div className="drawer-kv evidence-query-kv">
-          <div>
-            <span>returned</span>
-            <b>{returned}</b>
-          </div>
-          <div>
-            <span>total</span>
-            <b>{total}</b>
-          </div>
-          <div>
-            <span>more</span>
-            <b>{data?.has_more ? "yes" : "no"}</b>
-          </div>
-          <div>
-            <span>state</span>
-            <b>{error ? "error" : isFetching ? "loading" : "ready"}</b>
-          </div>
-        </div>
-      </header>
-      <section className="drawer-section">
-        <div className="section-title">search context</div>
+    <DetailDrawerShell className="evidence-drawer">
+      <DetailDrawerHeader
+        badge={isFetching ? "..." : total}
+        eyebrow="selected evidence"
+        metrics={
+          <DetailDrawerMetricGrid className="evidence-query-kv">
+            <DetailDrawerMetric label="returned" value={returned} />
+            <DetailDrawerMetric label="total" value={total} />
+            <DetailDrawerMetric label="more" value={data?.has_more ? "yes" : "no"} />
+            <DetailDrawerMetric label="state" value={error ? "error" : isFetching ? "loading" : "ready"} />
+          </DetailDrawerMetricGrid>
+        }
+        subtitle={query || "empty query"}
+        title="Search"
+      />
+      <DetailDrawerSection title="search context">
         <p className="ledger-note">
           {error ? error.message : total ? "命中项已收进当前 Evidence，上下文不再散落到底部面板。" : "没有命中时，尝试 CA、$SYMBOL、@handle 或更具体的文本。"}
         </p>
-      </section>
+      </DetailDrawerSection>
 
-      <section className="drawer-section">
-        <div className="section-title">matches</div>
+      <DetailDrawerSection title="matches">
         {isFetching ? <div className="empty-state compact">检索中</div> : null}
         {!isFetching && items.length === 0 ? <div className="empty-state compact">no matches</div> : null}
         {!isFetching && items.length ? (
@@ -170,8 +155,8 @@ function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceD
             ))}
           </div>
         ) : null}
-      </section>
-    </aside>
+      </DetailDrawerSection>
+    </DetailDrawerShell>
   );
 }
 

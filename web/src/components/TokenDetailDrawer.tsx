@@ -1,6 +1,5 @@
 import type {
   AccountQualityData,
-  SignalLabChain,
   TokenDetailMode,
   TokenPostRange,
   TokenPostSortMode,
@@ -14,8 +13,15 @@ import { gmgnTokenUrl } from "../lib/gmgn";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { AccountLane } from "./AccountLane";
+import {
+  DetailDrawerHeader,
+  DetailDrawerMetric,
+  DetailDrawerMetricGrid,
+  DetailDrawerSection,
+  DetailDrawerShell,
+  DetailDrawerTagStrip
+} from "./DetailDrawer";
 import { ScoreLedger } from "./ScoreLedger";
-import { SignalChainList } from "./SignalChainList";
 import { TokenPostsTab } from "./TokenPostsTab";
 import { TokenReplayFocus } from "./TokenReplayFocus";
 import { tokenDrawerSummary } from "./TokenRadarRow";
@@ -34,7 +40,6 @@ type TokenDetailDrawerProps = {
   activeTab: TokenDetailTab;
   timeline?: TokenSocialTimelineData | null;
   posts?: TokenPostsData | null;
-  signalChains: SignalLabChain[];
   accountQuality?: AccountQualityData | null;
   isTimelineLoading: boolean;
   isPostsLoading: boolean;
@@ -59,7 +64,6 @@ type TokenDetailDrawerProps = {
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
-  onSelectSignalChain: (chain: SignalLabChain) => void;
 };
 
 export function TokenDetailDrawer({
@@ -67,7 +71,6 @@ export function TokenDetailDrawer({
   activeTab,
   timeline,
   posts,
-  signalChains,
   accountQuality,
   isTimelineLoading,
   isPostsLoading,
@@ -91,26 +94,16 @@ export function TokenDetailDrawer({
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
-  onLoadMorePosts,
-  onSelectSignalChain
+  onLoadMorePosts
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
-      <aside className="detail-drawer drawer">
-        <header className="drawer-head select-token-empty">
-          <div className="drawer-title">
-            <div>
-              <div className="eyebrow">selected token</div>
-              <h2>Select Token</h2>
-              <p>no token selected</p>
-            </div>
-            <div className="opportunity-score">-</div>
-          </div>
-        </header>
-        <section className="drawer-section">
+      <DetailDrawerShell>
+        <DetailDrawerHeader badge="-" className="select-token-empty" eyebrow="selected token" subtitle="no token selected" title="Select Token" />
+        <DetailDrawerSection>
           <div className="empty-state">从 Token Radar 或实时信号 Tape 选择一个币</div>
-        </section>
-      </aside>
+        </DetailDrawerSection>
+      </DetailDrawerShell>
     );
   }
 
@@ -118,50 +111,33 @@ export function TokenDetailDrawer({
   const drawerSummary = tokenDrawerSummary(token);
   const gmgnUrl = gmgnTokenUrl(token.identity.chain, token.identity.address);
   return (
-    <aside className="detail-drawer drawer">
-      <header className="drawer-head">
-        <div className="drawer-title">
-          <div>
-            <div className="eyebrow">selected token</div>
-            <h2>{tokenLabel(token)}</h2>
-            <p>
-              {token.identity.chain ?? "unknown"} · {shortAddress(token.identity.address ?? token.identity.identity_key)} · {token.identity.identity_status}
-            </p>
-            {gmgnUrl ? (
-              <a aria-label="Open selected token on GMGN" className="gmgn-link drawer-gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
-                GMGN
-              </a>
-            ) : null}
-          </div>
-          <div className="opportunity-score">{formatScore(token.opportunity.score)}</div>
-        </div>
-
-        <div className="drawer-kv">
-          <div>
-            <span>heat</span>
-            <b>{drawerSummary.heat}</b>
-          </div>
-          <div>
-            <span>quality</span>
-            <b>{drawerSummary.quality}</b>
-          </div>
-          <div>
-            <span>spread</span>
-            <b>{drawerSummary.spread}</b>
-          </div>
-          <div>
-            <span>timing</span>
-            <b>{drawerSummary.timing}</b>
-          </div>
-        </div>
-
-        <div className="risk-strip">
-          <span className="hot">{token.opportunity.decision}</span>
-          {risks.slice(0, 8).map((risk) => (
-            <span key={risk}>{risk}</span>
-          ))}
-        </div>
-
+    <DetailDrawerShell>
+      <DetailDrawerHeader
+        actions={
+          gmgnUrl ? (
+            <a aria-label="Open selected token on GMGN" className="gmgn-link drawer-gmgn-link" href={gmgnUrl} rel="noreferrer" target="_blank">
+              GMGN
+            </a>
+          ) : null
+        }
+        badge={formatScore(token.opportunity.score)}
+        eyebrow="selected token"
+        metrics={
+          <DetailDrawerMetricGrid>
+            <DetailDrawerMetric label="heat" value={drawerSummary.heat} />
+            <DetailDrawerMetric label="quality" value={drawerSummary.quality} />
+            <DetailDrawerMetric label="spread" value={drawerSummary.spread} />
+            <DetailDrawerMetric label="timing" value={drawerSummary.timing} />
+          </DetailDrawerMetricGrid>
+        }
+        subtitle={
+          <>
+            {token.identity.chain ?? "unknown"} · {shortAddress(token.identity.address ?? token.identity.identity_key)} · {token.identity.identity_status}
+          </>
+        }
+        title={tokenLabel(token)}
+      >
+        <DetailDrawerTagStrip emptyLabel="no active risk flags" featuredItem={token.opportunity.decision} items={risks.slice(0, 8)} />
         <label className="detail-window-control">
           <span>detail window</span>
           <select
@@ -176,7 +152,7 @@ export function TokenDetailDrawer({
             ))}
           </select>
         </label>
-      </header>
+      </DetailDrawerHeader>
 
       <nav className="tabs" aria-label="token detail tabs">
         {TABS.map((item) => (
@@ -187,7 +163,7 @@ export function TokenDetailDrawer({
       </nav>
 
       {activeTab === "timeline" ? (
-        <section className="drawer-section">
+        <DetailDrawerSection>
           {detailMode === "replay" ? (
             <TokenReplayFocus
               isLoading={isTimelineLoading}
@@ -208,11 +184,10 @@ export function TokenDetailDrawer({
               />
             </>
           )}
-        </section>
+        </DetailDrawerSection>
       ) : null}
       {activeTab === "posts" ? (
-        <section className="drawer-section">
-          <div className="section-title">posts · {detailWindow}</div>
+        <DetailDrawerSection title={<>posts · {detailWindow}</>}>
           <TokenPostsTab
             hideDuplicateClusters={hideDuplicateClusters}
             isFetchingNextPage={isPostsFetchingNextPage}
@@ -227,30 +202,31 @@ export function TokenDetailDrawer({
             onPostSortModeChange={onPostSortModeChange}
             onWatchedPostsOnlyChange={onWatchedPostsOnlyChange}
           />
-        </section>
+        </DetailDrawerSection>
       ) : null}
       {activeTab === "score" ? (
-        <section className="drawer-section">
-          <div className="section-title">score ledger</div>
+        <DetailDrawerSection title="score ledger">
           <ScoreLedger token={token} />
-        </section>
+        </DetailDrawerSection>
       ) : null}
       {activeTab === "lab" ? (
-        <section className="drawer-section">
-          <div className="section-title">Signal Chains · {tokenLabel(token)}</div>
-          <SignalChainList compact isLoading={isSignalLabLoading} items={signalChains} onSelect={onSelectSignalChain} />
-        </section>
+        <DetailDrawerSection title={<>Trading attention · {tokenLabel(token)}</>}>
+          {isSignalLabLoading ? (
+            <div className="empty-state">loading trading attention</div>
+          ) : (
+            <div className="empty-state">Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.</div>
+          )}
+        </DetailDrawerSection>
       ) : null}
       {activeTab === "accounts" ? (
-        <section className="drawer-section">
-          <div className="section-title">accounts</div>
+        <DetailDrawerSection title="accounts">
           <AccountLane
             accountQuality={accountQuality}
             isLoading={isAccountQualityLoading}
             timeline={timeline}
           />
-        </section>
+        </DetailDrawerSection>
       ) : null}
-    </aside>
+    </DetailDrawerShell>
   );
 }

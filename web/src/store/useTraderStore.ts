@@ -2,8 +2,7 @@ import { create } from "zustand";
 import type {
   RadarSortMode,
   ScopeKey,
-  SignalLabInspectorTab,
-  SignalLabStageFilter,
+  TradingAttentionKindFilter,
   TokenDetailMode,
   TokenDetailTab,
   TokenPostRange,
@@ -12,7 +11,6 @@ import type {
 } from "../api/types";
 
 type ActiveView = "live" | "signal_lab";
-type SignalLabHorizon = "6h" | "24h";
 
 type TraderState = {
   token: string;
@@ -32,12 +30,9 @@ type TraderState = {
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
   activeView: ActiveView;
-  signalLabStage: SignalLabStageFilter;
-  signalLabHorizon: SignalLabHorizon;
-  signalLabAsset: string;
+  signalLabKind: TradingAttentionKindFilter;
   signalLabHandle: string;
   signalLabSearch: string;
-  signalLabInspectorTab: SignalLabInspectorTab;
   setToken: (token: string) => void;
   setWindow: (window: WindowKey) => void;
   setScope: (scope: ScopeKey) => void;
@@ -56,12 +51,9 @@ type TraderState = {
   setHideDuplicateClusters: (enabled: boolean) => void;
   setWatchedPostsOnly: (enabled: boolean) => void;
   setActiveView: (view: ActiveView) => void;
-  setSignalLabStage: (stage: SignalLabStageFilter) => void;
-  setSignalLabHorizon: (horizon: SignalLabHorizon) => void;
-  setSignalLabAsset: (asset: string) => void;
+  setSignalLabKind: (kind: TradingAttentionKindFilter) => void;
   setSignalLabHandle: (handle: string) => void;
   setSignalLabSearch: (search: string) => void;
-  setSignalLabInspectorTab: (tab: SignalLabInspectorTab) => void;
 };
 
 export const useTraderStore = create<TraderState>((set, get) => ({
@@ -82,12 +74,9 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   hideDuplicateClusters: false,
   watchedPostsOnly: false,
   activeView: "live",
-  signalLabStage: "all",
-  signalLabHorizon: "6h",
-  signalLabAsset: "",
+  signalLabKind: "all",
   signalLabHandle: "",
   signalLabSearch: "",
-  signalLabInspectorTab: "trace",
   setToken: (token) => set({ token }),
   setWindow: (window) => set({ window }),
   setScope: (scope) => set({ scope }),
@@ -106,10 +95,7 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),
   setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly }),
   setActiveView: (activeView) => set({ activeView }),
-  setSignalLabStage: (signalLabStage) => set({ signalLabStage }),
-  setSignalLabHorizon: (signalLabHorizon) => set({ signalLabHorizon }),
-  setSignalLabAsset: (signalLabAsset) => set({ signalLabAsset }),
+  setSignalLabKind: (signalLabKind) => set({ signalLabKind }),
   setSignalLabHandle: (signalLabHandle) => set({ signalLabHandle }),
-  setSignalLabSearch: (signalLabSearch) => set({ signalLabSearch }),
-  setSignalLabInspectorTab: (signalLabInspectorTab) => set({ signalLabInspectorTab })
+  setSignalLabSearch: (signalLabSearch) => set({ signalLabSearch })
 }));

@@ -396,146 +396,24 @@ def test_api_exposes_empty_harness_read_models_without_404(tmp_path):
     assert responses[6].json()["data"]["items"][2]["bucket"] == "-0.4 to 0.4"
 
 
-def test_api_exposes_signal_lab_chains_product_read_model(tmp_path):
+def test_api_exposes_trading_attention_pulse_without_harness_chains(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        event = make_token_event("event-signal-chain", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
+        event = make_token_event("event-attention-pulse", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        HarnessSnapshotBuilder(
-            client.app.state.service.harness,
-            tokens=client.app.state.service.tokens,
-        ).materialize(
-            event=event.to_dict(),
-            extraction=SocialEventExtraction(
-                is_signal_event=True,
-                event_type="meme_phrase_seed",
-                source_action="posted",
-                subject="PEPE ignition",
-                direction_hint="attention_positive",
-                attention_mechanism="direct_token_mention",
-                impact_hint=0.75,
-                semantic_novelty_hint=0.7,
-                confidence=0.9,
-                anchor_terms=[AnchorTerm(term="$PEPE", role="asset", evidence="$PEPE")],
-                token_candidates=[
-                    SocialTokenCandidate(
-                        symbol="PEPE",
-                        project_name=None,
-                        chain="eth",
-                        address=PEPE,
-                        evidence="$PEPE",
-                        confidence=0.9,
-                    )
-                ],
-                semantic_risks=["public_stream_coverage"],
-                summary_zh="PEPE ignition 形成 Signal Chain。",
-                raw_response={"ok": True},
-            ),
-            run_id="run-signal-chain",
-            model_version="fake-model",
-        )
 
         response = client.get(
-            "/api/signal-lab/chains",
-            params={"window": "1h", "horizon": "6h", "scope": "matched", "limit": 5},
+            "/api/signal-lab/pulse",
+            params={"window": "1h", "scope": "matched", "limit": 5},
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["query"] == {
-        "window": "1h",
-        "horizon": "6h",
-        "scope": "matched",
-        "stage": None,
-        "asset": None,
-        "handle": None,
-        "q": None,
-    }
-    assert data["summary"]["frozen"] == 1
-    assert data["returned_count"] == 1
-    assert data["items"][0]["chain_id"].startswith("snapshot:")
-    assert data["items"][0]["lineage"]["event_id"] == "event-signal-chain"
-    assert data["items"][0]["lineage"]["seed_id"]
-    assert data["items"][0]["lineage"]["snapshot_id"]
-
-
-def test_api_signal_lab_chains_cursor_paginates_read_model(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
-
-    with TestClient(app) as client:
-        base_ms = int(time.time() * 1000)
-        for index in range(2):
-            event = make_token_event(
-                f"event-signal-page-{index}",
-                symbol="PEPE",
-                address=PEPE,
-                text=f"$PEPE signal page {index}",
-                received_at_ms=base_ms - index * 1_000,
-            )
-            client.app.state.service.ingest.ingest_event(event, is_watched=True)
-            HarnessSnapshotBuilder(
-                client.app.state.service.harness,
-                tokens=client.app.state.service.tokens,
-            ).materialize(
-                event=event.to_dict(),
-                extraction=SocialEventExtraction(
-                    is_signal_event=True,
-                    event_type="meme_phrase_seed",
-                    source_action="posted",
-                    subject=f"PEPE page {index}",
-                    direction_hint="attention_positive",
-                    attention_mechanism="direct_token_mention",
-                    impact_hint=0.75,
-                    semantic_novelty_hint=0.7,
-                    confidence=0.9,
-                    anchor_terms=[AnchorTerm(term="$PEPE", role="asset", evidence="$PEPE")],
-                    token_candidates=[
-                        SocialTokenCandidate(
-                            symbol="PEPE",
-                            project_name=None,
-                            chain="eth",
-                            address=PEPE,
-                            evidence="$PEPE",
-                            confidence=0.9,
-                        )
-                    ],
-                    semantic_risks=["public_stream_coverage"],
-                    summary_zh=f"PEPE page {index} 形成 Signal Chain。",
-                    raw_response={"ok": True},
-                ),
-                run_id=f"run-signal-page-{index}",
-                model_version="fake-model",
-            )
-
-        first_page = client.get(
-            "/api/signal-lab/chains",
-            params={"window": "1h", "horizon": "6h", "scope": "matched", "limit": 1},
-            headers={"Authorization": "Bearer secret"},
-        )
-        second_page = client.get(
-            "/api/signal-lab/chains",
-            params={
-                "window": "1h",
-                "horizon": "6h",
-                "scope": "matched",
-                "limit": 1,
-                "cursor": first_page.json()["data"]["next_cursor"],
-            },
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert first_page.status_code == 200
-    assert second_page.status_code == 200
-    first = first_page.json()["data"]
-    second = second_page.json()["data"]
-    assert first["has_more"] is True
-    assert first["next_cursor"] == "1"
-    assert first["items"][0]["lineage"]["event_id"] == "event-signal-page-0"
-    assert second["has_more"] is False
-    assert second["next_cursor"] is None
-    assert second["items"][0]["lineage"]["event_id"] == "event-signal-page-1"
+    assert data["summary"]["direct_token"] == 1
+    assert data["items"][0]["kind"] == "direct_token"
+    assert data["items"][0]["linked_tokens"][0]["symbol"] == "PEPE"
 
 
 def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):

@@ -1,92 +1,96 @@
-import type { SignalLabChain, SignalLabChainsData, SignalLabStage, SignalLabStageFilter } from "../api/types";
-import { SIGNAL_LAB_STAGES, SIGNAL_LAB_STAGE_COPY, stageCount } from "../lib/signalLabChains";
-import { SignalChainList } from "./SignalChainList";
+import type { TradingAttentionData, TradingAttentionItem, TradingAttentionKind, TradingAttentionKindFilter } from "../api/types";
+import { TradingAttentionList } from "./SignalLabPulse";
+
+const ATTENTION_KINDS: Array<{ kind: TradingAttentionKind; label: string; description: string }> = [
+  { kind: "direct_token", label: "Direct token", description: "Concrete token, CA, or ticker attention." },
+  { kind: "topic_heat", label: "Topic heat", description: "Keyword or meme attention without forced tokenization." },
+  { kind: "ecosystem_signal", label: "Ecosystem", description: "Chain, sector, or product direction." },
+  { kind: "market_structure", label: "Structure", description: "Positioning, liquidity, and regime comments." },
+  { kind: "risk_alert", label: "Risk", description: "Regulation, exchange, contract, or market risk." }
+];
 
 type SignalLabWorkbenchProps = {
-  data?: SignalLabChainsData;
-  assetFilter: string;
+  data?: TradingAttentionData;
   handleFilter: string;
   hasNextPage?: boolean;
-  horizon: "6h" | "24h";
   isFetchingNextPage?: boolean;
   isLoading?: boolean;
+  kindFilter: TradingAttentionKindFilter;
+  overviewData?: TradingAttentionData;
   searchFilter: string;
-  selectedChainId?: string | null;
-  stageFilter: SignalLabStageFilter;
-  onAssetChange: (asset: string) => void;
+  selectedItemId?: string | null;
+  windowLabel: string;
+  onClearFilters: () => void;
   onHandleChange: (handle: string) => void;
-  onHorizonChange: (horizon: "6h" | "24h") => void;
+  onKindChange: (kind: TradingAttentionKindFilter) => void;
   onLoadMore: () => void;
   onSearchChange: (search: string) => void;
-  onSelect: (chain: SignalLabChain) => void;
-  onStageChange: (stage: SignalLabStageFilter) => void;
+  onSelect: (item: TradingAttentionItem) => void;
 };
 
 export function SignalLabWorkbench({
-  assetFilter,
   data,
   handleFilter,
   hasNextPage,
-  horizon,
   isFetchingNextPage,
   isLoading,
+  kindFilter,
+  overviewData,
   searchFilter,
-  selectedChainId,
-  stageFilter,
-  onAssetChange,
+  selectedItemId,
+  windowLabel,
+  onClearFilters,
   onHandleChange,
-  onHorizonChange,
+  onKindChange,
   onLoadMore,
   onSearchChange,
-  onSelect,
-  onStageChange
+  onSelect
 }: SignalLabWorkbenchProps) {
+  const items = data?.items ?? [];
+  const summary = overviewData?.summary ?? data?.summary;
+  const hasActiveFilters = kindFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
+  const categoryLabel = kindFilter === "all" ? "all categories" : labelForKind(kindFilter);
+  const totalAttention = totalByKind(summary);
   return (
     <section className="signal-lab-workbench">
       <header className="signal-lab-workbench-head">
         <div>
           <h2>Signal Lab</h2>
-          <p>Audit watched-account social events into snapshots, outcomes, and predictive credit.</p>
+          <p>Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.</p>
+        </div>
+        <div className="signal-lab-workbench-state">
+          <span>
+            window <b>{windowLabel}</b>
+          </span>
+          <span>
+            total <b>{totalAttention}</b>
+          </span>
+          <span>
+            shown <b>{items.length}</b>
+          </span>
         </div>
       </header>
 
-      <div className="signal-stage-grid" aria-label="Signal Lab lifecycle stages">
-        {SIGNAL_LAB_STAGES.map((stage) => (
+      <div className="signal-stage-grid" aria-label="Trading attention categories">
+        {ATTENTION_KINDS.map((item) => (
           <button
-            className={stageFilter === stage ? "active" : ""}
-            key={stage}
+            className={kindFilter === item.kind ? "active" : ""}
+            key={item.kind}
             type="button"
-            onClick={() => onStageChange(stageFilter === stage ? "all" : stage)}
+            onClick={() => onKindChange(kindFilter === item.kind ? "all" : item.kind)}
           >
-            <span>{SIGNAL_LAB_STAGE_COPY[stage].label}</span>
-            <b>{stageCount(data?.summary, stage)}</b>
-            <em>{SIGNAL_LAB_STAGE_COPY[stage].description}</em>
+            <span>{item.label}</span>
+            <b>{summary?.[item.kind] ?? 0}</b>
+            <em>{item.description}</em>
           </button>
         ))}
       </div>
 
       <div className="signal-filter-bar" aria-label="Signal Lab filters">
         <div className="filter-cell signal-stage-filter">
-          <span>Stage</span>
-          <b>{stageFilter === "all" ? "All stages" : SIGNAL_LAB_STAGE_COPY[stageFilter as SignalLabStage].label}</b>
+          <span>Kind</span>
+          <b>{kindFilter === "all" ? "All attention" : ATTENTION_KINDS.find((item) => item.kind === kindFilter)?.label}</b>
         </div>
-        <div className="filter-cell signal-horizon-filter">
-          <span>Horizon</span>
-          <div className="signal-horizon-control" aria-label="settlement horizon">
-            {(["6h", "24h"] as const).map((item) => (
-              <button className={horizon === item ? "active" : ""} key={item} type="button" onClick={() => onHorizonChange(item)}>
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-        <FilterField
-          label="Asset"
-          ariaLabel="Signal Lab asset filter"
-          value={assetFilter}
-          placeholder="$BNB"
-          onChange={onAssetChange}
-        />
         <FilterField
           label="Source"
           ariaLabel="Signal Lab source filter"
@@ -98,21 +102,30 @@ export function SignalLabWorkbench({
           label="Search"
           ariaLabel="Signal Lab text filter"
           value={searchFilter}
-          placeholder="build on BNB"
+          placeholder="grok, build, solana"
           onChange={onSearchChange}
         />
         <div className="filter-cell signal-sort-cell">
           <span>Sort</span>
-          <b>Newest</b>
+          <b>Heat</b>
         </div>
+        <button className="signal-clear-filters" disabled={!hasActiveFilters} type="button" onClick={onClearFilters}>
+          Reset
+        </button>
       </div>
 
       <section className="signal-chain-workbench-list">
         <header>
-          <h3>Signal Chains</h3>
-          <span>{stageFilter === "all" ? "all stages" : SIGNAL_LAB_STAGE_COPY[stageFilter as SignalLabStage].label}</span>
+          <h3>Trading Attention</h3>
+          <span>
+            {items.length} shown · {categoryLabel}
+          </span>
         </header>
-        <SignalChainList isLoading={isLoading} items={data?.items ?? []} selectedChainId={selectedChainId} onSelect={onSelect} />
+        {!isLoading && !items.length ? (
+          <SignalLabEmptyState hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
+        ) : (
+          <TradingAttentionList isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
+        )}
         {hasNextPage ? (
           <button className="signal-load-more" disabled={isFetchingNextPage} type="button" onClick={onLoadMore}>
             {isFetchingNextPage ? "Loading..." : "Load more"}
@@ -121,6 +134,29 @@ export function SignalLabWorkbench({
       </section>
     </section>
   );
+}
+
+function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFilters: boolean; onClearFilters: () => void }) {
+  return (
+    <div className="signal-empty-panel">
+      <b>{hasActiveFilters ? "No matching trading attention" : "No trading attention in this window"}</b>
+      {hasActiveFilters ? (
+        <button type="button" onClick={onClearFilters}>
+          Clear filters
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function labelForKind(kind: TradingAttentionKindFilter): string {
+  if (kind === "all") return "all categories";
+  return ATTENTION_KINDS.find((item) => item.kind === kind)?.label ?? kind;
+}
+
+function totalByKind(summary?: TradingAttentionData["summary"]): number {
+  if (!summary) return 0;
+  return ATTENTION_KINDS.reduce((total, item) => total + Number(summary[item.kind] ?? 0), 0);
 }
 
 function FilterField({
