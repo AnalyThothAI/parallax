@@ -1433,13 +1433,13 @@ svg {
   padding: 12px 14px;
 }
 
-.signal-inspector-body {
+.detail-drawer-card-stack {
   display: grid;
   gap: 10px;
   border-bottom: 0;
 }
 
-.signal-inspector-card {
+.detail-drawer-card {
   display: grid;
   gap: 7px;
   min-width: 0;
@@ -1449,7 +1449,7 @@ svg {
   padding: 9px;
 }
 
-.signal-inspector-card h3 {
+.detail-drawer-card h3 {
   margin: 0;
   color: var(--ink);
   font-family: var(--mono);
@@ -1457,7 +1457,7 @@ svg {
   line-height: 1.15;
 }
 
-.signal-inspector-card p {
+.detail-drawer-card p {
   overflow-wrap: anywhere;
   margin: 0;
   color: var(--muted);
@@ -1466,18 +1466,18 @@ svg {
   white-space: normal;
 }
 
-.signal-inspector-primary {
+.detail-drawer-card.is-accent {
   border-color: var(--accent-line);
   background: linear-gradient(90deg, rgba(242, 165, 31, 0.08), rgba(242, 165, 31, 0.02)), #090d0d;
 }
 
-.signal-inspector-fields {
+.detail-drawer-fields {
   display: grid;
   gap: 5px;
   min-width: 0;
 }
 
-.signal-inspector-field {
+.detail-drawer-field {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 7px;
@@ -1487,12 +1487,12 @@ svg {
   padding-top: 5px;
 }
 
-.signal-inspector-field:first-child {
+.detail-drawer-field:first-child {
   border-top: 0;
   padding-top: 0;
 }
 
-.signal-inspector-field span {
+.detail-drawer-field span {
   overflow: hidden;
   color: var(--faint);
   font-family: var(--mono);
@@ -1502,7 +1502,7 @@ svg {
   white-space: nowrap;
 }
 
-.signal-inspector-field b {
+.detail-drawer-field b {
   overflow: hidden;
   color: var(--ink);
   font-family: var(--mono);
@@ -1512,8 +1512,17 @@ svg {
   white-space: nowrap;
 }
 
-.signal-inspector-risk-strip span {
+.detail-drawer-card .detail-drawer-tag-strip span {
+  color: var(--muted);
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.03);
   font-size: 9px;
+}
+
+.detail-drawer-card .detail-drawer-tag-strip span.hot {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
 }
 
 .drawer-head .risk-strip {
