@@ -258,7 +258,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const pulseTitle = await screen.findByText("Signal Lab Pulse");
     const pulse = pulseTitle.closest("section") as HTMLElement;
-    expect(await within(pulse).findByText(/@cz_binance · watch · updated/)).toBeInTheDocument();
+    expect(await within(pulse).findByText(/positive · phrase/)).toBeInTheDocument();
     expect(within(pulse).getByText("CZ 提到 build on BNB，形成 BNB 生态关注。")).toBeInTheDocument();
     expect(within(pulse).queryByText("extractor configured")).not.toBeInTheDocument();
     expect(within(pulse).queryByLabelText("signal lab pulse stages")).not.toBeInTheDocument();

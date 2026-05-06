@@ -64,9 +64,7 @@ export function TradingAttentionList({ compact, isLoading, items, selectedItemId
               <span className={`signal-stage-badge ${item.kind}`}>{kindShortLabel(item.kind_label)}</span>
               <span className="signal-chain-main">
                 <strong>{attentionTitle(item)}</strong>
-                <em>
-                  @{item.source.handle ?? "unknown"} · {item.priority} · updated {formatRelativeTime(item.updated_at_ms)} ago
-                </em>
+                <em>{compact ? compactAttentionMeta(item) : fullAttentionMeta(item)}</em>
                 <p>{item.summary || item.why_it_matters}</p>
                 <span className="signal-chain-chipline">
                   {item.linked_tokens.slice(0, 2).map((token) => (
@@ -114,6 +112,37 @@ function SummaryPill({ label, value }: { label: string; value: number }) {
 function attentionTitle(item: TradingAttentionItem): string {
   const source = item.source.handle ? `@${item.source.handle}` : "@watched";
   return `${source} · ${item.kind_label} -> ${item.title}`;
+}
+
+function fullAttentionMeta(item: TradingAttentionItem): string {
+  return `@${item.source.handle ?? "unknown"} · ${item.priority} · updated ${formatRelativeTime(item.updated_at_ms)} ago`;
+}
+
+function compactAttentionMeta(item: TradingAttentionItem): string {
+  return [
+    directionLabel(item.direction_hint),
+    mechanismLabel(item.attention_mechanism),
+    `${formatRelativeTime(item.updated_at_ms)} ago`
+  ].join(" · ");
+}
+
+function directionLabel(direction?: string | null): string {
+  if (direction === "attention_positive") return "positive";
+  if (direction === "attention_negative") return "negative";
+  if (direction === "risk_negative") return "risk";
+  if (direction === "neutral") return "neutral";
+  return "unknown";
+}
+
+function mechanismLabel(mechanism?: string | null): string {
+  if (mechanism === "direct_token_mention") return "direct";
+  if (mechanism === "product_or_feature") return "product";
+  if (mechanism === "reply_target") return "reply";
+  if (mechanism === "exchange_or_listing") return "listing";
+  if (mechanism === "risk_focus") return "risk";
+  if (mechanism === "cultural_object") return "culture";
+  if (mechanism === "meme_phrase") return "phrase";
+  return "unknown";
 }
 
 function kindShortLabel(label: string): string {

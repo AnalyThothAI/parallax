@@ -897,8 +897,8 @@ svg {
 .bottom-deck {
   display: grid;
   grid-template-columns: minmax(380px, 0.95fr) minmax(400px, 1.05fr);
-  height: clamp(420px, 48vh, 520px);
-  min-height: 420px;
+  height: clamp(360px, calc(48vh - 50px), 470px);
+  min-height: 360px;
   border-top: 1px solid var(--line);
 }
 
@@ -1104,7 +1104,7 @@ svg {
 }
 
 .token-radar-table {
-  height: clamp(320px, calc(100vh - 520px), 560px);
+  height: clamp(350px, calc(100vh - 470px), 610px);
 }
 
 .radar-head,
@@ -2200,8 +2200,31 @@ svg {
 
 .signal-lab-pulse {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   min-height: 0;
+}
+
+.signal-attention-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 22px;
+  border-bottom: 1px solid var(--line-soft);
+  background: #080c0c;
+  padding: 0 10px;
+}
+
+.signal-attention-summary span {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.signal-attention-summary b {
+  color: var(--accent);
+  font-weight: 800;
 }
 
 .text-action {
@@ -2228,7 +2251,9 @@ svg {
 .signal-lab-pulse .signal-chain-list {
   min-height: 0;
   max-height: none;
-  margin: 10px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 .signal-chain-row {
@@ -2258,10 +2283,10 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-select {
-  grid-template-columns: 70px minmax(0, 1fr) 58px;
-  gap: 10px;
-  min-height: 118px;
-  padding: 12px 8px 12px 11px;
+  grid-template-columns: 74px minmax(0, 1fr) 58px;
+  gap: 8px;
+  min-height: 74px;
+  padding: 8px 7px 8px 11px;
 }
 
 .signal-chain-list.compact .signal-chain-time {
@@ -2306,9 +2331,9 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-twitter-link {
-  width: 24px;
-  height: 24px;
-  margin: 10px 10px 0 0;
+  width: 22px;
+  height: 22px;
+  margin: 8px 8px 0 0;
 }
 
 .signal-stage-badge {
@@ -2340,7 +2365,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-main {
-  gap: 5px;
+  gap: 3px;
 }
 
 .signal-chain-main strong {
@@ -2354,7 +2379,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-main strong {
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .signal-chain-main em,
@@ -2381,12 +2406,22 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-main p {
+  -webkit-line-clamp: 1;
   font-size: 11px;
-  line-height: 1.38;
+  line-height: 1.28;
 }
 
 .signal-chain-list.compact .signal-chain-chipline {
-  display: none;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 3px;
+  min-width: 0;
+}
+
+.signal-chain-list.compact .signal-chain-chipline span {
+  max-width: 88px;
+  padding: 1px 4px;
+  font-size: 8px;
 }
 
 .signal-chain-score {
@@ -2405,7 +2440,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-score b {
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .signal-chain-score small {
@@ -2414,6 +2449,7 @@ svg {
 
 .signal-chain-list.compact .signal-chain-score small {
   max-width: 58px;
+  font-size: 8px;
 }
 
 .signal-chain-time {
