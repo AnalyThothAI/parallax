@@ -1,6 +1,5 @@
 import type {
   AccountQualityData,
-  SignalLabChain,
   TokenDetailMode,
   TokenPostRange,
   TokenPostSortMode,
@@ -15,7 +14,6 @@ import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { AccountLane } from "./AccountLane";
 import { ScoreLedger } from "./ScoreLedger";
-import { SignalChainList } from "./SignalChainList";
 import { TokenPostsTab } from "./TokenPostsTab";
 import { TokenReplayFocus } from "./TokenReplayFocus";
 import { tokenDrawerSummary } from "./TokenRadarRow";
@@ -34,7 +32,6 @@ type TokenDetailDrawerProps = {
   activeTab: TokenDetailTab;
   timeline?: TokenSocialTimelineData | null;
   posts?: TokenPostsData | null;
-  signalChains: SignalLabChain[];
   accountQuality?: AccountQualityData | null;
   isTimelineLoading: boolean;
   isPostsLoading: boolean;
@@ -59,7 +56,6 @@ type TokenDetailDrawerProps = {
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
-  onSelectSignalChain: (chain: SignalLabChain) => void;
 };
 
 export function TokenDetailDrawer({
@@ -67,7 +63,6 @@ export function TokenDetailDrawer({
   activeTab,
   timeline,
   posts,
-  signalChains,
   accountQuality,
   isTimelineLoading,
   isPostsLoading,
@@ -91,8 +86,7 @@ export function TokenDetailDrawer({
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
-  onLoadMorePosts,
-  onSelectSignalChain
+  onLoadMorePosts
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
@@ -237,8 +231,12 @@ export function TokenDetailDrawer({
       ) : null}
       {activeTab === "lab" ? (
         <section className="drawer-section">
-          <div className="section-title">Signal Chains · {tokenLabel(token)}</div>
-          <SignalChainList compact isLoading={isSignalLabLoading} items={signalChains} onSelect={onSelectSignalChain} />
+          <div className="section-title">Trading attention · {tokenLabel(token)}</div>
+          {isSignalLabLoading ? (
+            <div className="empty-state">loading trading attention</div>
+          ) : (
+            <div className="empty-state">Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.</div>
+          )}
         </section>
       ) : null}
       {activeTab === "accounts" ? (

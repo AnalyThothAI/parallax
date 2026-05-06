@@ -543,12 +543,13 @@ SignalLabInspector lifecycle tabs
 SignalLabWorkbench stage/horizon filters
 SignalLabPulse sorting by lifecycle stage
 App query to /api/signal-lab/chains
+backend /api/signal-lab/chains read model
 top stats seeded/frozen/settled
 ```
 
 后端保留 harness CLI/API 可以作为后台研究接口，但 Signal Lab UI 不再引用它。
 
-如果后续要完全删除 harness backend，需要单独 migration 和 CLI deprecation。本次根治范围是产品主链路，不再让旧 harness 逻辑污染用户界面。
+本次同时删除 `/api/signal-lab/chains` 这条旧产品 read model；如果后续要完全删除 harness backend，需要单独 migration 和 CLI deprecation。根治范围是 Signal Lab 产品链路，不再让旧 harness 逻辑污染用户界面或公开 Signal Lab API。
 
 ## 8. 验收标准
 
@@ -573,7 +574,7 @@ keyword-only event becomes topic_heat item
 market_structure_comment becomes market_structure item
 negative exchange/regulation event becomes risk_alert item
 low information event becomes low_signal or filtered by priority
-frontend calls /api/signal-lab/pulse and never calls /api/signal-lab/chains
+frontend calls /api/signal-lab/pulse and /api/signal-lab/chains no longer exists
 frontend does not render lifecycle words: FROZEN, SETTLED, CREDITED, NO TRADE
 ```
 
@@ -590,4 +591,3 @@ new materialized tables
 ML ranking
 旧 Signal Chain UI 兼容
 ```
-

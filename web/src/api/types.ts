@@ -105,7 +105,6 @@ export type LivePayload = {
   entities: EntityRecord[];
   alerts: AlertRecord[];
   token_attributions?: TokenAttributionRecord[];
-  harness?: HarnessEventState | null;
 };
 
 export type NotificationSeverity = "info" | "warning" | "high" | "critical";
@@ -506,232 +505,88 @@ export type TokenSocialTimelineData = {
   next_cursor?: string | null;
 };
 
-export type AnchorTerm = {
-  term: string;
-  role: "subject" | "meme_phrase" | "product" | "asset" | "person" | "venue" | string;
-  evidence: string;
-};
+export type TradingAttentionKind =
+  | "direct_token"
+  | "topic_heat"
+  | "ecosystem_signal"
+  | "market_structure"
+  | "risk_alert"
+  | "low_signal";
+export type TradingAttentionKindFilter = "all" | TradingAttentionKind;
+export type TradingAttentionPriority = "hot" | "watch" | "context" | "muted";
 
-export type SocialTokenCandidate = {
+export type TradingAttentionToken = {
+  token_id?: string | null;
+  identity_key?: string | null;
   symbol?: string | null;
-  project_name?: string | null;
   chain?: string | null;
   address?: string | null;
-  evidence: string;
+  relation: string;
   confidence: number;
-};
-
-export type SocialEventItem = {
-  extraction_id: string;
-  event_id: string;
-  author_handle?: string | null;
-  received_at_ms: number;
-  schema_version: string;
-  event_type: string;
-  source_action: string;
-  subject: string;
-  direction_hint: string;
-  attention_mechanism: string;
-  impact_hint: number;
-  semantic_novelty_hint: number;
-  confidence: number;
-  is_signal_event: boolean;
-  anchor_terms: AnchorTerm[];
-  token_candidates: SocialTokenCandidate[];
-  semantic_risks: string[];
-  summary_zh: string;
-  event?: EventRecord | null;
-};
-
-export type HarnessEventState = {
-  social_event?: SocialEventItem | null;
-  attention_seed?: AttentionSeedItem | null;
-  clusters?: HarnessClusterSummary[];
-  snapshots?: HarnessSnapshotItem[];
-};
-
-export type AttentionSeedItem = {
-  seed_id: string;
-  extraction_id: string;
-  event_id: string;
-  author_handle?: string | null;
-  received_at_ms: number;
-  event_type: string;
-  subject: string;
-  anchor_terms: AnchorTerm[];
-  token_uptake_count: number;
-  top_linked_symbols: string[];
-  seed_status: "seed_only" | "linked" | "snapshot_ready" | "outcome_pending" | "settled" | string;
-  risks: string[];
-};
-
-export type HarnessClusterSummary = {
-  cluster_id: string;
-  event_type: string;
+  status: string;
   source?: string | null;
-  event_score: number;
 };
 
-export type HarnessVersionBlock = {
-  config_version: string;
-  prompt_version: string;
-  schema_version: string;
-  scoring_version: string;
-  weight_version: string;
-  policy_version: string;
-  risk_version: string;
-  baseline_version: string;
-};
-
-export type HarnessSnapshotItem = {
-  snapshot_id: string;
-  source_event_id?: string | null;
-  seed_id?: string | null;
-  asset: string;
-  decision_time_ms: number;
-  horizon: "6h" | "24h" | string;
-  combined_score: number;
-  policy_signal: "NO_TRADE" | "LONG" | "SHORT_OR_AVOID" | string;
-  shadow_signal: "NO_TRADE" | "LONG_SMALL" | "SHORT_SMALL" | string;
-  event_clusters: HarnessClusterSummary[];
-  market_state: Record<string, unknown>;
-  versions: HarnessVersionBlock;
-  outcome_status: "pending" | "settled" | "missing_market" | "insufficient_market_data" | string;
-  credit_status: "none" | "assigned" | string;
-  risks: string[];
-};
-
-export type HarnessOutcomeItem = {
-  snapshot_id: string;
-  settled_at_ms: number;
-  actual_return: number;
-  expected_return: number;
-  abnormal_return: number;
-  realized_vol: number;
-  normalized_outcome: number;
-  baseline_version: string;
-};
-
-export type HarnessCreditItem = {
-  credit_id: string;
-  snapshot_id: string;
-  cluster_id: string;
-  asset: string;
-  event_type: string;
-  source: string;
-  horizon: string;
-  event_score: number;
-  responsibility: number;
-  credit: number;
-  created_at_ms: number;
-};
-
-export type HarnessHealth = {
-  llm_configured: boolean;
-  extractor_running: boolean;
-  harness_ops_running?: boolean;
-  schema_success_rate?: number | null;
-  pending_jobs: number;
-  dead_jobs?: number;
-  failed_jobs?: number;
-  snapshots_24h: number;
-  pending_outcomes: number;
-  missing_market?: number;
-  insufficient_market_data?: number;
-  settlement_coverage?: number | null;
-};
-
-export type ScoreBucketItem = {
-  bucket: string;
-  sample_count: number;
-  avg_normalized_outcome: number;
-  avg_abnormal_return: number;
-  hit_rate: number;
-  settled_count: number;
-  pending_count: number;
-};
-
-export type HarnessWeightItem = {
+export type TradingAttentionTopic = {
   key: string;
-  weight_type: string;
-  asset?: string | null;
-  horizon: string;
-  n: number;
-  mean_credit: number;
-  weight: number;
-  status: "report_only" | "candidate" | "active" | string;
+  label: string;
+  role: string;
 };
 
-export type SocialEventsData = {
-  items: SocialEventItem[];
-};
-
-export type AttentionSeedsData = {
-  items: AttentionSeedItem[];
-};
-
-export type HarnessSnapshotsData = {
-  items: HarnessSnapshotItem[];
-};
-
-export type HarnessOutcomesData = {
-  items: HarnessOutcomeItem[];
-};
-
-export type HarnessCreditsData = {
-  items: HarnessCreditItem[];
-};
-
-export type HarnessHealthData = HarnessHealth;
-
-export type SignalLabStage = "extracted" | "seeded" | "frozen" | "settled" | "credited";
-export type SignalLabStageFilter = "all" | SignalLabStage;
-export type SignalLabInspectorTab = "trace" | "snapshot" | "outcome" | "credit";
-
-export type SignalLabStageSummary = Record<SignalLabStage, number>;
-
-export type SignalLabChain = {
-  chain_id: string;
-  stage: SignalLabStage;
+export type TradingAttentionItem = {
+  item_id: string;
+  kind: TradingAttentionKind;
+  kind_label: string;
+  priority: TradingAttentionPriority;
+  heat_score: number;
   received_at_ms: number;
   updated_at_ms: number;
-  asset?: string | null;
-  horizon?: string | null;
-  source?: string | null;
+  source: {
+    handle?: string | null;
+    followers?: number | null;
+  };
+  event: {
+    event_id: string;
+    tweet_id?: string | null;
+    canonical_url?: string | null;
+    author_handle?: string | null;
+    text?: string | null;
+    received_at_ms?: number | null;
+  };
   event_type?: string | null;
+  direction_hint?: string | null;
+  attention_mechanism?: string | null;
   title: string;
   summary: string;
-  score?: number | null;
-  outcome_status?: string | null;
-  credit_status?: string | null;
-  risks: string[];
-  evidence_chips?: string[];
-  lineage: {
-    extraction_id?: string | null;
-    event_id?: string | null;
-    seed_id?: string | null;
-    snapshot_id?: string | null;
-    source_event_id?: string | null;
+  why_it_matters: string;
+  linked_tokens: TradingAttentionToken[];
+  linked_topics: TradingAttentionTopic[];
+  metrics: {
+    impact: number;
+    novelty: number;
+    confidence: number;
+    direct_token_count: number;
+    topic_count: number;
+    account_alert_count: number;
+    window_mentions: number;
+    watched_author_count: number;
   };
-  social_event?: SocialEventItem | null;
-  seed?: AttentionSeedItem | null;
-  snapshot?: HarnessSnapshotItem | null;
-  outcome?: HarnessOutcomeItem | null;
-  credits: HarnessCreditItem[];
+  risks: string[];
+  next_action: string;
 };
 
-export type SignalLabChainsData = {
+export type TradingAttentionSummary = Record<TradingAttentionKind | TradingAttentionPriority, number>;
+
+export type TradingAttentionData = {
   query: {
     window: WindowKey;
-    horizon: string;
     scope: ScopeKey;
-    stage?: SignalLabStage | null;
-    asset?: string | null;
+    kind?: TradingAttentionKind | null;
     handle?: string | null;
     q?: string | null;
   };
-  summary: SignalLabStageSummary;
-  items: SignalLabChain[];
+  summary: TradingAttentionSummary;
+  items: TradingAttentionItem[];
   returned_count: number;
   has_more: boolean;
   next_cursor?: string | null;

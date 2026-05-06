@@ -4,7 +4,7 @@
 
 **Goal:** Replace Signal Lab's harness lifecycle UI with a simpler watched-account trading attention surface.
 
-**Architecture:** Add an on-demand `TradingAttentionService` that reads `events`, `social_event_extractions`, and token attribution facts directly, then exposes `/api/signal-lab/pulse`. Frontend Signal Lab consumes this new read model and removes lifecycle stage/horizon/snapshot/outcome/credit concepts from the product path.
+**Architecture:** Add an on-demand `TradingAttentionService` that reads `events`, `social_event_extractions`, and token attribution facts directly, then exposes `/api/signal-lab/pulse`. Frontend Signal Lab consumes this new read model, removes lifecycle stage/horizon/snapshot/outcome/credit concepts from the product path, and deletes the old `/api/signal-lab/chains` read model instead of keeping compatibility code.
 
 **Tech Stack:** Python 3.13, FastAPI, PostgreSQL/Psycopg, React, TypeScript, TanStack Query, Vitest, pytest.
 
@@ -16,7 +16,7 @@
   Builds `TradingAttentionItem` rows from watched-account events, semantic extraction rows, direct token attributions, and topic terms.
 
 - Modify `src/gmgn_twitter_intel/api/http.py`  
-  Adds `/api/signal-lab/pulse`; leaves harness endpoints for backend research but no longer treats them as Signal Lab product APIs.
+  Adds `/api/signal-lab/pulse` and removes `/api/signal-lab/chains`; leaves explicit harness research endpoints separate from Signal Lab product APIs.
 
 - Create `tests/test_trading_attention_service.py`  
   Covers direct token, topic heat, market structure, risk alert, and low-signal classification.
@@ -37,7 +37,7 @@
   Replaces Trace/Snapshot/Outcome/Credit tabs with a single attention detail drawer.
 
 - Modify `web/src/App.tsx`  
-  Removes `/api/signal-lab/chains` queries from the Signal Lab product path and uses `/api/signal-lab/pulse` for Pulse and Workbench.
+  Uses `/api/signal-lab/pulse` for Pulse and Workbench; no Signal Lab UI path can request `/api/signal-lab/chains`.
 
 - Modify `web/src/store/useTraderStore.ts`  
   Replaces stage/horizon state with kind/source/search filters for trading attention.
@@ -341,4 +341,3 @@ Expected:
 No lifecycle labels in Signal Lab UI.
 Pulse data returns trading attention items or a real empty state.
 ```
-

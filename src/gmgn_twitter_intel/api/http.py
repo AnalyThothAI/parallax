@@ -25,6 +25,8 @@ from ..retrieval.token_social_timeline_service import (
     TokenSocialTimelineIdentityError,
     TokenSocialTimelineService,
 )
+from ..retrieval.trading_attention_service import KINDS as TRADING_ATTENTION_KINDS
+from ..retrieval.trading_attention_service import TradingAttentionService
 from ..storage.account_quality_repository import AccountQualityRepository
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
@@ -33,7 +35,6 @@ ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
-SIGNAL_LAB_STAGES = {"extracted", "seeded", "frozen", "settled", "credited"}
 
 
 class ApiUnauthorized(Exception):
@@ -531,28 +532,28 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/signal-lab/chains")
-    async def signal_lab_chains(
+    @router.get("/signal-lab/pulse")
+    async def signal_lab_pulse(
         request: Request,
         window: Annotated[str, Query()] = "1h",
-        horizon: Annotated[str, Query()] = "6h",
         scope: Annotated[str, Query()] = "matched",
-        stage: Annotated[str, Query()] = "",
-        asset: Annotated[str, Query()] = "",
+        kind: Annotated[str, Query()] = "",
         handle: Annotated[str, Query()] = "",
         q: Annotated[str, Query()] = "",
-        limit: Annotated[int, Query()] = 50,
+        limit: Annotated[int, Query()] = 80,
         cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
-            data = HarnessService(repos.harness).chains(
+            data = TradingAttentionService(
+                evidence=repos.evidence,
+                signals=repos.signals,
+                tokens=repos.tokens,
+            ).pulse(
                 window=_window(window),
-                horizon=_horizon(horizon),
                 scope=parsed_scope,
-                stage=_signal_lab_stage(stage),
-                asset=asset or None,
+                kind=_trading_attention_kind(kind),
                 handle=handle or None,
                 q=q or None,
                 handles=set(runtime.settings.handles) if parsed_scope == "matched" else None,
@@ -708,8 +709,8 @@ def _horizon(value: str) -> str:
     return value if value in HORIZONS else "6h"
 
 
-def _signal_lab_stage(value: str) -> str | None:
-    return value if value in SIGNAL_LAB_STAGES else None
+def _trading_attention_kind(value: str) -> str | None:
+    return value if value in TRADING_ATTENTION_KINDS else None
 
 
 def _alert_type(value: str | None) -> str | None:

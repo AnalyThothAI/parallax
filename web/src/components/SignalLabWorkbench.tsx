@@ -1,92 +1,74 @@
-import type { SignalLabChain, SignalLabChainsData, SignalLabStage, SignalLabStageFilter } from "../api/types";
-import { SIGNAL_LAB_STAGES, SIGNAL_LAB_STAGE_COPY, stageCount } from "../lib/signalLabChains";
-import { SignalChainList } from "./SignalChainList";
+import type { TradingAttentionData, TradingAttentionItem, TradingAttentionKind, TradingAttentionKindFilter } from "../api/types";
+import { TradingAttentionList } from "./SignalLabPulse";
+
+const ATTENTION_KINDS: Array<{ kind: TradingAttentionKind; label: string; description: string }> = [
+  { kind: "direct_token", label: "Direct token", description: "Concrete token, CA, or ticker attention." },
+  { kind: "topic_heat", label: "Topic heat", description: "Keyword or meme attention without forced tokenization." },
+  { kind: "ecosystem_signal", label: "Ecosystem", description: "Chain, sector, or product direction." },
+  { kind: "market_structure", label: "Structure", description: "Positioning, liquidity, and regime comments." },
+  { kind: "risk_alert", label: "Risk", description: "Regulation, exchange, contract, or market risk." }
+];
 
 type SignalLabWorkbenchProps = {
-  data?: SignalLabChainsData;
-  assetFilter: string;
+  data?: TradingAttentionData;
   handleFilter: string;
   hasNextPage?: boolean;
-  horizon: "6h" | "24h";
   isFetchingNextPage?: boolean;
   isLoading?: boolean;
+  kindFilter: TradingAttentionKindFilter;
   searchFilter: string;
-  selectedChainId?: string | null;
-  stageFilter: SignalLabStageFilter;
-  onAssetChange: (asset: string) => void;
+  selectedItemId?: string | null;
   onHandleChange: (handle: string) => void;
-  onHorizonChange: (horizon: "6h" | "24h") => void;
+  onKindChange: (kind: TradingAttentionKindFilter) => void;
   onLoadMore: () => void;
   onSearchChange: (search: string) => void;
-  onSelect: (chain: SignalLabChain) => void;
-  onStageChange: (stage: SignalLabStageFilter) => void;
+  onSelect: (item: TradingAttentionItem) => void;
 };
 
 export function SignalLabWorkbench({
-  assetFilter,
   data,
   handleFilter,
   hasNextPage,
-  horizon,
   isFetchingNextPage,
   isLoading,
+  kindFilter,
   searchFilter,
-  selectedChainId,
-  stageFilter,
-  onAssetChange,
+  selectedItemId,
   onHandleChange,
-  onHorizonChange,
+  onKindChange,
   onLoadMore,
   onSearchChange,
-  onSelect,
-  onStageChange
+  onSelect
 }: SignalLabWorkbenchProps) {
   return (
     <section className="signal-lab-workbench">
       <header className="signal-lab-workbench-head">
         <div>
           <h2>Signal Lab</h2>
-          <p>Audit watched-account social events into snapshots, outcomes, and predictive credit.</p>
+          <p>Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.</p>
         </div>
       </header>
 
-      <div className="signal-stage-grid" aria-label="Signal Lab lifecycle stages">
-        {SIGNAL_LAB_STAGES.map((stage) => (
+      <div className="signal-stage-grid" aria-label="Trading attention categories">
+        {ATTENTION_KINDS.map((item) => (
           <button
-            className={stageFilter === stage ? "active" : ""}
-            key={stage}
+            className={kindFilter === item.kind ? "active" : ""}
+            key={item.kind}
             type="button"
-            onClick={() => onStageChange(stageFilter === stage ? "all" : stage)}
+            onClick={() => onKindChange(kindFilter === item.kind ? "all" : item.kind)}
           >
-            <span>{SIGNAL_LAB_STAGE_COPY[stage].label}</span>
-            <b>{stageCount(data?.summary, stage)}</b>
-            <em>{SIGNAL_LAB_STAGE_COPY[stage].description}</em>
+            <span>{item.label}</span>
+            <b>{data?.summary[item.kind] ?? 0}</b>
+            <em>{item.description}</em>
           </button>
         ))}
       </div>
 
       <div className="signal-filter-bar" aria-label="Signal Lab filters">
         <div className="filter-cell signal-stage-filter">
-          <span>Stage</span>
-          <b>{stageFilter === "all" ? "All stages" : SIGNAL_LAB_STAGE_COPY[stageFilter as SignalLabStage].label}</b>
+          <span>Kind</span>
+          <b>{kindFilter === "all" ? "All attention" : ATTENTION_KINDS.find((item) => item.kind === kindFilter)?.label}</b>
         </div>
-        <div className="filter-cell signal-horizon-filter">
-          <span>Horizon</span>
-          <div className="signal-horizon-control" aria-label="settlement horizon">
-            {(["6h", "24h"] as const).map((item) => (
-              <button className={horizon === item ? "active" : ""} key={item} type="button" onClick={() => onHorizonChange(item)}>
-                {item}
-              </button>
-            ))}
-          </div>
-        </div>
-        <FilterField
-          label="Asset"
-          ariaLabel="Signal Lab asset filter"
-          value={assetFilter}
-          placeholder="$BNB"
-          onChange={onAssetChange}
-        />
         <FilterField
           label="Source"
           ariaLabel="Signal Lab source filter"
@@ -98,21 +80,21 @@ export function SignalLabWorkbench({
           label="Search"
           ariaLabel="Signal Lab text filter"
           value={searchFilter}
-          placeholder="build on BNB"
+          placeholder="grok, build, solana"
           onChange={onSearchChange}
         />
         <div className="filter-cell signal-sort-cell">
           <span>Sort</span>
-          <b>Newest</b>
+          <b>Heat</b>
         </div>
       </div>
 
       <section className="signal-chain-workbench-list">
         <header>
-          <h3>Signal Chains</h3>
-          <span>{stageFilter === "all" ? "all stages" : SIGNAL_LAB_STAGE_COPY[stageFilter as SignalLabStage].label}</span>
+          <h3>Trading Attention</h3>
+          <span>{kindFilter === "all" ? "all categories" : ATTENTION_KINDS.find((item) => item.kind === kindFilter)?.label}</span>
         </header>
-        <SignalChainList isLoading={isLoading} items={data?.items ?? []} selectedChainId={selectedChainId} onSelect={onSelect} />
+        <TradingAttentionList isLoading={isLoading} items={data?.items ?? []} selectedItemId={selectedItemId} onSelect={onSelect} />
         {hasNextPage ? (
           <button className="signal-load-more" disabled={isFetchingNextPage} type="button" onClick={onLoadMore}>
             {isFetchingNextPage ? "Loading..." : "Load more"}
