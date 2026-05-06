@@ -23,7 +23,8 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "tweet_text.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "entity_extractor.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "ingest_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "signal_builder.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_mention_builder.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_resolver.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "social_event_extraction.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_scoring.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_snapshot_builder.py").is_file()
@@ -31,14 +32,17 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_credit.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_ops.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "enrichment_worker.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "search_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_flow_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_search_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_flow_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_posts_service.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_social_timeline_service.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "account_alert_service.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "harness_service.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_client.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_migrations.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "evidence_repository.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "entity_repository.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "asset_repository.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "signal_repository.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "enrichment_repository.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "harness_repository.py").is_file()
@@ -71,6 +75,16 @@ def test_legacy_narrative_modules_stay_removed():
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_service.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_link_service.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_link_scoring.py").exists()
+
+
+def test_legacy_token_resolution_runtime_modules_stay_removed():
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "signal_builder.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_attribution.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "search_service.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "rolling_token_flow.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_flow_service.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_posts_service.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_social_timeline_service.py").exists()
 
 
 def test_makefile_exposes_global_cli_install_targets():

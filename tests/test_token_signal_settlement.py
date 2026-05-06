@@ -5,9 +5,9 @@ from gmgn_twitter_intel.pipeline.token_signal_settlement import settle_token_sig
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from gmgn_twitter_intel.storage.token_signal_repository import TokenSignalRepository
+from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_postgres_repositories import make_event
 from tests.test_token_signal_repository import snapshot_payload
 
 

@@ -8,9 +8,9 @@ from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from gmgn_twitter_intel.storage.token_repository import TokenRepository
+from tests.factories import insert_direct_attribution
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_market_observation_repository import insert_direct_attribution
 
 
 class FakeClient:

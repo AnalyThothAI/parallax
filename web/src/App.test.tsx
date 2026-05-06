@@ -4,15 +4,16 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import type {
-  ApiResponse,
-  BootstrapData,
+	  ApiResponse,
+	  AssetFlowData,
+	  AssetFlowRow,
+	  BootstrapData,
   HarnessHealthData,
   LivePayload,
   NotificationLivePayload,
   SignalLabChainsData,
   StatusData,
-  TokenFlowData,
-  TokenFlowItem,
+	  TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData
 } from "./api/types";
@@ -145,15 +146,15 @@ describe("App Token Radar social heat cockpit", () => {
     const row = await screen.findByRole("button", { name: "select token $UPEG" });
     expect(row).toHaveClass("selected");
     expect(row).not.toHaveClass("is-selected");
-    expect(within(row).getByText("86 · 4 +3")).toBeInTheDocument();
-    expect(within(row).getByText("4 posts · z3.2 · share 25%")).toBeInTheDocument();
-    expect(within(row).getByText("78 · CA direct")).toBeInTheDocument();
+    expect(within(row).getByText("86 · 4 +4")).toBeInTheDocument();
+    expect(within(row).getByText("4 posts · new burst · share 0%")).toBeInTheDocument();
+    expect(within(row).getByText("78 · resolved asset")).toBeInTheDocument();
     expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
-    expect(within(row).getByText("top 50% · repro 1.5")).toBeInTheDocument();
-    expect(within(row).getByText("+12% fresh")).toBeInTheDocument();
-    expect(within(row).getByText("neutral")).toBeInTheDocument();
-    expect(within(row).getByText("+12% since social")).toBeInTheDocument();
+    expect(within(row).getByText("top 33% · repro -")).toBeInTheDocument();
+    expect(within(row).getByText("- indexed")).toBeInTheDocument();
+    expect(within(row).getByText("market pending")).toBeInTheDocument();
+    expect(within(row).getByText("market observation pending")).toBeInTheDocument();
     expect(row.querySelector(".barline")).toBeInTheDocument();
     expect(screen.getAllByText("driver").length).toBeGreaterThan(0);
     expect(container.querySelector(".decision-controls")).not.toBeInTheDocument();
@@ -241,11 +242,11 @@ describe("App Token Radar social heat cockpit", () => {
 
     const rowButton = await screen.findByRole("button", { name: "select token $UPEG" });
     const row = rowButton.closest(".radar-row") as HTMLElement;
-    expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +3");
-    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · CA direct");
+    expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
+    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · resolved asset");
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
-    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$60K");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("neutral");
+    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- indexed");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("market pending");
     expect(row.querySelector('[data-radar-action="gmgn"]')).toBeInTheDocument();
   });
 
@@ -324,10 +325,10 @@ describe("App Token Radar social heat cockpit", () => {
     expect(drawer.querySelector(".drawer-title .eyebrow")).toHaveTextContent("selected token");
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     expect(drawer.querySelector(".opportunity-score")).toHaveTextContent("79");
-    expect(within(drawer).getByText("86 / burst")).toBeInTheDocument();
-    expect(within(drawer).getByText("78 / direct")).toBeInTheDocument();
+    expect(within(drawer).getByText("86 / rising")).toBeInTheDocument();
+    expect(within(drawer).getByText("78 / resolved asset")).toBeInTheDocument();
     expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
-    expect(within(drawer).getByText("neutral")).toBeInTheDocument();
+    expect(within(drawer).getByText("market pending")).toBeInTheDocument();
     expect(within(drawer).getByText("driver")).toBeInTheDocument();
     expect(within(drawer).getByText("public_stream_coverage")).toBeInTheDocument();
     expect(drawer.querySelector(".tabs")).toBeInTheDocument();
@@ -344,8 +345,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(await screen.findByRole("button", { name: "Timeline" })).toHaveClass("active");
     await waitFor(() => {
-      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-social-timeline")).toBe(true);
-      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-posts")).toBe(true);
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/asset-social-timeline")).toBe(true);
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/asset-posts")).toBe(true);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
@@ -384,7 +385,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.change(detailWindow, { target: { value: "4h" } });
 
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-social-timeline");
+      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-social-timeline");
       expect(timelineCall?.[1]?.params).toMatchObject({ window: "4h" });
       expect(timelineCall?.[1]?.params).not.toHaveProperty("bucket");
     });
@@ -422,7 +423,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(postRange).getByRole("button", { name: "history" }));
 
     await waitFor(() => {
-      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-posts");
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-posts");
       expect(postsCall?.[1]?.params).toMatchObject({ range: "all_history" });
     });
     expect(await within(drawer).findByText("history does not all participate in current score")).toBeInTheDocument();
@@ -440,7 +441,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(sortControl).getByRole("button", { name: "catalyst" }));
 
     await waitFor(() => {
-      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-posts");
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-posts");
       expect(postsCall?.[1]?.params).toMatchObject({ sort: "catalyst", cursor: undefined });
     });
   });
@@ -475,7 +476,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.queryByLabelText("settlement horizon")).not.toBeInTheDocument();
 
     await waitFor(() => {
-      const tokenFlowCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-flow");
+      const tokenFlowCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-flow");
       expect(tokenFlowCall?.[1]?.params).toMatchObject({ window: "1h", limit: 48, scope: "all" });
       expect(tokenFlowCall?.[1]?.params).not.toHaveProperty("horizon");
     });
@@ -497,7 +498,7 @@ describe("App Token Radar social heat cockpit", () => {
       ).toBe(true);
     });
 
-    const tokenFlowCalls = mockedGetApi.mock.calls.filter(([path]) => path === "/api/token-flow");
+    const tokenFlowCalls = mockedGetApi.mock.calls.filter(([path]) => path === "/api/asset-flow");
     expect(tokenFlowCalls.length).toBeGreaterThan(0);
     expect(tokenFlowCalls.every(([, options]) => !Object.hasOwn(options?.params ?? {}, "horizon"))).toBe(true);
   });
@@ -686,7 +687,7 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     const tokenButton = await screen.findByRole("button", { name: "select token $UPEG" });
-    expect(within(tokenButton).getByText("86 · 4 +3")).toBeInTheDocument();
+    expect(within(tokenButton).getByText("86 · 4 +4")).toBeInTheDocument();
     expect(within(tokenButton).getByText("market pending")).toBeInTheDocument();
     expect(within(tokenButton).getByText("market observation pending")).toBeInTheDocument();
   });
@@ -699,16 +700,16 @@ describe("App Token Radar social heat cockpit", () => {
     expect(await screen.findByText("@traderpow -> $UPEG")).toBeInTheDocument();
   });
 
-  it("requests selected token detail by chain and address when token_id is absent", async () => {
+  it("requests selected asset detail by asset_id", async () => {
     mockApi({ missingTokenId: true });
     renderWithQuery(<App />);
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-social-timeline");
-      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-posts");
-      expect(timelineCall?.[1]?.params).toMatchObject({ chain: "eth", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" });
-      expect(postsCall?.[1]?.params).toMatchObject({ chain: "eth", address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933" });
+      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-social-timeline");
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-posts");
+      expect(timelineCall?.[1]?.params).toMatchObject({ asset_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933" });
+      expect(postsCall?.[1]?.params).toMatchObject({ asset_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933" });
     });
   });
 
@@ -727,7 +728,7 @@ describe("App Token Radar social heat cockpit", () => {
   });
 
   it("uses live token attribution before ambiguous cashtag matching in the tape", async () => {
-    socketMock.events = [liveUpegEvent({ tokenId: "token:eth:0x1111111111111111111111111111111111111111", address: "0x1111111111111111111111111111111111111111" })];
+    socketMock.events = [liveUpegEvent({ address: "0x1111111111111111111111111111111111111111" })];
     mockApi({ duplicateSymbol: true });
     const { container } = renderWithQuery(<App />);
 
@@ -761,7 +762,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
     await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
-    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-flow")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/asset-flow")).toBe(false);
     expect(screen.getByText("selected token")).toBeInTheDocument();
   });
 
@@ -860,34 +861,36 @@ function mockApi(options: {
       return ok({ items: [], summary: statusData.notifications?.summary });
     }
     if (path === "/api/recent") return ok({ scope: requestOptions?.params?.scope, events: [], items: [liveUpegEvent()] });
-    if (path === "/api/token-flow") {
+    if (path === "/api/asset-flow") {
       if (options.duplicateSymbol) {
-        return ok<TokenFlowData>({
+        return ok<AssetFlowData>({
           window: "1h",
           scope: "all",
-          items: [
-            tokenFlowItem({ tokenId: "token:eth:0x1111111111111111111111111111111111111111", address: "0x1111111111111111111111111111111111111111" }),
-            tokenFlowItem({ tokenId: "token:eth:0x2222222222222222222222222222222222222222", address: "0x2222222222222222222222222222222222222222", score: 60 })
-          ]
+          resolved_assets: [
+            assetFlowRow({ address: "0x1111111111111111111111111111111111111111" }),
+            assetFlowRow({ address: "0x2222222222222222222222222222222222222222" })
+          ],
+          attention_candidates: [],
+          projection: assetFlowProjection()
         });
       }
       const window = String(requestOptions?.params?.window ?? "1h");
       const swapped = options.windowSwapToken && window === "5m";
-      return ok<TokenFlowData>({
-        window: window as TokenFlowData["window"],
+      return ok<AssetFlowData>({
+        window: window as AssetFlowData["window"],
         scope: "all",
-        items: [
-          tokenFlowItem({
-            tokenId: swapped ? "token:eth:0x2222222222222222222222222222222222222222" : options.missingTokenId ? null : undefined,
+        resolved_assets: [
+          assetFlowRow({
             address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
-            symbol: swapped ? "ALT" : undefined,
-            insufficientTiming: options.insufficientTiming
+            symbol: swapped ? "ALT" : undefined
           })
-        ]
+        ],
+        attention_candidates: [],
+        projection: assetFlowProjection()
       });
     }
-    if (path === "/api/token-social-timeline") return ok<TokenSocialTimelineData>(timelineData());
-    if (path === "/api/token-posts") return ok<TokenPostsData>(postsData());
+    if (path === "/api/asset-social-timeline") return ok<TokenSocialTimelineData>(timelineData());
+    if (path === "/api/asset-posts") return ok<TokenPostsData>(postsData());
     if (path === "/api/account-quality") {
       return ok({
         query: { handles: ["traderpow", "alien19710628"] },
@@ -970,20 +973,69 @@ function plainLiveEvent(): LivePayload {
       is_watched: 0
     },
     entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 }],
-    token_attributions: [],
+    asset_attributions: [],
     alerts: [],
     harness: null
+  };
+}
+
+function assetFlowRow(options: { address?: string; symbol?: string } = {}): AssetFlowRow {
+  const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
+  const symbol = options.symbol ?? "UPEG";
+  return {
+    asset: {
+      asset_id: `asset:dex:eth:${address.toLowerCase()}`,
+      symbol,
+      asset_type: "dex_token",
+      identity_status: "resolved"
+    },
+    primary_venue: {
+      venue_id: `venue:dex:eth:${address.toLowerCase()}`,
+      venue_type: "dex",
+      exchange: "gmgn",
+      chain: "eth",
+      address,
+      inst_id: null,
+      base_symbol: symbol,
+      quote_symbol: null,
+      inst_type: null
+    },
+    attention: {
+      mentions_5m: 2,
+      mentions_1h: 4,
+      mentions_window: 4,
+      unique_authors: 3,
+      watched_mentions: 1,
+      latest_seen_ms: 1_777_746_300_000
+    },
+    resolution: { status: "resolved", candidates: [] },
+    decision: "watch"
+  };
+}
+
+function assetFlowProjection(): AssetFlowData["projection"] {
+  return {
+    status: "fresh",
+    version: "asset-flow-v1",
+    source: "asset_attributions",
+    source_max_received_at_ms: 1_777_746_300_000,
+    computed_at_ms: 1_777_746_300_000
   };
 }
 
 function tokenFlowItem(options: { tokenId?: string | null; address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const tokenId = options.tokenId === undefined ? `token:eth:${address}` : options.tokenId;
+  const assetId = `asset:dex:eth:${address.toLowerCase()}`;
   const symbol = options.symbol ?? "UPEG";
   return {
     identity: {
-      identity_key: tokenId ?? `eth:${address}`,
-      identity_status: "resolved_ca",
+      identity_key: assetId,
+      identity_status: "resolved",
+      asset_id: assetId,
+      asset_type: "dex_token",
+      venue_type: "dex",
+      exchange: "gmgn",
       token_id: tokenId,
       chain: "eth",
       address,
@@ -1126,8 +1178,8 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
       risks: []
     },
     evidence_total_count: 4,
-    posts_query: { token_id: tokenId, chain: "eth", address, window: "1h", scope: "all", range: "current_window" },
-    timeline_query: { token_id: tokenId, chain: "eth", address, window: "1h", scope: "all" }
+    posts_query: { asset_id: assetId, token_id: tokenId, chain: "eth", address, window: "1h", scope: "all", range: "current_window" },
+    timeline_query: { asset_id: assetId, token_id: tokenId, chain: "eth", address, window: "1h", scope: "all" }
   };
 }
 
@@ -1377,9 +1429,9 @@ function signalLabChainsData(): SignalLabChainsData {
   };
 }
 
-function liveUpegEvent(options: { tokenId?: string; address?: string } = {}): LivePayload {
+function liveUpegEvent(options: { assetId?: string; address?: string } = {}): LivePayload {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
-  const tokenId = options.tokenId ?? `token:eth:${address}`;
+  const assetId = options.assetId ?? `asset:dex:eth:${address.toLowerCase()}`;
   return {
     type: "event",
     event: {
@@ -1392,18 +1444,18 @@ function liveUpegEvent(options: { tokenId?: string; address?: string } = {}): Li
       is_watched: 1
     },
     entities: [{ entity_type: "symbol", normalized_value: "UPEG", received_at_ms: 1_777_746_010_000 }],
-    token_attributions: [
+    asset_attributions: [
       {
-        token_id: tokenId,
-        identity_key: tokenId,
-        identity_status: "resolved_ca",
+        asset_id: assetId,
+        identity_status: "resolved",
+        asset_type: "dex_token",
+        canonical_symbol: "UPEG",
+        venue_type: "dex",
+        exchange: "gmgn",
         chain: "eth",
         address,
-        symbol: "UPEG",
         attribution_status: "direct",
-        attribution_confidence: 1,
-        attribution_weight: 1,
-        attribution_rank: 0
+        confidence: 1
       }
     ],
     alerts: [],

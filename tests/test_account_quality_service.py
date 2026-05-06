@@ -1,6 +1,6 @@
 from gmgn_twitter_intel.retrieval.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.storage.account_quality_repository import AccountQualityRepository
-from tests.test_token_rolling_flow import open_runtime, token_event
+from tests.factories import open_runtime, token_event
 
 
 def test_account_quality_service_backfills_first_token_mentions(tmp_path):

@@ -6,19 +6,19 @@ from typing import Any
 
 KNOWN_PROJECTIONS = (
     {
-        "projection_name": "token-social-buckets",
-        "projection_version": "token-social-buckets-v1",
-        "source_table": "event_token_attributions",
+        "projection_name": "asset-social-buckets",
+        "projection_version": "asset-social-buckets-v1",
+        "source_table": "asset_attributions",
     },
     {
-        "projection_name": "token-flow-window-snapshots",
-        "projection_version": "token-flow-window-snapshots-v1",
-        "source_table": "token_social_buckets",
+        "projection_name": "asset-flow-window-snapshots",
+        "projection_version": "asset-flow-window-snapshots-v1",
+        "source_table": "asset_attention_buckets",
     },
     {
         "projection_name": "account-quality",
         "projection_version": "account-quality-v1",
-        "source_table": "event_token_attributions",
+        "source_table": "asset_attributions",
     },
 )
 

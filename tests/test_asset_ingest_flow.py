@@ -9,9 +9,9 @@ from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepositor
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
+from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_postgres_repositories import make_event
 
 
 def open_ingest(tmp_path):

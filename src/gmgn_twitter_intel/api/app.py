@@ -25,8 +25,8 @@ from ..pipeline.notification_delivery import NotificationDeliveryWorker
 from ..pipeline.notification_rules import NotificationRuleEngine
 from ..pipeline.notification_worker import NotificationWorker
 from ..retrieval.account_alert_service import AccountAlertService
+from ..retrieval.asset_flow_service import AssetFlowService
 from ..retrieval.harness_service import HarnessService
-from ..retrieval.token_flow_service import TokenFlowService
 from ..settings import Settings, load_settings
 from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
@@ -323,7 +323,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        token_flow=TokenFlowService(signals=repos.signals, tokens=repos.tokens, harness=repos.harness),
+        asset_flow=AssetFlowService(assets=repos.assets),
         harness=HarnessService(repos.harness),
     )
 

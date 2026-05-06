@@ -55,9 +55,6 @@ def test_projection_migration_adds_pg_only_read_model_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS projection_offsets" in text
     assert "CREATE TABLE IF NOT EXISTS projection_runs" in text
     assert "CREATE TABLE IF NOT EXISTS projection_dirty_ranges" in text
-    assert "CREATE TABLE IF NOT EXISTS token_social_buckets" in text
-    assert "CREATE TABLE IF NOT EXISTS token_social_bucket_authors" in text
-    assert "CREATE TABLE IF NOT EXISTS token_flow_window_snapshots" in text
     assert "FOR UPDATE SKIP LOCKED" not in text
     assert "sqlite" not in text.lower()
 

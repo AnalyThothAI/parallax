@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_postgres_repositories import make_event
 
 
 def open_asset_repo(tmp_path):

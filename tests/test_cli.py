@@ -212,7 +212,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["notifications"]["channels"]["pushdeer"]["url_configured"])
         self.assertEqual(payload["data"]["notifications"]["channels"]["pushdeer"]["provider"], "apprise")
 
-    def test_recent_search_token_flow_harness_and_alerts_use_postgres_runtime_store(self):
+    def test_recent_search_asset_flow_harness_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
@@ -222,16 +222,8 @@ class CliTests(unittest.TestCase):
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
                 search_code = main(["search", "--symbol", "PEPE", "--limit", "5"], stdout=stdout)
-                token_flow_code = main(
-                    ["token-flow", "--window", "5m", "--limit", "5", "--scope", "all"],
-                    stdout=stdout,
-                )
-                freeze_code = main(
-                    ["ops", "freeze-token-signals", "--window", "5m", "--limit", "5", "--scope", "all"],
-                    stdout=stdout,
-                )
-                token_signal_snapshots_code = main(
-                    ["token-signal-snapshots", "--window", "5m", "--limit", "5", "--scope", "all"],
+                asset_flow_code = main(
+                    ["asset-flow", "--window", "5m", "--limit", "5", "--scope", "all"],
                     stdout=stdout,
                 )
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
@@ -245,32 +237,28 @@ class CliTests(unittest.TestCase):
             [
                 recent_code,
                 search_code,
-                token_flow_code,
-                freeze_code,
-                token_signal_snapshots_code,
+                asset_flow_code,
                 alerts_code,
                 jobs_code,
                 social_events_code,
                 seeds_code,
                 snapshots_code,
             ],
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0],
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
-        self.assertEqual(lines[3]["data"]["snapshots_written"], 1)
-        self.assertEqual(lines[4]["data"]["items"][0]["score_versions"]["opportunity"], "social_opportunity_v3")
-        self.assertEqual(lines[2]["data"]["items"][0]["flow"]["mentions"], 1)
-        self.assertEqual(lines[2]["data"]["items"][0]["opportunity"]["decision"], "watch")
+        self.assertEqual(lines[2]["data"]["resolved_assets"][0]["asset"]["symbol"], "PEPE")
+        self.assertEqual(lines[2]["data"]["resolved_assets"][0]["attention"]["mentions_window"], 1)
         self.assertEqual(
-            {item["alert_type"] for item in lines[5]["data"]["items"]},
+            {item["alert_type"] for item in lines[3]["data"]["items"]},
             {"account_token"},
         )
-        self.assertEqual(lines[6]["data"]["counts"]["pending"], 1)
+        self.assertEqual(lines[4]["data"]["counts"]["pending"], 1)
+        self.assertEqual(lines[5]["data"]["items"], [])
+        self.assertEqual(lines[6]["data"]["items"], [])
         self.assertEqual(lines[7]["data"]["items"], [])
-        self.assertEqual(lines[8]["data"]["items"], [])
-        self.assertEqual(lines[9]["data"]["items"], [])
 
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -337,8 +325,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["engine"], "postgresql")
         self.assertTrue(lines[0]["data"]["projection_schema"]["projection_offsets"])
         self.assertFalse(lines[1]["data"]["analyze"])
-        self.assertIn("token_flow_5m_shape", {item["name"] for item in lines[1]["data"]["queries"]})
-        self.assertEqual(lines[2]["data"]["known_projections"][0]["projection_name"], "token-social-buckets")
+        self.assertIn("asset_flow_5m_shape", {item["name"] for item in lines[1]["data"]["queries"]})
+        self.assertEqual(lines[2]["data"]["known_projections"][0]["projection_name"], "asset-social-buckets")
         self.assertEqual(lines[3]["data"]["sample"], 5)
         self.assertEqual(lines[3]["data"]["mismatch_count"], 0)
 
@@ -353,6 +341,9 @@ class CliTests(unittest.TestCase):
             ["narrative-token-flow", "--seed-id", "seed"],
             ["attention-frontier"],
             ["ops", "rebuild-narrative-links"],
+            ["token-flow"],
+            ["ops", "rebuild-attributions"],
+            ["ops", "freeze-token-signals"],
         ]
         for command in obsolete_commands:
             self.assertEqual(main(command, stdout=io.StringIO()), 2)
@@ -384,77 +375,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["snapshots_scanned"], 0)
         self.assertEqual(lines[1]["data"]["items"], [])
         self.assertEqual(lines[2]["data"]["buckets"][0]["snapshot_count"], 0)
-
-    def test_ops_rebuild_attributions_materializes_existing_symbol_mentions(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
-            write_runtime_config(home, db_path=db_path)
-            conn = connect_postgres_test(db_path, read_only=False)
-            try:
-                migrate(conn)
-                evidence = EvidenceRepository(conn)
-                entities = EntityRepository(conn)
-                signals = SignalRepository(conn)
-                enrichment = EnrichmentRepository(conn)
-                tokens = TokenRepository(conn)
-                ingest = IngestService(
-                    evidence=evidence,
-                    entities=entities,
-                    signals=signals,
-                    enrichment=enrichment,
-                    tokens=tokens,
-                )
-                base_ms = int(time.time() * 1000) - 10_000
-                ingest.ingest_event(
-                    make_event("event-dog-symbol", received_at_ms=base_ms, text="$DOG early"),
-                    is_watched=True,
-                )
-                snapshot = parse_gmgn_token_payload(
-                    {
-                        "tt": "ca",
-                        "t": {
-                            "a": PEPE,
-                            "c": "eth",
-                            "mc": "60490.341996",
-                            "p": "1.0",
-                            "s": "DOG",
-                            "liquidity": "250000",
-                            "holder_count": 10000,
-                            "pool": {"pool_address": "pool-dog"},
-                        },
-                    }
-                )
-                ingest.ingest_event(
-                    replace(
-                        make_event("event-dog-token", received_at_ms=base_ms + 1_000, text="$DOG payload"),
-                        source=Source(
-                            provider="gmgn",
-                            transport="direct_ws",
-                            coverage="public_stream",
-                            channel="twitter_monitor_token",
-                        ),
-                        token_snapshot=snapshot,
-                    ),
-                    is_watched=False,
-                )
-                conn.execute("DELETE FROM event_token_attributions")
-                conn.commit()
-            finally:
-                conn.close()
-
-            stdout = io.StringIO()
-            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
-                rebuild_code = main(["ops", "rebuild-attributions", "--symbol", "DOG"], stdout=stdout)
-                flow_code = main(["token-flow", "--window", "24h", "--limit", "5"], stdout=stdout)
-
-        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-        self.assertEqual([rebuild_code, flow_code], [0, 0])
-        self.assertEqual(lines[0]["data"]["symbol"], "DOG")
-        self.assertEqual(lines[0]["data"]["direct_mentions_scanned"], 1)
-        self.assertEqual(lines[0]["data"]["symbol_mentions_scanned"], 1)
-        self.assertEqual(lines[1]["data"]["items"][0]["flow"]["mentions"], 2)
-        self.assertEqual(lines[1]["data"]["items"][0]["flow"]["symbol_mentions"], 1)
 
     def test_market_observations_cli_lists_counts_and_backfills_missing_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -513,10 +433,10 @@ class CliTests(unittest.TestCase):
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual([before_code, backfill_code, after_code], [0, 0, 0])
         self.assertEqual(lines[0]["data"]["items"], [])
-        self.assertEqual(lines[1]["data"]["rows_scanned"], 1)
-        self.assertEqual(lines[1]["data"]["observations_enqueued"], 1)
-        self.assertEqual(lines[2]["data"]["counts"]["pending"], 1)
-        self.assertEqual(lines[2]["data"]["items"][0]["event_id"], "event-market-backfill")
+        self.assertEqual(lines[1]["data"]["rows_scanned"], 0)
+        self.assertEqual(lines[1]["data"]["observations_enqueued"], 0)
+        self.assertEqual(lines[2]["data"]["counts"]["pending"], 0)
+        self.assertEqual(lines[2]["data"]["items"], [])
 
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

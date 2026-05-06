@@ -24,7 +24,6 @@ class IngestedEvent:
     inserted: bool
     enrichment_job_id: str | None = None
     asset_attributions: list[dict[str, Any]] = field(default_factory=list)
-    token_attributions: list[dict[str, Any]] = field(default_factory=list)
 
 
 class IngestService:

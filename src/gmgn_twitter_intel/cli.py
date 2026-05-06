@@ -13,16 +13,13 @@ from .api.app import create_app
 from .logging_setup import setup_logging
 from .market.okx_cex_client import OkxCexClient
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
-from .pipeline.token_attribution import TokenAttributionBuilder
 from .pipeline.token_signal_settlement import settle_token_signal_snapshots
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
 from .retrieval.asset_flow_service import AssetFlowService
 from .retrieval.asset_search_service import AssetSearchService
 from .retrieval.harness_service import HarnessService
-from .retrieval.token_flow_service import TokenFlowService
 from .retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
-from .retrieval.token_signal_snapshot_service import TokenSignalSnapshotService
 from .settings import load_settings, write_default_config
 from .storage.account_quality_repository import AccountQualityRepository
 from .storage.asset_repository import AssetRepository
@@ -76,11 +73,6 @@ def build_parser() -> argparse.ArgumentParser:
     search.add_argument("--chain", default="", help="chain for --ca")
     search.add_argument("--handle", default="", help="search by Twitter handle")
     search.add_argument("--scope", choices=("all", "matched"), default="all")
-
-    token_flow = subcommands.add_parser("token-flow", help="rank token activity windows")
-    token_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
-    token_flow.add_argument("--limit", type=int, default=20)
-    token_flow.add_argument("--scope", choices=("all", "matched"), default="all")
 
     asset_flow = subcommands.add_parser("asset-flow", help="rank resolved assets and unresolved attention candidates")
     asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
@@ -195,12 +187,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
-    rebuild_attributions = ops_subcommands.add_parser(
-        "rebuild-attributions",
-        help="rebuild explicit token attributions from existing token mentions",
-    )
-    rebuild_attributions.add_argument("--symbol", default="", help="limit rebuild to one token symbol")
-    rebuild_attributions.add_argument("--limit", type=int, default=0, help="optional max raw mentions per phase")
     backfill_account_quality = ops_subcommands.add_parser(
         "backfill-account-quality",
         help="backfill account token-call stats and quality snapshots",
@@ -231,13 +217,6 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_harness.add_argument("--limit", type=int, default=100)
     update_weights = ops_subcommands.add_parser("update-harness-weights", help="rebuild report-only harness weights")
     update_weights.add_argument("--limit", type=int, default=1000)
-    freeze_token_signals = ops_subcommands.add_parser(
-        "freeze-token-signals",
-        help="freeze ranked token-flow items as token signal snapshots",
-    )
-    freeze_token_signals.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
-    freeze_token_signals.add_argument("--limit", type=int, default=200)
-    freeze_token_signals.add_argument("--scope", choices=("all", "matched"), default="all")
     settle_token_signals = ops_subcommands.add_parser(
         "settle-token-signals",
         help="settle due frozen token signal snapshots",
@@ -451,18 +430,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 scope=args.scope,
             )
             _emit({"ok": True, "data": {"window": args.window, "scope": args.scope, **data}}, stdout)
-            return 0
-
-        if command == "token-flow":
-            items = TokenFlowService(signals=signals, tokens=tokens, harness=harness).token_flow(
-                window=args.window,
-                limit=args.limit,
-                scope=args.scope,
-            )
-            _emit(
-                {"ok": True, "data": {"window": args.window, "scope": args.scope, "items": items}},
-                stdout,
-            )
             return 0
 
         if command == "token-signal-snapshots":
@@ -682,46 +649,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
-        if command == "ops" and args.ops_command == "rebuild-attributions":
-            symbol = args.symbol.strip().lstrip("$").upper() or None
-            limit = int(args.limit) if int(args.limit) > 0 else None
-            builder = TokenAttributionBuilder(signals=signals, tokens=tokens)
-            direct_rows = signals.attribution_rebuild_rows(
-                symbol=symbol,
-                direct_only=True,
-                limit=limit,
-            )
-            direct_count = signals.replace_token_attributions(
-                mention_ids=[str(row["mention_id"]) for row in direct_rows],
-                attributions=builder.build_for_rows(direct_rows),
-                commit=False,
-            )
-            symbol_rows = signals.attribution_rebuild_rows(
-                symbol=symbol,
-                symbol_only=True,
-                limit=limit,
-            )
-            symbol_count = signals.replace_token_attributions(
-                mention_ids=[str(row["mention_id"]) for row in symbol_rows],
-                attributions=builder.build_for_rows(symbol_rows),
-                commit=False,
-            )
-            signals.conn.commit()
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "symbol": symbol or "ALL",
-                        "direct_mentions_scanned": len(direct_rows),
-                        "symbol_mentions_scanned": len(symbol_rows),
-                        "direct_attributions_written": direct_count,
-                        "symbol_attributions_written": symbol_count,
-                    },
-                },
-                stdout,
-            )
-            return 0
-
         if command == "ops" and args.ops_command == "backfill-account-quality":
             data = AccountQualityService(
                 signals=signals,
@@ -785,23 +712,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 {
                     "ok": True,
                     "data": update_harness_weights(harness=harness, limit=args.limit),
-                },
-                stdout,
-            )
-            return 0
-
-        if command == "ops" and args.ops_command == "freeze-token-signals":
-            _emit(
-                {
-                    "ok": True,
-                    "data": TokenSignalSnapshotService(
-                        token_flow=TokenFlowService(signals=signals, tokens=tokens, harness=harness),
-                        repository=token_signals,
-                    ).freeze(
-                        window=args.window,
-                        scope=args.scope,
-                        limit=args.limit,
-                    ),
                 },
                 stdout,
             )

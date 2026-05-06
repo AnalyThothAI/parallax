@@ -18,13 +18,13 @@ class NotificationRuleEngine:
         settings: Settings,
         evidence,
         account_alerts,
-        token_flow,
+        asset_flow,
         harness,
     ):
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
-        self.token_flow = token_flow
+        self.asset_flow = asset_flow
         self.harness = harness
 
     def evaluate(self, *, now_ms: int | None = None) -> list[NotificationCandidate]:
@@ -180,48 +180,61 @@ class NotificationRuleEngine:
         severity: str,
         title_suffix: str,
     ) -> list[NotificationCandidate]:
-        items = self.token_flow.token_flow(
+        data = self.asset_flow.asset_flow(
             window="5m",
             limit=self._limit(),
             scope="all",
             now_ms=now_ms,
         )
+        items = []
+        if isinstance(data, dict):
+            items.extend(data.get("resolved_assets") or [])
+            items.extend(data.get("attention_candidates") or [])
         candidates: list[NotificationCandidate] = []
         for item in items:
-            social_heat_score = _score(item.get("social_heat"))
-            discussion_quality_score = _score(item.get("discussion_quality"))
-            opportunity_score = _score(item.get("opportunity"))
+            scores = _asset_scores(item)
+            social_heat_score = scores["social_heat"]
+            discussion_quality_score = scores["discussion_quality"]
+            opportunity_score = scores["opportunity"]
             if rule.social_heat_min is not None and social_heat_score < rule.social_heat_min:
                 continue
             if rule.discussion_quality_min is not None and discussion_quality_score < rule.discussion_quality_min:
                 continue
             if rule.opportunity_min is not None and opportunity_score < rule.opportunity_min:
                 continue
-            timing = item.get("timing") if isinstance(item.get("timing"), dict) else {}
-            if rule.suppress_chase_risk and bool(timing.get("chase_risk")):
-                continue
-            identity = item.get("identity") if isinstance(item.get("identity"), dict) else {}
-            identity_key = str(identity.get("identity_key") or identity.get("token_id") or "").strip()
+            asset = item.get("asset") if isinstance(item.get("asset"), dict) else {}
+            venue = item.get("primary_venue") if isinstance(item.get("primary_venue"), dict) else {}
+            attention = item.get("attention") if isinstance(item.get("attention"), dict) else {}
+            identity_key = str(asset.get("asset_id") or "").strip()
             if not identity_key:
                 continue
-            symbol = _symbol(identity.get("symbol"))
-            flow = item.get("flow") if isinstance(item.get("flow"), dict) else {}
-            occurrence_at_ms = _int(flow.get("window_end_ms") or now_ms)
+            symbol = _symbol(asset.get("symbol"))
+            occurrence_at_ms = _int(attention.get("latest_seen_ms") or now_ms)
             bucket = occurrence_at_ms // max(1, int(rule.cooldown_seconds or 300) * 1000)
+            venue_type = str(venue.get("venue_type") or "")
+            chain = _chain(venue.get("chain")) if venue_type == "dex" else None
+            address = str(venue.get("address") or "") or None if venue_type == "dex" else None
+            timing = {"chase_risk": False}
             payload = {
                 "identity_key": identity_key,
-                "token_id": identity.get("token_id"),
+                "asset_id": identity_key,
+                "asset_type": asset.get("asset_type"),
+                "identity_status": asset.get("identity_status"),
+                "venue_id": venue.get("venue_id"),
+                "venue_type": venue_type or None,
+                "exchange": venue.get("exchange"),
+                "inst_id": venue.get("inst_id"),
                 "symbol": symbol,
-                "chain": _chain(identity.get("chain")),
-                "address": identity.get("address"),
+                "chain": chain,
+                "address": address,
                 "social_heat_score": social_heat_score,
                 "discussion_quality_score": discussion_quality_score,
                 "opportunity_score": opportunity_score,
-                "mentions": _int(flow.get("mentions")),
+                "mentions": _int(attention.get("mentions_window")),
+                "unique_authors": _int(attention.get("unique_authors")),
+                "watched_mentions": _int(attention.get("watched_mentions")),
                 "timing": timing,
             }
-            chain = _chain(identity.get("chain"))
-            address = str(identity.get("address") or "") or None
             candidates.append(
                 NotificationCandidate(
                     dedup_key=f"{rule_id}:{identity_key}:{bucket}",
@@ -237,7 +250,7 @@ class NotificationRuleEngine:
                         social_heat_score=social_heat_score,
                         discussion_quality_score=discussion_quality_score,
                         opportunity_score=opportunity_score,
-                        mentions=_int(flow.get("mentions")),
+                        mentions=_int(attention.get("mentions_window")),
                         chase_risk=bool(timing.get("chase_risk")),
                     ),
                     entity_type="token",
@@ -245,7 +258,7 @@ class NotificationRuleEngine:
                     symbol=symbol,
                     chain=chain,
                     address=address,
-                    source_table="token_flow",
+                    source_table="asset_flow",
                     source_id=identity_key,
                     occurrence_at_ms=occurrence_at_ms,
                     payload=payload,
@@ -309,10 +322,32 @@ class NotificationRuleEngine:
         return max(DEFAULT_LIMIT, int(self.settings.notifications.token_flow_limit))
 
 
-def _score(block: Any) -> int:
-    if not isinstance(block, dict):
-        return 0
-    return int(block.get("score") or 0)
+def _asset_scores(item: dict[str, Any]) -> dict[str, int]:
+    attention = item.get("attention") if isinstance(item.get("attention"), dict) else {}
+    resolution = item.get("resolution") if isinstance(item.get("resolution"), dict) else {}
+    mentions = _int(attention.get("mentions_window"))
+    authors = _int(attention.get("unique_authors"))
+    watched = _int(attention.get("watched_mentions"))
+    status = str(resolution.get("status") or "")
+    resolved = status == "resolved"
+    ambiguous = status == "ambiguous"
+    social_heat = min(100, 30 + mentions * 6 + authors * 8 + watched * 8)
+    discussion_quality = min(100, 70 + watched * 8) if resolved else min(70, 35 + mentions * 8)
+    propagation = min(100, 30 + authors * 14)
+    tradeability = 80 if resolved else 35 if ambiguous else 20
+    timing = 50 if resolved else 35
+    opportunity = round(
+        social_heat * 0.4
+        + discussion_quality * 0.25
+        + propagation * 0.2
+        + tradeability * 0.1
+        + timing * 0.05
+    )
+    return {
+        "social_heat": int(social_heat),
+        "discussion_quality": int(discussion_quality),
+        "opportunity": int(opportunity),
+    }
 
 
 def _int(value: Any) -> int:

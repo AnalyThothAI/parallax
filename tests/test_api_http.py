@@ -202,11 +202,8 @@ def test_api_status_exposes_market_observation_backlog(tmp_path):
         "dead",
         "worker_running",
     }
-    assert (
-        market_observations["pending"]
-        + market_observations["provider_not_configured"]
-        + market_observations["running"]
-    ) >= 1
+    assert market_observations["pending"] == 0
+    assert market_observations["running"] == 0
 
 
 def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
@@ -252,24 +249,24 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
         headers = {"Authorization": "Bearer secret"}
         recent = client.get("/api/recent?limit=5", headers=headers)
         search = client.get("/api/search", params={"q": "$PEPE", "limit": 5}, headers=headers)
-        token_flow = client.get("/api/token-flow?window=5m&limit=5", headers=headers)
+        asset_flow = client.get("/api/asset-flow?window=5m&limit=5", headers=headers)
         account_alerts = client.get("/api/account-alerts?window=24h&limit=5", headers=headers)
 
     assert recent.status_code == 200
     assert recent.json()["data"]["events"][0]["event_id"] == "event-1"
-    assert "token_attributions" in recent.json()["data"]["items"][0]
+    assert "asset_attributions" in recent.json()["data"]["items"][0]
     assert recent.json()["data"]["items"][0]["harness"]["social_event"]["event_id"] == "event-1"
     assert "enrichment" not in recent.json()["data"]["items"][0]
 
     assert search.status_code == 200
     assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
 
-    assert token_flow.status_code == 200
-    assert token_flow.json()["data"]["items"][0]["identity"]["symbol"] == "PEPE"
+    assert asset_flow.status_code == 200
+    assert asset_flow.json()["data"]["resolved_assets"][0]["asset"]["symbol"] == "PEPE"
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
-    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "resolved_ca"
+    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "resolved"
 
 
 def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
@@ -541,7 +538,7 @@ def test_api_signal_lab_chains_cursor_paginates_read_model(tmp_path):
     assert second["items"][0]["lineage"]["event_id"] == "event-signal-page-1"
 
 
-def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
+def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -562,18 +559,18 @@ def test_api_token_flow_scope_filters_watched_mentions(tmp_path):
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
 
         headers = {"Authorization": "Bearer secret"}
-        all_flow = client.get("/api/token-flow", params={"window": "5m", "scope": "all"}, headers=headers)
-        watched_flow = client.get("/api/token-flow", params={"window": "5m", "scope": "matched"}, headers=headers)
+        all_flow = client.get("/api/asset-flow", params={"window": "5m", "scope": "all"}, headers=headers)
+        watched_flow = client.get("/api/asset-flow", params={"window": "5m", "scope": "matched"}, headers=headers)
 
     assert all_flow.status_code == 200
-    assert {item["identity"]["symbol"] for item in all_flow.json()["data"]["items"]} == {"PEPE", "BONK"}
+    assert {item["asset"]["symbol"] for item in all_flow.json()["data"]["resolved_assets"]} == {"PEPE", "BONK"}
 
     assert watched_flow.status_code == 200
     assert watched_flow.json()["data"]["scope"] == "matched"
-    assert [item["identity"]["symbol"] for item in watched_flow.json()["data"]["items"]] == ["PEPE"]
+    assert [item["asset"]["symbol"] for item in watched_flow.json()["data"]["resolved_assets"]] == ["PEPE"]
 
 
-def test_api_token_posts_returns_full_post_pages_and_requires_identity(tmp_path):
+def test_api_asset_posts_returns_full_post_pages_and_requires_asset_id(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -589,23 +586,23 @@ def test_api_token_posts_returns_full_post_pages_and_requires_identity(tmp_path)
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
 
-        token_flow = client.get(
-            "/api/token-flow",
+        asset_flow = client.get(
+            "/api/asset-flow",
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
-        ).json()["data"]["items"][0]
-        token_id = token_flow["identity"]["token_id"]
+        ).json()["data"]["resolved_assets"][0]
+        asset_id = asset_flow["asset"]["asset_id"]
 
-        missing = client.get("/api/token-posts?window=5m", headers={"Authorization": "Bearer secret"})
+        missing = client.get("/api/asset-posts?window=5m", headers={"Authorization": "Bearer secret"})
         first_page = client.get(
-            "/api/token-posts",
-            params={"token_id": token_id, "window": "5m", "scope": "all", "limit": 2},
+            "/api/asset-posts",
+            params={"asset_id": asset_id, "window": "5m", "scope": "all", "limit": 2},
             headers={"Authorization": "Bearer secret"},
         )
         second_page = client.get(
-            "/api/token-posts",
+            "/api/asset-posts",
             params={
-                "token_id": token_id,
+                "asset_id": asset_id,
                 "window": "5m",
                 "scope": "all",
                 "limit": 2,
@@ -613,37 +610,29 @@ def test_api_token_posts_returns_full_post_pages_and_requires_identity(tmp_path)
             },
             headers={"Authorization": "Bearer secret"},
         )
-        ca_page = client.get(
-            "/api/token-posts",
-            params={"chain": "eth", "address": PEPE, "window": "5m", "scope": "all", "limit": 10},
-            headers={"Authorization": "Bearer secret"},
-        )
 
     assert missing.status_code == 400
-    assert missing.json() == {"ok": False, "error": "missing_token_identity"}
+    assert missing.json() == {"ok": False, "error": "asset_id_required", "field": "asset_id"}
     assert first_page.status_code == 200
     first_body = first_page.json()["data"]
     assert first_body["total_count"] == 3
     assert first_body["returned_count"] == 2
     assert first_body["has_more"] is True
-    assert first_body["query"]["token_id"] == token_id
-    assert first_body["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
+    assert first_body["query"]["asset_id"] == asset_id
+    assert first_body["items"][0]["post_quality"]["score_version"] == "asset_post_quality_v1"
     assert first_body["items"][0]["post_quality"]["contributions"]
     assert "score" not in first_body["items"][0]
     assert second_page.status_code == 200
     assert second_page.json()["data"]["returned_count"] == 1
-    assert ca_page.status_code == 200
-    assert ca_page.json()["data"]["total_count"] == 3
-    assert ca_page.json()["data"]["query"]["chain"] == "eth"
 
 
-def test_api_token_posts_rejects_malformed_cursor(tmp_path):
+def test_api_asset_posts_rejects_malformed_cursor(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/token-posts",
-            params={"token_id": f"token:eth:{PEPE}", "window": "5m", "cursor": "abcde"},
+            "/api/asset-posts",
+            params={"asset_id": "asset:unresolved:PEPE", "window": "5m", "cursor": "abcde"},
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -651,7 +640,7 @@ def test_api_token_posts_rejects_malformed_cursor(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_cursor"}
 
 
-def test_api_token_social_timeline_returns_buckets_authors_and_posts(tmp_path):
+def test_api_asset_social_timeline_returns_buckets_authors_and_posts(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -667,39 +656,39 @@ def test_api_token_social_timeline_returns_buckets_authors_and_posts(tmp_path):
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
 
-        token_flow = client.get(
-            "/api/token-flow",
+        asset_flow = client.get(
+            "/api/asset-flow",
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
-        ).json()["data"]["items"][0]
-        token_id = token_flow["identity"]["token_id"]
+        ).json()["data"]["resolved_assets"][0]
+        asset_id = asset_flow["asset"]["asset_id"]
 
-        missing = client.get("/api/token-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
+        missing = client.get("/api/asset-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
         response = client.get(
-            "/api/token-social-timeline",
-            params={"token_id": token_id, "window": "5m", "scope": "all", "limit": 2},
+            "/api/asset-social-timeline",
+            params={"asset_id": asset_id, "window": "5m", "scope": "all", "limit": 2},
             headers={"Authorization": "Bearer secret"},
         )
 
     assert missing.status_code == 400
-    assert missing.json() == {"ok": False, "error": "missing_token_identity"}
+    assert missing.json() == {"ok": False, "error": "asset_id_required", "field": "asset_id"}
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["query"]["bucket"] == "30s"
-    assert data["summary"]["posts"] == 3
+    assert data["summary"]["posts"] == 2
     assert data["buckets"]
     assert data["authors"]
     assert data["returned_count"] == 2
     assert data["has_more"] is True
 
 
-def test_api_token_social_timeline_rejects_manual_bucket_param(tmp_path):
+def test_api_asset_social_timeline_rejects_manual_bucket_param(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/token-social-timeline",
-            params={"token_id": f"token:eth:{PEPE}", "window": "5m", "bucket": "1m"},
+            "/api/asset-social-timeline",
+            params={"asset_id": "asset:unresolved:PEPE", "window": "5m", "bucket": "1m"},
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -712,7 +701,7 @@ def test_api_rejects_removed_1m_window(tmp_path):
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/token-flow",
+            "/api/asset-flow",
             params={"window": "1m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         )
@@ -721,18 +710,18 @@ def test_api_rejects_removed_1m_window(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
 
 
-def test_api_token_posts_rejects_invalid_chain_address_identity(tmp_path):
+def test_api_asset_posts_requires_asset_id(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/token-posts",
-            params={"chain": "eth", "address": "not-a-ca", "window": "5m"},
+            "/api/asset-posts",
+            params={"window": "5m"},
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 400
-    assert response.json() == {"ok": False, "error": "invalid_token_identity"}
+    assert response.json() == {"ok": False, "error": "asset_id_required", "field": "asset_id"}
 
 
 def test_api_status_exposes_operational_state(tmp_path):

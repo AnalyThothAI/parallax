@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_postgres_repositories import make_event
 
 
 def test_postgres_schema_bootstraps_core_tables(tmp_path):
@@ -26,16 +26,12 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "event_entities" in names
     assert "tokens" in names
     assert "token_market_observations" in names
-    assert "event_token_attributions" in names
     assert "harness_snapshots" in names
     assert "notifications" in names
     assert "token_signal_snapshots" in names
     assert "projection_offsets" in names
     assert "projection_runs" in names
     assert "projection_dirty_ranges" in names
-    assert "token_social_buckets" in names
-    assert "token_social_bucket_authors" in names
-    assert "token_flow_window_snapshots" in names
     assert "asset_mentions" in names
     assert "assets" in names
     assert "asset_aliases" in names

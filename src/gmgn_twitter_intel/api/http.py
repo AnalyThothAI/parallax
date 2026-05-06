@@ -10,23 +10,16 @@ from fastapi.responses import JSONResponse
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.account_quality_service import AccountQualityService
 from ..retrieval.asset_flow_service import AssetFlowService
+from ..retrieval.asset_posts_service import (
+    AssetPostsCursorError,
+    AssetPostsRangeError,
+    AssetPostsService,
+    AssetPostsSortError,
+)
 from ..retrieval.asset_search_service import AssetSearchService
 from ..retrieval.asset_social_timeline_service import AssetSocialTimelineService
 from ..retrieval.harness_service import HarnessService
-from ..retrieval.token_flow_service import TokenFlowService
-from ..retrieval.token_posts_service import (
-    TokenPostsCursorError,
-    TokenPostsIdentityError,
-    TokenPostsRangeError,
-    TokenPostsService,
-    TokenPostsSortError,
-)
 from ..retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
-from ..retrieval.token_social_timeline_service import (
-    TokenSocialTimelineCursorError,
-    TokenSocialTimelineIdentityError,
-    TokenSocialTimelineService,
-)
 from ..storage.account_quality_repository import AccountQualityRepository
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
@@ -170,36 +163,12 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 limit=_limit(limit),
                 scope=parsed_scope,
             )
-        return _json({"ok": True, "data": data})
+        return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
 
-    @router.get("/token-flow")
-    async def token_flow(
+    @router.get("/asset-posts")
+    async def asset_posts(
         request: Request,
-        window: Annotated[str, Query()] = "5m",
-        limit: Annotated[int, Query()] = 20,
-        scope: Annotated[str, Query()] = "all",
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        parsed_window = _window(window)
-        parsed_scope = _scope(scope)
-        with runtime.repositories() as repos:
-            items = TokenFlowService(
-                signals=repos.signals,
-                tokens=repos.tokens,
-                harness=repos.harness,
-            ).token_flow(
-                window=parsed_window,
-                limit=_limit(limit),
-                scope=parsed_scope,
-            )
-        return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "items": items}})
-
-    @router.get("/token-posts")
-    async def token_posts(
-        request: Request,
-        token_id: Annotated[str, Query()] = "",
-        chain: Annotated[str, Query()] = "",
-        address: Annotated[str, Query()] = "",
+        asset_id: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "5m",
         post_range: Annotated[str, Query(alias="range")] = "current_window",
         sort: Annotated[str, Query()] = "recent",
@@ -208,16 +177,14 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        if not token_id and not (chain and address):
-            return _json({"ok": False, "error": "missing_token_identity"}, status_code=400)
+        if not asset_id:
+            raise ApiBadRequest("asset_id_required", field="asset_id")
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         try:
             with runtime.repositories() as repos:
-                data = TokenPostsService(signals=repos.signals).token_posts(
-                    token_id=token_id or None,
-                    chain=chain or None,
-                    address=address or None,
+                data = AssetPostsService(assets=repos.assets).asset_posts(
+                    asset_id=asset_id,
                     window=parsed_window,
                     scope=parsed_scope,
                     post_range=_post_range(post_range),
@@ -225,13 +192,11 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                     limit=_limit(limit, maximum=200),
                     cursor=cursor or None,
                 )
-        except TokenPostsIdentityError:
-            return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
-        except TokenPostsRangeError:
+        except AssetPostsRangeError:
             return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)
-        except TokenPostsSortError:
+        except AssetPostsSortError:
             return _json({"ok": False, "error": "invalid_sort", "field": "sort"}, status_code=400)
-        except TokenPostsCursorError:
+        except AssetPostsCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
@@ -244,6 +209,8 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         limit: Annotated[int, Query()] = 200,
         cursor_ms: Annotated[int | None, Query()] = None,
     ) -> JSONResponse:
+        if "bucket" in request.query_params:
+            raise ApiBadRequest("unsupported_query_param", field="bucket")
         if not asset_id:
             raise ApiBadRequest("asset_id_required", field="asset_id")
         runtime = _authenticated_runtime(request)
@@ -257,41 +224,6 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 limit=_limit(limit),
                 cursor_ms=cursor_ms,
             )
-        return _json({"ok": True, "data": data})
-
-    @router.get("/token-social-timeline")
-    async def token_social_timeline(
-        request: Request,
-        token_id: Annotated[str, Query()] = "",
-        chain: Annotated[str, Query()] = "",
-        address: Annotated[str, Query()] = "",
-        window: Annotated[str, Query()] = "1h",
-        limit: Annotated[int, Query()] = 200,
-        scope: Annotated[str, Query()] = "all",
-        cursor: Annotated[str, Query()] = "",
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        if "bucket" in request.query_params:
-            raise ApiBadRequest("unsupported_query_param", field="bucket")
-        if not token_id and not (chain and address):
-            return _json({"ok": False, "error": "missing_token_identity"}, status_code=400)
-        parsed_window = _window(window)
-        parsed_scope = _scope(scope)
-        try:
-            with runtime.repositories() as repos:
-                data = TokenSocialTimelineService(signals=repos.signals).timeline(
-                    token_id=token_id or None,
-                    chain=chain or None,
-                    address=address or None,
-                    window=parsed_window,
-                    scope=parsed_scope,
-                    limit=_limit(limit, maximum=500),
-                    cursor=cursor or None,
-                )
-        except TokenSocialTimelineIdentityError:
-            return _json({"ok": False, "error": "invalid_token_identity"}, status_code=400)
-        except TokenSocialTimelineCursorError:
-            return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
     @router.get("/token-signal-snapshots")
@@ -698,7 +630,7 @@ def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
         "event": event,
         "entities": repos.entities.entities_for_event(event_id),
         "alerts": repos.signals.alerts_for_event(event_id),
-        "token_attributions": repos.signals.token_attributions_for_event(event_id),
+        "asset_attributions": repos.assets.asset_attributions_for_event(event_id),
         "harness": repos.harness.harness_for_event(event_id),
     }
 

@@ -5,8 +5,10 @@ import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import { getApi, getBootstrap } from "./api/client";
 import { getNotifications, getNotificationSummary, markAllNotificationsRead, markNotificationRead } from "./api/notifications";
 import type {
-  AccountQualityData,
-  Decision,
+	  AccountQualityData,
+	  AssetFlowData,
+	  AssetFlowRow,
+	  Decision,
   HarnessHealth,
   HarnessHealthData,
   LivePayload,
@@ -17,8 +19,7 @@ import type {
   SignalLabChain,
   SignalLabChainsData,
   StatusData,
-  TokenFlowData,
-  TokenFlowItem,
+	  TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData
 } from "./api/types";
@@ -142,10 +143,10 @@ export function App() {
     refetchInterval: 15_000
   });
 
-  const tokenFlowQuery = useQuery({
-    queryKey: ["token-flow", windowKey, scope],
+  const assetFlowQuery = useQuery({
+    queryKey: ["asset-flow", windowKey, scope],
     queryFn: () =>
-      getApi<TokenFlowData>("/api/token-flow", {
+      getApi<AssetFlowData>("/api/asset-flow", {
         token,
         params: { window: windowKey, limit: 48, scope }
       }),
@@ -211,7 +212,10 @@ export function App() {
     enabled: Boolean(token && submittedSearch)
   });
 
-  const rawTokenItems = tokenFlowQuery.data?.data.items ?? [];
+  const rawTokenItems = useMemo(
+    () => assetFlowRows(assetFlowQuery.data?.data).map((row) => assetFlowRowToTokenItem(row, windowKey, scope)),
+    [assetFlowQuery.data?.data, scope, windowKey]
+  );
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
@@ -220,9 +224,9 @@ export function App() {
   const tokenPostParams = selectedToken ? { ...selectedToken.posts_query, window: detailWindow, range: postRange, sort: tokenPostRequestSort } : null;
 
   const tokenTimelineQuery = useQuery({
-    queryKey: ["token-social-timeline", tokenTimelineParams],
+    queryKey: ["asset-social-timeline", tokenTimelineParams],
     queryFn: () =>
-      getApi<TokenSocialTimelineData>("/api/token-social-timeline", {
+      getApi<TokenSocialTimelineData>("/api/asset-social-timeline", {
         token,
         params: tokenTimelineParams ?? {}
       }),
@@ -230,14 +234,12 @@ export function App() {
   });
 
   const tokenPostsQuery = useInfiniteQuery({
-    queryKey: ["token-posts", tokenPostParams],
+    queryKey: ["asset-posts", tokenPostParams],
     queryFn: async ({ pageParam }) => {
-      const response = await getApi<TokenPostsData>("/api/token-posts", {
+      const response = await getApi<TokenPostsData>("/api/asset-posts", {
         token,
         params: {
-          token_id: tokenPostParams?.token_id,
-          chain: tokenPostParams?.chain,
-          address: tokenPostParams?.address,
+          asset_id: tokenPostParams?.asset_id,
           window: tokenPostParams?.window,
           scope: tokenPostParams?.scope,
           range: tokenPostParams?.range,
@@ -731,8 +733,8 @@ export function App() {
                 </div>
 
                 <TokenRadarTable
-                  error={tokenFlowQuery.error instanceof Error ? tokenFlowQuery.error : null}
-                  isLoading={tokenFlowQuery.isPending}
+                  error={assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null}
+                  isLoading={assetFlowQuery.isPending}
                   items={tokenItems}
                   selectedKey={selectedTokenKey}
                   sortMode={radarSortMode}
@@ -962,6 +964,188 @@ function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {
   );
 }
 
+function assetFlowRows(data?: AssetFlowData | null): AssetFlowRow[] {
+  if (!data) {
+    return [];
+  }
+  return [...data.resolved_assets, ...data.attention_candidates];
+}
+
+function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
+  const mentions = row.attention.mentions_window;
+  const authors = row.attention.unique_authors;
+  const watched = row.attention.watched_mentions;
+  const resolved = row.resolution.status === "resolved";
+  const venue = row.primary_venue ?? null;
+  const isDex = venue?.venue_type === "dex";
+  const heatScore = Math.min(100, 30 + mentions * 6 + authors * 8 + watched * 8);
+  const qualityScore = resolved ? Math.min(100, 70 + watched * 8) : Math.min(70, 35 + mentions * 8);
+  const propagationScore = Math.min(100, 30 + authors * 14);
+  const tradeabilityScore = resolved ? 80 : row.resolution.status === "ambiguous" ? 35 : 20;
+  const timingScore = resolved ? 50 : 35;
+  const opportunityScore = Math.round(
+    heatScore * 0.4 + qualityScore * 0.25 + propagationScore * 0.2 + tradeabilityScore * 0.1 + timingScore * 0.05
+  );
+  const decision: Decision = opportunityScore >= 75 ? "driver" : opportunityScore >= 45 ? "watch" : "discard";
+  return {
+    identity: {
+      identity_key: row.asset.asset_id,
+      identity_status: row.resolution.status,
+      asset_id: row.asset.asset_id,
+      asset_type: row.asset.asset_type,
+      venue_type: venue?.venue_type ?? null,
+      exchange: venue?.exchange ?? null,
+      inst_id: venue?.inst_id ?? null,
+      token_id: null,
+      chain: isDex ? venue?.chain ?? null : null,
+      address: isDex ? venue?.address ?? null : null,
+      symbol: row.asset.symbol
+    },
+    market: {
+      market_status: resolved ? "indexed" : "missing",
+      price: null,
+      market_cap: null,
+      liquidity: null,
+      pool_status: isDex ? "ready" : "missing",
+      holder_count: null,
+      volume_24h: null,
+      snapshot_age_ms: null,
+      snapshot_received_at_ms: null,
+      social_signal_start_ms: row.attention.latest_seen_ms ?? null,
+      reference_ms: row.attention.latest_seen_ms ?? null,
+      price_at_social_start: null,
+      price_at_reference: null,
+      price_change_since_social_pct: null,
+      price_before_social_start: null,
+      price_change_before_social_pct: null,
+      market_observation_status: resolved ? "provider_not_configured" : "provider_not_found",
+      price_change_status: resolved ? "provider_not_configured" : "provider_not_found"
+    },
+    flow: {
+      window,
+      window_start_ms: null,
+      window_end_ms: row.attention.latest_seen_ms ?? null,
+      mentions,
+      direct_mentions: resolved ? mentions : 0,
+      symbol_mentions: mentions,
+      weighted_mentions: mentions,
+      avg_attribution_confidence: resolved ? 1 : 0,
+      watched_mentions: watched,
+      previous_mentions: 0,
+      mention_delta: mentions,
+      mention_delta_pct: null,
+      z_score: null,
+      new_burst_score: mentions > 0 ? Math.min(100, mentions * 20) : null,
+      stream_dominance: 0,
+      baseline_status: "insufficient_history",
+      baseline_sample_count: 0
+    },
+    social_heat: {
+      ...scoreBlock(heatScore, "asset_social_heat_v1", mentions > 0 ? ["asset_mentions_window"] : [], ["public_stream_coverage"]),
+      window,
+      mentions,
+      mentions_5m: row.attention.mentions_5m,
+      mentions_1h: row.attention.mentions_1h,
+      mentions_4h: window === "4h" ? mentions : row.attention.mentions_1h,
+      mentions_24h: window === "24h" ? mentions : row.attention.mentions_1h,
+      weighted_mentions: mentions,
+      previous_mentions: 0,
+      mention_delta: mentions,
+      mention_delta_pct: null,
+      z_score: null,
+      new_burst_score: mentions > 0 ? Math.min(100, mentions * 20) : null,
+      stream_share: 0,
+      watched_share: mentions ? watched / mentions : 0,
+      status: mentions >= 5 ? "burst" : mentions >= 2 ? "rising" : "new_burst"
+    },
+    discussion_quality: {
+      ...scoreBlock(qualityScore, "asset_discussion_quality_v1", resolved ? ["resolved_asset"] : ["unresolved_attention"], resolved ? [] : ["identity_not_tradeable"]),
+      evidence_specificity: resolved ? 0.8 : 0.35,
+      avg_post_quality: qualityScore,
+      avg_attribution_confidence: resolved ? 1 : 0,
+      duplicate_text_share: 0,
+      informative_post_count: Math.min(mentions, authors || mentions),
+      watched_source_count: watched
+    },
+    propagation: {
+      ...scoreBlock(propagationScore, "asset_propagation_v1", authors > 1 ? ["independent_expansion"] : [], authors <= 1 ? ["thin_author_set"] : []),
+      independent_authors: authors,
+      effective_authors: authors,
+      new_authors: authors,
+      top_author_share: authors ? 1 / authors : 0,
+      duplicate_text_share: 0,
+      author_entropy: authors > 1 ? 1 : 0,
+      reproduction_rate: null,
+      phase: authors >= 3 ? "expansion" : authors >= 2 ? "ignition" : "seed",
+      top_authors: []
+    },
+    tradeability: {
+      ...scoreBlock(tradeabilityScore, "asset_tradeability_v1", resolved ? ["resolved_asset"] : [], resolved ? [] : ["identity_not_tradeable"]),
+      identity_tradeable: resolved,
+      market_fresh: false,
+      market_cap_present: false,
+      liquidity_present: false,
+      pool_present: isDex,
+      hard_risks: resolved ? [] : ["identity_not_tradeable"]
+    },
+    timing: {
+      score: timingScore,
+      score_version: "asset_timing_v1",
+      status: resolved ? "market_pending" : "market_unavailable",
+      social_signal_start_ms: row.attention.latest_seen_ms ?? null,
+      price_change_since_social_pct: null,
+      price_change_before_social_pct: null,
+      market_observation_status: resolved ? "provider_not_configured" : "provider_not_found",
+      chase_risk: false,
+      reasons: [],
+      risks: resolved ? ["market_observation_pending"] : ["provider_not_found"],
+      contributions: [],
+      risk_caps: []
+    },
+    opportunity: {
+      ...scoreBlock(
+        opportunityScore,
+        "asset_opportunity_v1",
+        [row.decision],
+        resolved ? ["public_stream_coverage"] : ["identity_not_tradeable", "public_stream_coverage"]
+      ),
+      decision,
+      decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
+      hard_risks: resolved ? [] : ["identity_not_tradeable"],
+      components: {
+        heat: heatScore,
+        quality: qualityScore,
+        propagation: propagationScore,
+        tradeability: tradeabilityScore,
+        timing: timingScore
+      }
+    },
+    watch: {
+      status: watched ? "direct_watch" : "public_only",
+      direct_mentions: watched,
+      direct_authors: watched ? 1 : 0,
+      seed_link_count: 0,
+      top_seed: null,
+      reasons: watched ? ["watched_source_present"] : [],
+      risks: watched ? [] : ["no_watched_confirmation"]
+    },
+    evidence_total_count: mentions,
+    posts_query: { asset_id: row.asset.asset_id, window, scope, range: "current_window" },
+    timeline_query: { asset_id: row.asset.asset_id, window, scope }
+  };
+}
+
+function scoreBlock(score: number, scoreVersion: string, reasons: string[], risks: string[]) {
+  return {
+    score: Math.round(score),
+    score_version: scoreVersion,
+    reasons,
+    risks,
+    contributions: [],
+    risk_caps: []
+  };
+}
+
 function mergePostPages(pages?: TokenPostsData[]): TokenPostsData | null {
   if (!pages?.length) {
     return null;
@@ -993,11 +1177,15 @@ function mergeSignalLabPages(pages?: SignalLabChainsData[]): SignalLabChainsData
 }
 
 function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePayload[]; tokenItems: TokenFlowItem[] }): LiveSignalTapeItem[] {
+  const byAssetId = new Map<string, TokenFlowItem>();
   const byTokenId = new Map<string, TokenFlowItem>();
   const byCa = new Map<string, TokenFlowItem>();
   const byIdentityKey = new Map<string, TokenFlowItem>();
   const bySymbol = new Map<string, TokenFlowItem[]>();
   for (const item of tokenItems) {
+    if (item.identity.asset_id) {
+      byAssetId.set(item.identity.asset_id, item);
+    }
     if (item.identity.token_id) {
       byTokenId.set(item.identity.token_id, item);
     }
@@ -1013,7 +1201,7 @@ function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePa
   }
   const rows: LiveSignalTapeItem[] = [];
   for (const payload of liveItems) {
-    const tokenMatch = tokenMatchForPayload(payload, { byTokenId, byCa, byIdentityKey, bySymbol });
+    const tokenMatch = tokenMatchForPayload(payload, { byAssetId, byTokenId, byCa, byIdentityKey, bySymbol });
     if (tokenMatch) {
       rows.push({
         kind: "token",
@@ -1054,25 +1242,31 @@ function tokenTapeBody(item: TokenFlowItem): string {
   ].join(" · ");
 }
 
-function hasTokenIdentity(params?: { token_id?: string | null; chain?: string | null; address?: string | null } | null): boolean {
-  return Boolean(params?.token_id || (params?.chain && params?.address));
+function hasTokenIdentity(params?: { asset_id?: string | null; token_id?: string | null; chain?: string | null; address?: string | null } | null): boolean {
+  return Boolean(params?.asset_id || params?.token_id || (params?.chain && params?.address));
 }
 
 function tokenMatchForPayload(
   payload: LivePayload,
   lookup: {
+    byAssetId: Map<string, TokenFlowItem>;
     byTokenId: Map<string, TokenFlowItem>;
     byCa: Map<string, TokenFlowItem>;
     byIdentityKey: Map<string, TokenFlowItem>;
     bySymbol: Map<string, TokenFlowItem[]>;
   }
 ): TokenFlowItem | undefined {
-  for (const attribution of payload.token_attributions ?? []) {
-    if (attribution.token_id && lookup.byTokenId.has(attribution.token_id)) {
-      return lookup.byTokenId.get(attribution.token_id);
+  for (const attribution of payload.asset_attributions ?? []) {
+    if (attribution.asset_id && lookup.byAssetId.has(attribution.asset_id)) {
+      return lookup.byAssetId.get(attribution.asset_id);
     }
-    if (attribution.identity_key && lookup.byIdentityKey.has(attribution.identity_key)) {
-      return lookup.byIdentityKey.get(attribution.identity_key);
+    if (attribution.asset_id && lookup.byIdentityKey.has(attribution.asset_id)) {
+      return lookup.byIdentityKey.get(attribution.asset_id);
+    }
+    const symbol = attribution.canonical_symbol?.toUpperCase();
+    const symbolMatches = symbol ? lookup.bySymbol.get(symbol) ?? [] : [];
+    if (symbolMatches.length === 1) {
+      return symbolMatches[0];
     }
     const caKey = tokenCaKey(attribution.chain, attribution.address);
     if (caKey && lookup.byCa.has(caKey)) {
@@ -1147,12 +1341,12 @@ function resolveEvidenceDetails(
   if (signal.kind === "event") {
     return {
       mode: "event",
-      event: signal.item.event,
-      entities: signal.item.entities,
-      alerts: signal.item.alerts,
-      tokenAttributions: signal.item.token_attributions ?? [],
-      sourceLabel: "live"
-    };
+	      event: signal.item.event,
+	      entities: signal.item.entities,
+	      alerts: signal.item.alerts,
+	      assetAttributions: signal.item.asset_attributions ?? [],
+	      sourceLabel: "live"
+	    };
   }
   if (signal.kind === "query") {
     return {

@@ -149,7 +149,7 @@ class PublicWebSocketHub:
             "event": event,
             "entities": repos.entities.entities_for_event(event_id),
             "alerts": repos.signals.alerts_for_event(event_id),
-            "token_attributions": repos.signals.token_attributions_for_event(event_id),
+            "asset_attributions": repos.assets.asset_attributions_for_event(event_id),
             "harness": repos.harness.harness_for_event(event_id),
         }
 

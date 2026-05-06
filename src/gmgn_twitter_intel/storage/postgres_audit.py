@@ -6,11 +6,15 @@ CORE_TABLES = (
     "raw_frames",
     "events",
     "event_entities",
-    "event_token_mentions",
-    "event_token_attributions",
+    "assets",
+    "asset_aliases",
+    "asset_venues",
+    "asset_mentions",
+    "asset_attributions",
     "tokens",
     "token_market_snapshots",
     "token_market_observations",
+    "asset_market_snapshots",
     "enrichment_jobs",
     "social_event_extractions",
     "harness_snapshots",
@@ -22,9 +26,9 @@ PROJECTION_TABLES = (
     "projection_offsets",
     "projection_runs",
     "projection_dirty_ranges",
-    "token_social_buckets",
-    "token_social_bucket_authors",
-    "token_flow_window_snapshots",
+    "asset_attention_buckets",
+    "asset_attention_bucket_authors",
+    "asset_flow_window_snapshots",
 )
 
 FOREIGN_KEY_CHECKS = {
@@ -34,17 +38,23 @@ FOREIGN_KEY_CHECKS = {
         LEFT JOIN events parent ON parent.event_id = child.event_id
         WHERE parent.event_id IS NULL
     """,
-    "event_token_mentions_missing_events": """
+    "asset_mentions_missing_events": """
         SELECT COUNT(*) AS count
-        FROM event_token_mentions child
+        FROM asset_mentions child
         LEFT JOIN events parent ON parent.event_id = child.event_id
         WHERE parent.event_id IS NULL
     """,
-    "event_token_attributions_missing_events": """
+    "asset_attributions_missing_events": """
         SELECT COUNT(*) AS count
-        FROM event_token_attributions child
+        FROM asset_attributions child
         LEFT JOIN events parent ON parent.event_id = child.event_id
         WHERE parent.event_id IS NULL
+    """,
+    "asset_attributions_missing_assets": """
+        SELECT COUNT(*) AS count
+        FROM asset_attributions child
+        LEFT JOIN assets parent ON parent.asset_id = child.asset_id
+        WHERE parent.asset_id IS NULL
     """,
     "market_snapshots_missing_tokens": """
         SELECT COUNT(*) AS count
@@ -96,35 +106,31 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         "params": ("pepe",),
     },
     {
-        "name": "token_flow_5m_shape",
+        "name": "asset_flow_5m_shape",
         "sql": """
-            SELECT eta.token_id, COUNT(DISTINCT eta.event_id) AS post_count
-            FROM event_token_attributions eta
-            WHERE eta.received_at_ms >= %s
-              AND eta.received_at_ms < %s
-              AND eta.token_id IS NOT NULL
-              AND eta.attribution_status IN ('direct', 'selected')
-              AND eta.attribution_weight > 0
-              AND eta.chain IS NOT NULL
-              AND eta.address IS NOT NULL
-              AND eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')
-            GROUP BY eta.token_id
-            ORDER BY post_count DESC, eta.token_id DESC
+            SELECT aa.asset_id, COUNT(DISTINCT aa.event_id) AS post_count
+            FROM asset_attributions aa
+            WHERE aa.decision_time_ms >= %s
+              AND aa.decision_time_ms < %s
+              AND aa.attribution_status IN ('direct', 'selected', 'unresolved', 'ambiguous')
+              AND aa.confidence > 0
+            GROUP BY aa.asset_id
+            ORDER BY post_count DESC, aa.asset_id DESC
             LIMIT 50
         """,
         "params": (0, 300_000),
     },
     {
-        "name": "token_posts_recent",
+        "name": "asset_posts_recent",
         "sql": """
-            SELECT eta.event_id
-            FROM event_token_attributions eta
-            WHERE eta.token_id = (
-                SELECT token_id FROM tokens ORDER BY first_seen_ms DESC, token_id DESC LIMIT 1
+            SELECT aa.event_id
+            FROM asset_attributions aa
+            WHERE aa.asset_id = (
+                SELECT asset_id FROM assets ORDER BY first_seen_ms DESC, asset_id DESC LIMIT 1
             )
-              AND eta.attribution_status IN ('direct', 'selected')
-              AND eta.attribution_weight > 0
-            ORDER BY eta.received_at_ms DESC, eta.event_id DESC
+              AND aa.attribution_status IN ('direct', 'selected', 'unresolved', 'ambiguous')
+              AND aa.confidence > 0
+            ORDER BY aa.decision_time_ms DESC, aa.event_id DESC
             LIMIT 50
         """,
         "params": (),
@@ -228,8 +234,8 @@ class ProjectionValidationAudit:
         sample_size = max(0, int(sample))
         snapshot_rows = self.conn.execute(
             """
-            SELECT snapshot_id, token_id
-            FROM token_flow_window_snapshots
+            SELECT snapshot_id, asset_id
+            FROM asset_flow_window_snapshots
             ORDER BY decision_time_ms DESC, rank ASC
             LIMIT %s
             """,
@@ -237,11 +243,11 @@ class ProjectionValidationAudit:
         ).fetchall()
         missing_tokens = 0
         for row in snapshot_rows:
-            token = self.conn.execute(
-                "SELECT 1 AS ok FROM tokens WHERE token_id = %s",
-                (row["token_id"],),
+            asset = self.conn.execute(
+                "SELECT 1 AS ok FROM assets WHERE asset_id = %s",
+                (row["asset_id"],),
             ).fetchone()
-            if token is None:
+            if asset is None:
                 missing_tokens += 1
         offsets = self.conn.execute("SELECT COUNT(*) AS count FROM projection_offsets").fetchone()
         status = "ready" if int(offsets["count"] if offsets else 0) > 0 else "projection_missing"
@@ -252,7 +258,7 @@ class ProjectionValidationAudit:
             "checked_count": len(snapshot_rows),
             "mismatch_count": missing_tokens,
             "checks": {
-                "token_flow_window_snapshots_missing_tokens": missing_tokens,
+                "asset_flow_window_snapshots_missing_assets": missing_tokens,
             },
         }
 

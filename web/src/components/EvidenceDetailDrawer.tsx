@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import type { AlertRecord, EntityRecord, EventRecord, SearchData, TokenAttributionRecord } from "../api/types";
+import type { AlertRecord, AssetAttributionRecord, EntityRecord, EventRecord, SearchData } from "../api/types";
 import { eventHandle, eventText, formatRelativeTime, shortAddress } from "../lib/format";
 
 export type EvidenceDetailDrawerProps =
@@ -8,7 +8,7 @@ export type EvidenceDetailDrawerProps =
       event: EventRecord;
       entities: EntityRecord[];
       alerts: AlertRecord[];
-      tokenAttributions: TokenAttributionRecord[];
+      assetAttributions: AssetAttributionRecord[];
       matchType?: string | null;
       score?: number | null;
       sourceLabel: string;
@@ -68,20 +68,20 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
       </section>
 
       <section className="drawer-section">
-        <div className="section-title">token attribution</div>
-        {props.tokenAttributions.length ? (
+        <div className="section-title">asset attribution</div>
+        {props.assetAttributions.length ? (
           <div className="evidence-list">
-            {props.tokenAttributions.map((item) => (
-              <div className="evidence-kv-row" key={item.attribution_id ?? `${item.chain}:${item.address}:${item.symbol}`}>
-                <strong>{item.symbol ? `$${item.symbol}` : shortAddress(item.address ?? item.identity_key)}</strong>
+            {props.assetAttributions.map((item) => (
+              <div className="evidence-kv-row" key={item.attribution_id ?? `${item.asset_id}:${item.venue_id}`}>
+                <strong>{item.canonical_symbol ? `$${item.canonical_symbol}` : shortAddress(item.address ?? item.asset_id)}</strong>
                 <span>
-                  {item.chain ?? "-"} · {item.attribution_status ?? item.identity_status ?? "-"} · conf {formatConfidence(item.attribution_confidence)}
+                  {item.venue_type ?? item.chain ?? item.exchange ?? "-"} · {item.attribution_status ?? item.identity_status ?? "-"} · conf {formatConfidence(item.confidence)}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <div className="empty-state compact">no resolved token attribution</div>
+          <div className="empty-state compact">no asset attribution</div>
         )}
       </section>
 

@@ -20,7 +20,7 @@ class AccountQualityService:
         handles_touched: set[str] = set()
         for row in rows:
             handle = str(row["handle"])
-            token_id = str(row["token_id"])
+            token_id = str(row["asset_id"])
             first_mention_ms = int(row["first_mention_ms"])
             latest_mention_ms = int(row["latest_mention_ms"])
             mention_count = int(row["mention_count"])
@@ -76,30 +76,28 @@ class AccountQualityService:
             """
             WITH filtered AS (
               SELECT
-                eta.token_id,
-                lower(eta.author_handle) AS handle,
-                eta.event_id,
-                eta.received_at_ms,
-                eta.author_followers,
-                eta.is_watched
-              FROM event_token_attributions eta
-              WHERE eta.token_id IS NOT NULL
-                AND eta.author_handle IS NOT NULL
-                AND eta.author_handle != ''
-                AND eta.attribution_status IN ('direct', 'selected')
-                AND eta.attribution_weight > 0
-                AND eta.chain IS NOT NULL
-                AND eta.address IS NOT NULL
-                AND eta.chain NOT IN ('unknown', 'evm', 'evm_unknown')
+                aa.asset_id,
+                lower(aa.author_handle) AS handle,
+                aa.event_id,
+                aa.decision_time_ms AS received_at_ms,
+                aa.author_followers,
+                aa.is_watched
+              FROM asset_attributions aa
+              WHERE aa.asset_id IS NOT NULL
+                AND aa.author_handle IS NOT NULL
+                AND aa.author_handle != ''
+                AND aa.attribution_status IN ('direct', 'selected')
+                AND aa.identity_status = 'resolved'
+                AND aa.confidence > 0
             ),
             token_first AS (
-              SELECT token_id, MIN(received_at_ms) AS global_first_mention_ms
+              SELECT asset_id, MIN(received_at_ms) AS global_first_mention_ms
               FROM filtered
-              GROUP BY token_id
+              GROUP BY asset_id
             )
             SELECT
               f.handle,
-              f.token_id,
+              f.asset_id,
               MIN(f.received_at_ms) AS first_mention_ms,
               MAX(f.received_at_ms) AS latest_mention_ms,
               COUNT(DISTINCT f.event_id) AS mention_count,
@@ -107,9 +105,9 @@ class AccountQualityService:
               SUM(CASE WHEN f.is_watched = true THEN 1 ELSE 0 END) AS watched_count,
               MIN(tf.global_first_mention_ms) AS global_first_mention_ms
             FROM filtered f
-            JOIN token_first tf ON tf.token_id = f.token_id
-            GROUP BY f.handle, f.token_id
-            ORDER BY first_mention_ms DESC, f.handle, f.token_id
+            JOIN token_first tf ON tf.asset_id = f.asset_id
+            GROUP BY f.handle, f.asset_id
+            ORDER BY first_mention_ms DESC, f.handle, f.asset_id
             LIMIT %s
             """,
             (max(0, int(limit)),),
@@ -119,13 +117,13 @@ class AccountQualityService:
     def _token_outcome(self, *, token_id: str, first_mention_ms: int) -> dict[str, Any]:
         rows = self.conn.execute(
             """
-            SELECT price, received_at_ms
-            FROM token_market_snapshots
-            WHERE token_id = %s
-              AND received_at_ms >= %s
-              AND received_at_ms <= %s
-              AND price IS NOT NULL
-            ORDER BY received_at_ms ASC
+            SELECT price_usd AS price, observed_at_ms AS received_at_ms
+            FROM asset_market_snapshots
+            WHERE asset_id = %s
+              AND observed_at_ms >= %s
+              AND observed_at_ms <= %s
+              AND price_usd IS NOT NULL
+            ORDER BY observed_at_ms ASC
             """,
             (token_id, first_mention_ms, first_mention_ms + 24 * 60 * 60_000),
         ).fetchall()

@@ -78,25 +78,25 @@ export type AlertRecord = {
   evidence?: string | null;
 };
 
-export type TokenAttributionRecord = {
+export type AssetAttributionRecord = {
   attribution_id?: string | null;
-  mention_identity_key?: string | null;
-  identity_key?: string | null;
-  token_id?: string | null;
+  mention_id?: string | null;
+  asset_id?: string | null;
+  venue_id?: string | null;
   identity_status?: string | null;
+  asset_type?: string | null;
+  canonical_symbol?: string | null;
+  venue_type?: string | null;
+  exchange?: string | null;
   chain?: string | null;
   address?: string | null;
-  symbol?: string | null;
-  source?: string | null;
+  inst_id?: string | null;
+  base_symbol?: string | null;
+  quote_symbol?: string | null;
+  inst_type?: string | null;
   attribution_status?: string | null;
-  attribution_confidence?: number | null;
-  attribution_weight?: number | null;
-  attribution_rank?: number | null;
-  candidate_count?: number | null;
-  received_at_ms?: number | null;
-  author_handle?: string | null;
-  author_followers?: number | null;
-  is_watched?: number | boolean | null;
+  confidence?: number | null;
+  decision_reason?: string | null;
 };
 
 export type LivePayload = {
@@ -104,7 +104,7 @@ export type LivePayload = {
   event: EventRecord;
   entities: EntityRecord[];
   alerts: AlertRecord[];
-  token_attributions?: TokenAttributionRecord[];
+  asset_attributions?: AssetAttributionRecord[];
   harness?: HarnessEventState | null;
 };
 
@@ -176,6 +176,59 @@ export type SearchData = {
   items: SearchItem[];
 };
 
+export type AssetFlowAssetBlock = {
+  asset_id: string;
+  symbol?: string | null;
+  asset_type?: string | null;
+  identity_status?: string | null;
+};
+
+export type AssetFlowVenueBlock = {
+  venue_id?: string | null;
+  venue_type?: "cex" | "dex" | string | null;
+  exchange?: string | null;
+  chain?: string | null;
+  address?: string | null;
+  inst_id?: string | null;
+  base_symbol?: string | null;
+  quote_symbol?: string | null;
+  inst_type?: string | null;
+};
+
+export type AssetFlowAttentionBlock = {
+  mentions_5m: number;
+  mentions_1h: number;
+  mentions_window: number;
+  unique_authors: number;
+  watched_mentions: number;
+  latest_seen_ms?: number | null;
+};
+
+export type AssetFlowRow = {
+  asset: AssetFlowAssetBlock;
+  primary_venue?: AssetFlowVenueBlock | null;
+  attention: AssetFlowAttentionBlock;
+  resolution: {
+    status: "resolved" | "unresolved" | "ambiguous" | string;
+    candidates?: unknown[];
+  };
+  decision: "watch" | "investigate" | string;
+};
+
+export type AssetFlowData = {
+  window: WindowKey;
+  scope: ScopeKey;
+  resolved_assets: AssetFlowRow[];
+  attention_candidates: AssetFlowRow[];
+  projection: {
+    status: "fresh" | "stale" | string;
+    version: string;
+    source: string;
+    source_max_received_at_ms?: number | null;
+    computed_at_ms?: number | null;
+  };
+};
+
 export type ScoreContribution = {
   feature: string;
   value: number;
@@ -199,6 +252,11 @@ export type ScoreBlock = {
 export type TokenIdentityBlock = {
   identity_key: string;
   identity_status: "resolved_ca" | string;
+  asset_id?: string | null;
+  asset_type?: string | null;
+  venue_type?: string | null;
+  exchange?: string | null;
+  inst_id?: string | null;
   token_id?: string | null;
   chain?: string | null;
   address?: string | null;
@@ -333,6 +391,7 @@ export type WatchBlock = {
 };
 
 export type TokenPostsQuery = {
+  asset_id?: string | null;
   token_id?: string | null;
   chain?: string | null;
   address?: string | null;
@@ -343,6 +402,7 @@ export type TokenPostsQuery = {
 };
 
 export type TokenSocialTimelineParams = {
+  asset_id?: string | null;
   token_id?: string | null;
   chain?: string | null;
   address?: string | null;

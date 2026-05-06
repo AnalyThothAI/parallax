@@ -57,6 +57,10 @@ def _group_rows(rows: list[dict[str, Any]], *, window_ms: int, now_ms: int) -> d
         payload = grouped.setdefault(asset_id, _initial_payload(row))
         decision_time_ms = int(row.get("decision_time_ms") or 0)
         payload["_latest_seen_ms"] = max(payload["_latest_seen_ms"], decision_time_ms)
+        event_id = str(row.get("event_id") or row.get("attribution_id") or "")
+        if event_id in payload["_events"]:
+            continue
+        payload["_events"].add(event_id)
         payload["_authors"].add(str(row.get("author_handle") or ""))
         if row.get("is_watched"):
             payload["attention"]["watched_mentions"] += 1
@@ -76,6 +80,7 @@ def _initial_payload(row: dict[str, Any]) -> dict[str, Any]:
     status = _resolution_status(row)
     return {
         "_lane": lane,
+        "_events": set(),
         "_authors": set(),
         "_latest_seen_ms": 0,
         "asset": {

@@ -22,13 +22,13 @@ class FakeAccountAlerts:
         return self.alerts
 
 
-class FakeTokenFlow:
-    def __init__(self, items):
-        self.items = items
+class FakeAssetFlow:
+    def __init__(self, data):
+        self.data = data
 
-    def token_flow(self, **kwargs):
+    def asset_flow(self, **kwargs):
         self.kwargs = kwargs
-        return self.items
+        return self.data
 
 
 class FakeHarness:
@@ -40,7 +40,7 @@ class FakeHarness:
         return {"items": self.items}
 
 
-def engine(*, events=None, alerts=None, token_flow=None, snapshots=None, notifications=None):
+def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, notifications=None):
     return NotificationRuleEngine(
         settings=Settings(
             ws_token="secret",
@@ -49,7 +49,7 @@ def engine(*, events=None, alerts=None, token_flow=None, snapshots=None, notific
         ),
         evidence=FakeEvidence(events or []),
         account_alerts=FakeAccountAlerts(alerts or []),
-        token_flow=FakeTokenFlow(token_flow or []),
+        asset_flow=FakeAssetFlow(asset_flow or {"resolved_assets": [], "attention_candidates": []}),
         harness=FakeHarness(snapshots or []),
     )
 
@@ -103,52 +103,67 @@ def test_account_token_alert_candidate_preserves_first_seen_flags():
     assert candidate.payload["is_first_seen_global"] is True
 
 
-def test_hot_quality_token_candidate_requires_heat_quality_and_suppresses_chase_risk():
+def test_hot_quality_token_candidate_uses_asset_flow_contract():
     candidates = engine(
-        token_flow=[
-            {
-                "identity": {
-                    "identity_key": "token:eth:pepe",
-                    "token_id": "token:eth:pepe",
-                    "symbol": "PEPE",
-                    "chain": "eth",
-                    "address": "0xpepe",
+        asset_flow={
+            "resolved_assets": [
+                {
+                    "asset": {
+                        "asset_id": "asset:dex:eth:pepe",
+                        "symbol": "PEPE",
+                        "asset_type": "token",
+                        "identity_status": "resolved",
+                    },
+                    "primary_venue": {
+                        "venue_id": "venue:dex:eth:0xpepe",
+                        "venue_type": "dex",
+                        "exchange": "uniswap",
+                        "chain": "eth",
+                        "address": "0xpepe",
+                    },
+                    "attention": {
+                        "mentions_window": 5,
+                        "unique_authors": 3,
+                        "watched_mentions": 1,
+                        "latest_seen_ms": NOW_MS,
+                    },
+                    "resolution": {"status": "resolved"},
                 },
-                "social_heat": {"score": 88},
-                "discussion_quality": {"score": 76},
-                "timing": {"chase_risk": False},
-                "opportunity": {"score": 81, "decision": "watch"},
-                "flow": {"mentions": 5, "window_end_ms": NOW_MS},
-            },
-            {
-                "identity": {
-                    "identity_key": "token:eth:fomo",
-                    "token_id": "token:eth:fomo",
-                    "symbol": "FOMO",
-                    "chain": "eth",
-                    "address": "0xfomo",
+                {
+                    "asset": {
+                        "asset_id": "asset:unknown:fomo",
+                        "symbol": "FOMO",
+                        "asset_type": "unknown",
+                        "identity_status": "unresolved",
+                    },
+                    "primary_venue": None,
+                    "attention": {
+                        "mentions_window": 1,
+                        "unique_authors": 1,
+                        "watched_mentions": 0,
+                        "latest_seen_ms": NOW_MS,
+                    },
+                    "resolution": {"status": "unresolved"},
                 },
-                "social_heat": {"score": 91},
-                "discussion_quality": {"score": 80},
-                "timing": {"chase_risk": True},
-                "opportunity": {"score": 84, "decision": "watch"},
-                "flow": {"mentions": 9, "window_end_ms": NOW_MS},
-            },
-        ]
+            ],
+            "attention_candidates": [],
+        }
     ).evaluate(now_ms=NOW_MS)
 
     hot = [item for item in candidates if item.rule_id == "hot_quality_token_5m"]
     assert len(hot) == 1
-    assert hot[0].dedup_key == "hot_quality_token_5m:token:eth:pepe:1888889"
+    assert hot[0].dedup_key == "hot_quality_token_5m:asset:dex:eth:pepe:1888889"
     assert hot[0].severity == "high"
     assert hot[0].symbol == "PEPE"
     assert "## $PEPE 5m heat alert" in hot[0].body
-    assert "**Heat:** 88" in hot[0].body
-    assert "**Discussion quality:** 76" in hot[0].body
+    assert "**Heat:** 92" in hot[0].body
+    assert "**Discussion quality:** 78" in hot[0].body
     assert "`0xpepe`" in hot[0].body
     assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
     assert "[X Search]" in hot[0].body
-    assert hot[0].payload["social_heat_score"] == 88
+    assert hot[0].source_table == "asset_flow"
+    assert hot[0].payload["asset_id"] == "asset:dex:eth:pepe"
+    assert hot[0].payload["social_heat_score"] == 92
 
 
 def test_harness_snapshot_candidate_uses_combined_score_threshold():
@@ -190,16 +205,21 @@ def test_disabled_rule_does_not_emit_candidates():
     )
     candidates = engine(
         notifications=notifications,
-        token_flow=[
-            {
-                "identity": {"identity_key": "token:eth:pepe", "symbol": "PEPE"},
-                "social_heat": {"score": 99},
-                "discussion_quality": {"score": 99},
-                "timing": {"chase_risk": False},
-                "opportunity": {"score": 99},
-                "flow": {"mentions": 10},
-            },
-        ],
+        asset_flow={
+            "resolved_assets": [
+                {
+                    "asset": {"asset_id": "asset:dex:eth:pepe", "symbol": "PEPE"},
+                    "primary_venue": None,
+                    "attention": {
+                        "mentions_window": 10,
+                        "unique_authors": 5,
+                        "watched_mentions": 2,
+                    },
+                    "resolution": {"status": "resolved"},
+                },
+            ],
+            "attention_candidates": [],
+        },
     ).evaluate(now_ms=NOW_MS)
 
     assert [item for item in candidates if item.rule_id == "hot_quality_token_5m"] == []

@@ -676,6 +676,23 @@ class AssetRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def asset_attributions_for_event(self, event_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT asset_attributions.*, assets.canonical_symbol, assets.asset_type,
+                   asset_venues.venue_type, asset_venues.exchange, asset_venues.chain,
+                   asset_venues.address, asset_venues.inst_id, asset_venues.base_symbol,
+                   asset_venues.quote_symbol, asset_venues.inst_type
+            FROM asset_attributions
+            JOIN assets ON assets.asset_id = asset_attributions.asset_id
+            LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
+            WHERE asset_attributions.event_id = %s
+            ORDER BY asset_attributions.created_at_ms DESC, asset_attributions.attribution_id ASC
+            """,
+            (event_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def asset_attributions_for_symbol(self, symbol: str, *, limit: int = 50) -> list[dict[str, Any]]:
         normalized = _normalize_symbol(symbol)
         rows = self.conn.execute(
@@ -757,8 +774,12 @@ class AssetRepository:
             f"""
             SELECT
               events.event_id,
+              events.tweet_id,
+              events.canonical_url,
               events.author_handle,
               events.text,
+              events.text_clean,
+              events.reference_json,
               events.is_watched,
               events.received_at_ms,
               asset_attributions.asset_id,
