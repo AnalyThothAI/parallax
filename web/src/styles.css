@@ -2274,24 +2274,24 @@ svg {
 
 .signal-chain-select {
   display: grid;
-  grid-template-columns: 98px minmax(0, 1fr) 112px;
+  grid-template-columns: 90px minmax(0, 1fr) 92px;
   align-items: start;
-  gap: 14px;
+  gap: 10px;
   width: 100%;
   min-width: 0;
-  min-height: 112px;
+  min-height: 86px;
   border: 0;
   color: inherit;
   background: transparent;
-  padding: 16px;
+  padding: 12px 14px;
   text-align: left;
 }
 
 .signal-chain-list.compact .signal-chain-select {
-  grid-template-columns: 74px minmax(0, 1fr) 58px;
-  gap: 8px;
-  min-height: 74px;
-  padding: 8px 7px 8px 11px;
+  grid-template-columns: 66px minmax(0, 1fr) 48px;
+  gap: 6px;
+  min-height: 54px;
+  padding: 5px 6px 5px 10px;
 }
 
 .signal-chain-list.compact .signal-chain-time {
@@ -2313,11 +2313,11 @@ svg {
 
 .signal-chain-twitter-link {
   display: grid;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   place-items: center;
   align-self: start;
-  margin: 12px 12px 0 0;
+  margin: 10px 10px 0 0;
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--faint);
@@ -2336,14 +2336,14 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-twitter-link {
-  width: 22px;
-  height: 22px;
-  margin: 8px 8px 0 0;
+  width: 20px;
+  height: 20px;
+  margin: 5px 6px 0 0;
 }
 
 .signal-stage-badge {
   display: grid;
-  min-height: 22px;
+  min-height: 20px;
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -2363,6 +2363,11 @@ svg {
   background: var(--accent-soft);
 }
 
+.signal-chain-list.compact .signal-stage-badge {
+  min-height: 19px;
+  font-size: 8px;
+}
+
 .signal-chain-main {
   display: grid;
   min-width: 0;
@@ -2370,7 +2375,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-main {
-  gap: 3px;
+  gap: 1px;
 }
 
 .signal-chain-main strong {
@@ -2384,7 +2389,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-main strong {
-  font-size: 11px;
+  font-size: 10.5px;
 }
 
 .signal-chain-main em,
@@ -2397,6 +2402,10 @@ svg {
   font-style: normal;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.signal-chain-list.compact .signal-chain-main em {
+  font-size: 8px;
 }
 
 .signal-chain-main p {
@@ -2412,15 +2421,12 @@ svg {
 
 .signal-chain-list.compact .signal-chain-main p {
   -webkit-line-clamp: 1;
-  font-size: 11px;
-  line-height: 1.28;
+  font-size: 10.5px;
+  line-height: 1.18;
 }
 
 .signal-chain-list.compact .signal-chain-chipline {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 3px;
-  min-width: 0;
+  display: none;
 }
 
 .signal-chain-list.compact .signal-chain-chipline span {
@@ -2433,7 +2439,7 @@ svg {
   display: grid;
   justify-items: end;
   min-width: 0;
-  gap: 3px;
+  gap: 2px;
   text-align: right;
 }
 
@@ -2445,7 +2451,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-score b {
-  font-size: 15px;
+  font-size: 13px;
 }
 
 .signal-chain-score small {
@@ -2453,7 +2459,7 @@ svg {
 }
 
 .signal-chain-list.compact .signal-chain-score small {
-  max-width: 58px;
+  max-width: 48px;
   font-size: 8px;
 }
 
@@ -2668,6 +2674,42 @@ svg {
 .signal-chain-workbench-list .signal-chain-list {
   height: 100%;
   max-height: none;
+}
+
+.signal-chain-workbench-list .signal-chain-select {
+  grid-template-columns: 82px minmax(0, 1fr) 72px;
+  gap: 8px;
+  min-height: 68px;
+  padding: 8px 10px;
+}
+
+.signal-chain-workbench-list .signal-chain-main {
+  gap: 2px;
+}
+
+.signal-chain-workbench-list .signal-chain-main p {
+  -webkit-line-clamp: 1;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.signal-chain-workbench-list .signal-chain-chipline {
+  display: none;
+}
+
+.signal-chain-workbench-list .signal-chain-score b {
+  font-size: 18px;
+}
+
+.signal-chain-workbench-list .signal-chain-score small {
+  max-width: 72px;
+  font-size: 8px;
+}
+
+.signal-chain-workbench-list .signal-chain-twitter-link {
+  width: 22px;
+  height: 22px;
+  margin: 7px 7px 0 0;
 }
 
 .signal-chain-workbench-list header span {
