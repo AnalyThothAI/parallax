@@ -1433,6 +1433,89 @@ svg {
   padding: 12px 14px;
 }
 
+.signal-inspector-body {
+  display: grid;
+  gap: 10px;
+  border-bottom: 0;
+}
+
+.signal-inspector-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #090d0d;
+  padding: 9px;
+}
+
+.signal-inspector-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.15;
+}
+
+.signal-inspector-card p {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.signal-inspector-primary {
+  border-color: var(--accent-line);
+  background: linear-gradient(90deg, rgba(242, 165, 31, 0.08), rgba(242, 165, 31, 0.02)), #090d0d;
+}
+
+.signal-inspector-fields {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.signal-inspector-field {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+  min-width: 0;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 5px;
+}
+
+.signal-inspector-field:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.signal-inspector-field span {
+  overflow: hidden;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.signal-inspector-field b {
+  overflow: hidden;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.signal-inspector-risk-strip span {
+  font-size: 9px;
+}
+
 .drawer-head .risk-strip {
   margin-top: 9px;
 }

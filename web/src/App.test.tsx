@@ -579,6 +579,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     await waitFor(() => expect(screen.getByText("selected trading attention")).toBeInTheDocument());
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(drawer.querySelectorAll(".signal-inspector-card")).toHaveLength(5);
+    expect(drawer.querySelector(".signal-inspector-field")).toBeInTheDocument();
     expect(within(drawer).getByText("Why it matters")).toBeInTheDocument();
     expect(within(drawer).getByText("Original post")).toBeInTheDocument();
     expect(within(drawer).getByText("Linked tokens")).toBeInTheDocument();
