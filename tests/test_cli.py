@@ -127,8 +127,14 @@ class CliTests(unittest.TestCase):
             ["db", "audit"],
             ["db", "query-audit"],
             ["db", "query-audit", "--analyze"],
+            ["asset-flow", "--window", "1h", "--limit", "5", "--scope", "all"],
             ["ops", "projection-status"],
             ["ops", "validate-projections", "--sample", "5"],
+            ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
+            ["ops", "resolve-asset-symbol", "--symbol", "MIRROR"],
+            ["ops", "asset-resolution-health", "--window", "24h"],
+            ["ops", "audit-asset-attribution", "--event-id", "event-1"],
+            ["ops", "rebuild-asset-flow", "--window", "1h"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -137,9 +143,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[1].db_command, "query-audit")
         self.assertFalse(parsed[1].analyze)
         self.assertTrue(parsed[2].analyze)
-        self.assertEqual(parsed[3].ops_command, "projection-status")
-        self.assertEqual(parsed[4].ops_command, "validate-projections")
-        self.assertEqual(parsed[4].sample, 5)
+        self.assertEqual(parsed[3].command, "asset-flow")
+        self.assertEqual(parsed[4].ops_command, "projection-status")
+        self.assertEqual(parsed[5].ops_command, "validate-projections")
+        self.assertEqual(parsed[5].sample, 5)
+        self.assertEqual(parsed[6].ops_command, "sync-okx-cex-universe")
+        self.assertEqual(parsed[7].ops_command, "resolve-asset-symbol")
+        self.assertEqual(parsed[8].ops_command, "asset-resolution-health")
+        self.assertEqual(parsed[9].ops_command, "audit-asset-attribution")
+        self.assertEqual(parsed[10].ops_command, "rebuild-asset-flow")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -11,18 +11,21 @@ import uvicorn
 
 from .api.app import create_app
 from .logging_setup import setup_logging
+from .market.okx_cex_client import OkxCexClient
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_attribution import TokenAttributionBuilder
 from .pipeline.token_signal_settlement import settle_token_signal_snapshots
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
+from .retrieval.asset_flow_service import AssetFlowService
+from .retrieval.asset_search_service import AssetSearchService
 from .retrieval.harness_service import HarnessService
-from .retrieval.search_service import SearchService
 from .retrieval.token_flow_service import TokenFlowService
 from .retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from .retrieval.token_signal_snapshot_service import TokenSignalSnapshotService
 from .settings import load_settings, write_default_config
 from .storage.account_quality_repository import AccountQualityRepository
+from .storage.asset_repository import AssetRepository
 from .storage.enrichment_repository import EnrichmentRepository
 from .storage.entity_repository import EntityRepository
 from .storage.evidence_repository import EvidenceRepository
@@ -78,6 +81,11 @@ def build_parser() -> argparse.ArgumentParser:
     token_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     token_flow.add_argument("--limit", type=int, default=20)
     token_flow.add_argument("--scope", choices=("all", "matched"), default="all")
+
+    asset_flow = subcommands.add_parser("asset-flow", help="rank resolved assets and unresolved attention candidates")
+    asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    asset_flow.add_argument("--limit", type=int, default=20)
+    asset_flow.add_argument("--scope", choices=("all", "matched"), default="all")
 
     token_signal_snapshots = subcommands.add_parser(
         "token-signal-snapshots",
@@ -242,6 +250,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="validate projection read models against PostgreSQL facts",
     )
     validate_projections.add_argument("--sample", type=int, default=100)
+    sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
+    sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
+    resolve_asset_symbol = ops_subcommands.add_parser("resolve-asset-symbol", help="resolve or queue an asset symbol")
+    resolve_asset_symbol.add_argument("--symbol", required=True)
+    asset_resolution_health = ops_subcommands.add_parser(
+        "asset-resolution-health",
+        help="inspect asset resolution health",
+    )
+    asset_resolution_health.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
+    audit_asset_attribution = ops_subcommands.add_parser("audit-asset-attribution", help="inspect asset attributions")
+    audit_asset_attribution.add_argument("--event-id", required=True)
+    rebuild_asset_flow = ops_subcommands.add_parser("rebuild-asset-flow", help="compute asset flow read model")
+    rebuild_asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    rebuild_asset_flow.add_argument("--limit", type=int, default=50)
+    rebuild_asset_flow.add_argument("--scope", choices=("all", "matched"), default="all")
     return parser
 
 
@@ -376,6 +399,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             entities,
             signals,
             tokens,
+            assets,
             market_observations,
             enrichment,
             harness,
@@ -397,7 +421,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
         if command == "search":
             query = _search_query(args)
-            results = SearchService(evidence=evidence, signals=signals, tokens=tokens).search(
+            results = AssetSearchService(evidence=evidence, assets=assets).search(
                 query,
                 limit=args.limit,
                 scope=args.scope,
@@ -410,6 +434,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "total_count": results.total_count,
                         "returned_count": results.returned_count,
                         "has_more": results.has_more,
+                        "resolution": results.resolution,
                         "candidates": results.candidates,
                         "items": results.items,
                     },
@@ -418,6 +443,15 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 stdout,
             )
             return 0 if results.ok else 1
+
+        if command == "asset-flow":
+            data = AssetFlowService(assets=assets).asset_flow(
+                window=args.window,
+                limit=args.limit,
+                scope=args.scope,
+            )
+            _emit({"ok": True, "data": {"window": args.window, "scope": args.scope, **data}}, stdout)
+            return 0
 
         if command == "token-flow":
             items = TokenFlowService(signals=signals, tokens=tokens, harness=harness).token_flow(
@@ -797,6 +831,78 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": bool(data.get("ok")), "data": data}, stdout)
             return 0 if data.get("ok") else 1
 
+        if command == "ops" and args.ops_command == "sync-okx-cex-universe":
+            inst_types = args.inst_type or ["SPOT", "SWAP"]
+            client = OkxCexClient(
+                base_url=settings.okx_cex_base_url,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            written = 0
+            try:
+                for inst_type in inst_types:
+                    for instrument in client.instruments(inst_type=inst_type):
+                        if instrument.state.lower() not in {"live", "preopen", "test"}:
+                            continue
+                        assets.upsert_cex_instrument(
+                            exchange="okx",
+                            inst_type=instrument.inst_type,
+                            inst_id=instrument.inst_id,
+                            base_symbol=instrument.base_symbol,
+                            quote_symbol=instrument.quote_symbol,
+                            observed_at_ms=_now_ms(),
+                            source_payload_hash=None,
+                            commit=False,
+                        )
+                        written += 1
+                assets.conn.commit()
+            finally:
+                client.close()
+            _emit({"ok": True, "data": {"inst_types": inst_types, "venues_written": written}}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "resolve-asset-symbol":
+            symbol = args.symbol.strip().lstrip("$").upper()
+            candidates = assets.candidates_for_symbol(symbol)
+            if candidates:
+                status = "resolved" if len({row["asset_id"] for row in candidates}) == 1 else "ambiguous"
+            else:
+                assets.upsert_unresolved_symbol(symbol, event_id=None, observed_at_ms=_now_ms(), commit=False)
+                assets.queue_resolution_job(job_type="symbol_resolution", normalized_symbol=symbol, commit=False)
+                assets.conn.commit()
+                status = "queued"
+                candidates = assets.candidates_for_symbol(symbol)
+            _emit({"ok": True, "data": {"symbol": symbol, "status": status, "candidates": candidates}}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "asset-resolution-health":
+            _emit({"ok": True, "data": _asset_resolution_health(assets.conn, window=args.window)}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "audit-asset-attribution":
+            rows = assets.conn.execute(
+                """
+                SELECT asset_attributions.*, assets.canonical_symbol, assets.asset_type, asset_venues.venue_type,
+                       asset_venues.exchange, asset_venues.chain, asset_venues.address, asset_venues.inst_id
+                FROM asset_attributions
+                JOIN assets ON assets.asset_id = asset_attributions.asset_id
+                LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
+                WHERE asset_attributions.event_id = %s
+                ORDER BY asset_attributions.created_at_ms DESC
+                """,
+                (args.event_id,),
+            ).fetchall()
+            _emit({"ok": True, "data": {"event_id": args.event_id, "items": [dict(row) for row in rows]}}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "rebuild-asset-flow":
+            data = AssetFlowService(assets=assets).asset_flow(
+                window=args.window,
+                limit=args.limit,
+                scope=args.scope,
+            )
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
     parser.error(f"unknown command: {command}")
     return 2
 
@@ -819,6 +925,7 @@ def _repositories(settings):
             EntityRepository(conn),
             SignalRepository(conn),
             TokenRepository(conn),
+            AssetRepository(conn),
             MarketObservationRepository(conn),
             EnrichmentRepository(conn),
             HarnessRepository(conn),
@@ -867,3 +974,47 @@ def _handle_set(raw: str) -> set[str]:
 
 def _csv_set(raw: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
+
+
+def _asset_resolution_health(conn, *, window: str) -> dict:
+    window_ms = {
+        "5m": 5 * 60 * 1000,
+        "1h": 60 * 60 * 1000,
+        "4h": 4 * 60 * 60 * 1000,
+        "24h": 24 * 60 * 60 * 1000,
+    }[window]
+    since_ms = _now_ms() - window_ms
+    rows = conn.execute(
+        """
+        SELECT attribution_status, identity_status, COUNT(*) AS count
+        FROM asset_attributions
+        WHERE decision_time_ms >= %s
+        GROUP BY attribution_status, identity_status
+        ORDER BY count DESC
+        """,
+        (since_ms,),
+    ).fetchall()
+    top_unresolved = conn.execute(
+        """
+        SELECT assets.canonical_symbol AS symbol, COUNT(*) AS count
+        FROM asset_attributions
+        JOIN assets ON assets.asset_id = asset_attributions.asset_id
+        WHERE asset_attributions.decision_time_ms >= %s
+          AND asset_attributions.attribution_status IN ('unresolved', 'ambiguous')
+        GROUP BY assets.canonical_symbol
+        ORDER BY count DESC, assets.canonical_symbol ASC
+        LIMIT 20
+        """,
+        (since_ms,),
+    ).fetchall()
+    return {
+        "window": window,
+        "status_counts": [dict(row) for row in rows],
+        "top_unresolved": [dict(row) for row in top_unresolved],
+    }
+
+
+def _now_ms() -> int:
+    import time
+
+    return int(time.time() * 1000)
