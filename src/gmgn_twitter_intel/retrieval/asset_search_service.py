@@ -83,16 +83,27 @@ class AssetSearchService:
     ) -> AssetSearchResults:
         candidates = _effective_candidates(self.assets.candidates_for_symbol(symbol))
         events = self.assets.events_for_symbol_mentions(symbol, limit=limit, watched_only=watched_only)
+        fallback_total = 0
+        if not events:
+            events = self.evidence.search_fts(symbol, limit=limit, watched_only=watched_only)
+            fallback_total = self.evidence.count_fts(symbol, watched_only=watched_only)
         status = _resolution_status(candidates)
         return AssetSearchResults(
             ok=True,
-            items=[_item(event, "asset_mention", 100.0) for event in events],
+            items=[
+                _item(
+                    event,
+                    "asset_mention" if not fallback_total else "fts_symbol_fallback",
+                    _score(event, fallback_total),
+                )
+                for event in events
+            ],
             query=query,
             resolution={"status": status, "candidates": candidates},
             candidates=candidates,
-            total_count=len(events),
+            total_count=fallback_total or len(events),
             returned_count=len(events),
-            has_more=False,
+            has_more=bool(fallback_total and fallback_total > len(events)),
         )
 
     def _search_ca(
@@ -111,16 +122,27 @@ class AssetSearchService:
             limit=limit,
             watched_only=watched_only,
         )
+        fallback_total = 0
+        if not events:
+            events = self.evidence.search_fts(address, limit=limit, watched_only=watched_only)
+            fallback_total = self.evidence.count_fts(address, watched_only=watched_only)
         status = _resolution_status(candidates)
         return AssetSearchResults(
             ok=True,
-            items=[_item(event, "asset_mention", 100.0) for event in events],
+            items=[
+                _item(
+                    event,
+                    "asset_mention" if not fallback_total else "fts_ca_fallback",
+                    _score(event, fallback_total),
+                )
+                for event in events
+            ],
             query=query,
             resolution={"status": status, "candidates": candidates},
             candidates=candidates,
-            total_count=len(events),
+            total_count=fallback_total or len(events),
             returned_count=len(events),
-            has_more=False,
+            has_more=bool(fallback_total and fallback_total > len(events)),
         )
 
 
@@ -159,6 +181,12 @@ def _is_real_candidate(candidate: dict[str, Any]) -> bool:
 
 def _item(event: dict[str, Any], match_type: str, score: float) -> dict[str, Any]:
     return {"event": event, "match_type": match_type, "score": score}
+
+
+def _score(event: dict[str, Any], fallback_total: int) -> float:
+    if not fallback_total:
+        return 100.0
+    return float(event.get("score") or 0.0)
 
 
 def _query(parsed, *, scope: str) -> dict[str, Any]:

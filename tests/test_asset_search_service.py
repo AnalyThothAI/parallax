@@ -28,6 +28,23 @@ def test_symbol_search_returns_unresolved_mentions():
     assert result.items[0]["event"]["event_id"] == "event-1"
 
 
+def test_symbol_search_falls_back_to_fts_when_asset_index_has_no_events():
+    evidence = FakeEvidence(fts_events=[{"event_id": "event-text", "score": 0.42}])
+    service = AssetSearchService(
+        evidence=evidence,
+        assets=FakeAssets(candidates=[], mention_events=[]),
+    )
+
+    result = service.search("$MIRROR", limit=20)
+
+    assert result.ok is True
+    assert result.resolution["status"] == "unresolved"
+    assert result.total_count == 1
+    assert result.items[0]["match_type"] == "fts_symbol_fallback"
+    assert result.items[0]["event"]["event_id"] == "event-text"
+    assert evidence.fts_queries == ["MIRROR"]
+
+
 def test_symbol_search_returns_ambiguous_candidates_and_events():
     service = AssetSearchService(
         evidence=FakeEvidence(),
@@ -152,6 +169,22 @@ def test_ca_search_uses_asset_index_instead_of_fts():
     assert result.items[0]["match_type"] == "asset_mention"
     assert result.items[0]["event"]["event_id"] == "event-ca"
     assert evidence.fts_queries == []
+
+
+def test_ca_search_falls_back_to_fts_when_asset_index_has_no_events():
+    evidence = FakeEvidence(fts_events=[{"event_id": "event-ca-text", "score": 0.9}])
+    service = AssetSearchService(
+        evidence=evidence,
+        assets=FakeAssets(candidates=[], mention_events=[], ca_candidates=[], ca_events=[]),
+    )
+
+    result = service.search("eth:0x6982508145454ce325ddbe47a25d4ec3d2311933", limit=20)
+
+    assert result.ok is True
+    assert result.resolution["status"] == "unresolved"
+    assert result.items[0]["match_type"] == "fts_ca_fallback"
+    assert result.items[0]["event"]["event_id"] == "event-ca-text"
+    assert evidence.fts_queries == ["0x6982508145454Ce325dDbE47a25d4ec3d2311933"]
 
 
 def test_text_search_still_uses_fts():
