@@ -694,6 +694,48 @@ class AssetRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def recent_asset_attributions(
+        self,
+        *,
+        since_ms: int,
+        watched_only: bool,
+        limit: int = 5000,
+    ) -> list[dict[str, Any]]:
+        clauses = ["asset_attributions.decision_time_ms >= %s"]
+        params: list[Any] = [int(since_ms)]
+        if watched_only:
+            clauses.append("events.is_watched = true")
+        params.append(max(0, int(limit)))
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              asset_attributions.*,
+              assets.asset_type,
+              assets.canonical_symbol,
+              assets.display_name,
+              asset_venues.venue_type,
+              asset_venues.exchange,
+              asset_venues.chain,
+              asset_venues.address,
+              asset_venues.inst_id,
+              asset_venues.base_symbol,
+              asset_venues.quote_symbol,
+              asset_venues.inst_type,
+              events.author_handle,
+              events.is_watched,
+              events.received_at_ms
+            FROM asset_attributions
+            JOIN assets ON assets.asset_id = asset_attributions.asset_id
+            JOIN events ON events.event_id = asset_attributions.event_id
+            LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY asset_attributions.decision_time_ms DESC
+            LIMIT %s
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def asset_seen_before(
         self,
         *,

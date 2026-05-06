@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.account_quality_service import AccountQualityService
+from ..retrieval.asset_flow_service import AssetFlowService
 from ..retrieval.asset_search_service import AssetSearchService
 from ..retrieval.harness_service import HarnessService
 from ..retrieval.token_flow_service import TokenFlowService
@@ -151,6 +152,24 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 "error": results.error,
             }
         )
+
+    @router.get("/asset-flow")
+    async def asset_flow(
+        request: Request,
+        window: Annotated[str, Query()] = "1h",
+        limit: Annotated[int, Query()] = 20,
+        scope: Annotated[str, Query()] = "all",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_window = _window(window)
+        parsed_scope = _scope(scope)
+        with runtime.repositories() as repos:
+            data = AssetFlowService(assets=repos.assets).asset_flow(
+                window=parsed_window,
+                limit=_limit(limit),
+                scope=parsed_scope,
+            )
+        return _json({"ok": True, "data": data})
 
     @router.get("/token-flow")
     async def token_flow(
