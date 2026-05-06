@@ -214,6 +214,9 @@ curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/enrichment-job
 ```bash
 uv run gmgn-twitter-intel init
 uv run gmgn-twitter-intel config
+uv run gmgn-twitter-intel db health
+uv run gmgn-twitter-intel db audit
+uv run gmgn-twitter-intel db query-audit
 uv run gmgn-twitter-intel recent --limit 20
 uv run gmgn-twitter-intel search --symbol PEPE --limit 20
 uv run gmgn-twitter-intel search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
@@ -239,9 +242,13 @@ uv run gmgn-twitter-intel ops attribute-harness-credits --horizon 6h
 uv run gmgn-twitter-intel ops update-harness-weights
 uv run gmgn-twitter-intel ops freeze-token-signals --window 5m --limit 200
 uv run gmgn-twitter-intel ops settle-token-signals --horizon 6h --limit 500
+uv run gmgn-twitter-intel ops projection-status
+uv run gmgn-twitter-intel ops validate-projections --sample 100
 ```
 
 `search --symbol PEPE` 等价于查 `$PEPE`，但不会触发 shell 的 `$` 环境变量展开问题。
+
+`db audit` 是只读 PostgreSQL 审计，返回核心表 count、关键 FK orphan check、projection schema presence 和 Alembic version。`db query-audit` 默认只跑 `EXPLAIN`，带 `--analyze` 才执行 `EXPLAIN ANALYZE`。Projection commands 暴露 read model offset/run/validation 状态；投影表是可重建派生数据，不是事实源。
 
 ## 范围边界
 
@@ -252,6 +259,7 @@ uv run gmgn-twitter-intel ops settle-token-signals --horizon 6h --limit 500
 - V1 不接外部新闻源，不自动实盘，不自动推广配置；`harness_weights.status` 先保持 `report_only`。
 - 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v2 抽取队列。
 - `token-flow` 返回 `social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity` 评分块，以及 `score_versions`、`data_health`、`posts_query`、`timeline_query`。
+- Projection/read model 层只做 PostgreSQL 查询优化和审计闭环，不改变 token attribution、scoring、LLM extraction 或 source facts 语义。
 - `freeze-token-signals` 把当前 token-flow 排名冻结为不可变 snapshot，结算与评估只读取冻结时的 evidence、timeline、component payload、market snapshot id，避免回看偏差。
 - `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
 - `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。

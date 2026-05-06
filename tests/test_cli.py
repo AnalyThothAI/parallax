@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import yaml
 
-from gmgn_twitter_intel.cli import main
+from gmgn_twitter_intel.cli import build_parser, main
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
@@ -120,6 +120,27 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
 
 
 class CliTests(unittest.TestCase):
+    def test_audit_and_projection_commands_are_registered(self):
+        parser = build_parser()
+
+        commands = [
+            ["db", "audit"],
+            ["db", "query-audit"],
+            ["db", "query-audit", "--analyze"],
+            ["ops", "projection-status"],
+            ["ops", "validate-projections", "--sample", "5"],
+        ]
+
+        parsed = [parser.parse_args(command) for command in commands]
+
+        self.assertEqual(parsed[0].db_command, "audit")
+        self.assertEqual(parsed[1].db_command, "query-audit")
+        self.assertFalse(parsed[1].analyze)
+        self.assertTrue(parsed[2].analyze)
+        self.assertEqual(parsed[3].ops_command, "projection-status")
+        self.assertEqual(parsed[4].ops_command, "validate-projections")
+        self.assertEqual(parsed[4].sample, 5)
+
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
@@ -282,6 +303,33 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["data"]["items"][0]["channel_id"], "pushdeer")
         self.assertEqual(payload["data"]["items"][0]["status"], "pending")
 
+    def test_db_audit_query_audit_and_projection_ops_use_postgres_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            home = Path(tmpdir)
+            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
+            write_runtime_config(home, db_path=db_path)
+            conn = connect_postgres_test(db_path, read_only=False)
+            try:
+                migrate(conn)
+            finally:
+                conn.close()
+            stdout = io.StringIO()
+            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
+                db_audit_code = main(["db", "audit"], stdout=stdout)
+                query_audit_code = main(["db", "query-audit"], stdout=stdout)
+                projection_status_code = main(["ops", "projection-status"], stdout=stdout)
+                validate_code = main(["ops", "validate-projections", "--sample", "5"], stdout=stdout)
+
+        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
+        self.assertEqual([db_audit_code, query_audit_code, projection_status_code, validate_code], [0, 0, 0, 0])
+        self.assertEqual(lines[0]["data"]["engine"], "postgresql")
+        self.assertTrue(lines[0]["data"]["projection_schema"]["projection_offsets"])
+        self.assertFalse(lines[1]["data"]["analyze"])
+        self.assertIn("token_flow_5m_shape", {item["name"] for item in lines[1]["data"]["queries"]})
+        self.assertEqual(lines[2]["data"]["known_projections"][0]["projection_name"], "token-social-buckets")
+        self.assertEqual(lines[3]["data"]["sample"], 5)
+        self.assertEqual(lines[3]["data"]["mismatch_count"], 0)
+
     def test_obsolete_runtime_commands_are_not_registered(self):
         parser_help = main(["embed"], stdout=io.StringIO())
 
@@ -302,6 +350,11 @@ class CliTests(unittest.TestCase):
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
+            conn = connect_postgres_test(db_path, read_only=False)
+            try:
+                migrate(conn)
+            finally:
+                conn.close()
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 settle_code = main(

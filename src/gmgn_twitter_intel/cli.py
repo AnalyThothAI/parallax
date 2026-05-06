@@ -29,8 +29,10 @@ from .storage.evidence_repository import EvidenceRepository
 from .storage.harness_repository import HarnessRepository
 from .storage.market_observation_repository import MarketObservationRepository
 from .storage.notification_repository import NotificationRepository
+from .storage.postgres_audit import PostgresOperationalAudit, PostgresQueryAudit, ProjectionValidationAudit
 from .storage.postgres_client import connect_postgres, postgres_health_check, with_password_from_file
 from .storage.postgres_migrations import upgrade_head
+from .storage.projection_repository import ProjectionRepository
 from .storage.signal_repository import SignalRepository
 from .storage.token_repository import TokenRepository
 from .storage.token_signal_repository import TokenSignalRepository
@@ -51,6 +53,9 @@ def build_parser() -> argparse.ArgumentParser:
     db_subcommands = db.add_subparsers(dest="db_command", required=True)
     db_subcommands.add_parser("migrate", help="apply PostgreSQL migrations")
     db_subcommands.add_parser("health", help="check PostgreSQL liveness and migration version")
+    db_subcommands.add_parser("audit", help="run PostgreSQL count, FK, and projection schema audit")
+    query_audit = db_subcommands.add_parser("query-audit", help="explain PostgreSQL hot read paths")
+    query_audit.add_argument("--analyze", action="store_true", help="run EXPLAIN ANALYZE with buffers")
 
     recent = subcommands.add_parser("recent", help="print recent stored events")
     recent.add_argument("--limit", type=int, default=20)
@@ -231,6 +236,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     settle_token_signals.add_argument("--horizon", choices=("6h", "24h"), default="6h")
     settle_token_signals.add_argument("--limit", type=int, default=500)
+    ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
+    validate_projections = ops_subcommands.add_parser(
+        "validate-projections",
+        help="validate projection read models against PostgreSQL facts",
+    )
+    validate_projections.add_argument("--sample", type=int, default=100)
     return parser
 
 
@@ -348,6 +359,16 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             health = postgres_health_check(conn)
         _emit({"ok": bool(health.get("ok")), "data": health}, stdout)
         return 0 if health.get("ok") else 1
+    if command == "db" and args.db_command == "audit":
+        with _postgres_connection(settings) as conn:
+            audit = PostgresOperationalAudit(conn).run()
+        _emit({"ok": bool(audit.get("ok")), "data": audit}, stdout)
+        return 0 if audit.get("ok") else 1
+    if command == "db" and args.db_command == "query-audit":
+        with _postgres_connection(settings) as conn:
+            audit = PostgresQueryAudit(conn).run(analyze=bool(args.analyze))
+        _emit({"ok": bool(audit.get("ok")), "data": audit}, stdout)
+        return 0 if audit.get("ok") else 1
 
     with _repositories(settings) as repos:
         (
@@ -766,6 +787,15 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 stdout,
             )
             return 0
+
+        if command == "ops" and args.ops_command == "projection-status":
+            _emit({"ok": True, "data": ProjectionRepository(signals.conn).status_summary()}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "validate-projections":
+            data = ProjectionValidationAudit(signals.conn).run(sample=args.sample)
+            _emit({"ok": bool(data.get("ok")), "data": data}, stdout)
+            return 0 if data.get("ok") else 1
 
     parser.error(f"unknown command: {command}")
     return 2

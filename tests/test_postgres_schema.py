@@ -7,6 +7,9 @@ QUEUE_MIGRATION = Path("src/gmgn_twitter_intel/storage/alembic/versions/20260506
 STALE_RUNNING_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
 )
+PROJECTION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0004_projection_operations.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -41,3 +44,16 @@ def test_enrichment_stale_running_migration_indexes_postgres_recovery_path() -> 
 
     assert "idx_enrichment_jobs_claim" in text
     assert "WHERE status IN ('pending', 'failed', 'running')" in text
+
+
+def test_projection_migration_adds_pg_only_read_model_tables() -> None:
+    text = PROJECTION_MIGRATION.read_text()
+
+    assert "CREATE TABLE IF NOT EXISTS projection_offsets" in text
+    assert "CREATE TABLE IF NOT EXISTS projection_runs" in text
+    assert "CREATE TABLE IF NOT EXISTS projection_dirty_ranges" in text
+    assert "CREATE TABLE IF NOT EXISTS token_social_buckets" in text
+    assert "CREATE TABLE IF NOT EXISTS token_social_bucket_authors" in text
+    assert "CREATE TABLE IF NOT EXISTS token_flow_window_snapshots" in text
+    assert "FOR UPDATE SKIP LOCKED" not in text
+    assert "sqlite" not in text.lower()

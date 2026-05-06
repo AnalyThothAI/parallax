@@ -52,6 +52,18 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "compose.yaml").is_file()
 
 
+def test_current_projection_docs_are_postgres_only():
+    paths = [
+        ROOT / "docs" / "superpowers" / "specs" / "2026-05-06-materialized-read-models-production-cn.md",
+        ROOT / "docs" / "superpowers" / "plans" / "2026-05-06-postgresql-projection-closure.md",
+    ]
+    for path in paths:
+        text = path.read_text(encoding="utf-8").lower()
+        assert "sqlite" not in text
+        assert "test_sqlite" not in text
+        assert "wal/fts5" not in text
+
+
 def test_legacy_narrative_modules_stay_removed():
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "llm_enrichment.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "narrative_seed_builder.py").exists()

@@ -30,6 +30,12 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "harness_snapshots" in names
     assert "notifications" in names
     assert "token_signal_snapshots" in names
+    assert "projection_offsets" in names
+    assert "projection_runs" in names
+    assert "projection_dirty_ranges" in names
+    assert "token_social_buckets" in names
+    assert "token_social_bucket_authors" in names
+    assert "token_flow_window_snapshots" in names
 
 
 def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
@@ -63,4 +69,4 @@ def test_alembic_migration_is_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version_num"] for row in rows] == ["20260506_0003"]
+    assert [row["version_num"] for row in rows] == ["20260506_0004"]
