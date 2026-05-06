@@ -629,10 +629,15 @@ export type HarnessCreditItem = {
 export type HarnessHealth = {
   llm_configured: boolean;
   extractor_running: boolean;
+  harness_ops_running?: boolean;
   schema_success_rate?: number | null;
   pending_jobs: number;
+  dead_jobs?: number;
+  failed_jobs?: number;
   snapshots_24h: number;
   pending_outcomes: number;
+  missing_market?: number;
+  insufficient_market_data?: number;
   settlement_coverage?: number | null;
 };
 
@@ -786,6 +791,11 @@ export type StatusData = {
     job_counts: Record<string, number>;
   };
   market_observations?: Record<string, number | boolean>;
+  harness_ops?: {
+    worker_running: boolean;
+    last_run_at_ms?: number | null;
+    last_result?: Record<string, unknown> | null;
+  };
   notifications?: {
     enabled: boolean;
     worker_running: boolean;

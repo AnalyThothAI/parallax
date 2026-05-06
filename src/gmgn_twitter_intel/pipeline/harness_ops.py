@@ -6,12 +6,63 @@ from typing import Any
 
 from .harness_credit import assign_cluster_credits, update_weight_stat
 from .harness_settlement import abnormal_return, actual_return, normalized_outcome
+from .harness_snapshot_builder import HarnessSnapshotBuilder
+from .social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 
 HORIZON_MS = {
     "6h": 6 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
 }
 BASELINE_VERSION = "benchmark-zero-v1"
+
+
+def materialize_market_ready_seeds(
+    *,
+    harness,
+    evidence,
+    tokens,
+    limit: int = 100,
+) -> dict[str, int]:
+    rows = harness.conn.execute(
+        """
+        SELECT se.*
+        FROM social_event_extractions se
+        JOIN attention_seeds seed ON seed.extraction_id = se.extraction_id
+        WHERE seed.seed_status = 'market_unavailable'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM harness_snapshots hs
+            WHERE hs.source_event_id = se.event_id
+          )
+        ORDER BY se.received_at_ms ASC
+        LIMIT %s
+        """,
+        (max(0, int(limit)),),
+    ).fetchall()
+    counts = {"seeds_scanned": len(rows), "snapshots_written": 0, "still_blocked": 0, "errors": 0}
+    builder = HarnessSnapshotBuilder(harness, tokens=tokens)
+    for row in rows:
+        try:
+            social_event = harness._decode_social_event(dict(row))
+            event = evidence.events_by_ids([str(social_event["event_id"])]).get(str(social_event["event_id"]))
+            if event is None:
+                counts["errors"] += 1
+                continue
+            before = _snapshot_count_for_event(harness, str(social_event["event_id"]))
+            materialized = builder.materialize(
+                event=event,
+                extraction=_social_event_extraction_from_row(social_event),
+                run_id=social_event.get("run_id"),
+                model_version=str(social_event.get("model_version") or "unknown"),
+            )
+            after = _snapshot_count_for_event(harness, str(social_event["event_id"]))
+            written = max(0, after - before)
+            counts["snapshots_written"] += written
+            if written == 0 and not materialized.get("snapshots"):
+                counts["still_blocked"] += 1
+        except Exception:
+            counts["errors"] += 1
+    return counts
 
 
 def settle_harness_snapshots(
@@ -40,6 +91,7 @@ def settle_harness_snapshots(
         "snapshots_scanned": len(rows),
         "outcomes_written": 0,
         "skipped_missing_market": 0,
+        "skipped_insufficient_market_data": 0,
         "errors": 0,
     }
     for row in rows:
@@ -54,15 +106,22 @@ def settle_harness_snapshots(
             exit_ = tokens.market_snapshot_at_or_before(token_id, decision_time_ms + horizon_ms)
             entry_price = _float_or_none(entry.get("price")) if entry else None
             exit_price = _float_or_none(exit_.get("price")) if exit_ else None
-            if (
-                token_id is None
-                or entry is None
-                or exit_ is None
-                or int(exit_["received_at_ms"]) <= int(entry["received_at_ms"])
-                or entry_price is None
-                or exit_price is None
-            ):
-                counts["skipped_missing_market"] += 1
+            gap_status = _market_gap_status(
+                token_id=token_id,
+                entry=entry,
+                exit_=exit_,
+                entry_price=entry_price,
+                exit_price=exit_price,
+            )
+            if gap_status is not None:
+                harness.mark_snapshot_outcome_status(
+                    snapshot_id=str(snapshot["snapshot_id"]),
+                    outcome_status=gap_status,
+                )
+                if gap_status == "missing_market":
+                    counts["skipped_missing_market"] += 1
+                else:
+                    counts["skipped_insufficient_market_data"] += 1
                 continue
             actual = actual_return(entry_price=entry_price, exit_price=exit_price)
             expected = 0.0
@@ -84,6 +143,23 @@ def settle_harness_snapshots(
         except Exception:
             counts["errors"] += 1
     return counts
+
+
+def _market_gap_status(
+    *,
+    token_id: str | None,
+    entry: dict[str, Any] | None,
+    exit_: dict[str, Any] | None,
+    entry_price: float | None,
+    exit_price: float | None,
+) -> str | None:
+    if token_id is None or entry is None or entry_price is None:
+        return "missing_market"
+    if exit_ is None or exit_price is None:
+        return "insufficient_market_data"
+    if int(exit_["received_at_ms"]) <= int(entry["received_at_ms"]):
+        return "insufficient_market_data"
+    return None
 
 
 def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dict[str, int]:
@@ -158,6 +234,48 @@ def update_harness_weights(*, harness, limit: int = 1000) -> dict[str, int]:
         )
         updated += 1
     return {"weights_updated": updated}
+
+
+def _social_event_extraction_from_row(row: dict[str, Any]) -> SocialEventExtraction:
+    return SocialEventExtraction(
+        is_signal_event=bool(row["is_signal_event"]),
+        event_type=str(row["event_type"]),
+        source_action=str(row["source_action"]),
+        subject=str(row["subject"]),
+        direction_hint=str(row["direction_hint"]),
+        attention_mechanism=str(row["attention_mechanism"]),
+        impact_hint=float(row["impact_hint"]),
+        semantic_novelty_hint=float(row["semantic_novelty_hint"]),
+        confidence=float(row["confidence"]),
+        anchor_terms=[
+            AnchorTerm(term=str(item["term"]), role=str(item["role"]), evidence=str(item["evidence"]))
+            for item in row.get("anchor_terms", [])
+            if isinstance(item, dict)
+        ],
+        token_candidates=[
+            SocialTokenCandidate(
+                symbol=item.get("symbol"),
+                project_name=item.get("project_name"),
+                chain=item.get("chain"),
+                address=item.get("address"),
+                evidence=str(item["evidence"]),
+                confidence=float(item["confidence"]),
+            )
+            for item in row.get("token_candidates", [])
+            if isinstance(item, dict)
+        ],
+        semantic_risks=[str(risk) for risk in row.get("semantic_risks", [])],
+        summary_zh=str(row.get("summary_zh") or ""),
+        raw_response=row.get("raw_response") if isinstance(row.get("raw_response"), dict) else {},
+    )
+
+
+def _snapshot_count_for_event(harness, event_id: str) -> int:
+    row = harness.conn.execute(
+        "SELECT COUNT(*) AS count FROM harness_snapshots WHERE source_event_id = %s",
+        (event_id,),
+    ).fetchone()
+    return int(row["count"] or 0)
 
 
 def _credit_groups(harness, *, limit: int) -> list[dict[str, Any]]:

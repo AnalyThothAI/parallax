@@ -69,7 +69,7 @@ export function SignalTracePanel({ chain }: SignalTracePanelProps) {
             <p>abnormal return {formatPercentShare(chain.outcome.abnormal_return)}</p>
           </>
         ) : (
-          <p>{chain.outcome_status === "pending" || !chain.outcome_status ? "Outcome pending. Settlement waits for decision_time + horizon." : chain.outcome_status}</p>
+          <p>{outcomeEmptyState(chain.outcome_status)}</p>
         )}
       </TraceStep>
       <TraceStep index={5} title="Credit" complete={chain.credits.length > 0}>
@@ -78,6 +78,16 @@ export function SignalTracePanel({ chain }: SignalTracePanelProps) {
       </TraceStep>
     </div>
   );
+}
+
+function outcomeEmptyState(status?: string | null): string {
+  if (status === "missing_market") {
+    return "Outcome blocked: no deterministic market entry for this asset.";
+  }
+  if (status === "insufficient_market_data") {
+    return "Outcome blocked: horizon exit market data is unavailable.";
+  }
+  return status === "pending" || !status ? "Outcome pending. Settlement waits for decision_time + horizon." : status;
 }
 
 function Field({ label, value }: { label: string; value?: string | null }) {

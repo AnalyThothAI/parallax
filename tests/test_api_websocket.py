@@ -108,7 +108,7 @@ def test_websocket_replay_includes_harness_state_for_social_event(tmp_path):
     with TestClient(app) as client:
         event = make_event("seed-event", "toly", text="Grok DOG is getting scary good")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
+        HarnessSnapshotBuilder(client.app.state.service.harness, tokens=client.app.state.service.tokens).materialize(
             event=event.to_dict(),
             extraction=SocialEventExtraction(
                 is_signal_event=True,
@@ -148,7 +148,8 @@ def test_websocket_replay_includes_harness_state_for_social_event(tmp_path):
     assert replay["type"] == "event"
     assert replay["harness"]["social_event"]["event_id"] == "seed-event"
     assert replay["harness"]["attention_seed"]["event_id"] == "seed-event"
-    assert replay["harness"]["snapshots"][0]["asset"] == "DOG"
+    assert replay["harness"]["attention_seed"]["seed_status"] == "asset_unresolved"
+    assert replay["harness"]["snapshots"] == []
 
 
 def test_websocket_routes_harness_updates_by_seed_event_handle(tmp_path):

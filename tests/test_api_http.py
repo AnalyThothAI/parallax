@@ -215,7 +215,10 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     with TestClient(app) as client:
         event = make_token_event("event-1", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
+        HarnessSnapshotBuilder(
+            client.app.state.service.harness,
+            tokens=client.app.state.service.tokens,
+        ).materialize(
             event=event.to_dict(),
             extraction=SocialEventExtraction(
                 is_signal_event=True,
@@ -402,7 +405,10 @@ def test_api_exposes_signal_lab_chains_product_read_model(tmp_path):
     with TestClient(app) as client:
         event = make_token_event("event-signal-chain", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
+        HarnessSnapshotBuilder(
+            client.app.state.service.harness,
+            tokens=client.app.state.service.tokens,
+        ).materialize(
             event=event.to_dict(),
             extraction=SocialEventExtraction(
                 is_signal_event=True,
@@ -472,7 +478,10 @@ def test_api_signal_lab_chains_cursor_paginates_read_model(tmp_path):
                 received_at_ms=base_ms - index * 1_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=True)
-            HarnessSnapshotBuilder(client.app.state.service.harness).materialize(
+            HarnessSnapshotBuilder(
+                client.app.state.service.harness,
+                tokens=client.app.state.service.tokens,
+            ).materialize(
                 event=event.to_dict(),
                 extraction=SocialEventExtraction(
                     is_signal_event=True,

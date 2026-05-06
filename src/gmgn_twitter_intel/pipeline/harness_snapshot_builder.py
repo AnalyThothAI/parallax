@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Any
 
 from .harness_scoring import base_event_score, combined_score, event_score, policy_signal, shadow_signal
-from .social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
+from .social_event_extraction import SocialEventExtraction, SocialTokenCandidate
 
 SCHEMA_VERSION = "social-event-v2"
 CONFIG_VERSION = "social-harness-mvp-v1"
@@ -74,10 +74,25 @@ class HarnessSnapshotBuilder:
         if not extraction.is_signal_event:
             return materialized
 
-        candidate_assets = _candidate_asset_expressions(extraction.token_candidates)
-        assets = candidate_assets or _anchor_asset_expressions(extraction.anchor_terms)
-        seed_status = "snapshot_ready" if candidate_assets else "seed_only" if assets else "asset_unknown"
-        seed_risks = risks if candidate_assets else list(dict.fromkeys(risks + ["unresolved_symbol"]))
+        direction = _direction(extraction.direction_hint)
+        resolved_assets = _resolved_candidate_assets(extraction.token_candidates, self.tokens)
+        eligible_assets = [
+            asset
+            for asset in resolved_assets
+            if direction != 0
+            and _entry_market_ready(self.tokens, token_id=str(asset["asset"]), received_at_ms=received_at_ms)
+        ]
+        seed_status = _seed_status(
+            resolved_count=len(resolved_assets),
+            eligible_count=len(eligible_assets),
+            direction=direction,
+        )
+        seed_risks = _seed_risks(
+            risks=risks,
+            resolved_count=len(resolved_assets),
+            eligible_count=len(eligible_assets),
+            direction=direction,
+        )
         seed = self.harness.upsert_attention_seed(
             seed_id=_id("attention_seed", event_id),
             extraction_id=extraction_id,
@@ -87,17 +102,18 @@ class HarnessSnapshotBuilder:
             event_type=extraction.event_type,
             subject=extraction.subject,
             anchor_terms=anchor_terms,
-            token_uptake_count=len(assets),
-            top_linked_symbols=[asset for asset in assets if asset != "UNKNOWN"],
+            token_uptake_count=len(resolved_assets),
+            top_linked_symbols=[str(asset["symbol"]) for asset in resolved_assets],
             seed_status=seed_status,
             risks=seed_risks,
             commit=commit,
         )
         materialized["seed"] = seed
-        if not assets:
+        if not eligible_assets:
             return materialized
 
-        for asset in assets:
+        for resolved_asset in eligible_assets:
+            asset = str(resolved_asset["asset"])
             cluster = self._cluster_for_asset(
                 asset=asset,
                 event=event,
@@ -106,7 +122,7 @@ class HarnessSnapshotBuilder:
                 seed_id=seed["seed_id"],
                 received_at_ms=received_at_ms,
                 author_handle=author_handle,
-                risks=risks,
+                risks=seed_risks,
                 commit=commit,
             )
             materialized["clusters"].append(cluster)
@@ -118,7 +134,7 @@ class HarnessSnapshotBuilder:
                     cluster=cluster,
                     decision_time_ms=received_at_ms,
                     horizon=horizon,
-                    risks=risks,
+                    risks=seed_risks,
                     commit=commit,
                 )
                 materialized["snapshots"].append(snapshot)
@@ -257,36 +273,86 @@ class HarnessSnapshotBuilder:
         return snapshot, decision
 
 
-def _candidate_asset_expressions(candidates: list[SocialTokenCandidate]) -> list[str]:
-    assets: list[str] = []
+def _resolved_candidate_assets(candidates: list[SocialTokenCandidate], tokens) -> list[dict[str, str]]:
+    if tokens is None:
+        return []
+    resolved: list[dict[str, str]] = []
+    seen: set[str] = set()
     for candidate in candidates:
-        asset = candidate.symbol or candidate.address or candidate.project_name
-        if not asset:
+        token_id = _token_id_for_candidate(tokens, candidate)
+        if token_id is None or token_id in seen:
             continue
-        normalized = asset.strip().lstrip("$").upper() if asset.isascii() else asset.strip()
-        if normalized and normalized not in assets:
-            assets.append(normalized)
-        if len(assets) >= 3:
+        token = tokens.get_token(token_id)
+        symbol = str((token or {}).get("symbol") or candidate.symbol or candidate.project_name or token_id)
+        display_symbol = symbol.strip().lstrip("$").upper() if symbol.isascii() else symbol
+        resolved.append({"asset": token_id, "symbol": display_symbol})
+        seen.add(token_id)
+        if len(resolved) >= 3:
             break
-    return assets
+    return resolved
 
 
-def _anchor_asset_expressions(anchors: list[AnchorTerm]) -> list[str]:
-    assets: list[str] = []
-    for anchor in anchors:
-        if anchor.role not in {"asset", "meme_phrase", "product"}:
-            continue
-        term = anchor.term.strip().lstrip("$")
-        if not term or len(term) > 20 or any(ch.isspace() for ch in term):
-            continue
-        normalized = "".join(ch for ch in term if ch.isalnum()).upper()
-        if len(normalized) < 2:
-            continue
-        if normalized and normalized not in assets:
-            assets.append(normalized)
-        if len(assets) >= 3:
-            break
-    return assets
+def _token_id_for_candidate(tokens, candidate: SocialTokenCandidate) -> str | None:
+    if candidate.address and candidate.chain:
+        row = tokens.conn.execute(
+            f"""
+            SELECT token_id
+            FROM tokens
+            WHERE lower(address) = lower(%s)
+              AND chain IN ({','.join('%s' for _ in _candidate_chains(candidate.chain))})
+            ORDER BY token_id
+            LIMIT 1
+            """,
+            (candidate.address, *_candidate_chains(candidate.chain)),
+        ).fetchone()
+        if row:
+            return str(row["token_id"])
+    if candidate.symbol:
+        aliases = tokens.aliases_for_symbol(candidate.symbol)
+        if len(aliases) == 1:
+            return aliases[0]
+    return None
+
+
+def _candidate_chains(chain: str) -> tuple[str, ...]:
+    normalized = chain.strip().lower()
+    aliases = {
+        "ethereum": "eth",
+        "sol": "solana",
+        "bnb": "bsc",
+    }
+    primary = aliases.get(normalized, normalized)
+    values = (primary, normalized)
+    return tuple(dict.fromkeys(value for value in values if value))
+
+
+def _entry_market_ready(tokens, *, token_id: str, received_at_ms: int) -> bool:
+    if tokens is None:
+        return False
+    snapshot = tokens.market_snapshot_at_or_before(token_id, received_at_ms)
+    price = _float_or_none(snapshot.get("price")) if snapshot else None
+    return price is not None
+
+
+def _seed_status(*, resolved_count: int, eligible_count: int, direction: int) -> str:
+    if resolved_count == 0:
+        return "asset_unresolved"
+    if direction == 0:
+        return "not_directional"
+    if eligible_count == 0:
+        return "market_unavailable"
+    return "snapshot_ready"
+
+
+def _seed_risks(*, risks: list[str], resolved_count: int, eligible_count: int, direction: int) -> list[str]:
+    extra: list[str] = []
+    if resolved_count == 0:
+        extra.append("unresolved_symbol")
+    if resolved_count > 0 and direction == 0:
+        extra.append("neutral_direction")
+    if resolved_count > 0 and direction != 0 and eligible_count == 0:
+        extra.append("missing_entry_market")
+    return list(dict.fromkeys([*risks, *extra]))
 
 
 def _direction(direction_hint: str) -> int:

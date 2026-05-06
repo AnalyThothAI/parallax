@@ -17,6 +17,7 @@ from ..collector.direct_ws import DirectGmgnWebSocketClient
 from ..collector.service import CollectorService
 from ..market.gmgn_openapi_client import GmgnOpenApiClient
 from ..pipeline.enrichment_worker import EnrichmentWorker
+from ..pipeline.harness_ops_worker import HarnessOpsWorker
 from ..pipeline.ingest_service import IngestService
 from ..pipeline.llm_client import OpenAIChatEnrichmentClient
 from ..pipeline.market_observation_worker import MarketObservationWorker
@@ -68,6 +69,7 @@ class CliRuntime:
     collector: CollectorService
     start_collector: bool
     enrichment_worker: EnrichmentWorker | None = None
+    harness_ops_worker: HarnessOpsWorker | None = None
     market_observation_worker: MarketObservationWorker | None = None
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
@@ -75,6 +77,7 @@ class CliRuntime:
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
+    harness_ops_task: asyncio.Task | None = None
     market_observation_task: asyncio.Task | None = None
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
@@ -267,6 +270,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         client=gmgn_client,
         repository_session=lambda: repository_session(db_pool),
     )
+    runtime.harness_ops_worker = HarnessOpsWorker(
+        repository_session=lambda: repository_session(db_pool),
+    )
     if settings.notifications.enabled:
         runtime.notification_worker = NotificationWorker(
             repository_session=lambda: repository_session(db_pool),
@@ -327,6 +333,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.market_observation_task = asyncio.create_task(runtime.market_observation_worker.run())
     if runtime.enrichment_worker is not None and runtime.enrichment_task is None:
         runtime.enrichment_task = asyncio.create_task(runtime.enrichment_worker.run())
+    if runtime.harness_ops_worker is not None and runtime.harness_ops_task is None:
+        runtime.harness_ops_task = asyncio.create_task(runtime.harness_ops_worker.run())
     if runtime.notification_worker is not None and runtime.notification_task is None:
         runtime.notification_task = asyncio.create_task(runtime.notification_worker.run())
     if runtime.notification_delivery_worker is not None and runtime.notification_delivery_task is None:
@@ -343,6 +351,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.market_observation_worker.stop()
     if runtime.enrichment_worker is not None:
         runtime.enrichment_worker.stop()
+    if runtime.harness_ops_worker is not None:
+        runtime.harness_ops_worker.stop()
     if runtime.notification_worker is not None:
         runtime.notification_worker.stop()
     if runtime.notification_delivery_worker is not None:
@@ -353,6 +363,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.supervisor_task,
             runtime.collector_task,
             runtime.enrichment_task,
+            runtime.harness_ops_task,
             runtime.market_observation_task,
             runtime.notification_task,
             runtime.notification_delivery_task,
@@ -401,6 +412,11 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             **_market_observation_counts(runtime),
             "worker_running": _task_running(runtime.market_observation_task),
         },
+        "harness_ops": {
+            "worker_running": _task_running(runtime.harness_ops_task),
+            "last_run_at_ms": runtime.harness_ops_worker.last_run_at_ms if runtime.harness_ops_worker else None,
+            "last_result": runtime.harness_ops_worker.last_result if runtime.harness_ops_worker else None,
+        },
         "notifications": {
             "enabled": runtime.settings.notifications.enabled,
             "worker_running": _task_running(runtime.notification_task),
@@ -428,6 +444,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("enrichment_worker_stopped")
     if not _task_running(runtime.market_observation_task):
         reasons.append("market_observation_worker_stopped")
+    if runtime.harness_ops_worker is not None and not _task_running(runtime.harness_ops_task):
+        reasons.append("harness_ops_worker_stopped")
     if runtime.settings.notifications.enabled and not _task_running(runtime.notification_task):
         reasons.append("notification_worker_stopped")
     if runtime.notification_delivery_worker is not None and not _task_running(runtime.notification_delivery_task):

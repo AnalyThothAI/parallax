@@ -1111,10 +1111,15 @@ function defaultSignalLabHealth(status?: StatusData): HarnessHealth {
   return {
     llm_configured: Boolean(status?.enrichment.llm_configured),
     extractor_running: Boolean(status?.enrichment.worker_running),
+    harness_ops_running: Boolean(status?.harness_ops?.worker_running),
     schema_success_rate: null,
     pending_jobs: status?.enrichment.job_counts.pending ?? 0,
+    dead_jobs: status?.enrichment.job_counts.dead ?? 0,
+    failed_jobs: status?.enrichment.job_counts.failed ?? 0,
     snapshots_24h: 0,
     pending_outcomes: 0,
+    missing_market: 0,
+    insufficient_market_data: 0,
     settlement_coverage: null
   };
 }

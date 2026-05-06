@@ -13,8 +13,9 @@ export const SIGNAL_LAB_STAGE_COPY: Record<SignalLabStage, { label: string; desc
 };
 
 export function chainDisplayTitle(chain: SignalLabChain): string {
-  if (chain.asset && chain.horizon) return `${chain.asset} · ${chain.horizon}`;
-  if (chain.asset) return `${chain.asset} · unresolved`;
+  const asset = chainAssetLabel(chain);
+  if (asset && chain.horizon) return `${asset} · ${chain.horizon}`;
+  if (asset) return `${asset} · unresolved`;
   return chain.title || signalLabLabel(chain.chain_id);
 }
 
@@ -23,6 +24,9 @@ export function chainSource(chain: SignalLabChain): string {
 }
 
 export function chainScore(chain: SignalLabChain): string {
+  if (chain.snapshot?.shadow_signal === "NO_TRADE") {
+    return "NO TRADE";
+  }
   if (chain.score === null || chain.score === undefined) return "-";
   return `${formatScore(Math.abs(chain.score) <= 1 ? chain.score * 100 : chain.score)}%`;
 }
@@ -33,8 +37,17 @@ export function chainRelativeTime(chain: SignalLabChain): string {
 
 export function chainStatusText(chain: SignalLabChain): string {
   const outcome = chain.outcome_status?.replaceAll("_", " ") || "no outcome";
-  const credit = chain.credit_status?.replaceAll("_", " ") || "no credit";
+  const rawCredit = chain.credit_status?.replaceAll("_", " ");
+  const credit = !rawCredit || rawCredit === "none" ? "no credit" : rawCredit;
   return `${outcome} · ${credit}`;
+}
+
+function chainAssetLabel(chain: SignalLabChain): string | null {
+  const seedSymbol = chain.seed?.top_linked_symbols?.[0];
+  if (seedSymbol && chain.asset?.startsWith("token:")) {
+    return seedSymbol;
+  }
+  return chain.asset ?? null;
 }
 
 export function totalChains(summary: SignalLabStageSummary | undefined, fallback: number): number {

@@ -196,6 +196,7 @@ class HarnessService:
             SELECT combined_score
             FROM harness_snapshots hs
             {where}
+            {"AND" if where else "WHERE"} hs.outcome_status = 'pending'
             """,
             params,
         ).fetchall()

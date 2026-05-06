@@ -1,8 +1,13 @@
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
+from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
+from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tests.test_api_http import make_token_event
+
+BNB = "0x0000000000000000000000000000000000000b0b"
 
 
 def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision(tmp_path):
@@ -10,6 +15,22 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
     try:
         migrate(conn)
         harness = HarnessRepository(conn)
+        evidence = EvidenceRepository(conn)
+        tokens = TokenRepository(conn)
+        event = make_token_event(
+            "event-1",
+            symbol="BNB",
+            address=BNB,
+            text=f"CZ says build on BNB {BNB}",
+            received_at_ms=1_000,
+        )
+        evidence.insert_event(event, is_watched=True)
+        tokens.upsert_snapshot(
+            event_id=event.event_id,
+            snapshot=event.token_snapshot,
+            received_at_ms=event.received_at_ms,
+            source_channel=event.source.channel,
+        )
         extraction = SocialEventExtraction(
             is_signal_event=True,
             event_type="meme_phrase_seed",
@@ -25,8 +46,8 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
                 SocialTokenCandidate(
                     symbol="BNB",
                     project_name=None,
-                    chain=None,
-                    address=None,
+                    chain="eth",
+                    address=BNB,
                     evidence="BNB",
                     confidence=0.8,
                 )
@@ -36,24 +57,14 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
             raw_response={"ok": True},
         )
 
-        materialized = HarnessSnapshotBuilder(harness).materialize(
-            event={
-                "event_id": "event-1",
-                "author_handle": "cz_binance",
-                "received_at_ms": 1_000,
-                "search_text": "CZ says build on BNB",
-            },
+        materialized = HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
+            event=event.to_dict(),
             extraction=extraction,
             run_id="run-1",
             model_version="gpt-test",
         )
-        duplicate = HarnessSnapshotBuilder(harness).materialize(
-            event={
-                "event_id": "event-1",
-                "author_handle": "cz_binance",
-                "received_at_ms": 1_000,
-                "search_text": "CZ says build on BNB",
-            },
+        duplicate = HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
+            event=event.to_dict(),
             extraction=extraction,
             run_id="run-1",
             model_version="gpt-test",
@@ -64,7 +75,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
     assert materialized["social_event"]["event_type"] == "meme_phrase_seed"
     assert materialized["seed"]["seed_status"] == "snapshot_ready"
     assert [snapshot["horizon"] for snapshot in materialized["snapshots"]] == ["6h", "24h"]
-    assert materialized["snapshots"][0]["asset"] == "BNB"
+    assert materialized["snapshots"][0]["asset"].startswith("token:eth:")
     assert materialized["clusters"][0]["pricedness"] != 0.35
     assert materialized["decisions"][0]["execution_mode"] == "shadow"
     assert materialized["decisions"][0]["signal"] == "LONG_SMALL"
@@ -119,7 +130,7 @@ def test_snapshot_builder_stores_non_signal_without_snapshot(tmp_path):
     assert materialized["decisions"] == []
 
 
-def test_snapshot_builder_uses_anchor_terms_for_seed_only_signal_snapshots(tmp_path):
+def test_snapshot_builder_keeps_seed_only_attention_unfrozen_until_asset_resolves(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -155,7 +166,72 @@ def test_snapshot_builder_uses_anchor_terms_for_seed_only_signal_snapshots(tmp_p
     finally:
         conn.close()
 
-    assert materialized["seed"]["seed_status"] == "seed_only"
-    assert materialized["seed"]["top_linked_symbols"] == ["GROK"]
-    assert materialized["snapshots"][0]["asset"] == "GROK"
-    assert "unresolved_symbol" in materialized["snapshots"][0]["risks"]
+    assert materialized["seed"]["seed_status"] == "asset_unresolved"
+    assert materialized["seed"]["token_uptake_count"] == 0
+    assert materialized["seed"]["top_linked_symbols"] == []
+    assert materialized["snapshots"] == []
+    assert materialized["decisions"] == []
+    assert "unresolved_symbol" in materialized["seed"]["risks"]
+
+
+def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        harness = HarnessRepository(conn)
+        evidence = EvidenceRepository(conn)
+        tokens = TokenRepository(conn)
+        event = make_token_event(
+            "event-no-entry",
+            symbol="BNB",
+            address=BNB,
+            text=f"BNB attention {BNB}",
+            received_at_ms=5_000,
+        )
+        evidence.insert_event(event, is_watched=True)
+        tokens.upsert_ca(
+            event_id=event.event_id,
+            chain="eth",
+            address=BNB,
+            symbol="BNB",
+            received_at_ms=event.received_at_ms,
+        )
+        extraction = SocialEventExtraction(
+            is_signal_event=True,
+            event_type="meme_phrase_seed",
+            source_action="posted",
+            subject="BNB attention",
+            direction_hint="attention_positive",
+            attention_mechanism="direct_token_mention",
+            impact_hint=0.7,
+            semantic_novelty_hint=0.8,
+            confidence=0.9,
+            anchor_terms=[AnchorTerm(term="BNB", role="asset", evidence="BNB")],
+            token_candidates=[
+                SocialTokenCandidate(
+                    symbol="BNB",
+                    project_name=None,
+                    chain="eth",
+                    address=BNB,
+                    evidence=BNB,
+                    confidence=0.9,
+                )
+            ],
+            semantic_risks=[],
+            summary_zh="BNB attention.",
+            raw_response={"ok": True},
+        )
+
+        materialized = HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
+            event=event.to_dict(),
+            extraction=extraction,
+            run_id="run-no-entry",
+            model_version="gpt-test",
+        )
+    finally:
+        conn.close()
+
+    assert materialized["seed"]["seed_status"] == "market_unavailable"
+    assert materialized["seed"]["top_linked_symbols"] == ["BNB"]
+    assert materialized["snapshots"] == []
+    assert "missing_entry_market" in materialized["seed"]["risks"]

@@ -11,6 +11,7 @@ from ..pipeline.social_event_extraction import SocialEventExtraction
 from .postgres_client import transaction
 
 RUNNING_TIMEOUT_MS = 120_000
+WATCHED_SOCIAL_EVENT_JOB_TYPE = "watched_social_event_extraction"
 
 
 class EnrichmentRepository:
@@ -26,7 +27,7 @@ class EnrichmentRepository:
         priority: int = 100,
         commit: bool = True,
     ) -> str | None:
-        job_id = _id("job", event_id, "watched_event_enrichment")
+        job_id = _id("job", event_id, WATCHED_SOCIAL_EVENT_JOB_TYPE)
         now_ms = _now_ms()
         cursor = self.conn.execute(
             """
@@ -40,7 +41,7 @@ class EnrichmentRepository:
             (
                 job_id,
                 event_id,
-                "watched_event_enrichment",
+                WATCHED_SOCIAL_EVENT_JOB_TYPE,
                 priority,
                 "pending",
                 0,
@@ -54,7 +55,7 @@ class EnrichmentRepository:
         if commit:
             self.conn.commit()
         if cursor.rowcount == 0:
-            return self._job_id_for_event(event_id, "watched_event_enrichment")
+            return self._job_id_for_event(event_id, WATCHED_SOCIAL_EVENT_JOB_TYPE)
         return job_id
 
     def claim_next_job(self, *, now_ms: int | None = None) -> dict[str, Any] | None:
@@ -212,6 +213,11 @@ class EnrichmentRepository:
             counts.setdefault(status, 0)
         return counts
 
+    def job_success_rate(self) -> float | None:
+        counts = self.job_counts()
+        terminal = counts["done"] + counts["dead"]
+        return None if terminal == 0 else counts["done"] / terminal
+
     def enqueue_missing_watched_events(self, *, limit: int) -> dict[str, Any]:
         rows = self.conn.execute(
             """
@@ -223,7 +229,7 @@ class EnrichmentRepository:
                 SELECT 1
                 FROM enrichment_jobs j
                 WHERE j.event_id = e.event_id
-                  AND j.job_type = 'watched_event_enrichment'
+                  AND j.job_type = %s
               )
               AND NOT EXISTS (
                 SELECT 1
@@ -233,7 +239,7 @@ class EnrichmentRepository:
             ORDER BY e.received_at_ms ASC
             LIMIT %s
             """,
-            (max(0, int(limit)),),
+            (WATCHED_SOCIAL_EVENT_JOB_TYPE, max(0, int(limit))),
         ).fetchall()
         enqueued = 0
         with transaction(self.conn):

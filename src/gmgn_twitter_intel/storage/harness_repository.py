@@ -536,6 +536,25 @@ class HarnessRepository:
         ).fetchone()
         return dict(row) if row else {}
 
+    def mark_snapshot_outcome_status(
+        self,
+        *,
+        snapshot_id: str,
+        outcome_status: str,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        self.conn.execute(
+            """
+            UPDATE harness_snapshots
+            SET outcome_status = %s
+            WHERE snapshot_id = %s
+            """,
+            (outcome_status, snapshot_id),
+        )
+        if commit:
+            self.conn.commit()
+        return self.snapshot_by_id(snapshot_id)
+
     def list_outcomes(
         self,
         *,
@@ -668,6 +687,12 @@ class HarnessRepository:
         pending_outcomes = self.conn.execute(
             "SELECT COUNT(*) AS count FROM harness_snapshots WHERE outcome_status = 'pending'",
         ).fetchone()["count"]
+        missing_market = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM harness_snapshots WHERE outcome_status = 'missing_market'",
+        ).fetchone()["count"]
+        insufficient_market_data = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM harness_snapshots WHERE outcome_status = 'insufficient_market_data'",
+        ).fetchone()["count"]
         settled = self.conn.execute(
             """
             SELECT COUNT(*) AS count
@@ -681,6 +706,8 @@ class HarnessRepository:
         return {
             "snapshots_24h": int(snapshots_24h),
             "pending_outcomes": int(pending_outcomes),
+            "missing_market": int(missing_market),
+            "insufficient_market_data": int(insufficient_market_data),
             "settlement_coverage": coverage,
         }
 

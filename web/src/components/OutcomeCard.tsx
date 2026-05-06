@@ -13,7 +13,7 @@ export function OutcomeCard({ outcome, status }: OutcomeCardProps) {
       <div className="outcome-card ledger-box">
         <h3>Latest Outcome</h3>
         <Metric label="outcome_status" value={status} />
-        <div className="empty-state">{status === "pending" ? "Outcome pending. Settlement waits for decision_time + horizon." : status}</div>
+        <div className="empty-state">{outcomeEmptyState(status)}</div>
       </div>
     );
   }
@@ -30,6 +30,16 @@ export function OutcomeCard({ outcome, status }: OutcomeCardProps) {
       <Metric label="baseline_version" value={signalLabLabel(outcome.baseline_version)} />
     </div>
   );
+}
+
+function outcomeEmptyState(status: string): string {
+  if (status === "missing_market") {
+    return "Outcome blocked: no deterministic market entry for this asset.";
+  }
+  if (status === "insufficient_market_data") {
+    return "Outcome blocked: horizon exit market data is unavailable.";
+  }
+  return status === "pending" ? "Outcome pending. Settlement waits for decision_time + horizon." : status;
 }
 
 function Metric({ label, tone, value }: { label: string; tone?: "positive" | "negative"; value: string }) {

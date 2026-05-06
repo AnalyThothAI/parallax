@@ -238,6 +238,12 @@ def _token_candidate(item: Any, event_text: str, min_confidence: float) -> Socia
     project_name = str(item.get("project_name") or "").strip() or None
     chain = str(item.get("chain") or "").strip().lower() or None
     address = str(item.get("address") or "").strip() or None
+    if symbol and not _contains_evidence(event_text, symbol):
+        symbol = None
+    if project_name and not _contains_evidence(event_text, project_name):
+        project_name = None
+    if address and not _contains_evidence(event_text, address):
+        address = None
     if not any([symbol, project_name, address]):
         return None
     return SocialTokenCandidate(

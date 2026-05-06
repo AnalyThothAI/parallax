@@ -582,10 +582,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             job_counts = repos.enrichment.job_counts()
             data = HarnessService(repos.harness).health(
                 llm_configured=bool(runtime.settings.llm_configured),
-                extractor_running=runtime.enrichment_worker is not None,
+                extractor_running=runtime.enrichment_task is not None and not runtime.enrichment_task.done(),
                 pending_jobs=int(job_counts.get("pending", 0)),
-                schema_success_rate=None,
+                schema_success_rate=repos.enrichment.job_success_rate(),
             )
+            data["dead_jobs"] = int(job_counts.get("dead", 0))
+            data["failed_jobs"] = int(job_counts.get("failed", 0))
+            data["harness_ops_running"] = runtime.harness_ops_task is not None and not runtime.harness_ops_task.done()
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-score-buckets")

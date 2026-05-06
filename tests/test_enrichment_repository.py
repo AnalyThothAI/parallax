@@ -92,7 +92,7 @@ def test_watched_ingest_enqueues_one_durable_enrichment_job(tmp_path):
     assert result.enrichment_job_id is not None
     assert len(jobs) == 1
     assert jobs[0]["event_id"] == "watched-1"
-    assert jobs[0]["job_type"] == "watched_event_enrichment"
+    assert jobs[0]["job_type"] == "watched_social_event_extraction"
     assert jobs[0]["status"] == "pending"
 
 

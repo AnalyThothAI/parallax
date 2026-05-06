@@ -308,7 +308,7 @@ def test_token_flow_watch_block_marks_public_only_without_seed_links(tmp_path):
     assert "public_stream_coverage" in item["opportunity"]["risks"]
 
 
-def test_token_flow_watch_block_marks_seed_linked_from_harness_snapshot_without_direct_watch(tmp_path):
+def test_token_flow_watch_block_does_not_link_unfrozen_unresolved_attention(tmp_path):
     conn, ingest, signals, tokens, harness = open_runtime_with_harness(tmp_path)
     try:
         now_ms = 1_700_000_123_456
@@ -320,7 +320,7 @@ def test_token_flow_watch_block_marks_seed_linked_from_harness_snapshot_without_
         )
         ingest.ingest_event(seed_event, is_watched=True)
         ingest.ingest_event(token_event("event-dog-public", received_at_ms=now_ms - 10_000), is_watched=False)
-        HarnessSnapshotBuilder(harness).materialize(
+        HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
             event=seed_event.to_dict(),
             extraction=SocialEventExtraction(
                 is_signal_event=True,
@@ -360,7 +360,7 @@ def test_token_flow_watch_block_marks_seed_linked_from_harness_snapshot_without_
         conn.close()
 
     assert item["flow"]["watched_mentions"] == 0
-    assert item["watch"]["status"] == "seed_linked"
-    assert item["watch"]["top_seed"]["seed_id"].startswith("attention_seed:")
+    assert item["watch"]["status"] == "public_only"
+    assert item["watch"]["top_seed"] is None
     assert item["propagation"]["score"] > 0
     assert item["opportunity"]["decision"] in {"watch", "driver"}
