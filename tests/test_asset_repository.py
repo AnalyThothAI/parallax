@@ -61,6 +61,115 @@ def test_upsert_cex_instrument_creates_asset_alias_and_venue(tmp_path):
     assert candidates[0]["venue_id"] == result.venue["venue_id"]
 
 
+def test_candidates_for_symbol_prefers_usdt_spot_cex_venue(tmp_path):
+    conn, _, repo = open_asset_repo(tmp_path)
+    try:
+        repo.upsert_cex_instrument(
+            exchange="okx",
+            inst_type="SPOT",
+            inst_id="BTC-AED",
+            base_symbol="BTC",
+            quote_symbol="AED",
+            observed_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        usdt = repo.upsert_cex_instrument(
+            exchange="okx",
+            inst_type="SPOT",
+            inst_id="BTC-USDT",
+            base_symbol="BTC",
+            quote_symbol="USDT",
+            observed_at_ms=1_700_000_000_001,
+            commit=True,
+        )
+        candidates = repo.candidates_for_symbol("BTC")
+    finally:
+        conn.close()
+
+    assert candidates[0]["venue_id"] == usdt.venue["venue_id"]
+    assert candidates[0]["quote_symbol"] == "USDT"
+
+
+def test_asset_flow_rows_use_preferred_cex_usdt_venue_and_market(tmp_path):
+    conn, evidence, repo = open_asset_repo(tmp_path)
+    try:
+        aed = repo.upsert_cex_instrument(
+            exchange="okx",
+            inst_type="SPOT",
+            inst_id="BTC-AED",
+            base_symbol="BTC",
+            quote_symbol="AED",
+            observed_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        usdt = repo.upsert_cex_instrument(
+            exchange="okx",
+            inst_type="SPOT",
+            inst_id="BTC-USDT",
+            base_symbol="BTC",
+            quote_symbol="USDT",
+            observed_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        evidence.insert_event(make_event("event-btc", text="$BTC is moving"), is_watched=False, commit=False)
+        mention = repo.insert_mention(
+            event_id="event-btc",
+            mention_type="cashtag",
+            raw_value="$BTC",
+            normalized_symbol="BTC",
+            source="deterministic_extractor",
+            mention_confidence=0.8,
+            created_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        repo.insert_attribution(
+            event_id="event-btc",
+            mention_id=mention["mention_id"],
+            asset_id=aed.asset["asset_id"],
+            venue_id=aed.venue["venue_id"],
+            attribution_status="selected",
+            attribution_weight=1.0,
+            confidence=0.9,
+            identity_status="resolved",
+            reasons=["legacy_selected_aed_venue"],
+            risks=[],
+            decision_time_ms=1_700_000_000_000,
+            created_at_ms=1_700_000_000_000,
+            commit=False,
+        )
+        repo.insert_market_snapshot(
+            asset_id=aed.asset["asset_id"],
+            venue_id=aed.venue["venue_id"],
+            provider="okx_cex",
+            observed_at_ms=1_700_000_010_000,
+            price_usd=22_000.0,
+            volume_24h_usd=1_000.0,
+            commit=False,
+        )
+        repo.insert_market_snapshot(
+            asset_id=usdt.asset["asset_id"],
+            venue_id=usdt.venue["venue_id"],
+            provider="okx_cex",
+            observed_at_ms=1_700_000_010_000,
+            price_usd=69_000.0,
+            volume_24h_usd=2_000.0,
+            commit=True,
+        )
+
+        rows = repo.asset_flow_rows(
+            since_ms=1_699_999_900_000,
+            watched_only=False,
+            limit=20,
+            now_ms=1_700_000_020_000,
+        )
+    finally:
+        conn.close()
+
+    assert rows[0]["venue_id"] == usdt.venue["venue_id"]
+    assert rows[0]["inst_id"] == "BTC-USDT"
+    assert rows[0]["market_price_usd"] == 69_000.0
+
+
 def test_candidates_for_ca_filters_by_chain_without_sql_parameter_mismatch(tmp_path):
     conn, _, repo = open_asset_repo(tmp_path)
     try:
@@ -123,6 +232,37 @@ def test_resolution_claim_recovers_stale_running_jobs(tmp_path):
     assert second is not None
     assert second["job_id"] == first["job_id"]
     assert second["attempt_count"] == 2
+
+
+def test_resolution_claim_uses_next_run_before_attempt_count_for_hot_requeues(tmp_path):
+    conn, _, repo = open_asset_repo(tmp_path)
+    try:
+        repo.queue_resolution_job(
+            job_type="symbol_resolution",
+            normalized_symbol="USDUC",
+            next_run_at_ms=1_700_000_000_000,
+        )
+        first = repo.claim_resolution_job(now_ms=1_700_000_000_100)
+        repo.finish_resolution_job(job_id=first["job_id"], status="succeeded", commit=False)
+        repo.queue_resolution_job(
+            job_type="symbol_resolution",
+            normalized_symbol="USDUC",
+            next_run_at_ms=1_700_000_000_200,
+            commit=False,
+        )
+        repo.queue_resolution_job(
+            job_type="symbol_resolution",
+            normalized_symbol="COLD",
+            next_run_at_ms=1_700_000_010_000,
+            commit=True,
+        )
+
+        hot = repo.claim_resolution_job(now_ms=1_700_000_020_000)
+    finally:
+        conn.close()
+
+    assert hot is not None
+    assert hot["normalized_symbol"] == "USDUC"
 
 
 def test_record_unresolved_attribution_and_find_symbol_mentions(tmp_path):

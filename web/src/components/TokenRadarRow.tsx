@@ -36,9 +36,7 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
             <span className="symbol-line">
               <span>{tokenLabel(item)}</span>
             </span>
-            <small>
-              {item.identity.chain ?? "unknown"} · {shortAddress(item.identity.address ?? item.identity.identity_key)}
-            </small>
+              <small>{identitySubtitle(item)}</small>
           </strong>
         </span>
 
@@ -59,7 +57,7 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
         </span>
 
         <span className="metric market-cell" data-radar-metric="market">
-          <b>{formatUsdCompact(item.market.market_cap)}</b>
+          <b>{marketPrimary(item)}</b>
           <small className={`direction ${direction}`}>{delta} {item.market.market_status}</small>
         </span>
 
@@ -88,6 +86,23 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
 
 function heatTitle(item: TokenFlowItem): string {
   return `${formatScore(item.social_heat.score)} · ${compactNumber(item.social_heat.mentions)} ${formatScoreDelta(item.social_heat.mention_delta)}`;
+}
+
+function identitySubtitle(item: TokenFlowItem): string {
+  if (item.identity.venue_type === "cex") {
+    return [item.identity.exchange?.toUpperCase(), item.identity.inst_id].filter(Boolean).join(" · ") || "CEX";
+  }
+  return `${item.identity.chain ?? "unknown"} · ${shortAddress(item.identity.address ?? item.identity.identity_key)}`;
+}
+
+function marketPrimary(item: TokenFlowItem): string {
+  if (item.market.market_cap !== null && item.market.market_cap !== undefined) {
+    return formatUsdCompact(item.market.market_cap);
+  }
+  if (item.market.price !== null && item.market.price !== undefined) {
+    return formatUsdCompact(item.market.price);
+  }
+  return "-";
 }
 
 function heatMeta(item: TokenFlowItem): string {

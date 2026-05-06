@@ -43,6 +43,67 @@ def test_symbol_resolution_job_writes_dex_candidate_market_snapshot_and_backfill
     assert assets.finished_jobs == [{"job_id": "job-1", "status": "succeeded", "error": None}]
 
 
+def test_symbol_resolution_job_backfills_dominant_okx_dex_candidate():
+    assets = FakeAssets(
+        job={"job_id": "job-1", "job_type": "symbol_resolution", "normalized_symbol": "USDUC"}
+    )
+    client = FakeDexClient(
+        [
+            OkxDexTokenCandidate(
+                chain_index="501",
+                chain="solana",
+                address="CB9dDufT3ZuQXqqSfa1c5kY935TEreyBw9XJXxHKpump",
+                symbol="USDUC",
+                name="unstable coin",
+                price_usd=0.021,
+                market_cap_usd=21_900_000.0,
+                liquidity_usd=1_570_000.0,
+                holders=15_331,
+                community_recognized=True,
+                raw={"tokenSymbol": "USDUC"},
+            ),
+            OkxDexTokenCandidate(
+                chain_index="8453",
+                chain="base",
+                address="0xecedb6f8108b9f7bbf499da843dced6c2bb6e270",
+                symbol="USDUC",
+                name="unstable coin",
+                price_usd=0.021,
+                market_cap_usd=44_000.0,
+                liquidity_usd=13_000.0,
+                holders=6_000,
+                community_recognized=True,
+                raw={"tokenSymbol": "USDUC"},
+            ),
+            OkxDexTokenCandidate(
+                chain_index="501",
+                chain="solana",
+                address="3TfR4oL2Q9RKpTuQztpBhmNRU31U3imwGKAu3Qx24uf1",
+                symbol="USDUC",
+                name="unstable coin",
+                price_usd=0.38,
+                market_cap_usd=386_000_000.0,
+                liquidity_usd=0.001,
+                holders=624,
+                community_recognized=False,
+                raw={"tokenSymbol": "USDUC"},
+            ),
+        ]
+    )
+    worker = AssetResolutionWorker(client=client, assets=assets, chain_indexes=("501", "8453"), poll_interval=0)
+
+    result = worker.process_one(now_ms=1_700_000_000_000)
+
+    assert result["candidate_count"] == 3
+    assert assets.reassignments == [
+        {
+            "symbol": "USDUC",
+            "asset_id": "asset:dex:solana:cb9dduft3zuqxqqsfa1c5ky935tereybw9xjxxhkpump",
+            "venue_id": "venue:dex:solana:cb9dduft3zuqxqqsfa1c5ky935tereybw9xjxxhkpump",
+        }
+    ]
+
+
 def test_ca_resolution_job_backfills_unresolved_ca_attributions():
     assets = FakeAssets(
         job={

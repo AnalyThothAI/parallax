@@ -1007,7 +1007,11 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
   const qualityScore = resolved ? Math.min(100, 70 + watched * 8) : Math.min(70, 35 + mentions * 8);
   const propagationScore = Math.min(100, 30 + authors * 14);
   const tradeabilityScore = resolved ? 80 : row.resolution.status === "ambiguous" ? 35 : 20;
-  const timingScore = resolved ? 50 : 35;
+  const timingScore = marketReady ? 55 : resolved ? 50 : 35;
+  const timingStatus = marketReady ? "neutral" : resolved ? "market_pending" : "market_unavailable";
+  const timingRisks = marketReady ? [] : resolved ? ["market_observation_pending"] : ["provider_not_found"];
+  const marketObservationStatus = marketReady ? "ready" : resolved ? "pending" : "provider_not_found";
+  const priceChangeStatus = marketReady ? "insufficient_history" : resolved ? "pending_observation" : "provider_not_found";
   const opportunityScore = Math.round(
     heatScore * 0.4 + qualityScore * 0.25 + propagationScore * 0.2 + tradeabilityScore * 0.1 + timingScore * 0.05
   );
@@ -1043,8 +1047,8 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       price_change_since_social_pct: market?.price_change_5m_pct ?? null,
       price_before_social_start: null,
       price_change_before_social_pct: null,
-      market_observation_status: marketReady ? "ready" : resolved ? "pending" : "provider_not_found",
-      price_change_status: marketReady ? "insufficient_history" : resolved ? "pending_observation" : "provider_not_found"
+      market_observation_status: marketObservationStatus,
+      price_change_status: priceChangeStatus
     },
     flow: {
       window,
@@ -1107,23 +1111,23 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
     tradeability: {
       ...scoreBlock(tradeabilityScore, "asset_tradeability_v1", resolved ? ["resolved_asset"] : [], resolved ? [] : ["identity_not_tradeable"]),
       identity_tradeable: resolved,
-      market_fresh: false,
-      market_cap_present: false,
-      liquidity_present: false,
+      market_fresh: marketReady,
+      market_cap_present: Boolean(market?.market_cap_usd),
+      liquidity_present: Boolean(market?.liquidity_usd),
       pool_present: isDex,
       hard_risks: resolved ? [] : ["identity_not_tradeable"]
     },
     timing: {
       score: timingScore,
       score_version: "asset_timing_v1",
-      status: resolved ? "market_pending" : "market_unavailable",
+      status: timingStatus,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
-      price_change_since_social_pct: null,
+      price_change_since_social_pct: market?.price_change_5m_pct ?? null,
       price_change_before_social_pct: null,
-      market_observation_status: resolved ? "provider_not_configured" : "provider_not_found",
+      market_observation_status: marketObservationStatus,
       chase_risk: false,
       reasons: [],
-      risks: resolved ? ["market_observation_pending"] : ["provider_not_found"],
+      risks: timingRisks,
       contributions: [],
       risk_caps: []
     },

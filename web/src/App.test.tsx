@@ -246,6 +246,53 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row.querySelector('[data-radar-action="gmgn"]')).toBeInTheDocument();
   });
 
+  it("renders fresh CEX asset-flow market as tradeable instead of pending", async () => {
+    mockApi({
+      assetFlowRows: [
+        assetFlowRow({
+          symbol: "BTC",
+          assetType: "cex_asset",
+          assetId: "asset:cex:BTC",
+          primaryVenue: {
+            venue_id: "venue:cex:okx:SPOT:BTC-USDT",
+            venue_type: "cex",
+            exchange: "okx",
+            chain: null,
+            address: null,
+            inst_id: "BTC-USDT",
+            base_symbol: "BTC",
+            quote_symbol: "USDT",
+            inst_type: "SPOT"
+          },
+          market: {
+            market_status: "fresh",
+            provider: "okx_cex",
+            price_usd: 69_000,
+            market_cap_usd: null,
+            liquidity_usd: null,
+            volume_24h_usd: 123_000_000,
+            open_interest_usd: null,
+            holders: null,
+            snapshot_age_ms: 30_000,
+            snapshot_observed_at_ms: 1_777_746_270_000,
+            price_change_5m_pct: null,
+            price_change_1h_pct: null,
+            price_change_24h_pct: null
+          }
+        })
+      ]
+    });
+
+    renderWithQuery(<App />);
+
+    const rowButton = await screen.findByRole("button", { name: "select token $BTC" });
+    expect(within(rowButton).getByText("OKX · BTC-USDT")).toBeInTheDocument();
+    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$69K");
+    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("fresh");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("neutral");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("market pending");
+  });
+
   it("uses Signal Lab as the trader-facing product label", async () => {
     renderWithQuery(<App />);
 
@@ -776,6 +823,7 @@ function mockApi(options: {
   searchResult?: boolean;
   tradingAttention?: TradingAttentionData;
   tradingAttentionPages?: Record<string, TradingAttentionData>;
+  assetFlowRows?: AssetFlowRow[];
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -804,7 +852,7 @@ function mockApi(options: {
       return ok<AssetFlowData>({
         window: window as AssetFlowData["window"],
         scope: "all",
-        resolved_assets: [
+        resolved_assets: options.assetFlowRows ?? [
           assetFlowRow({
             address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
             symbol: swapped ? "ALT" : undefined
@@ -893,17 +941,27 @@ function plainLiveEvent(): LivePayload {
   };
 }
 
-function assetFlowRow(options: { address?: string; symbol?: string } = {}): AssetFlowRow {
+function assetFlowRow(
+  options: {
+    address?: string;
+    symbol?: string;
+    assetId?: string;
+    assetType?: string;
+    primaryVenue?: AssetFlowRow["primary_venue"];
+    market?: AssetFlowRow["market"];
+  } = {}
+): AssetFlowRow {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const symbol = options.symbol ?? "UPEG";
+  const assetId = options.assetId ?? `asset:dex:eth:${address.toLowerCase()}`;
   return {
     asset: {
-      asset_id: `asset:dex:eth:${address.toLowerCase()}`,
+      asset_id: assetId,
       symbol,
-      asset_type: "dex_token",
+      asset_type: options.assetType ?? "dex_token",
       identity_status: "resolved"
     },
-    primary_venue: {
+    primary_venue: options.primaryVenue ?? {
       venue_id: `venue:dex:eth:${address.toLowerCase()}`,
       venue_type: "dex",
       exchange: "gmgn",
@@ -922,6 +980,7 @@ function assetFlowRow(options: { address?: string; symbol?: string } = {}): Asse
       watched_mentions: 1,
       latest_seen_ms: 1_777_746_300_000
     },
+    market: options.market,
     resolution: { status: "resolved", candidates: [] },
     decision: "watch"
   };

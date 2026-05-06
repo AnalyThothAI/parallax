@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import time
 from typing import Any
 
@@ -95,7 +96,7 @@ class AssetResolutionWorker:
             return {"candidate_count": 0, "ignored": "missing_symbol"}
         candidates = self.client.search_tokens(query=symbol, chain_indexes=self.chain_indexes)
         rows = self._write_candidates(assets, symbol=symbol, candidates=candidates, now_ms=now_ms)
-        selected = _single_resolved_candidate(symbol=symbol, rows=rows)
+        selected = _best_resolved_symbol_candidate(symbol=symbol, rows=rows)
         if selected is not None:
             assets.reassign_symbol_attributions(
                 symbol=symbol,
@@ -137,7 +138,7 @@ class AssetResolutionWorker:
     ) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         mention_rows = assets.mentions_needing_symbol_resolution(symbol, limit=1000) if symbol else []
-        for candidate in candidates:
+        for provider_rank, candidate in enumerate(candidates, start=1):
             chain = _candidate_chain(candidate)
             result = assets.upsert_dex_asset(
                 chain=chain,
@@ -150,7 +151,17 @@ class AssetResolutionWorker:
             )
             asset_id = str(result.asset["asset_id"])
             venue_id = str(result.venue["venue_id"]) if result.venue else None
-            row = {"asset_id": asset_id, "venue_id": venue_id, "symbol": candidate.symbol}
+            row = {
+                "asset_id": asset_id,
+                "venue_id": venue_id,
+                "symbol": candidate.symbol,
+                "provider_rank": provider_rank,
+                "score": _candidate_score(candidate),
+                "market_cap_usd": candidate.market_cap_usd,
+                "liquidity_usd": candidate.liquidity_usd,
+                "holders": candidate.holders,
+                "community_recognized": candidate.community_recognized,
+            }
             rows.append(row)
             self._write_market_snapshot(
                 assets,
@@ -203,7 +214,7 @@ class AssetResolutionWorker:
         )
 
 
-def _single_resolved_candidate(*, symbol: str, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+def _best_resolved_symbol_candidate(*, symbol: str, rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     matching = [row for row in rows if _normalize_symbol(row.get("symbol")) == symbol]
     unique: dict[tuple[str, str], dict[str, Any]] = {}
     for row in matching:
@@ -213,6 +224,23 @@ def _single_resolved_candidate(*, symbol: str, rows: list[dict[str, Any]]) -> di
             unique[(asset_id, venue_id)] = row
     if len(unique) == 1:
         return next(iter(unique.values()))
+    scored = sorted(unique.values(), key=_symbol_candidate_selection_score, reverse=True)
+    if not scored:
+        return None
+    top = scored[0]
+    second_score = _symbol_candidate_selection_score(scored[1]) if len(scored) > 1 else 0.0
+    top_score = _symbol_candidate_selection_score(top)
+    if top_score < 0.9:
+        return None
+    if top_score - second_score >= 0.08:
+        return top
+    if (
+        top.get("community_recognized")
+        and _positive_float(top.get("liquidity_usd")) >= 100_000
+        and _positive_float(top.get("holders")) >= 1_000
+        and top_score - second_score >= 0.04
+    ):
+        return top
     return None
 
 
@@ -243,6 +271,36 @@ def _candidate_score(candidate: OkxDexTokenCandidate) -> float:
     if candidate.holders and candidate.holders > 0:
         score += 0.05
     return min(score, 1.0)
+
+
+def _symbol_candidate_selection_score(row: dict[str, Any]) -> float:
+    provider_rank = int(row.get("provider_rank") or 999)
+    rank_bonus = max(0.0, 0.06 - min(provider_rank, 20) * 0.003)
+    return (
+        0.4
+        + (0.25 if row.get("community_recognized") else 0.0)
+        + _log_component(row.get("liquidity_usd"), scale=30.0, cap=0.25)
+        + _log_component(row.get("holders"), scale=60.0, cap=0.1)
+        + _log_component(row.get("market_cap_usd"), scale=80.0, cap=0.1)
+        + rank_bonus
+    )
+
+
+def _log_component(value: Any, *, scale: float, cap: float) -> float:
+    number = _positive_float(value)
+    if number <= 0:
+        return 0.0
+    return min(cap, math.log10(number + 1.0) / scale)
+
+
+def _positive_float(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if number <= 0 or not math.isfinite(number):
+        return 0.0
+    return number
 
 
 def _candidate_has_market_data(candidate: OkxDexTokenCandidate) -> bool:

@@ -100,6 +100,18 @@ def _resolution_status(row: dict[str, Any]) -> str:
 
 
 def _venue(row: dict[str, Any]) -> dict[str, Any]:
+    if row.get("primary_venue_id"):
+        return {
+            "venue_id": row.get("primary_venue_id"),
+            "venue_type": row.get("primary_venue_type"),
+            "exchange": row.get("primary_venue_exchange"),
+            "chain": row.get("primary_venue_chain"),
+            "address": row.get("primary_venue_address"),
+            "inst_id": row.get("primary_venue_inst_id"),
+            "base_symbol": row.get("primary_venue_base_symbol"),
+            "quote_symbol": row.get("primary_venue_quote_symbol"),
+            "inst_type": row.get("primary_venue_inst_type"),
+        }
     return {
         "venue_id": row.get("venue_id"),
         "venue_type": row.get("venue_type"),

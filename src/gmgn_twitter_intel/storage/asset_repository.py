@@ -415,6 +415,22 @@ class AssetRepository:
               asset_aliases.confidence DESC,
               assets.confidence DESC,
               CASE asset_venues.venue_type WHEN 'cex' THEN 0 WHEN 'dex' THEN 1 ELSE 2 END,
+              CASE
+                WHEN asset_venues.venue_type = 'cex'
+                  AND asset_venues.inst_type = 'SPOT'
+                  AND asset_venues.quote_symbol = 'USDT' THEN 0
+                WHEN asset_venues.venue_type = 'cex'
+                  AND asset_venues.inst_type = 'SPOT'
+                  AND asset_venues.quote_symbol = 'USD' THEN 1
+                WHEN asset_venues.venue_type = 'cex'
+                  AND asset_venues.inst_type = 'SPOT'
+                  AND asset_venues.quote_symbol = 'USDC' THEN 2
+                WHEN asset_venues.venue_type = 'cex'
+                  AND asset_venues.inst_type = 'SWAP'
+                  AND asset_venues.quote_symbol = 'USDT' THEN 3
+                WHEN asset_venues.venue_type = 'cex' THEN 4
+                ELSE 5
+              END,
               asset_venues.inst_id NULLS LAST,
               asset_venues.chain NULLS LAST
             """,
@@ -825,8 +841,8 @@ class AssetRepository:
                   WHEN job_type = 'ca_resolution' THEN 1
                   ELSE 2
                 END ASC,
-                attempt_count ASC,
                 next_run_at_ms ASC,
+                attempt_count ASC,
                 job_id ASC
               FOR UPDATE SKIP LOCKED
               LIMIT 1
@@ -1280,6 +1296,16 @@ class AssetRepository:
             FROM (
               SELECT
                 ranked.*,
+                preferred_venue.venue_id AS primary_venue_id,
+                preferred_venue.venue_type AS primary_venue_type,
+                preferred_venue.provider AS primary_venue_provider,
+                preferred_venue.exchange AS primary_venue_exchange,
+                preferred_venue.chain AS primary_venue_chain,
+                preferred_venue.address AS primary_venue_address,
+                preferred_venue.inst_id AS primary_venue_inst_id,
+                preferred_venue.base_symbol AS primary_venue_base_symbol,
+                preferred_venue.quote_symbol AS primary_venue_quote_symbol,
+                preferred_venue.inst_type AS primary_venue_inst_type,
                 latest_market.provider AS market_provider,
                 latest_market.observed_at_ms AS market_observed_at_ms,
                 latest_market.price_usd AS market_price_usd,
@@ -1294,10 +1320,54 @@ class AssetRepository:
               FROM ranked
               LEFT JOIN LATERAL (
                 SELECT *
+                FROM asset_venues
+                WHERE asset_venues.asset_id = ranked.asset_id
+                  AND ranked.venue_type = 'cex'
+                  AND asset_venues.venue_type = 'cex'
+                  AND asset_venues.is_active = true
+                ORDER BY
+                  CASE
+                    WHEN asset_venues.inst_type = 'SPOT'
+                      AND asset_venues.quote_symbol = 'USDT' THEN 0
+                    WHEN asset_venues.inst_type = 'SPOT'
+                      AND asset_venues.quote_symbol = 'USD' THEN 1
+                    WHEN asset_venues.inst_type = 'SPOT'
+                      AND asset_venues.quote_symbol = 'USDC' THEN 2
+                    WHEN asset_venues.inst_type = 'SWAP'
+                      AND asset_venues.quote_symbol = 'USDT' THEN 3
+                    ELSE 4
+                  END,
+                  asset_venues.inst_id ASC
+                LIMIT 1
+              ) preferred_venue ON true
+              LEFT JOIN LATERAL (
+                SELECT asset_market_snapshots.*
                 FROM asset_market_snapshots
+                LEFT JOIN asset_venues AS market_venue
+                  ON market_venue.venue_id = asset_market_snapshots.venue_id
                 WHERE asset_market_snapshots.asset_id = ranked.asset_id
                   AND {MARKET_DATA_CLAUSE}
-                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                ORDER BY
+                  CASE
+                    WHEN preferred_venue.venue_id IS NOT NULL
+                      AND asset_market_snapshots.venue_id = preferred_venue.venue_id THEN 0
+                    WHEN asset_market_snapshots.venue_id = ranked.venue_id THEN 1
+                    WHEN market_venue.venue_type = 'cex'
+                      AND market_venue.inst_type = 'SPOT'
+                      AND market_venue.quote_symbol = 'USDT' THEN 2
+                    WHEN market_venue.venue_type = 'cex'
+                      AND market_venue.inst_type = 'SPOT'
+                      AND market_venue.quote_symbol = 'USD' THEN 3
+                    WHEN market_venue.venue_type = 'cex'
+                      AND market_venue.inst_type = 'SPOT'
+                      AND market_venue.quote_symbol = 'USDC' THEN 4
+                    WHEN market_venue.venue_type = 'cex'
+                      AND market_venue.inst_type = 'SWAP'
+                      AND market_venue.quote_symbol = 'USDT' THEN 5
+                    ELSE 6
+                  END,
+                  observed_at_ms DESC,
+                  snapshot_id DESC
                 LIMIT 1
               ) latest_market ON true
             ) ranked_with_market
