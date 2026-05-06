@@ -10,6 +10,9 @@ STALE_RUNNING_MIGRATION = Path(
 PROJECTION_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0004_projection_operations.py"
 )
+ASSET_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -56,4 +59,32 @@ def test_projection_migration_adds_pg_only_read_model_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS token_social_bucket_authors" in text
     assert "CREATE TABLE IF NOT EXISTS token_flow_window_snapshots" in text
     assert "FOR UPDATE SKIP LOCKED" not in text
+    assert "sqlite" not in text.lower()
+
+
+def test_asset_migration_adds_identity_resolution_tables() -> None:
+    text = ASSET_MIGRATION.read_text()
+
+    expected_tables = {
+        "asset_mentions",
+        "assets",
+        "asset_aliases",
+        "asset_venues",
+        "asset_resolution_candidates",
+        "asset_attributions",
+        "asset_market_snapshots",
+        "asset_resolution_jobs",
+        "asset_attention_buckets",
+        "asset_attention_bucket_authors",
+        "asset_flow_window_snapshots",
+    }
+    for table in expected_tables:
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in text
+
+    assert "venue_type TEXT NOT NULL" in text
+    assert "inst_id TEXT" in text
+    assert "base_symbol TEXT" in text
+    assert "quote_symbol TEXT" in text
+    assert "venue_id TEXT REFERENCES asset_venues(venue_id)" in text
+    assert "token_id" not in text
     assert "sqlite" not in text.lower()
