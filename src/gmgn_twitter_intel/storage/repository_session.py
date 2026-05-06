@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from .asset_repository import AssetRepository
 from .enrichment_repository import EnrichmentRepository
 from .entity_repository import EntityRepository
 from .evidence_repository import EvidenceRepository
@@ -23,6 +24,7 @@ class RepositorySession:
     entities: EntityRepository
     signals: SignalRepository
     tokens: TokenRepository
+    assets: AssetRepository
     market_observations: MarketObservationRepository
     enrichment: EnrichmentRepository
     harness: HarnessRepository
@@ -37,6 +39,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
         tokens=TokenRepository(conn),
+        assets=AssetRepository(conn),
         market_observations=MarketObservationRepository(conn),
         enrichment=EnrichmentRepository(conn),
         harness=HarnessRepository(conn),
