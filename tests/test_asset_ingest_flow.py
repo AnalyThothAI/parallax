@@ -64,12 +64,17 @@ def test_ingest_gmgn_payload_writes_direct_dex_asset(tmp_path):
         )
         result = ingest.ingest_event(event, is_watched=True)
         rows = assets.asset_attributions_for_symbol("SOL", limit=10)
+        market = assets.market_snapshot_at_or_before(rows[0]["asset_id"], event.received_at_ms)
     finally:
         conn.close()
 
     assert result.asset_attributions[0]["attribution_status"] == "direct"
     assert rows[0]["venue_type"] == "dex"
     assert rows[0]["chain"] == "solana"
+    assert market is not None
+    assert market["provider"] == "gmgn_payload"
+    assert market["price_usd"] == 150.0
+    assert market["market_cap_usd"] == 1_000_000.0
 
 
 def test_ingest_unknown_chain_ca_is_retained_as_unresolved_asset(tmp_path):

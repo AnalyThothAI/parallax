@@ -120,6 +120,9 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
             "providers": {
                 "okx": {
                     "cex_base_url": "https://okx.example.test/",
+                    "cex_sync_enabled": True,
+                    "cex_sync_interval_seconds": 120,
+                    "cex_inst_types": ["SPOT"],
                     "dex_base_url": "https://web3-okx.example.test/",
                     "dex_chain_indexes": ["501", "1"],
                     "timeout_seconds": 9,
@@ -136,6 +139,9 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.gmgn_timeout_seconds == 3
     assert settings.gmgn_token_info_cache_ttl_seconds == 60
     assert settings.okx_cex_base_url == "https://okx.example.test"
+    assert settings.okx_cex_sync_enabled is True
+    assert settings.okx_cex_sync_interval_seconds == 120
+    assert settings.okx_cex_inst_types == ("SPOT",)
     assert settings.okx_dex_base_url == "https://web3-okx.example.test"
     assert settings.okx_dex_chain_indexes == ("501", "1")
     assert settings.okx_timeout_seconds == 9

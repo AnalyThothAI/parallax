@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -75,6 +77,11 @@ class IngestService:
                 created_at_ms=event.received_at_ms,
                 commit=False,
             )
+            self._insert_gmgn_payload_market_snapshot(
+                event,
+                asset_decisions,
+                mentions_by_id={str(row["mention_id"]): row for row in asset_mentions},
+            )
             alerts = self._insert_asset_alerts(
                 event,
                 asset_decisions,
@@ -96,6 +103,35 @@ class IngestService:
             inserted=True,
             enrichment_job_id=enrichment_job_id,
         )
+
+    def _insert_gmgn_payload_market_snapshot(
+        self,
+        event: TwitterEvent,
+        decisions: list[AssetResolutionDecision],
+        *,
+        mentions_by_id: dict[str, dict[str, Any]],
+    ) -> None:
+        snapshot = event.token_snapshot
+        if snapshot is None:
+            return
+        if snapshot.price is None and snapshot.market_cap is None:
+            return
+        for decision in decisions:
+            mention = mentions_by_id.get(decision.mention_id, {})
+            if mention.get("mention_type") != "gmgn_payload" or not decision.venue_id:
+                continue
+            self.assets.insert_market_snapshot(
+                asset_id=decision.asset_id,
+                venue_id=decision.venue_id,
+                provider="gmgn_payload",
+                observed_at_ms=event.received_at_ms,
+                price_usd=snapshot.price,
+                market_cap_usd=snapshot.market_cap,
+                source_payload_hash=_payload_hash(snapshot.raw),
+                created_at_ms=event.received_at_ms,
+                commit=False,
+            )
+            return
 
     def _insert_asset_alerts(
         self,
@@ -174,3 +210,8 @@ def _now_ms() -> int:
 def _alert_value(mention: dict[str, Any], decision: AssetResolutionDecision) -> str:
     value = mention.get("normalized_symbol") or mention.get("address_hint") or mention.get("raw_value")
     return str(value or decision.asset_id)
+
+
+def _payload_hash(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()

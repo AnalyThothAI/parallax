@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.market.okx_models import OkxCexInstrument, OkxCexTicker
 from gmgn_twitter_intel.pipeline.asset_market_sync import sync_okx_cex_universe
+from gmgn_twitter_intel.pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 
 
 def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
@@ -35,6 +36,24 @@ def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
             "open_interest_usd": None,
         }
     ]
+
+
+def test_asset_market_sync_worker_runs_one_cex_sync_cycle():
+    assets = FakeAssets()
+    client = FakeOkxCexClient()
+    session = FakeRepositorySession(assets)
+    worker = AssetMarketSyncWorker(
+        client=client,
+        repository_session=lambda: session,
+        inst_types=("SPOT",),
+        interval_seconds=300,
+    )
+
+    result = worker.sync_once(now_ms=1_700_000_000_000)
+
+    assert result["market_snapshots_written"] == 1
+    assert worker.last_result is None
+    assert assets.market_snapshots[0]["price_usd"] == 69000.0
 
 
 class FakeOkxCexClient:
@@ -123,4 +142,15 @@ class FakeAssetResolutionResult:
 
 class FakeConn:
     def commit(self):
+        return None
+
+
+class FakeRepositorySession:
+    def __init__(self, assets):
+        self.assets = assets
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
         return None

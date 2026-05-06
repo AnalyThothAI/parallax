@@ -333,6 +333,17 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "base_url": settings.llm_base_url,
                         "poll_interval": settings.enrichment_poll_interval,
                     },
+                    "providers": {
+                        "okx": {
+                            "cex_base_url": settings.okx_cex_base_url,
+                            "cex_sync_enabled": settings.okx_cex_sync_enabled,
+                            "cex_sync_interval_seconds": settings.okx_cex_sync_interval_seconds,
+                            "cex_inst_types": list(settings.okx_cex_inst_types),
+                            "dex_base_url": settings.okx_dex_base_url,
+                            "dex_chain_indexes": list(settings.okx_dex_chain_indexes),
+                            "dex_configured": settings.okx_dex_configured,
+                        }
+                    },
                     "notifications": {
                         "enabled": settings.notifications.enabled,
                         "poll_interval_seconds": settings.notifications.poll_interval_seconds,

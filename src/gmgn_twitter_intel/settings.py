@@ -246,6 +246,9 @@ class OkxProviderConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cex_base_url: str = "https://www.okx.com"
+    cex_sync_enabled: bool = True
+    cex_sync_interval_seconds: float = 300.0
+    cex_inst_types: tuple[str, ...] = ("SPOT", "SWAP")
     dex_base_url: str = "https://web3.okx.com"
     dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453")
     dex_api_key: str | None = None
@@ -259,10 +262,10 @@ class OkxProviderConfig(BaseModel):
         normalized = str(value or "").strip().rstrip("/")
         return normalized
 
-    @field_validator("dex_chain_indexes", mode="before")
+    @field_validator("cex_inst_types", "dex_chain_indexes", mode="before")
     @classmethod
-    def parse_chain_indexes(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value)) or ("501", "1", "56", "8453")
+    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
+        return tuple(_split_values(value))
 
     @field_validator("dex_api_key", "dex_secret_key", "dex_passphrase", mode="before")
     @classmethod
@@ -405,12 +408,24 @@ class Settings(BaseModel):
         return self.providers.okx.cex_base_url
 
     @property
+    def okx_cex_sync_enabled(self) -> bool:
+        return self.providers.okx.cex_sync_enabled
+
+    @property
+    def okx_cex_sync_interval_seconds(self) -> float:
+        return self.providers.okx.cex_sync_interval_seconds
+
+    @property
+    def okx_cex_inst_types(self) -> tuple[str, ...]:
+        return self.providers.okx.cex_inst_types or ("SPOT", "SWAP")
+
+    @property
     def okx_dex_base_url(self) -> str:
         return self.providers.okx.dex_base_url
 
     @property
     def okx_dex_chain_indexes(self) -> tuple[str, ...]:
-        return self.providers.okx.dex_chain_indexes
+        return self.providers.okx.dex_chain_indexes or ("501", "1", "56", "8453")
 
     @property
     def okx_dex_api_key(self) -> str | None:
@@ -562,6 +577,9 @@ gmgn:
 providers:
   okx:
     cex_base_url: "https://www.okx.com"
+    cex_sync_enabled: true
+    cex_sync_interval_seconds: 300
+    cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453"]
     dex_api_key:

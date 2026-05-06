@@ -45,6 +45,9 @@ gmgn:
 providers:
   okx:
     cex_base_url: "https://www.okx.com"
+    cex_sync_enabled: true
+    cex_sync_interval_seconds: 300
+    cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453"]
     timeout_seconds: 15

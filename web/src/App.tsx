@@ -977,7 +977,9 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
   const watched = row.attention.watched_mentions;
   const resolved = row.resolution.status === "resolved";
   const venue = row.primary_venue ?? null;
+  const market = row.market ?? null;
   const isDex = venue?.venue_type === "dex";
+  const marketReady = market?.market_status === "fresh" || market?.market_status === "stale";
   const heatScore = Math.min(100, 30 + mentions * 6 + authors * 8 + watched * 8);
   const qualityScore = resolved ? Math.min(100, 70 + watched * 8) : Math.min(70, 35 + mentions * 8);
   const propagationScore = Math.min(100, 30 + authors * 14);
@@ -1002,24 +1004,24 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       symbol: row.asset.symbol
     },
     market: {
-      market_status: resolved ? "indexed" : "missing",
-      price: null,
-      market_cap: null,
-      liquidity: null,
+      market_status: market?.market_status ?? (resolved ? "missing" : "missing"),
+      price: market?.price_usd ?? null,
+      market_cap: market?.market_cap_usd ?? null,
+      liquidity: market?.liquidity_usd ?? null,
       pool_status: isDex ? "ready" : "missing",
-      holder_count: null,
-      volume_24h: null,
-      snapshot_age_ms: null,
-      snapshot_received_at_ms: null,
+      holder_count: market?.holders ?? null,
+      volume_24h: market?.volume_24h_usd ?? null,
+      snapshot_age_ms: market?.snapshot_age_ms ?? null,
+      snapshot_received_at_ms: market?.snapshot_observed_at_ms ?? null,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
       reference_ms: row.attention.latest_seen_ms ?? null,
       price_at_social_start: null,
-      price_at_reference: null,
-      price_change_since_social_pct: null,
+      price_at_reference: market?.price_usd ?? null,
+      price_change_since_social_pct: market?.price_change_5m_pct ?? null,
       price_before_social_start: null,
       price_change_before_social_pct: null,
-      market_observation_status: resolved ? "provider_not_configured" : "provider_not_found",
-      price_change_status: resolved ? "provider_not_configured" : "provider_not_found"
+      market_observation_status: marketReady ? "ready" : resolved ? "pending" : "provider_not_found",
+      price_change_status: marketReady ? "insufficient_history" : resolved ? "pending_observation" : "provider_not_found"
     },
     flow: {
       window,

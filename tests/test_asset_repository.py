@@ -61,6 +61,24 @@ def test_upsert_cex_instrument_creates_asset_alias_and_venue(tmp_path):
     assert candidates[0]["venue_id"] == result.venue["venue_id"]
 
 
+def test_candidates_for_ca_filters_by_chain_without_sql_parameter_mismatch(tmp_path):
+    conn, _, repo = open_asset_repo(tmp_path)
+    try:
+        result = repo.upsert_dex_asset(
+            chain="solana",
+            address="Mirror111",
+            symbol="MIRROR",
+            observed_at_ms=1_700_000_000_000,
+            provider="okx_dex",
+        )
+        candidates = repo.candidates_for_ca(chain="solana", address="Mirror111")
+    finally:
+        conn.close()
+
+    assert [candidate["asset_id"] for candidate in candidates] == [result.asset["asset_id"]]
+    assert candidates[0]["venue_id"] == result.venue["venue_id"]
+
+
 def test_record_unresolved_attribution_and_find_symbol_mentions(tmp_path):
     conn, evidence, repo = open_asset_repo(tmp_path)
     try:

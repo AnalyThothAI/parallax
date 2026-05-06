@@ -50,6 +50,30 @@ def test_btc_cex_asset_does_not_require_chain_address():
     assert btc["primary_venue"]["address"] is None
 
 
+def test_asset_flow_exposes_latest_market_snapshot_health():
+    service = AssetFlowService(
+        assets=FakeAssets(
+            rows=[
+                {
+                    **resolved_row(symbol="BTC", asset_id="asset:cex:BTC", venue_id="venue:cex:okx:SPOT:BTC-USDT"),
+                    "market_provider": "okx_cex",
+                    "market_observed_at_ms": 1_700_000_000_000,
+                    "market_price_usd": 69_000.0,
+                    "market_volume_24h_usd": 123_000_000.0,
+                }
+            ]
+        )
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    market = result["resolved_assets"][0]["market"]
+    assert market["market_status"] == "fresh"
+    assert market["provider"] == "okx_cex"
+    assert market["price_usd"] == 69_000.0
+    assert market["snapshot_age_ms"] == 60_000
+
+
 class FakeAssets:
     def __init__(self, *, rows):
         self.rows = rows

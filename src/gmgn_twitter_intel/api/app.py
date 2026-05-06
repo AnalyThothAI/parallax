@@ -15,7 +15,9 @@ from loguru import logger
 
 from ..collector.direct_ws import DirectGmgnWebSocketClient
 from ..collector.service import CollectorService
+from ..market.okx_cex_client import OkxCexClient
 from ..market.okx_dex_client import OkxDexClient
+from ..pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 from ..pipeline.asset_resolution_worker import AssetResolutionWorker
 from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.harness_ops_worker import HarnessOpsWorker
@@ -72,6 +74,7 @@ class CliRuntime:
     harness_ops_worker: HarnessOpsWorker | None = None
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
+    asset_market_sync_worker: AssetMarketSyncWorker | None = None
     asset_resolution_worker: AssetResolutionWorker | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
@@ -79,6 +82,7 @@ class CliRuntime:
     harness_ops_task: asyncio.Task | None = None
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
+    asset_market_sync_task: asyncio.Task | None = None
     asset_resolution_task: asyncio.Task | None = None
 
     def repositories(self):
@@ -282,6 +286,17 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
                 repository_session=lambda: repository_session(db_pool),
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
+    if start_collector and settings.okx_cex_sync_enabled:
+        okx_cex_client = OkxCexClient(
+            base_url=settings.okx_cex_base_url,
+            timeout_seconds=settings.okx_timeout_seconds,
+        )
+        runtime.asset_market_sync_worker = AssetMarketSyncWorker(
+            client=okx_cex_client,
+            repository_session=lambda: repository_session(db_pool),
+            inst_types=settings.okx_cex_inst_types,
+            interval_seconds=settings.okx_cex_sync_interval_seconds,
+        )
     if settings.okx_dex_configured:
         okx_dex_client = OkxDexClient(
             base_url=settings.okx_dex_base_url,
@@ -343,6 +358,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_task = asyncio.create_task(runtime.notification_worker.run())
     if runtime.notification_delivery_worker is not None and runtime.notification_delivery_task is None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
+    if runtime.asset_market_sync_worker is not None and runtime.asset_market_sync_task is None:
+        runtime.asset_market_sync_task = asyncio.create_task(runtime.asset_market_sync_worker.run())
     if runtime.asset_resolution_worker is not None and runtime.asset_resolution_task is None:
         runtime.asset_resolution_task = asyncio.create_task(runtime.asset_resolution_worker.run())
     if runtime.start_collector:
@@ -361,6 +378,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_worker.stop()
     if runtime.notification_delivery_worker is not None:
         runtime.notification_delivery_worker.stop()
+    if runtime.asset_market_sync_worker is not None:
+        runtime.asset_market_sync_worker.stop()
     if runtime.asset_resolution_worker is not None:
         runtime.asset_resolution_worker.stop()
     tasks = [
@@ -372,6 +391,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.harness_ops_task,
             runtime.notification_task,
             runtime.notification_delivery_task,
+            runtime.asset_market_sync_task,
             runtime.asset_resolution_task,
         )
         if task is not None
@@ -381,6 +401,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     await runtime.collector.stop()
+    if runtime.asset_market_sync_worker is not None:
+        runtime.asset_market_sync_worker.close()
     if runtime.asset_resolution_worker is not None:
         runtime.asset_resolution_worker.close()
     runtime.db_pool.close()
@@ -422,6 +444,14 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             else None,
             "last_result": runtime.asset_resolution_worker.last_result if runtime.asset_resolution_worker else None,
         },
+        "asset_market_sync": {
+            "okx_cex_sync_enabled": runtime.settings.okx_cex_sync_enabled,
+            "worker_running": _task_running(runtime.asset_market_sync_task),
+            "last_run_at_ms": runtime.asset_market_sync_worker.last_run_at_ms
+            if runtime.asset_market_sync_worker
+            else None,
+            "last_result": runtime.asset_market_sync_worker.last_result if runtime.asset_market_sync_worker else None,
+        },
     }
     return payload, 503 if reasons else 200
 
@@ -443,6 +473,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_worker_stopped")
     if runtime.notification_delivery_worker is not None and not _task_running(runtime.notification_delivery_task):
         reasons.append("notification_delivery_worker_stopped")
+    if runtime.asset_market_sync_worker is not None and not _task_running(runtime.asset_market_sync_task):
+        reasons.append("asset_market_sync_worker_stopped")
     if runtime.settings.okx_dex_configured and not _task_running(runtime.asset_resolution_task):
         reasons.append("asset_resolution_worker_stopped")
     return reasons

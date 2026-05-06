@@ -208,6 +208,21 @@ export type AssetFlowRow = {
   asset: AssetFlowAssetBlock;
   primary_venue?: AssetFlowVenueBlock | null;
   attention: AssetFlowAttentionBlock;
+  market?: {
+    market_status: "fresh" | "stale" | "missing" | string;
+    provider?: string | null;
+    price_usd?: number | null;
+    market_cap_usd?: number | null;
+    liquidity_usd?: number | null;
+    volume_24h_usd?: number | null;
+    open_interest_usd?: number | null;
+    holders?: number | null;
+    snapshot_age_ms?: number | null;
+    snapshot_observed_at_ms?: number | null;
+    price_change_5m_pct?: number | null;
+    price_change_1h_pct?: number | null;
+    price_change_24h_pct?: number | null;
+  };
   resolution: {
     status: "resolved" | "unresolved" | "ambiguous" | string;
     candidates?: unknown[];

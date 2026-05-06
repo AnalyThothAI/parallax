@@ -43,6 +43,37 @@ def test_okx_cex_client_normalizes_public_instruments():
     assert instruments[0].state == "live"
 
 
+def test_okx_cex_client_derives_swap_base_quote_from_inst_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v5/public/instruments"
+        assert request.url.params["instType"] == "SWAP"
+        return httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    {
+                        "instId": "BTC-USDT-SWAP",
+                        "instType": "SWAP",
+                        "ctValCcy": "BTC",
+                        "settleCcy": "USDT",
+                        "state": "live",
+                    }
+                ],
+            },
+        )
+
+    client = OkxCexClient(base_url="https://www.okx.com", transport=httpx.MockTransport(handler))
+    try:
+        instruments = client.instruments(inst_type="swap")
+    finally:
+        client.close()
+
+    assert instruments[0].base_symbol == "BTC"
+    assert instruments[0].quote_symbol == "USDT"
+    assert instruments[0].inst_type == "SWAP"
+
+
 def test_okx_dex_client_normalizes_token_search_candidates():
     requests: list[httpx.Request] = []
 
@@ -130,3 +161,32 @@ def test_okx_clients_ignore_malformed_rows_without_losing_good_rows():
         client.close()
 
     assert [instrument.inst_id for instrument in instruments] == ["TAO-USDT"]
+
+
+def test_okx_cex_tickers_fall_back_to_requested_inst_type_when_response_omits_it():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v5/market/tickers"
+        assert request.url.params["instType"] == "SPOT"
+        return httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    {
+                        "instId": "BTC-USDT",
+                        "last": "69000",
+                        "volCcy24h": "1234567",
+                    }
+                ],
+            },
+        )
+
+    client = OkxCexClient(base_url="https://www.okx.com", transport=httpx.MockTransport(handler))
+    try:
+        tickers = client.tickers(inst_type="spot")
+    finally:
+        client.close()
+
+    assert tickers[0].inst_type == "SPOT"
+    assert tickers[0].inst_id == "BTC-USDT"
+    assert tickers[0].last_price == 69000.0

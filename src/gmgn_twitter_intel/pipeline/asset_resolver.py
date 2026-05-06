@@ -6,6 +6,8 @@ from typing import Any
 
 from ..storage.asset_repository import AssetRepository
 
+MARKET_REFRESH_STALE_MS = 5 * 60 * 1000
+
 
 @dataclass(frozen=True, slots=True)
 class AssetResolutionDecision:
@@ -130,6 +132,7 @@ class AssetResolver:
 
         if len(asset_candidates) == 1:
             candidate = asset_candidates[0]
+            self._queue_dex_market_refresh_if_stale(candidate, mention)
             return self._decision(
                 mention,
                 asset_id=str(candidate["asset_id"]),
@@ -184,6 +187,14 @@ class AssetResolver:
             provider="gmgn" if reason == "gmgn_payload_direct" else "deterministic",
             commit=False,
         )
+        venue = result.venue or {}
+        if reason != "gmgn_payload_direct":
+            self._queue_dex_market_refresh(
+                asset_id=str(result.asset["asset_id"]),
+                chain=_clean_text(venue.get("chain")) or chain,
+                address=_clean_text(venue.get("address")) or address,
+                mention=mention,
+            )
         return self._decision(
             mention,
             asset_id=str(result.asset["asset_id"]),
@@ -194,6 +205,38 @@ class AssetResolver:
             attribution_weight=1.0,
             reasons=[reason],
             risks=[],
+        )
+
+    def _queue_dex_market_refresh_if_stale(self, candidate: Mapping[str, Any], mention: Mapping[str, Any]) -> None:
+        if candidate.get("venue_type") != "dex":
+            return
+        self._queue_dex_market_refresh(
+            asset_id=str(candidate.get("asset_id") or ""),
+            chain=_clean_text(candidate.get("chain")),
+            address=_clean_text(candidate.get("address")),
+            mention=mention,
+        )
+
+    def _queue_dex_market_refresh(
+        self,
+        *,
+        asset_id: str,
+        chain: str | None,
+        address: str | None,
+        mention: Mapping[str, Any],
+    ) -> None:
+        if not asset_id or not chain or not address:
+            return
+        decision_time_ms = _created_at_ms(mention)
+        latest = self.assets.market_snapshot_at_or_before(asset_id, decision_time_ms)
+        if latest is not None and decision_time_ms - int(latest.get("observed_at_ms") or 0) < MARKET_REFRESH_STALE_MS:
+            return
+        self.assets.queue_resolution_job(
+            job_type="ca_resolution",
+            chain_hint=chain,
+            address_hint=address,
+            next_run_at_ms=decision_time_ms,
+            commit=False,
         )
 
     def _decision(

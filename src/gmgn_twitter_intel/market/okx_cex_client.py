@@ -35,10 +35,11 @@ class OkxCexClient:
         return instruments
 
     def tickers(self, *, inst_type: str) -> list[OkxCexTicker]:
-        rows = self._get("/api/v5/market/tickers", params={"instType": inst_type.strip().upper()})
+        requested_inst_type = inst_type.strip().upper()
+        rows = self._get("/api/v5/market/tickers", params={"instType": requested_inst_type})
         tickers: list[OkxCexTicker] = []
         for row in rows:
-            ticker = _ticker_from_row(row)
+            ticker = _ticker_from_row(row, default_inst_type=requested_inst_type)
             if ticker is not None:
                 tickers.append(ticker)
         return tickers
@@ -75,6 +76,10 @@ def _instrument_from_row(row: dict[str, Any]) -> OkxCexInstrument | None:
     inst_type = _text(row.get("instType") or row.get("inst_type"))
     base = _text(row.get("baseCcy") or row.get("baseCurrency") or row.get("base"))
     quote = _text(row.get("quoteCcy") or row.get("quoteCurrency") or row.get("quote"))
+    if inst_id and (not base or not quote):
+        parsed_base, parsed_quote = _base_quote_from_inst_id(inst_id)
+        base = base or parsed_base
+        quote = quote or parsed_quote
     if not inst_id or not inst_type or not base or not quote:
         return None
     return OkxCexInstrument(
@@ -87,9 +92,9 @@ def _instrument_from_row(row: dict[str, Any]) -> OkxCexInstrument | None:
     )
 
 
-def _ticker_from_row(row: dict[str, Any]) -> OkxCexTicker | None:
+def _ticker_from_row(row: dict[str, Any], *, default_inst_type: str = "UNKNOWN") -> OkxCexTicker | None:
     inst_id = _text(row.get("instId") or row.get("inst_id"))
-    inst_type = _text(row.get("instType") or row.get("inst_type")) or "UNKNOWN"
+    inst_type = _text(row.get("instType") or row.get("inst_type")) or default_inst_type
     if not inst_id:
         return None
     return OkxCexTicker(
@@ -107,6 +112,13 @@ def _text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _base_quote_from_inst_id(inst_id: str) -> tuple[str | None, str | None]:
+    parts = [part.strip() for part in inst_id.split("-") if part.strip()]
+    if len(parts) < 2:
+        return None, None
+    return parts[0], parts[1]
 
 
 def _float(value: Any) -> float | None:

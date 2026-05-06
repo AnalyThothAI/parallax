@@ -82,3 +82,17 @@ harness materialization 和 settlement 已切到 asset store：
 - 多候选 symbol 不强行自动选择；只有 provider 返回唯一真实候选时自动 backfill。
 - CEX ticker 的 `volume_24h_usd` 假设 USDT/USDC quote 可近似 USD；非 USD quote 后续应显式换算。
 - OKX DEX worker 需要配置 `providers.okx.dex_api_key/dex_secret_key/dex_passphrase` 才会在服务 runtime 自动启动；CLI 可以手动跑 `ops process-asset-resolution-jobs`。
+
+## 合并前复审增补
+
+本次落地前 review 又补齐了四个生产缺口：
+
+- GMGN payload 的 `price/market_cap` 现在会随直接 DEX attribution 写入 `asset_market_snapshots`，不再在切换到 asset 链路后丢掉最直接的价格证据。
+- 服务 runtime 新增 OKX CEX market sync worker，默认每 300 秒同步 `SPOT/SWAP` instruments + tickers，BTC/TAO 这类 CEX-first 资产不再依赖手工 `sync-okx-cex-universe`。
+- 已知 DEX 资产再次被提及时，如果最近 5 分钟内没有 market snapshot，会自动排 `ca_resolution` job 刷新 OKX DEX 价格缓存。
+- `asset-flow` 响应新增 market block，显式暴露 `fresh/stale/missing`、price、market cap、liquidity、24h volume、OI、holders 和 snapshot age，前端不再用 `indexed` 占位掩盖价格缺失。
+
+同时修正 OKX CEX 客户端两个边界：
+
+- OKX `/api/v5/market/tickers` 官方响应包含 `instType`，但客户端现在也会在字段缺失时回退到请求的 `instType`，避免 ticker snapshot 找不到本地 venue。
+- OKX `SWAP` instrument 可能没有 `baseCcy/quoteCcy`，客户端会从 `instId` 推导 base/quote，避免 perps universe 被静默跳过。

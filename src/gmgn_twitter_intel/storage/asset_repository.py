@@ -1207,7 +1207,29 @@ class AssetRepository:
               JOIN grouped ON grouped.asset_id = latest.asset_id
             )
             SELECT *
-            FROM ranked
+            FROM (
+              SELECT
+                ranked.*,
+                latest_market.provider AS market_provider,
+                latest_market.observed_at_ms AS market_observed_at_ms,
+                latest_market.price_usd AS market_price_usd,
+                latest_market.market_cap_usd AS market_cap_usd,
+                latest_market.liquidity_usd AS market_liquidity_usd,
+                latest_market.volume_24h_usd AS market_volume_24h_usd,
+                latest_market.open_interest_usd AS market_open_interest_usd,
+                latest_market.holders AS market_holders,
+                latest_market.price_change_5m_pct AS market_price_change_5m_pct,
+                latest_market.price_change_1h_pct AS market_price_change_1h_pct,
+                latest_market.price_change_24h_pct AS market_price_change_24h_pct
+              FROM ranked
+              LEFT JOIN LATERAL (
+                SELECT *
+                FROM asset_market_snapshots
+                WHERE asset_market_snapshots.asset_id = ranked.asset_id
+                ORDER BY observed_at_ms DESC, snapshot_id DESC
+                LIMIT 1
+              ) latest_market ON true
+            ) ranked_with_market
             WHERE lane_rank <= %s
             ORDER BY flow_lane ASC, lane_rank ASC
             """,

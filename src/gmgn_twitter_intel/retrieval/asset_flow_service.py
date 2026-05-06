@@ -31,7 +31,7 @@ class AssetFlowService:
             limit=max(0, int(limit)),
             now_ms=resolved_now_ms,
         )
-        payloads = [_initial_payload(row) for row in rows]
+        payloads = [_initial_payload(row, now_ms=resolved_now_ms) for row in rows]
         resolved = [payload for payload in payloads if payload["_lane"] == "resolved"]
         attention = [payload for payload in payloads if payload["_lane"] == "attention"]
         resolved.sort(key=_sort_key)
@@ -52,7 +52,7 @@ class AssetFlowService:
         }
 
 
-def _initial_payload(row: dict[str, Any]) -> dict[str, Any]:
+def _initial_payload(row: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
     lane = "resolved" if _is_resolved_row(row) else "attention"
     status = _resolution_status(row)
     latest_seen_ms = int(row.get("latest_seen_ms") or row.get("decision_time_ms") or 0)
@@ -78,6 +78,7 @@ def _initial_payload(row: dict[str, Any]) -> dict[str, Any]:
             "status": status,
             "candidates": [],
         },
+        "market": _market(row, now_ms=now_ms),
         "decision": "investigate" if lane == "attention" else "watch",
     }
 
@@ -112,6 +113,42 @@ def _venue(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _market(row: dict[str, Any], *, now_ms: int) -> dict[str, Any]:
+    observed_at_ms = _int_or_none(row.get("market_observed_at_ms"))
+    if observed_at_ms is None:
+        return {
+            "market_status": "missing",
+            "provider": None,
+            "price_usd": None,
+            "market_cap_usd": None,
+            "liquidity_usd": None,
+            "volume_24h_usd": None,
+            "open_interest_usd": None,
+            "holders": None,
+            "snapshot_age_ms": None,
+            "snapshot_observed_at_ms": None,
+            "price_change_5m_pct": None,
+            "price_change_1h_pct": None,
+            "price_change_24h_pct": None,
+        }
+    age_ms = max(0, now_ms - observed_at_ms)
+    return {
+        "market_status": "fresh" if age_ms <= 10 * 60 * 1000 else "stale",
+        "provider": row.get("market_provider"),
+        "price_usd": row.get("market_price_usd"),
+        "market_cap_usd": row.get("market_cap_usd"),
+        "liquidity_usd": row.get("market_liquidity_usd"),
+        "volume_24h_usd": row.get("market_volume_24h_usd"),
+        "open_interest_usd": row.get("market_open_interest_usd"),
+        "holders": row.get("market_holders"),
+        "snapshot_age_ms": age_ms,
+        "snapshot_observed_at_ms": observed_at_ms,
+        "price_change_5m_pct": row.get("market_price_change_5m_pct"),
+        "price_change_1h_pct": row.get("market_price_change_1h_pct"),
+        "price_change_24h_pct": row.get("market_price_change_24h_pct"),
+    }
+
+
 def _sort_key(row: dict[str, Any]) -> tuple[int, int]:
     return (-int(row["attention"]["mentions_window"]), -int(row.get("_latest_seen_ms") or 0))
 
@@ -122,5 +159,13 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "primary_venue": row["primary_venue"],
         "attention": row["attention"],
         "resolution": row["resolution"],
+        "market": row["market"],
         "decision": row["decision"],
     }
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

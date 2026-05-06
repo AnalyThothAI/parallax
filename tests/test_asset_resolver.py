@@ -188,6 +188,42 @@ def test_multiple_symbol_candidates_remain_ambiguous():
     assert repo.queued_jobs == [{"job_type": "symbol_resolution", "normalized_symbol": "MIRROR"}]
 
 
+def test_stale_known_dex_symbol_queues_market_refresh():
+    repo = FakeAssetRepository(
+        symbol_candidates={
+            "MIRROR": [
+                {
+                    "asset_id": "asset:dex:solana:mirror111",
+                    "asset_type": "dex_asset",
+                    "identity_status": "resolved",
+                    "asset_confidence": 0.9,
+                    "venue_id": "venue:dex:solana:mirror111",
+                    "venue_type": "dex",
+                    "chain": "solana",
+                    "address": "Mirror111",
+                }
+            ]
+        }
+    )
+    resolver = AssetResolver(repo)
+
+    decision = resolver.resolve(
+        {
+            "mention_id": "mention-1",
+            "event_id": "event-1",
+            "mention_type": "cashtag",
+            "normalized_symbol": "MIRROR",
+            "raw_value": "$MIRROR",
+            "created_at_ms": 1_700_000_000_000,
+        }
+    )
+
+    assert decision.attribution_status == "selected"
+    assert repo.queued_jobs == [
+        {"job_type": "ca_resolution", "chain_hint": "solana", "address_hint": "Mirror111"}
+    ]
+
+
 def test_gmgn_payload_with_chain_address_is_direct_dex_asset():
     repo = FakeAssetRepository()
     resolver = AssetResolver(repo)
@@ -250,8 +286,18 @@ class FakeAssetRepository:
         next_run_at_ms=None,
         commit=False,
     ):
-        self.queued_jobs.append({"job_type": job_type, "normalized_symbol": normalized_symbol})
+        row = {"job_type": job_type}
+        if normalized_symbol is not None:
+            row["normalized_symbol"] = normalized_symbol
+        if chain_hint is not None:
+            row["chain_hint"] = chain_hint
+        if address_hint is not None:
+            row["address_hint"] = address_hint
+        self.queued_jobs.append(row)
         return {"job_id": f"job:{job_type}:{normalized_symbol}", "status": "queued"}
+
+    def market_snapshot_at_or_before(self, asset_id, observed_at_ms):
+        return None
 
     def upsert_unresolved_symbol(self, symbol, *, event_id, observed_at_ms, commit=False):
         normalized = symbol.upper()
@@ -295,7 +341,12 @@ class FakeAssetRepository:
         normalized_address = address.lower()
         return FakeAssetResolutionResult(
             asset={"asset_id": f"asset:dex:{normalized_chain}:{normalized_address}", "identity_status": "resolved"},
-            venue={"venue_id": f"venue:dex:{normalized_chain}:{normalized_address}", "venue_type": "dex"},
+            venue={
+                "venue_id": f"venue:dex:{normalized_chain}:{normalized_address}",
+                "venue_type": "dex",
+                "chain": normalized_chain,
+                "address": address,
+            },
         )
 
 

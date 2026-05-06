@@ -152,7 +152,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
     expect(within(row).getByText("top 33% · repro -")).toBeInTheDocument();
-    expect(within(row).getByText("- indexed")).toBeInTheDocument();
+    expect(within(row).getByText("- missing")).toBeInTheDocument();
     expect(within(row).getByText("market pending")).toBeInTheDocument();
     expect(within(row).getByText("market observation pending")).toBeInTheDocument();
     expect(row.querySelector(".barline")).toBeInTheDocument();
@@ -245,7 +245,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
     expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · resolved asset");
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
-    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- indexed");
+    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- missing");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("market pending");
     expect(row.querySelector('[data-radar-action="gmgn"]')).toBeInTheDocument();
   });
