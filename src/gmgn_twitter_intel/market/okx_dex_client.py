@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -13,10 +17,16 @@ class OkxDexClient:
         self,
         *,
         base_url: str = "https://web3.okx.com",
+        api_key: str | None = None,
+        secret_key: str | None = None,
+        passphrase: str | None = None,
         timeout_seconds: float = 15.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
+        self.api_key = _text(api_key)
+        self.secret_key = _text(secret_key)
+        self.passphrase = _text(passphrase)
         self._client = httpx.Client(base_url=self.base_url, timeout=timeout_seconds, transport=transport)
 
     def close(self) -> None:
@@ -29,7 +39,7 @@ class OkxDexClient:
             return []
         rows = self._get(
             "/api/v6/dex/market/token/search",
-            params={"keyword": keyword, "chainIndex": chains},
+            params={"search": keyword, "chains": chains},
         )
         candidates: list[OkxDexTokenCandidate] = []
         for row in rows:
@@ -39,8 +49,26 @@ class OkxDexClient:
         return candidates
 
     def _get(self, path: str, *, params: dict[str, str]) -> list[dict[str, Any]]:
-        response = self._client.get(path, params=params)
+        request = self._client.build_request("GET", path, params={key: value for key, value in params.items() if value})
+        self._sign_request(request, body="")
+        response = self._client.send(request)
         return _rows_from_response(response, endpoint=path)
+
+    def _sign_request(self, request: httpx.Request, *, body: str) -> None:
+        if not self.api_key or not self.secret_key or not self.passphrase:
+            return
+        timestamp = _okx_timestamp()
+        request_path = request.url.raw_path.decode("utf-8")
+        prehash = f"{timestamp}{request.method.upper()}{request_path}{body}"
+        digest = hmac.new(
+            self.secret_key.encode("utf-8"),
+            prehash.encode("utf-8"),
+            hashlib.sha256,
+        ).digest()
+        request.headers["OK-ACCESS-KEY"] = self.api_key
+        request.headers["OK-ACCESS-SIGN"] = base64.b64encode(digest).decode("utf-8")
+        request.headers["OK-ACCESS-TIMESTAMP"] = timestamp
+        request.headers["OK-ACCESS-PASSPHRASE"] = self.passphrase
 
 
 def _candidate_from_row(row: dict[str, Any]) -> OkxDexTokenCandidate | None:
@@ -59,7 +87,7 @@ def _candidate_from_row(row: dict[str, Any]) -> OkxDexTokenCandidate | None:
         market_cap_usd=_float(row.get("marketCap") or row.get("marketCapUsd")),
         liquidity_usd=_float(row.get("liquidity") or row.get("liquidityUsd")),
         holders=_int(row.get("holders") or row.get("holderCount")),
-        community_recognized=_bool_or_none(row.get("communityRecognized") or row.get("community_recognized")),
+        community_recognized=_community_recognized(row),
         raw=dict(row),
     )
 
@@ -96,3 +124,14 @@ def _bool_or_none(value: Any) -> bool | None:
     if normalized in {"false", "0", "no"}:
         return False
     raise OkxClientError(f"invalid OKX boolean value: {value}")
+
+
+def _community_recognized(row: dict[str, Any]) -> bool | None:
+    tag_list = row.get("tagList")
+    if isinstance(tag_list, dict) and "communityRecognized" in tag_list:
+        return _bool_or_none(tag_list.get("communityRecognized"))
+    return _bool_or_none(row.get("communityRecognized") or row.get("community_recognized"))
+
+
+def _okx_timestamp() -> str:
+    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")

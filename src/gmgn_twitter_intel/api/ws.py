@@ -139,6 +139,14 @@ class PublicWebSocketHub:
             symbol = str(entity.get("normalized_value") or "").upper()
             if entity.get("entity_type") == "symbol" and symbol in client.symbols:
                 return True
+        for attribution in payload.get("asset_attributions") or []:
+            symbol = str(attribution.get("canonical_symbol") or "").strip().upper()
+            if symbol and symbol in client.symbols:
+                return True
+            chain = attribution.get("chain")
+            address = attribution.get("address")
+            if address and _ca_subscription_matches((chain, str(address).lower()), client.cas):
+                return True
         return False
 
     @staticmethod

@@ -23,7 +23,7 @@ Query stored events and signals:
 ```bash
 uv run gmgn-twitter-intel recent --limit 20
 uv run gmgn-twitter-intel search --symbol PEPE --limit 20
-uv run gmgn-twitter-intel token-flow --window 5m --limit 20
+uv run gmgn-twitter-intel asset-flow --window 5m --limit 20
 uv run gmgn-twitter-intel account-alerts --window 24h --limit 50
 uv run gmgn-twitter-intel social-events --window 1h --limit 50
 uv run gmgn-twitter-intel attention-seeds --window 1h --limit 50

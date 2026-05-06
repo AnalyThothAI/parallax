@@ -70,6 +70,90 @@ def test_symbol_search_reports_resolved_when_single_resolved_candidate_exists():
     assert result.candidates[0]["asset_id"] == "asset:cex:BTC"
 
 
+def test_symbol_search_ignores_unresolved_placeholder_when_real_candidate_exists():
+    service = AssetSearchService(
+        evidence=FakeEvidence(),
+        assets=FakeAssets(
+            candidates=[
+                {
+                    "asset_id": "asset:unresolved:MIRROR",
+                    "asset_type": "unresolved_symbol",
+                    "identity_status": "unresolved",
+                },
+                {"asset_id": "asset:dex:solana:mirror", "asset_type": "dex_asset", "identity_status": "resolved"},
+            ],
+            mention_events=[{"event_id": "event-1", "received_at_ms": 1000, "normalized_symbol": "MIRROR"}],
+        ),
+    )
+
+    result = service.search("$MIRROR", limit=20)
+
+    assert result.resolution["status"] == "resolved"
+    assert [candidate["asset_id"] for candidate in result.candidates] == ["asset:dex:solana:mirror"]
+
+
+def test_symbol_search_prefers_unique_cex_candidate_for_symbol_only_query():
+    service = AssetSearchService(
+        evidence=FakeEvidence(),
+        assets=FakeAssets(
+            candidates=[
+                {
+                    "asset_id": "asset:dex:bsc:0xtao",
+                    "asset_type": "dex_asset",
+                    "identity_status": "resolved",
+                    "venue_type": "dex",
+                },
+                {
+                    "asset_id": "asset:cex:TAO",
+                    "asset_type": "cex_asset",
+                    "identity_status": "resolved",
+                    "venue_type": "cex",
+                },
+            ],
+            mention_events=[{"event_id": "event-1", "received_at_ms": 1000, "normalized_symbol": "TAO"}],
+        ),
+    )
+
+    result = service.search("$TAO", limit=20)
+
+    assert result.resolution["status"] == "resolved"
+    assert [candidate["asset_id"] for candidate in result.candidates] == ["asset:cex:TAO"]
+
+
+def test_ca_search_uses_asset_index_instead_of_fts():
+    evidence = FakeEvidence(fts_events=[{"event_id": "event-text", "score": 0.42}])
+    service = AssetSearchService(
+        evidence=evidence,
+        assets=FakeAssets(
+            candidates=[],
+            ca_candidates=[
+                {
+                    "asset_id": "asset:dex:ethereum:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    "identity_status": "resolved",
+                    "venue_id": "venue:dex:ethereum:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                }
+            ],
+            ca_events=[
+                {
+                    "event_id": "event-ca",
+                    "received_at_ms": 1000,
+                    "address_hint": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                    "attribution_status": "direct",
+                }
+            ],
+            mention_events=[],
+        ),
+    )
+
+    result = service.search("eth:0x6982508145454ce325ddbe47a25d4ec3d2311933", limit=20)
+
+    assert result.ok is True
+    assert result.resolution["status"] == "resolved"
+    assert result.items[0]["match_type"] == "asset_mention"
+    assert result.items[0]["event"]["event_id"] == "event-ca"
+    assert evidence.fts_queries == []
+
+
 def test_text_search_still_uses_fts():
     evidence = FakeEvidence(fts_events=[{"event_id": "event-text", "score": 0.42}])
     service = AssetSearchService(evidence=evidence, assets=FakeAssets(candidates=[], mention_events=[]))
@@ -83,15 +167,23 @@ def test_text_search_still_uses_fts():
 
 
 class FakeAssets:
-    def __init__(self, *, candidates, mention_events):
+    def __init__(self, *, candidates, mention_events, ca_candidates=None, ca_events=None):
         self._candidates = candidates
         self._mention_events = mention_events
+        self._ca_candidates = ca_candidates or []
+        self._ca_events = ca_events or []
 
     def candidates_for_symbol(self, symbol):
         return self._candidates
 
     def events_for_symbol_mentions(self, symbol, *, limit, watched_only=False):
         return self._mention_events[:limit]
+
+    def candidates_for_ca(self, *, chain, address):
+        return self._ca_candidates
+
+    def events_for_ca_mentions(self, *, chain, address, limit, watched_only=False):
+        return self._ca_events[:limit]
 
 
 class FakeEvidence:

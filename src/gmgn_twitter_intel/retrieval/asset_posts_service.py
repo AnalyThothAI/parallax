@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from .asset_flow_service import WINDOW_MS
+from .asset_timeline_cursor import AssetTimelineCursorError, decode_timeline_cursor, encode_timeline_cursor
 
 
 class AssetPostsCursorError(Exception):
@@ -38,7 +39,10 @@ class AssetPostsService:
             raise AssetPostsRangeError(post_range)
         if sort not in {"recent", "catalyst"}:
             raise AssetPostsSortError(sort)
-        cursor_ms = _cursor_ms(cursor)
+        try:
+            timeline_cursor = decode_timeline_cursor(cursor)
+        except AssetTimelineCursorError as exc:
+            raise AssetPostsCursorError(cursor) from exc
         resolved_now_ms = int(now_ms or time.time() * 1000)
         since_ms = (
             0
@@ -50,11 +54,11 @@ class AssetPostsService:
             since_ms=since_ms,
             watched_only=scope == "matched",
             limit=max(0, int(limit)) + 1,
-            cursor_ms=cursor_ms,
+            cursor=timeline_cursor,
         )
         page_rows = rows[: max(0, int(limit))]
         has_more = len(rows) > len(page_rows)
-        next_cursor = str(int(page_rows[-1]["received_at_ms"])) if has_more and page_rows else None
+        next_cursor = encode_timeline_cursor(page_rows[-1]) if has_more and page_rows else None
         return {
             "query": {
                 "asset_id": asset_id,
@@ -70,17 +74,6 @@ class AssetPostsService:
             "next_cursor": next_cursor,
             "items": [_post(row) for row in page_rows],
         }
-
-
-def _cursor_ms(cursor: str | None) -> int | None:
-    if not cursor:
-        return None
-    try:
-        value = int(cursor)
-    except ValueError as exc:
-        raise AssetPostsCursorError(cursor) from exc
-    return value if value > 0 else None
-
 
 def _post(row: dict[str, Any]) -> dict[str, Any]:
     text = row.get("text_clean") or row.get("text")

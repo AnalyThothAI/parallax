@@ -72,6 +72,13 @@ class AssetResolver:
             chain_hint=_clean_text(mention.get("chain_hint")),
             commit=False,
         )
+        self.assets.queue_resolution_job(
+            job_type="ca_resolution",
+            chain_hint=_clean_text(mention.get("chain_hint")),
+            address_hint=address,
+            next_run_at_ms=_created_at_ms(mention),
+            commit=False,
+        )
         return self._decision(
             mention,
             asset_id=str(asset["asset_id"]),
@@ -86,7 +93,21 @@ class AssetResolver:
 
     def _resolve_symbol(self, mention: Mapping[str, Any], *, symbol: str) -> AssetResolutionDecision:
         candidates = self.assets.candidates_for_symbol(symbol)
-        asset_candidates = _unique_asset_candidates(candidates)
+        asset_candidates = _unique_asset_candidates(_real_asset_candidates(candidates))
+        cex_candidates = [candidate for candidate in asset_candidates if candidate.get("venue_type") == "cex"]
+        if len(cex_candidates) == 1:
+            candidate = cex_candidates[0]
+            return self._decision(
+                mention,
+                asset_id=str(candidate["asset_id"]),
+                venue_id=candidate.get("venue_id"),
+                attribution_status="selected",
+                identity_status=str(candidate.get("identity_status") or "resolved"),
+                confidence=float(candidate.get("asset_confidence") or candidate.get("alias_confidence") or 0.85),
+                attribution_weight=1.0,
+                reasons=["single_local_cex_asset_candidate"],
+                risks=[],
+            )
         if not asset_candidates:
             asset = self.assets.upsert_unresolved_symbol(
                 symbol,
@@ -94,6 +115,7 @@ class AssetResolver:
                 observed_at_ms=_created_at_ms(mention),
                 commit=False,
             )
+            self._queue_symbol_resolution(symbol, mention)
             return self._decision(
                 mention,
                 asset_id=str(asset["asset_id"]),
@@ -126,6 +148,7 @@ class AssetResolver:
             observed_at_ms=_created_at_ms(mention),
             commit=False,
         )
+        self._queue_symbol_resolution(symbol, mention)
         return self._decision(
             mention,
             asset_id=str(asset["asset_id"]),
@@ -136,6 +159,14 @@ class AssetResolver:
             attribution_weight=1.0,
             reasons=["multiple_local_asset_candidates"],
             risks=["candidate_selection_requires_provider_resolution"],
+        )
+
+    def _queue_symbol_resolution(self, symbol: str, mention: Mapping[str, Any]) -> None:
+        self.assets.queue_resolution_job(
+            job_type="symbol_resolution",
+            normalized_symbol=symbol,
+            next_run_at_ms=_created_at_ms(mention),
+            commit=False,
         )
 
     def _resolve_direct_dex(self, mention: Mapping[str, Any], *, reason: str) -> AssetResolutionDecision | None:
@@ -202,6 +233,21 @@ def _unique_asset_candidates(candidates: list[dict[str, Any]]) -> list[dict[str,
         seen.add(asset_id)
         selected.append(candidate)
     return selected
+
+
+def _real_asset_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [candidate for candidate in candidates if _is_real_asset_candidate(candidate)]
+
+
+def _is_real_asset_candidate(candidate: Mapping[str, Any]) -> bool:
+    identity_status = str(candidate.get("identity_status") or "")
+    asset_type = str(candidate.get("asset_type") or "")
+    asset_id = str(candidate.get("asset_id") or "")
+    if identity_status in {"unresolved", "ambiguous"}:
+        return False
+    if asset_type.startswith(("unresolved", "ambiguous")):
+        return False
+    return not asset_id.startswith(("asset:unresolved", "asset:ambiguous"))
 
 
 def _symbol(mention: Mapping[str, Any]) -> str | None:

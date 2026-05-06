@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from .asset_flow_service import WINDOW_MS
+from .asset_timeline_cursor import decode_timeline_cursor, encode_timeline_cursor
 
 
 class AssetSocialTimelineService:
@@ -17,7 +18,7 @@ class AssetSocialTimelineService:
         window: str,
         scope: str,
         limit: int,
-        cursor_ms: int | None = None,
+        cursor: str | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         resolved_now_ms = int(now_ms or time.time() * 1000)
@@ -28,12 +29,12 @@ class AssetSocialTimelineService:
             since_ms=resolved_now_ms - window_ms,
             watched_only=scope == "matched",
             limit=fetch_limit,
-            cursor_ms=cursor_ms,
+            cursor=decode_timeline_cursor(cursor),
         )
         page_rows = rows[: max(0, int(limit))]
         bucket_ms, bucket_label = _bucket(window)
         has_more = len(rows) > len(page_rows)
-        next_cursor_ms = int(page_rows[-1]["received_at_ms"]) if has_more and page_rows else None
+        next_cursor = encode_timeline_cursor(page_rows[-1]) if has_more and page_rows else None
         return {
             "query": {"asset_id": asset_id, "window": window, "scope": scope, "bucket": bucket_label},
             "summary": _summary(page_rows),
@@ -49,8 +50,7 @@ class AssetSocialTimelineService:
             "cascade": {"edges": [], "unresolved_parents": []},
             "returned_count": len(page_rows),
             "has_more": has_more,
-            "next_cursor": str(next_cursor_ms) if next_cursor_ms is not None else None,
-            "next_cursor_ms": next_cursor_ms,
+            "next_cursor": next_cursor,
         }
 
 

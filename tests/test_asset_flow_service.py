@@ -54,7 +54,7 @@ class FakeAssets:
     def __init__(self, *, rows):
         self.rows = rows
 
-    def recent_asset_attributions(self, *, since_ms, watched_only, limit):
+    def asset_flow_rows(self, *, since_ms, watched_only, limit, now_ms):
         return [row for row in self.rows if row["decision_time_ms"] >= since_ms][:limit]
 
 
@@ -75,6 +75,13 @@ def resolved_row(*, symbol, asset_id, venue_id):
         "author_handle": "alice",
         "is_watched": True,
         "decision_time_ms": 1_700_000_000_000,
+        "mentions_5m": 1,
+        "mentions_1h": 1,
+        "mentions_window": 1,
+        "unique_authors": 1,
+        "watched_mentions": 1,
+        "latest_seen_ms": 1_700_000_000_000,
+        "source_max_received_at_ms": 1_700_000_000_000,
     }
 
 
@@ -95,4 +102,11 @@ def unresolved_row(*, symbol, asset_id):
         "author_handle": "bob",
         "is_watched": False,
         "decision_time_ms": 1_700_000_000_000,
+        "mentions_5m": 1,
+        "mentions_1h": 1,
+        "mentions_window": 1,
+        "unique_authors": 1,
+        "watched_mentions": 0,
+        "latest_seen_ms": 1_700_000_000_000,
+        "source_max_received_at_ms": 1_700_000_000_000,
     }

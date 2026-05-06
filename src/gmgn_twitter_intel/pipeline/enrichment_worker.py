@@ -81,7 +81,7 @@ class EnrichmentWorker:
                     request=request,
                     commit=False,
                 )
-                materialized = HarnessSnapshotBuilder(repos.harness, tokens=repos.tokens).materialize(
+                materialized = HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
                     event=event,
                     extraction=result,
                     run_id=str(run["run_id"]),

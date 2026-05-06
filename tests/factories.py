@@ -113,7 +113,6 @@ def open_runtime(tmp_path):
         signals=signals,
         enrichment=enrichment,
         assets=assets,
-        tokens=TokenRepository(conn),
     )
     return conn, ingest, signals, assets
 

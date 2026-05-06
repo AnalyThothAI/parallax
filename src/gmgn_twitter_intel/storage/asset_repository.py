@@ -411,6 +411,61 @@ class AssetRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def candidates_for_ca(self, *, chain: str | None, address: str) -> list[dict[str, Any]]:
+        normalized_chain = _normalize_key(chain) if chain and chain != "evm_unknown" else None
+        normalized_address = (_normalize_address(address) or address).lower()
+        clauses = ["asset_venues.venue_type = 'dex'", "lower(asset_venues.address) = %s"]
+        params: list[Any] = [normalized_address]
+        if normalized_chain:
+            clauses.append("asset_venues.chain = %s")
+            params.append(normalized_chain)
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              assets.asset_id,
+              assets.asset_type,
+              assets.canonical_symbol,
+              assets.display_name,
+              assets.identity_status,
+              assets.confidence AS asset_confidence,
+              assets.primary_source,
+              asset_venues.venue_id,
+              asset_venues.venue_type,
+              asset_venues.provider AS venue_provider,
+              asset_venues.exchange,
+              asset_venues.chain,
+              asset_venues.address,
+              asset_venues.inst_id,
+              asset_venues.base_symbol,
+              asset_venues.quote_symbol,
+              asset_venues.inst_type,
+              asset_venues.is_active
+            FROM asset_venues
+            JOIN assets ON assets.asset_id = asset_venues.asset_id
+            WHERE {' AND '.join(clauses)}
+              AND asset_venues.is_active = true
+            ORDER BY asset_venues.confidence DESC, assets.confidence DESC
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def venue_for_cex_instrument(self, *, exchange: str, inst_type: str, inst_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT asset_venues.*, assets.canonical_symbol, assets.identity_status
+            FROM asset_venues
+            JOIN assets ON assets.asset_id = asset_venues.asset_id
+            WHERE asset_venues.venue_type = 'cex'
+              AND asset_venues.exchange = %s
+              AND asset_venues.inst_type = %s
+              AND asset_venues.inst_id = %s
+              AND asset_venues.is_active = true
+            """,
+            (_normalize_key(exchange), _normalize_symbol(inst_type), inst_id.strip().upper()),
+        ).fetchone()
+        return dict(row) if row else None
+
     def insert_resolution_candidate(
         self,
         *,
@@ -588,6 +643,73 @@ class AssetRepository:
             self.conn.commit()
         return self._row_by_id("asset_market_snapshots", "snapshot_id", snapshot_id) or {}
 
+    def market_snapshot_at_or_before(self, asset_id: str | None, observed_at_ms: int) -> dict[str, Any] | None:
+        if not asset_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM asset_market_snapshots
+            WHERE asset_id = %s AND observed_at_ms <= %s
+            ORDER BY observed_at_ms DESC, snapshot_id DESC
+            LIMIT 1
+            """,
+            (asset_id, int(observed_at_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def market_snapshot_at_or_after(self, asset_id: str | None, observed_at_ms: int) -> dict[str, Any] | None:
+        if not asset_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM asset_market_snapshots
+            WHERE asset_id = %s AND observed_at_ms >= %s
+            ORDER BY observed_at_ms ASC, snapshot_id ASC
+            LIMIT 1
+            """,
+            (asset_id, int(observed_at_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def market_snapshots_between(self, asset_id: str | None, *, start_ms: int, end_ms: int) -> list[dict[str, Any]]:
+        if not asset_id:
+            return []
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM asset_market_snapshots
+            WHERE asset_id = %s AND observed_at_ms BETWEEN %s AND %s
+            ORDER BY observed_at_ms ASC, snapshot_id ASC
+            """,
+            (asset_id, int(start_ms), int(end_ms)),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def nearest_market_snapshot(
+        self,
+        asset_id: str | None,
+        *,
+        target_ms: int,
+        tolerance_ms: int,
+    ) -> dict[str, Any] | None:
+        if not asset_id:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT *,
+                   ABS(observed_at_ms - %s) AS distance_ms
+            FROM asset_market_snapshots
+            WHERE asset_id = %s
+              AND observed_at_ms BETWEEN %s AND %s
+            ORDER BY distance_ms ASC, observed_at_ms ASC, snapshot_id ASC
+            LIMIT 1
+            """,
+            (int(target_ms), asset_id, int(target_ms - tolerance_ms), int(target_ms + tolerance_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
     def queue_resolution_job(
         self,
         *,
@@ -611,10 +733,11 @@ class AssetRepository:
             VALUES (%s, %s, %s, %s, %s, 'queued', 0, %s, NULL, %s, %s)
             ON CONFLICT(job_id) DO UPDATE SET
               status = CASE
-                WHEN asset_resolution_jobs.status IN ('succeeded', 'running') THEN asset_resolution_jobs.status
+                WHEN asset_resolution_jobs.status = 'running' THEN asset_resolution_jobs.status
                 ELSE 'queued'
               END,
               next_run_at_ms = LEAST(asset_resolution_jobs.next_run_at_ms, excluded.next_run_at_ms),
+              last_error = NULL,
               updated_at_ms = excluded.updated_at_ms
             """,
             (job_id, job_type, symbol, _clean_text(chain_hint), address, int(next_run_at_ms or now_ms), now_ms, now_ms),
@@ -622,6 +745,196 @@ class AssetRepository:
         if commit:
             self.conn.commit()
         return self._row_by_id("asset_resolution_jobs", "job_id", job_id) or {}
+
+    def claim_resolution_job(self, *, now_ms: int) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            UPDATE asset_resolution_jobs
+            SET status = 'running',
+                attempt_count = attempt_count + 1,
+                updated_at_ms = %s
+            WHERE job_id = (
+              SELECT job_id
+              FROM asset_resolution_jobs
+              WHERE status IN ('queued', 'failed') AND next_run_at_ms <= %s
+              ORDER BY next_run_at_ms ASC, job_id ASC
+              FOR UPDATE SKIP LOCKED
+              LIMIT 1
+            )
+            RETURNING *
+            """,
+            (int(now_ms), int(now_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def finish_resolution_job(
+        self,
+        *,
+        job_id: str,
+        status: str,
+        error: str | None = None,
+        next_run_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        now_ms = _now_ms()
+        self.conn.execute(
+            """
+            UPDATE asset_resolution_jobs
+            SET status = %s,
+                last_error = %s,
+                next_run_at_ms = COALESCE(%s, next_run_at_ms),
+                updated_at_ms = %s
+            WHERE job_id = %s
+            """,
+            (status, error, next_run_at_ms, now_ms, job_id),
+        )
+        if commit:
+            self.conn.commit()
+        return self._row_by_id("asset_resolution_jobs", "job_id", job_id) or {}
+
+    def mentions_needing_symbol_resolution(self, symbol: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+        normalized = _normalize_symbol(symbol)
+        rows = self.conn.execute(
+            """
+            SELECT DISTINCT asset_mentions.*
+            FROM asset_mentions
+            JOIN asset_attributions ON asset_attributions.mention_id = asset_mentions.mention_id
+            WHERE asset_mentions.normalized_symbol = %s
+              AND asset_attributions.identity_status IN ('unresolved', 'ambiguous')
+              AND asset_attributions.attribution_status <> 'superseded'
+            ORDER BY asset_mentions.created_at_ms DESC, asset_mentions.mention_id DESC
+            LIMIT %s
+            """,
+            (normalized, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reassign_symbol_attributions(
+        self,
+        *,
+        symbol: str,
+        asset_id: str,
+        venue_id: str,
+        decision_time_ms: int,
+        commit: bool = True,
+    ) -> int:
+        normalized = _normalize_symbol(symbol)
+        rows = self.conn.execute(
+            """
+            SELECT asset_attributions.event_id, asset_attributions.mention_id, asset_attributions.created_at_ms
+            FROM asset_attributions
+            JOIN asset_mentions ON asset_mentions.mention_id = asset_attributions.mention_id
+            WHERE asset_mentions.normalized_symbol = %s
+              AND asset_attributions.identity_status IN ('unresolved', 'ambiguous')
+              AND asset_attributions.attribution_status <> 'superseded'
+            ORDER BY asset_attributions.created_at_ms ASC
+            """,
+            (normalized,),
+        ).fetchall()
+        count = 0
+        for row in rows:
+            self.insert_attribution(
+                event_id=str(row["event_id"]),
+                mention_id=str(row["mention_id"]),
+                asset_id=asset_id,
+                venue_id=venue_id,
+                attribution_status="selected",
+                attribution_weight=1.0,
+                confidence=0.9,
+                identity_status="resolved",
+                reasons=["provider_resolution_backfill"],
+                risks=[],
+                decision_time_ms=decision_time_ms,
+                created_at_ms=int(row["created_at_ms"]),
+                commit=False,
+            )
+            count += 1
+        if rows:
+            mention_ids = [str(row["mention_id"]) for row in rows]
+            self.conn.execute(
+                """
+                UPDATE asset_attributions
+                SET attribution_status = 'superseded',
+                    attribution_weight = 0,
+                    risks_json = risks_json || '["superseded_by_provider_resolution"]'::jsonb,
+                    decision_time_ms = %s
+                WHERE mention_id = ANY(%s)
+                  AND identity_status IN ('unresolved', 'ambiguous')
+                  AND attribution_status <> 'superseded'
+                """,
+                (int(decision_time_ms), mention_ids),
+            )
+        if commit:
+            self.conn.commit()
+        return count
+
+    def reassign_ca_attributions(
+        self,
+        *,
+        address: str,
+        chain: str | None,
+        asset_id: str,
+        venue_id: str,
+        decision_time_ms: int,
+        commit: bool = True,
+    ) -> int:
+        normalized_address = (_normalize_address(address) or address).lower()
+        normalized_chain = _normalize_key(chain) if chain else None
+        clauses = [
+            "lower(asset_mentions.address_hint) = %s",
+            "asset_attributions.identity_status IN ('unresolved', 'ambiguous')",
+            "asset_attributions.attribution_status <> 'superseded'",
+        ]
+        params: list[Any] = [normalized_address]
+        if normalized_chain:
+            clauses.append("asset_mentions.chain_hint = %s")
+            params.append(normalized_chain)
+        rows = self.conn.execute(
+            f"""
+            SELECT asset_attributions.event_id, asset_attributions.mention_id, asset_attributions.created_at_ms
+            FROM asset_attributions
+            JOIN asset_mentions ON asset_mentions.mention_id = asset_attributions.mention_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY asset_attributions.created_at_ms ASC
+            """,
+            params,
+        ).fetchall()
+        count = 0
+        for row in rows:
+            self.insert_attribution(
+                event_id=str(row["event_id"]),
+                mention_id=str(row["mention_id"]),
+                asset_id=asset_id,
+                venue_id=venue_id,
+                attribution_status="direct",
+                attribution_weight=1.0,
+                confidence=0.95,
+                identity_status="resolved",
+                reasons=["provider_ca_resolution_backfill"],
+                risks=[],
+                decision_time_ms=decision_time_ms,
+                created_at_ms=int(row["created_at_ms"]),
+                commit=False,
+            )
+            count += 1
+        if rows:
+            mention_ids = [str(row["mention_id"]) for row in rows]
+            self.conn.execute(
+                """
+                UPDATE asset_attributions
+                SET attribution_status = 'superseded',
+                    attribution_weight = 0,
+                    risks_json = risks_json || '["superseded_by_provider_resolution"]'::jsonb,
+                    decision_time_ms = %s
+                WHERE mention_id = ANY(%s)
+                  AND identity_status IN ('unresolved', 'ambiguous')
+                  AND attribution_status <> 'superseded'
+                """,
+                (int(decision_time_ms), mention_ids),
+            )
+        if commit:
+            self.conn.commit()
+        return count
 
     def events_for_symbol_mentions(
         self,
@@ -653,7 +966,56 @@ class AssetRepository:
             JOIN events ON events.event_id = asset_mentions.event_id
             LEFT JOIN asset_attributions ON asset_attributions.mention_id = asset_mentions.mention_id
             WHERE {' AND '.join(clauses)}
+              AND COALESCE(asset_attributions.attribution_status, '') <> 'superseded'
             ORDER BY events.received_at_ms DESC, asset_mentions.mention_id ASC
+            LIMIT %s
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def events_for_ca_mentions(
+        self,
+        *,
+        chain: str | None,
+        address: str,
+        limit: int,
+        watched_only: bool = False,
+    ) -> list[dict[str, Any]]:
+        normalized_chain = _normalize_key(chain) if chain and chain != "evm_unknown" else None
+        normalized_address = (_normalize_address(address) or address).lower()
+        clauses = [
+            "(lower(asset_mentions.address_hint) = %s OR lower(asset_venues.address) = %s)",
+            "COALESCE(asset_attributions.attribution_status, '') <> 'superseded'",
+        ]
+        params: list[Any] = [normalized_address, normalized_address]
+        if normalized_chain:
+            clauses.append("(asset_mentions.chain_hint = %s OR asset_venues.chain = %s)")
+            params.extend([normalized_chain, normalized_chain])
+        if watched_only:
+            clauses.append("events.is_watched = true")
+        params.append(max(0, int(limit)))
+        rows = self.conn.execute(
+            f"""
+            SELECT
+              events.*,
+              asset_mentions.mention_id,
+              asset_mentions.mention_type,
+              asset_mentions.raw_value AS mention_raw_value,
+              asset_mentions.normalized_symbol,
+              asset_mentions.chain_hint,
+              asset_mentions.address_hint,
+              asset_attributions.asset_id,
+              asset_attributions.venue_id,
+              asset_attributions.attribution_status,
+              asset_attributions.confidence AS attribution_confidence,
+              asset_attributions.identity_status AS attribution_identity_status
+            FROM asset_mentions
+            JOIN events ON events.event_id = asset_mentions.event_id
+            LEFT JOIN asset_attributions ON asset_attributions.mention_id = asset_mentions.mention_id
+            LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
+            WHERE {' AND '.join(clauses)}
+            ORDER BY events.received_at_ms DESC, events.event_id DESC, asset_mentions.mention_id DESC
             LIMIT %s
             """,
             params,
@@ -669,6 +1031,7 @@ class AssetRepository:
             JOIN assets ON assets.asset_id = asset_attributions.asset_id
             LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
             WHERE asset_attributions.asset_id = %s
+              AND asset_attributions.attribution_status <> 'superseded'
             ORDER BY asset_attributions.decision_time_ms DESC
             LIMIT %s
             """,
@@ -687,6 +1050,7 @@ class AssetRepository:
             JOIN assets ON assets.asset_id = asset_attributions.asset_id
             LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
             WHERE asset_attributions.event_id = %s
+              AND asset_attributions.attribution_status <> 'superseded'
             ORDER BY asset_attributions.created_at_ms DESC, asset_attributions.attribution_id ASC
             """,
             (event_id,),
@@ -704,6 +1068,7 @@ class AssetRepository:
             JOIN assets ON assets.asset_id = asset_attributions.asset_id
             LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
             WHERE assets.canonical_symbol = %s
+              AND asset_attributions.attribution_status <> 'superseded'
             ORDER BY asset_attributions.decision_time_ms DESC
             LIMIT %s
             """,
@@ -718,7 +1083,7 @@ class AssetRepository:
         watched_only: bool,
         limit: int = 5000,
     ) -> list[dict[str, Any]]:
-        clauses = ["asset_attributions.decision_time_ms >= %s"]
+        clauses = ["asset_attributions.decision_time_ms >= %s", "asset_attributions.attribution_status <> 'superseded'"]
         params: list[Any] = [int(since_ms)]
         if watched_only:
             clauses.append("events.is_watched = true")
@@ -753,6 +1118,103 @@ class AssetRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def asset_flow_rows(
+        self,
+        *,
+        since_ms: int,
+        watched_only: bool,
+        limit: int,
+        now_ms: int,
+    ) -> list[dict[str, Any]]:
+        clauses = ["asset_attributions.decision_time_ms >= %s", "asset_attributions.attribution_status <> 'superseded'"]
+        params: list[Any] = [int(since_ms)]
+        if watched_only:
+            clauses.append("events.is_watched = true")
+        params.extend([int(now_ms) - 5 * 60 * 1000, int(now_ms) - 60 * 60 * 1000, max(0, int(limit))])
+        rows = self.conn.execute(
+            f"""
+            WITH filtered AS (
+              SELECT
+                asset_attributions.*,
+                assets.asset_type,
+                assets.canonical_symbol,
+                assets.display_name,
+                assets.identity_status AS asset_identity_status,
+                asset_venues.venue_type,
+                asset_venues.exchange,
+                asset_venues.chain,
+                asset_venues.address,
+                asset_venues.inst_id,
+                asset_venues.base_symbol,
+                asset_venues.quote_symbol,
+                asset_venues.inst_type,
+                events.author_handle,
+                events.is_watched,
+                events.received_at_ms
+              FROM asset_attributions
+              JOIN assets ON assets.asset_id = asset_attributions.asset_id
+              JOIN events ON events.event_id = asset_attributions.event_id
+              LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
+              WHERE {' AND '.join(clauses)}
+            ),
+            grouped AS (
+              SELECT
+                asset_id,
+                COUNT(DISTINCT event_id) AS mentions_window,
+                COUNT(DISTINCT author_handle)
+                  FILTER (WHERE author_handle IS NOT NULL AND author_handle <> '') AS unique_authors,
+                COUNT(*) FILTER (WHERE is_watched = true) AS watched_mentions,
+                COUNT(DISTINCT event_id) FILTER (WHERE decision_time_ms >= %s) AS mentions_5m,
+                COUNT(DISTINCT event_id) FILTER (WHERE decision_time_ms >= %s) AS mentions_1h,
+                MAX(decision_time_ms) AS latest_seen_ms,
+                MAX(received_at_ms) AS source_max_received_at_ms
+              FROM filtered
+              GROUP BY asset_id
+            ),
+            latest AS (
+              SELECT DISTINCT ON (asset_id) *
+              FROM filtered
+              ORDER BY asset_id, decision_time_ms DESC, event_id DESC
+            ),
+            ranked AS (
+              SELECT
+                latest.*,
+                grouped.mentions_window,
+                grouped.unique_authors,
+                grouped.watched_mentions,
+                grouped.mentions_5m,
+                grouped.mentions_1h,
+                grouped.latest_seen_ms,
+                grouped.source_max_received_at_ms,
+                CASE
+                  WHEN latest.attribution_status IN ('direct', 'selected')
+                    AND latest.identity_status = 'resolved'
+                    AND latest.venue_id IS NOT NULL
+                  THEN 'resolved'
+                  ELSE 'attention'
+                END AS flow_lane,
+                ROW_NUMBER() OVER (
+                  PARTITION BY CASE
+                    WHEN latest.attribution_status IN ('direct', 'selected')
+                      AND latest.identity_status = 'resolved'
+                      AND latest.venue_id IS NOT NULL
+                    THEN 'resolved'
+                    ELSE 'attention'
+                  END
+                  ORDER BY grouped.mentions_window DESC, grouped.latest_seen_ms DESC, latest.asset_id ASC
+                ) AS lane_rank
+              FROM latest
+              JOIN grouped ON grouped.asset_id = latest.asset_id
+            )
+            SELECT *
+            FROM ranked
+            WHERE lane_rank <= %s
+            ORDER BY flow_lane ASC, lane_rank ASC
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def asset_timeline_rows(
         self,
         *,
@@ -760,13 +1222,18 @@ class AssetRepository:
         since_ms: int,
         watched_only: bool,
         limit: int,
-        cursor_ms: int | None = None,
+        cursor: tuple[int, str] | None = None,
     ) -> list[dict[str, Any]]:
-        clauses = ["asset_attributions.asset_id = %s", "events.received_at_ms >= %s"]
+        clauses = [
+            "asset_attributions.asset_id = %s",
+            "events.received_at_ms >= %s",
+            "asset_attributions.attribution_status <> 'superseded'",
+        ]
         params: list[Any] = [asset_id, int(since_ms)]
-        if cursor_ms is not None:
-            clauses.append("events.received_at_ms < %s")
-            params.append(int(cursor_ms))
+        if cursor is not None:
+            cursor_ms, cursor_event_id = cursor
+            clauses.append("(events.received_at_ms, events.event_id) < (%s, %s)")
+            params.extend([int(cursor_ms), str(cursor_event_id)])
         if watched_only:
             clauses.append("events.is_watched = true")
         params.append(max(0, int(limit)))
@@ -802,7 +1269,7 @@ class AssetRepository:
             JOIN assets ON assets.asset_id = asset_attributions.asset_id
             LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
             WHERE {' AND '.join(clauses)}
-            ORDER BY events.received_at_ms DESC, events.event_id ASC
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
             params,
@@ -821,6 +1288,7 @@ class AssetRepository:
             SELECT 1 AS found
             FROM asset_attributions
             WHERE asset_id = %s AND decision_time_ms < %s
+              AND attribution_status <> 'superseded'
             LIMIT 1
             """,
             (asset_id, int(before_ms)),
@@ -834,6 +1302,7 @@ class AssetRepository:
                 JOIN events ON events.event_id = asset_attributions.event_id
                 WHERE asset_attributions.asset_id = %s
                   AND asset_attributions.decision_time_ms < %s
+                  AND asset_attributions.attribution_status <> 'superseded'
                   AND events.author_handle = %s
                 LIMIT 1
                 """,

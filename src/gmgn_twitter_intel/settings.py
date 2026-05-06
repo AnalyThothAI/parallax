@@ -248,6 +248,9 @@ class OkxProviderConfig(BaseModel):
     cex_base_url: str = "https://www.okx.com"
     dex_base_url: str = "https://web3.okx.com"
     dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453")
+    dex_api_key: str | None = None
+    dex_secret_key: str | None = None
+    dex_passphrase: str | None = None
     timeout_seconds: float = 15.0
 
     @field_validator("cex_base_url", "dex_base_url", mode="before")
@@ -260,6 +263,14 @@ class OkxProviderConfig(BaseModel):
     @classmethod
     def parse_chain_indexes(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value)) or ("501", "1", "56", "8453")
+
+    @field_validator("dex_api_key", "dex_secret_key", "dex_passphrase", mode="before")
+    @classmethod
+    def parse_optional_secret(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class ProvidersConfig(BaseModel):
@@ -402,8 +413,24 @@ class Settings(BaseModel):
         return self.providers.okx.dex_chain_indexes
 
     @property
+    def okx_dex_api_key(self) -> str | None:
+        return self.providers.okx.dex_api_key
+
+    @property
+    def okx_dex_secret_key(self) -> str | None:
+        return self.providers.okx.dex_secret_key
+
+    @property
+    def okx_dex_passphrase(self) -> str | None:
+        return self.providers.okx.dex_passphrase
+
+    @property
     def okx_timeout_seconds(self) -> float:
         return self.providers.okx.timeout_seconds
+
+    @property
+    def okx_dex_configured(self) -> bool:
+        return bool(self.okx_dex_api_key and self.okx_dex_secret_key and self.okx_dex_passphrase)
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:
@@ -537,6 +564,9 @@ providers:
     cex_base_url: "https://www.okx.com"
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453"]
+    dex_api_key:
+    dex_secret_key:
+    dex_passphrase:
     timeout_seconds: 15
 
 upstream:

@@ -78,6 +78,7 @@ def test_legacy_narrative_modules_stay_removed():
 
 
 def test_legacy_token_resolution_runtime_modules_stay_removed():
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_identity_resolver.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "signal_builder.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_attribution.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "search_service.py").exists()

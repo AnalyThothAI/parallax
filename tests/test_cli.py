@@ -16,10 +16,8 @@ from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.storage.market_observation_repository import MarketObservationRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
@@ -66,15 +64,11 @@ def seed_postgres(db_path: Path) -> None:
         entities = EntityRepository(conn)
         signals = SignalRepository(conn)
         enrichment = EnrichmentRepository(conn)
-        tokens = TokenRepository(conn)
-        observations = MarketObservationRepository(conn)
         ingest = IngestService(
             evidence=evidence,
             entities=entities,
             signals=signals,
             enrichment=enrichment,
-            tokens=tokens,
-            market_observations=observations,
         )
         snapshot = parse_gmgn_token_payload(
             {
@@ -388,13 +382,11 @@ class CliTests(unittest.TestCase):
                 entities = EntityRepository(conn)
                 signals = SignalRepository(conn)
                 enrichment = EnrichmentRepository(conn)
-                tokens = TokenRepository(conn)
                 ingest = IngestService(
                     evidence=evidence,
                     entities=entities,
                     signals=signals,
                     enrichment=enrichment,
-                    tokens=tokens,
                 )
                 snapshot = parse_gmgn_token_payload(
                     {

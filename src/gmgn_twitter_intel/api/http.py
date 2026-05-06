@@ -18,6 +18,7 @@ from ..retrieval.asset_posts_service import (
 )
 from ..retrieval.asset_search_service import AssetSearchService
 from ..retrieval.asset_social_timeline_service import AssetSocialTimelineService
+from ..retrieval.asset_timeline_cursor import AssetTimelineCursorError
 from ..retrieval.harness_service import HarnessService
 from ..retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from ..storage.account_quality_repository import AccountQualityRepository
@@ -207,7 +208,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         window: Annotated[str, Query()] = "1h",
         scope: Annotated[str, Query()] = "all",
         limit: Annotated[int, Query()] = 200,
-        cursor_ms: Annotated[int | None, Query()] = None,
+        cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         if "bucket" in request.query_params:
             raise ApiBadRequest("unsupported_query_param", field="bucket")
@@ -216,14 +217,17 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
-        with runtime.repositories() as repos:
-            data = AssetSocialTimelineService(assets=repos.assets).timeline(
-                asset_id=asset_id,
-                window=parsed_window,
-                scope=parsed_scope,
-                limit=_limit(limit),
-                cursor_ms=cursor_ms,
-            )
+        try:
+            with runtime.repositories() as repos:
+                data = AssetSocialTimelineService(assets=repos.assets).timeline(
+                    asset_id=asset_id,
+                    window=parsed_window,
+                    scope=parsed_scope,
+                    limit=_limit(limit),
+                    cursor=cursor or None,
+                )
+        except AssetTimelineCursorError:
+            return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
     @router.get("/token-signal-snapshots")

@@ -9,7 +9,6 @@ from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_enrichment_repository import make_event
@@ -75,13 +74,11 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
     harness = HarnessRepository(conn)
-    tokens = TokenRepository(conn)
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
-        tokens=tokens,
     )
     worker = EnrichmentWorker(
         client=client or FakeClient(),

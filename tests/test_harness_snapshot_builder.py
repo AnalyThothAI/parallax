@@ -1,8 +1,8 @@
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
+from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
-from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_api_http import make_token_event
@@ -16,7 +16,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
         migrate(conn)
         harness = HarnessRepository(conn)
         evidence = EvidenceRepository(conn)
-        tokens = TokenRepository(conn)
+        assets = AssetRepository(conn)
         event = make_token_event(
             "event-1",
             symbol="BNB",
@@ -25,11 +25,12 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
             received_at_ms=1_000,
         )
         evidence.insert_event(event, is_watched=True)
-        tokens.upsert_snapshot(
-            event_id=event.event_id,
-            snapshot=event.token_snapshot,
-            received_at_ms=event.received_at_ms,
-            source_channel=event.source.channel,
+        asset_id = _upsert_asset_with_price(
+            assets,
+            symbol="BNB",
+            address=BNB,
+            observed_at_ms=1_000,
+            price=1.0,
         )
         extraction = SocialEventExtraction(
             is_signal_event=True,
@@ -57,13 +58,13 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
             raw_response={"ok": True},
         )
 
-        materialized = HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
+        materialized = HarnessSnapshotBuilder(harness, assets=assets).materialize(
             event=event.to_dict(),
             extraction=extraction,
             run_id="run-1",
             model_version="gpt-test",
         )
-        duplicate = HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
+        duplicate = HarnessSnapshotBuilder(harness, assets=assets).materialize(
             event=event.to_dict(),
             extraction=extraction,
             run_id="run-1",
@@ -75,7 +76,7 @@ def test_snapshot_builder_materializes_seed_cluster_snapshot_and_shadow_decision
     assert materialized["social_event"]["event_type"] == "meme_phrase_seed"
     assert materialized["seed"]["seed_status"] == "snapshot_ready"
     assert [snapshot["horizon"] for snapshot in materialized["snapshots"]] == ["6h", "24h"]
-    assert materialized["snapshots"][0]["asset"].startswith("token:eth:")
+    assert materialized["snapshots"][0]["asset"] == asset_id
     assert materialized["clusters"][0]["pricedness"] != 0.35
     assert materialized["decisions"][0]["execution_mode"] == "shadow"
     assert materialized["decisions"][0]["signal"] == "LONG_SMALL"
@@ -180,7 +181,7 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
         migrate(conn)
         harness = HarnessRepository(conn)
         evidence = EvidenceRepository(conn)
-        tokens = TokenRepository(conn)
+        assets = AssetRepository(conn)
         event = make_token_event(
             "event-no-entry",
             symbol="BNB",
@@ -189,12 +190,13 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
             received_at_ms=5_000,
         )
         evidence.insert_event(event, is_watched=True)
-        tokens.upsert_ca(
-            event_id=event.event_id,
-            chain="eth",
+        assets.upsert_dex_asset(
+            chain="ethereum",
             address=BNB,
             symbol="BNB",
-            received_at_ms=event.received_at_ms,
+            observed_at_ms=event.received_at_ms,
+            event_id=event.event_id,
+            provider="test",
         )
         extraction = SocialEventExtraction(
             is_signal_event=True,
@@ -222,7 +224,7 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
             raw_response={"ok": True},
         )
 
-        materialized = HarnessSnapshotBuilder(harness, tokens=tokens).materialize(
+        materialized = HarnessSnapshotBuilder(harness, assets=assets).materialize(
             event=event.to_dict(),
             extraction=extraction,
             run_id="run-no-entry",
@@ -235,3 +237,28 @@ def test_snapshot_builder_requires_entry_market_before_freezing_resolved_asset(t
     assert materialized["seed"]["top_linked_symbols"] == ["BNB"]
     assert materialized["snapshots"] == []
     assert "missing_entry_market" in materialized["seed"]["risks"]
+
+
+def _upsert_asset_with_price(
+    assets: AssetRepository,
+    *,
+    symbol: str,
+    address: str,
+    observed_at_ms: int,
+    price: float,
+) -> str:
+    result = assets.upsert_dex_asset(
+        chain="ethereum",
+        address=address,
+        symbol=symbol,
+        observed_at_ms=observed_at_ms,
+        provider="test",
+    )
+    assets.insert_market_snapshot(
+        asset_id=str(result.asset["asset_id"]),
+        venue_id=str(result.venue["venue_id"]),
+        provider="test",
+        observed_at_ms=observed_at_ms,
+        price_usd=price,
+    )
+    return str(result.asset["asset_id"])

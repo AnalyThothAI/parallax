@@ -49,8 +49,8 @@ def test_okx_dex_client_normalizes_token_search_candidates():
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
         assert request.url.path == "/api/v6/dex/market/token/search"
-        assert request.url.params["keyword"] == "MIRROR"
-        assert request.url.params["chainIndex"] == "501,1"
+        assert request.url.params["search"] == "MIRROR"
+        assert request.url.params["chains"] == "501,1"
         return httpx.Response(
             200,
             json={
@@ -65,7 +65,7 @@ def test_okx_dex_client_normalizes_token_search_candidates():
                         "marketCap": "123456",
                         "liquidity": "45678",
                         "holders": "321",
-                        "communityRecognized": True,
+                        "tagList": {"communityRecognized": True},
                         "price": "0.12",
                     }
                 ],
@@ -87,6 +87,27 @@ def test_okx_dex_client_normalizes_token_search_candidates():
     assert candidates[0].liquidity_usd == 45678.0
     assert candidates[0].holders == 321
     assert candidates[0].community_recognized is True
+
+
+def test_okx_dex_client_signs_web3_requests_when_credentials_are_configured():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["OK-ACCESS-KEY"] == "api-key"
+        assert request.headers["OK-ACCESS-PASSPHRASE"] == "passphrase"
+        assert request.headers["OK-ACCESS-TIMESTAMP"]
+        assert request.headers["OK-ACCESS-SIGN"]
+        return httpx.Response(200, json={"code": "0", "data": []})
+
+    client = OkxDexClient(
+        base_url="https://web3.okx.com",
+        api_key="api-key",
+        secret_key="secret-key",
+        passphrase="passphrase",
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        assert client.search_tokens(query="mirror", chain_indexes=["501"]) == []
+    finally:
+        client.close()
 
 
 def test_okx_clients_ignore_malformed_rows_without_losing_good_rows():

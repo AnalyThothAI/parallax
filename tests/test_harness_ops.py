@@ -1,13 +1,12 @@
-from gmgn_twitter_intel.models import TokenSnapshot
 from gmgn_twitter_intel.pipeline.harness_ops import (
     attribute_harness_credits,
     materialize_market_ready_seeds,
     settle_harness_snapshots,
     update_harness_weights,
 )
+from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
-from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_api_http import make_event
@@ -20,27 +19,17 @@ def test_harness_ops_settle_attribute_and_update_weights(tmp_path):
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        tokens = TokenRepository(conn)
+        assets = AssetRepository(conn)
         harness = HarnessRepository(conn)
         evidence.insert_event(make_event("event-start", text="$DOG start", received_at_ms=1_000), is_watched=True)
         evidence.insert_event(make_event("event-exit", text="$DOG exit", received_at_ms=21_601_000), is_watched=True)
-        tokens.upsert_snapshot(
-            event_id="event-start",
-            snapshot=_snapshot(price=1.0),
-            received_at_ms=1_000,
-            source_channel="test",
-        )
-        tokens.upsert_snapshot(
-            event_id="event-exit",
-            snapshot=_snapshot(price=1.2),
-            received_at_ms=21_601_000,
-            source_channel="test",
-        )
+        asset_id = _upsert_asset_with_price(assets, observed_at_ms=1_000, price=1.0)
+        _insert_market_snapshot(assets, asset_id=asset_id, observed_at_ms=21_601_000, price=1.2)
         harness.create_snapshot(
             snapshot_id="snapshot-1",
             source_event_id="event-start",
             seed_id=None,
-            asset="DOG",
+            asset=asset_id,
             decision_time_ms=1_000,
             horizon="6h",
             combined_score=0.5,
@@ -59,10 +48,10 @@ def test_harness_ops_settle_attribute_and_update_weights(tmp_path):
             risks=[],
         )
 
-        settled = settle_harness_snapshots(harness=harness, tokens=tokens, horizon="6h", now_ms=22_700_000)
+        settled = settle_harness_snapshots(harness=harness, assets=assets, horizon="6h", now_ms=22_700_000)
         credited = attribute_harness_credits(harness=harness, horizon="6h")
         weighted = update_harness_weights(harness=harness)
-        duplicate_settle = settle_harness_snapshots(harness=harness, tokens=tokens, horizon="6h", now_ms=22_700_000)
+        duplicate_settle = settle_harness_snapshots(harness=harness, assets=assets, horizon="6h", now_ms=22_700_000)
         duplicate_credit = attribute_harness_credits(harness=harness, horizon="6h")
     finally:
         conn.close()
@@ -81,7 +70,7 @@ def test_harness_ops_skip_missing_market_without_fabricating_outcome(tmp_path):
     try:
         migrate(conn)
         harness = HarnessRepository(conn)
-        tokens = TokenRepository(conn)
+        assets = AssetRepository(conn)
         harness.create_snapshot(
             snapshot_id="snapshot-missing",
             source_event_id="event-missing",
@@ -98,7 +87,7 @@ def test_harness_ops_skip_missing_market_without_fabricating_outcome(tmp_path):
             risks=["unresolved_symbol"],
         )
 
-        settled = settle_harness_snapshots(harness=harness, tokens=tokens, horizon="6h", now_ms=22_700_000)
+        settled = settle_harness_snapshots(harness=harness, assets=assets, horizon="6h", now_ms=22_700_000)
         outcomes = harness.list_outcomes(window_ms=86_400_000, horizon="6h", limit=10)
         snapshot = harness.snapshot_by_id("snapshot-missing")
     finally:
@@ -116,20 +105,15 @@ def test_harness_ops_marks_missing_exit_history_as_terminal_data_gap(tmp_path):
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        tokens = TokenRepository(conn)
+        assets = AssetRepository(conn)
         harness = HarnessRepository(conn)
         evidence.insert_event(make_event("event-entry", text="$DOG start", received_at_ms=1_000), is_watched=True)
-        tokens.upsert_snapshot(
-            event_id="event-entry",
-            snapshot=_snapshot(price=1.0),
-            received_at_ms=1_000,
-            source_channel="test",
-        )
+        asset_id = _upsert_asset_with_price(assets, observed_at_ms=1_000, price=1.0)
         harness.create_snapshot(
             snapshot_id="snapshot-no-exit",
             source_event_id="event-entry",
             seed_id=None,
-            asset="DOG",
+            asset=asset_id,
             decision_time_ms=1_000,
             horizon="6h",
             combined_score=0.5,
@@ -141,7 +125,7 @@ def test_harness_ops_marks_missing_exit_history_as_terminal_data_gap(tmp_path):
             risks=[],
         )
 
-        settled = settle_harness_snapshots(harness=harness, tokens=tokens, horizon="6h", now_ms=22_700_000)
+        settled = settle_harness_snapshots(harness=harness, assets=assets, horizon="6h", now_ms=22_700_000)
         snapshot = harness.snapshot_by_id("snapshot-no-exit")
     finally:
         conn.close()
@@ -157,16 +141,11 @@ def test_harness_ops_materializes_market_ready_seed_after_entry_snapshot_arrives
     try:
         migrate(conn)
         evidence = EvidenceRepository(conn)
-        tokens = TokenRepository(conn)
+        assets = AssetRepository(conn)
         harness = HarnessRepository(conn)
         event = make_event("event-delayed-entry", text=f"$DOG start {ADDRESS}", received_at_ms=1_000)
         evidence.insert_event(event, is_watched=True)
-        tokens.upsert_snapshot(
-            event_id=event.event_id,
-            snapshot=_snapshot(price=1.0),
-            received_at_ms=event.received_at_ms,
-            source_channel="test",
-        )
+        _upsert_asset_with_price(assets, observed_at_ms=event.received_at_ms, price=1.0)
         harness.upsert_social_event_extraction(
             extraction_id="extract-delayed-entry",
             event_id=event.event_id,
@@ -214,7 +193,7 @@ def test_harness_ops_materializes_market_ready_seed_after_entry_snapshot_arrives
             risks=["missing_entry_market"],
         )
 
-        result = materialize_market_ready_seeds(harness=harness, evidence=evidence, tokens=tokens, limit=10)
+        result = materialize_market_ready_seeds(harness=harness, evidence=evidence, assets=assets, limit=10)
         snapshots = harness.snapshots_for_event(event.event_id)
     finally:
         conn.close()
@@ -224,15 +203,24 @@ def test_harness_ops_materializes_market_ready_seed_after_entry_snapshot_arrives
     assert {snapshot["horizon"] for snapshot in snapshots} == {"6h", "24h"}
 
 
-def _snapshot(*, price: float) -> TokenSnapshot:
-    return TokenSnapshot(
+def _upsert_asset_with_price(assets: AssetRepository, *, observed_at_ms: int, price: float) -> str:
+    result = assets.upsert_dex_asset(
+        chain="ethereum",
         address=ADDRESS,
-        chain="eth",
         symbol="DOG",
-        market_cap=1_000_000,
-        price=price,
-        previous_price=None,
-        icon_url=None,
-        trigger_type="ca",
-        raw={"price": price},
+        observed_at_ms=observed_at_ms,
+        provider="test",
+    )
+    _insert_market_snapshot(assets, asset_id=str(result.asset["asset_id"]), observed_at_ms=observed_at_ms, price=price)
+    return str(result.asset["asset_id"])
+
+
+def _insert_market_snapshot(assets: AssetRepository, *, asset_id: str, observed_at_ms: int, price: float) -> None:
+    venue_id = f"venue:dex:ethereum:{ADDRESS.lower()}"
+    assets.insert_market_snapshot(
+        asset_id=asset_id,
+        venue_id=venue_id,
+        provider="test",
+        observed_at_ms=observed_at_ms,
+        price_usd=price,
     )

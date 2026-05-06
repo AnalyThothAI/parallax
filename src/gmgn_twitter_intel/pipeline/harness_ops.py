@@ -20,7 +20,7 @@ def materialize_market_ready_seeds(
     *,
     harness,
     evidence,
-    tokens,
+    assets,
     limit: int = 100,
 ) -> dict[str, int]:
     rows = harness.conn.execute(
@@ -40,7 +40,7 @@ def materialize_market_ready_seeds(
         (max(0, int(limit)),),
     ).fetchall()
     counts = {"seeds_scanned": len(rows), "snapshots_written": 0, "still_blocked": 0, "errors": 0}
-    builder = HarnessSnapshotBuilder(harness, tokens=tokens)
+    builder = HarnessSnapshotBuilder(harness, assets=assets)
     for row in rows:
         try:
             social_event = harness._decode_social_event(dict(row))
@@ -68,7 +68,7 @@ def materialize_market_ready_seeds(
 def settle_harness_snapshots(
     *,
     harness,
-    tokens,
+    assets,
     horizon: str,
     now_ms: int | None = None,
     limit: int = 100,
@@ -100,14 +100,14 @@ def settle_harness_snapshots(
             if snapshot is None:
                 counts["errors"] += 1
                 continue
-            token_id = _token_id_for_asset(tokens, str(snapshot["asset"]))
+            asset_id = str(snapshot["asset"])
             decision_time_ms = int(snapshot["decision_time_ms"])
-            entry = tokens.market_snapshot_at_or_before(token_id, decision_time_ms)
-            exit_ = tokens.market_snapshot_at_or_before(token_id, decision_time_ms + horizon_ms)
-            entry_price = _float_or_none(entry.get("price")) if entry else None
-            exit_price = _float_or_none(exit_.get("price")) if exit_ else None
+            entry = assets.market_snapshot_at_or_before(asset_id, decision_time_ms)
+            exit_ = assets.market_snapshot_at_or_before(asset_id, decision_time_ms + horizon_ms)
+            entry_price = _float_or_none(entry.get("price_usd")) if entry else None
+            exit_price = _float_or_none(exit_.get("price_usd")) if exit_ else None
             gap_status = _market_gap_status(
-                token_id=token_id,
+                asset_id=asset_id,
                 entry=entry,
                 exit_=exit_,
                 entry_price=entry_price,
@@ -147,17 +147,17 @@ def settle_harness_snapshots(
 
 def _market_gap_status(
     *,
-    token_id: str | None,
+    asset_id: str | None,
     entry: dict[str, Any] | None,
     exit_: dict[str, Any] | None,
     entry_price: float | None,
     exit_price: float | None,
 ) -> str | None:
-    if token_id is None or entry is None or entry_price is None:
+    if asset_id is None or entry is None or entry_price is None:
         return "missing_market"
     if exit_ is None or exit_price is None:
         return "insufficient_market_data"
-    if int(exit_["received_at_ms"]) <= int(entry["received_at_ms"]):
+    if int(exit_["observed_at_ms"]) <= int(entry["observed_at_ms"]):
         return "insufficient_market_data"
     return None
 
@@ -316,13 +316,6 @@ def _credit_groups(harness, *, limit: int) -> list[dict[str, Any]]:
             }
         )
     return result
-
-
-def _token_id_for_asset(tokens, asset: str) -> str | None:
-    if asset.startswith("token:"):
-        return asset
-    aliases = tokens.aliases_for_symbol(asset)
-    return aliases[0] if len(aliases) == 1 else None
 
 
 def _outcome_exists(harness, snapshot_id: str) -> bool:

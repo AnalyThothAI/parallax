@@ -6,7 +6,6 @@ from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepositor
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -50,13 +49,11 @@ def open_repositories(tmp_path):
     entities = EntityRepository(conn)
     signals = SignalRepository(conn)
     enrichment = EnrichmentRepository(conn)
-    tokens = TokenRepository(conn)
     ingest = IngestService(
         evidence=evidence,
         entities=entities,
         signals=signals,
         enrichment=enrichment,
-        tokens=tokens,
     )
     return conn, evidence, enrichment, ingest
 

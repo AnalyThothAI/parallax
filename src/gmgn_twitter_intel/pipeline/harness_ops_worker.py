@@ -51,13 +51,13 @@ class HarnessOpsWorker:
             result["materialize"] = materialize_market_ready_seeds(
                 harness=repos.harness,
                 evidence=repos.evidence,
-                tokens=repos.tokens,
+                assets=repos.assets,
                 limit=self.batch_limit,
             )
             for horizon in HORIZONS:
                 result["settlement"][horizon] = settle_harness_snapshots(
                     harness=repos.harness,
-                    tokens=repos.tokens,
+                    assets=repos.assets,
                     horizon=horizon,
                     now_ms=now,
                     limit=self.batch_limit,

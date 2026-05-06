@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
+from gmgn_twitter_intel.api.ws import ClientSubscription, PublicWebSocketHub
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
@@ -108,36 +109,37 @@ def test_websocket_replay_includes_harness_state_for_social_event(tmp_path):
     with TestClient(app) as client:
         event = make_event("seed-event", "toly", text="Grok DOG is getting scary good")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        HarnessSnapshotBuilder(client.app.state.service.harness, tokens=client.app.state.service.tokens).materialize(
-            event=event.to_dict(),
-            extraction=SocialEventExtraction(
-                is_signal_event=True,
-                event_type="meme_phrase_seed",
-                source_action="posted",
-                subject="Grok DOG attention",
-                direction_hint="attention_positive",
-                attention_mechanism="meme_phrase",
-                impact_hint=0.8,
-                semantic_novelty_hint=0.75,
-                confidence=0.9,
-                anchor_terms=[AnchorTerm(term="Grok", role="meme_phrase", evidence="Grok")],
-                token_candidates=[
-                    SocialTokenCandidate(
-                        symbol="DOG",
-                        project_name=None,
-                        chain="eth",
-                        address=None,
-                        evidence="DOG",
-                        confidence=0.9,
-                    )
-                ],
-                semantic_risks=["public_stream_coverage"],
-                summary_zh="Grok DOG 形成 harness 注意力事件。",
-                raw_response={"ok": True},
-            ),
-            run_id="run-seed",
-            model_version="fake-model",
-        )
+        with client.app.state.service.repositories() as repos:
+            HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+                event=event.to_dict(),
+                extraction=SocialEventExtraction(
+                    is_signal_event=True,
+                    event_type="meme_phrase_seed",
+                    source_action="posted",
+                    subject="Grok DOG attention",
+                    direction_hint="attention_positive",
+                    attention_mechanism="meme_phrase",
+                    impact_hint=0.8,
+                    semantic_novelty_hint=0.75,
+                    confidence=0.9,
+                    anchor_terms=[AnchorTerm(term="Grok", role="meme_phrase", evidence="Grok")],
+                    token_candidates=[
+                        SocialTokenCandidate(
+                            symbol="DOG",
+                            project_name=None,
+                            chain="eth",
+                            address=None,
+                            evidence="DOG",
+                            confidence=0.9,
+                        )
+                    ],
+                    semantic_risks=["public_stream_coverage"],
+                    summary_zh="Grok DOG 形成 harness 注意力事件。",
+                    raw_response={"ok": True},
+                ),
+                run_id="run-seed",
+                model_version="fake-model",
+            )
 
         with client.websocket_connect("/ws") as ws:
             ws.send_json({"type": "auth", "token": "secret"})
@@ -215,6 +217,51 @@ def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
 
     assert message["type"] == "notification"
     assert message["notification"]["notification_id"] == notification["notification_id"]
+
+
+def test_websocket_symbol_filter_matches_asset_attributions_without_entities():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(websocket=None, symbols={"MIRROR"})
+    payload = {
+        "type": "event",
+        "event": {"event_id": "event-1", "author_handle": "alice"},
+        "entities": [],
+        "asset_attributions": [
+            {
+                "asset_id": "asset:dex:solana:mirror111",
+                "canonical_symbol": "MIRROR",
+                "venue_type": "dex",
+                "chain": "solana",
+                "address": "Mirror111111111111111111111111111111111111",
+            }
+        ],
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is True
+
+
+def test_websocket_ca_filter_matches_asset_attributions_without_entities():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(
+        websocket=None,
+        cas={("ethereum", "0x6982508145454ce325ddbe47a25d4ec3d2311933")},
+    )
+    payload = {
+        "type": "event",
+        "event": {"event_id": "event-1", "author_handle": "alice"},
+        "entities": [],
+        "asset_attributions": [
+            {
+                "asset_id": "asset:dex:ethereum:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                "canonical_symbol": "PEPE",
+                "venue_type": "dex",
+                "chain": "ethereum",
+                "address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            }
+        ],
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is True
 
 
 def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:

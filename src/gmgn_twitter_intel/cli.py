@@ -12,6 +12,9 @@ import uvicorn
 from .api.app import create_app
 from .logging_setup import setup_logging
 from .market.okx_cex_client import OkxCexClient
+from .market.okx_dex_client import OkxDexClient
+from .pipeline.asset_market_sync import sync_okx_cex_universe
+from .pipeline.asset_resolution_worker import AssetResolutionWorker
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_signal_settlement import settle_token_signal_snapshots
 from .retrieval.account_alert_service import AccountAlertService
@@ -231,6 +234,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate_projections.add_argument("--sample", type=int, default=100)
     sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
+    process_asset_resolution = ops_subcommands.add_parser(
+        "process-asset-resolution-jobs",
+        help="claim and process queued OKX DEX asset-resolution jobs",
+    )
+    process_asset_resolution.add_argument("--limit", type=int, default=50)
     resolve_asset_symbol = ops_subcommands.add_parser("resolve-asset-symbol", help="resolve or queue an asset symbol")
     resolve_asset_symbol.add_argument("--symbol", required=True)
     asset_resolution_health = ops_subcommands.add_parser(
@@ -683,7 +691,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     "ok": True,
                     "data": settle_harness_snapshots(
                         harness=harness,
-                        tokens=tokens,
+                        assets=assets,
                         horizon=args.horizon,
                         limit=args.limit,
                         now_ms=args.now_ms,
@@ -747,27 +755,42 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 base_url=settings.okx_cex_base_url,
                 timeout_seconds=settings.okx_timeout_seconds,
             )
-            written = 0
             try:
-                for inst_type in inst_types:
-                    for instrument in client.instruments(inst_type=inst_type):
-                        if instrument.state.lower() not in {"live", "preopen", "test"}:
-                            continue
-                        assets.upsert_cex_instrument(
-                            exchange="okx",
-                            inst_type=instrument.inst_type,
-                            inst_id=instrument.inst_id,
-                            base_symbol=instrument.base_symbol,
-                            quote_symbol=instrument.quote_symbol,
-                            observed_at_ms=_now_ms(),
-                            source_payload_hash=None,
-                            commit=False,
-                        )
-                        written += 1
-                assets.conn.commit()
+                data = sync_okx_cex_universe(
+                    assets=assets,
+                    client=client,
+                    inst_types=inst_types,
+                    observed_at_ms=_now_ms(),
+                )
             finally:
                 client.close()
-            _emit({"ok": True, "data": {"inst_types": inst_types, "venues_written": written}}, stdout)
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "process-asset-resolution-jobs":
+            client = OkxDexClient(
+                base_url=settings.okx_dex_base_url,
+                api_key=settings.okx_dex_api_key,
+                secret_key=settings.okx_dex_secret_key,
+                passphrase=settings.okx_dex_passphrase,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            worker = AssetResolutionWorker(
+                assets=assets,
+                client=client,
+                chain_indexes=settings.okx_dex_chain_indexes,
+                poll_interval=0,
+            )
+            results = []
+            try:
+                for _ in range(max(0, int(args.limit))):
+                    result = worker.process_one(now_ms=_now_ms())
+                    results.append(result)
+                    if not result.get("processed"):
+                        break
+            finally:
+                worker.close()
+            _emit({"ok": True, "data": {"items": results}}, stdout)
             return 0
 
         if command == "ops" and args.ops_command == "resolve-asset-symbol":

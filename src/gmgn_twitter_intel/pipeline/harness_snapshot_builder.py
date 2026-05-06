@@ -20,9 +20,9 @@ HORIZONS = ("6h", "24h")
 
 
 class HarnessSnapshotBuilder:
-    def __init__(self, harness, *, tokens=None):
+    def __init__(self, harness, *, assets=None):
         self.harness = harness
-        self.tokens = tokens
+        self.assets = assets
 
     def materialize(
         self,
@@ -75,12 +75,18 @@ class HarnessSnapshotBuilder:
             return materialized
 
         direction = _direction(extraction.direction_hint)
-        resolved_assets = _resolved_candidate_assets(extraction.token_candidates, self.tokens)
+        resolved_assets = _resolved_candidate_assets(
+            extraction.token_candidates,
+            self.assets,
+            event_id=event_id,
+            received_at_ms=received_at_ms,
+            commit=commit,
+        )
         eligible_assets = [
             asset
             for asset in resolved_assets
             if direction != 0
-            and _entry_market_ready(self.tokens, token_id=str(asset["asset"]), received_at_ms=received_at_ms)
+            and _entry_market_ready(self.assets, asset_id=str(asset["asset"]), received_at_ms=received_at_ms)
         ]
         seed_status = _seed_status(
             resolved_count=len(resolved_assets),
@@ -196,15 +202,12 @@ class HarnessSnapshotBuilder:
         )
 
     def _pricedness(self, *, asset: str, received_at_ms: int) -> float:
-        if self.tokens is None:
+        if self.assets is None:
             return 0.0
-        token_id = _token_id_for_asset(self.tokens, asset)
-        if not token_id:
-            return 0.0
-        current = self.tokens.market_snapshot_at_or_before(token_id, received_at_ms)
-        baseline = self.tokens.market_snapshot_at_or_before(token_id, max(0, received_at_ms - 30 * 60_000))
-        current_price = _float_or_none(current.get("price")) if current else None
-        baseline_price = _float_or_none(baseline.get("price")) if baseline else None
+        current = self.assets.market_snapshot_at_or_before(asset, received_at_ms)
+        baseline = self.assets.market_snapshot_at_or_before(asset, max(0, received_at_ms - 30 * 60_000))
+        current_price = _float_or_none(current.get("price_usd")) if current else None
+        baseline_price = _float_or_none(baseline.get("price_usd")) if baseline else None
         if current_price is None or not baseline_price:
             return 0.0
         pre_move = abs((current_price - baseline_price) / baseline_price)
@@ -273,64 +276,88 @@ class HarnessSnapshotBuilder:
         return snapshot, decision
 
 
-def _resolved_candidate_assets(candidates: list[SocialTokenCandidate], tokens) -> list[dict[str, str]]:
-    if tokens is None:
+def _resolved_candidate_assets(
+    candidates: list[SocialTokenCandidate],
+    assets,
+    *,
+    event_id: str,
+    received_at_ms: int,
+    commit: bool,
+) -> list[dict[str, str]]:
+    if assets is None:
         return []
     resolved: list[dict[str, str]] = []
     seen: set[str] = set()
     for candidate in candidates:
-        token_id = _token_id_for_candidate(tokens, candidate)
-        if token_id is None or token_id in seen:
+        asset = _asset_for_candidate(
+            assets,
+            candidate,
+            event_id=event_id,
+            received_at_ms=received_at_ms,
+            commit=commit,
+        )
+        if asset is None or asset["asset_id"] in seen:
             continue
-        token = tokens.get_token(token_id)
-        symbol = str((token or {}).get("symbol") or candidate.symbol or candidate.project_name or token_id)
+        symbol = str(asset.get("canonical_symbol") or candidate.symbol or candidate.project_name or asset["asset_id"])
         display_symbol = symbol.strip().lstrip("$").upper() if symbol.isascii() else symbol
-        resolved.append({"asset": token_id, "symbol": display_symbol})
-        seen.add(token_id)
+        resolved.append({"asset": str(asset["asset_id"]), "symbol": display_symbol})
+        seen.add(str(asset["asset_id"]))
         if len(resolved) >= 3:
             break
     return resolved
 
 
-def _token_id_for_candidate(tokens, candidate: SocialTokenCandidate) -> str | None:
+def _asset_for_candidate(
+    assets,
+    candidate: SocialTokenCandidate,
+    *,
+    event_id: str,
+    received_at_ms: int,
+    commit: bool,
+) -> dict[str, Any] | None:
     if candidate.address and candidate.chain:
-        row = tokens.conn.execute(
-            f"""
-            SELECT token_id
-            FROM tokens
-            WHERE lower(address) = lower(%s)
-              AND chain IN ({','.join('%s' for _ in _candidate_chains(candidate.chain))})
-            ORDER BY token_id
-            LIMIT 1
-            """,
-            (candidate.address, *_candidate_chains(candidate.chain)),
-        ).fetchone()
-        if row:
-            return str(row["token_id"])
+        result = assets.upsert_dex_asset(
+            chain=_asset_chain(candidate.chain),
+            address=candidate.address,
+            symbol=candidate.symbol or candidate.project_name or candidate.address,
+            observed_at_ms=received_at_ms,
+            event_id=event_id,
+            provider="social_event_extraction",
+            commit=commit,
+        )
+        return result.asset
     if candidate.symbol:
-        aliases = tokens.aliases_for_symbol(candidate.symbol)
-        if len(aliases) == 1:
-            return aliases[0]
+        candidates = _real_candidates(assets.candidates_for_symbol(candidate.symbol))
+        asset_ids = {str(row["asset_id"]): row for row in candidates if row.get("asset_id")}
+        if len(asset_ids) == 1:
+            return next(iter(asset_ids.values()))
     return None
 
 
-def _candidate_chains(chain: str) -> tuple[str, ...]:
+def _asset_chain(chain: str) -> str:
     normalized = chain.strip().lower()
     aliases = {
-        "ethereum": "eth",
+        "eth": "ethereum",
         "sol": "solana",
         "bnb": "bsc",
     }
-    primary = aliases.get(normalized, normalized)
-    values = (primary, normalized)
-    return tuple(dict.fromkeys(value for value in values if value))
+    return aliases.get(normalized, normalized)
 
 
-def _entry_market_ready(tokens, *, token_id: str, received_at_ms: int) -> bool:
-    if tokens is None:
+def _real_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        candidate
+        for candidate in candidates
+        if str(candidate.get("identity_status") or "") == "resolved"
+        and not str(candidate.get("asset_id") or "").startswith(("asset:unresolved", "asset:ambiguous"))
+    ]
+
+
+def _entry_market_ready(assets, *, asset_id: str, received_at_ms: int) -> bool:
+    if assets is None:
         return False
-    snapshot = tokens.market_snapshot_at_or_before(token_id, received_at_ms)
-    price = _float_or_none(snapshot.get("price")) if snapshot else None
+    snapshot = assets.market_snapshot_at_or_before(asset_id, received_at_ms)
+    price = _float_or_none(snapshot.get("price_usd")) if snapshot else None
     return price is not None
 
 
@@ -386,13 +413,6 @@ def _author_handle(event: dict[str, Any]) -> str | None:
     if isinstance(author, dict) and author.get("handle"):
         return str(author["handle"]).strip().lstrip("@").lower()
     return None
-
-
-def _token_id_for_asset(tokens, asset: str) -> str | None:
-    if asset.startswith("token:"):
-        return asset
-    aliases = tokens.aliases_for_symbol(asset)
-    return aliases[0] if len(aliases) == 1 else None
 
 
 def _float_or_none(value: Any) -> float | None:

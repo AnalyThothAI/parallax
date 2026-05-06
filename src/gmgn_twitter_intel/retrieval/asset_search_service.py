@@ -38,6 +38,14 @@ class AssetSearchService:
                 watched_only=watched_only,
                 query=parsed_query,
             )
+        if parsed.kind == "ca":
+            return self._search_ca(
+                chain=parsed.chain,
+                address=parsed.ca or "",
+                limit=requested_limit,
+                watched_only=watched_only,
+                query=parsed_query,
+            )
         if parsed.kind == "handle":
             events = self.evidence.recent_events(
                 limit=requested_limit,
@@ -73,8 +81,36 @@ class AssetSearchService:
         watched_only: bool,
         query: dict[str, Any],
     ) -> AssetSearchResults:
-        candidates = self.assets.candidates_for_symbol(symbol)
+        candidates = _effective_candidates(self.assets.candidates_for_symbol(symbol))
         events = self.assets.events_for_symbol_mentions(symbol, limit=limit, watched_only=watched_only)
+        status = _resolution_status(candidates)
+        return AssetSearchResults(
+            ok=True,
+            items=[_item(event, "asset_mention", 100.0) for event in events],
+            query=query,
+            resolution={"status": status, "candidates": candidates},
+            candidates=candidates,
+            total_count=len(events),
+            returned_count=len(events),
+            has_more=False,
+        )
+
+    def _search_ca(
+        self,
+        *,
+        chain: str | None,
+        address: str,
+        limit: int,
+        watched_only: bool,
+        query: dict[str, Any],
+    ) -> AssetSearchResults:
+        candidates = self.assets.candidates_for_ca(chain=chain, address=address)
+        events = self.assets.events_for_ca_mentions(
+            chain=chain,
+            address=address,
+            limit=limit,
+            watched_only=watched_only,
+        )
         status = _resolution_status(candidates)
         return AssetSearchResults(
             ok=True,
@@ -99,6 +135,26 @@ def _resolution_status(candidates: list[dict[str, Any]]) -> str:
     if len(asset_ids) == 1:
         return "resolved"
     return "ambiguous"
+
+
+def _effective_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    real = [candidate for candidate in candidates if _is_real_candidate(candidate)]
+    cex = [candidate for candidate in real if candidate.get("venue_type") == "cex"]
+    cex_asset_ids = {str(candidate.get("asset_id")) for candidate in cex if candidate.get("asset_id")}
+    if len(cex_asset_ids) == 1:
+        return cex
+    return real or candidates
+
+
+def _is_real_candidate(candidate: dict[str, Any]) -> bool:
+    asset_id = str(candidate.get("asset_id") or "")
+    asset_type = str(candidate.get("asset_type") or "")
+    identity_status = str(candidate.get("identity_status") or "")
+    if identity_status in {"unresolved", "ambiguous"}:
+        return False
+    if asset_type.startswith(("unresolved", "ambiguous")):
+        return False
+    return not asset_id.startswith(("asset:unresolved", "asset:ambiguous"))
 
 
 def _item(event: dict[str, Any], match_type: str, score: float) -> dict[str, Any]:

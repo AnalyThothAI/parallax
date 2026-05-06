@@ -34,16 +34,12 @@ class IngestService:
         entities: EntityRepository,
         signals: SignalRepository,
         enrichment,
-        tokens=None,
         assets: AssetRepository | None = None,
-        market_observations=None,
     ):
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
         self.enrichment = enrichment
-        self.tokens = tokens
-        self.market_observations = market_observations
         self.assets = assets or AssetRepository(evidence.conn)
         self.asset_resolver = AssetResolver(self.assets)
 

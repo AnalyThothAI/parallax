@@ -25,14 +25,15 @@ class AssetFlowService:
     ) -> dict[str, Any]:
         resolved_now_ms = int(now_ms or time.time() * 1000)
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
-        rows = self.assets.recent_asset_attributions(
+        rows = self.assets.asset_flow_rows(
             since_ms=resolved_now_ms - window_ms,
             watched_only=scope == "matched",
-            limit=max(1000, int(limit) * 50),
+            limit=max(0, int(limit)),
+            now_ms=resolved_now_ms,
         )
-        grouped = _group_rows(rows, window_ms=window_ms, now_ms=resolved_now_ms)
-        resolved = [payload for payload in grouped.values() if payload["_lane"] == "resolved"]
-        attention = [payload for payload in grouped.values() if payload["_lane"] == "attention"]
+        payloads = [_initial_payload(row) for row in rows]
+        resolved = [payload for payload in payloads if payload["_lane"] == "resolved"]
+        attention = [payload for payload in payloads if payload["_lane"] == "attention"]
         resolved.sort(key=_sort_key)
         attention.sort(key=_sort_key)
         return {
@@ -42,61 +43,36 @@ class AssetFlowService:
                 "status": "fresh",
                 "version": "asset-flow-v1",
                 "source": "asset_attributions",
-                "source_max_received_at_ms": max((int(row.get("received_at_ms") or 0) for row in rows), default=0),
+                "source_max_received_at_ms": max(
+                    (int(row.get("source_max_received_at_ms") or row.get("received_at_ms") or 0) for row in rows),
+                    default=0,
+                ),
                 "computed_at_ms": resolved_now_ms,
             },
         }
 
 
-def _group_rows(rows: list[dict[str, Any]], *, window_ms: int, now_ms: int) -> dict[str, dict[str, Any]]:
-    grouped: dict[str, dict[str, Any]] = {}
-    five_min_ago = now_ms - WINDOW_MS["5m"]
-    one_hour_ago = now_ms - WINDOW_MS["1h"]
-    for row in rows:
-        asset_id = str(row["asset_id"])
-        payload = grouped.setdefault(asset_id, _initial_payload(row))
-        decision_time_ms = int(row.get("decision_time_ms") or 0)
-        payload["_latest_seen_ms"] = max(payload["_latest_seen_ms"], decision_time_ms)
-        event_id = str(row.get("event_id") or row.get("attribution_id") or "")
-        if event_id in payload["_events"]:
-            continue
-        payload["_events"].add(event_id)
-        payload["_authors"].add(str(row.get("author_handle") or ""))
-        if row.get("is_watched"):
-            payload["attention"]["watched_mentions"] += 1
-        if decision_time_ms >= five_min_ago:
-            payload["attention"]["mentions_5m"] += 1
-        if decision_time_ms >= one_hour_ago:
-            payload["attention"]["mentions_1h"] += 1
-        payload["attention"]["mentions_window"] += 1
-    for payload in grouped.values():
-        payload["attention"]["unique_authors"] = len({author for author in payload["_authors"] if author})
-        payload["attention"]["latest_seen_ms"] = payload["_latest_seen_ms"] or None
-    return grouped
-
-
 def _initial_payload(row: dict[str, Any]) -> dict[str, Any]:
     lane = "resolved" if _is_resolved_row(row) else "attention"
     status = _resolution_status(row)
+    latest_seen_ms = int(row.get("latest_seen_ms") or row.get("decision_time_ms") or 0)
     return {
         "_lane": lane,
-        "_events": set(),
-        "_authors": set(),
-        "_latest_seen_ms": 0,
+        "_latest_seen_ms": latest_seen_ms,
         "asset": {
             "asset_id": row["asset_id"],
             "symbol": row.get("canonical_symbol"),
             "asset_type": row.get("asset_type"),
-            "identity_status": row.get("identity_status"),
+            "identity_status": row.get("asset_identity_status") or row.get("identity_status"),
         },
         "primary_venue": _venue(row) if row.get("venue_id") else None,
         "attention": {
-            "mentions_5m": 0,
-            "mentions_1h": 0,
-            "mentions_window": 0,
-            "unique_authors": 0,
-            "watched_mentions": 0,
-            "latest_seen_ms": None,
+            "mentions_5m": int(row.get("mentions_5m") or 0),
+            "mentions_1h": int(row.get("mentions_1h") or 0),
+            "mentions_window": int(row.get("mentions_window") or 0),
+            "unique_authors": int(row.get("unique_authors") or 0),
+            "watched_mentions": int(row.get("watched_mentions") or 0),
+            "latest_seen_ms": latest_seen_ms or None,
         },
         "resolution": {
             "status": status,
