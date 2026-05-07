@@ -24,7 +24,10 @@ class TokenRadarProjection:
         since_ms = computed_at_ms - WINDOW_MS.get(window, WINDOW_MS["1h"])
         source_rows = self._source_rows(since_ms=since_ms, scope=scope)
         grouped = self._group_rows(source_rows)
-        projected = [_project_group(group, now_ms=computed_at_ms) for group in grouped.values()]
+        projected = [
+            _project_group(group, now_ms=computed_at_ms, window=window, scope=scope)
+            for group in grouped.values()
+        ]
         resolved = [row for row in projected if row["lane"] == "resolved"]
         attention = [row for row in projected if row["lane"] == "attention"]
         resolved.sort(key=_rank_key)
@@ -127,7 +130,7 @@ class TokenRadarProjection:
         return grouped
 
 
-def _project_group(rows: list[dict[str, Any]], *, now_ms: int) -> dict[str, Any]:
+def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scope: str) -> dict[str, Any]:
     latest = max(rows, key=lambda row: int(row.get("received_at_ms") or 0))
     event_ids = sorted({str(row["event_id"]) for row in rows})
     authors = {str(row.get("author_handle") or "") for row in rows if row.get("author_handle")}
@@ -144,7 +147,13 @@ def _project_group(rows: list[dict[str, Any]], *, now_ms: int) -> dict[str, Any]
     score = _score(mentions=len(event_ids), authors=len(authors), watched=watched, resolved=resolved, market=market)
     decision = _decision(score=score, resolved=resolved)
     return {
-        "row_id": _stable_id("token-radar-row", str(latest.get("intent_id")), str(now_ms)),
+        "row_id": _stable_id(
+            "token-radar-row",
+            window,
+            scope,
+            str(latest.get("resolved_asset_id") or latest.get("intent_id")),
+            str(now_ms),
+        ),
         "source_max_received_at_ms": latest_seen_ms,
         "lane": lane,
         "rank": 0,
