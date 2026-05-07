@@ -315,7 +315,6 @@ class DeterministicTokenResolver:
                 reason_codes=["NO_MARKET_DOMINANT_CHAIN_ASSET"],
                 lookup_keys=lookup_keys,
                 candidate_ids=candidate_ids,
-                discovery_tasks=[DiscoveryTaskInput("dex_symbol_lookup", f"symbol:{symbol}", {"symbol": symbol})],
                 decision_time_ms=decision_time_ms,
             )
         return _resolution(

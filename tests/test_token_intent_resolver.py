@@ -53,6 +53,42 @@ def test_token_intent_resolver_resolves_base_ca_as_exact_asset():
     assert decision.reason_codes == ["CHAIN_ADDRESS_EXACT"]
 
 
+def test_token_intent_resolver_does_not_rediscover_ambiguous_symbol_with_candidates():
+    registry = FakeRegistry(
+        symbol_assets={
+            "SATO": [
+                {
+                    "asset_id": "asset:eip155:1:erc20:0x1111111111111111111111111111111111111111",
+                    "observed_at_ms": 1_778_145_000_000,
+                    "market_cap_usd": 1_000_000,
+                    "liquidity_usd": 100_000,
+                    "holders": 1_000,
+                },
+                {
+                    "asset_id": "asset:eip155:8453:erc20:0x2222222222222222222222222222222222222222",
+                    "observed_at_ms": 1_778_145_000_000,
+                    "market_cap_usd": 900_000,
+                    "liquidity_usd": 100_000,
+                    "holders": 1_000,
+                },
+            ]
+        }
+    )
+    evidence = _evidence("$SATO")
+    intent = build_token_intents(event_id="event-sato", evidence=evidence, created_at_ms=1_778_145_100_000)[0]
+
+    decision = TokenIntentResolver(registry=registry, resolutions=FakeResolutions()).resolve(
+        intent,
+        evidence,
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert decision.resolution_status == "AMBIGUOUS"
+    assert decision.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
+    assert len(decision.candidate_ids) == 2
+    assert decision.discovery_tasks == []
+
+
 def _evidence(text: str):
     entities = extract_entities_from_surfaces([TextSurface("primary", text)])
     return build_token_evidence(event_id="event-pepe", entities=entities, token_snapshot=None, created_at_ms=1)

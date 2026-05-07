@@ -32,13 +32,21 @@ class DiscoveryRepository:
               payload_json = discovery_tasks.payload_json,
               status = CASE
                 WHEN discovery_tasks.status = 'running' THEN 'running'
+                WHEN discovery_tasks.status = 'failed' THEN 'failed'
                 ELSE 'pending'
               END,
               last_error = CASE
                 WHEN discovery_tasks.status = 'running' THEN discovery_tasks.last_error
+                WHEN discovery_tasks.status = 'failed' THEN discovery_tasks.last_error
                 ELSE NULL
               END,
-              next_run_at_ms = LEAST(discovery_tasks.next_run_at_ms, excluded.next_run_at_ms),
+              next_run_at_ms = CASE
+                WHEN discovery_tasks.status = 'pending'
+                  THEN LEAST(discovery_tasks.next_run_at_ms, excluded.next_run_at_ms)
+                WHEN discovery_tasks.status IN ('running', 'failed')
+                  THEN discovery_tasks.next_run_at_ms
+                ELSE excluded.next_run_at_ms
+              END,
               updated_at_ms = excluded.updated_at_ms
             """,
             (

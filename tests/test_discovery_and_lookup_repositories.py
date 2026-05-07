@@ -86,6 +86,40 @@ def test_discovery_repository_claims_completes_and_retries_due_tasks(tmp_path):
     assert retry[0]["attempt_count"] == 2
 
 
+def test_discovery_reenqueue_done_task_uses_new_due_time(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        discovery = DiscoveryRepository(conn)
+        task = discovery.enqueue(
+            task_type="dex_symbol_lookup",
+            query_key="symbol:SATO",
+            payload={"symbol": "SATO"},
+            next_run_at_ms=1_000,
+            created_at_ms=1_000,
+        )
+        claimed = discovery.claim_due(now_ms=1_000, limit=1)
+        discovery.complete(task_id=claimed[0]["task_id"], updated_at_ms=1_100)
+
+        requeued = discovery.enqueue(
+            task_type="dex_symbol_lookup",
+            query_key="symbol:SATO",
+            payload={"symbol": "SATO"},
+            next_run_at_ms=9_000,
+            created_at_ms=9_000,
+        )
+        not_due = discovery.claim_due(now_ms=8_000, limit=1)
+        due = discovery.claim_due(now_ms=9_000, limit=1)
+    finally:
+        conn.close()
+
+    assert task["task_id"] == requeued["task_id"]
+    assert requeued["status"] == "pending"
+    assert requeued["next_run_at_ms"] == 9_000
+    assert not_due == []
+    assert due[0]["query_key"] == "symbol:SATO"
+
+
 def _insert_event_intent_and_evidence(conn):
     from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 

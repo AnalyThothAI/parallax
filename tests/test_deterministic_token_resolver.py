@@ -171,7 +171,7 @@ def test_symbol_without_dominance_returns_ambiguous_with_candidates():
     assert result.target_type is None
     assert result.target_id is None
     assert result.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
-    assert result.discovery_tasks[0].task_type == "dex_symbol_lookup"
+    assert result.discovery_tasks == []
 
 
 def test_chain_address_is_exact_asset_and_beats_symbol():
