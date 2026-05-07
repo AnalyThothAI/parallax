@@ -4,6 +4,7 @@ from pydantic import ValidationError
 
 from gmgn_twitter_intel.runtime_paths import app_home, config_path
 from gmgn_twitter_intel.settings import load_settings, write_default_config
+from gmgn_twitter_intel.storage.enrichment_repository import RUNNING_TIMEOUT_MS
 
 
 def write_config(home, payload):
@@ -34,6 +35,8 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.postgres_password_file == tmp_path / ".gmgn-twitter-intel" / "postgres_password"
     assert settings.log_file == tmp_path / ".gmgn-twitter-intel" / "logs" / "gmgn-twitter-intel.log"
     assert settings.llm_configured is False
+    assert settings.llm_timeout_seconds == 120
+    assert settings.llm_timeout_seconds * 1000 < RUNNING_TIMEOUT_MS
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
@@ -85,6 +88,10 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 "base_url": "https://example.test/v1/",
                 "timeout_seconds": 7,
                 "enrichment_poll_interval": 0.5,
+                "enrichment_concurrency": 3,
+                "trace_enabled": True,
+                "trace_api_key": "sk-trace",
+                "trace_include_sensitive_data": False,
             },
         },
     )
@@ -102,6 +109,11 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.llm_base_url == "https://example.test/v1"
     assert settings.llm_timeout_seconds == 7
     assert settings.enrichment_poll_interval == 0.5
+    assert settings.enrichment_concurrency == 3
+    assert settings.llm_trace_enabled is True
+    assert settings.llm_trace_api_key == "sk-trace"
+    assert settings.llm_trace_export_configured is True
+    assert settings.llm_trace_include_sensitive_data is False
 
 
 def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):

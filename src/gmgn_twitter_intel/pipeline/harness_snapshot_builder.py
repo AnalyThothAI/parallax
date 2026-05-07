@@ -6,11 +6,20 @@ from dataclasses import asdict
 from typing import Any
 
 from .harness_scoring import base_event_score, combined_score, event_score, policy_signal, shadow_signal
-from .social_event_extraction import SocialEventExtraction, SocialTokenCandidate
+from .social_event_extraction import (
+    PROMPT_VERSION as EXTRACTION_PROMPT_VERSION,
+)
+from .social_event_extraction import (
+    SCHEMA_VERSION as EXTRACTION_SCHEMA_VERSION,
+)
+from .social_event_extraction import (
+    SocialEventExtraction,
+    SocialTokenCandidate,
+)
 
-SCHEMA_VERSION = "social-event-v2"
+SCHEMA_VERSION = EXTRACTION_SCHEMA_VERSION
 CONFIG_VERSION = "social-harness-mvp-v1"
-PROMPT_VERSION = "social-event-extractor-v2"
+PROMPT_VERSION = EXTRACTION_PROMPT_VERSION
 SCORING_VERSION = "harness-score-v1"
 WEIGHT_VERSION = "report-only-v1"
 POLICY_VERSION = "shadow-policy-v1"

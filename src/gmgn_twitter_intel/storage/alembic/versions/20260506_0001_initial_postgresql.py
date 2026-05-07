@@ -315,6 +315,18 @@ CREATE TABLE IF NOT EXISTS model_runs (
   event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
   provider TEXT NOT NULL,
   model TEXT NOT NULL,
+  backend TEXT NOT NULL DEFAULT 'openai_agents_sdk',
+  sdk_trace_id TEXT,
+  workflow_name TEXT,
+  agent_name TEXT,
+  artifact_version_hash TEXT,
+  prompt_version TEXT,
+  schema_version TEXT,
+  input_hash TEXT,
+  output_hash TEXT,
+  trace_metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  usage_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  latency_ms BIGINT NOT NULL DEFAULT 0,
   status TEXT NOT NULL,
   request_json JSONB NOT NULL,
   response_json JSONB,
@@ -690,28 +702,11 @@ CREATE TABLE IF NOT EXISTS token_score_evaluations (
 CREATE INDEX IF NOT EXISTS idx_token_score_evaluations_lookup
   ON token_score_evaluations(horizon, "window", scope, score_version);
 
-CREATE TABLE IF NOT EXISTS llm_enrichment_labels (
-  label_id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
-  run_id TEXT,
-  schema_version TEXT NOT NULL,
-  model_version TEXT NOT NULL,
-  label_type TEXT NOT NULL,
-  label_json JSONB NOT NULL,
-  confidence DOUBLE PRECISION NOT NULL,
-  evidence_event_ids_json JSONB NOT NULL,
-  created_at_ms BIGINT NOT NULL,
-  UNIQUE(event_id, schema_version, label_type)
-);
-
-CREATE INDEX IF NOT EXISTS idx_llm_enrichment_labels_event
-  ON llm_enrichment_labels(event_id, schema_version);
     """)
 
 
 def downgrade() -> None:
     op.execute(r"""
-DROP TABLE IF EXISTS llm_enrichment_labels CASCADE;
 DROP TABLE IF EXISTS token_score_evaluations CASCADE;
 DROP TABLE IF EXISTS token_signal_outcomes CASCADE;
 DROP TABLE IF EXISTS token_signal_snapshots CASCADE;

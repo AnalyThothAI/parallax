@@ -64,7 +64,7 @@ def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
 
     assert status["ok"] is True
     assert status["probe"] == "postgres_liveness"
-    assert status["migration_version"] == "20260506_0003"
+    assert status["migration_version"] == "20260507_0010"
 
 
 def test_runtime_uses_pool_sessions_without_pinned_connections(tmp_path):

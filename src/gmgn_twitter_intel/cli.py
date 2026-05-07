@@ -130,7 +130,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subcommands.add_parser("harness-health", help="print harness health summary")
 
-    enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect LLM enrichment job backlog")
+    enrichment_jobs = subcommands.add_parser("enrichment-jobs", help="inspect social-event extraction job backlog")
     enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
     enrichment_jobs.add_argument("--limit", type=int, default=50)
 
@@ -292,6 +292,11 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                         "model": settings.llm_model,
                         "base_url": settings.llm_base_url,
                         "poll_interval": settings.enrichment_poll_interval,
+                        "concurrency": settings.enrichment_concurrency,
+                        "backend": "openai_agents_sdk",
+                        "trace_enabled": settings.llm_trace_enabled,
+                        "trace_export_configured": settings.llm_trace_export_configured,
+                        "trace_include_sensitive_data": settings.llm_trace_include_sensitive_data,
                     },
                     "providers": {
                         "okx": {

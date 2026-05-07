@@ -19,6 +19,9 @@ TOKEN_RADAR_V3_MIGRATION = Path(
 TOKEN_RADAR_V4_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py"
 )
+AGENTS_SDK_AUDIT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -36,6 +39,7 @@ def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:
     assert "pragma" not in text
     assert "fts5" not in text
     assert "virtual table" not in text
+    assert "llm_enrichment_labels" not in text
 
 
 def test_queue_claim_migration_indexes_postgres_worker_paths() -> None:
@@ -51,6 +55,17 @@ def test_enrichment_stale_running_migration_indexes_postgres_recovery_path() -> 
 
     assert "idx_enrichment_jobs_claim" in text
     assert "WHERE status IN ('pending', 'failed', 'running')" in text
+
+
+def test_agents_sdk_audit_migration_adds_traceable_model_run_columns() -> None:
+    text = AGENTS_SDK_AUDIT_MIGRATION.read_text()
+
+    assert "sdk_trace_id" in text
+    assert "workflow_name" in text
+    assert "artifact_version_hash" in text
+    assert "trace_metadata_json JSONB" in text
+    assert "idx_model_runs_trace" in text
+    assert "DROP TABLE IF EXISTS llm_enrichment_labels" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

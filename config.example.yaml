@@ -33,8 +33,12 @@ llm:
   api_key:
   model:
   base_url: "https://api.openai.com/v1"
-  timeout_seconds: 20
+  timeout_seconds: 120
   enrichment_poll_interval: 2
+  enrichment_concurrency: 4
+  trace_enabled: true
+  trace_api_key:
+  trace_include_sensitive_data: false
 
 gmgn:
   api_key:

@@ -8,9 +8,10 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from ..pipeline.social_event_extraction import SocialEventExtraction
+from ..pipeline.watched_event_gate import should_enqueue_watched_social_event_text
 from .postgres_client import transaction
 
-RUNNING_TIMEOUT_MS = 120_000
+RUNNING_TIMEOUT_MS = 300_000
 WATCHED_SOCIAL_EVENT_JOB_TYPE = "watched_social_event_extraction"
 
 
@@ -65,29 +66,44 @@ class EnrichmentRepository:
             """
             UPDATE enrichment_jobs
             SET status = 'dead',
+                last_error = 'legacy_job_type_retired',
+                updated_at_ms = %s
+            WHERE job_type <> %s
+              AND status IN ('pending', 'failed', 'running')
+            """,
+            (now, WATCHED_SOCIAL_EVENT_JOB_TYPE),
+        )
+        self.conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET status = 'dead',
                 last_error = 'stale_running_timeout',
                 updated_at_ms = %s
             WHERE status = 'running'
+              AND job_type = %s
               AND updated_at_ms < %s
               AND attempt_count >= max_attempts
             """,
-            (now, stale_before),
+            (now, WATCHED_SOCIAL_EVENT_JOB_TYPE, stale_before),
         )
         row = self.conn.execute(
             """
             WITH picked AS (
               SELECT job_id, status AS picked_status
               FROM enrichment_jobs
-              WHERE (
-                status IN ('pending', 'failed')
-                AND attempt_count < max_attempts
-                AND next_run_at_ms <= %s
-              )
-              OR (
-                status = 'running'
-                AND updated_at_ms < %s
-                AND attempt_count < max_attempts
-              )
+              WHERE job_type = %s
+                AND (
+                  (
+                    status IN ('pending', 'failed')
+                    AND attempt_count < max_attempts
+                    AND next_run_at_ms <= %s
+                  )
+                  OR (
+                    status = 'running'
+                    AND updated_at_ms < %s
+                    AND attempt_count < max_attempts
+                  )
+                )
               ORDER BY priority DESC, next_run_at_ms ASC, created_at_ms ASC, job_id ASC
               LIMIT 1
               FOR UPDATE SKIP LOCKED
@@ -99,6 +115,7 @@ class EnrichmentRepository:
                 last_error = NULL
             FROM picked
             WHERE job.job_id = picked.job_id
+              AND job.job_type = %s
               AND (
                 (
                   job.status IN ('pending', 'failed')
@@ -113,7 +130,7 @@ class EnrichmentRepository:
               )
             RETURNING job.*
             """,
-            (now, stale_before, now, now, stale_before),
+            (WATCHED_SOCIAL_EVENT_JOB_TYPE, now, stale_before, now, WATCHED_SOCIAL_EVENT_JOB_TYPE, now, stale_before),
         ).fetchone()
         return dict(row) if row else None
 
@@ -121,23 +138,33 @@ class EnrichmentRepository:
         self,
         *,
         job: dict[str, Any],
+        run_id: str,
         result: SocialEventExtraction,
         provider: str,
         model: str,
         request: dict[str, Any],
+        started_at_ms: int | None = None,
+        finished_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
-        now_ms = _now_ms()
-        run_id = _id("run", str(job["job_id"]), str(now_ms))
+        now_ms = finished_at_ms if finished_at_ms is not None else _now_ms()
+        started = started_at_ms if started_at_ms is not None else now_ms
+        audit = result.agent_run_audit
 
         def write() -> None:
             self.conn.execute(
                 """
                 INSERT INTO model_runs(
-                  run_id, job_id, event_id, provider, model, status, request_json,
-                  response_json, error, started_at_ms, finished_at_ms
+                  run_id, job_id, event_id, provider, model, backend, sdk_trace_id,
+                  workflow_name, agent_name, artifact_version_hash, prompt_version,
+                  schema_version, input_hash, output_hash, trace_metadata_json,
+                  usage_json, latency_ms, status, request_json, response_json, error,
+                  started_at_ms, finished_at_ms
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (
+                  %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                  %s, %s, %s, %s, %s, %s, %s
+                )
                 """,
                 (
                     run_id,
@@ -145,11 +172,23 @@ class EnrichmentRepository:
                     job["event_id"],
                     provider,
                     model,
+                    str(audit.get("backend") or "openai_agents_sdk"),
+                    audit.get("sdk_trace_id"),
+                    audit.get("workflow_name"),
+                    audit.get("agent_name"),
+                    audit.get("artifact_version_hash"),
+                    audit.get("prompt_version"),
+                    audit.get("schema_version"),
+                    audit.get("input_hash"),
+                    audit.get("output_hash"),
+                    _json(audit.get("trace_metadata") or {}),
+                    _json(audit.get("usage") or {}),
+                    max(0, int(now_ms) - int(started)),
                     "done",
                     _json(request),
                     _json(result.raw_response),
                     None,
-                    now_ms,
+                    started,
                     now_ms,
                 ),
             )
@@ -167,6 +206,67 @@ class EnrichmentRepository:
                 write()
         else:
             write()
+        row = self.conn.execute("SELECT * FROM model_runs WHERE run_id = %s", (run_id,)).fetchone()
+        return dict(row) if row else {"run_id": run_id}
+
+    def record_model_run_failure(
+        self,
+        *,
+        job: dict[str, Any],
+        run_id: str,
+        provider: str,
+        model: str,
+        request: dict[str, Any],
+        error: str,
+        audit: dict[str, Any] | None = None,
+        started_at_ms: int | None = None,
+        finished_at_ms: int | None = None,
+    ) -> dict[str, Any]:
+        now_ms = finished_at_ms if finished_at_ms is not None else _now_ms()
+        started = started_at_ms if started_at_ms is not None else now_ms
+        run_audit = audit or {}
+        self.conn.execute(
+            """
+            INSERT INTO model_runs(
+              run_id, job_id, event_id, provider, model, backend, sdk_trace_id,
+              workflow_name, agent_name, artifact_version_hash, prompt_version,
+              schema_version, input_hash, output_hash, trace_metadata_json,
+              usage_json, latency_ms, status, request_json, response_json, error,
+              started_at_ms, finished_at_ms
+            )
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT(run_id) DO NOTHING
+            """,
+            (
+                run_id,
+                job["job_id"],
+                job["event_id"],
+                provider,
+                model,
+                str(run_audit.get("backend") or "openai_agents_sdk"),
+                run_audit.get("sdk_trace_id"),
+                run_audit.get("workflow_name"),
+                run_audit.get("agent_name"),
+                run_audit.get("artifact_version_hash"),
+                run_audit.get("prompt_version"),
+                run_audit.get("schema_version"),
+                run_audit.get("input_hash"),
+                run_audit.get("output_hash"),
+                _json(run_audit.get("trace_metadata") or {}),
+                _json(run_audit.get("usage") or {}),
+                max(0, int(now_ms) - int(started)),
+                "model_error",
+                _json(request),
+                _json({}),
+                error[:1000],
+                started,
+                now_ms,
+            ),
+        )
+        self.conn.commit()
         row = self.conn.execute("SELECT * FROM model_runs WHERE run_id = %s", (run_id,)).fetchone()
         return dict(row) if row else {"run_id": run_id}
 
@@ -221,7 +321,10 @@ class EnrichmentRepository:
     def enqueue_missing_watched_events(self, *, limit: int) -> dict[str, Any]:
         rows = self.conn.execute(
             """
-            SELECT e.event_id, e.received_at_ms
+            SELECT
+              e.event_id,
+              e.received_at_ms,
+              COALESCE(NULLIF(e.search_text, ''), NULLIF(e.text_clean, ''), NULLIF(e.text, '')) AS event_text
             FROM events e
             WHERE e.is_watched = true
               AND COALESCE(NULLIF(e.search_text, ''), NULLIF(e.text_clean, ''), NULLIF(e.text, '')) IS NOT NULL
@@ -244,6 +347,8 @@ class EnrichmentRepository:
         enqueued = 0
         with transaction(self.conn):
             for row in rows:
+                if not should_enqueue_watched_social_event_text(str(row["event_text"] or "")):
+                    continue
                 job_id = self.enqueue_watched_event(
                     event_id=str(row["event_id"]),
                     received_at_ms=int(row["received_at_ms"]),

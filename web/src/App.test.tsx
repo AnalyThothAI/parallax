@@ -439,6 +439,24 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).getByText("Linked tokens")).toBeInTheDocument();
   });
 
+  it("queries the compact Signal Lab Pulse as a fresh live feed", async () => {
+    renderWithQuery(<App />);
+
+    await screen.findByText("Signal Lab Pulse");
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/signal-lab/pulse" &&
+            options?.params?.window === "1h" &&
+            options?.params?.limit === 80 &&
+            options?.params?.sort === "recent"
+        )
+      ).toBe(true);
+    });
+  });
+
   it("switches the left rail into the Signal Lab workbench without losing the selected attention item", async () => {
     const { container } = renderWithQuery(<App />);
 

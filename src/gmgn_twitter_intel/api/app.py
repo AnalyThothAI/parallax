@@ -21,10 +21,10 @@ from ..pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.harness_ops_worker import HarnessOpsWorker
 from ..pipeline.ingest_service import IngestService
-from ..pipeline.llm_client import OpenAIChatEnrichmentClient
 from ..pipeline.notification_delivery import NotificationDeliveryWorker
 from ..pipeline.notification_rules import NotificationRuleEngine
 from ..pipeline.notification_worker import NotificationWorker
+from ..pipeline.social_event_agent_client import OpenAIAgentsSocialEventClient
 from ..pipeline.token_discovery_worker import TokenDiscoveryWorker
 from ..pipeline.token_radar_projection_worker import TokenRadarProjectionWorker
 from ..retrieval.account_alert_service import AccountAlertService
@@ -318,17 +318,21 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             interval_seconds=30.0,
         )
     if settings.llm_configured:
-        client = OpenAIChatEnrichmentClient(
+        client = OpenAIAgentsSocialEventClient(
             api_key=settings.llm_api_key or "",
             model=settings.llm_model or "",
             base_url=settings.llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
+            trace_enabled=settings.llm_trace_enabled,
+            trace_api_key=settings.llm_trace_api_key,
+            trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
         )
         runtime.enrichment_worker = EnrichmentWorker(
             client=client,
             publisher=hub,
             repository_session=lambda: repository_session(db_pool),
             poll_interval=settings.enrichment_poll_interval,
+            concurrency=settings.enrichment_concurrency,
         )
     if start_collector:
         upstream = DirectGmgnWebSocketClient(
@@ -434,6 +438,11 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         "enrichment": {
             "llm_configured": runtime.settings.llm_configured,
             "worker_running": _task_running(runtime.enrichment_task),
+            "concurrency": runtime.settings.enrichment_concurrency,
+            "backend": "openai_agents_sdk",
+            "trace_enabled": runtime.settings.llm_trace_enabled,
+            "trace_export_configured": runtime.settings.llm_trace_export_configured,
+            "trace_include_sensitive_data": runtime.settings.llm_trace_include_sensitive_data,
             "job_counts": _enrichment_job_counts(runtime),
         },
         "harness_ops": {

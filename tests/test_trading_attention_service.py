@@ -167,6 +167,54 @@ def test_trading_attention_query_treats_comma_terms_as_alternatives(tmp_path):
     assert {item["event"]["event_id"] for item in data["items"]} == {"event-grok", "event-build"}
 
 
+def test_trading_attention_recent_sort_keeps_live_pulse_fresh(tmp_path):
+    conn, evidence, signals, assets, ingest = _runtime(tmp_path)
+    try:
+        old_hot = make_token_event(
+            "event-old-hot",
+            symbol="DOG",
+            address=TOKEN_ADDRESS,
+            received_at_ms=10_000,
+            author_handle="cz_binance",
+        )
+        fresh_watch = make_token_event(
+            "event-fresh-watch",
+            symbol="CAT",
+            address="0x44b28991b167582f18ba0259e0173176ca125505",
+            received_at_ms=10_500,
+            author_handle="toly",
+        )
+        ingest.ingest_event(old_hot, is_watched=True)
+        ingest.ingest_event(fresh_watch, is_watched=True)
+        _social_event(
+            conn,
+            event_id="event-old-hot",
+            extraction_id="extract-old-hot",
+            author_handle="cz_binance",
+            received_at_ms=10_000,
+            event_type="product_mention",
+            subject="DOG",
+            direction_hint="attention_positive",
+            anchor_terms=[{"term": "$DOG", "role": "asset", "evidence": "$DOG"}],
+            summary_zh="CZ 提到 DOG，形成高置信直接代币事件。",
+            impact_hint=1.0,
+            novelty_hint=1.0,
+            confidence=1.0,
+        )
+
+        data = TradingAttentionService(evidence=evidence, signals=signals, assets=assets).pulse(
+            window="1h",
+            scope="all",
+            limit=10,
+            sort="recent",
+            now_ms=11_000,
+        )
+    finally:
+        conn.close()
+
+    assert [item["event"]["event_id"] for item in data["items"][:2]] == ["event-fresh-watch", "event-old-hot"]
+
+
 def test_trading_attention_classifies_market_structure_and_risk(tmp_path):
     conn, evidence, signals, assets, _ = _runtime(tmp_path)
     try:
@@ -260,6 +308,9 @@ def _social_event(
     direction_hint: str,
     anchor_terms: list[dict],
     summary_zh: str,
+    impact_hint: float = 0.74,
+    novelty_hint: float = 0.68,
+    confidence: float = 0.88,
 ) -> None:
     conn.execute(
         """
@@ -271,8 +322,8 @@ def _social_event(
         )
         VALUES (
           %s, %s, NULL, %s, %s, 'social-event-v2', 'test-model',
-          %s, 'posted', %s, %s, 'watched_account_attention', 0.74,
-          0.68, 0.88, true, %s, '[]'::jsonb,
+          %s, 'posted', %s, %s, 'watched_account_attention', %s,
+          %s, %s, true, %s, '[]'::jsonb,
           '[]'::jsonb, %s, '{}'::jsonb, %s, %s
         )
         """,
@@ -284,6 +335,9 @@ def _social_event(
             event_type,
             subject,
             direction_hint,
+            impact_hint,
+            novelty_hint,
+            confidence,
             Jsonb(anchor_terms),
             summary_zh,
             received_at_ms,

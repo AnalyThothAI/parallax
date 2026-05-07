@@ -69,8 +69,12 @@ class LlmConfig(BaseModel):
     api_key: str | None = None
     model: str | None = None
     base_url: str = "https://api.openai.com/v1"
-    timeout_seconds: float = 20.0
+    timeout_seconds: float = 120.0
     enrichment_poll_interval: float = 2.0
+    enrichment_concurrency: int = 4
+    trace_enabled: bool = True
+    trace_api_key: str | None = None
+    trace_include_sensitive_data: bool = False
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -80,7 +84,7 @@ class LlmConfig(BaseModel):
             raise ValueError("llm.provider must be 'openai'")
         return normalized
 
-    @field_validator("api_key", "model", mode="before")
+    @field_validator("api_key", "model", "trace_api_key", mode="before")
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
@@ -380,6 +384,28 @@ class Settings(BaseModel):
         return self.llm.enrichment_poll_interval
 
     @property
+    def enrichment_concurrency(self) -> int:
+        return max(1, min(16, int(self.llm.enrichment_concurrency)))
+
+    @property
+    def llm_trace_enabled(self) -> bool:
+        return bool(self.llm.trace_enabled)
+
+    @property
+    def llm_trace_api_key(self) -> str | None:
+        return self.llm.trace_api_key
+
+    @property
+    def llm_trace_include_sensitive_data(self) -> bool:
+        return bool(self.llm.trace_include_sensitive_data)
+
+    @property
+    def llm_trace_export_configured(self) -> bool:
+        if self.llm_trace_api_key:
+            return True
+        return self.llm_base_url.startswith("https://api.openai.com/") and bool(self.llm_api_key)
+
+    @property
     def llm_configured(self) -> bool:
         return bool(self.llm_api_key and self.llm_model)
 
@@ -565,8 +591,12 @@ llm:
   api_key:
   model:
   base_url: "https://api.openai.com/v1"
-  timeout_seconds: 20
+  timeout_seconds: 120
   enrichment_poll_interval: 2
+  enrichment_concurrency: 4
+  trace_enabled: true
+  trace_api_key:
+  trace_include_sensitive_data: false
 
 gmgn:
   api_key:

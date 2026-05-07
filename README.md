@@ -20,7 +20,7 @@ GMGN public WS
   -> deterministic social heat / quality / propagation / tradeability / timing scores
   -> immutable token signal snapshots
   -> watched-account social-event extraction jobs
-  -> strict social-event-v2 LLM extraction
+  -> OpenAI Agents SDK typed social-event-v2 extraction + traceable run audit
   -> attention seeds
   -> event clusters
   -> immutable harness snapshots
@@ -32,9 +32,9 @@ GMGN public WS
   -> CLI search / asset-flow / token-signal-snapshots / social-events / harness-snapshots / harness-credits
 ```
 
-Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 LLM social-event-v2 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence 和 token signal scoring，不会被全量送进 LLM。
+Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 OpenAI Agents SDK social-event-v2 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence 和 token signal scoring，不会被全量送进模型层。
 
-LLM 不做交易决策，只抽取结构化 social event。Harness 负责落库、快照、shadow decision、结算、信用分配和 report-only 权重。
+Agents SDK 模型层不做交易决策，只抽取 typed social event。Harness 负责落库、快照、shadow decision、结算、信用分配和 report-only 权重；`model_runs` 记录 SDK trace id、prompt/schema/artifact 版本、输入输出 hash 与 trace metadata。
 
 ## 快速开始
 
@@ -143,8 +143,12 @@ llm:
   api_key:
   model:
   base_url: "https://api.openai.com/v1"
-  timeout_seconds: 20
+  timeout_seconds: 120
   enrichment_poll_interval: 2
+  enrichment_concurrency: 4
+  trace_enabled: true
+  trace_api_key:
+  trace_include_sensitive_data: false
 ```
 
 `storage.postgres.password_file` 相对 `~/.gmgn-twitter-intel` 解析；`make init` 会创建该 secret 文件。Docker Compose 默认只把 PostgreSQL 暴露到宿主机 `127.0.0.1:56532`，容器内仍使用 `postgres:5432`。宿主机 CLI 会把这个 Docker service hostname 确定性映射到 loopback，所以同一份 DSN 可以同时用于容器和本地命令。端口冲突时可用 `GMGN_POSTGRES_PORT=56533 docker compose up -d --build app` 改宿主机端口，并在宿主机 CLI 前同样带上 `GMGN_POSTGRES_PORT=56533`。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
@@ -262,14 +266,14 @@ uv run gmgn-twitter-intel ops validate-projections --sample 100
 - 所有可解析公共事件都会入库。
 - `config.yaml` 的 `handles` 决定哪些事件触发 watched account 实时推送和默认 replay。
 - CA、cashtag、hashtag、mention、URL/domain 都是确定性抽取。
-- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、timeline features、market snapshot 和可解释评分模块；Harness signal 来自 watched-account social-event-v2 extraction 加确定性 scoring。
+- token 社交热度来自确定性 CA/cashtag attribution、rolling windows、timeline features、market snapshot 和可解释评分模块；Harness signal 来自 watched-account Agents SDK typed social-event-v2 extraction 加确定性 scoring。
 - V1 不接外部新闻源，不自动实盘，不自动推广配置；`harness_weights.status` 先保持 `report_only`。
 - 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v2 抽取队列。
 - `asset-flow` 返回 resolved 与 attention 两条 lane，以及 target、price、posts、timeline 和 data health。
-- Projection/read model 层只做 PostgreSQL 查询优化和审计闭环，不改变 token attribution、scoring、LLM extraction 或 source facts 语义。
+- Projection/read model 层只做 PostgreSQL 查询优化和审计闭环，不改变 token attribution、scoring、Agents SDK extraction 或 source facts 语义。
 - `rebuild-token-radar` 会按当前 token radar 投影重新物化窗口排名。
 - `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
 - `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。
-- LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。
+- 模型输出必须绑定原文 evidence substring；不把模型猜测直接当事实。
 - cashtag 没有 CA 时保持 unresolved symbol，不强行映射成某个 token。
 - `coverage=public_stream` 代表 GMGN 匿名公共流覆盖，不是完整 Twitter firehose。

@@ -61,6 +61,7 @@ export function App() {
   const scope = useTraderStore((state) => state.scope);
   const signalLabScope = "matched";
   const signalLabWindow = "24h";
+  const signalLabCompactWindow = "1h";
   const handles = useTraderStore((state) => state.handles);
   const search = useTraderStore((state) => state.search);
   const submittedSearch = useTraderStore((state) => state.submittedSearch);
@@ -189,14 +190,15 @@ export function App() {
   });
 
   const signalLabPulseQuery = useQuery({
-    queryKey: ["signal-lab-pulse-compact", signalLabScope],
+    queryKey: ["signal-lab-pulse-compact", signalLabScope, signalLabCompactWindow],
     queryFn: () =>
       getApi<TradingAttentionData>("/api/signal-lab/pulse", {
         token,
         params: {
-          window: "24h",
+          window: signalLabCompactWindow,
           scope: signalLabScope,
-          limit: 200
+          limit: 80,
+          sort: "recent"
         }
       }),
     enabled: Boolean(token),

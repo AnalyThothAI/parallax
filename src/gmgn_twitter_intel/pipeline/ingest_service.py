@@ -21,6 +21,7 @@ from .entity_extractor import TextSurface, extract_entities_from_surfaces
 from .token_evidence_builder import build_token_evidence
 from .token_intent_builder import build_token_intents
 from .token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver
+from .watched_event_gate import watched_social_event_priority
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,10 +125,16 @@ class IngestService:
                 is_watched=is_watched,
             )
             enrichment_job_id = None
-            if is_watched and _event_text(event):
+            enrichment_priority = watched_social_event_priority(
+                event=event,
+                entities=extracted,
+                token_resolutions=token_resolutions,
+            )
+            if is_watched and enrichment_priority is not None:
                 enrichment_job_id = self.enrichment.enqueue_watched_event(
                     event_id=event.event_id,
                     received_at_ms=event.received_at_ms,
+                    priority=enrichment_priority,
                     commit=False,
                 )
         return IngestedEvent(

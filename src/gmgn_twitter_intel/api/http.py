@@ -21,6 +21,7 @@ from ..retrieval.token_target_posts_service import (
 )
 from ..retrieval.token_target_social_timeline_service import TokenTargetSocialTimelineService
 from ..retrieval.trading_attention_service import KINDS as TRADING_ATTENTION_KINDS
+from ..retrieval.trading_attention_service import SORTS as TRADING_ATTENTION_SORTS
 from ..retrieval.trading_attention_service import TradingAttentionService
 from ..storage.account_quality_repository import AccountQualityRepository
 
@@ -442,6 +443,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         kind: Annotated[str, Query()] = "",
         handle: Annotated[str, Query()] = "",
         q: Annotated[str, Query()] = "",
+        sort: Annotated[str, Query()] = "priority",
         limit: Annotated[int, Query()] = 80,
         cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
@@ -459,6 +461,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 handle=handle or None,
                 q=q or None,
                 handles=set(runtime.settings.handles) if parsed_scope == "matched" else None,
+                sort=_trading_attention_sort(sort),
                 limit=_limit(limit, maximum=500),
                 cursor=cursor or None,
             )
@@ -618,6 +621,10 @@ def _horizon(value: str) -> str:
 
 def _trading_attention_kind(value: str) -> str | None:
     return value if value in TRADING_ATTENTION_KINDS else None
+
+
+def _trading_attention_sort(value: str) -> str:
+    return value if value in TRADING_ATTENTION_SORTS else "priority"
 
 
 def _alert_type(value: str | None) -> str | None:

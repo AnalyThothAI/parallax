@@ -45,7 +45,7 @@ class FakeClient:
             raw_response={"ok": True},
         )
 
-    async def enrich_event(self, *, event, entities):
+    async def enrich_event(self, *, event, entities, run_id, job):  # noqa: ARG002
         return self.result
 
 
@@ -54,7 +54,19 @@ class HangingClient:
     model = "fake-model"
     timeout_seconds = 0.01
 
-    async def enrich_event(self, *, event, entities):
+    def request_audit(self, *, event, entities, run_id, job):  # noqa: ARG002
+        return {
+            "backend": "openai_agents_sdk",
+            "sdk_trace_id": "trace_timeout",
+            "workflow_name": "gmgn-twitter-intel.social_event_extraction",
+            "agent_name": "SocialEventExtractionAgent",
+            "prompt_version": "social-event-agents-sdk-v1",
+            "schema_version": "social_event_v2",
+            "artifact_version_hash": "artifact:fake-model",
+            "trace_metadata": {"event_id": event["event_id"], "run_id": run_id},
+        }
+
+    async def enrich_event(self, *, event, entities, run_id, job):  # noqa: ARG002
         await asyncio.sleep(60)
 
 
@@ -64,6 +76,29 @@ class RecordingPublisher:
 
     async def publish(self, payload):
         self.messages.append(payload)
+
+
+class ConcurrentProbeWorker(EnrichmentWorker):
+    def __init__(self):
+        super().__init__(
+            client=FakeClient(),
+            repository_session=lambda: repository_session_for_connection(None),
+            poll_interval=0.01,
+            concurrency=3,
+        )
+        self.active = 0
+        self.max_active = 0
+        self.calls = 0
+
+    async def process_one(self, *, now_ms=None):  # noqa: ARG002
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        await asyncio.sleep(0.03)
+        self.calls += 1
+        self.active -= 1
+        if self.calls >= 6:
+            self.stop()
+        return True
 
 
 def open_runtime(tmp_path, *, client=None, publisher=None):
@@ -86,6 +121,14 @@ def open_runtime(tmp_path, *, client=None, publisher=None):
         repository_session=lambda: repository_session_for_connection(conn),
     )
     return conn, ingest, worker, enrichment, harness
+
+
+def test_enrichment_worker_run_can_process_jobs_concurrently():
+    worker = ConcurrentProbeWorker()
+
+    asyncio.run(worker.run())
+
+    assert worker.max_active > 1
 
 
 def test_enrichment_worker_materializes_closed_loop_harness_and_publishes_update(tmp_path):
@@ -158,9 +201,15 @@ def test_enrichment_worker_times_out_hung_llm_job(tmp_path):
 
         processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000) + 1_000))
         job = enrichment.list_jobs(limit=10)[0]
+        run = conn.execute("SELECT * FROM model_runs WHERE event_id = %s", ("event-worker-timeout",)).fetchone()
     finally:
         conn.close()
 
     assert processed is True
     assert job["status"] == "failed"
     assert "timed out" in job["last_error"].lower()
+    assert run["status"] == "model_error"
+    assert "timed out" in run["error"].lower()
+    assert run["backend"] == "openai_agents_sdk"
+    assert run["sdk_trace_id"] == "trace_timeout"
+    assert run["workflow_name"] == "gmgn-twitter-intel.social_event_extraction"

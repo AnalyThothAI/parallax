@@ -2,6 +2,7 @@ import time
 
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
@@ -105,6 +106,28 @@ def test_unwatched_or_textless_events_do_not_enqueue_enrichment_jobs(tmp_path):
     assert jobs == []
 
 
+def test_low_information_watched_service_reply_does_not_enqueue_llm_job(tmp_path):
+    conn, _, enrichment, ingest = open_repositories(tmp_path)
+    try:
+        result = ingest.ingest_event(
+            make_event(
+                "low-info-service-reply",
+                text=(
+                    "@user skill installed: $SOLVR Bankr Club Airdrop checked your claim status. "
+                    "Wallet 0x35f300000000000000000000000000000000064f is not eligible."
+                ),
+            ),
+            is_watched=True,
+        )
+        jobs = enrichment.list_jobs(limit=10)
+    finally:
+        conn.close()
+
+    assert result.inserted is True
+    assert result.enrichment_job_id is None
+    assert jobs == []
+
+
 def test_duplicate_watched_event_does_not_duplicate_enrichment_job(tmp_path):
     conn, _, enrichment, ingest = open_repositories(tmp_path)
     try:
@@ -146,6 +169,85 @@ def test_claim_next_job_marks_running_and_respects_status(tmp_path):
     assert claimed["event_id"] == "claim-me"
     assert second_claim is None
     assert stored["status"] == "running"
+
+
+def test_claim_next_job_ignores_legacy_enrichment_job_types(tmp_path):
+    conn, _, enrichment, ingest = open_repositories(tmp_path)
+    try:
+        event = make_event("legacy-job")
+        ingest.ingest_event(event, is_watched=True)
+        conn.execute(
+            """
+            UPDATE enrichment_jobs
+            SET job_type = 'watched_event_enrichment'
+            WHERE event_id = %s
+            """,
+            ("legacy-job",),
+        )
+        conn.commit()
+
+        claimed = enrichment.claim_next_job(now_ms=int(time.time() * 1000))
+        stored = enrichment.list_jobs(limit=10)[0]
+    finally:
+        conn.close()
+
+    assert claimed is None
+    assert stored["status"] == "dead"
+    assert stored["last_error"] == "legacy_job_type_retired"
+
+
+def test_complete_social_event_job_records_agents_sdk_run_audit(tmp_path):
+    conn, _, enrichment, ingest = open_repositories(tmp_path)
+    try:
+        ingest.ingest_event(make_event("agent-run-audit", text="Solana XDP agent audit"), is_watched=True)
+        job = enrichment.claim_next_job(now_ms=int(time.time() * 1000))
+        result = SocialEventExtraction(
+            is_signal_event=True,
+            event_type="meme_phrase_seed",
+            source_action="posted",
+            subject="Solana XDP",
+            direction_hint="attention_positive",
+            attention_mechanism="product_or_feature",
+            impact_hint=0.7,
+            semantic_novelty_hint=0.6,
+            confidence=0.85,
+            anchor_terms=[AnchorTerm(term="Solana XDP", role="product", evidence="Solana XDP")],
+            token_candidates=[],
+            semantic_risks=["public_stream_coverage"],
+            summary_zh="Solana XDP 形成注意力种子。",
+            raw_response={"is_signal_event": True},
+            agent_run_audit={
+                "backend": "openai_agents_sdk",
+                "sdk_trace_id": "trace_0123456789abcdef0123456789abcdef",
+                "workflow_name": "gmgn-twitter-intel.social_event_extraction",
+                "agent_name": "SocialEventExtractionAgent",
+                "prompt_version": "social-event-agents-sdk-v1",
+                "schema_version": "social_event_v2",
+                "artifact_version_hash": "artifact:gpt-test",
+                "trace_metadata": {"event_id": "agent-run-audit"},
+            },
+        )
+
+        enrichment.complete_social_event_job(
+            job=job,
+            run_id="run-agent-audit",
+            result=result,
+            provider="openai",
+            model="gpt-test",
+            request={"job_id": job["job_id"]},
+        )
+        run = conn.execute("SELECT * FROM model_runs WHERE run_id = %s", ("run-agent-audit",)).fetchone()
+    finally:
+        conn.close()
+
+    assert run["backend"] == "openai_agents_sdk"
+    assert run["sdk_trace_id"] == "trace_0123456789abcdef0123456789abcdef"
+    assert run["workflow_name"] == "gmgn-twitter-intel.social_event_extraction"
+    assert run["agent_name"] == "SocialEventExtractionAgent"
+    assert run["prompt_version"] == "social-event-agents-sdk-v1"
+    assert run["schema_version"] == "social_event_v2"
+    assert run["artifact_version_hash"] == "artifact:gpt-test"
+    assert run["trace_metadata_json"]["event_id"] == "agent-run-audit"
 
 
 def test_claim_next_job_reclaims_stale_running_job(tmp_path):

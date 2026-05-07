@@ -14,6 +14,7 @@ WINDOW_MS = {
     "24h": 24 * 3_600_000,
 }
 KINDS = {"direct_token", "topic_heat", "ecosystem_signal", "market_structure", "risk_alert", "low_signal"}
+SORTS = {"priority", "recent"}
 PRIORITY_RANK = {"hot": 4, "watch": 3, "context": 2, "muted": 1}
 KIND_LABELS = {
     "direct_token": "Direct token",
@@ -42,6 +43,7 @@ class TradingAttentionService:
         q: str | None = None,
         cursor: str | None = None,
         handles: set[str] | None = None,
+        sort: str = "priority",
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         reference_ms = now_ms if now_ms is not None else _now_ms()
@@ -73,14 +75,7 @@ class TradingAttentionService:
         if kind is None and not q:
             items = [item for item in items if item["kind"] != "low_signal" and item["priority"] != "muted"]
         summary = _summary(items)
-        items.sort(
-            key=lambda item: (
-                PRIORITY_RANK[item["priority"]],
-                float(item["heat_score"]),
-                int(item["received_at_ms"]),
-            ),
-            reverse=True,
-        )
+        _sort_items(items, sort=sort)
         limited = items[offset : offset + requested_limit]
         next_offset = offset + requested_limit
         has_more = next_offset < len(items)
@@ -91,6 +86,7 @@ class TradingAttentionService:
                 "kind": kind if kind in KINDS else None,
                 "handle": handle or None,
                 "q": q or None,
+                "sort": sort if sort in SORTS else "priority",
             },
             "summary": summary,
             "items": limited,
@@ -549,6 +545,27 @@ def _filter_items(
         if terms:
             filtered = [item for item in filtered if any(term in _search_text(item) for term in terms)]
     return filtered
+
+
+def _sort_items(items: list[dict[str, Any]], *, sort: str) -> None:
+    if sort == "recent":
+        items.sort(
+            key=lambda item: (
+                int(item["received_at_ms"]),
+                PRIORITY_RANK[item["priority"]],
+                float(item["heat_score"]),
+            ),
+            reverse=True,
+        )
+        return
+    items.sort(
+        key=lambda item: (
+            PRIORITY_RANK[item["priority"]],
+            float(item["heat_score"]),
+            int(item["received_at_ms"]),
+        ),
+        reverse=True,
+    )
 
 
 def _query_terms(q: str) -> list[str]:

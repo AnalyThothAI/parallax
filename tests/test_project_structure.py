@@ -73,12 +73,20 @@ def test_current_projection_docs_are_postgres_only():
 
 
 def test_legacy_narrative_modules_stay_removed():
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "llm_client.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "llm_enrichment.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "narrative_seed_builder.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "narrative_token_linker.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_service.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_link_service.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "narrative_link_scoring.py").exists()
+
+
+def test_enrichment_worker_does_not_claim_legacy_job_types():
+    text = (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "enrichment_repository.py").read_text()
+
+    assert "legacy_job_type_retired" in text
+    assert "job_type = %s" in text
 
 
 def test_legacy_token_resolution_runtime_modules_stay_removed():
