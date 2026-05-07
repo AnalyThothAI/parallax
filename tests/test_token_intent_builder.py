@@ -64,3 +64,26 @@ def test_single_cross_surface_cashtag_and_ca_are_one_intent():
     assert intents[0].display_symbol == "NOTHING"
     assert intents[0].chain_hint == "solana"
     assert intents[0].address_hint == "F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump"
+
+
+def test_multiple_cashtags_and_cas_pair_by_nearest_identity_without_symbol_only_intents():
+    text = (
+        "$ALPHA 0x1111111111111111111111111111111111111111 "
+        "and $BETA 0x2222222222222222222222222222222222222222"
+    )
+    entities = extract_entities_from_surfaces([TextSurface("primary", text)])
+    evidence = build_token_evidence(
+        event_id="event-multi",
+        entities=entities,
+        token_snapshot=None,
+        created_at_ms=1_777_800_000_000,
+    )
+
+    intents = build_token_intents(event_id="event-multi", evidence=evidence, created_at_ms=1_777_800_000_000)
+
+    assert len(intents) == 2
+    by_symbol = {intent.display_symbol: intent for intent in intents}
+    assert set(by_symbol) == {"ALPHA", "BETA"}
+    assert by_symbol["ALPHA"].address_hint == "0x1111111111111111111111111111111111111111"
+    assert by_symbol["BETA"].address_hint == "0x2222222222222222222222222222222222222222"
+    assert all(intent.intent_key.startswith("ca:") for intent in intents)

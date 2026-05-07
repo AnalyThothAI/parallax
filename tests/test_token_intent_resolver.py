@@ -53,23 +53,23 @@ def test_token_intent_resolver_resolves_base_ca_as_exact_asset():
     assert decision.reason_codes == ["CHAIN_ADDRESS_EXACT"]
 
 
-def test_token_intent_resolver_does_not_rediscover_ambiguous_symbol_with_candidates():
+def test_token_intent_resolver_keeps_low_quality_symbol_candidates_ambiguous():
     registry = FakeRegistry(
         symbol_assets={
             "SATO": [
                 {
                     "asset_id": "asset:eip155:1:erc20:0x1111111111111111111111111111111111111111",
                     "observed_at_ms": 1_778_145_000_000,
-                    "market_cap_usd": 1_000_000,
-                    "liquidity_usd": 100_000,
-                    "holders": 1_000,
+                    "market_cap_usd": 100_000,
+                    "liquidity_usd": 90_000,
+                    "holders": 500,
                 },
                 {
                     "asset_id": "asset:eip155:8453:erc20:0x2222222222222222222222222222222222222222",
                     "observed_at_ms": 1_778_145_000_000,
-                    "market_cap_usd": 900_000,
-                    "liquidity_usd": 100_000,
-                    "holders": 1_000,
+                    "market_cap_usd": 90_000,
+                    "liquidity_usd": 80_000,
+                    "holders": 450,
                 },
             ]
         }

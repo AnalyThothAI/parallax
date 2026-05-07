@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from .token_evidence_builder import TokenEvidenceInput
 
 CONSTRUCTION_POLICY = "token_intent_builder_v1"
+MAX_DISPLAY_ALIAS_DISTANCE = 180
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,11 +41,12 @@ def build_token_intents(
 ) -> list[TokenIntentInput]:
     strong_identity = [item for item in evidence if item.address_hint]
     cashtags = [item for item in evidence if item.evidence_type == "cashtag" and item.normalized_symbol]
+    alias_by_identity = _display_aliases_by_identity(identities=strong_identity, cashtags=cashtags)
     intents: list[TokenIntentInput] = []
     consumed_cashtags: set[str] = set()
 
     for identity in strong_identity:
-        local_cashtags = _display_cashtags_for_identity(identity, cashtags=cashtags, identities=strong_identity)
+        local_cashtags = alias_by_identity.get(identity.evidence_id, [])
         display = _single_display_symbol(local_cashtags)
         if display:
             consumed_cashtags.update(item.evidence_id for item in local_cashtags if item.normalized_symbol == display)
@@ -121,29 +123,62 @@ def _single_display_symbol(items: list[TokenEvidenceInput]) -> str | None:
     return next(iter(symbols)) if len(symbols) == 1 else None
 
 
-def _display_cashtags_for_identity(
-    identity: TokenEvidenceInput,
+def _display_aliases_by_identity(
     *,
-    cashtags: list[TokenEvidenceInput],
     identities: list[TokenEvidenceInput],
-) -> list[TokenEvidenceInput]:
-    local = [
-        item
-        for item in cashtags
-        if item.local_group_key == identity.local_group_key and item.text_surface == identity.text_surface
+    cashtags: list[TokenEvidenceInput],
+) -> dict[str, list[TokenEvidenceInput]]:
+    out: dict[str, list[TokenEvidenceInput]] = {}
+    assigned_identities: set[str] = set()
+    assigned_cashtags: set[str] = set()
+
+    local_pairs = [
+        (_span_distance(identity, cashtag), identity.evidence_id, cashtag.evidence_id, identity, cashtag)
+        for identity in identities
+        for cashtag in cashtags
+        if identity.text_surface == cashtag.text_surface
+        and identity.local_group_key == cashtag.local_group_key
+        and _span_distance(identity, cashtag) <= MAX_DISPLAY_ALIAS_DISTANCE
     ]
-    if local:
-        return local
+    for _distance, identity_id, cashtag_id, identity, cashtag in sorted(local_pairs, key=_alias_sort_key):
+        if identity_id in assigned_identities or cashtag_id in assigned_cashtags:
+            continue
+        out[identity.evidence_id] = [cashtag]
+        assigned_identities.add(identity_id)
+        assigned_cashtags.add(cashtag_id)
 
-    same_surface_cashtags = [item for item in cashtags if item.text_surface == identity.text_surface]
-    same_surface_identities = [item for item in identities if item.text_surface == identity.text_surface]
-    if len(same_surface_cashtags) != 1 or len(same_surface_identities) != 1:
-        if len(cashtags) == 1 and len(identities) == 1:
-            return [cashtags[0]]
-        return []
+    for identity in identities:
+        if identity.evidence_id in assigned_identities:
+            continue
+        same_surface_cashtags = [
+            item
+            for item in cashtags
+            if item.text_surface == identity.text_surface and item.evidence_id not in assigned_cashtags
+        ]
+        same_surface_identities = [
+            item
+            for item in identities
+            if item.text_surface == identity.text_surface and item.evidence_id not in assigned_identities
+        ]
+        if len(same_surface_cashtags) != 1 or len(same_surface_identities) != 1:
+            continue
+        cashtag = same_surface_cashtags[0]
+        if _span_distance(identity, cashtag) > MAX_DISPLAY_ALIAS_DISTANCE:
+            continue
+        out[identity.evidence_id] = [cashtag]
+        assigned_identities.add(identity.evidence_id)
+        assigned_cashtags.add(cashtag.evidence_id)
 
-    cashtag = same_surface_cashtags[0]
-    return [cashtag] if _span_distance(identity, cashtag) <= 180 else []
+    remaining_identities = [item for item in identities if item.evidence_id not in assigned_identities]
+    remaining_cashtags = [item for item in cashtags if item.evidence_id not in assigned_cashtags]
+    if len(remaining_identities) == 1 and len(remaining_cashtags) == 1:
+        out[remaining_identities[0].evidence_id] = [remaining_cashtags[0]]
+    return out
+
+
+def _alias_sort_key(item) -> tuple[int, str, str]:
+    distance, identity_id, cashtag_id, _identity, _cashtag = item
+    return int(distance), str(identity_id), str(cashtag_id)
 
 
 def _span_distance(left: TokenEvidenceInput, right: TokenEvidenceInput) -> int:

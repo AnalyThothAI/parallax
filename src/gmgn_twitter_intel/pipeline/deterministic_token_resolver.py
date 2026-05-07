@@ -6,7 +6,6 @@ from typing import Any
 
 RESOLVER_POLICY_VERSION = "token_radar_v4_deterministic_resolver"
 FRESH_OBSERVATION_MS = 20 * 60 * 1000
-DOMINANCE_GAP = Decimal("0.75")
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
 MIN_DOMINANT_HOLDERS = Decimal("1000")
 MIN_DOMINANT_LIQUIDITY_USD = Decimal("100000")
@@ -305,8 +304,9 @@ def _market_dominant_asset(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
         return None
     ranked = sorted(eligible, key=_dominance_score, reverse=True)
     top = ranked[0]
-    second_score = _dominance_score(ranked[1]) if len(ranked) > 1 else Decimal("-999")
-    if _dominance_score(top) - second_score < DOMINANCE_GAP:
+    top_score = _dominance_score(top)
+    second_score = _dominance_score(ranked[1]) if len(ranked) > 1 else Decimal("-1")
+    if len(ranked) > 1 and top_score <= second_score:
         return None
     if (
         _decimal(top.get("market_cap_usd")) < MIN_DOMINANT_MARKET_CAP_USD

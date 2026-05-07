@@ -222,6 +222,45 @@ def test_symbol_selects_market_dominant_asset_when_lead_is_clear_but_not_extreme
     assert result.reason_codes == ["MARKET_DOMINANT_CHAIN_ASSET"]
 
 
+def test_symbol_selects_highest_quality_market_asset_without_gap_threshold():
+    registry = FakeRegistry(
+        symbol_assets={
+            "ALICE": [
+                {
+                    "asset_id": "asset:eip155:1:erc20:0x1111111111111111111111111111111111111111",
+                    "chain_id": "eip155:1",
+                    "symbol": "ALICE",
+                    "market_cap_usd": Decimal("10000000"),
+                    "holders": 5000,
+                    "liquidity_usd": Decimal("1000000"),
+                    "observed_at_ms": 1_778_161_505_208,
+                },
+                {
+                    "asset_id": "asset:eip155:56:erc20:0x2222222222222222222222222222222222222222",
+                    "chain_id": "eip155:56",
+                    "symbol": "ALICE",
+                    "market_cap_usd": Decimal("9500000"),
+                    "holders": 4800,
+                    "liquidity_usd": Decimal("950000"),
+                    "observed_at_ms": 1_778_161_505_208,
+                },
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-alice",
+        event_id="event-alice",
+        keys=MentionKeys(symbol="ALICE"),
+        decision_time_ms=1_778_162_003_774,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:eip155:1:erc20:0x1111111111111111111111111111111111111111"
+    assert result.reason_codes == ["MARKET_DOMINANT_CHAIN_ASSET"]
+
+
 def test_chain_address_is_exact_asset_and_beats_symbol():
     registry = FakeRegistry(
         address_assets={

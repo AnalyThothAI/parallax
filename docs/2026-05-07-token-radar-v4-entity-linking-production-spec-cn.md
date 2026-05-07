@@ -415,7 +415,7 @@ dominance_score:
   + 0.15 * log10(coalesce(liquidity_usd, 0) + 1)
 
 winner:
-  top dominance_score exceeds second by >= 1.0
+  top dominance_score is greater than second dominance_score
   AND top market_cap_usd >= 250000 OR top holders >= 1000 OR top liquidity_usd >= 100000
 ```
 
@@ -443,7 +443,7 @@ Examples:
 "$PEPE"
 -> CexToken UNIQUE_BY_CONTEXT if confirmed CEX token exists
 -> Asset UNIQUE_BY_CONTEXT if no CEX token exists and one chain Asset is market-dominant
--> PROJECT_ONLY / AMBIGUOUS if dominance is not clear
+-> PROJECT_ONLY / AMBIGUOUS if fresh market facts are insufficient or top candidate is too low quality
 -> NIL if unknown
 
 "new PEPE on Solana"

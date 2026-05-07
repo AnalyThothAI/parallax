@@ -805,8 +805,8 @@ Invalid address-shaped or pricefeed-shaped input returns `INVALID` from the matc
 1. confirmed CEX token exists -> CexToken UNIQUE_BY_CONTEXT
 2. no CEX token and one active chain Asset -> Asset UNIQUE_BY_CONTEXT
 3. no CEX token and multiple active chain Assets -> apply Market Dominance Selector
-4. dominance passes -> Asset UNIQUE_BY_CONTEXT with reason MARKET_DOMINANT_CHAIN_ASSET
-5. dominance fails -> PROJECT_ONLY or AMBIGUOUS with visible candidates
+4. highest quality market candidate wins -> Asset UNIQUE_BY_CONTEXT with reason MARKET_DOMINANT_CHAIN_ASSET
+5. insufficient market facts or low-quality top candidate -> PROJECT_ONLY or AMBIGUOUS with visible candidates
 ```
 
 Market Dominance Selector:
@@ -825,7 +825,7 @@ Eligibility gates:
 ```text
 fresh provider observation
 at least two of market_cap_usd / holders / liquidity_usd are present
-top score - second score >= 1.0
+top score > second score
 top market_cap_usd >= 250000 OR top holders >= 1000 OR top liquidity_usd >= 100000
 ```
 
