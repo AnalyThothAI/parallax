@@ -9,6 +9,7 @@ import {
   formatRisk,
   formatScoreDelta,
   formatSignedPercent,
+  formatTokenPriceUsd,
   formatTimingStatus,
   formatUsdCompact,
   tokenLabel
@@ -35,6 +36,14 @@ describe("format helpers", () => {
     expect(formatSignedPercent(0.124)).toBe("+12%");
     expect(formatSignedPercent(-0.084)).toBe("-8.4%");
     expect(formatSignedPercent(null)).toBe("-");
+  });
+
+  it("formats token prices without rounding away tradable decimals", () => {
+    expect(formatTokenPriceUsd(2.753)).toBe("$2.75");
+    expect(formatTokenPriceUsd(0.24668459858168806)).toBe("$0.2467");
+    expect(formatTokenPriceUsd(0.00001360704303591779)).toBe("$0.00001361");
+    expect(formatTokenPriceUsd(0.0000000006522)).toBe("$6.52e-10");
+    expect(formatTokenPriceUsd(null)).toBe("-");
   });
 
   it("normalizes event handles and token labels", () => {

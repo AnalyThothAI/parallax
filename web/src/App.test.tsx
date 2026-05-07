@@ -306,6 +306,76 @@ describe("App Token Radar social heat cockpit", () => {
     );
   });
 
+  it("renders token prices with price precision instead of compact integer rounding", async () => {
+    mockApi({
+      assetFlowRows: [
+        assetFlowRow({
+          symbol: "TON",
+          assetType: "cex_asset",
+          assetId: "asset:cex:TON",
+          primaryVenue: {
+            venue_id: "venue:cex:okx:SPOT:TON-USDT",
+            venue_type: "cex",
+            exchange: "okx",
+            chain: null,
+            address: null,
+            inst_id: "TON-USDT",
+            base_symbol: "TON",
+            quote_symbol: "USDT",
+            inst_type: "SPOT"
+          },
+          market: {
+            market_status: "fresh",
+            market_observation_status: "ready",
+            price_change_status: "insufficient_history",
+            provider: "okx_cex",
+            price_usd: 2.753,
+            market_cap_usd: null,
+            liquidity_usd: null,
+            volume_24h_usd: 12_000_000,
+            open_interest_usd: null,
+            holders: null,
+            snapshot_age_ms: 30_000,
+            snapshot_observed_at_ms: 1_777_746_270_000,
+            price_change_since_social_pct: null,
+            price_change_before_social_pct: null
+          }
+        }),
+        assetFlowRow({
+          symbol: "",
+          assetId: "asset:dex:eth:0x1111111111111111111111111111111111111111",
+          address: "0x1111111111111111111111111111111111111111",
+          market: {
+            market_status: "fresh",
+            market_observation_status: "ready",
+            price_change_status: "insufficient_history",
+            provider: "okx_dex_price",
+            price_usd: 0.00001360704303591779,
+            market_cap_usd: null,
+            liquidity_usd: null,
+            volume_24h_usd: null,
+            open_interest_usd: null,
+            holders: null,
+            snapshot_age_ms: 30_000,
+            snapshot_observed_at_ms: 1_777_746_270_000,
+            price_change_since_social_pct: null,
+            price_change_before_social_pct: null
+          }
+        })
+      ]
+    });
+
+    renderWithQuery(<App />);
+
+    const tonRow = await screen.findByRole("button", { name: "select token $TON" });
+    expect(tonRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$2.75");
+    expect(tonRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$3");
+
+    const microRow = await screen.findByRole("button", { name: /select token 0x111111/ });
+    expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$0.00001361");
+    expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$0 fresh");
+  });
+
   it("renders asset-flow timing changes from backend market baselines", async () => {
     mockApi({
       assetFlowRows: [

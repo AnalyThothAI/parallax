@@ -6,6 +6,7 @@ import {
   formatScore,
   formatScoreDelta,
   formatSignedPercent,
+  formatTokenPriceUsd,
   formatUsdCompact,
   shortAddress,
   tokenLabel
@@ -100,7 +101,7 @@ function marketPrimary(item: TokenFlowItem): string {
     return formatUsdCompact(item.market.market_cap);
   }
   if (item.market.price !== null && item.market.price !== undefined) {
-    return formatUsdCompact(item.market.price);
+    return formatTokenPriceUsd(item.market.price);
   }
   return "-";
 }
