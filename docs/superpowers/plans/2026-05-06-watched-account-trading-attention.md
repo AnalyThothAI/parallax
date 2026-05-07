@@ -12,34 +12,34 @@
 
 ## File Structure
 
-- Create `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`  
+- Create `src/gmgn_twitter_intel/retrieval/trading_attention_service.py`
   Builds `TradingAttentionItem` rows from watched-account events, semantic extraction rows, direct token attributions, and topic terms.
 
-- Modify `src/gmgn_twitter_intel/api/http.py`  
+- Modify `src/gmgn_twitter_intel/api/http.py`
   Adds `/api/signal-lab/pulse` and removes `/api/signal-lab/chains`; leaves explicit harness research endpoints separate from Signal Lab product APIs.
 
-- Create `tests/test_trading_attention_service.py`  
+- Create `tests/test_trading_attention_service.py`
   Covers direct token, topic heat, market structure, risk alert, and low-signal classification.
 
-- Modify `tests/test_api_http.py`  
+- Modify `tests/test_api_http.py`
   Covers the new authenticated pulse endpoint.
 
-- Modify `web/src/api/types.ts`  
+- Modify `web/src/api/types.ts`
   Adds `TradingAttentionItem`, `TradingAttentionData`, summary and filter types.
 
-- Rewrite `web/src/components/SignalLabPulse.tsx`  
+- Rewrite `web/src/components/SignalLabPulse.tsx`
   Renders trading attention rows instead of signal chains.
 
-- Rewrite `web/src/components/SignalLabWorkbench.tsx`  
+- Rewrite `web/src/components/SignalLabWorkbench.tsx`
   Replaces lifecycle cards with Direct token / Topic heat / Ecosystem / Structure / Risk summary and filters.
 
-- Rewrite `web/src/components/SignalLabInspector.tsx`  
+- Rewrite `web/src/components/SignalLabInspector.tsx`
   Replaces Trace/Snapshot/Outcome/Credit tabs with a single attention detail drawer.
 
-- Modify `web/src/App.tsx`  
+- Modify `web/src/App.tsx`
   Uses `/api/signal-lab/pulse` for Pulse and Workbench; no Signal Lab UI path can request `/api/signal-lab/chains`.
 
-- Modify `web/src/store/useTraderStore.ts`  
+- Modify `web/src/store/useTraderStore.ts`
   Replaces stage/horizon state with kind/source/search filters for trading attention.
 
 - Create/modify frontend tests around `SignalLabPulse` and `App`.

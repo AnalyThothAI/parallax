@@ -1,7 +1,7 @@
 # Watched Account Trading Attention Spec
 
-日期：2026-05-06  
-状态：Hard-cut replacement spec  
+日期：2026-05-06
+状态：Hard-cut replacement spec
 取代：`2026-05-06-signal-lab-production-hard-cut-cn.md` 的 SignalCandidate/Pulse 方向
 
 ## 0. 结论

@@ -1,7 +1,7 @@
 # Signal Lab Production Hard Cut Spec
 
-日期：2026-05-06  
-状态：Design spec，等待实现计划  
+日期：2026-05-06
+状态：Design spec，等待实现计划
 范围：Signal Lab Pulse / Harness Lab / closed-loop production gating
 
 ## 0. 结论
@@ -208,25 +208,25 @@ flowchart TD
 
 缺的不是更多 LLM 字段，而是生产级不变量：
 
-1. **Candidate Gate**  
+1. **Candidate Gate**
    把 social event 转成 production candidate 前必须通过硬门槛。
 
-2. **Deterministic Asset Identity**  
+2. **Deterministic Asset Identity**
    所有 production candidate 使用 `token_id`，symbol 只用于展示。
 
-3. **Entry Market Capture**  
+3. **Entry Market Capture**
    freeze 时必须保存 entry price、liquidity、market cap、volume、pricedness、observation source 和 freshness。
 
-4. **Tradeability Gate**  
+4. **Tradeability Gate**
    market cap 缺失、流动性缺失、价格 stale、稳定币/基金新闻/不可交易资产，都必须被 reject，不进入 Pulse 普通候选。
 
-5. **Production Pulse Read Model**  
+5. **Production Pulse Read Model**
    Pulse 不能复用 audit chain。它需要自己的 API、排序、状态、空状态和健康降级。
 
-6. **Evaluation Feedback**  
+6. **Evaluation Feedback**
    settlement/credit 必须至少影响 Pulse ranking explainability；后续再进入 policy weight。
 
-7. **Version Cutover**  
+7. **Version Cutover**
    新旧 config/prompt/schema 必须不可混淆。旧 snapshots 不能被新 Pulse 查询到。
 
 ## 4. 目标架构

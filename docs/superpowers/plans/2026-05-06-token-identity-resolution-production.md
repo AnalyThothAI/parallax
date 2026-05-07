@@ -45,37 +45,37 @@ compileall: pass
 
 Create:
 
-- `src/gmgn_twitter_intel/storage/asset_repository.py`  
+- `src/gmgn_twitter_intel/storage/asset_repository.py`
   Owns asset schema writes/reads: mentions, assets, aliases, venues, candidates, attributions, snapshots, jobs, projection rows.
 
-- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`  
+- `src/gmgn_twitter_intel/pipeline/asset_mention_builder.py`
   Converts `event_entities` and GMGN payload facts into `AssetMentionInput` rows. No provider calls.
 
-- `src/gmgn_twitter_intel/pipeline/asset_resolver.py`  
+- `src/gmgn_twitter_intel/pipeline/asset_resolver.py`
   Deterministic local resolver policy for CA, GMGN payload, local aliases, CEX instruments, DEX candidates, unresolved and ambiguous buckets.
 
-- `src/gmgn_twitter_intel/pipeline/asset_attribution.py`  
+- `src/gmgn_twitter_intel/pipeline/asset_attribution.py`
   Converts resolver decisions into `asset_attributions` rows and projection-ready payloads.
 
-- `src/gmgn_twitter_intel/market/okx_cex_client.py`  
+- `src/gmgn_twitter_intel/market/okx_cex_client.py`
   Small HTTP adapter for OKX public instruments/tickers. No trading/private endpoints.
 
-- `src/gmgn_twitter_intel/market/okx_dex_client.py`  
+- `src/gmgn_twitter_intel/market/okx_dex_client.py`
   Small HTTP adapter for OKX DEX token search and price info.
 
-- `src/gmgn_twitter_intel/market/okx_models.py`  
+- `src/gmgn_twitter_intel/market/okx_models.py`
   Normalized provider records for CEX instruments, DEX token candidates, and market snapshots.
 
-- `src/gmgn_twitter_intel/retrieval/asset_search_service.py`  
+- `src/gmgn_twitter_intel/retrieval/asset_search_service.py`
   New `$SYMBOL`/CA/handle/text search semantics. Symbol search returns evidence even when unresolved.
 
-- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`  
+- `src/gmgn_twitter_intel/retrieval/asset_flow_service.py`
   Serves `resolved_assets` and `attention_candidates`.
 
-- `src/gmgn_twitter_intel/retrieval/asset_social_timeline_service.py`  
+- `src/gmgn_twitter_intel/retrieval/asset_social_timeline_service.py`
   Timeline by `asset_id`, works for unresolved and resolved assets.
 
-- `src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py`  
+- `src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py`
   Adds asset-domain schema and indexes.
 
 - `tests/test_asset_repository.py`
@@ -89,25 +89,25 @@ Create:
 
 Modify:
 
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`  
+- `src/gmgn_twitter_intel/pipeline/ingest_service.py`
   Cut event ingest over to asset mentions/resolution/attributions.
 
-- `src/gmgn_twitter_intel/storage/repository_session.py`  
+- `src/gmgn_twitter_intel/storage/repository_session.py`
   Expose `AssetRepository`.
 
-- `src/gmgn_twitter_intel/api/http.py`  
+- `src/gmgn_twitter_intel/api/http.py`
   Replace token-flow/search/timeline routes with asset-domain services.
 
-- `src/gmgn_twitter_intel/cli.py`  
+- `src/gmgn_twitter_intel/cli.py`
   Add ops commands for OKX universe sync, symbol resolution, attribution audit, backfill, and asset-flow rebuild.
 
-- `src/gmgn_twitter_intel/settings.py` and `config.example.yaml`  
+- `src/gmgn_twitter_intel/settings.py` and `config.example.yaml`
   Add OKX public/provider settings and remove unused `gmgn_evm_candidate_chains`.
 
-- `tests/test_query_parser.py`  
+- `tests/test_query_parser.py`
   Keep parser behavior, but downstream symbol semantics change.
 
-- `tests/test_token_attribution_flow.py`, `tests/test_postgres_retrieval_services.py`, `tests/test_token_rolling_flow.py`, `tests/test_token_posts_service.py`, `tests/test_token_social_timeline_service.py`  
+- `tests/test_token_attribution_flow.py`, `tests/test_postgres_retrieval_services.py`, `tests/test_token_rolling_flow.py`, `tests/test_token_posts_service.py`, `tests/test_token_social_timeline_service.py`
   Delete or rewrite old expectations that unresolved symbols/unknown-chain CAs vanish.
 
 Retire from runtime:
