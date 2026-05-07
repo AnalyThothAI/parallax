@@ -174,6 +174,54 @@ def test_symbol_without_dominance_returns_ambiguous_with_candidates():
     assert "symbol:TIE" in result.lookup_keys
 
 
+def test_symbol_selects_market_dominant_asset_when_lead_is_clear_but_not_extreme():
+    registry = FakeRegistry(
+        symbol_assets={
+            "SLOP": [
+                {
+                    "asset_id": "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108",
+                    "chain_id": "eip155:1",
+                    "symbol": "SLOP",
+                    "market_cap_usd": Decimal("2274499.25"),
+                    "holders": 1935,
+                    "liquidity_usd": Decimal("861143.63"),
+                    "observed_at_ms": 1_778_161_505_208,
+                },
+                {
+                    "asset_id": "asset:solana:token:FqvtZ2UFR9we82Ni4LeacC1zyTiQ77usDo31DUokpump",
+                    "chain_id": "solana",
+                    "symbol": "SLOP",
+                    "market_cap_usd": Decimal("49054.27"),
+                    "holders": 6850,
+                    "liquidity_usd": Decimal("51296.73"),
+                    "observed_at_ms": 1_778_161_505_208,
+                },
+                {
+                    "asset_id": "asset:eip155:1:erc20:0x0557cb4750c828aa192948384ec8a19805a41869",
+                    "chain_id": "eip155:1",
+                    "symbol": "SLOP",
+                    "market_cap_usd": Decimal("117802.82"),
+                    "holders": 26,
+                    "liquidity_usd": Decimal("31489.35"),
+                    "observed_at_ms": 1_778_161_505_208,
+                },
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-slop",
+        event_id="event-slop",
+        keys=MentionKeys(symbol="SLOP"),
+        decision_time_ms=1_778_162_003_774,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108"
+    assert result.reason_codes == ["MARKET_DOMINANT_CHAIN_ASSET"]
+
+
 def test_chain_address_is_exact_asset_and_beats_symbol():
     registry = FakeRegistry(
         address_assets={

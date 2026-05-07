@@ -93,7 +93,13 @@ function identitySubtitle(item: TokenFlowItem): string {
   if (item.identity.venue_type === "cex") {
     return [item.identity.exchange?.toUpperCase(), item.identity.inst_id].filter(Boolean).join(" · ") || "CEX";
   }
-  return `${item.identity.chain ?? "unknown"} · ${shortAddress(item.identity.address ?? item.identity.identity_key)}`;
+  if (item.identity.address) {
+    return `${item.identity.chain ?? "unknown"} · ${shortAddress(item.identity.address)}`;
+  }
+  if (item.identity.target_type && item.identity.target_id) {
+    return item.identity.chain ? `${item.identity.chain} · resolved target` : "resolved target";
+  }
+  return "symbol-only · no resolved target";
 }
 
 function marketPrimary(item: TokenFlowItem): string {

@@ -60,7 +60,7 @@ def reprocess_recent_token_intents(
 ) -> dict[str, Any]:
     since_ms = int(now_ms) - WINDOW_MS.get(window, WINDOW_MS[DEFAULT_REPROCESS_WINDOW])
     if lookup_keys:
-        intents = repos.token_intent_lookup.recent_unresolved_intents_for_lookup_keys(
+        intents = repos.token_intent_lookup.recent_intents_for_lookup_keys(
             lookup_keys,
             since_ms=since_ms,
             limit=limit,

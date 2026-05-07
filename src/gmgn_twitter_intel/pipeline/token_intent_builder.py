@@ -138,6 +138,8 @@ def _display_cashtags_for_identity(
     same_surface_cashtags = [item for item in cashtags if item.text_surface == identity.text_surface]
     same_surface_identities = [item for item in identities if item.text_surface == identity.text_surface]
     if len(same_surface_cashtags) != 1 or len(same_surface_identities) != 1:
+        if len(cashtags) == 1 and len(identities) == 1:
+            return [cashtags[0]]
         return []
 
     cashtag = same_surface_cashtags[0]

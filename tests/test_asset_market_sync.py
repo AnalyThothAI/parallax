@@ -474,7 +474,7 @@ class FakeRepositorySession:
 
 
 class FakeTokenIntentLookup:
-    def recent_unresolved_intents_for_lookup_keys(self, *_args, **_kwargs):
+    def recent_intents_for_lookup_keys(self, *_args, **_kwargs):
         return []
 
 

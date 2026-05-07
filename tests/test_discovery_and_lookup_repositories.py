@@ -108,6 +108,37 @@ def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(t
     assert counts == {"found": 1}
 
 
+def test_lookup_key_reprocess_can_revisit_already_resolved_intents(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _insert_event_intent_and_evidence(conn)
+        lookup = TokenIntentLookupRepository(conn)
+        lookup.replace_lookup_keys(
+            intent_id="intent-1",
+            event_id="event-1",
+            keys=["symbol:UPEG"],
+            source_evidence_id="evidence-1",
+            created_at_ms=1_000,
+        )
+        conn.execute(
+            """
+            UPDATE token_intent_resolutions
+            SET resolution_status = 'UNIQUE_BY_CONTEXT',
+                target_type = 'Asset',
+                target_id = 'asset:eip155:1:erc20:0xold'
+            WHERE resolution_id = 'resolution-1'
+            """
+        )
+        conn.commit()
+
+        intents = lookup.recent_intents_for_lookup_keys(["symbol:UPEG"], since_ms=0, limit=10)
+    finally:
+        conn.close()
+
+    assert [item["intent_id"] for item in intents] == ["intent-1"]
+
+
 def _insert_event_intent_and_evidence(conn):
     from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 

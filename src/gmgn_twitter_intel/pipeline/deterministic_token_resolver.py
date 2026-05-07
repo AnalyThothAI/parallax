@@ -5,8 +5,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 RESOLVER_POLICY_VERSION = "token_radar_v4_deterministic_resolver"
-FRESH_OBSERVATION_MS = 5 * 60 * 1000
-DOMINANCE_GAP = Decimal("1.0")
+FRESH_OBSERVATION_MS = 20 * 60 * 1000
+DOMINANCE_GAP = Decimal("0.75")
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
 MIN_DOMINANT_HOLDERS = Decimal("1000")
 MIN_DOMINANT_LIQUIDITY_USD = Decimal("100000")

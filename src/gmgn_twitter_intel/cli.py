@@ -193,6 +193,7 @@ def build_parser() -> argparse.ArgumentParser:
     reprocess_token_intents.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
     reprocess_token_intents.add_argument("--limit", type=int, default=500)
     reprocess_token_intents.add_argument("--projection-limit", type=int, default=100)
+    reprocess_token_intents.add_argument("--lookup-key", action="append", default=[])
     audit_token_intent = ops_subcommands.add_parser(
         "audit-token-intent",
         help="inspect token intent evidence and resolution",
@@ -664,6 +665,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 now_ms=now_ms,
                 window=args.window,
                 limit=args.limit,
+                lookup_keys=args.lookup_key or None,
             )
             projection = rebuild_token_radar_windows(
                 repos=repos,

@@ -40,3 +40,27 @@ def test_symbol_and_ca_split_by_price_decimals_are_one_intent():
     assert intents[0].display_symbol == "MOONCLUB"
     assert intents[0].chain_hint == "solana"
     assert intents[0].address_hint == "69PzM2hDa3MCo7cvKPgiPxhr1FdGdMV3S7h6wpRkpump"
+
+
+def test_single_cross_surface_cashtag_and_ca_are_one_intent():
+    primary = "You’ll own $NOTHING and be happy."
+    reference = "Could be something, but you will own solana:F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump"
+    entities = extract_entities_from_surfaces(
+        [
+            TextSurface("primary", primary),
+            TextSurface("reference", reference),
+        ]
+    )
+    evidence = build_token_evidence(
+        event_id="event-nothing",
+        entities=entities,
+        token_snapshot=None,
+        created_at_ms=1_777_800_000_000,
+    )
+
+    intents = build_token_intents(event_id="event-nothing", evidence=evidence, created_at_ms=1_777_800_000_000)
+
+    assert len(intents) == 1
+    assert intents[0].display_symbol == "NOTHING"
+    assert intents[0].chain_hint == "solana"
+    assert intents[0].address_hint == "F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump"
