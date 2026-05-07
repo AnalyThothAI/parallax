@@ -24,7 +24,7 @@ def test_symbol_search_returns_unresolved_mentions():
     assert result.ok is True
     assert result.error is None
     assert result.resolution["status"] == "unresolved"
-    assert result.items[0]["match_type"] == "asset_mention"
+    assert result.items[0]["match_type"] == "token_intent"
     assert result.items[0]["event"]["event_id"] == "event-1"
 
 
@@ -166,7 +166,7 @@ def test_ca_search_uses_asset_index_instead_of_fts():
 
     assert result.ok is True
     assert result.resolution["status"] == "resolved"
-    assert result.items[0]["match_type"] == "asset_mention"
+    assert result.items[0]["match_type"] == "token_intent"
     assert result.items[0]["event"]["event_id"] == "event-ca"
     assert evidence.fts_queries == []
 
@@ -205,18 +205,32 @@ class FakeAssets:
         self._mention_events = mention_events
         self._ca_candidates = ca_candidates or []
         self._ca_events = ca_events or []
+        self.conn = FakeAssetConn(self)
 
     def candidates_for_symbol(self, symbol):
         return self._candidates
 
-    def events_for_symbol_mentions(self, symbol, *, limit, watched_only=False):
-        return self._mention_events[:limit]
-
     def candidates_for_ca(self, *, chain, address):
         return self._ca_candidates
 
-    def events_for_ca_mentions(self, *, chain, address, limit, watched_only=False):
-        return self._ca_events[:limit]
+
+class FakeAssetConn:
+    def __init__(self, assets: FakeAssets):
+        self.assets = assets
+
+    def execute(self, sql, params):
+        limit = int(params[-1])
+        key = str(params[0]).lower() if params else ""
+        rows = self.assets._ca_events if key.startswith("0x") else self.assets._mention_events
+        return FakeRows(rows[:limit])
+
+
+class FakeRows:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def fetchall(self):
+        return self.rows
 
 
 class FakeEvidence:

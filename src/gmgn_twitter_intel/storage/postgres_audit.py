@@ -9,16 +9,19 @@ CORE_TABLES = (
     "assets",
     "asset_aliases",
     "asset_venues",
-    "asset_mentions",
-    "asset_attributions",
-    "tokens",
-    "token_market_snapshots",
-    "token_market_observations",
     "asset_market_snapshots",
+    "token_evidence",
+    "token_intents",
+    "token_intent_evidence",
+    "token_intent_resolutions",
+    "token_intent_resolution_candidates",
+    "market_provider_observations",
+    "token_radar_rows",
+    "asset_signal_snapshots",
+    "asset_signal_outcomes",
     "enrichment_jobs",
     "social_event_extractions",
     "harness_snapshots",
-    "token_signal_snapshots",
     "notifications",
 )
 
@@ -26,9 +29,7 @@ PROJECTION_TABLES = (
     "projection_offsets",
     "projection_runs",
     "projection_dirty_ranges",
-    "asset_attention_buckets",
-    "asset_attention_bucket_authors",
-    "asset_flow_window_snapshots",
+    "token_radar_rows",
 )
 
 FOREIGN_KEY_CHECKS = {
@@ -38,29 +39,29 @@ FOREIGN_KEY_CHECKS = {
         LEFT JOIN events parent ON parent.event_id = child.event_id
         WHERE parent.event_id IS NULL
     """,
-    "asset_mentions_missing_events": """
+    "token_evidence_missing_events": """
         SELECT COUNT(*) AS count
-        FROM asset_mentions child
+        FROM token_evidence child
         LEFT JOIN events parent ON parent.event_id = child.event_id
         WHERE parent.event_id IS NULL
     """,
-    "asset_attributions_missing_events": """
+    "token_intents_missing_events": """
         SELECT COUNT(*) AS count
-        FROM asset_attributions child
+        FROM token_intents child
         LEFT JOIN events parent ON parent.event_id = child.event_id
         WHERE parent.event_id IS NULL
     """,
-    "asset_attributions_missing_assets": """
+    "token_resolutions_missing_intents": """
         SELECT COUNT(*) AS count
-        FROM asset_attributions child
-        LEFT JOIN assets parent ON parent.asset_id = child.asset_id
-        WHERE parent.asset_id IS NULL
+        FROM token_intent_resolutions child
+        LEFT JOIN token_intents parent ON parent.intent_id = child.intent_id
+        WHERE parent.intent_id IS NULL
     """,
-    "market_snapshots_missing_tokens": """
+    "token_radar_rows_missing_intents": """
         SELECT COUNT(*) AS count
-        FROM token_market_snapshots child
-        LEFT JOIN tokens parent ON parent.token_id = child.token_id
-        WHERE parent.token_id IS NULL
+        FROM token_radar_rows child
+        LEFT JOIN token_intents parent ON parent.intent_id = child.intent_id
+        WHERE parent.intent_id IS NULL
     """,
     "harness_outcomes_missing_snapshots": """
         SELECT COUNT(*) AS count
@@ -106,31 +107,29 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         "params": ("pepe",),
     },
     {
-        "name": "asset_flow_5m_shape",
+        "name": "token_radar_latest",
         "sql": """
-            SELECT aa.asset_id, COUNT(DISTINCT aa.event_id) AS post_count
-            FROM asset_attributions aa
-            WHERE aa.decision_time_ms >= %s
-              AND aa.decision_time_ms < %s
-              AND aa.attribution_status IN ('direct', 'selected', 'unresolved', 'ambiguous')
-              AND aa.confidence > 0
-            GROUP BY aa.asset_id
-            ORDER BY post_count DESC, aa.asset_id DESC
+            SELECT row_id
+            FROM token_radar_rows
+            WHERE projection_version = 'token-radar-v3'
+              AND "window" = '5m'
+              AND scope = 'all'
+            ORDER BY computed_at_ms DESC, lane DESC, rank ASC
             LIMIT 50
         """,
-        "params": (0, 300_000),
+        "params": (),
     },
     {
         "name": "asset_posts_recent",
         "sql": """
-            SELECT aa.event_id
-            FROM asset_attributions aa
-            WHERE aa.asset_id = (
+            SELECT tir.event_id
+            FROM token_intent_resolutions tir
+            WHERE tir.asset_id = (
                 SELECT asset_id FROM assets ORDER BY first_seen_ms DESC, asset_id DESC LIMIT 1
             )
-              AND aa.attribution_status IN ('direct', 'selected', 'unresolved', 'ambiguous')
-              AND aa.confidence > 0
-            ORDER BY aa.decision_time_ms DESC, aa.event_id DESC
+              AND tir.resolution_status <> 'superseded'
+              AND tir.confidence > 0
+            ORDER BY tir.decision_time_ms DESC, tir.event_id DESC
             LIMIT 50
         """,
         "params": (),
@@ -232,33 +231,40 @@ class ProjectionValidationAudit:
 
     def run(self, *, sample: int) -> dict[str, Any]:
         sample_size = max(0, int(sample))
-        snapshot_rows = self.conn.execute(
+        radar_rows = self.conn.execute(
             """
-            SELECT snapshot_id, asset_id
-            FROM asset_flow_window_snapshots
-            ORDER BY decision_time_ms DESC, rank ASC
+            SELECT row_id, intent_id, asset_id
+            FROM token_radar_rows
+            ORDER BY computed_at_ms DESC, rank ASC
             LIMIT %s
             """,
             (sample_size,),
         ).fetchall()
-        missing_tokens = 0
-        for row in snapshot_rows:
-            asset = self.conn.execute(
-                "SELECT 1 AS ok FROM assets WHERE asset_id = %s",
-                (row["asset_id"],),
+        missing_refs = 0
+        for row in radar_rows:
+            intent = self.conn.execute(
+                "SELECT 1 AS ok FROM token_intents WHERE intent_id = %s",
+                (row["intent_id"],),
             ).fetchone()
-            if asset is None:
-                missing_tokens += 1
-        offsets = self.conn.execute("SELECT COUNT(*) AS count FROM projection_offsets").fetchone()
-        status = "ready" if int(offsets["count"] if offsets else 0) > 0 else "projection_missing"
+            if intent is None:
+                missing_refs += 1
+            if row.get("asset_id"):
+                asset = self.conn.execute(
+                    "SELECT 1 AS ok FROM assets WHERE asset_id = %s",
+                    (row["asset_id"],),
+                ).fetchone()
+                if asset is None:
+                    missing_refs += 1
+        latest = self.conn.execute("SELECT MAX(computed_at_ms) AS computed_at_ms FROM token_radar_rows").fetchone()
+        status = "ready" if latest and latest["computed_at_ms"] is not None else "projection_missing"
         return {
-            "ok": missing_tokens == 0,
+            "ok": missing_refs == 0,
             "status": status,
             "sample": sample_size,
-            "checked_count": len(snapshot_rows),
-            "mismatch_count": missing_tokens,
+            "checked_count": len(radar_rows),
+            "mismatch_count": missing_refs,
             "checks": {
-                "asset_flow_window_snapshots_missing_assets": missing_tokens,
+                "token_radar_rows_missing_refs": missing_refs,
             },
         }
 

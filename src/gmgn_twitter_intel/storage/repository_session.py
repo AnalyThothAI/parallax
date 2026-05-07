@@ -6,15 +6,18 @@ from dataclasses import dataclass
 from typing import Any
 
 from .asset_repository import AssetRepository
+from .asset_signal_repository import AssetSignalRepository
 from .enrichment_repository import EnrichmentRepository
 from .entity_repository import EntityRepository
 from .evidence_repository import EvidenceRepository
 from .harness_repository import HarnessRepository
-from .market_observation_repository import MarketObservationRepository
+from .intent_resolution_repository import IntentResolutionRepository
+from .market_repository import MarketRepository
 from .notification_repository import NotificationRepository
 from .signal_repository import SignalRepository
-from .token_repository import TokenRepository
-from .token_signal_repository import TokenSignalRepository
+from .token_evidence_repository import TokenEvidenceRepository
+from .token_intent_repository import TokenIntentRepository
+from .token_radar_repository import TokenRadarRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,13 +26,16 @@ class RepositorySession:
     evidence: EvidenceRepository
     entities: EntityRepository
     signals: SignalRepository
-    tokens: TokenRepository
     assets: AssetRepository
-    market_observations: MarketObservationRepository
+    token_evidence: TokenEvidenceRepository
+    token_intents: TokenIntentRepository
+    intent_resolutions: IntentResolutionRepository
+    market: MarketRepository
+    token_radar: TokenRadarRepository
+    asset_signals: AssetSignalRepository
     enrichment: EnrichmentRepository
     harness: HarnessRepository
     notifications: NotificationRepository
-    token_signals: TokenSignalRepository
 
 
 def repositories_for_connection(conn: Any) -> RepositorySession:
@@ -38,13 +44,16 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         evidence=EvidenceRepository(conn),
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
-        tokens=TokenRepository(conn),
         assets=AssetRepository(conn),
-        market_observations=MarketObservationRepository(conn),
+        token_evidence=TokenEvidenceRepository(conn),
+        token_intents=TokenIntentRepository(conn),
+        intent_resolutions=IntentResolutionRepository(conn),
+        market=MarketRepository(conn),
+        token_radar=TokenRadarRepository(conn),
+        asset_signals=AssetSignalRepository(conn),
         enrichment=EnrichmentRepository(conn),
         harness=HarnessRepository(conn),
         notifications=NotificationRepository(conn),
-        token_signals=TokenSignalRepository(conn),
     )
 
 

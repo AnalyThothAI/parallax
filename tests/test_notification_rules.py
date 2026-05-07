@@ -54,6 +54,36 @@ def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, notific
     )
 
 
+def radar_score(*, heat: int, quality: int, opportunity: int) -> dict:
+    def block(score: int) -> dict:
+        return {
+            "score": score,
+            "score_version": "token_radar_v3",
+            "reasons": [],
+            "risks": [],
+            "contributions": [],
+            "risk_caps": [],
+        }
+
+    return {
+        "heat": block(heat),
+        "quality": block(quality),
+        "propagation": block(60),
+        "tradeability": block(80),
+        "timing": block(50),
+        "opportunity": {
+            **block(opportunity),
+            "components": {
+                "heat": heat,
+                "quality": quality,
+                "propagation": 60,
+                "tradeability": 80,
+                "timing": 50,
+            },
+        },
+    }
+
+
 def test_watched_account_activity_candidate_uses_committed_event_identity():
     candidates = engine(
         events=[
@@ -128,6 +158,9 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
                         "latest_seen_ms": NOW_MS,
                     },
                     "resolution": {"status": "resolved"},
+                    "score": radar_score(heat=92, quality=78, opportunity=81),
+                    "decision": "driver",
+                    "data_health": {"identity": "resolved", "market": "ready"},
                 },
                 {
                     "asset": {
@@ -144,6 +177,9 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
                         "latest_seen_ms": NOW_MS,
                     },
                     "resolution": {"status": "unresolved"},
+                    "score": radar_score(heat=100, quality=70, opportunity=96),
+                    "decision": "investigate",
+                    "data_health": {"identity": "unresolved", "market": "no_venue"},
                 },
             ],
             "attention_candidates": [],
@@ -161,9 +197,42 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
     assert "`0xpepe`" in hot[0].body
     assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
     assert "[X Search]" in hot[0].body
-    assert hot[0].source_table == "asset_flow"
+    assert hot[0].source_table == "token_radar_rows"
     assert hot[0].payload["asset_id"] == "asset:dex:eth:pepe"
     assert hot[0].payload["social_heat_score"] == 92
+    assert hot[0].payload["decision"] == "driver"
+    assert hot[0].payload["score_version"] == "token_radar_v3"
+
+
+def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
+    candidates = engine(
+        asset_flow={
+            "resolved_assets": [],
+            "attention_candidates": [
+                {
+                    "asset": {
+                        "asset_id": "",
+                        "symbol": "VERSA",
+                        "asset_type": None,
+                        "identity_status": "unresolved",
+                    },
+                    "primary_venue": None,
+                    "attention": {
+                        "mentions_window": 9,
+                        "unique_authors": 5,
+                        "watched_mentions": 2,
+                        "latest_seen_ms": NOW_MS,
+                    },
+                    "resolution": {"status": "unresolved"},
+                    "score": radar_score(heat=100, quality=70, opportunity=98),
+                    "decision": "investigate",
+                    "data_health": {"identity": "unresolved", "market": "no_venue"},
+                }
+            ],
+        }
+    ).evaluate(now_ms=NOW_MS)
+
+    assert not [item for item in candidates if item.rule_id in {"hot_quality_token_5m", "quality_token_5m"}]
 
 
 def test_harness_snapshot_candidate_uses_combined_score_threshold():

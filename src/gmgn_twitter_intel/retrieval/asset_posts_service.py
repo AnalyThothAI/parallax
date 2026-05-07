@@ -80,7 +80,7 @@ def _post(row: dict[str, Any]) -> dict[str, Any]:
     watched = bool(row.get("is_watched"))
     confidence = float(row.get("confidence") or 0.0)
     quality_score = min(100, round(45 + confidence * 35 + (15 if watched else 0)))
-    reasons = ["watched_asset_evidence"] if watched else ["asset_mention"]
+    reasons = ["watched_token_intent"] if watched else ["token_intent"]
     return {
         "event_id": row.get("event_id"),
         "tweet_id": row.get("tweet_id"),
@@ -88,13 +88,13 @@ def _post(row: dict[str, Any]) -> dict[str, Any]:
         "text": text,
         "url": row.get("canonical_url"),
         "received_at_ms": row.get("received_at_ms"),
-        "mention_source": "asset_attribution",
+        "mention_source": "token_intent",
         "attribution_status": row.get("attribution_status"),
         "attribution_confidence": row.get("confidence"),
         "attribution_weight": None,
         "is_watched": row.get("is_watched"),
         "is_first_seen_by_watched_for_token": watched,
-        "event_type": "watched_asset_mention" if watched else "public_asset_mention",
+        "event_type": "watched_token_intent" if watched else "public_token_intent",
         "reference": _reference(row.get("reference_json")),
         "catalyst_score": quality_score if watched else None,
         "catalyst_components": None,
@@ -105,9 +105,9 @@ def _post(row: dict[str, Any]) -> dict[str, Any]:
             "risks": ["public_stream_coverage"],
             "contributions": [
                 {
-                    "feature": "asset_resolution_confidence",
+                    "feature": "token_intent_resolution_confidence",
                     "value": round(confidence * 35, 2),
-                    "reason": "asset_attribution",
+                    "reason": "token_intent_resolution",
                 }
             ],
             "risk_caps": [],

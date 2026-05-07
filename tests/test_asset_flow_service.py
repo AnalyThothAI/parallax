@@ -5,12 +5,20 @@ import pytest
 from gmgn_twitter_intel.retrieval.asset_flow_service import AssetFlowService
 
 
-def test_asset_flow_has_resolved_and_attention_lanes():
+def test_asset_flow_has_resolved_and_attention_lanes_from_token_radar_rows():
     service = AssetFlowService(
-        assets=FakeAssets(
+        token_radar=FakeTokenRadar(
             rows=[
-                resolved_row(symbol="BTC", asset_id="asset:cex:BTC", venue_id="venue:cex:okx:SPOT:BTC-USDT"),
-                unresolved_row(symbol="MIRROR", asset_id="asset:unresolved:MIRROR"),
+                radar_row(lane="resolved", symbol="BTC", asset_id="asset:cex:BTC"),
+                radar_row(
+                    lane="attention",
+                    symbol="MIRROR",
+                    intent_id="intent:mirror",
+                    asset_id=None,
+                    identity_status="unresolved",
+                    resolution_status="unresolved",
+                    decision="investigate",
+                ),
             ]
         )
     )
@@ -18,27 +26,56 @@ def test_asset_flow_has_resolved_and_attention_lanes():
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     assert result["resolved_assets"][0]["asset"]["symbol"] == "BTC"
-    assert result["attention_candidates"][0]["asset"]["symbol"] == "MIRROR"
-    assert result["projection"]["version"] == "asset-flow-v1"
+    assert result["attention_candidates"][0]["intent"]["display_symbol"] == "MIRROR"
+    assert result["projection"]["version"] == "token-radar-v3"
+    assert result["projection"]["source"] == "token_radar_rows"
 
 
-def test_unresolved_mirror_appears_in_attention_lane():
+def test_unresolved_attention_keeps_backend_investigate_decision_even_with_high_heat():
     service = AssetFlowService(
-        assets=FakeAssets(rows=[unresolved_row(symbol="MIRROR", asset_id="asset:unresolved:MIRROR")])
+        token_radar=FakeTokenRadar(
+            rows=[
+                radar_row(
+                    lane="attention",
+                    symbol="VERSA",
+                    asset_id=None,
+                    identity_status="unresolved",
+                    resolution_status="unresolved",
+                    score={"heat": score_block(100), "opportunity": score_block(96)},
+                    decision="investigate",
+                )
+            ]
+        )
     )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
-    mirror = result["attention_candidates"][0]
-    assert mirror["asset"]["identity_status"] == "unresolved"
-    assert mirror["resolution"]["status"] == "unresolved"
-    assert mirror["attention"]["mentions_1h"] == 1
+    versa = result["attention_candidates"][0]
+    assert versa["resolution"]["status"] == "unresolved"
+    assert versa["score"]["heat"]["score"] == 100
+    assert versa["score"]["opportunity"]["score"] == 96
+    assert versa["decision"] == "investigate"
 
 
-def test_btc_cex_asset_does_not_require_chain_address():
+def test_btc_cex_row_does_not_require_chain_address():
     service = AssetFlowService(
-        assets=FakeAssets(
-            rows=[resolved_row(symbol="BTC", asset_id="asset:cex:BTC", venue_id="venue:cex:okx:SPOT:BTC-USDT")]
+        token_radar=FakeTokenRadar(
+            rows=[
+                radar_row(
+                    lane="resolved",
+                    symbol="BTC",
+                    asset_id="asset:cex:BTC",
+                    asset_type="cex_asset",
+                    venue={
+                        "venue_id": "venue:cex:okx:SPOT:BTC-USDT",
+                        "venue_type": "cex",
+                        "exchange": "okx",
+                        "inst_id": "BTC-USDT",
+                        "chain": None,
+                        "address": None,
+                    },
+                )
+            ]
         )
     )
 
@@ -52,17 +89,24 @@ def test_btc_cex_asset_does_not_require_chain_address():
     assert btc["primary_venue"]["address"] is None
 
 
-def test_asset_flow_exposes_latest_market_snapshot_health():
+def test_asset_flow_exposes_market_snapshot_health_from_read_model():
     service = AssetFlowService(
-        assets=FakeAssets(
+        token_radar=FakeTokenRadar(
             rows=[
-                {
-                    **resolved_row(symbol="BTC", asset_id="asset:cex:BTC", venue_id="venue:cex:okx:SPOT:BTC-USDT"),
-                    "market_provider": "okx_cex",
-                    "market_observed_at_ms": 1_700_000_000_000,
-                    "market_price_usd": 69_000.0,
-                    "market_volume_24h_usd": 123_000_000.0,
-                }
+                radar_row(
+                    lane="resolved",
+                    symbol="BTC",
+                    asset_id="asset:cex:BTC",
+                    market={
+                        "market_status": "ready",
+                        "market_observation_status": "ready",
+                        "provider": "okx_cex",
+                        "price_usd": 69_000.0,
+                        "volume_24h_usd": 123_000_000.0,
+                        "snapshot_age_ms": 60_000,
+                        "snapshot_observed_at_ms": 1_700_000_000_000,
+                    },
+                )
             ]
         )
     )
@@ -70,100 +114,127 @@ def test_asset_flow_exposes_latest_market_snapshot_health():
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     market = result["resolved_assets"][0]["market"]
-    assert market["market_status"] == "fresh"
+    assert market["market_status"] == "ready"
+    assert market["market_observation_status"] == "ready"
     assert market["provider"] == "okx_cex"
     assert market["price_usd"] == 69_000.0
     assert market["snapshot_age_ms"] == 60_000
 
 
-def test_asset_flow_treats_empty_market_snapshot_as_missing():
+def test_asset_flow_keeps_diagnosable_missing_market_status():
     service = AssetFlowService(
-        assets=FakeAssets(
+        token_radar=FakeTokenRadar(
             rows=[
-                {
-                    **resolved_row(symbol="TEST", asset_id="asset:dex:base:test", venue_id="venue:dex:base:test"),
-                    "market_provider": "okx_dex",
-                    "market_observed_at_ms": 1_700_000_000_000,
-                    "market_price_usd": None,
-                    "market_cap_usd": None,
-                    "market_liquidity_usd": None,
-                    "market_volume_24h_usd": None,
-                    "market_open_interest_usd": None,
-                    "market_holders": None,
-                }
+                radar_row(
+                    lane="resolved",
+                    symbol="TEST",
+                    asset_id="asset:dex:base:test",
+                    asset_type="dex_asset",
+                    market={
+                        "market_status": "missing",
+                        "market_observation_status": "provider_not_configured",
+                        "price_change_status": "missing_market",
+                        "provider": "okx_dex",
+                        "price_usd": None,
+                        "snapshot_observed_at_ms": None,
+                    },
+                    data_health={
+                        "identity": "resolved",
+                        "market": "provider_not_configured",
+                        "coverage": "public_stream",
+                    },
+                )
             ]
         )
     )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
-    market = result["resolved_assets"][0]["market"]
-    assert market["market_status"] == "missing"
-    assert market["provider"] is None
-    assert market["snapshot_observed_at_ms"] is None
+    row = result["resolved_assets"][0]
+    assert row["market"]["market_status"] == "missing"
+    assert row["market"]["market_observation_status"] == "provider_not_configured"
+    assert row["market"]["snapshot_observed_at_ms"] is None
+    assert row["data_health"]["market"] == "provider_not_configured"
 
 
-def test_asset_flow_uses_provider_symbol_alias_instead_of_contract_address_display():
+def test_asset_flow_uses_backend_symbol_instead_of_contract_address_display():
     address = "CB9dDufT3ZuQXqqSfa1c5kY935TEreyBw9XJXxHKpump"
-    row = {
-        **resolved_row(
-            symbol=address.upper(),
-            asset_id=f"asset:dex:solana:{address.lower()}",
-            venue_id=f"venue:dex:solana:{address.lower()}",
-        ),
-        "asset_type": "dex_asset",
-        "venue_type": "dex",
-        "exchange": None,
-        "inst_id": None,
-        "chain": "solana",
-        "address": address,
-        "display_symbol": "USDUC",
-    }
-    service = AssetFlowService(assets=FakeAssets(rows=[row]))
+    service = AssetFlowService(
+        token_radar=FakeTokenRadar(
+            rows=[
+                radar_row(
+                    lane="resolved",
+                    symbol="USDUC",
+                    asset_id=f"asset:dex:solana:{address.lower()}",
+                    asset_type="dex_asset",
+                    venue={
+                        "venue_id": f"venue:dex:solana:{address.lower()}",
+                        "venue_type": "dex",
+                        "exchange": None,
+                        "chain": "solana",
+                        "address": address,
+                    },
+                )
+            ]
+        )
+    )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     assert result["resolved_assets"][0]["asset"]["symbol"] == "USDUC"
 
 
-def test_asset_flow_omits_address_like_symbol_when_provider_symbol_is_unknown():
+def test_asset_flow_does_not_invent_symbol_when_backend_omits_it():
     address = "CTc4y2eHbTApoCAo2rNJFHkvPFHMnNygqEcBMyNcpump"
-    row = {
-        **resolved_row(
-            symbol=address.upper(),
-            asset_id=f"asset:dex:solana:{address.lower()}",
-            venue_id=f"venue:dex:solana:{address.lower()}",
-        ),
-        "asset_type": "dex_asset",
-        "venue_type": "dex",
-        "exchange": None,
-        "inst_id": None,
-        "chain": "solana",
-        "address": address,
-    }
-    service = AssetFlowService(assets=FakeAssets(rows=[row]))
+    service = AssetFlowService(
+        token_radar=FakeTokenRadar(
+            rows=[
+                radar_row(
+                    lane="resolved",
+                    symbol=None,
+                    display_symbol="CTc4y2eH",
+                    asset_id=f"asset:dex:solana:{address.lower()}",
+                    asset_type="dex_asset",
+                    venue={
+                        "venue_id": f"venue:dex:solana:{address.lower()}",
+                        "venue_type": "dex",
+                        "exchange": None,
+                        "chain": "solana",
+                        "address": address,
+                    },
+                )
+            ]
+        )
+    )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
+    assert result["resolved_assets"][0]["intent"]["display_symbol"] == "CTc4y2eH"
     assert result["resolved_assets"][0]["asset"]["symbol"] is None
 
 
-def test_asset_flow_exposes_market_timing_changes_from_snapshot_baselines():
+def test_asset_flow_exposes_market_timing_changes_from_projection():
     service = AssetFlowService(
-        assets=FakeAssets(
+        token_radar=FakeTokenRadar(
             rows=[
-                {
-                    **resolved_row(symbol="BTC", asset_id="asset:cex:BTC", venue_id="venue:cex:okx:SPOT:BTC-USDT"),
-                    "market_provider": "okx_cex",
-                    "market_observed_at_ms": 1_700_000_000_000,
-                    "market_price_usd": 100.0,
-                    "market_volume_24h_usd": 123_000_000.0,
-                    "market_price_5m_ago": 80.0,
-                    "market_price_1h_ago": 50.0,
-                    "market_price_24h_ago": 40.0,
-                    "market_price_at_social_start": 90.0,
-                    "market_price_before_social_start": 75.0,
-                }
+                radar_row(
+                    lane="resolved",
+                    symbol="BTC",
+                    asset_id="asset:cex:BTC",
+                    market={
+                        "market_status": "ready",
+                        "market_observation_status": "ready",
+                        "price_change_status": "ready",
+                        "provider": "okx_cex",
+                        "price_usd": 100.0,
+                        "price_change_5m_pct": 0.25,
+                        "price_change_1h_pct": 1.0,
+                        "price_change_24h_pct": 1.5,
+                        "price_at_social_start": 90.0,
+                        "price_change_since_social_pct": 1 / 9,
+                        "price_change_before_social_pct": 0.2,
+                    },
+                )
             ]
         )
     )
@@ -180,63 +251,113 @@ def test_asset_flow_exposes_market_timing_changes_from_snapshot_baselines():
     assert market["price_change_before_social_pct"] == pytest.approx(0.2)
 
 
-class FakeAssets:
+class FakeTokenRadar:
     def __init__(self, *, rows):
         self.rows = rows
+        self.calls = []
 
-    def asset_flow_rows(self, *, since_ms, watched_only, limit, now_ms):
-        return [row for row in self.rows if row["decision_time_ms"] >= since_ms][:limit]
+    def latest_rows(self, *, window, scope, limit):
+        self.calls.append({"window": window, "scope": scope, "limit": limit})
+        return self.rows[:limit]
 
 
-def resolved_row(*, symbol, asset_id, venue_id):
+def radar_row(
+    *,
+    lane,
+    symbol,
+    asset_id,
+    intent_id: str | None = None,
+    display_symbol: str | None = None,
+    asset_type: str = "cex_asset",
+    identity_status: str = "resolved",
+    resolution_status: str = "resolved",
+    venue: dict | None = None,
+    market: dict | None = None,
+    score: dict | None = None,
+    decision: str = "watch",
+    data_health: dict | None = None,
+):
+    resolved_intent_id = intent_id or f"intent:{(display_symbol or symbol or asset_id or 'unknown').lower()}"
     return {
-        "event_id": f"event-{symbol.lower()}",
+        "row_id": f"row:{resolved_intent_id}",
+        "lane": lane,
+        "rank": 1,
+        "intent_id": resolved_intent_id,
+        "event_id": f"event:{resolved_intent_id}",
         "asset_id": asset_id,
-        "asset_type": "cex_asset",
-        "canonical_symbol": symbol,
-        "identity_status": "resolved",
-        "attribution_status": "selected",
-        "venue_id": venue_id,
-        "venue_type": "cex",
-        "exchange": "okx",
-        "inst_id": f"{symbol}-USDT",
-        "chain": None,
-        "address": None,
-        "author_handle": "alice",
-        "is_watched": True,
-        "decision_time_ms": 1_700_000_000_000,
-        "mentions_5m": 1,
-        "mentions_1h": 1,
-        "mentions_window": 1,
-        "unique_authors": 1,
-        "watched_mentions": 1,
-        "latest_seen_ms": 1_700_000_000_000,
+        "primary_venue_id": (venue or {}).get("venue_id"),
+        "intent_json": {
+            "intent_id": resolved_intent_id,
+            "display_symbol": display_symbol if display_symbol is not None else symbol,
+            "display_name": None,
+            "evidence": [],
+        },
+        "asset_json": {
+            "asset_id": asset_id,
+            "symbol": symbol,
+            "asset_type": asset_type,
+            "identity_status": identity_status,
+        },
+        "primary_venue_json": venue
+        if venue is not None
+        else {
+            "venue_id": "venue:cex:okx:SPOT:BTC-USDT",
+            "venue_type": "cex",
+            "exchange": "okx",
+            "chain": None,
+            "address": None,
+            "inst_id": f"{symbol or 'BTC'}-USDT",
+        },
+        "attention_json": {
+            "mentions_5m": 1,
+            "mentions_1h": 1,
+            "mentions_window": 1,
+            "unique_authors": 1,
+            "watched_mentions": 1,
+            "latest_seen_ms": 1_700_000_000_000,
+        },
+        "resolution_json": {
+            "status": resolution_status,
+            "resolution_status": resolution_status,
+            "confidence": 0.9 if identity_status == "resolved" else 0.0,
+            "reasons": [],
+            "risks": [],
+        },
+        "market_json": market
+        if market is not None
+        else {
+            "market_status": "pending_refresh",
+            "market_observation_status": "pending_refresh",
+            "price_change_status": "pending_refresh",
+            "provider": None,
+            "price_usd": None,
+        },
+        "score_json": score
+        if score is not None
+        else {
+            "heat": score_block(50),
+            "quality": score_block(70),
+            "propagation": score_block(50),
+            "tradeability": score_block(60),
+            "timing": score_block(50),
+            "opportunity": score_block(55),
+        },
+        "decision": decision,
+        "data_health_json": data_health
+        if data_health is not None
+        else {"identity": identity_status, "market": "pending_refresh", "coverage": "public_stream"},
+        "source_event_ids_json": [f"event:{resolved_intent_id}"],
         "source_max_received_at_ms": 1_700_000_000_000,
     }
 
 
-def unresolved_row(*, symbol, asset_id):
+def score_block(score: int):
     return {
-        "event_id": f"event-{symbol.lower()}",
-        "asset_id": asset_id,
-        "asset_type": "unresolved_symbol",
-        "canonical_symbol": symbol,
-        "identity_status": "unresolved",
-        "attribution_status": "unresolved",
-        "venue_id": None,
-        "venue_type": None,
-        "exchange": None,
-        "inst_id": None,
-        "chain": None,
-        "address": None,
-        "author_handle": "bob",
-        "is_watched": False,
-        "decision_time_ms": 1_700_000_000_000,
-        "mentions_5m": 1,
-        "mentions_1h": 1,
-        "mentions_window": 1,
-        "unique_authors": 1,
-        "watched_mentions": 0,
-        "latest_seen_ms": 1_700_000_000_000,
-        "source_max_received_at_ms": 1_700_000_000_000,
+        "score": score,
+        "score_version": "token_radar_v3",
+        "reasons": [],
+        "risks": [],
+        "hard_risks": [],
+        "contributions": [],
+        "risk_caps": [],
     }

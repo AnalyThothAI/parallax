@@ -139,13 +139,17 @@ class PublicWebSocketHub:
             symbol = str(entity.get("normalized_value") or "").upper()
             if entity.get("entity_type") == "symbol" and symbol in client.symbols:
                 return True
-        for attribution in payload.get("asset_attributions") or []:
-            symbol = str(attribution.get("canonical_symbol") or "").strip().upper()
+        for intent in payload.get("token_intents") or []:
+            symbol = str(intent.get("display_symbol") or "").strip().upper()
             if symbol and symbol in client.symbols:
                 return True
-            chain = attribution.get("chain")
-            address = attribution.get("address")
+            chain = intent.get("chain_hint")
+            address = intent.get("address_hint")
             if address and _ca_subscription_matches((chain, str(address).lower()), client.cas):
+                return True
+        for resolution in payload.get("token_resolutions") or []:
+            asset_id = str(resolution.get("asset_id") or "").strip()
+            if asset_id and any(symbol in asset_id.upper() for symbol in client.symbols):
                 return True
         return False
 
@@ -157,7 +161,8 @@ class PublicWebSocketHub:
             "event": event,
             "entities": repos.entities.entities_for_event(event_id),
             "alerts": repos.signals.alerts_for_event(event_id),
-            "asset_attributions": repos.assets.asset_attributions_for_event(event_id),
+            "token_intents": repos.token_intents.intents_for_event(event_id),
+            "token_resolutions": repos.intent_resolutions.resolutions_for_event(event_id),
             "harness": repos.harness.harness_for_event(event_id),
         }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -26,6 +27,12 @@ EXPLORER_HOST_CHAINS = {
 
 
 @dataclass(frozen=True, slots=True)
+class TextSurface:
+    surface: str
+    text: str
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractedEntity:
     entity_type: str
     raw_value: str
@@ -34,74 +41,141 @@ class ExtractedEntity:
     token_resolution_status: str
     confidence: float
     source: str
+    text_surface: str = "primary"
+    span_start: int = 0
+    span_end: int = 0
+    sentence_id: int = 0
+    local_group_key: str = "primary:0"
 
 
 def extract_entities(text: str | None) -> list[ExtractedEntity]:
     if not text:
         return []
+    return extract_entities_from_surfaces([TextSurface("primary", text)])
+
+
+def extract_entities_from_surfaces(surfaces: Sequence[TextSurface]) -> list[ExtractedEntity]:
     entities: list[ExtractedEntity] = []
-    seen: set[tuple[str, str, str | None]] = set()
+    seen: set[tuple[str, str, str | None, str, int, int]] = set()
+    for surface in surfaces:
+        if not surface.text:
+            continue
+        _extract_surface_entities(surface, entities=entities, seen=seen)
+    return entities
+
+
+def _extract_surface_entities(
+    surface: TextSurface,
+    *,
+    entities: list[ExtractedEntity],
+    seen: set[tuple[str, str, str | None, str, int, int]],
+) -> None:
+    text = surface.text
 
     for match in EVM_CA_RE.finditer(text):
         raw = match.group(0)
         _append_unique(
             entities,
             seen,
-            _evm_ca_entity(raw, chain=_chain_for_evm_ca(text, raw=raw, start=match.start(), end=match.end())),
+            _with_span(
+                _evm_ca_entity(raw, chain=_chain_for_evm_ca(text, raw=raw, start=match.start(), end=match.end())),
+                surface=surface.surface,
+                text=text,
+                start=match.start(),
+                end=match.end(),
+            ),
         )
 
-    for raw in SOLANA_CA_RE.findall(text):
+    for match in SOLANA_CA_RE.finditer(text):
+        raw = match.group(0)
         if raw.startswith("0x"):
             continue
         entity = _solana_ca_entity(raw)
         if entity is not None:
-            _append_unique(entities, seen, entity)
+            _append_unique(
+                entities,
+                seen,
+                _with_span(entity, surface=surface.surface, text=text, start=match.start(), end=match.end()),
+            )
 
-    for symbol in CASHTAG_RE.findall(text):
+    for match in CASHTAG_RE.finditer(text):
+        symbol = match.group(1)
         _append_unique(
             entities,
             seen,
-            ExtractedEntity(
-                entity_type="symbol",
-                raw_value=f"${symbol}",
-                normalized_value=symbol.upper(),
-                chain=None,
-                token_resolution_status="unresolved_symbol",
-                confidence=0.8,
-                source="cashtag",
+            _with_span(
+                ExtractedEntity(
+                    entity_type="symbol",
+                    raw_value=f"${symbol}",
+                    normalized_value=symbol.upper(),
+                    chain=None,
+                    token_resolution_status="unresolved_symbol",
+                    confidence=0.8,
+                    source="cashtag",
+                ),
+                surface=surface.surface,
+                text=text,
+                start=match.start(),
+                end=match.end(),
             ),
         )
 
-    for hashtag in HASHTAG_RE.findall(text):
+    for match in HASHTAG_RE.finditer(text):
+        hashtag = match.group(1)
         _append_unique(
             entities,
             seen,
-            ExtractedEntity("hashtag", f"#{hashtag}", hashtag.lower(), None, "non_token_entity", 1.0, "regex"),
+            _with_span(
+                ExtractedEntity("hashtag", f"#{hashtag}", hashtag.lower(), None, "non_token_entity", 1.0, "regex"),
+                surface=surface.surface,
+                text=text,
+                start=match.start(),
+                end=match.end(),
+            ),
         )
 
-    for mention in MENTION_RE.findall(text):
+    for match in MENTION_RE.finditer(text):
+        mention = match.group(1)
         _append_unique(
             entities,
             seen,
-            ExtractedEntity("mention", f"@{mention}", mention.lower(), None, "non_token_entity", 1.0, "regex"),
+            _with_span(
+                ExtractedEntity("mention", f"@{mention}", mention.lower(), None, "non_token_entity", 1.0, "regex"),
+                surface=surface.surface,
+                text=text,
+                start=match.start(),
+                end=match.end(),
+            ),
         )
 
-    for raw_url in URL_RE.findall(text):
+    for match in URL_RE.finditer(text):
+        raw_url = match.group(0)
         cleaned = raw_url.rstrip(".,!?;:)]}")
+        end = match.start() + len(cleaned)
         _append_unique(
             entities,
             seen,
-            ExtractedEntity("url", cleaned, cleaned, None, "non_token_entity", 1.0, "url"),
+            _with_span(
+                ExtractedEntity("url", cleaned, cleaned, None, "non_token_entity", 1.0, "url"),
+                surface=surface.surface,
+                text=text,
+                start=match.start(),
+                end=end,
+            ),
         )
         domain = urlparse(cleaned).netloc.lower()
         if domain:
             _append_unique(
                 entities,
                 seen,
-                ExtractedEntity("domain", domain, domain, None, "non_token_entity", 1.0, "url"),
+                _with_span(
+                    ExtractedEntity("domain", domain, domain, None, "non_token_entity", 1.0, "url"),
+                    surface=surface.surface,
+                    text=text,
+                    start=match.start(),
+                    end=end,
+                ),
             )
-
-    return entities
 
 
 def normalize_ca(value: str, *, chain: str | None = None) -> tuple[str, str]:
@@ -184,14 +258,54 @@ def _chain_from_url(raw_url: str) -> str | None:
 
 def _append_unique(
     entities: list[ExtractedEntity],
-    seen: set[tuple[str, str, str | None]],
+    seen: set[tuple[str, str, str | None, str, int, int]],
     entity: ExtractedEntity,
 ) -> None:
-    key = (entity.entity_type, entity.normalized_value, entity.chain)
+    key = (
+        entity.entity_type,
+        entity.normalized_value,
+        entity.chain,
+        entity.text_surface,
+        entity.span_start,
+        entity.span_end,
+    )
     if key in seen:
         return
     seen.add(key)
     entities.append(entity)
+
+
+def _with_span(
+    entity: ExtractedEntity,
+    *,
+    surface: str,
+    text: str,
+    start: int,
+    end: int,
+) -> ExtractedEntity:
+    sentence_id = _sentence_id(text, start)
+    return ExtractedEntity(
+        entity.entity_type,
+        entity.raw_value,
+        entity.normalized_value,
+        entity.chain,
+        entity.token_resolution_status,
+        entity.confidence,
+        entity.source,
+        surface,
+        int(start),
+        int(end),
+        sentence_id,
+        f"{surface}:{sentence_id}",
+    )
+
+
+def _sentence_id(text: str, offset: int) -> int:
+    sentence = 0
+    for char in text[: max(0, offset)]:
+        if char in {".", "!", "?", "。", "！", "？", "\n"}:
+            sentence += 1
+    return sentence
 
 
 def _normalize_chain_hint(chain: str | None) -> str | None:

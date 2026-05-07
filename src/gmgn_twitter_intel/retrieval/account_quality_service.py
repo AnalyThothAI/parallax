@@ -76,19 +76,21 @@ class AccountQualityService:
             """
             WITH filtered AS (
               SELECT
-                aa.asset_id,
-                lower(aa.author_handle) AS handle,
-                aa.event_id,
-                aa.decision_time_ms AS received_at_ms,
-                aa.author_followers,
-                aa.is_watched
-              FROM asset_attributions aa
-              WHERE aa.asset_id IS NOT NULL
-                AND aa.author_handle IS NOT NULL
-                AND aa.author_handle != ''
-                AND aa.attribution_status IN ('direct', 'selected')
-                AND aa.identity_status = 'resolved'
-                AND aa.confidence > 0
+                tir.asset_id,
+                lower(events.author_handle) AS handle,
+                tir.event_id,
+                events.received_at_ms,
+                events.author_followers,
+                events.is_watched
+              FROM token_intent_resolutions tir
+              JOIN token_intents ti ON ti.intent_id = tir.intent_id
+              JOIN events ON events.event_id = tir.event_id
+              WHERE tir.asset_id IS NOT NULL
+                AND events.author_handle IS NOT NULL
+                AND events.author_handle != ''
+                AND tir.resolution_status = 'resolved'
+                AND tir.identity_status = 'resolved'
+                AND tir.confidence > 0
             ),
             token_first AS (
               SELECT asset_id, MIN(received_at_ms) AS global_first_mention_ms

@@ -12,33 +12,21 @@ import uvicorn
 from .api.app import create_app
 from .logging_setup import setup_logging
 from .market.okx_cex_client import OkxCexClient
-from .market.okx_dex_client import OkxDexClient
 from .pipeline.asset_market_sync import sync_okx_cex_universe
-from .pipeline.asset_resolution_worker import AssetResolutionWorker
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
-from .pipeline.token_signal_settlement import settle_token_signal_snapshots
+from .pipeline.token_radar_projection import TokenRadarProjection
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
 from .retrieval.asset_flow_service import AssetFlowService
 from .retrieval.asset_search_service import AssetSearchService
 from .retrieval.harness_service import HarnessService
-from .retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from .settings import load_settings, write_default_config
 from .storage.account_quality_repository import AccountQualityRepository
-from .storage.asset_repository import AssetRepository
-from .storage.enrichment_repository import EnrichmentRepository
-from .storage.entity_repository import EntityRepository
-from .storage.evidence_repository import EvidenceRepository
-from .storage.harness_repository import HarnessRepository
-from .storage.market_observation_repository import MarketObservationRepository
-from .storage.notification_repository import NotificationRepository
 from .storage.postgres_audit import PostgresOperationalAudit, PostgresQueryAudit, ProjectionValidationAudit
 from .storage.postgres_client import connect_postgres, postgres_health_check, with_password_from_file
 from .storage.postgres_migrations import upgrade_head
 from .storage.projection_repository import ProjectionRepository
-from .storage.signal_repository import SignalRepository
-from .storage.token_repository import TokenRepository
-from .storage.token_signal_repository import TokenSignalRepository
+from .storage.repository_session import repositories_for_connection
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -81,28 +69,6 @@ def build_parser() -> argparse.ArgumentParser:
     asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     asset_flow.add_argument("--limit", type=int, default=20)
     asset_flow.add_argument("--scope", choices=("all", "matched"), default="all")
-
-    token_signal_snapshots = subcommands.add_parser(
-        "token-signal-snapshots",
-        help="print frozen token signal snapshots",
-    )
-    token_signal_snapshots.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="")
-    token_signal_snapshots.add_argument("--limit", type=int, default=50)
-    token_signal_snapshots.add_argument("--scope", choices=("all", "matched"), default="")
-    token_signal_snapshots.add_argument("--token-id", default="")
-
-    token_signal_outcomes = subcommands.add_parser("token-signal-outcomes", help="print token signal outcomes")
-    token_signal_outcomes.add_argument("--horizon", choices=("6h", "24h"), default="")
-    token_signal_outcomes.add_argument("--status", default="")
-    token_signal_outcomes.add_argument("--limit", type=int, default=50)
-
-    token_signal_evaluations = subcommands.add_parser(
-        "token-signal-evaluations",
-        help="evaluate frozen token signal score buckets",
-    )
-    token_signal_evaluations.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    token_signal_evaluations.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
-    token_signal_evaluations.add_argument("--scope", choices=("all", "matched"), default="all")
 
     account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
     account_alerts.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
@@ -159,24 +125,6 @@ def build_parser() -> argparse.ArgumentParser:
     enrichment_jobs.add_argument("--status", choices=("pending", "running", "failed", "dead", "done"), default=None)
     enrichment_jobs.add_argument("--limit", type=int, default=50)
 
-    market_observations = subcommands.add_parser("market-observations", help="inspect token market observation backlog")
-    market_observations.add_argument(
-        "--status",
-        choices=(
-            "pending",
-            "running",
-            "ready",
-            "cached",
-            "provider_not_configured",
-            "provider_not_found",
-            "provider_error",
-            "rate_limited",
-            "dead",
-        ),
-        default=None,
-    )
-    market_observations.add_argument("--limit", type=int, default=50)
-
     notification_deliveries = subcommands.add_parser(
         "notification-deliveries",
         help="inspect notification external delivery audit rows",
@@ -195,11 +143,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="backfill account token-call stats and quality snapshots",
     )
     backfill_account_quality.add_argument("--limit", type=int, default=1000)
-    backfill_market_observations = ops_subcommands.add_parser(
-        "backfill-market-observations",
-        help="enqueue missing market observations for existing direct/selected token attributions",
-    )
-    backfill_market_observations.add_argument("--limit", type=int, default=1000)
     backfill_harness_jobs = ops_subcommands.add_parser(
         "backfill-harness-jobs",
         help="enqueue social-event-v2 extraction jobs for existing watched events",
@@ -220,12 +163,6 @@ def build_parser() -> argparse.ArgumentParser:
     attribute_harness.add_argument("--limit", type=int, default=100)
     update_weights = ops_subcommands.add_parser("update-harness-weights", help="rebuild report-only harness weights")
     update_weights.add_argument("--limit", type=int, default=1000)
-    settle_token_signals = ops_subcommands.add_parser(
-        "settle-token-signals",
-        help="settle due frozen token signal snapshots",
-    )
-    settle_token_signals.add_argument("--horizon", choices=("6h", "24h"), default="6h")
-    settle_token_signals.add_argument("--limit", type=int, default=500)
     ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
     validate_projections = ops_subcommands.add_parser(
         "validate-projections",
@@ -234,24 +171,16 @@ def build_parser() -> argparse.ArgumentParser:
     validate_projections.add_argument("--sample", type=int, default=100)
     sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
-    process_asset_resolution = ops_subcommands.add_parser(
-        "process-asset-resolution-jobs",
-        help="claim and process queued OKX DEX asset-resolution jobs",
+    audit_token_intent = ops_subcommands.add_parser(
+        "audit-token-intent",
+        help="inspect token intent evidence and resolution",
     )
-    process_asset_resolution.add_argument("--limit", type=int, default=50)
-    resolve_asset_symbol = ops_subcommands.add_parser("resolve-asset-symbol", help="resolve or queue an asset symbol")
-    resolve_asset_symbol.add_argument("--symbol", required=True)
-    asset_resolution_health = ops_subcommands.add_parser(
-        "asset-resolution-health",
-        help="inspect asset resolution health",
-    )
-    asset_resolution_health.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    audit_asset_attribution = ops_subcommands.add_parser("audit-asset-attribution", help="inspect asset attributions")
-    audit_asset_attribution.add_argument("--event-id", required=True)
-    rebuild_asset_flow = ops_subcommands.add_parser("rebuild-asset-flow", help="compute asset flow read model")
-    rebuild_asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    rebuild_asset_flow.add_argument("--limit", type=int, default=50)
-    rebuild_asset_flow.add_argument("--scope", choices=("all", "matched"), default="all")
+    audit_token_intent.add_argument("--event-id", default="")
+    audit_token_intent.add_argument("--intent-id", default="")
+    rebuild_token_radar = ops_subcommands.add_parser("rebuild-token-radar", help="write token radar V3 read model")
+    rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    rebuild_token_radar.add_argument("--limit", type=int, default=50)
+    rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
     return parser
 
 
@@ -392,18 +321,12 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0 if audit.get("ok") else 1
 
     with _repositories(settings) as repos:
-        (
-            evidence,
-            entities,
-            signals,
-            tokens,
-            assets,
-            market_observations,
-            enrichment,
-            harness,
-            notifications,
-            token_signals,
-        ) = repos
+        evidence = repos.evidence
+        signals = repos.signals
+        assets = repos.assets
+        enrichment = repos.enrichment
+        harness = repos.harness
+        notifications = repos.notifications
         if command == "recent":
             handles = _handle_set(args.handles)
             events = evidence.recent_events(
@@ -443,59 +366,12 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(assets=assets).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
             )
             _emit({"ok": True, "data": {"window": args.window, "scope": args.scope, **data}}, stdout)
-            return 0
-
-        if command == "token-signal-snapshots":
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "items": token_signals.list_snapshots(
-                            window=args.window or None,
-                            scope=args.scope or None,
-                            token_id=args.token_id or None,
-                            limit=args.limit,
-                        )
-                    },
-                },
-                stdout,
-            )
-            return 0
-
-        if command == "token-signal-outcomes":
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "items": token_signals.list_outcomes(
-                            horizon=args.horizon or None,
-                            status=args.status or None,
-                            limit=args.limit,
-                        )
-                    },
-                },
-                stdout,
-            )
-            return 0
-
-        if command == "token-signal-evaluations":
-            _emit(
-                {
-                    "ok": True,
-                    "data": TokenSignalEvaluationService(repository=token_signals).evaluate(
-                        horizon=args.horizon,
-                        window=args.window,
-                        scope=args.scope,
-                    ),
-                },
-                stdout,
-            )
             return 0
 
         if command == "account-alerts":
@@ -643,19 +519,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
-        if command == "market-observations":
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "items": market_observations.list_observations(limit=args.limit, status=args.status),
-                        "counts": market_observations.counts(),
-                    },
-                },
-                stdout,
-            )
-            return 0
-
         if command == "notification-deliveries":
             _emit(
                 {
@@ -674,22 +537,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 repository=AccountQualityRepository(signals.conn),
             ).backfill_account_token_call_stats(limit=args.limit)
             _emit({"ok": True, "data": data}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "backfill-market-observations":
-            rows = market_observations.pending_backfill_rows(limit=args.limit)
-            enqueued = market_observations.enqueue_for_attributions(rows)
-            _emit(
-                {
-                    "ok": True,
-                    "data": {
-                        "rows_scanned": len(rows),
-                        "observations_enqueued": enqueued,
-                        "counts": market_observations.counts(),
-                    },
-                },
-                stdout,
-            )
             return 0
 
         if command == "ops" and args.ops_command == "backfill-harness-jobs":
@@ -736,21 +583,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             return 0
 
-        if command == "ops" and args.ops_command == "settle-token-signals":
-            _emit(
-                {
-                    "ok": True,
-                    "data": settle_token_signal_snapshots(
-                        repository=token_signals,
-                        tokens=tokens,
-                        horizon=args.horizon,
-                        limit=args.limit,
-                    ),
-                },
-                stdout,
-            )
-            return 0
-
         if command == "ops" and args.ops_command == "projection-status":
             _emit({"ok": True, "data": ProjectionRepository(signals.conn).status_summary()}, stdout)
             return 0
@@ -778,68 +610,15 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
-        if command == "ops" and args.ops_command == "process-asset-resolution-jobs":
-            client = OkxDexClient(
-                base_url=settings.okx_dex_base_url,
-                api_key=settings.okx_dex_api_key,
-                secret_key=settings.okx_dex_secret_key,
-                passphrase=settings.okx_dex_passphrase,
-                timeout_seconds=settings.okx_timeout_seconds,
-            )
-            worker = AssetResolutionWorker(
-                assets=assets,
-                client=client,
-                chain_indexes=settings.okx_dex_chain_indexes,
-                poll_interval=0,
-            )
-            results = []
-            try:
-                for _ in range(max(0, int(args.limit))):
-                    result = worker.process_one(now_ms=_now_ms())
-                    results.append(result)
-                    if not result.get("processed"):
-                        break
-            finally:
-                worker.close()
-            _emit({"ok": True, "data": {"items": results}}, stdout)
+        if command == "ops" and args.ops_command == "audit-token-intent":
+            if not args.event_id and not args.intent_id:
+                parser.error("audit-token-intent requires --event-id or --intent-id")
+            data = _audit_token_intent(repos, event_id=args.event_id or None, intent_id=args.intent_id or None)
+            _emit({"ok": True, "data": data}, stdout)
             return 0
 
-        if command == "ops" and args.ops_command == "resolve-asset-symbol":
-            symbol = args.symbol.strip().lstrip("$").upper()
-            candidates = assets.candidates_for_symbol(symbol)
-            if candidates:
-                status = "resolved" if len({row["asset_id"] for row in candidates}) == 1 else "ambiguous"
-            else:
-                assets.upsert_unresolved_symbol(symbol, event_id=None, observed_at_ms=_now_ms(), commit=False)
-                assets.queue_resolution_job(job_type="symbol_resolution", normalized_symbol=symbol, commit=False)
-                assets.conn.commit()
-                status = "queued"
-                candidates = assets.candidates_for_symbol(symbol)
-            _emit({"ok": True, "data": {"symbol": symbol, "status": status, "candidates": candidates}}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "asset-resolution-health":
-            _emit({"ok": True, "data": _asset_resolution_health(assets.conn, window=args.window)}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "audit-asset-attribution":
-            rows = assets.conn.execute(
-                """
-                SELECT asset_attributions.*, assets.canonical_symbol, assets.asset_type, asset_venues.venue_type,
-                       asset_venues.exchange, asset_venues.chain, asset_venues.address, asset_venues.inst_id
-                FROM asset_attributions
-                JOIN assets ON assets.asset_id = asset_attributions.asset_id
-                LEFT JOIN asset_venues ON asset_venues.venue_id = asset_attributions.venue_id
-                WHERE asset_attributions.event_id = %s
-                ORDER BY asset_attributions.created_at_ms DESC
-                """,
-                (args.event_id,),
-            ).fetchall()
-            _emit({"ok": True, "data": {"event_id": args.event_id, "items": [dict(row) for row in rows]}}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "rebuild-asset-flow":
-            data = AssetFlowService(assets=assets).asset_flow(
+        if command == "ops" and args.ops_command == "rebuild-token-radar":
+            data = TokenRadarProjection(repos=repos).rebuild(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
@@ -864,18 +643,7 @@ def _postgres_connection(settings):
 @contextmanager
 def _repositories(settings):
     with _postgres_connection(settings) as conn:
-        yield (
-            EvidenceRepository(conn),
-            EntityRepository(conn),
-            SignalRepository(conn),
-            TokenRepository(conn),
-            AssetRepository(conn),
-            MarketObservationRepository(conn),
-            EnrichmentRepository(conn),
-            HarnessRepository(conn),
-            NotificationRepository(conn),
-            TokenSignalRepository(conn),
-        )
+        yield repositories_for_connection(conn)
 
 
 def _emit(payload: dict, stdout: TextIO) -> None:
@@ -922,41 +690,26 @@ def _csv_set(raw: str) -> set[str]:
     return {item.strip() for item in raw.split(",") if item.strip()}
 
 
-def _asset_resolution_health(conn, *, window: str) -> dict:
-    window_ms = {
-        "5m": 5 * 60 * 1000,
-        "1h": 60 * 60 * 1000,
-        "4h": 4 * 60 * 60 * 1000,
-        "24h": 24 * 60 * 60 * 1000,
-    }[window]
-    since_ms = _now_ms() - window_ms
-    rows = conn.execute(
-        """
-        SELECT attribution_status, identity_status, COUNT(*) AS count
-        FROM asset_attributions
-        WHERE decision_time_ms >= %s
-        GROUP BY attribution_status, identity_status
-        ORDER BY count DESC
-        """,
-        (since_ms,),
-    ).fetchall()
-    top_unresolved = conn.execute(
-        """
-        SELECT assets.canonical_symbol AS symbol, COUNT(*) AS count
-        FROM asset_attributions
-        JOIN assets ON assets.asset_id = asset_attributions.asset_id
-        WHERE asset_attributions.decision_time_ms >= %s
-          AND asset_attributions.attribution_status IN ('unresolved', 'ambiguous')
-        GROUP BY assets.canonical_symbol
-        ORDER BY count DESC, assets.canonical_symbol ASC
-        LIMIT 20
-        """,
-        (since_ms,),
-    ).fetchall()
+def _audit_token_intent(repos, *, event_id: str | None, intent_id: str | None) -> dict:
+    if intent_id:
+        intents = [repos.token_intents.get(intent_id)]
+        intents = [item for item in intents if item]
+    else:
+        intents = repos.token_intents.intents_for_event(str(event_id))
+    intent_ids = [str(item["intent_id"]) for item in intents]
+    evidence = []
+    resolutions = []
+    for current_intent_id in intent_ids:
+        evidence.extend(repos.token_intents.evidence_links_for_intent(current_intent_id))
+        resolution = repos.intent_resolutions.active_resolution_for_intent(current_intent_id)
+        if resolution:
+            resolutions.append(resolution)
     return {
-        "window": window,
-        "status_counts": [dict(row) for row in rows],
-        "top_unresolved": [dict(row) for row in top_unresolved],
+        "event_id": event_id,
+        "intent_id": intent_id,
+        "intents": intents,
+        "intent_evidence": evidence,
+        "active_resolutions": resolutions,
     }
 
 

@@ -20,7 +20,6 @@ from ..retrieval.asset_search_service import AssetSearchService
 from ..retrieval.asset_social_timeline_service import AssetSocialTimelineService
 from ..retrieval.asset_timeline_cursor import AssetTimelineCursorError
 from ..retrieval.harness_service import HarnessService
-from ..retrieval.token_signal_evaluation_service import TokenSignalEvaluationService
 from ..retrieval.trading_attention_service import KINDS as TRADING_ATTENTION_KINDS
 from ..retrieval.trading_attention_service import TradingAttentionService
 from ..storage.account_quality_repository import AccountQualityRepository
@@ -160,7 +159,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
-            data = AssetFlowService(assets=repos.assets).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
                 window=parsed_window,
                 limit=_limit(limit),
                 scope=parsed_scope,
@@ -230,89 +229,6 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         except AssetTimelineCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
-
-    @router.get("/token-signal-snapshots")
-    async def token_signal_snapshots(
-        request: Request,
-        window: Annotated[str, Query()] = "",
-        scope: Annotated[str, Query()] = "",
-        token_id: Annotated[str, Query()] = "",
-        limit: Annotated[int, Query()] = 50,
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        with runtime.repositories() as repos:
-            items = repos.token_signals.list_snapshots(
-                window=_window(window) if window else None,
-                scope=_scope(scope) if scope else None,
-                token_id=token_id or None,
-                limit=_limit(limit, maximum=500),
-            )
-        return _json(
-            {
-                "ok": True,
-                "data": {
-                    "items": items,
-                },
-            }
-        )
-
-    @router.get("/token-signal-outcomes")
-    async def token_signal_outcomes(
-        request: Request,
-        horizon: Annotated[str, Query()] = "",
-        status: Annotated[str, Query()] = "",
-        limit: Annotated[int, Query()] = 50,
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        with runtime.repositories() as repos:
-            items = repos.token_signals.list_outcomes(
-                horizon=_horizon(horizon) if horizon else None,
-                status=status or None,
-                limit=_limit(limit, maximum=500),
-            )
-        return _json(
-            {
-                "ok": True,
-                "data": {
-                    "items": items,
-                },
-            }
-        )
-
-    @router.get("/token-signal-evaluations")
-    async def token_signal_evaluations(
-        request: Request,
-        horizon: Annotated[str, Query()] = "",
-        window: Annotated[str, Query()] = "",
-        scope: Annotated[str, Query()] = "",
-        refresh: Annotated[bool, Query()] = False,
-    ) -> JSONResponse:
-        runtime = _authenticated_runtime(request)
-        parsed_horizon = _horizon(horizon) if horizon else None
-        parsed_window = _window(window) if window else None
-        parsed_scope = _scope(scope) if scope else None
-        if refresh and parsed_horizon and parsed_window and parsed_scope:
-            with runtime.repositories() as repos:
-                data = TokenSignalEvaluationService(repository=repos.token_signals).evaluate(
-                    horizon=parsed_horizon,
-                    window=parsed_window,
-                    scope=parsed_scope,
-                )
-            return _json({"ok": True, "data": data})
-        with runtime.repositories() as repos:
-            items = repos.token_signals.list_evaluations(
-                horizon=parsed_horizon,
-                window=parsed_window,
-                scope=parsed_scope,
-            )
-        return _json(
-            {
-                "ok": True,
-                "data": {
-                    "items": items,
-                },
-            }
-        )
 
     @router.get("/account-alerts")
     async def account_alerts(
@@ -635,7 +551,8 @@ def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
         "event": event,
         "entities": repos.entities.entities_for_event(event_id),
         "alerts": repos.signals.alerts_for_event(event_id),
-        "asset_attributions": repos.assets.asset_attributions_for_event(event_id),
+        "token_intents": repos.token_intents.intents_for_event(event_id),
+        "token_resolutions": repos.intent_resolutions.resolutions_for_event(event_id),
         "harness": repos.harness.harness_for_event(event_id),
     }
 

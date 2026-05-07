@@ -503,6 +503,12 @@ svg {
   background: rgba(99, 199, 221, 0.08);
 }
 
+.decision-tag.investigate {
+  color: var(--danger);
+  border-color: rgba(255, 92, 122, 0.34);
+  background: rgba(255, 92, 122, 0.08);
+}
+
 .decision-tag.discard {
   color: var(--muted);
   text-decoration: line-through;

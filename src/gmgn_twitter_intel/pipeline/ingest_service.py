@@ -12,10 +12,10 @@ from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository, event_to_row
 from ..storage.postgres_client import transaction
 from ..storage.signal_repository import SignalRepository
-from .asset_attribution import persist_asset_decisions
-from .asset_mention_builder import build_asset_mentions
-from .asset_resolver import AssetResolutionDecision, AssetResolver
-from .entity_extractor import extract_entities
+from .entity_extractor import TextSurface, extract_entities_from_surfaces
+from .token_evidence_builder import build_token_evidence
+from .token_intent_builder import build_token_intents
+from .token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +25,8 @@ class IngestedEvent:
     alerts: list[dict[str, Any]]
     inserted: bool
     enrichment_job_id: str | None = None
-    asset_attributions: list[dict[str, Any]] = field(default_factory=list)
+    token_intents: list[dict[str, Any]] = field(default_factory=list)
+    token_resolutions: list[dict[str, Any]] = field(default_factory=list)
 
 
 class IngestService:
@@ -43,13 +44,13 @@ class IngestService:
         self.signals = signals
         self.enrichment = enrichment
         self.assets = assets or AssetRepository(evidence.conn)
-        self.asset_resolver = AssetResolver(self.assets)
+        self.intent_resolver = None
 
     def insert_raw_frame(self, **kwargs) -> bool:
         return self.evidence.insert_raw_frame(**kwargs)
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
-        extracted = extract_entities(_event_text(event))
+        extracted = extract_entities_from_surfaces(_event_surfaces(event))
         with transaction(self.evidence.conn):
             row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
             inserted = self.evidence.insert_event_without_commit(row)
@@ -58,34 +59,49 @@ class IngestService:
                     event=event,
                     entities=[],
                     alerts=[],
-                    asset_attributions=[],
+                    token_intents=[],
+                    token_resolutions=[],
                     inserted=False,
                 )
             self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
-            mention_inputs = build_asset_mentions(
+            evidence_inputs = build_token_evidence(
                 event_id=event.event_id,
                 entities=extracted,
                 token_snapshot=event.token_snapshot,
                 created_at_ms=event.received_at_ms,
             )
-            asset_mentions = self.assets.insert_mentions(mention_inputs, commit=False)
-            asset_decisions = self.asset_resolver.resolve_many(asset_mentions)
-            asset_attributions = persist_asset_decisions(
-                self.assets,
-                asset_decisions,
-                decision_time_ms=event.received_at_ms,
+            from ..storage.intent_resolution_repository import IntentResolutionRepository
+            from ..storage.token_evidence_repository import TokenEvidenceRepository
+            from ..storage.token_intent_repository import TokenIntentRepository
+
+            token_evidence_repo = TokenEvidenceRepository(self.evidence.conn)
+            token_intent_repo = TokenIntentRepository(self.evidence.conn)
+            intent_resolution_repo = IntentResolutionRepository(self.evidence.conn)
+            token_evidence_repo.insert_many(evidence_inputs, commit=False)
+            intent_inputs = build_token_intents(
+                event_id=event.event_id,
+                evidence=evidence_inputs,
                 created_at_ms=event.received_at_ms,
-                commit=False,
             )
-            self._insert_gmgn_payload_market_snapshot(
+            token_intents = token_intent_repo.insert_many(intent_inputs, commit=False)
+            resolver = TokenIntentResolver(assets=self.assets, resolutions=intent_resolution_repo)
+            decisions = [
+                resolver.resolve(
+                    intent,
+                    evidence_inputs,
+                    decision_time_ms=event.received_at_ms,
+                    persist=True,
+                    commit=False,
+                )
+                for intent in intent_inputs
+            ]
+            token_resolutions = intent_resolution_repo.resolutions_for_event(event.event_id)
+            self._insert_gmgn_payload_market_snapshot(event, decisions)
+            alerts = self._insert_token_alerts(
                 event,
-                asset_decisions,
-                mentions_by_id={str(row["mention_id"]): row for row in asset_mentions},
-            )
-            alerts = self._insert_asset_alerts(
-                event,
-                asset_decisions,
-                mentions_by_id={str(row["mention_id"]): row for row in asset_mentions},
+                decisions,
+                resolutions=intent_resolution_repo,
+                intents_by_id={item.intent_id: item for item in intent_inputs},
                 is_watched=is_watched,
             )
             enrichment_job_id = None
@@ -99,7 +115,8 @@ class IngestService:
             event=event,
             entities=[_entity_payload(entity) for entity in extracted],
             alerts=alerts,
-            asset_attributions=asset_attributions,
+            token_intents=token_intents,
+            token_resolutions=token_resolutions,
             inserted=True,
             enrichment_job_id=enrichment_job_id,
         )
@@ -107,9 +124,7 @@ class IngestService:
     def _insert_gmgn_payload_market_snapshot(
         self,
         event: TwitterEvent,
-        decisions: list[AssetResolutionDecision],
-        *,
-        mentions_by_id: dict[str, dict[str, Any]],
+        decisions: list[TokenIntentResolutionDecision],
     ) -> None:
         snapshot = event.token_snapshot
         if snapshot is None:
@@ -117,12 +132,11 @@ class IngestService:
         if snapshot.price is None and snapshot.market_cap is None:
             return
         for decision in decisions:
-            mention = mentions_by_id.get(decision.mention_id, {})
-            if mention.get("mention_type") != "gmgn_payload" or not decision.venue_id:
+            if not decision.primary_venue_id or not decision.asset_id:
                 continue
             self.assets.insert_market_snapshot(
                 asset_id=decision.asset_id,
-                venue_id=decision.venue_id,
+                venue_id=decision.primary_venue_id,
                 provider="gmgn_payload",
                 observed_at_ms=event.received_at_ms,
                 price_usd=snapshot.price,
@@ -133,12 +147,13 @@ class IngestService:
             )
             return
 
-    def _insert_asset_alerts(
+    def _insert_token_alerts(
         self,
         event: TwitterEvent,
-        decisions: list[AssetResolutionDecision],
+        decisions: list[TokenIntentResolutionDecision],
         *,
-        mentions_by_id: dict[str, dict[str, Any]],
+        resolutions,
+        intents_by_id: dict[str, Any],
         is_watched: bool,
     ) -> list[dict[str, Any]]:
         if not is_watched or not event.author.handle:
@@ -146,8 +161,10 @@ class IngestService:
         alerts: list[dict[str, Any]] = []
         author_handle = event.author.handle.lower()
         for decision in decisions:
-            mention = mentions_by_id.get(decision.mention_id, {})
-            seen_global, seen_author = self.assets.asset_seen_before(
+            intent = intents_by_id.get(decision.intent_id)
+            if decision.asset_id is None:
+                continue
+            seen_global, seen_author = resolutions.asset_seen_before(
                 asset_id=decision.asset_id,
                 author_handle=author_handle,
                 before_ms=event.received_at_ms,
@@ -157,7 +174,7 @@ class IngestService:
                 author_handle=author_handle,
                 entity_key=decision.asset_id,
                 entity_type="asset",
-                normalized_value=_alert_value(mention, decision),
+                normalized_value=_alert_value(intent, decision),
                 chain=None,
                 token_resolution_status=decision.identity_status,
                 is_first_seen_global=not seen_global,
@@ -191,6 +208,15 @@ def _event_text(event: TwitterEvent) -> str | None:
     return "\n".join(part for part in parts if part)
 
 
+def _event_surfaces(event: TwitterEvent) -> list[TextSurface]:
+    surfaces = []
+    if event.content.text:
+        surfaces.append(TextSurface("primary", event.content.text))
+    if event.reference and event.reference.text:
+        surfaces.append(TextSurface("reference", event.reference.text))
+    return surfaces
+
+
 def _entity_payload(entity) -> dict[str, Any]:
     return {
         "entity_type": entity.entity_type,
@@ -200,6 +226,11 @@ def _entity_payload(entity) -> dict[str, Any]:
         "token_resolution_status": entity.token_resolution_status,
         "confidence": entity.confidence,
         "source": entity.source,
+        "text_surface": entity.text_surface,
+        "span_start": entity.span_start,
+        "span_end": entity.span_end,
+        "sentence_id": entity.sentence_id,
+        "local_group_key": entity.local_group_key,
     }
 
 
@@ -207,8 +238,8 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _alert_value(mention: dict[str, Any], decision: AssetResolutionDecision) -> str:
-    value = mention.get("normalized_symbol") or mention.get("address_hint") or mention.get("raw_value")
+def _alert_value(intent: Any, decision: TokenIntentResolutionDecision) -> str:
+    value = getattr(intent, "display_symbol", None) or getattr(intent, "address_hint", None)
     return str(value or decision.asset_id)
 
 

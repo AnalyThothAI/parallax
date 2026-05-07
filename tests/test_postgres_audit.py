@@ -16,12 +16,12 @@ def test_operational_audit_reports_counts_fk_checks_and_projection_schema(tmp_pa
 
     assert payload["ok"] is True
     assert payload["engine"] == "postgresql"
-    assert payload["migration_version"] == "20260506_0005"
+    assert payload["migration_version"] == "20260507_0007"
     assert payload["counts"]["events"] == 0
     assert payload["counts"]["assets"] == 0
     assert payload["projection_schema"]["projection_offsets"] is True
-    assert payload["projection_schema"]["asset_flow_window_snapshots"] is True
-    assert payload["foreign_key_checks"]["asset_attributions_missing_events"] == 0
+    assert payload["projection_schema"]["token_radar_rows"] is True
+    assert payload["foreign_key_checks"]["token_radar_rows_missing_intents"] == 0
 
 
 def test_query_audit_explains_hot_read_paths_without_analyze(tmp_path):
@@ -36,5 +36,5 @@ def test_query_audit_explains_hot_read_paths_without_analyze(tmp_path):
     names = {item["name"] for item in payload["queries"]}
     assert payload["ok"] is True
     assert payload["analyze"] is False
-    assert {"recent_all", "search_fts", "asset_flow_5m_shape", "asset_posts_recent"}.issubset(names)
+    assert {"recent_all", "search_fts", "token_radar_latest", "asset_posts_recent"}.issubset(names)
     assert all(item["plan"] for item in payload["queries"])

@@ -23,8 +23,11 @@ def test_project_uses_standard_uv_src_layout():
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "tweet_text.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "entity_extractor.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "ingest_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_mention_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_resolver.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_evidence_builder.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_intent_builder.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_intent_resolver.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_radar_projection.py").is_file()
+    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_radar_projection_worker.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "social_event_extraction.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_scoring.py").is_file()
     assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_snapshot_builder.py").is_file()
@@ -78,6 +81,10 @@ def test_legacy_narrative_modules_stay_removed():
 
 
 def test_legacy_token_resolution_runtime_modules_stay_removed():
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_attribution.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_mention_builder.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_resolution_worker.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "asset_resolver.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_identity_resolver.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "signal_builder.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_attribution.py").exists()
@@ -86,6 +93,28 @@ def test_legacy_token_resolution_runtime_modules_stay_removed():
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_flow_service.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_posts_service.py").exists()
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_social_timeline_service.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "market_observation_repository.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "token_repository.py").exists()
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "token_signal_repository.py").exists()
+
+
+def test_token_radar_v3_runtime_does_not_import_old_token_market_paths():
+    forbidden = {
+        "TokenRepository",
+        "TokenSignalRepository",
+        "token_market_snapshots",
+        "token_signal_snapshots",
+    }
+    runtime_files = [
+        ROOT / "src/gmgn_twitter_intel/api/app.py",
+        ROOT / "src/gmgn_twitter_intel/api/http.py",
+        ROOT / "src/gmgn_twitter_intel/pipeline/ingest_service.py",
+        ROOT / "src/gmgn_twitter_intel/pipeline/token_radar_projection.py",
+        ROOT / "src/gmgn_twitter_intel/storage/repository_session.py",
+    ]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
+    for item in forbidden:
+        assert item not in text
 
 
 def test_makefile_exposes_global_cli_install_targets():

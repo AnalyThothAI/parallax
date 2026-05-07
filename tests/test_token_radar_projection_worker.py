@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+from gmgn_twitter_intel.pipeline import token_radar_projection_worker as module
+
+
+class FakeSession:
+    def __enter__(self):
+        return object()
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+def test_token_radar_projection_worker_rebuilds_all_windows_and_scopes(monkeypatch):
+    calls: list[dict[str, object]] = []
+
+    class FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild(self, *, window, scope, now_ms=None, limit=100):
+            calls.append({"window": window, "scope": scope, "now_ms": now_ms, "limit": limit})
+            return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms}
+
+    monkeypatch.setattr(module, "TokenRadarProjection", FakeProjection)
+    worker = module.TokenRadarProjectionWorker(
+        repository_session=lambda: FakeSession(),
+        windows=("5m", "1h"),
+        scopes=("all", "matched"),
+        limit=7,
+    )
+
+    result = worker.rebuild_once(now_ms=1_777_800_000_000)
+
+    assert calls == [
+        {"window": "5m", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "5m", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "1h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "1h", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
+    ]
+    assert result["rows_written"] == 8
+    assert result["source_rows"] == 12
+    assert result["windows"]["5m:all"]["rows_written"] == 2
+    assert worker.last_started_at_ms == 1_777_800_000_000
+    assert worker.last_run_at_ms is not None
+    assert worker.last_result == result
+    assert worker.last_error is None

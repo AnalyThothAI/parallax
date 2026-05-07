@@ -65,15 +65,22 @@ const statusData: StatusData = {
     worker_running: true,
     job_counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 }
   },
-  market_observations: {
-    pending: 0,
-    running: 0,
-    ready: 1,
-    cached: 0,
-    provider_error: 0,
-    rate_limited: 0,
-    dead: 0,
-    worker_running: true
+  token_radar_projection: {
+    worker_running: true,
+    last_started_at_ms: 1_777_770_100_000,
+    last_run_at_ms: 1_777_770_101_000,
+    last_result: { rows_written: 2, source_rows: 2 }
+  },
+  asset_market_sync: {
+    okx_cex_sync_enabled: true,
+    worker_running: true,
+    last_started_at_ms: 1_777_770_100_000,
+    last_run_at_ms: 1_777_770_101_000,
+    last_result: { ready: 1 },
+    providers: {
+      cex: { running: false },
+      dex: { running: false }
+    }
   },
   notifications: {
     enabled: true,
@@ -896,7 +903,8 @@ function mockApi(options: {
         resolved_assets: options.assetFlowRows ?? [
           assetFlowRow({
             address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
-            symbol: swapped ? "ALT" : undefined
+            symbol: swapped ? "ALT" : undefined,
+            insufficientTiming: options.insufficientTiming
           })
         ],
         attention_candidates: [],
@@ -976,7 +984,8 @@ function plainLiveEvent(): LivePayload {
       is_watched: 0
     },
     entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 }],
-    asset_attributions: [],
+    token_intents: [],
+    token_resolutions: [],
     alerts: [],
     harness: null
   };
@@ -990,12 +999,38 @@ function assetFlowRow(
     assetType?: string;
     primaryVenue?: AssetFlowRow["primary_venue"];
     market?: AssetFlowRow["market"];
+    insufficientTiming?: boolean;
   } = {}
 ): AssetFlowRow {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const symbol = options.symbol ?? "UPEG";
   const assetId = options.assetId ?? `asset:dex:eth:${address.toLowerCase()}`;
+  const market = options.market ?? {
+    market_status: "missing",
+    market_observation_status: "pending",
+    price_change_status: "pending_observation",
+    provider: null,
+    price_usd: null,
+    market_cap_usd: null,
+    liquidity_usd: null,
+    volume_24h_usd: null,
+    open_interest_usd: null,
+    holders: null,
+    snapshot_age_ms: null,
+    snapshot_observed_at_ms: null,
+    price_change_since_social_pct: null,
+    price_change_before_social_pct: null
+  };
+  const marketFresh = market.market_status === "fresh" || market.market_status === "ready" || market.market_status === "stale";
+  const timingStatus = options.insufficientTiming ? "market_pending" : marketFresh ? "neutral" : "market_pending";
+  const timingRisks = timingStatus === "market_pending" ? ["market_observation_pending"] : [];
   return {
+    intent: {
+      intent_id: `intent:${assetId}`,
+      display_symbol: symbol,
+      display_name: null,
+      evidence: []
+    },
     asset: {
       asset_id: assetId,
       symbol,
@@ -1019,19 +1054,49 @@ function assetFlowRow(
       mentions_window: 4,
       unique_authors: 3,
       watched_mentions: 1,
-      latest_seen_ms: 1_777_746_300_000
+      latest_seen_ms: 1_777_746_300_000,
+      previous_mentions: 0,
+      mention_delta: 4,
+      mention_delta_pct: null,
+      z_score: null,
+      new_burst_score: 80,
+      stream_share: 0,
+      baseline_status: "insufficient_history",
+      baseline_sample_count: 0
     },
-    market: options.market,
-    resolution: { status: "resolved", candidates: [] },
-    decision: "watch"
+    market,
+    resolution: { status: "resolved", resolution_status: "resolved", confidence: 1, reasons: [], risks: [], candidates: [] },
+    score: {
+      heat: scoreBlock({ score_version: "social_heat_v1", score: 86, reasons: ["rising"], risks: ["public_stream_coverage"] }),
+      quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
+      propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
+      tradeability: scoreBlock({ score_version: "tradeability_v1", score: marketFresh ? 80 : 60, reasons: ["resolved_asset"], risks: [] }),
+      timing: scoreBlock({
+        score_version: "timing_v4",
+        score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
+        status: timingStatus,
+        chase_risk: false,
+        reasons: [],
+        risks: timingRisks
+      }),
+      opportunity: scoreBlock({
+        score_version: "social_opportunity_v3",
+        score: 79,
+        reasons: ["backend_decision"],
+        risks: ["public_stream_coverage"],
+        components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
+      })
+    },
+    decision: "driver",
+    data_health: { identity: "resolved", market: market.market_observation_status ?? "pending", coverage: "public_stream" }
   };
 }
 
 function assetFlowProjection(): AssetFlowData["projection"] {
   return {
     status: "fresh",
-    version: "asset-flow-v1",
-    source: "asset_attributions",
+    version: "token-radar-v3",
+    source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
     computed_at_ms: 1_777_746_300_000
   };
@@ -1346,7 +1411,7 @@ function tradingAttentionData(): TradingAttentionData {
             relation: "candidate",
             confidence: 0.82,
             status: "resolved",
-            source: "asset_attributions"
+            source: "token_intents"
           }
         ],
         linked_topics: [{ key: "build-on-bnb", label: "build on BNB", role: "meme_phrase" }],
@@ -1385,17 +1450,26 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
       is_watched: 1
     },
     entities: [{ entity_type: "symbol", normalized_value: "UPEG", received_at_ms: 1_777_746_010_000 }],
-    asset_attributions: [
+    token_intents: [
       {
+        intent_id: `intent:${assetId}`,
+        event_id: "event-upeg-1",
+        display_symbol: "UPEG",
+        chain_hint: "eth",
+        address_hint: address,
+        intent_status: "active",
+        intent_confidence: 1
+      }
+    ],
+    token_resolutions: [
+      {
+        resolution_id: `resolution:${assetId}`,
+        intent_id: `intent:${assetId}`,
+        event_id: "event-upeg-1",
         asset_id: assetId,
+        primary_venue_id: `venue:dex:eth:${address.toLowerCase()}`,
         identity_status: "resolved",
-        asset_type: "dex_token",
-        canonical_symbol: "UPEG",
-        venue_type: "dex",
-        exchange: "gmgn",
-        chain: "eth",
-        address,
-        attribution_status: "direct",
+        resolution_status: "resolved",
         confidence: 1
       }
     ],

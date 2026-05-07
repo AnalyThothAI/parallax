@@ -28,19 +28,17 @@ def open_ingest(tmp_path):
     return conn, assets, ingest
 
 
-def test_ingest_mirror_writes_unresolved_asset_attribution(tmp_path):
+def test_ingest_mirror_writes_unresolved_token_intent(tmp_path):
     conn, assets, ingest = open_ingest(tmp_path)
     try:
         result = ingest.ingest_event(make_event("event-1", text="$mirror is moving"), is_watched=True)
-        rows = assets.events_for_symbol_mentions("MIRROR", limit=10)
     finally:
         conn.close()
 
     assert result.inserted is True
-    assert result.asset_attributions[0]["attribution_status"] == "unresolved"
-    assert result.asset_attributions[0]["asset_id"] == "asset:unresolved:MIRROR"
-    assert rows[0]["event_id"] == "event-1"
-    assert rows[0]["attribution_status"] == "unresolved"
+    assert result.token_intents[0]["display_symbol"] == "MIRROR"
+    assert result.token_resolutions[0]["identity_status"] == "unresolved"
+    assert result.token_resolutions[0]["asset_id"] is None
 
 
 def test_ingest_gmgn_payload_writes_direct_dex_asset(tmp_path):
@@ -63,14 +61,14 @@ def test_ingest_gmgn_payload_writes_direct_dex_asset(tmp_path):
             token_snapshot=snapshot,
         )
         result = ingest.ingest_event(event, is_watched=True)
-        rows = assets.asset_attributions_for_symbol("SOL", limit=10)
-        market = assets.market_snapshot_at_or_before(rows[0]["asset_id"], event.received_at_ms)
+        resolution = result.token_resolutions[0]
+        market = assets.market_snapshot_at_or_before(resolution["asset_id"], event.received_at_ms)
     finally:
         conn.close()
 
-    assert result.asset_attributions[0]["attribution_status"] == "direct"
-    assert rows[0]["venue_type"] == "dex"
-    assert rows[0]["chain"] == "solana"
+    assert resolution["resolution_status"] == "direct"
+    assert resolution["identity_status"] == "resolved"
+    assert resolution["asset_id"] == "asset:dex:solana:So11111111111111111111111111111111111111112"
     assert market is not None
     assert market["provider"] == "gmgn_payload"
     assert market["price_usd"] == 150.0
@@ -84,12 +82,9 @@ def test_ingest_unknown_chain_ca_is_retained_as_unresolved_asset(tmp_path):
             make_event("event-1", text="watch 0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"),
             is_watched=True,
         )
-        rows = assets.asset_attributions_for_asset(
-            "asset:unresolved_ca:0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
-            limit=10,
-        )
     finally:
         conn.close()
 
-    assert result.asset_attributions[0]["attribution_status"] == "unresolved"
-    assert rows[0]["asset_id"] == "asset:unresolved_ca:0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
+    assert result.token_intents[0]["address_hint"] == "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
+    assert result.token_resolutions[0]["identity_status"] == "unresolved"
+    assert result.token_resolutions[0]["asset_id"] is None

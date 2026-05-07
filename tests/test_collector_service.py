@@ -19,7 +19,7 @@ class MemoryStore:
     def ingest_event(self, event, *, is_watched):
         self.twitter_events.append(event)
         self.watched_flags.append(is_watched)
-        return IngestedEvent(event=event, entities=[], alerts=[], asset_attributions=[], inserted=True)
+        return IngestedEvent(event=event, entities=[], alerts=[], token_intents=[], token_resolutions=[], inserted=True)
 
 
 class MemoryPublisher:

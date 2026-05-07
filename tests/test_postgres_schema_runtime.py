@@ -24,25 +24,35 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "events" in names
     assert "event_fts" not in names
     assert "event_entities" in names
-    assert "tokens" in names
-    assert "token_market_observations" in names
     assert "harness_snapshots" in names
     assert "notifications" in names
-    assert "token_signal_snapshots" in names
     assert "projection_offsets" in names
     assert "projection_runs" in names
     assert "projection_dirty_ranges" in names
-    assert "asset_mentions" in names
     assert "assets" in names
     assert "asset_aliases" in names
     assert "asset_venues" in names
-    assert "asset_resolution_candidates" in names
-    assert "asset_attributions" in names
     assert "asset_market_snapshots" in names
-    assert "asset_resolution_jobs" in names
-    assert "asset_attention_buckets" in names
-    assert "asset_attention_bucket_authors" in names
-    assert "asset_flow_window_snapshots" in names
+    assert "token_evidence" in names
+    assert "token_intents" in names
+    assert "token_intent_evidence" in names
+    assert "token_intent_resolutions" in names
+    assert "token_intent_resolution_candidates" in names
+    assert "market_provider_observations" in names
+    assert "token_radar_rows" in names
+    assert "asset_signal_snapshots" in names
+    assert "asset_signal_outcomes" in names
+    for legacy_table in {
+        "asset_mentions",
+        "asset_attributions",
+        "asset_resolution_jobs",
+        "event_token_mentions",
+        "event_token_attributions",
+        "token_market_snapshots",
+        "token_market_observations",
+        "token_signal_snapshots",
+    }:
+        assert legacy_table not in names
 
 
 def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
@@ -76,39 +86,36 @@ def test_alembic_migration_is_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version_num"] for row in rows] == ["20260506_0005"]
+    assert [row["version_num"] for row in rows] == ["20260507_0007"]
 
 
-def test_asset_schema_supports_cex_assets_and_unresolved_attributions(tmp_path):
+def test_token_radar_v3_schema_supports_span_aware_intents(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        venue_columns = {
+        entity_columns = {
             row["column_name"]: row["is_nullable"]
             for row in conn.execute(
                 """
                 SELECT column_name, is_nullable
                 FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'asset_venues'
+                WHERE table_schema = 'public' AND table_name = 'event_entities'
                 """
             ).fetchall()
         }
-        attribution_columns = {
+        intent_columns = {
             row["column_name"]: row["is_nullable"]
             for row in conn.execute(
                 """
                 SELECT column_name, is_nullable
                 FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'asset_attributions'
+                WHERE table_schema = 'public' AND table_name = 'token_intents'
                 """
             ).fetchall()
         }
     finally:
         conn.close()
 
-    assert {"venue_type", "exchange", "inst_id", "base_symbol", "quote_symbol", "inst_type"}.issubset(
-        venue_columns
-    )
-    assert {"chain", "address"}.issubset(venue_columns)
-    assert attribution_columns["venue_id"] == "YES"
-    assert attribution_columns["attribution_status"] == "NO"
+    assert {"text_surface", "span_start", "span_end", "sentence_id", "local_group_key"}.issubset(entity_columns)
+    assert {"display_symbol", "chain_hint", "address_hint", "intent_status"}.issubset(intent_columns)
+    assert intent_columns["intent_status"] == "NO"

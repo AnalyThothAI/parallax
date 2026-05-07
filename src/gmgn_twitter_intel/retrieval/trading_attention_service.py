@@ -152,13 +152,12 @@ class TradingAttentionService:
         rows = self.assets.conn.execute(
             f"""
             SELECT
-              aa.event_id,
-              aa.asset_id,
-              aa.venue_id,
-              aa.identity_status,
-              aa.attribution_status,
-              aa.confidence,
-              aa.attribution_weight,
+              tir.event_id,
+              tir.asset_id,
+              tir.primary_venue_id AS venue_id,
+              tir.identity_status,
+              tir.resolution_status,
+              tir.confidence,
               assets.asset_type,
               assets.canonical_symbol,
               assets.identity_status AS asset_identity_status,
@@ -170,14 +169,14 @@ class TradingAttentionService:
               av.base_symbol,
               av.quote_symbol,
               av.inst_type
-            FROM asset_attributions aa
-            JOIN assets ON assets.asset_id = aa.asset_id
-            LEFT JOIN asset_venues av ON av.venue_id = aa.venue_id
-            WHERE aa.event_id IN ({placeholders})
-              AND aa.attribution_status IN ('direct', 'selected')
-              AND aa.attribution_weight > 0
-              AND aa.identity_status = 'resolved'
-            ORDER BY aa.attribution_weight DESC, aa.confidence DESC, aa.created_at_ms ASC
+            FROM token_intent_resolutions tir
+            JOIN assets ON assets.asset_id = tir.asset_id
+            LEFT JOIN asset_venues av ON av.venue_id = tir.primary_venue_id
+            WHERE tir.event_id IN ({placeholders})
+              AND tir.resolution_status = 'resolved'
+              AND tir.identity_status = 'resolved'
+              AND tir.confidence > 0
+            ORDER BY tir.confidence DESC, tir.created_at_ms ASC
             """,
             event_ids,
         ).fetchall()
@@ -189,7 +188,7 @@ class TradingAttentionService:
             if (event_id, identity_key) in seen:
                 continue
             seen.add((event_id, identity_key))
-            relation = "direct" if row["attribution_status"] == "direct" else "selected"
+            relation = "direct" if _float(row.get("confidence"), default=0.0) >= 0.99 else "selected"
             by_event[event_id].append(_asset_link(row, relation=relation))
         return dict(by_event)
 
@@ -321,7 +320,7 @@ def _asset_link(row: Any, *, relation: str) -> dict[str, Any]:
         "relation": relation,
         "confidence": _float(data.get("confidence"), default=1.0),
         "status": status,
-        "source": "asset_attributions",
+        "source": "token_intents",
     }
 
 

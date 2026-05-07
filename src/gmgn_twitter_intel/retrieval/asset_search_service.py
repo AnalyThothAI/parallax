@@ -82,7 +82,7 @@ class AssetSearchService:
         query: dict[str, Any],
     ) -> AssetSearchResults:
         candidates = _effective_candidates(self.assets.candidates_for_symbol(symbol))
-        events = self.assets.events_for_symbol_mentions(symbol, limit=limit, watched_only=watched_only)
+        events = self._events_for_symbol(symbol, limit=limit, watched_only=watched_only)
         fallback_total = 0
         if not events:
             events = self.evidence.search_fts(symbol, limit=limit, watched_only=watched_only)
@@ -93,7 +93,7 @@ class AssetSearchService:
             items=[
                 _item(
                     event,
-                    "asset_mention" if not fallback_total else "fts_symbol_fallback",
+                    "token_intent" if not fallback_total else "fts_symbol_fallback",
                     _score(event, fallback_total),
                 )
                 for event in events
@@ -116,7 +116,7 @@ class AssetSearchService:
         query: dict[str, Any],
     ) -> AssetSearchResults:
         candidates = self.assets.candidates_for_ca(chain=chain, address=address)
-        events = self.assets.events_for_ca_mentions(
+        events = self._events_for_ca(
             chain=chain,
             address=address,
             limit=limit,
@@ -132,7 +132,7 @@ class AssetSearchService:
             items=[
                 _item(
                     event,
-                    "asset_mention" if not fallback_total else "fts_ca_fallback",
+                    "token_intent" if not fallback_total else "fts_ca_fallback",
                     _score(event, fallback_total),
                 )
                 for event in events
@@ -144,6 +144,79 @@ class AssetSearchService:
             returned_count=len(events),
             has_more=bool(fallback_total and fallback_total > len(events)),
         )
+
+    def _events_for_symbol(self, symbol: str, *, limit: int, watched_only: bool) -> list[dict[str, Any]]:
+        normalized = symbol.strip().lstrip("$").upper()
+        return self._events_for_evidence(
+            where_sql="token_evidence.normalized_symbol = %s",
+            params=[normalized],
+            limit=limit,
+            watched_only=watched_only,
+        )
+
+    def _events_for_ca(
+        self,
+        *,
+        chain: str | None,
+        address: str,
+        limit: int,
+        watched_only: bool,
+    ) -> list[dict[str, Any]]:
+        normalized_address = address.strip().lower()
+        where = "lower(token_evidence.address_hint) = %s"
+        params: list[Any] = [normalized_address]
+        if chain and chain != "evm_unknown":
+            where += " AND token_evidence.chain_hint = %s"
+            params.append(chain.strip().lower())
+        return self._events_for_evidence(where_sql=where, params=params, limit=limit, watched_only=watched_only)
+
+    def _events_for_evidence(
+        self,
+        *,
+        where_sql: str,
+        params: list[Any],
+        limit: int,
+        watched_only: bool,
+    ) -> list[dict[str, Any]]:
+        clauses = [where_sql]
+        query_params = list(params)
+        if watched_only:
+            clauses.append("events.is_watched = true")
+        query_params.append(max(0, int(limit)))
+        rows = self.assets.conn.execute(
+            f"""
+            WITH matched AS (
+              SELECT DISTINCT ON (events.event_id)
+                events.*,
+                token_evidence.evidence_id,
+                token_evidence.evidence_type,
+                token_evidence.raw_value AS mention_raw_value,
+                token_evidence.normalized_symbol,
+                token_evidence.chain_hint,
+                token_evidence.address_hint,
+                token_intent_resolutions.asset_id,
+                token_intent_resolutions.primary_venue_id AS venue_id,
+                token_intent_resolutions.resolution_status,
+                token_intent_resolutions.identity_status AS resolution_identity_status,
+                token_intent_resolutions.confidence AS resolution_confidence
+              FROM token_evidence
+              JOIN events ON events.event_id = token_evidence.event_id
+              LEFT JOIN token_intent_evidence
+                ON token_intent_evidence.evidence_id = token_evidence.evidence_id
+              LEFT JOIN token_intent_resolutions
+                ON token_intent_resolutions.intent_id = token_intent_evidence.intent_id
+               AND token_intent_resolutions.resolution_status <> 'superseded'
+              WHERE {' AND '.join(clauses)}
+              ORDER BY events.event_id, token_intent_resolutions.confidence DESC NULLS LAST
+            )
+            SELECT *
+            FROM matched
+            ORDER BY received_at_ms DESC, event_id DESC
+            LIMIT %s
+            """,
+            query_params,
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def _resolution_status(candidates: list[dict[str, Any]]) -> str:

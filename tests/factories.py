@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import time
 from dataclasses import replace
-
-from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
@@ -14,12 +11,10 @@ from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepositor
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-from gmgn_twitter_intel.storage.token_repository import TokenRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 TOKEN_ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
-TOKEN_ID = f"token:eth:{TOKEN_ADDRESS}"
 
 
 def make_event(
@@ -151,85 +146,3 @@ def token_event(
         ),
         token_snapshot=snapshot,
     )
-
-
-def insert_direct_attribution(
-    evidence: EvidenceRepository,
-    signals: SignalRepository,
-    tokens: TokenRepository,
-    *,
-    event_id: str = "event-dog",
-    received_at_ms: int = 1_700_000_000_000,
-) -> dict:
-    event = make_event(
-        event_id,
-        text=f"$DOG {TOKEN_ADDRESS}",
-        received_at_ms=received_at_ms,
-    )
-    evidence.insert_event(event, is_watched=True)
-    identity = tokens.upsert_ca(
-        event_id=event_id,
-        chain="eth",
-        address=TOKEN_ADDRESS,
-        symbol="DOG",
-        received_at_ms=received_at_ms,
-        commit=False,
-    )
-    token_id = identity.token_id or TOKEN_ID
-    mention_id = _id("event_token_mention", event_id, token_id)
-    attribution_id = _id("event_token_attribution", mention_id, token_id, "0")
-    signals.conn.execute(
-        """
-        INSERT INTO event_token_mentions(
-          mention_id, event_id, identity_key, token_id, identity_status, chain, address, symbol,
-          source, received_at_ms, author_handle, author_followers, is_watched, created_at_ms
-        )
-        VALUES (%s, %s, %s, %s, 'resolved', 'eth', %s, 'DOG', 'test', %s, 'toly', 100, true, %s)
-        ON CONFLICT(mention_id) DO NOTHING
-        """,
-        (mention_id, event_id, token_id, token_id, TOKEN_ADDRESS, received_at_ms, received_at_ms),
-    )
-    signals.conn.execute(
-        """
-        INSERT INTO event_token_attributions(
-          attribution_id, mention_id, event_id, mention_identity_key, identity_key, token_id,
-          identity_status, chain, address, symbol, source, attribution_status,
-          attribution_confidence, attribution_weight, attribution_rank, candidate_count,
-          score_features_json, reasons_json, risks_json, received_at_ms, author_handle,
-          author_followers, is_watched, created_at_ms
-        )
-        VALUES (
-          %s, %s, %s, %s, %s, %s,
-          'resolved', 'eth', %s, 'DOG', 'test', 'direct',
-          1.0, 1.0, 0, 1,
-          %s, %s, %s, %s, 'toly',
-          100, true, %s
-        )
-        ON CONFLICT(attribution_id) DO UPDATE SET received_at_ms = excluded.received_at_ms
-        """,
-        (
-            attribution_id,
-            mention_id,
-            event_id,
-            token_id,
-            token_id,
-            token_id,
-            TOKEN_ADDRESS,
-            Jsonb({}),
-            Jsonb(["test_direct_attribution"]),
-            Jsonb([]),
-            received_at_ms,
-            received_at_ms,
-        ),
-    )
-    signals.conn.commit()
-    return dict(
-        signals.conn.execute(
-            "SELECT * FROM event_token_attributions WHERE attribution_id = %s",
-            (attribution_id,),
-        ).fetchone()
-    )
-
-
-def _id(*parts: str) -> str:
-    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()

@@ -135,6 +135,7 @@ export function formatDecision(value: string | null | undefined): string {
   const labels: Record<string, string> = {
     driver: "driver",
     watch: "watch",
+    investigate: "investigate",
     discard: "discard"
   };
   return labels[value ?? ""] ?? (value ?? "-");
@@ -147,6 +148,7 @@ export function formatRisk(value: string | null | undefined): string {
     repeated_text_cluster: "重复文本簇",
     market_missing: "市场缺失",
     missing_market: "市场缺失",
+    no_venue: "无交易场所",
     no_watched_confirmation: "缺少关注确认",
     public_stream_coverage: "公共流覆盖",
     thin_author_set: "作者过少",

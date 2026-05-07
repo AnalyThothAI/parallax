@@ -1,0 +1,107 @@
+from __future__ import annotations
+
+import time
+from dataclasses import replace
+
+from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.storage.asset_repository import AssetRepository
+from gmgn_twitter_intel.storage.repository_session import repositories_for_connection
+from tests.postgres_test_utils import connect_postgres_test
+from tests.postgres_test_utils import reset_postgres_schema as migrate
+
+VERSA_BASE_CA = "0x2cc0db4f8977accadb5b7da59c5923e14328eba3"
+
+
+def make_v3_event(
+    event_id: str = "event-versa",
+    *,
+    text: str,
+    received_at_ms: int = 1_777_800_000_000,
+    author_handle: str = "toly",
+    is_watched: bool = True,
+) -> TwitterEvent:
+    return TwitterEvent(
+        event_id=event_id,
+        source=Source(
+            provider="gmgn",
+            transport="direct_ws",
+            coverage="public_stream",
+            channel="twitter_monitor_basic",
+        ),
+        action="tweet",
+        original_action=None,
+        tweet_id=event_id,
+        internal_id=event_id,
+        timestamp=received_at_ms // 1000,
+        received_at_ms=received_at_ms,
+        author=Author(handle=author_handle, name=author_handle, avatar=None, followers=1000, tags=[]),
+        content=Content(text=text, media=[]),
+        reference=None,
+        unfollow_target=None,
+        avatar_change=None,
+        bio_change=None,
+        matched_handles=[author_handle] if is_watched else [],
+        raw={"id": event_id},
+    )
+
+
+def make_gmgn_payload_event(
+    event_id: str = "event-payload",
+    *,
+    symbol: str = "PEPE",
+    chain: str = "eth",
+    address: str = "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+    received_at_ms: int = 1_777_800_000_000,
+) -> TwitterEvent:
+    snapshot = parse_gmgn_token_payload(
+        {
+            "tt": "ca",
+            "t": {
+                "a": address,
+                "c": chain,
+                "mc": "1000000",
+                "p": "0.01",
+                "s": symbol,
+                "liquidity": "250000",
+                "holder_count": 1000,
+            },
+        }
+    )
+    return replace(
+        make_v3_event(event_id, text=f"${symbol} payload", received_at_ms=received_at_ms),
+        source=Source(
+            provider="gmgn",
+            transport="direct_ws",
+            coverage="public_stream",
+            channel="twitter_monitor_token",
+        ),
+        token_snapshot=snapshot,
+    )
+
+
+def open_v3_runtime(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    migrate(conn)
+    repos = repositories_for_connection(conn)
+    ingest = IngestService(
+        evidence=repos.evidence,
+        entities=repos.entities,
+        signals=repos.signals,
+        enrichment=repos.enrichment,
+        assets=repos.assets,
+    )
+    return conn, repos, ingest
+
+
+def insert_base_versa_asset(assets: AssetRepository, *, observed_at_ms: int | None = None) -> None:
+    assets.upsert_dex_asset(
+        chain="base",
+        address=VERSA_BASE_CA,
+        symbol="VERSA",
+        event_id=None,
+        observed_at_ms=observed_at_ms if observed_at_ms is not None else int(time.time() * 1000),
+        provider="fixture",
+        commit=True,
+    )

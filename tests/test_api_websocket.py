@@ -65,7 +65,8 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path):
             assert replay["event"]["event_id"] == "event-1"
             assert "entities" in replay
             assert "alerts" in replay
-            assert "asset_attributions" in replay
+            assert "token_intents" in replay
+            assert "token_resolutions" in replay
             assert "harness" in replay
 
             ignored = _ingest_payload(client, make_event("event-2", "elonmusk"), is_watched=True)
@@ -219,20 +220,19 @@ def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
     assert message["notification"]["notification_id"] == notification["notification_id"]
 
 
-def test_websocket_symbol_filter_matches_asset_attributions_without_entities():
+def test_websocket_symbol_filter_matches_token_intents_without_entities():
     hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
     client = ClientSubscription(websocket=None, symbols={"MIRROR"})
     payload = {
         "type": "event",
         "event": {"event_id": "event-1", "author_handle": "alice"},
         "entities": [],
-        "asset_attributions": [
+        "token_intents": [
             {
-                "asset_id": "asset:dex:solana:mirror111",
-                "canonical_symbol": "MIRROR",
-                "venue_type": "dex",
-                "chain": "solana",
-                "address": "Mirror111111111111111111111111111111111111",
+                "intent_id": "intent:mirror",
+                "display_symbol": "MIRROR",
+                "chain_hint": "solana",
+                "address_hint": "Mirror111111111111111111111111111111111111",
             }
         ],
     }
@@ -240,7 +240,7 @@ def test_websocket_symbol_filter_matches_asset_attributions_without_entities():
     assert hub._payload_matches_subscription(payload, client) is True
 
 
-def test_websocket_ca_filter_matches_asset_attributions_without_entities():
+def test_websocket_ca_filter_matches_token_intents_without_entities():
     hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
     client = ClientSubscription(
         websocket=None,
@@ -250,13 +250,12 @@ def test_websocket_ca_filter_matches_asset_attributions_without_entities():
         "type": "event",
         "event": {"event_id": "event-1", "author_handle": "alice"},
         "entities": [],
-        "asset_attributions": [
+        "token_intents": [
             {
-                "asset_id": "asset:dex:ethereum:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-                "canonical_symbol": "PEPE",
-                "venue_type": "dex",
-                "chain": "ethereum",
-                "address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                "intent_id": "intent:pepe",
+                "display_symbol": "PEPE",
+                "chain_hint": "ethereum",
+                "address_hint": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
             }
         ],
     }
@@ -271,6 +270,7 @@ def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
         "event": event.to_dict(),
         "entities": result.entities,
         "alerts": result.alerts,
-        "asset_attributions": result.asset_attributions,
+        "token_intents": result.token_intents,
+        "token_resolutions": result.token_resolutions,
         "harness": None,
     }

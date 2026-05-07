@@ -47,6 +47,8 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert ready.json()["enrichment"]["worker_running"] is False
     assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
     assert ready.json()["harness_ops"]["worker_running"] is True
+    assert ready.json()["token_radar_projection"]["worker_running"] is True
+    assert "token_resolution" not in ready.json()
     assert "provider_status" not in ready.json()
 
 
@@ -133,9 +135,9 @@ def test_watchdog_reasons_do_not_probe_database(tmp_path):
     runtime = _build_runtime(settings, start_collector=False)
     runtime.start_collector = True
     runtime.collector_task = RunningTask()
-    runtime.market_observation_task = RunningTask()
     runtime.harness_ops_task = RunningTask()
     runtime.notification_task = RunningTask()
+    runtime.token_radar_projection_task = RunningTask()
     runtime.collector.status.started_at_ms = 1_000
     runtime.db_pool.close()
 

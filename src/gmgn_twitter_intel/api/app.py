@@ -18,7 +18,6 @@ from ..collector.service import CollectorService
 from ..market.okx_cex_client import OkxCexClient
 from ..market.okx_dex_client import OkxDexClient
 from ..pipeline.asset_market_sync_worker import AssetMarketSyncWorker
-from ..pipeline.asset_resolution_worker import AssetResolutionWorker
 from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.harness_ops_worker import HarnessOpsWorker
 from ..pipeline.ingest_service import IngestService
@@ -26,6 +25,7 @@ from ..pipeline.llm_client import OpenAIChatEnrichmentClient
 from ..pipeline.notification_delivery import NotificationDeliveryWorker
 from ..pipeline.notification_rules import NotificationRuleEngine
 from ..pipeline.notification_worker import NotificationWorker
+from ..pipeline.token_radar_projection_worker import TokenRadarProjectionWorker
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.asset_flow_service import AssetFlowService
 from ..retrieval.harness_service import HarnessService
@@ -34,13 +34,10 @@ from ..storage.enrichment_repository import EnrichmentRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository
 from ..storage.harness_repository import HarnessRepository
-from ..storage.market_observation_repository import MarketObservationRepository
 from ..storage.notification_repository import NotificationRepository
 from ..storage.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from ..storage.repository_session import PooledRepository, repository_session
 from ..storage.signal_repository import SignalRepository
-from ..storage.token_repository import TokenRepository
-from ..storage.token_signal_repository import TokenSignalRepository
 from .http import ApiBadRequest, ApiUnauthorized, api_bad_request_response, api_unauthorized_response, create_api_router
 from .ws import PublicWebSocketHub
 
@@ -52,20 +49,15 @@ class CliRuntime:
     evidence: object
     entities: object
     signals: object
-    tokens: object
-    market_observations: object
     enrichment: object
     harness: object
     notifications: object
-    token_signals: object
     read_evidence: object
     read_entities: object
     read_signals: object
-    read_tokens: object
     read_enrichment: object
     read_harness: object
     read_notifications: object
-    read_token_signals: object
     ingest: IngestService
     hub: PublicWebSocketHub
     collector: CollectorService
@@ -75,7 +67,7 @@ class CliRuntime:
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
     asset_market_sync_worker: AssetMarketSyncWorker | None = None
-    asset_resolution_worker: AssetResolutionWorker | None = None
+    token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
@@ -83,7 +75,7 @@ class CliRuntime:
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
     asset_market_sync_task: asyncio.Task | None = None
-    asset_resolution_task: asyncio.Task | None = None
+    token_radar_projection_task: asyncio.Task | None = None
 
     def repositories(self):
         return repository_session(self.db_pool)
@@ -215,20 +207,15 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     evidence = PooledRepository(db_pool, EvidenceRepository)
     entities = PooledRepository(db_pool, EntityRepository)
     signals = PooledRepository(db_pool, SignalRepository)
-    tokens = PooledRepository(db_pool, TokenRepository)
-    market_observations = PooledRepository(db_pool, MarketObservationRepository)
     enrichment = PooledRepository(db_pool, EnrichmentRepository)
     harness = PooledRepository(db_pool, HarnessRepository)
     notifications = PooledRepository(db_pool, NotificationRepository)
-    token_signals = PooledRepository(db_pool, TokenSignalRepository)
     read_evidence = evidence
     read_entities = entities
     read_signals = signals
-    read_tokens = tokens
     read_enrichment = enrichment
     read_harness = harness
     read_notifications = notifications
-    read_token_signals = token_signals
     ingest = _PooledIngestStore(db_pool)
     hub = PublicWebSocketHub(
         token=settings.ws_token,
@@ -247,26 +234,24 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         evidence=evidence,
         entities=entities,
         signals=signals,
-        tokens=tokens,
-        market_observations=market_observations,
         enrichment=enrichment,
         harness=harness,
         notifications=notifications,
-        token_signals=token_signals,
         read_evidence=read_evidence,
         read_entities=read_entities,
         read_signals=read_signals,
-        read_tokens=read_tokens,
         read_enrichment=read_enrichment,
         read_harness=read_harness,
         read_notifications=read_notifications,
-        read_token_signals=read_token_signals,
         ingest=ingest,
         hub=hub,
         collector=collector,
         start_collector=start_collector,
     )
     runtime.harness_ops_worker = HarnessOpsWorker(
+        repository_session=lambda: repository_session(db_pool),
+    )
+    runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
         repository_session=lambda: repository_session(db_pool),
     )
     if settings.notifications.enabled:
@@ -313,20 +298,6 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             inst_types=settings.okx_cex_inst_types,
             interval_seconds=settings.okx_cex_sync_interval_seconds,
         )
-    if settings.okx_dex_configured:
-        okx_dex_client = OkxDexClient(
-            base_url=settings.okx_dex_base_url,
-            api_key=settings.okx_dex_api_key,
-            secret_key=settings.okx_dex_secret_key,
-            passphrase=settings.okx_dex_passphrase,
-            timeout_seconds=settings.okx_timeout_seconds,
-        )
-        runtime.asset_resolution_worker = AssetResolutionWorker(
-            client=okx_dex_client,
-            repository_session=lambda: repository_session(db_pool),
-            chain_indexes=settings.okx_dex_chain_indexes,
-            poll_interval=5.0,
-        )
     if settings.llm_configured:
         client = OpenAIChatEnrichmentClient(
             api_key=settings.llm_api_key or "",
@@ -360,7 +331,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(assets=repos.assets),
+        asset_flow=AssetFlowService(token_radar=repos.token_radar),
         harness=HarnessService(repos.harness),
     )
 
@@ -376,8 +347,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
     if runtime.asset_market_sync_worker is not None and runtime.asset_market_sync_task is None:
         runtime.asset_market_sync_task = asyncio.create_task(runtime.asset_market_sync_worker.run())
-    if runtime.asset_resolution_worker is not None and runtime.asset_resolution_task is None:
-        runtime.asset_resolution_task = asyncio.create_task(runtime.asset_resolution_worker.run())
+    if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
+        runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
     if runtime.start_collector:
         if runtime.collector_task is None:
             runtime.collector_task = asyncio.create_task(runtime.collector.run())
@@ -396,8 +367,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_delivery_worker.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.stop()
-    if runtime.asset_resolution_worker is not None:
-        runtime.asset_resolution_worker.stop()
+    if runtime.token_radar_projection_worker is not None:
+        runtime.token_radar_projection_worker.stop()
     tasks = [
         task
         for task in (
@@ -408,7 +379,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.notification_task,
             runtime.notification_delivery_task,
             runtime.asset_market_sync_task,
-            runtime.asset_resolution_task,
+            runtime.token_radar_projection_task,
         )
         if task is not None
     ]
@@ -419,8 +390,6 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.close()
-    if runtime.asset_resolution_worker is not None:
-        runtime.asset_resolution_worker.close()
     runtime.db_pool.close()
 
 
@@ -452,13 +421,20 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "delivery_worker_running": _task_running(runtime.notification_delivery_task),
             "summary": _notification_summary(runtime),
         },
-        "asset_resolution": {
-            "okx_dex_configured": runtime.settings.okx_dex_configured,
-            "worker_running": _task_running(runtime.asset_resolution_task),
-            "last_run_at_ms": runtime.asset_resolution_worker.last_run_at_ms
-            if runtime.asset_resolution_worker
+        "token_radar_projection": {
+            "worker_running": _task_running(runtime.token_radar_projection_task),
+            "last_started_at_ms": runtime.token_radar_projection_worker.last_started_at_ms
+            if runtime.token_radar_projection_worker
             else None,
-            "last_result": runtime.asset_resolution_worker.last_result if runtime.asset_resolution_worker else None,
+            "last_run_at_ms": runtime.token_radar_projection_worker.last_run_at_ms
+            if runtime.token_radar_projection_worker
+            else None,
+            "last_result": runtime.token_radar_projection_worker.last_result
+            if runtime.token_radar_projection_worker
+            else None,
+            "last_error": runtime.token_radar_projection_worker.last_error
+            if runtime.token_radar_projection_worker
+            else None,
         },
         "asset_market_sync": {
             "okx_cex_sync_enabled": runtime.settings.okx_cex_sync_enabled,
@@ -496,8 +472,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_delivery_worker_stopped")
     if runtime.asset_market_sync_worker is not None and not _task_running(runtime.asset_market_sync_task):
         reasons.append("asset_market_sync_worker_stopped")
-    if runtime.settings.okx_dex_configured and not _task_running(runtime.asset_resolution_task):
-        reasons.append("asset_resolution_worker_stopped")
+    if runtime.token_radar_projection_worker is not None and not _task_running(runtime.token_radar_projection_task):
+        reasons.append("token_radar_projection_worker_stopped")
     return reasons
 
 

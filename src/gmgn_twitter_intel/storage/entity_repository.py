@@ -29,9 +29,10 @@ class EntityRepository:
                 INSERT INTO event_entities(
                   entity_id, event_id, entity_type, raw_value, normalized_value, chain,
                   token_resolution_status, confidence, source, received_at_ms, author_handle,
-                  is_watched, created_at_ms
+                  is_watched, text_surface, span_start, span_end, sentence_id, local_group_key,
+                  created_at_ms
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT DO NOTHING
                 """,
                 (
@@ -47,6 +48,11 @@ class EntityRepository:
                     event.received_at_ms,
                     author,
                     is_watched,
+                    entity.text_surface,
+                    entity.span_start,
+                    entity.span_end,
+                    entity.sentence_id,
+                    entity.local_group_key,
                     now_ms,
                 ),
             )
@@ -123,7 +129,17 @@ class EntityRepository:
 
 
 def _entity_id(event_id: str, entity: ExtractedEntity) -> str:
-    payload = "|".join([event_id, entity.entity_type, entity.normalized_value, entity.chain or ""])
+    payload = "|".join(
+        [
+            event_id,
+            entity.entity_type,
+            entity.normalized_value,
+            entity.chain or "",
+            entity.text_surface,
+            str(entity.span_start),
+            str(entity.span_end),
+        ]
+    )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 

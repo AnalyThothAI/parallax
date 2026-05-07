@@ -1,5 +1,5 @@
 import { ExternalLink } from "lucide-react";
-import type { AlertRecord, AssetAttributionRecord, EntityRecord, EventRecord, SearchData } from "../api/types";
+import type { AlertRecord, EntityRecord, EventRecord, SearchData, TokenIntentRecord, TokenResolutionRecord } from "../api/types";
 import { eventHandle, eventText, formatRelativeTime, shortAddress } from "../lib/format";
 import {
   DetailDrawerHeader,
@@ -15,7 +15,8 @@ export type EvidenceDetailDrawerProps =
       event: EventRecord;
       entities: EntityRecord[];
       alerts: AlertRecord[];
-      assetAttributions: AssetAttributionRecord[];
+      tokenIntents: TokenIntentRecord[];
+      tokenResolutions: TokenResolutionRecord[];
       matchType?: string | null;
       score?: number | null;
       sourceLabel: string;
@@ -70,20 +71,31 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         )}
       </DetailDrawerSection>
 
-      <DetailDrawerSection title="asset attribution">
-        {props.assetAttributions.length ? (
+      <DetailDrawerSection title="token intent">
+        {props.tokenIntents.length || props.tokenResolutions.length ? (
           <div className="evidence-list">
-            {props.assetAttributions.map((item) => (
-              <div className="evidence-kv-row" key={item.attribution_id ?? `${item.asset_id}:${item.venue_id}`}>
-                <strong>{item.canonical_symbol ? `$${item.canonical_symbol}` : shortAddress(item.address ?? item.asset_id)}</strong>
+            {props.tokenIntents.map((item) => {
+              const resolution = props.tokenResolutions.find((row) => row.intent_id === item.intent_id);
+              return (
+                <div className="evidence-kv-row" key={item.intent_id ?? `${item.display_symbol}:${item.address_hint}`}>
+                  <strong>{item.display_symbol ? `$${item.display_symbol}` : shortAddress(item.address_hint ?? item.intent_id)}</strong>
+                  <span>
+                    {item.chain_hint ?? "intent"} · {resolution?.identity_status ?? item.intent_status ?? "-"} · conf {formatConfidence(resolution?.confidence ?? item.intent_confidence)}
+                  </span>
+                </div>
+              );
+            })}
+            {props.tokenIntents.length ? null : props.tokenResolutions.map((item) => (
+              <div className="evidence-kv-row" key={item.resolution_id ?? `${item.intent_id}:${item.asset_id}`}>
+                <strong>{shortAddress(item.asset_id ?? item.intent_id)}</strong>
                 <span>
-                  {item.venue_type ?? item.chain ?? item.exchange ?? "-"} · {item.attribution_status ?? item.identity_status ?? "-"} · conf {formatConfidence(item.confidence)}
+                  {item.primary_venue_id ?? "resolution"} · {item.identity_status ?? item.resolution_status ?? "-"} · conf {formatConfidence(item.confidence)}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <div className="empty-state compact">no asset attribution</div>
+          <div className="empty-state compact">no token intent</div>
         )}
       </DetailDrawerSection>
 

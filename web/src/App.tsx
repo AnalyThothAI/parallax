@@ -12,9 +12,12 @@ import type {
   LivePayload,
   NotificationItem,
   RadarSortMode,
+  RiskCap,
   RecentData,
+  ScoreContribution,
   SearchData,
   StatusData,
+  TimingBlock,
   TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData,
@@ -211,7 +214,7 @@ export function App() {
   });
 
   const rawTokenItems = useMemo(
-    () => assetFlowRows(assetFlowQuery.data?.data).map((row) => assetFlowRowToTokenItem(row, windowKey, scope)),
+    () => assetFlowRows(assetFlowQuery.data?.data).map((row) => tokenRadarRowToTokenItem(row, windowKey, scope)),
     [assetFlowQuery.data?.data, scope, windowKey]
   );
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
@@ -702,6 +705,7 @@ export function App() {
           <RailSection label="decisions">
             <DecisionCount decision="driver" count={decisionCounts.driver} />
             <DecisionCount decision="watch" count={decisionCounts.watch} />
+            <DecisionCount decision="investigate" count={decisionCounts.investigate} />
             <DecisionCount decision="discard" count={decisionCounts.discard} />
           </RailSection>
 
@@ -983,7 +987,7 @@ function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {
       counts[item.opportunity.decision] += 1;
       return counts;
     },
-    { driver: 0, watch: 0, discard: 0 }
+    { driver: 0, watch: 0, investigate: 0, discard: 0 }
   );
 }
 
@@ -994,33 +998,37 @@ function assetFlowRows(data?: AssetFlowData | null): AssetFlowRow[] {
   return [...data.resolved_assets, ...data.attention_candidates];
 }
 
-function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
+function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
   const mentions = row.attention.mentions_window;
   const authors = row.attention.unique_authors;
   const watched = row.attention.watched_mentions;
+  const previousMentions = row.attention.previous_mentions ?? 0;
+  const mentionDelta = row.attention.mention_delta ?? mentions;
+  const mentionDeltaPct = row.attention.mention_delta_pct ?? null;
+  const zScore = row.attention.z_score ?? null;
+  const newBurstScore = row.attention.new_burst_score ?? null;
+  const streamShare = row.attention.stream_share ?? 0;
   const resolved = row.resolution.status === "resolved";
   const venue = row.primary_venue ?? null;
   const market = row.market ?? null;
   const isDex = venue?.venue_type === "dex";
-  const marketReady = market?.market_status === "fresh" || market?.market_status === "stale";
-  const heatScore = Math.min(100, 30 + mentions * 6 + authors * 8 + watched * 8);
-  const qualityScore = resolved ? Math.min(100, 70 + watched * 8) : Math.min(70, 35 + mentions * 8);
-  const propagationScore = Math.min(100, 30 + authors * 14);
-  const tradeabilityScore = resolved ? 80 : row.resolution.status === "ambiguous" ? 35 : 20;
-  const marketObservationStatus = market?.market_observation_status ?? (marketReady ? "ready" : resolved ? "pending" : "provider_not_found");
-  const priceChangeStatus = market?.price_change_status ?? (marketReady ? "ready" : resolved ? "pending_observation" : "provider_not_found");
-  const priceChangeBeforeSocial = market?.price_change_before_social_pct ?? null;
-  const chaseRisk = marketObservationStatus === "ready" && (priceChangeBeforeSocial ?? 0) >= 0.15;
-  const timingScore = chaseRisk ? 38 : marketReady ? 55 : resolved ? 50 : 35;
-  const timingStatus = chaseRisk ? "chase_risk" : marketReady ? "neutral" : resolved ? "market_pending" : "market_unavailable";
-  const timingRisks = chaseRisk ? ["chase_risk"] : marketReady ? [] : resolved ? ["market_observation_pending"] : ["provider_not_found"];
-  const opportunityScore = Math.round(
-    heatScore * 0.4 + qualityScore * 0.25 + propagationScore * 0.2 + tradeabilityScore * 0.1 + timingScore * 0.05
-  );
-  const decision: Decision = opportunityScore >= 75 ? "driver" : opportunityScore >= 45 ? "watch" : "discard";
+  const displaySymbol = row.intent?.display_symbol ?? row.asset.symbol ?? null;
+  const identityKey = row.intent?.intent_id ?? row.asset.asset_id ?? venue?.address ?? venue?.inst_id ?? displaySymbol ?? "unknown-token-intent";
+  const marketObservationStatus = market?.market_observation_status ?? row.data_health?.market ?? "missing_market";
+  const marketHasUsableSnapshot = market?.market_status === "ready" || market?.market_status === "fresh" || market?.market_status === "stale";
+  const priceChangeStatus = market?.price_change_status ?? (marketHasUsableSnapshot ? "ready" : "missing_market");
+  const heat = normalizedScoreBlock(row.score?.heat, "token_radar_v3");
+  const quality = normalizedScoreBlock(row.score?.quality, "token_radar_v3");
+  const propagation = normalizedScoreBlock(row.score?.propagation, "token_radar_v3");
+  const tradeability = normalizedScoreBlock(row.score?.tradeability, "token_radar_v3");
+  const timing = normalizedScoreBlock(row.score?.timing, "token_radar_v3");
+  const opportunity = normalizedScoreBlock(row.score?.opportunity, "token_radar_v3");
+  const decision = normalizeDecision(row.decision);
+  const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
+  const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
   return {
     identity: {
-      identity_key: row.asset.asset_id,
+      identity_key: identityKey,
       identity_status: row.resolution.status,
       asset_id: row.asset.asset_id,
       asset_type: row.asset.asset_type,
@@ -1031,14 +1039,14 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       token_id: null,
       chain: isDex ? venue?.chain ?? null : null,
       address: isDex ? venue?.address ?? null : null,
-      symbol: row.asset.symbol
+      symbol: displaySymbol
     },
     market: {
-      market_status: market?.market_status ?? (resolved ? "missing" : "missing"),
+      market_status: market?.market_status ?? "missing",
       price: market?.price_usd ?? null,
       market_cap: market?.market_cap_usd ?? null,
       liquidity: market?.liquidity_usd ?? null,
-      pool_status: isDex ? "ready" : "missing",
+      pool_status: isDex && venue?.address ? "ready" : "missing",
       holder_count: market?.holders ?? null,
       volume_24h: market?.volume_24h_usd ?? null,
       snapshot_age_ms: market?.snapshot_age_ms ?? null,
@@ -1061,19 +1069,19 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       direct_mentions: resolved ? mentions : 0,
       symbol_mentions: mentions,
       weighted_mentions: mentions,
-      avg_attribution_confidence: resolved ? 1 : 0,
+      avg_attribution_confidence: row.resolution.confidence ?? undefined,
       watched_mentions: watched,
-      previous_mentions: 0,
-      mention_delta: mentions,
-      mention_delta_pct: null,
-      z_score: null,
-      new_burst_score: mentions > 0 ? Math.min(100, mentions * 20) : null,
+      previous_mentions: previousMentions,
+      mention_delta: mentionDelta,
+      mention_delta_pct: mentionDeltaPct,
+      z_score: zScore,
+      new_burst_score: newBurstScore,
       stream_dominance: 0,
-      baseline_status: "insufficient_history",
-      baseline_sample_count: 0
+      baseline_status: row.attention.baseline_status ?? "insufficient_history",
+      baseline_sample_count: row.attention.baseline_sample_count ?? 0
     },
     social_heat: {
-      ...scoreBlock(heatScore, "asset_social_heat_v1", mentions > 0 ? ["asset_mentions_window"] : [], ["public_stream_coverage"]),
+      ...heat,
       window,
       mentions,
       mentions_5m: row.attention.mentions_5m,
@@ -1081,26 +1089,26 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       mentions_4h: window === "4h" ? mentions : row.attention.mentions_1h,
       mentions_24h: window === "24h" ? mentions : row.attention.mentions_1h,
       weighted_mentions: mentions,
-      previous_mentions: 0,
-      mention_delta: mentions,
-      mention_delta_pct: null,
-      z_score: null,
-      new_burst_score: mentions > 0 ? Math.min(100, mentions * 20) : null,
-      stream_share: 0,
+      previous_mentions: previousMentions,
+      mention_delta: mentionDelta,
+      mention_delta_pct: mentionDeltaPct,
+      z_score: zScore,
+      new_burst_score: newBurstScore,
+      stream_share: streamShare,
       watched_share: mentions ? watched / mentions : 0,
-      status: mentions >= 5 ? "burst" : mentions >= 2 ? "rising" : "new_burst"
+      status: heat.reasons[0] ?? (newBurstScore !== null ? "rising" : "insufficient_history")
     },
     discussion_quality: {
-      ...scoreBlock(qualityScore, "asset_discussion_quality_v1", resolved ? ["resolved_asset"] : ["unresolved_attention"], resolved ? [] : ["identity_not_tradeable"]),
-      evidence_specificity: resolved ? 0.8 : 0.35,
-      avg_post_quality: qualityScore,
-      avg_attribution_confidence: resolved ? 1 : 0,
+      ...quality,
+      evidence_specificity: 0,
+      avg_post_quality: quality.score,
+      avg_attribution_confidence: row.resolution.confidence ?? 0,
       duplicate_text_share: 0,
       informative_post_count: Math.min(mentions, authors || mentions),
       watched_source_count: watched
     },
     propagation: {
-      ...scoreBlock(propagationScore, "asset_propagation_v1", authors > 1 ? ["independent_expansion"] : [], authors <= 1 ? ["thin_author_set"] : []),
+      ...propagation,
       independent_authors: authors,
       effective_authors: authors,
       new_authors: authors,
@@ -1112,44 +1120,39 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       top_authors: []
     },
     tradeability: {
-      ...scoreBlock(tradeabilityScore, "asset_tradeability_v1", resolved ? ["resolved_asset"] : [], resolved ? [] : ["identity_not_tradeable"]),
+      ...tradeability,
       identity_tradeable: resolved,
-      market_fresh: marketReady,
+      market_fresh: marketHasUsableSnapshot,
       market_cap_present: Boolean(market?.market_cap_usd),
       liquidity_present: Boolean(market?.liquidity_usd),
-      pool_present: isDex,
-      hard_risks: resolved ? [] : ["identity_not_tradeable"]
+      pool_present: Boolean(isDex && venue?.address),
+      hard_risks: tradeability.hard_risks ?? tradeability.risks
     },
     timing: {
-      score: timingScore,
-      score_version: "asset_timing_v1",
+      score: timing.score,
+      score_version: timing.score_version,
       status: timingStatus,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
       price_change_since_social_pct: market?.price_change_since_social_pct ?? null,
       price_change_before_social_pct: market?.price_change_before_social_pct ?? null,
       market_observation_status: marketObservationStatus,
       chase_risk: chaseRisk,
-      reasons: [],
-      risks: timingRisks,
-      contributions: [],
-      risk_caps: []
+      reasons: timing.reasons,
+      risks: timing.risks,
+      contributions: timing.contributions,
+      risk_caps: timing.risk_caps
     },
     opportunity: {
-      ...scoreBlock(
-        opportunityScore,
-        "asset_opportunity_v1",
-        [row.decision],
-        resolved ? ["public_stream_coverage"] : ["identity_not_tradeable", "public_stream_coverage"]
-      ),
+      ...opportunity,
       decision,
       decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
-      hard_risks: resolved ? [] : ["identity_not_tradeable"],
+      hard_risks: opportunity.hard_risks ?? opportunity.risks,
       components: {
-        heat: heatScore,
-        quality: qualityScore,
-        propagation: propagationScore,
-        tradeability: tradeabilityScore,
-        timing: timingScore
+        heat: row.score?.opportunity?.components?.heat ?? heat.score,
+        quality: row.score?.opportunity?.components?.quality ?? quality.score,
+        propagation: row.score?.opportunity?.components?.propagation ?? propagation.score,
+        tradeability: row.score?.opportunity?.components?.tradeability ?? tradeability.score,
+        timing: row.score?.opportunity?.components?.timing ?? timing.score
       }
     },
     watch: {
@@ -1161,21 +1164,47 @@ function assetFlowRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"
       reasons: watched ? ["watched_source_present"] : [],
       risks: watched ? [] : ["no_watched_confirmation"]
     },
-    evidence_total_count: mentions,
-    posts_query: { asset_id: row.asset.asset_id, window, scope, range: "current_window" },
-    timeline_query: { asset_id: row.asset.asset_id, window, scope }
+    evidence_total_count: row.intent?.evidence?.length ?? mentions,
+    posts_query: { asset_id: row.asset.asset_id, chain: venue?.chain ?? null, address: venue?.address ?? null, window, scope, range: "current_window" },
+    timeline_query: { asset_id: row.asset.asset_id, chain: venue?.chain ?? null, address: venue?.address ?? null, window, scope }
   };
 }
 
-function scoreBlock(score: number, scoreVersion: string, reasons: string[], risks: string[]) {
+type RadarScoreInput = {
+  score?: number | null;
+  score_version?: string | null;
+  reasons?: string[];
+  risks?: string[];
+  hard_risks?: string[];
+  contributions?: ScoreContribution[];
+  risk_caps?: RiskCap[];
+  status?: string | null;
+  chase_risk?: boolean | null;
+};
+
+function normalizedScoreBlock(block: RadarScoreInput | undefined, fallbackVersion: string) {
   return {
-    score: Math.round(score),
-    score_version: scoreVersion,
-    reasons,
-    risks,
-    contributions: [],
-    risk_caps: []
+    score: Math.round(Number(block?.score ?? 0)),
+    score_version: block?.score_version ?? fallbackVersion,
+    reasons: block?.reasons ?? [],
+    risks: block?.risks ?? [],
+    hard_risks: block?.hard_risks ?? [],
+    contributions: block?.contributions ?? [],
+    risk_caps: block?.risk_caps ?? [],
+    status: block?.status ?? undefined,
+    chase_risk: block?.chase_risk ?? undefined
   };
+}
+
+function normalizeDecision(value: string | null | undefined): Decision {
+  return value === "driver" || value === "watch" || value === "investigate" || value === "discard" ? value : "investigate";
+}
+
+function normalizeTimingStatus(value: string | null | undefined, resolved: boolean): TimingBlock["status"] {
+  if (value === "neutral" || value === "market_pending" || value === "market_unavailable" || value === "chase_risk") {
+    return value;
+  }
+  return resolved ? "neutral" : "market_unavailable";
 }
 
 function attentionKindTotal(summary?: TradingAttentionData["summary"]): number {
@@ -1327,19 +1356,27 @@ function tokenMatchForPayload(
     bySymbol: Map<string, TokenFlowItem[]>;
   }
 ): TokenFlowItem | undefined {
-  for (const attribution of payload.asset_attributions ?? []) {
-    if (attribution.asset_id && lookup.byAssetId.has(attribution.asset_id)) {
-      return lookup.byAssetId.get(attribution.asset_id);
+  for (const resolution of payload.token_resolutions ?? []) {
+    if (resolution.asset_id && lookup.byAssetId.has(resolution.asset_id)) {
+      return lookup.byAssetId.get(resolution.asset_id);
     }
-    if (attribution.asset_id && lookup.byIdentityKey.has(attribution.asset_id)) {
-      return lookup.byIdentityKey.get(attribution.asset_id);
+    if (resolution.asset_id && lookup.byIdentityKey.has(resolution.asset_id)) {
+      return lookup.byIdentityKey.get(resolution.asset_id);
     }
-    const symbol = attribution.canonical_symbol?.toUpperCase();
+    if (resolution.intent_id && lookup.byIdentityKey.has(resolution.intent_id)) {
+      return lookup.byIdentityKey.get(resolution.intent_id);
+    }
+  }
+  for (const intent of payload.token_intents ?? []) {
+    if (intent.intent_id && lookup.byIdentityKey.has(intent.intent_id)) {
+      return lookup.byIdentityKey.get(intent.intent_id);
+    }
+    const symbol = intent.display_symbol?.toUpperCase();
     const symbolMatches = symbol ? lookup.bySymbol.get(symbol) ?? [] : [];
     if (symbolMatches.length === 1) {
       return symbolMatches[0];
     }
-    const caKey = tokenCaKey(attribution.chain, attribution.address);
+    const caKey = tokenCaKey(intent.chain_hint, intent.address_hint);
     if (caKey && lookup.byCa.has(caKey)) {
       return lookup.byCa.get(caKey);
     }
@@ -1394,7 +1431,8 @@ function resolveEvidenceDetails(
       event: signal.item.event,
       entities: signal.item.entities,
       alerts: signal.item.alerts,
-      assetAttributions: signal.item.asset_attributions ?? [],
+      tokenIntents: signal.item.token_intents ?? [],
+      tokenResolutions: signal.item.token_resolutions ?? [],
       sourceLabel: "live"
     };
   }

@@ -13,10 +13,12 @@ from gmgn_twitter_intel.cli import build_parser, main
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
+from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
+from gmgn_twitter_intel.storage.repository_session import repositories_for_connection
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -93,6 +95,12 @@ def seed_postgres(db_path: Path) -> None:
             token_snapshot=snapshot,
         )
         ingest.ingest_event(token_event, is_watched=True)
+        TokenRadarProjection(repos=repositories_for_connection(conn)).rebuild(
+            window="5m",
+            scope="all",
+            now_ms=token_event.received_at_ms + 1,
+            limit=20,
+        )
     finally:
         conn.close()
 
@@ -114,7 +122,7 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
 
 
 class CliTests(unittest.TestCase):
-    def test_audit_and_projection_commands_are_registered(self):
+    def test_audit_and_token_radar_projection_commands_are_registered(self):
         parser = build_parser()
 
         commands = [
@@ -125,10 +133,8 @@ class CliTests(unittest.TestCase):
             ["ops", "projection-status"],
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
-            ["ops", "resolve-asset-symbol", "--symbol", "MIRROR"],
-            ["ops", "asset-resolution-health", "--window", "24h"],
-            ["ops", "audit-asset-attribution", "--event-id", "event-1"],
-            ["ops", "rebuild-asset-flow", "--window", "1h"],
+            ["ops", "audit-token-intent", "--event-id", "event-1"],
+            ["ops", "rebuild-token-radar", "--window", "1h"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -142,10 +148,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[5].ops_command, "validate-projections")
         self.assertEqual(parsed[5].sample, 5)
         self.assertEqual(parsed[6].ops_command, "sync-okx-cex-universe")
-        self.assertEqual(parsed[7].ops_command, "resolve-asset-symbol")
-        self.assertEqual(parsed[8].ops_command, "asset-resolution-health")
-        self.assertEqual(parsed[9].ops_command, "audit-asset-attribution")
-        self.assertEqual(parsed[10].ops_command, "rebuild-asset-flow")
+        self.assertEqual(parsed[7].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[8].ops_command, "rebuild-token-radar")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -297,7 +301,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["data"]["items"][0]["channel_id"], "pushdeer")
         self.assertEqual(payload["data"]["items"][0]["status"], "pending")
 
-    def test_db_audit_query_audit_and_projection_ops_use_postgres_only(self):
+    def test_db_audit_query_audit_and_token_radar_projection_ops_use_postgres_only(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
             db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
@@ -319,8 +323,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["engine"], "postgresql")
         self.assertTrue(lines[0]["data"]["projection_schema"]["projection_offsets"])
         self.assertFalse(lines[1]["data"]["analyze"])
-        self.assertIn("asset_flow_5m_shape", {item["name"] for item in lines[1]["data"]["queries"]})
-        self.assertEqual(lines[2]["data"]["known_projections"][0]["projection_name"], "asset-social-buckets")
+        self.assertIn("token_radar_latest", {item["name"] for item in lines[1]["data"]["queries"]})
+        self.assertEqual(lines[2]["data"]["known_projections"][0]["projection_name"], "token-radar")
         self.assertEqual(lines[3]["data"]["sample"], 5)
         self.assertEqual(lines[3]["data"]["mismatch_count"], 0)
 
@@ -338,97 +342,19 @@ class CliTests(unittest.TestCase):
             ["token-flow"],
             ["ops", "rebuild-attributions"],
             ["ops", "freeze-token-signals"],
+            ["ops", "settle-token-signals"],
+            ["token-signal-snapshots"],
+            ["token-signal-outcomes"],
+            ["token-signal-evaluations"],
+            ["market-observations"],
+            ["ops", "backfill-market-observations"],
+            ["ops", "process-asset-resolution-jobs"],
+            ["ops", "resolve-asset-symbol", "--symbol", "MIRROR"],
+            ["ops", "asset-resolution-health"],
+            ["ops", "audit-asset-attribution", "--event-id", "event-1"],
         ]
         for command in obsolete_commands:
             self.assertEqual(main(command, stdout=io.StringIO()), 2)
-
-    def test_token_signal_settlement_cli_commands_return_empty_results(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
-            write_runtime_config(home, db_path=db_path)
-            conn = connect_postgres_test(db_path, read_only=False)
-            try:
-                migrate(conn)
-            finally:
-                conn.close()
-            stdout = io.StringIO()
-            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
-                settle_code = main(
-                    ["ops", "settle-token-signals", "--horizon", "6h", "--limit", "5"],
-                    stdout=stdout,
-                )
-                outcomes_code = main(["token-signal-outcomes", "--horizon", "6h", "--limit", "5"], stdout=stdout)
-                evaluations_code = main(
-                    ["token-signal-evaluations", "--horizon", "6h", "--window", "5m", "--scope", "all"],
-                    stdout=stdout,
-                )
-
-        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-        self.assertEqual([settle_code, outcomes_code, evaluations_code], [0, 0, 0])
-        self.assertEqual(lines[0]["data"]["snapshots_scanned"], 0)
-        self.assertEqual(lines[1]["data"]["items"], [])
-        self.assertEqual(lines[2]["data"]["buckets"][0]["snapshot_count"], 0)
-
-    def test_market_observations_cli_lists_counts_and_backfills_missing_rows(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            home = Path(tmpdir)
-            db_path = home / ".gmgn-twitter-intel" / "postgres_test_db"
-            write_runtime_config(home, db_path=db_path)
-            conn = connect_postgres_test(db_path, read_only=False)
-            try:
-                migrate(conn)
-                evidence = EvidenceRepository(conn)
-                entities = EntityRepository(conn)
-                signals = SignalRepository(conn)
-                enrichment = EnrichmentRepository(conn)
-                ingest = IngestService(
-                    evidence=evidence,
-                    entities=entities,
-                    signals=signals,
-                    enrichment=enrichment,
-                )
-                snapshot = parse_gmgn_token_payload(
-                    {
-                        "tt": "ca",
-                        "t": {
-                            "a": PEPE,
-                            "c": "eth",
-                            "mc": "60490.341996",
-                            "p": "1.0",
-                            "s": "PEPE",
-                        },
-                    }
-                )
-                ingest.ingest_event(
-                    replace(
-                        make_event("event-market-backfill"),
-                        source=Source(
-                            provider="gmgn",
-                            transport="direct_ws",
-                            coverage="public_stream",
-                            channel="twitter_monitor_token",
-                        ),
-                        token_snapshot=snapshot,
-                    ),
-                    is_watched=True,
-                )
-            finally:
-                conn.close()
-
-            stdout = io.StringIO()
-            with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
-                before_code = main(["market-observations", "--status", "pending", "--limit", "5"], stdout=stdout)
-                backfill_code = main(["ops", "backfill-market-observations", "--limit", "5"], stdout=stdout)
-                after_code = main(["market-observations", "--status", "pending", "--limit", "5"], stdout=stdout)
-
-        lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
-        self.assertEqual([before_code, backfill_code, after_code], [0, 0, 0])
-        self.assertEqual(lines[0]["data"]["items"], [])
-        self.assertEqual(lines[1]["data"]["rows_scanned"], 0)
-        self.assertEqual(lines[1]["data"]["observations_enqueued"], 0)
-        self.assertEqual(lines[2]["data"]["counts"]["pending"], 0)
-        self.assertEqual(lines[2]["data"]["items"], [])
 
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"

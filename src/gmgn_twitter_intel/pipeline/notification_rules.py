@@ -192,10 +192,12 @@ class NotificationRuleEngine:
             items.extend(data.get("attention_candidates") or [])
         candidates: list[NotificationCandidate] = []
         for item in items:
-            scores = _asset_scores(item)
-            social_heat_score = scores["social_heat"]
-            discussion_quality_score = scores["discussion_quality"]
-            opportunity_score = scores["opportunity"]
+            decision = str(item.get("decision") or "").strip().lower()
+            if decision not in {"driver", "watch"}:
+                continue
+            social_heat_score = _score_value(item, "heat")
+            discussion_quality_score = _score_value(item, "quality")
+            opportunity_score = _score_value(item, "opportunity")
             if rule.social_heat_min is not None and social_heat_score < rule.social_heat_min:
                 continue
             if rule.discussion_quality_min is not None and discussion_quality_score < rule.discussion_quality_min:
@@ -205,6 +207,8 @@ class NotificationRuleEngine:
             asset = item.get("asset") if isinstance(item.get("asset"), dict) else {}
             venue = item.get("primary_venue") if isinstance(item.get("primary_venue"), dict) else {}
             attention = item.get("attention") if isinstance(item.get("attention"), dict) else {}
+            data_health = item.get("data_health") if isinstance(item.get("data_health"), dict) else {}
+            score = item.get("score") if isinstance(item.get("score"), dict) else {}
             identity_key = str(asset.get("asset_id") or "").strip()
             if not identity_key:
                 continue
@@ -230,6 +234,9 @@ class NotificationRuleEngine:
                 "social_heat_score": social_heat_score,
                 "discussion_quality_score": discussion_quality_score,
                 "opportunity_score": opportunity_score,
+                "score_version": _score_version(score.get("opportunity")),
+                "decision": decision,
+                "data_health": data_health,
                 "mentions": _int(attention.get("mentions_window")),
                 "unique_authors": _int(attention.get("unique_authors")),
                 "watched_mentions": _int(attention.get("watched_mentions")),
@@ -258,7 +265,7 @@ class NotificationRuleEngine:
                     symbol=symbol,
                     chain=chain,
                     address=address,
-                    source_table="asset_flow",
+                    source_table="token_radar_rows",
                     source_id=identity_key,
                     occurrence_at_ms=occurrence_at_ms,
                     payload=payload,
@@ -322,32 +329,14 @@ class NotificationRuleEngine:
         return max(DEFAULT_LIMIT, int(self.settings.notifications.token_flow_limit))
 
 
-def _asset_scores(item: dict[str, Any]) -> dict[str, int]:
-    attention = item.get("attention") if isinstance(item.get("attention"), dict) else {}
-    resolution = item.get("resolution") if isinstance(item.get("resolution"), dict) else {}
-    mentions = _int(attention.get("mentions_window"))
-    authors = _int(attention.get("unique_authors"))
-    watched = _int(attention.get("watched_mentions"))
-    status = str(resolution.get("status") or "")
-    resolved = status == "resolved"
-    ambiguous = status == "ambiguous"
-    social_heat = min(100, 30 + mentions * 6 + authors * 8 + watched * 8)
-    discussion_quality = min(100, 70 + watched * 8) if resolved else min(70, 35 + mentions * 8)
-    propagation = min(100, 30 + authors * 14)
-    tradeability = 80 if resolved else 35 if ambiguous else 20
-    timing = 50 if resolved else 35
-    opportunity = round(
-        social_heat * 0.4
-        + discussion_quality * 0.25
-        + propagation * 0.2
-        + tradeability * 0.1
-        + timing * 0.05
-    )
-    return {
-        "social_heat": int(social_heat),
-        "discussion_quality": int(discussion_quality),
-        "opportunity": int(opportunity),
-    }
+def _score_value(item: dict[str, Any], key: str) -> int:
+    score = item.get("score") if isinstance(item.get("score"), dict) else {}
+    block = score.get(key) if isinstance(score.get(key), dict) else {}
+    return _int(block.get("score"))
+
+
+def _score_version(block: Any) -> str | None:
+    return str(block.get("score_version")) if isinstance(block, dict) and block.get("score_version") else None
 
 
 def _int(value: Any) -> int:

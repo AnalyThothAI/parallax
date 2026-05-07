@@ -6,7 +6,7 @@ export type ApiResponse<T> = {
 
 export type WindowKey = "5m" | "1h" | "4h" | "24h";
 export type ScopeKey = "matched" | "all";
-export type Decision = "driver" | "watch" | "discard";
+export type Decision = "driver" | "watch" | "investigate" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
 export type TokenDetailTab = "timeline" | "posts" | "score" | "lab" | "accounts";
 export type TimelineBucket = "30s" | "5m" | "15m" | "1h";
@@ -78,25 +78,28 @@ export type AlertRecord = {
   evidence?: string | null;
 };
 
-export type AssetAttributionRecord = {
-  attribution_id?: string | null;
-  mention_id?: string | null;
+export type TokenIntentRecord = {
+  intent_id?: string | null;
+  event_id?: string | null;
+  display_symbol?: string | null;
+  display_name?: string | null;
+  chain_hint?: string | null;
+  address_hint?: string | null;
+  intent_status?: string | null;
+  intent_confidence?: number | null;
+};
+
+export type TokenResolutionRecord = {
+  resolution_id?: string | null;
+  intent_id?: string | null;
+  event_id?: string | null;
   asset_id?: string | null;
-  venue_id?: string | null;
+  primary_venue_id?: string | null;
   identity_status?: string | null;
-  asset_type?: string | null;
-  canonical_symbol?: string | null;
-  venue_type?: string | null;
-  exchange?: string | null;
-  chain?: string | null;
-  address?: string | null;
-  inst_id?: string | null;
-  base_symbol?: string | null;
-  quote_symbol?: string | null;
-  inst_type?: string | null;
-  attribution_status?: string | null;
+  resolution_status?: string | null;
   confidence?: number | null;
-  decision_reason?: string | null;
+  reasons_json?: string[];
+  risks_json?: string[];
 };
 
 export type LivePayload = {
@@ -104,7 +107,8 @@ export type LivePayload = {
   event: EventRecord;
   entities: EntityRecord[];
   alerts: AlertRecord[];
-  asset_attributions?: AssetAttributionRecord[];
+  token_intents?: TokenIntentRecord[];
+  token_resolutions?: TokenResolutionRecord[];
   harness?: unknown | null;
 };
 
@@ -202,9 +206,62 @@ export type AssetFlowAttentionBlock = {
   unique_authors: number;
   watched_mentions: number;
   latest_seen_ms?: number | null;
+  previous_mentions?: number | null;
+  mention_delta?: number | null;
+  mention_delta_pct?: number | null;
+  z_score?: number | null;
+  new_burst_score?: number | null;
+  stream_share?: number | null;
+  baseline_status?: string | null;
+  baseline_sample_count?: number | null;
+};
+
+export type TokenRadarIntentBlock = {
+  intent_id?: string | null;
+  display_symbol?: string | null;
+  display_name?: string | null;
+  evidence?: unknown[];
+};
+
+export type TokenRadarScoreBlock = {
+  score: number;
+  score_version?: string | null;
+  reasons?: string[];
+  risks?: string[];
+  hard_risks?: string[];
+  contributions?: ScoreContribution[];
+  risk_caps?: RiskCap[];
+};
+
+export type TokenRadarScoreSet = {
+  heat?: TokenRadarScoreBlock;
+  quality?: TokenRadarScoreBlock;
+  propagation?: TokenRadarScoreBlock;
+  tradeability?: TokenRadarScoreBlock;
+  timing?: TokenRadarScoreBlock & {
+    status?: string | null;
+    chase_risk?: boolean | null;
+  };
+  opportunity?: TokenRadarScoreBlock & {
+    components?: {
+      heat?: number | null;
+      quality?: number | null;
+      propagation?: number | null;
+      tradeability?: number | null;
+      timing?: number | null;
+    };
+  };
+};
+
+export type TokenRadarDataHealth = {
+  identity?: string | null;
+  market?: string | null;
+  coverage?: string | null;
+  [key: string]: unknown;
 };
 
 export type AssetFlowRow = {
+  intent?: TokenRadarIntentBlock;
   asset: AssetFlowAssetBlock;
   primary_venue?: AssetFlowVenueBlock | null;
   attention: AssetFlowAttentionBlock;
@@ -231,9 +288,15 @@ export type AssetFlowRow = {
   };
   resolution: {
     status: "resolved" | "unresolved" | "ambiguous" | string;
+    resolution_status?: string | null;
+    confidence?: number | null;
+    reasons?: string[];
+    risks?: string[];
     candidates?: unknown[];
   };
-  decision: "watch" | "investigate" | string;
+  score?: TokenRadarScoreSet;
+  decision: Decision | string;
+  data_health?: TokenRadarDataHealth;
 };
 
 export type AssetFlowData = {
@@ -736,11 +799,26 @@ export type StatusData = {
     worker_running: boolean;
     job_counts: Record<string, number>;
   };
-  market_observations?: Record<string, number | boolean>;
   harness_ops?: {
     worker_running: boolean;
     last_run_at_ms?: number | null;
     last_result?: Record<string, unknown> | null;
+  };
+  token_radar_projection?: {
+    worker_running: boolean;
+    last_started_at_ms?: number | null;
+    last_run_at_ms?: number | null;
+    last_result?: Record<string, unknown> | null;
+    last_error?: string | null;
+  };
+  asset_market_sync?: {
+    okx_cex_sync_enabled?: boolean;
+    worker_running: boolean;
+    last_started_at_ms?: number | null;
+    last_run_at_ms?: number | null;
+    last_result?: Record<string, unknown> | null;
+    last_error?: string | null;
+    providers?: Record<string, Record<string, unknown>>;
   };
   notifications?: {
     enabled: boolean;
