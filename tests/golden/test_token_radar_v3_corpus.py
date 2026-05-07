@@ -71,3 +71,25 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
     assert rows[0]["resolution_json"]["status"] == "resolved"
     assert rows[0]["asset_json"]["symbol"] is None
     assert rows[0]["primary_venue_json"]["address"] == address
+
+
+def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
+    _, repos, ingest = open_v3_runtime(tmp_path)
+    event = make_gmgn_payload_event(
+        symbol="PEPE",
+        chain="eth",
+        address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        received_at_ms=1_777_800_000_000,
+    )
+
+    ingest.ingest_event(event, is_watched=True)
+    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
+    rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
+
+    market = rows[0]["market_json"]
+    assert rows[0]["resolution_json"]["status"] == "resolved"
+    assert market["market_status"] == "fresh"
+    assert market["market_observation_status"] == "ready"
+    assert market["provider"] == "gmgn_payload"
+    assert market["price_usd"] == 0.01
+    assert market["market_cap_usd"] == 1_000_000

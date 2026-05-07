@@ -4,6 +4,7 @@ import hashlib
 import time
 from typing import Any
 
+from ..storage.asset_repository import MARKET_DATA_CLAUSE
 from ..storage.projection_repository import ProjectionRepository
 
 WINDOW_MS = {
@@ -12,6 +13,7 @@ WINDOW_MS = {
     "4h": 4 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
 }
+MARKET_FRESH_MS = 5 * 60 * 1000
 PROJECTION_VERSION = "token-radar-v3"
 
 
@@ -22,7 +24,7 @@ class TokenRadarProjection:
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         since_ms = computed_at_ms - WINDOW_MS.get(window, WINDOW_MS["1h"])
-        source_rows = self._source_rows(since_ms=since_ms, scope=scope)
+        source_rows = self._source_rows(since_ms=since_ms, scope=scope, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
         projected = [
             _project_group(group, now_ms=computed_at_ms, window=window, scope=scope)
@@ -77,7 +79,7 @@ class TokenRadarProjection:
         )
         return {"rows_written": len(rows), "source_rows": len(source_rows), "computed_at_ms": computed_at_ms}
 
-    def _source_rows(self, *, since_ms: int, scope: str) -> list[dict[str, Any]]:
+    def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
         watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
         rows = self.repos.conn.execute(
             f"""
@@ -107,7 +109,18 @@ class TokenRadarProjection:
               asset_venues.inst_id,
               asset_venues.base_symbol,
               asset_venues.quote_symbol,
-              asset_venues.inst_type
+              asset_venues.inst_type,
+              latest_market.provider AS market_provider,
+              latest_market.observed_at_ms AS market_observed_at_ms,
+              latest_market.price_usd AS market_price_usd,
+              latest_market.market_cap_usd AS market_market_cap_usd,
+              latest_market.liquidity_usd AS market_liquidity_usd,
+              latest_market.volume_24h_usd AS market_volume_24h_usd,
+              latest_market.open_interest_usd AS market_open_interest_usd,
+              latest_market.holders AS market_holders,
+              latest_market.price_change_5m_pct AS market_price_change_5m_pct,
+              latest_market.price_change_1h_pct AS market_price_change_1h_pct,
+              latest_market.price_change_24h_pct AS market_price_change_24h_pct
             FROM token_intents
             JOIN token_intent_resolutions
               ON token_intent_resolutions.intent_id = token_intents.intent_id
@@ -115,9 +128,18 @@ class TokenRadarProjection:
             JOIN events ON events.event_id = token_intents.event_id
             LEFT JOIN assets ON assets.asset_id = token_intent_resolutions.asset_id
             LEFT JOIN asset_venues ON asset_venues.venue_id = token_intent_resolutions.primary_venue_id
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM asset_market_snapshots
+              WHERE asset_market_snapshots.venue_id = token_intent_resolutions.primary_venue_id
+                AND asset_market_snapshots.observed_at_ms <= %s
+                AND {MARKET_DATA_CLAUSE}
+              ORDER BY observed_at_ms DESC, snapshot_id DESC
+              LIMIT 1
+            ) latest_market ON true
             WHERE events.received_at_ms >= %s {watched_clause}
             """,
-            (since_ms,),
+            (now_ms, since_ms),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -143,9 +165,9 @@ def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scop
         and bool(latest.get("primary_venue_id"))
     )
     lane = "resolved" if resolved else "attention"
-    market = _market(latest, identity_status=identity_status)
+    market = _market(latest, identity_status=identity_status, now_ms=now_ms)
     score = _score(mentions=len(event_ids), authors=len(authors), watched=watched, resolved=resolved, market=market)
-    decision = _decision(score=score, resolved=resolved)
+    decision = _decision(score=score, resolved=resolved, market=market)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -202,7 +224,7 @@ def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scop
     }
 
 
-def _market(row: dict[str, Any], *, identity_status: str) -> dict[str, Any]:
+def _market(row: dict[str, Any], *, identity_status: str, now_ms: int) -> dict[str, Any]:
     if identity_status != "resolved" or not row.get("primary_venue_id"):
         return {
             "market_status": "missing",
@@ -218,6 +240,32 @@ def _market(row: dict[str, Any], *, identity_status: str) -> dict[str, Any]:
             "snapshot_age_ms": None,
             "snapshot_observed_at_ms": None,
             "price_change_since_social_pct": None,
+            "price_change_before_social_pct": None,
+        }
+    observed_at_ms = _int_or_none(row.get("market_observed_at_ms"))
+    if observed_at_ms is not None:
+        snapshot_age_ms = max(0, int(now_ms) - observed_at_ms)
+        fresh = snapshot_age_ms <= MARKET_FRESH_MS
+        return {
+            "market_status": "fresh" if fresh else "stale",
+            "market_observation_status": "ready" if fresh else "stale",
+            "price_change_status": "insufficient_history",
+            "provider": row.get("market_provider"),
+            "price_usd": row.get("market_price_usd"),
+            "market_cap_usd": row.get("market_market_cap_usd"),
+            "liquidity_usd": row.get("market_liquidity_usd"),
+            "volume_24h_usd": row.get("market_volume_24h_usd"),
+            "open_interest_usd": row.get("market_open_interest_usd"),
+            "holders": row.get("market_holders"),
+            "price_change_5m_pct": row.get("market_price_change_5m_pct"),
+            "price_change_1h_pct": row.get("market_price_change_1h_pct"),
+            "price_change_24h_pct": row.get("market_price_change_24h_pct"),
+            "snapshot_age_ms": snapshot_age_ms,
+            "snapshot_observed_at_ms": observed_at_ms,
+            "price_at_social_start": None,
+            "price_at_reference": row.get("market_price_usd"),
+            "price_change_since_social_pct": None,
+            "price_before_social_start": None,
             "price_change_before_social_pct": None,
         }
     return {
@@ -242,20 +290,19 @@ def _score(*, mentions: int, authors: int, watched: int, resolved: bool, market:
     heat = min(100, 30 + mentions * 6 + authors * 8 + watched * 8)
     quality = min(100, 70 + watched * 8) if resolved else min(70, 35 + mentions * 8)
     propagation = min(100, 30 + authors * 14)
-    tradeability = (
-        80
-        if resolved and market["market_observation_status"] in {"ready", "stale", "pending_refresh"}
-        else 20
-    )
+    market_usable = _market_usable_for_driver(market)
+    market_risks = [] if market_usable else [_market_risk(market)]
+    hard_risks = [] if resolved and market_usable else market_risks if resolved else ["unresolved_token_identity"]
+    tradeability = 80 if resolved and market_usable else 45 if resolved else 20
     timing = 50 if resolved else 35
     opportunity = round(heat * 0.4 + quality * 0.25 + propagation * 0.2 + tradeability * 0.1 + timing * 0.05)
     return {
         "heat": _score_block(heat),
         "quality": _score_block(quality),
         "propagation": _score_block(propagation),
-        "tradeability": _score_block(tradeability, hard_risks=[] if resolved else ["unresolved_token_identity"]),
+        "tradeability": _score_block(tradeability, hard_risks=hard_risks),
         "timing": _score_block(timing),
-        "opportunity": _score_block(opportunity, hard_risks=[] if resolved else ["unresolved_token_identity"]),
+        "opportunity": _score_block(opportunity, hard_risks=hard_risks),
     }
 
 
@@ -271,11 +318,28 @@ def _score_block(score: int, *, hard_risks: list[str] | None = None) -> dict[str
     }
 
 
-def _decision(*, score: dict[str, Any], resolved: bool) -> str:
+def _decision(*, score: dict[str, Any], resolved: bool, market: dict[str, Any]) -> str:
     if not resolved:
         return "investigate"
     opportunity = int((score.get("opportunity") or {}).get("score") or 0)
+    if not _market_usable_for_driver(market):
+        return "watch" if opportunity >= 45 else "discard"
     return "driver" if opportunity >= 75 else "watch" if opportunity >= 45 else "discard"
+
+
+def _market_usable_for_driver(market: dict[str, Any]) -> bool:
+    return str(market.get("market_status") or "") in {"fresh", "ready", "stale"} and str(
+        market.get("market_observation_status") or ""
+    ) in {"ready", "stale"}
+
+
+def _market_risk(market: dict[str, Any]) -> str:
+    status = str(market.get("market_observation_status") or "missing_market")
+    if status == "pending_refresh":
+        return "market_pending"
+    if status == "no_venue":
+        return "no_tradeable_venue"
+    return status
 
 
 def _venue(row: dict[str, Any]) -> dict[str, Any]:
@@ -320,6 +384,15 @@ def _is_address_like_symbol(symbol: str) -> bool:
     if value.endswith("PUMP"):
         value = value[:-4]
     return all(char.isdigit() or ("A" <= char <= "Z") for char in value)
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _rank_key(row: dict[str, Any]) -> tuple[int, int]:
