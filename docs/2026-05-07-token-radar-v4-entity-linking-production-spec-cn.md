@@ -1,4 +1,4 @@
-# Token Radar V4: Entity Linking, Venue Mapping, And Market Integrity Production Spec
+# Token Radar V4: KISS Deterministic Resolver Production Spec
 
 Date: 2026-05-07
 
@@ -8,6 +8,7 @@ Supersedes:
 
 - `docs/2026-05-06-token-identity-resolution-production-spec-cn.md`
 - `docs/2026-05-07-token-radar-identity-market-v3-production-spec-cn.md`
+- earlier draft of `docs/2026-05-07-token-radar-v4-entity-linking-production-spec-cn.md`
 
 Companion plan:
 
@@ -15,379 +16,454 @@ Companion plan:
 
 ## Executive Summary
 
-V3 把 Token Radar 的业务主语从 mention/asset attribution 切到了 event-level token intent，这一步方向正确，也已经修掉了前端把 unresolved attention 标成 `driver`、projection 不读 `token_radar_rows`、market snapshot 不入 Radar、地址当 symbol 展示、价格显示粗糙等症状。
+V3 的方向是正确的：Token Radar 的主语已经从 mention-level attribution 切到 event-level token intent，frontend 也不再拥有 decision。但 live 数据仍然暴露出更底层的问题：
 
-但 V3 仍然没有达到生产级 identity linking 标准。最近 5 分钟 live 数据里继续出现 `UNKNOWN ETH`、`$MASK`、`$SPACEXAI`、Solana 地址尾缀被误读、TON 地址缺失、同一 event 里 CA resolved 但 symbol 仍 ambiguous 的残留，本质原因不是某个 if 分支，而是：
+- `$MASK`、`$SPACEXAI`、`$PEPE` 这类 symbol-only 文本仍然容易被误当成某个链上资产；
+- CEX ticker、DEX token、DEX pool、Project 被混在 `asset + venue` 里；
+- `asset_venues` 同时像“可交易 venue”、又像“DEX token contract”、又像“CEX market”，边界太软；
+- resolver 还在用候选数量、confidence、alias 表做近似判断；
+- price/market snapshot 绑定到 asset/venue，而不是绑定到明确的 Market；
+- 解析失败后缺少自动 discovery -> registry update -> reprocess 的闭环。
 
-- extractor 只产出低阶事实，没有稳定的 mention/linker domain model；
-- `token_intent_builder` 把 locality heuristic 和 intent construction 耦在一个模块里；
-- symbol-only resolver 仍然直接信任本地 alias 表，缺少 canonical/provider/observed alias 分层；
-- exact CA、symbol、多链、stock ticker、TON address、provider observation 没有统一 candidate model；
-- market 数据只会展示 snapshot，不会参与 identity candidate audit，也不能解释 provider search 失败；
-- asset registry 里真实 asset、provider venue、社交观察 alias 的边界仍然不够硬；
-- 投影层只能聚合最终 resolution，无法解释为什么一个候选被选中、被拒绝或保持 ambiguous。
-
-V4 的核心目标是引入成熟的实体链接方法论：
+V4 改成更简单、更可解释的生产架构：
 
 ```text
-mention detection
--> candidate generation
--> candidate ranking
--> NIL / ambiguous / resolved decision
--> venue market observation
--> Radar read model
+Tweet
+-> deterministic mention extraction
+-> event token intent
+-> deterministic resolver
+-> EXACT / UNIQUE_BY_CONTEXT / PROJECT_ONLY / AMBIGUOUS / NIL / INVALID
+-> discovery queue for unresolved work
+-> registry update
+-> re-run resolver
+-> market snapshots
+-> token_radar_rows
 ```
 
-这不是引入复杂 ML。V4 的生产做法是 KISS：用确定性链地址解析器、provider registry、canonical alias、market/liquidity 辅助排序和可审计阈值，替代“看到 symbol 就强选一个 asset”的半成品路径。
+核心取舍：
+
+```text
+不猜。
+能确定就解析。
+不能确定就 AMBIGUOUS / NIL。
+NIL / AMBIGUOUS 自动进入 discovery 和 reprocess。
+```
+
+## What Changes From Earlier V4
+
+Earlier V4 仍然保留了 candidate score 和 threshold 的味道。这个方向容易滑回“流动性最大所以就是它”的错链风险。
+
+本版 V4 改为：
+
+- identity resolution 不使用 ML confidence；
+- identity resolution 不用 liquidity 排名强选；
+- symbol-only 默认不解析到 Asset；
+- 同名 token 只召回候选，不决定 identity；
+- market/liquidity 只用于 active filter，不用于在多个合理候选里选一个；
+- resolver 输出枚举状态，而不是 0.73/0.86 这种伪精确值；
+- discovery/reprocess 是生产闭环的一等模块，不是 ops 补丁。
 
 ## Non-Goals
 
 V4 不做这些事：
 
-- 不在 hot path 用 LLM 决定 token identity。
-- 不把多链同 symbol 合并成一个 asset。
-- 不用市值、holder、liquidity 把两个不同合约合并。
-- 不让 frontend 计算 Radar decision。
-- 不在 HTTP request path 调 provider。
-- 不把 unresolved/ambiguous 写成 fake asset。
-- 不把股票 cashtag 放进 crypto Token Radar。
-- 不继续维护 mention-level attribution compatibility path。
+- 不用 LLM 解析 hot path identity；
+- 不做人肉标注闭环；
+- 不把多链同 symbol 自动合并成一个 Project；
+- 不把 CEX ticker 映射到单一链上 CA；
+- 不把 DEX pool 当成 token 本身；
+- 不让 frontend 计算或覆盖 Radar decision；
+- 不在 API request path 调 provider；
+- 不保留 `asset_mentions` / `asset_attributions` / request-time asset-flow 作为 Token Radar runtime；
+- 不为了覆盖率强行解析 `$SYMBOL`。
 
 ## First Principles
 
-1. Mention 是文本事实，不是交易对象。
-2. Intent 是一个 event 中作者表达的 token subject，是 Radar 的最小业务主语。
-3. Asset 是链无关或交易所无关的 canonical identity；venue 是可交易实例。
-4. DEX token 的可交易实例由 `chain + contract address` 定义。
-5. CEX instrument 的可交易实例由 `exchange + inst_type + inst_id` 定义。
-6. Symbol 是 alias，不是 identity。
-7. 多链同 symbol 默认不是同一个 token。
-8. Market/holder/liquidity 是 candidate ranking evidence，不是 identity proof。
-9. 股票 ticker 和 crypto cashtag 共享 `$` 表面语法，但不共享 resolver。
-10. 系统宁可 `ambiguous` 或 `unresolved`，也不能错误 resolved。
+1. Symbol 不是实体，只是召回键。
+2. EVM CA 不包含 chain，不能默认 Ethereum。
+3. CEX ticker 不是链上 token。
+4. DEX pool 是 Market，不是 Asset。
+5. DEX token Asset 必须有 `chain + address/mint`。
+6. CEX listing 和 CEX market 必须分开。
+7. 同名 symbol 只用于候选召回，不用于最终解析。
+8. Market/liquidity 可以过滤垃圾候选，不能在多个合理候选里替 resolver 做选择。
+9. Resolver 的正确输出包括“不知道”：`PROJECT_ONLY`、`AMBIGUOUS`、`NIL`、`INVALID` 都是正常生产状态。
+10. 闭环不是人工标注，而是 discovery + registry update + deterministic reprocess。
+
+## Minimal Domain Model
+
+V4 只保留四类 registry 实体。
+
+| Entity | Meaning | Example |
+| --- | --- | --- |
+| `Project` | 项目/概念层 | `project:pepe`, `project:wif`, `project:ethereum` |
+| `Asset` | 链上资产，必须带 chain + address/mint | `asset:eip155:1:erc20:0x6982...`, `asset:solana:token:<mint>` |
+| `Listing` | CEX 上某个 base asset/listing，不指定 quote 或 market type | `listing:cex:binance:PEPE` |
+| `Market` | 可交易市场，CEX pair/perp 或 DEX pool | `market:cex:okx:spot:TON-USDT`, `market:dex:eip155:1:uniswap_v3:<pool>` |
+
+### Current Repo Mapping
+
+Current V3 good spine:
+
+- keep `events`;
+- keep `event_entities` as span-aware facts;
+- keep `token_evidence`;
+- keep `token_intents`;
+- keep `token_radar_rows`;
+- keep `projection_runs/projection_offsets`;
+- keep provider adapters under `src/gmgn_twitter_intel/market`.
+
+Current V3 boundaries to replace:
+
+- replace `assets` as catch-all registry with Project/Asset/Listing/Market semantics;
+- replace `asset_venues` as production market identity with `markets`;
+- replace `asset_market_snapshots` with `market_snapshots` keyed by `market_id`;
+- replace `token_intent_resolutions.asset_id + primary_venue_id` as final target with `target_type + target_id`;
+- remove `AssetRepository.candidates_for_symbol()` from resolver hot path;
+- remove score-based candidate selection from identity resolver.
+
+Migration may read old tables once to backfill V4 registry, but runtime code cannot depend on old tables after the cut.
+
+## ID Design
+
+IDs must encode identity, not display.
+
+```text
+Project:
+  project:pepe
+
+Asset:
+  asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933
+  asset:eip155:8453:erc20:0x2cc0db4f8977accadb5b7da59c5923e14328eba3
+  asset:solana:token:69PzM2hDa3MCo7cvKPgiPxhr1FdGdMV3S7h6wpRkpump
+  asset:ton:jetton:<canonical-ton-address>
+
+Listing:
+  listing:cex:binance:PEPE
+  listing:cex:okx:TON
+
+Market:
+  market:cex:binance:spot:PEPEUSDT
+  market:cex:bybit:swap:1000PEPEUSDT
+  market:cex:okx:swap:TON-USDT-SWAP
+  market:dex:eip155:1:uniswap_v3:<pool_address>
+  market:dex:solana:raydium:<pool_address>
+```
+
+Rules:
+
+- `project:pepe` does not imply any chain Asset.
+- `listing:cex:binance:PEPE` does not imply any chain Asset.
+- `market:cex:bybit:swap:1000PEPEUSDT` has a base listing/project and multiplier metadata.
+- `market:dex:*:<pool>` has base/quote assets and pool metadata.
+- Project merge requires strong evidence, never symbol equality alone.
+
+## Resolution Status
+
+V4 resolver returns one of:
+
+```text
+EXACT
+UNIQUE_BY_CONTEXT
+PROJECT_ONLY
+AMBIGUOUS
+NIL
+INVALID
+```
+
+| Status | Meaning | Tradeability |
+| --- | --- | --- |
+| `EXACT` | 输入含确定 ID：chain+CA, DEX pool URL/address, CEX native market id | tradeable if target is Market or has active Market |
+| `UNIQUE_BY_CONTEXT` | 明确上下文过滤后只剩一个候选 | tradeable if target has active Market |
+| `PROJECT_ONLY` | 只能确定项目，不能确定链上 asset/listing/market | not tradeable |
+| `AMBIGUOUS` | 多个候选都合理，不硬选 | not tradeable |
+| `NIL` | 当前 registry 没有命中，需要 discovery | not tradeable |
+| `INVALID` | 格式像地址/market，但 parser 或链上校验失败 | not tradeable |
+
+`confidence` 在 identity resolution 中废弃。Radar scoring 可以继续对 heat/quality/propagation/market timing 打分，但 identity status 本身必须是枚举和 reason codes。
 
 ## Target Architecture
 
 ```mermaid
 flowchart TD
-  A["GMGN raw frame"] --> B["normalized events"]
-  B --> C["span-aware entity extractor"]
-  C --> D["token_mentions"]
-  D --> E["intent linker"]
+  A["GMGN raw frame"] --> B["events"]
+  B --> C["Mention Extractor"]
+  C --> D["token_evidence"]
+  D --> E["Token Intent Builder"]
   E --> F["token_intents"]
-  F --> G["identity candidate generator"]
-  G --> H["identity candidate ranker"]
-  H --> I["token_intent_resolutions"]
-  H --> J["token_intent_resolution_candidates"]
-  I --> K["assets"]
-  I --> L["asset_venues"]
-  J --> M["provider identity observations"]
-  M --> G
-  L --> N["market provider observations"]
-  N --> O["asset_market_snapshots"]
-  I --> P["token_radar_projection"]
-  O --> P
-  P --> Q["token_radar_rows"]
-  Q --> R["HTTP API / WS"]
-  R --> S["frontend render-only UI"]
+  F --> G["Deterministic Resolver"]
+  H["Registry: Project / Asset / Listing / Market"] --> G
+  G --> I["token_intent_resolutions"]
+  G --> J["resolution_candidates"]
+  G --> K{"AMBIGUOUS / NIL / INVALID?"}
+  K -->|yes| L["discovery_tasks"]
+  L --> M["Discovery Worker"]
+  M --> N["Registry Update"]
+  N --> O["Reprocess Worker"]
+  O --> G
+  P["Market Sync Workers"] --> Q["market_snapshots"]
+  I --> R["Token Radar Projection"]
+  Q --> R
+  R --> S["token_radar_rows"]
+  S --> T["API / WS"]
+  T --> U["Frontend render only"]
 ```
 
-V4 的边界变化：
+## Extraction Scope
 
-- `entity_extractor.py` 只负责事实发现和 span；
-- `token_evidence_builder.py` 只把事实投影成 token mention evidence；
-- 新增 `token_intent_linker.py`，专门负责同一 event 内的 mention pairing；
-- 新增 `identity_candidate_resolver.py`，统一 exact CA、symbol、provider、stock/crypto 分流；
-- `token_intent_resolver.py` 只保存最终 decision，不直接查散乱 alias；
-- `asset_repository.py` 只存真实 registry，symbol query 必须按 alias scope 过滤；
-- `market_repository.py` 负责 provider observations 和 snapshots；
-- `token_radar_projection.py` 只读 intent resolution + venue market snapshot；
-- frontend 只渲染 `token_radar_rows` 的 JSON。
-
-## Domain Model
-
-### Token Mention
-
-Token mention 是文本事实的 token 化投影。
-
-Required fields:
-
-```text
-mention_id
-event_id
-surface                       primary | reference | payload
-mention_type                  ca | cashtag | provider_url | chain_hint | stock_ticker
-raw_value
-normalized_symbol
-normalized_address
-chain_hint
-asset_class_hint              crypto | stock | unknown
-span_start
-span_end
-sentence_id
-segment_id
-source_kind                   entity | gmgn_payload | url | provider_payload
-source_id
-confidence
-created_at_ms
-```
-
-Rules:
-
-- EVM、Solana、TON 地址必须在 extractor 阶段通过成熟 parser 校验。
-- Solana 地址尾缀如 `pump`、`musk`、`sol` 是地址字符的一部分，不能作为 symbol。
-- `0x...` 无链时 `chain_hint=NULL`，不能默认为 ETH。
-- `$AAPL`、`$TSLA`、`$MASK` 先进入 cross-asset candidate set，不直接进入 crypto resolved。
-- GMGN payload 是强 evidence，`surface=payload`。
-
-### Token Intent
-
-Token intent 是一个 event 里的 token subject。
-
-Required fields:
-
-```text
-intent_id
-event_id
-intent_key
-construction_policy
-primary_mention_id
-display_symbol
-display_name
-asset_class_hint
-chain_hint
-address_hint
-intent_status                  pending | linked | ambiguous_mentions | invalid
-intent_confidence
-linking_reasons_json
-linking_risks_json
-created_at_ms
-updated_at_ms
-```
-
-Rules:
-
-- 一个 event 里同一个 token subject 只能生成一个 intent。
-- 一个 intent 可以有多个 mention evidence，但必须有一个 primary mention。
-- 单 symbol + 单 CA 同 surface 必须合并，即使中间有 `4.1x`、`90K -> 371K` 这类标点和指标。
-- 多 symbol + 多 CA 只允许 reciprocal nearest pairing；不满足就保持 `ambiguous_mentions`。
-- reference tweet 和 primary tweet 默认分开 linking；payload evidence 可覆盖 primary display metadata。
-
-### Identity Candidate
-
-Identity candidate 是 resolver 对一个 intent 的可审计候选。
-
-Required fields:
-
-```text
-candidate_id
-intent_id
-asset_id
-venue_id
-asset_class                   crypto | stock
-candidate_kind                exact_ca | provider_exact_ca | canonical_symbol | provider_symbol | cex_instrument | stock_ticker
-candidate_source              local_registry | gmgn | okx | exchange_symbol_directory
-score
-score_components_json
-decision                      selected | rejected | retained
-reasons_json
-risks_json
-raw_observation_id
-created_at_ms
-```
-
-Rules:
-
-- exact CA with chain 只能产生一个 crypto DEX venue candidate。
-- exact CA without chain 先查 local exact address；如果跨链多 venue，保持 ambiguous 并给 `chain_required_for_exact_ca`。
-- symbol-only 只能从 canonical/provider alias 生成候选；observed/social alias 只能作为 weak evidence。
-- provider exact CA hit 可以创建真实 asset/venue。
-- provider symbol search 只能产生 candidate，不能直接写 resolved，除非通过 ranking hard gate。
-
-### Asset And Venue
-
-Asset registry 只保存真实对象。
-
-Required asset properties:
-
-```text
-asset_id
-asset_type                    crypto_token | cex_instrument_group | stock_instrument
-canonical_symbol
-display_name
-identity_status               resolved
-primary_source
-confidence
-created_at_ms
-updated_at_ms
-```
-
-Required venue properties:
-
-```text
-venue_id
-asset_id
-venue_type                    dex | cex | stock_exchange
-provider
-exchange
-chain
-address
-inst_type
-inst_id
-base_symbol
-quote_symbol
-is_active
-confidence
-created_at_ms
-updated_at_ms
-```
-
-Rules:
-
-- `asset:unresolved:*` 和 `asset:ambiguous:*` 不允许存在于 registry。
-- `asset_aliases` 必须有 `alias_scope`：
-  - `canonical`: project-owned curated alias；
-  - `provider`: provider-confirmed alias；
-  - `observed`: social text alias, not resolvable by itself。
-- `candidates_for_symbol()` 必须过滤 `alias_scope IN ('canonical', 'provider')`。
-- stock asset 不进入 crypto Token Radar lane。
-
-## Mature Entity Linking Algorithm
-
-V4 采用标准 entity linking pipeline，但保持 deterministic。
-
-### Step 1: Mention Detection
+Extractor remains deterministic. It extracts keys, not identity.
 
 Extract:
 
-- EVM CA: `eth_utils.is_address()` + checksum normalization。
-- Solana CA: `solders.Pubkey.from_string()`。
-- TON CA: maintained TON address parser；friendly/raw address 均归一化。
-- Cashtag: `$[A-Z0-9_]{1,20}`，保留 span。
-- URL: explorer/provider URLs 提供 chain/address hint。
-- Chain hint: explicit local hint only，例如 explorer host、`on base`、`bsc`、`ethereum`、`SOLANA`。
-- Stock ticker: only after exchange symbol registry match。
+- EVM address: `0x[a-fA-F0-9]{40}`, then parser validation;
+- Solana mint: base58 candidate, then `solders.Pubkey` validation;
+- TON address: maintained TON parser validation;
+- cashtag: `$PEPE`, `$WIF`, `$TRUMP`;
+- CEX market text: `PEPEUSDT`, `PEPE/USDT`, `TON-USDT-SWAP`, `1000PEPEUSDT`;
+- DEX/provider URLs: DexScreener, GeckoTerminal, GMGN, Uniswap, Raydium, Meteora, Pancake, explorer URLs;
+- chain hints: `eth`, `ethereum`, `base`, `bsc`, `sol`, `solana`, `arb`, `arbitrum`, `ton`;
+- venue hints: `binance`, `bybit`, `okx`, `coinbase`, `uniswap`, `raydium`, `meteora`, `pump`, `pancake`;
+- intent hints: `ca`, `contract`, `mint`, `listing`, `listed`, `perp`, `futures`, `pool`, `lp`.
 
-### Step 2: Candidate Generation
+Do not extract:
 
-Input is one intent, not one mention.
+- suffixes from Solana address text as symbol;
+- every uppercase word as ticker;
+- stock/crypto identity without registry lookup;
+- social hashtags as token identity unless promoted by deterministic rules.
 
-Rules:
+## Deterministic Resolver Priority
 
-- `address_hint + chain_hint`: generate exact venue candidate。
-- `address_hint without chain_hint`: local exact address candidates, then provider exact address observations。
-- `display_symbol only`: generate canonical/provider crypto aliases and stock ticker candidates separately。
-- `gmgn_payload`: generate provider payload candidate with strongest evidence。
-- `cex pair text`: generate CEX venue candidate only when text or payload includes exchange/instrument evidence。
+Resolver is a fixed decision table.
 
-### Step 3: Candidate Ranking
+| Priority | Condition | Output |
+| ---: | --- | --- |
+| 1 | DEX pool URL / pair address exact match | `Market EXACT` |
+| 2 | CEX native market id + exchange | `Market EXACT` |
+| 3 | chain hint + valid CA/mint | `Asset EXACT` |
+| 4 | CA/mint without chain, valid on exactly one tracked chain | `Asset EXACT` or `UNIQUE_BY_CONTEXT` |
+| 5 | CA/mint valid on multiple tracked chains | `AMBIGUOUS` |
+| 6 | exchange + base symbol without quote | `Listing UNIQUE_BY_CONTEXT` if one active listing |
+| 7 | chain + symbol after active filter | `Asset UNIQUE_BY_CONTEXT` if one active asset |
+| 8 | dex + chain + symbol after active filter | `Market` or `Asset UNIQUE_BY_CONTEXT` if one active candidate |
+| 9 | symbol maps to exactly one Project | `PROJECT_ONLY` |
+| 10 | symbol maps to multiple Projects or active candidates | `AMBIGUOUS` |
+| 11 | unknown symbol/address/market id | `NIL` |
+| 12 | address/market-shaped text fails validation | `INVALID` |
 
-Score components are intentionally small and explainable:
+The resolver must stop at the first applicable priority. It cannot fall through to symbol-only resolution after an exact address or market parse failed validation.
 
-```text
-score =
-  evidence_strength
-+ address_specificity
-+ chain_specificity
-+ canonical_alias_match
-+ provider_confidence
-+ venue_tradeability
-+ market_liquidity_signal
-+ social_context_signal
-- ambiguity_penalty
-- stale_registry_penalty
-```
+## Active Filter
 
-Hard gates:
+Active filter removes garbage. It does not rank survivors.
 
-- `exact_ca + chain` selected with confidence `1.0` if parser validates and venue can be created or found.
-- `exact_ca without chain` selected only when local/provider exact result has one active chain venue.
-- symbol-only selected only when:
-  - top candidate score >= `0.85`;
-  - margin over second candidate >= `0.20`;
-  - candidate alias scope is `canonical` or `provider`;
-  - stock/crypto ambiguity is absent or resolved by explicit context.
-- market/liquidity components may add at most `0.12`; they cannot override exact address conflict.
-- top candidate below threshold returns `unresolved`.
-- top candidate margin below threshold returns `ambiguous`.
-
-### Step 4: NIL / Ambiguous / Resolved Decision
-
-Resolution states:
+An Asset candidate is active if:
 
 ```text
-resolved
-ambiguous
-unresolved
-invalid
+valid chain object
+AND valid token interface / mint
+AND symbol exact match when resolving symbol
+AND status IN ('candidate', 'canonical')
+AND not deprecated
+AND has market evidence or trusted registry evidence
 ```
 
-Resolution reasons must be machine-readable:
+Market evidence can be:
 
 ```text
-exact_ca_with_chain_hint
-local_exact_ca_match
-provider_exact_ca_match
-single_canonical_symbol_candidate
-single_provider_symbol_candidate
-multiple_local_ca_matches
-multiple_symbol_candidates
-stock_crypto_symbol_collision
-ton_address_parser_rejected
-provider_resolution_pending
-provider_not_configured
-provider_not_found
-chain_required_for_exact_ca
+DEX pool exists with liquidity above threshold
+OR CEX market/listing exists
+OR trusted token registry entry exists
+OR sustained transfer/trade activity exists
 ```
 
-## Chain And Asset-Class Requirements
+After filter:
 
-### EVM
+```text
+0 candidates -> NIL
+1 candidate  -> UNIQUE_BY_CONTEXT
+>1 candidates -> AMBIGUOUS
+```
 
-- `0x...` is EVM address, not ETH identity.
-- Chain comes from explorer URL, explicit local hint, GMGN payload, or provider exact lookup.
-- If the same address exists on multiple chains locally, no-chain mention is ambiguous.
-- Address-only row display must prefer provider/canonical symbol; if missing, UI shows short address with `symbol=null`, never `UNKNOWN ETH` as a fake symbol.
+Forbidden:
 
-### Solana
+```text
+pick highest liquidity candidate
+pick highest market cap candidate
+pick oldest candidate
+pick Ethereum by default
+pick CEX USDT spot by default
+```
 
-- Use `solders.Pubkey` validation.
-- Do not strip semantic suffixes from base58 addresses.
-- `.pump` style URLs or text may become provider/source hint only when URL parser explicitly recognizes them.
-- A Solana CA plus cashtag in the same surface is one intent when single-single or reciprocal nearest rules pass.
+## Symbol-Only Rule
 
-### TON
+Symbol-only never resolves directly to Asset or Market.
 
-- Use a maintained TON address parser, not regex-only matching.
-- Support friendly and raw TON addresses.
-- Persist canonical TON address string in venue.
-- Market provider lookup must carry `chain=ton`.
-- If provider cannot map TON address to market, identity may still be `resolved` while market is `provider_not_found` or `pending_refresh`.
+Examples:
 
-### CEX
+```text
+"$PEPE"
+-> PROJECT_ONLY if exactly one Project
+-> AMBIGUOUS if multiple Projects
+-> NIL if unknown
 
-- CEX symbols require exchange/instrument evidence.
-- `$TON` alone can resolve to OKX spot only if canonical/provider registry has a single high-confidence CEX instrument and crypto DEX candidates do not compete above threshold.
-- `TON-USDT` and `TON-USDT-SWAP` are distinct venues under the same or related asset group.
+"new PEPE on Solana"
+-> Asset UNIQUE_BY_CONTEXT only if active Solana PEPE candidates filter to one
+-> AMBIGUOUS if multiple Solana PEPE candidates survive
 
-### Stocks
+"PEPE on Binance"
+-> Listing UNIQUE_BY_CONTEXT if Binance PEPE listing exists uniquely
+-> NIL if listing unknown
 
-- `$AAPL` is a cashtag but not a crypto token.
-- Stock ticker resolution uses exchange symbol directory data, not crypto alias table.
-- Stock candidates are persisted separately and excluded from crypto Token Radar output.
-- If a symbol exists as both stock and crypto and no context disambiguates, crypto Token Radar shows `ambiguous` or excludes the row by product policy.
+"PEPEUSDT perp on Bybit"
+-> Market EXACT if Bybit native market id exists
+```
+
+## Project Merge Rules
+
+Project merging is conservative. Two Assets can share a Project only with strong evidence:
+
+- same trusted external canonical ID;
+- same official website;
+- same official X handle;
+- official token list grouping;
+- CEX listing deposit networks explicitly map multiple chain assets to one listing;
+- provider returns a stable project ID across assets.
+
+Symbol equality is never enough.
+
+## Discovery Queue
+
+Every unresolved or ambiguous resolution creates a discovery task unless an equivalent active task already exists.
+
+Task types:
+
+```text
+address_lookup
+solana_mint_lookup
+ton_jetton_lookup
+cex_market_lookup
+cex_listing_lookup
+dex_pool_lookup
+dex_symbol_lookup
+project_symbol_lookup
+```
+
+Discovery writes registry facts, not final tweet resolutions. Reprocess owns rerunning resolver.
+
+### Unknown EVM Address
+
+For each tracked EVM chain:
+
+```text
+check contract exists
+check ERC20 interface
+read symbol/name/decimals
+check transfer activity
+check DEX pools and liquidity
+write raw/candidate/canonical registry state
+enqueue reprocess for affected intents
+```
+
+### Unknown Solana Mint
+
+```text
+check mint account
+check token program
+read decimals
+read metadata
+check pools: Raydium / Orca / Meteora / pump-style venues
+check recent trades
+write registry state
+enqueue reprocess
+```
+
+### Unknown CEX Market / Listing
+
+```text
+sync exchange instruments
+normalize native market ids
+detect spot / swap / future
+detect base / quote / settle / multiplier
+write Listing and Market
+enqueue reprocess
+```
+
+### Unknown DEX Symbol / Pool
+
+```text
+query provider pool registries
+search by symbol/address
+filter dead or zero-liquidity pools
+validate base/quote assets
+write Market and Assets
+enqueue reprocess
+```
+
+## Registry Tiers
+
+V4 uses three logical tiers:
+
+```text
+raw
+candidate
+canonical
+```
+
+KISS implementation can store these as `status` / `registry_tier` columns in the same Project/Asset/Listing/Market tables.
+
+Resolver reads only:
+
+```text
+candidate + canonical
+```
+
+Resolver never reads raw registry rows.
 
 ## Market Model
 
-Market availability must be diagnosable.
+Market snapshots bind to Market, not Asset.
 
-Required statuses:
+Required market fields:
+
+```text
+market_id
+market_type          spot | swap | future | pool
+venue_type           cex | dex
+venue                binance | bybit | okx | uniswap | raydium | ...
+chain_id             nullable, required for DEX
+pool_address         nullable, DEX pool identity
+native_market_id     nullable, CEX native id
+base_asset_id
+quote_asset_id
+base_listing_id
+base_project_id
+base_symbol
+quote_symbol
+multiplier
+status               raw | candidate | canonical | deprecated
+```
+
+Snapshot fields must preserve precision:
+
+```text
+price_usd NUMERIC
+market_cap_usd NUMERIC
+liquidity_usd NUMERIC
+volume_24h_usd NUMERIC
+open_interest_usd NUMERIC
+holders BIGINT
+observed_at_ms BIGINT
+provider TEXT
+```
+
+Market statuses:
 
 ```text
 ready
 stale
 pending_refresh
-no_venue
+no_market
 provider_not_configured
 provider_not_found
 provider_error
@@ -396,123 +472,117 @@ insufficient_history
 invalid_identity
 ```
 
-Rules:
+## Radar Semantics
 
-- `no_venue` means identity is not resolved to a tradeable venue.
-- `pending_refresh` means venue exists and a market job is due or running.
-- `provider_not_found` means provider returned a true miss for a specific venue/request key.
-- `provider_error` and `rate_limited` must include provider and error code in observation audit.
-- Price and market cap storage must not lose precision. Repository boundaries should accept decimal/string payloads and convert only at API/display boundary.
-- Frontend price formatting is presentation logic; backend market numeric integrity is source-of-truth.
+Radar source remains materialized `token_radar_rows`.
 
-## Radar Projection
-
-`token_radar_rows` remains the sole read model for `/api/asset-flow`.
-
-Grouping rules:
-
-- resolved lane groups by `asset_id + primary_venue_id` unless product policy explicitly groups CEX venues under one asset.
-- attention lane groups by `intent_id`, not symbol text.
-- one event-intent contributes once per window.
-- ambiguous symbol rows never merge with resolved CA rows unless the linker created one intent before resolution.
-
-Decision rules:
-
-- unresolved/ambiguous => `investigate`。
-- resolved with `no_venue` => `investigate`。
-- resolved with `pending_refresh` => max `watch`。
-- resolved with `provider_error/rate_limited/provider_not_found` => max `watch` and explicit hard risk。
-- only resolved + venue + market `ready/stale` can be `driver`。
-
-## API And Frontend Contract
-
-Frontend receives:
+Rows include:
 
 ```text
 intent
-asset
-primary_venue
-attention
 resolution
+target
 market
+attention
 score
 decision
 data_health
+source_event_ids
 ```
 
-Frontend rules:
+Decision caps:
 
-- No opportunity scoring in `web/src/App.tsx`。
-- No decision override.
-- `investigate` is a first-class decision.
-- `symbol=null` is valid and should render short address plus chain/venue.
-- Market price display may format small decimals, but raw `price_usd` must remain available.
+- `EXACT` Market with usable market snapshot can be `driver`;
+- `EXACT` Asset with one active Market and usable snapshot can be `driver`;
+- `UNIQUE_BY_CONTEXT` target with usable market can be `driver` only if no hard risk;
+- `PROJECT_ONLY` is `investigate`;
+- `AMBIGUOUS` is `investigate`;
+- `NIL` is `investigate`;
+- `INVALID` is `discard` or `investigate` by product policy, never `driver`;
+- any target without usable market is max `watch`;
+- frontend cannot promote a backend decision.
 
-## Compatibility Removal
+## API And Frontend Contract
 
-V4 removes these from Token Radar runtime:
+Frontend receives backend state and renders it.
 
-- mention-level `asset_mentions`/`asset_attributions` read path；
-- fake unresolved/ambiguous assets；
-- symbol resolver over observed/social aliases；
-- request-time Radar SQL over raw attributions；
-- frontend-derived decision；
-- old token-only market/outcome path for Radar signals。
+Frontend cannot:
 
-Existing tables may remain only as migration archives or debug-only queries. They cannot be imported by API, WS, projection, notification, or outcome code paths serving Token Radar.
+- compute identity;
+- compute decision;
+- convert `PROJECT_ONLY` into tradeable token;
+- invent symbol from address suffix;
+- collapse market statuses;
+- display rounded zero for nonzero micro prices.
+
+Frontend can:
+
+- format values for display;
+- sort already-ranked rows inside UI tabs;
+- show target type badges: Project, Asset, Listing, Market;
+- show reason codes and discovery state.
+
+## Observability
+
+Required diagnostics:
+
+```text
+resolution_status_counts by 5m/1h
+reason_code_counts
+target_type_counts
+PROJECT_ONLY rate
+AMBIGUOUS rate
+NIL rate
+INVALID rate
+discovery_task_counts
+discovery_success_rate
+reprocess_success_rate
+market_status_counts
+address_without_symbol_count
+symbol_only_not_tradeable_count
+old_runtime_path_import_count
+```
+
+Interpretation:
+
+- high `NIL` -> registry/discovery coverage gap;
+- high `AMBIGUOUS` -> context extraction gap or real market ambiguity;
+- high `PROJECT_ONLY` -> many symbol-only social mentions; do not force tradeability;
+- high `INVALID` -> spam or too-wide extractor;
+- high `pending_refresh` -> market sync lag;
+- high address-only resolved rows -> metadata/provider coverage gap, not UI bug if target has no symbol.
 
 ## Required Exit Gates
 
-These cases must pass before V4 is considered production-ready:
-
-| Case | Expected outcome |
+| Case | Expected |
 | --- | --- |
-| `$VERSA 0x2cc0db4f8977accadb5b7da59c5923e14328eba3` | one intent, Base venue resolved, display symbol `VERSA`, market status explains venue snapshot state |
-| `$MOONCLUB result: 4.1x ... 69Pz...pump Source: SOLANA` | one intent, Solana venue resolved, display symbol `MOONCLUB` |
-| `$SPACEXAI` only | ambiguous or unresolved, not driver |
-| `$MASK` only | stock/crypto ambiguity or unresolved, not fake crypto resolved |
-| `0x...` no chain and multiple local chains | ambiguous with `chain_required_for_exact_ca` |
-| `0x...` no chain and one local venue | resolved via `local_exact_ca_match` |
-| TON friendly address | extracted as TON CA and routed to TON venue |
-| Solana address ending `musk` | address display fallback, no suffix symbol |
-| `$AAPL` | stock instrument path, excluded from crypto Token Radar |
-| micro price token | API preserves decimal precision; UI does not display `$0` unless true zero |
-| market missing for resolved venue | max `watch`; never `driver` |
-| unresolved attention heat spike | `investigate`; never `driver` |
-
-## Production Observability
-
-The runtime must expose:
-
-- counts by `identity_status` over 5m/1h；
-- counts by resolution reason；
-- unresolved/ambiguous top symbols；
-- provider observation status counts；
-- market snapshot freshness by provider/chain；
-- percentage of Radar rows with `symbol=null` but `asset_id` resolved；
-- count of stock candidates excluded from crypto lane；
-- count of intent linker ambiguous pairings。
-
-These metrics make future failures explainable. The expected debugging question is no longer “why did symbol not show?”, but:
-
-```text
-Was there a validated address?
-Was there a chain?
-Was there a canonical/provider alias?
-Were there multiple candidates?
-Did provider return a true miss?
-Was there a venue snapshot?
-Did the UI render backend state without overriding it?
-```
+| `$VERSA 0x2cc0db4f8977accadb5b7da59c5923e14328eba3` with Base hint/provider evidence | one intent, `Asset EXACT`, symbol `VERSA`, market state explicit |
+| `$MOONCLUB result: 4.1x ... 69Pz...pump Source: SOLANA` | one intent, `Asset EXACT`, Solana mint, display `MOONCLUB` |
+| `$PEPE` only | `PROJECT_ONLY` if one Project, else `AMBIGUOUS`; never direct Asset |
+| `$MASK` only with stock/crypto collision | `AMBIGUOUS` or stock lane exclusion; never fake crypto Asset |
+| `PEPE on Binance` | `Listing UNIQUE_BY_CONTEXT`, not chain Asset |
+| `PEPEUSDT perp on Bybit` | `Market EXACT` |
+| DEX pool URL | `Market EXACT`, base/quote derived from pool |
+| EVM `0x...` no chain, one tracked chain valid | `Asset EXACT` or `UNIQUE_BY_CONTEXT` with reason |
+| EVM `0x...` no chain, multiple chains valid | `AMBIGUOUS`, `ADDRESS_EXISTS_ON_MULTIPLE_CHAINS` |
+| TON friendly address | parser validated; `Asset EXACT` or `NIL` discovery task |
+| Solana address ending `musk` | address stays address; no suffix symbol |
+| micro price token | nonzero price preserved through API and UI |
+| resolved target without market | max `watch`, never `driver` |
+| unresolved hot symbol | `investigate`, discovery task created |
+| registry update after discovery | affected intents reprocessed deterministically |
 
 ## Definition Of Done
 
-V4 is done when:
+V4 is production-ready when:
 
-- all exit gates pass as deterministic tests；
-- live 5m data can explain every `UNKNOWN`/address-display row through resolution reasons；
-- provider misses and market misses are distinguishable；
-- no Token Radar runtime code imports old attribution read path；
-- frontend renders backend `decision` unchanged；
-- Docker runtime after rebuild reports projection source `token_radar_rows` and version `token-radar-v4`；
-- a 5m production pull shows unresolved rows are explainable as true no-candidate, true ambiguity, provider pending, or stock/crypto exclusion。
+- resolver is a deterministic priority table with enum states;
+- Project/Asset/Listing/Market are separate runtime concepts;
+- `asset_venues` and `asset_market_snapshots` are not used by Token Radar runtime;
+- `AssetRepository.candidates_for_symbol()` is not in resolver hot path;
+- symbol-only never resolves directly to Asset/Market;
+- `discovery_tasks` and reprocess are live and idempotent;
+- market snapshots are keyed by `market_id`;
+- frontend renders backend decision unchanged;
+- 5m live diagnostics can explain every unknown/address-only row by status and reason code;
+- all required exit gates have deterministic tests.
