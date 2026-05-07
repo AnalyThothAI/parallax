@@ -44,11 +44,7 @@ def build_token_intents(
     consumed_cashtags: set[str] = set()
 
     for identity in strong_identity:
-        local_cashtags = [
-            item
-            for item in cashtags
-            if item.local_group_key == identity.local_group_key and item.text_surface == identity.text_surface
-        ]
+        local_cashtags = _display_cashtags_for_identity(identity, cashtags=cashtags, identities=strong_identity)
         display = _single_display_symbol(local_cashtags)
         if display:
             consumed_cashtags.update(item.evidence_id for item in local_cashtags if item.normalized_symbol == display)
@@ -123,6 +119,37 @@ def _intent_key(event_id: str, primary: TokenEvidenceInput) -> str:
 def _single_display_symbol(items: list[TokenEvidenceInput]) -> str | None:
     symbols = {str(item.normalized_symbol) for item in items if item.normalized_symbol}
     return next(iter(symbols)) if len(symbols) == 1 else None
+
+
+def _display_cashtags_for_identity(
+    identity: TokenEvidenceInput,
+    *,
+    cashtags: list[TokenEvidenceInput],
+    identities: list[TokenEvidenceInput],
+) -> list[TokenEvidenceInput]:
+    local = [
+        item
+        for item in cashtags
+        if item.local_group_key == identity.local_group_key and item.text_surface == identity.text_surface
+    ]
+    if local:
+        return local
+
+    same_surface_cashtags = [item for item in cashtags if item.text_surface == identity.text_surface]
+    same_surface_identities = [item for item in identities if item.text_surface == identity.text_surface]
+    if len(same_surface_cashtags) != 1 or len(same_surface_identities) != 1:
+        return []
+
+    cashtag = same_surface_cashtags[0]
+    return [cashtag] if _span_distance(identity, cashtag) <= 180 else []
+
+
+def _span_distance(left: TokenEvidenceInput, right: TokenEvidenceInput) -> int:
+    if left.span_end < right.span_start:
+        return int(right.span_start - left.span_end)
+    if right.span_end < left.span_start:
+        return int(left.span_start - right.span_end)
+    return 0
 
 
 def _unique_intents(items: list[TokenIntentInput]) -> list[TokenIntentInput]:
