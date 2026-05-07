@@ -106,7 +106,7 @@ class AssetRepository:
         *,
         chain: str,
         address: str,
-        symbol: str,
+        symbol: str | None,
         observed_at_ms: int,
         event_id: str | None = None,
         provider: str = "deterministic",
@@ -115,20 +115,22 @@ class AssetRepository:
     ) -> AssetResolutionResult:
         normalized_chain = _normalize_key(chain)
         normalized_address = _normalize_address(address) or address
-        normalized_symbol = _normalize_symbol(symbol)
+        normalized_symbol = _normalize_symbol(symbol) if symbol else ""
         asset_id = f"asset:dex:{normalized_chain}:{normalized_address.lower()}"
         venue_id = f"venue:dex:{normalized_chain}:{normalized_address.lower()}"
-        incoming_symbol_is_address_like = _is_address_like_symbol(normalized_symbol)
+        incoming_symbol_is_address_like = not normalized_symbol or _is_address_like_symbol(normalized_symbol)
         current_asset = self.get_asset(asset_id)
         if current_asset and incoming_symbol_is_address_like:
             current_symbol = str(current_asset.get("canonical_symbol") or "")
             if current_symbol and not _is_address_like_symbol(current_symbol):
                 normalized_symbol = _normalize_symbol(current_symbol)
+                incoming_symbol_is_address_like = False
+        canonical_symbol = normalized_symbol if not incoming_symbol_is_address_like else normalized_address
         asset = self._upsert_asset(
             asset_id=asset_id,
             asset_type="dex_asset",
-            canonical_symbol=normalized_symbol,
-            display_name=normalized_symbol,
+            canonical_symbol=canonical_symbol,
+            display_name=normalized_symbol if not incoming_symbol_is_address_like else None,
             identity_status="resolved",
             confidence=0.95,
             primary_source=provider,
@@ -161,7 +163,7 @@ class AssetRepository:
             ),
         )
         aliases = []
-        if not incoming_symbol_is_address_like:
+        if normalized_symbol and not incoming_symbol_is_address_like:
             aliases.append(
                 self._upsert_alias(
                     asset_id=asset_id,

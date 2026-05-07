@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
-from tests.factories_token_radar_v3 import VERSA_BASE_CA, insert_base_versa_asset, make_v3_event, open_v3_runtime
+from tests.factories_token_radar_v3 import (
+    VERSA_BASE_CA,
+    insert_base_versa_asset,
+    make_gmgn_payload_event,
+    make_v3_event,
+    open_v3_runtime,
+)
 
 
 def test_versa_symbol_and_ca_build_one_intent(tmp_path):
@@ -45,3 +51,23 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
     hanta = next(row for row in rows if row["intent_json"]["display_symbol"] == "HANTA")
     assert hanta["decision"] == "investigate"
     assert hanta["market_json"]["market_observation_status"] == "no_venue"
+
+
+def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path):
+    _, repos, ingest = open_v3_runtime(tmp_path)
+    address = "3iqrRNGG111111111111111111111111111111wNpump"
+    event = make_gmgn_payload_event(
+        symbol=address,
+        chain="sol",
+        address=address,
+        received_at_ms=1_777_800_000_000,
+    )
+
+    result = ingest.ingest_event(event, is_watched=True)
+    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
+    rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
+
+    assert result.token_resolutions[0]["identity_status"] == "resolved"
+    assert rows[0]["resolution_json"]["status"] == "resolved"
+    assert rows[0]["asset_json"]["symbol"] is None
+    assert rows[0]["primary_venue_json"]["address"] == address

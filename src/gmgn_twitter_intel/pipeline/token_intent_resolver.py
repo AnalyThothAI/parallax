@@ -57,7 +57,7 @@ class TokenIntentResolver:
         address = _intent_value(intent, "address_hint")
         if address:
             if chain:
-                symbol = _intent_value(intent, "display_symbol") or address
+                symbol = _intent_value(intent, "display_symbol")
                 result = self.assets.upsert_dex_asset(
                     chain=chain,
                     address=address,

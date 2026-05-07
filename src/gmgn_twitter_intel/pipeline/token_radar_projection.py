@@ -163,7 +163,7 @@ def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scop
         "primary_venue_id": latest.get("primary_venue_id"),
         "intent_json": {
             "intent_id": latest["intent_id"],
-            "display_symbol": latest.get("display_symbol"),
+            "display_symbol": _real_symbol(latest.get("display_symbol")),
             "display_name": latest.get("display_name"),
             "evidence": [],
         },
@@ -293,7 +293,33 @@ def _venue(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _display_symbol(row: dict[str, Any]) -> str | None:
-    return row.get("display_symbol") or row.get("canonical_symbol") or row.get("base_symbol")
+    for value in (row.get("display_symbol"), row.get("canonical_symbol"), row.get("base_symbol")):
+        symbol = _real_symbol(value)
+        if symbol:
+            return symbol
+    return None
+
+
+def _real_symbol(value: Any) -> str | None:
+    if value is None:
+        return None
+    symbol = str(value).strip().lstrip("$")
+    if not symbol:
+        return None
+    if _is_address_like_symbol(symbol):
+        return None
+    return symbol
+
+
+def _is_address_like_symbol(symbol: str) -> bool:
+    value = symbol.strip().upper()
+    if value.startswith("0X") and len(value) >= 22:
+        return all(char in "0123456789ABCDEF" for char in value[2:])
+    if len(value) < 32:
+        return False
+    if value.endswith("PUMP"):
+        value = value[:-4]
+    return all(char.isdigit() or ("A" <= char <= "Z") for char in value)
 
 
 def _rank_key(row: dict[str, Any]) -> tuple[int, int]:

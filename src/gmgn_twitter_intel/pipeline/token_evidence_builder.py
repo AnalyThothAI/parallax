@@ -118,7 +118,7 @@ def _from_gmgn_payload(*, event_id: str, snapshot: TokenSnapshot, created_at_ms:
         source_kind="gmgn_payload",
         source_id=source_id,
         evidence_type="gmgn_token_payload",
-        raw_value=snapshot.symbol,
+        raw_value=snapshot.symbol or snapshot.address,
         normalized_symbol=_normalize_symbol(snapshot.symbol),
         chain_hint=chain,
         address_hint=address,

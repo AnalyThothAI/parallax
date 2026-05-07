@@ -70,7 +70,7 @@ class BioChange:
 class TokenSnapshot:
     address: str
     chain: str
-    symbol: str
+    symbol: str | None
     market_cap: float | None
     price: float | None
     previous_price: float | None

@@ -34,3 +34,35 @@ def test_parse_gmgn_token_payload_rejects_symbol_only_without_address():
     payload = parse_gmgn_token_payload({"tt": "symbol", "t": {"c": "eth", "s": "DOG", "p": "1"}})
 
     assert payload is None
+
+
+def test_parse_gmgn_token_payload_keeps_ca_when_symbol_is_address_like():
+    address = "3iqrRNGG111111111111111111111111111111wNpump"
+
+    payload = parse_gmgn_token_payload(
+        {
+            "tt": "ca",
+            "t": {
+                "a": address,
+                "c": "sol",
+                "s": address,
+                "mc": "1000",
+                "p": "0.01",
+            },
+        }
+    )
+
+    assert payload is not None
+    assert payload.address == address
+    assert payload.chain == "solana"
+    assert payload.symbol is None
+    assert payload.market_cap == pytest.approx(1000)
+
+
+def test_parse_gmgn_token_payload_keeps_ca_without_symbol():
+    payload = parse_gmgn_token_payload(
+        {"tt": "ca", "t": {"a": "So11111111111111111111111111111111111111112", "c": "sol"}}
+    )
+
+    assert payload is not None
+    assert payload.symbol is None

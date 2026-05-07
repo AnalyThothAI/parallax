@@ -38,3 +38,19 @@ def test_gmgn_payload_creates_strong_payload_evidence():
     assert evidence[0].evidence_type == "gmgn_token_payload"
     assert evidence[0].strength == "strong"
     assert evidence[0].normalized_symbol == "PEPE"
+
+
+def test_gmgn_payload_address_like_symbol_does_not_become_display_symbol():
+    address = "3iqrRNGG111111111111111111111111111111wNpump"
+    event = make_gmgn_payload_event(symbol=address, chain="sol", address=address)
+
+    evidence = build_token_evidence(
+        event_id=event.event_id,
+        entities=[],
+        token_snapshot=event.token_snapshot,
+        created_at_ms=event.received_at_ms,
+    )
+
+    assert len(evidence) == 1
+    assert evidence[0].address_hint == address
+    assert evidence[0].normalized_symbol is None
