@@ -80,16 +80,16 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
                 <div className="evidence-kv-row" key={item.intent_id ?? `${item.display_symbol}:${item.address_hint}`}>
                   <strong>{item.display_symbol ? `$${item.display_symbol}` : shortAddress(item.address_hint ?? item.intent_id)}</strong>
                   <span>
-                    {item.chain_hint ?? "intent"} · {resolution?.identity_status ?? item.intent_status ?? "-"} · conf {formatConfidence(resolution?.confidence ?? item.intent_confidence)}
+                    {item.chain_hint ?? "intent"} · {resolution?.resolution_status ?? item.intent_status ?? "-"} · conf {formatConfidence(item.intent_confidence)}
                   </span>
                 </div>
               );
             })}
             {props.tokenIntents.length ? null : props.tokenResolutions.map((item) => (
-              <div className="evidence-kv-row" key={item.resolution_id ?? `${item.intent_id}:${item.asset_id}`}>
-                <strong>{shortAddress(item.asset_id ?? item.intent_id)}</strong>
+              <div className="evidence-kv-row" key={item.resolution_id ?? `${item.intent_id}:${item.target_id}`}>
+                <strong>{shortAddress(item.target_id ?? item.intent_id)}</strong>
                 <span>
-                  {item.primary_venue_id ?? "resolution"} · {item.identity_status ?? item.resolution_status ?? "-"} · conf {formatConfidence(item.confidence)}
+                  {item.pricefeed_id ?? item.target_type ?? "resolution"} · {item.resolution_status ?? "-"}
                 </span>
               </div>
             ))}

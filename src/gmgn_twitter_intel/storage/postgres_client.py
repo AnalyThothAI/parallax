@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,6 +10,10 @@ from urllib.parse import quote, urlsplit, urlunsplit
 from psycopg import Connection, conninfo
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
+
+_COMPOSE_POSTGRES_HOST = "postgres"
+_HOST_LOOPBACK = "127.0.0.1"
+_DEFAULT_HOST_POSTGRES_PORT = "56532"
 
 
 def with_password_from_file(dsn: str, password_file: Path | None) -> str:
@@ -22,6 +27,19 @@ def with_password_from_file(dsn: str, password_file: Path | None) -> str:
     return conninfo.make_conninfo(**parts)
 
 
+def local_docker_host_dsn(dsn: str) -> str:
+    if _running_in_container():
+        return dsn
+    if "://" in dsn:
+        return _url_dsn_with_local_docker_host(dsn)
+    parts = conninfo.conninfo_to_dict(dsn)
+    if parts.get("host") != _COMPOSE_POSTGRES_HOST:
+        return dsn
+    parts["host"] = _HOST_LOOPBACK
+    parts["port"] = _host_postgres_port()
+    return conninfo.make_conninfo(**parts)
+
+
 def create_pool(
     dsn: str,
     *,
@@ -29,6 +47,7 @@ def create_pool(
     max_size: int,
     connect_timeout_seconds: float,
 ) -> ConnectionPool:
+    dsn = local_docker_host_dsn(dsn)
     return ConnectionPool(
         conninfo=dsn,
         min_size=min_size,
@@ -40,6 +59,29 @@ def create_pool(
         },
         open=True,
     )
+
+
+def _running_in_container() -> bool:
+    return Path("/.dockerenv").exists()
+
+
+def _host_postgres_port() -> str:
+    return os.environ.get("GMGN_POSTGRES_PORT") or _DEFAULT_HOST_POSTGRES_PORT
+
+
+def _url_dsn_with_local_docker_host(dsn: str) -> str:
+    parsed = urlsplit(dsn)
+    if parsed.hostname != _COMPOSE_POSTGRES_HOST:
+        return dsn
+    username = parsed.username or ""
+    password = parsed.password
+    auth = ""
+    if username and password is not None:
+        auth = f"{quote(username, safe='')}:{quote(password, safe='')}@"
+    elif username:
+        auth = f"{quote(username, safe='')}@"
+    host = f"{_HOST_LOOPBACK}:{_host_postgres_port()}"
+    return urlunsplit((parsed.scheme, f"{auth}{host}", parsed.path, parsed.query, parsed.fragment))
 
 
 def _url_dsn_with_password(dsn: str, password: str) -> str:
@@ -56,6 +98,7 @@ def _url_dsn_with_password(dsn: str, password: str) -> str:
 
 
 def connect_postgres(dsn: str, *, connect_timeout_seconds: float = 5.0) -> Connection[dict[str, Any]]:
+    dsn = local_docker_host_dsn(dsn)
     return Connection.connect(
         dsn,
         autocommit=True,

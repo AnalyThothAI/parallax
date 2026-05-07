@@ -25,6 +25,7 @@ from ..pipeline.llm_client import OpenAIChatEnrichmentClient
 from ..pipeline.notification_delivery import NotificationDeliveryWorker
 from ..pipeline.notification_rules import NotificationRuleEngine
 from ..pipeline.notification_worker import NotificationWorker
+from ..pipeline.token_discovery_worker import TokenDiscoveryWorker
 from ..pipeline.token_radar_projection_worker import TokenRadarProjectionWorker
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.asset_flow_service import AssetFlowService
@@ -67,6 +68,7 @@ class CliRuntime:
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
     asset_market_sync_worker: AssetMarketSyncWorker | None = None
+    token_discovery_worker: TokenDiscoveryWorker | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
@@ -75,6 +77,7 @@ class CliRuntime:
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
     asset_market_sync_task: asyncio.Task | None = None
+    token_discovery_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
 
     def repositories(self):
@@ -184,7 +187,10 @@ class _PooledIngestStore:
                 entities=repos.entities,
                 signals=repos.signals,
                 enrichment=repos.enrichment,
-                assets=repos.assets,
+                registry=repos.registry,
+                discovery=repos.discovery,
+                price_observations=repos.price_observations,
+                token_intent_lookup=repos.token_intent_lookup,
             )
             return ingest.ingest_event(event, is_watched=is_watched)
 
@@ -298,6 +304,20 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             inst_types=settings.okx_cex_inst_types,
             interval_seconds=settings.okx_cex_sync_interval_seconds,
         )
+    if start_collector and settings.okx_dex_configured:
+        okx_dex_discovery_client = OkxDexClient(
+            base_url=settings.okx_dex_base_url,
+            api_key=settings.okx_dex_api_key,
+            secret_key=settings.okx_dex_secret_key,
+            passphrase=settings.okx_dex_passphrase,
+            timeout_seconds=settings.okx_timeout_seconds,
+        )
+        runtime.token_discovery_worker = TokenDiscoveryWorker(
+            dex_client=okx_dex_discovery_client,
+            repository_session=lambda: repository_session(db_pool),
+            chain_indexes=settings.okx_dex_chain_indexes,
+            interval_seconds=30.0,
+        )
     if settings.llm_configured:
         client = OpenAIChatEnrichmentClient(
             api_key=settings.llm_api_key or "",
@@ -347,6 +367,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
     if runtime.asset_market_sync_worker is not None and runtime.asset_market_sync_task is None:
         runtime.asset_market_sync_task = asyncio.create_task(runtime.asset_market_sync_worker.run())
+    if runtime.token_discovery_worker is not None and runtime.token_discovery_task is None:
+        runtime.token_discovery_task = asyncio.create_task(runtime.token_discovery_worker.run())
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
         runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
     if runtime.start_collector:
@@ -367,6 +389,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_delivery_worker.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.stop()
+    if runtime.token_discovery_worker is not None:
+        runtime.token_discovery_worker.stop()
     if runtime.token_radar_projection_worker is not None:
         runtime.token_radar_projection_worker.stop()
     tasks = [
@@ -379,6 +403,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.notification_task,
             runtime.notification_delivery_task,
             runtime.asset_market_sync_task,
+            runtime.token_discovery_task,
             runtime.token_radar_projection_task,
         )
         if task is not None
@@ -390,6 +415,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.close()
+    if runtime.token_discovery_worker is not None:
+        runtime.token_discovery_worker.close()
     runtime.db_pool.close()
 
 
@@ -449,6 +476,17 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_error": runtime.asset_market_sync_worker.last_error if runtime.asset_market_sync_worker else None,
             "providers": runtime.asset_market_sync_worker.provider_states if runtime.asset_market_sync_worker else {},
         },
+        "token_discovery": {
+            "worker_running": _task_running(runtime.token_discovery_task),
+            "last_started_at_ms": runtime.token_discovery_worker.last_started_at_ms
+            if runtime.token_discovery_worker
+            else None,
+            "last_run_at_ms": runtime.token_discovery_worker.last_run_at_ms
+            if runtime.token_discovery_worker
+            else None,
+            "last_result": runtime.token_discovery_worker.last_result if runtime.token_discovery_worker else None,
+            "last_error": runtime.token_discovery_worker.last_error if runtime.token_discovery_worker else None,
+        },
     }
     return payload, 503 if reasons else 200
 
@@ -472,6 +510,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_delivery_worker_stopped")
     if runtime.asset_market_sync_worker is not None and not _task_running(runtime.asset_market_sync_task):
         reasons.append("asset_market_sync_worker_stopped")
+    if runtime.token_discovery_worker is not None and not _task_running(runtime.token_discovery_task):
+        reasons.append("token_discovery_worker_stopped")
     if runtime.token_radar_projection_worker is not None and not _task_running(runtime.token_radar_projection_task):
         reasons.append("token_radar_projection_worker_stopped")
     return reasons

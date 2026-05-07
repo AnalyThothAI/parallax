@@ -253,7 +253,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
   });
 
-  it("renders fresh CEX asset-flow market as tradeable instead of pending", async () => {
+  it("renders fresh CEX token-radar market as tradeable instead of pending", async () => {
     mockApi({
       assetFlowRows: [
         assetFlowRow({
@@ -271,7 +271,7 @@ describe("App Token Radar social heat cockpit", () => {
             quote_symbol: "USDT",
             inst_type: "SPOT"
           },
-          market: {
+          price: {
             market_status: "fresh",
             provider: "okx_cex",
             price_usd: 69_000,
@@ -324,7 +324,7 @@ describe("App Token Radar social heat cockpit", () => {
             quote_symbol: "USDT",
             inst_type: "SPOT"
           },
-          market: {
+          price: {
             market_status: "fresh",
             market_observation_status: "ready",
             price_change_status: "insufficient_history",
@@ -345,7 +345,7 @@ describe("App Token Radar social heat cockpit", () => {
           symbol: "",
           assetId: "asset:dex:eth:0x1111111111111111111111111111111111111111",
           address: "0x1111111111111111111111111111111111111111",
-          market: {
+          price: {
             market_status: "fresh",
             market_observation_status: "ready",
             price_change_status: "insufficient_history",
@@ -376,12 +376,12 @@ describe("App Token Radar social heat cockpit", () => {
     expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$0 fresh");
   });
 
-  it("renders asset-flow timing changes from backend market baselines", async () => {
+  it("renders token-radar timing changes from backend market baselines", async () => {
     mockApi({
       assetFlowRows: [
         assetFlowRow({
           symbol: "USDUC",
-          market: {
+          price: {
             market_status: "fresh",
             provider: "okx_dex",
             price_usd: 0.02,
@@ -667,7 +667,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.queryByLabelText("settlement horizon")).not.toBeInTheDocument();
 
     await waitFor(() => {
-      const tokenFlowCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-flow");
+      const tokenFlowCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/token-radar");
       expect(tokenFlowCall?.[1]?.params).toMatchObject({ window: "1h", limit: 48, scope: "all" });
       expect(tokenFlowCall?.[1]?.params).not.toHaveProperty("horizon");
     });
@@ -852,7 +852,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
     await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
-    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/asset-flow")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-radar")).toBe(false);
     expect(screen.getByText("selected token")).toBeInTheDocument();
   });
 
@@ -952,16 +952,16 @@ function mockApi(options: {
       return ok({ items: [], summary: statusData.notifications?.summary });
     }
     if (path === "/api/recent") return ok({ scope: requestOptions?.params?.scope, events: [], items: [liveUpegEvent()] });
-    if (path === "/api/asset-flow") {
+    if (path === "/api/token-radar") {
       if (options.duplicateSymbol) {
         return ok<AssetFlowData>({
           window: "1h",
           scope: "all",
-          resolved_assets: [
+          targets: [
             assetFlowRow({ address: "0x1111111111111111111111111111111111111111" }),
             assetFlowRow({ address: "0x2222222222222222222222222222222222222222" })
           ],
-          attention_candidates: [],
+          attention: [],
           projection: assetFlowProjection()
         });
       }
@@ -970,14 +970,14 @@ function mockApi(options: {
       return ok<AssetFlowData>({
         window: window as AssetFlowData["window"],
         scope: "all",
-        resolved_assets: options.assetFlowRows ?? [
+        targets: options.assetFlowRows ?? [
           assetFlowRow({
             address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
             symbol: swapped ? "ALT" : undefined,
             insufficientTiming: options.insufficientTiming
           })
         ],
-        attention_candidates: [],
+        attention: [],
         projection: assetFlowProjection()
       });
     }
@@ -1067,15 +1067,28 @@ function assetFlowRow(
     symbol?: string;
     assetId?: string;
     assetType?: string;
-    primaryVenue?: AssetFlowRow["primary_venue"];
-    market?: AssetFlowRow["market"];
+    primaryVenue?: {
+      venue_id?: string | null;
+      venue_type?: string | null;
+      exchange?: string | null;
+      chain?: string | null;
+      address?: string | null;
+      inst_id?: string | null;
+      inst_type?: string | null;
+      base_symbol?: string | null;
+      quote_symbol?: string | null;
+    };
+    price?: AssetFlowRow["price"];
     insufficientTiming?: boolean;
   } = {}
 ): AssetFlowRow {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const symbol = options.symbol ?? "UPEG";
   const assetId = options.assetId ?? `asset:dex:eth:${address.toLowerCase()}`;
-  const market = options.market ?? {
+  const isCex = options.assetType === "cex_asset" || options.primaryVenue?.venue_type === "cex";
+  const targetType = isCex ? "CexToken" : "Asset";
+  const targetId = isCex ? assetId.replace(/^asset:cex:/, "cex_token:") : assetId;
+  const price = options.price ?? {
     market_status: "missing",
     market_observation_status: "pending",
     price_change_status: "pending_observation",
@@ -1091,7 +1104,7 @@ function assetFlowRow(
     price_change_since_social_pct: null,
     price_change_before_social_pct: null
   };
-  const marketFresh = market.market_status === "fresh" || market.market_status === "ready" || market.market_status === "stale";
+  const marketFresh = price.market_status === "fresh" || price.market_status === "ready" || price.market_status === "stale";
   const timingStatus = options.insufficientTiming ? "market_pending" : marketFresh ? "neutral" : "market_pending";
   const timingRisks = timingStatus === "market_pending" ? ["market_observation_pending"] : [];
   return {
@@ -1101,23 +1114,27 @@ function assetFlowRow(
       display_name: null,
       evidence: []
     },
-    asset: {
-      asset_id: assetId,
-      symbol,
-      asset_type: options.assetType ?? "dex_token",
-      identity_status: "resolved"
-    },
-    primary_venue: options.primaryVenue ?? {
-      venue_id: `venue:dex:eth:${address.toLowerCase()}`,
-      venue_type: "dex",
-      exchange: "gmgn",
-      chain: "eth",
-      address,
-      inst_id: null,
-      base_symbol: symbol,
-      quote_symbol: null,
-      inst_type: null
-    },
+    target: isCex
+      ? {
+          target_type: "CexToken",
+          target_id: targetId,
+          symbol,
+          status: "canonical",
+          provider: options.primaryVenue?.exchange ?? "okx",
+          native_market_id: options.primaryVenue?.inst_id ?? `${symbol}-USDT`,
+          feed_type: options.primaryVenue?.inst_type ?? "cex_spot",
+          quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT"
+        }
+      : {
+          target_type: "Asset",
+          target_id: targetId,
+          symbol,
+          status: "candidate",
+          chain_id: "eip155:1",
+          token_standard: "erc20",
+          address,
+          pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`
+        },
     attention: {
       mentions_5m: 2,
       mentions_1h: 4,
@@ -1134,13 +1151,21 @@ function assetFlowRow(
       baseline_status: "insufficient_history",
       baseline_sample_count: 0
     },
-    market,
-    resolution: { status: "resolved", resolution_status: "resolved", confidence: 1, reasons: [], risks: [], candidates: [] },
+    price,
+    resolution: {
+      status: "EXACT",
+      resolution_status: "EXACT",
+      target_type: targetType,
+      target_id: targetId,
+      reason_codes: ["CHAIN_ADDRESS_EXACT"],
+      candidate_ids: [targetId],
+      lookup_keys: []
+    },
     score: {
       heat: scoreBlock({ score_version: "social_heat_v1", score: 86, reasons: ["rising"], risks: ["public_stream_coverage"] }),
       quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
       propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
-      tradeability: scoreBlock({ score_version: "tradeability_v1", score: marketFresh ? 80 : 60, reasons: ["resolved_asset"], risks: [] }),
+      price_health: scoreBlock({ score_version: "price_health_v1", score: marketFresh ? 80 : 60, reasons: ["resolved_target"], risks: [] }),
       timing: scoreBlock({
         score_version: "timing_v4",
         score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
@@ -1154,18 +1179,18 @@ function assetFlowRow(
         score: 79,
         reasons: ["backend_decision"],
         risks: ["public_stream_coverage"],
-        components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
+        components: { heat: 86, quality: 78, propagation: 72, price_health: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
       })
     },
     decision: "driver",
-    data_health: { identity: "resolved", market: market.market_observation_status ?? "pending", coverage: "public_stream" }
+    data_health: { identity: "EXACT", market: price.market_observation_status ?? "pending", coverage: "public_stream" }
   };
 }
 
 function assetFlowProjection(): AssetFlowData["projection"] {
   return {
     status: "fresh",
-    version: "token-radar-v3",
+    version: "token-radar-v4",
     source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
     computed_at_ms: 1_777_746_300_000
@@ -1536,11 +1561,11 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
         resolution_id: `resolution:${assetId}`,
         intent_id: `intent:${assetId}`,
         event_id: "event-upeg-1",
-        asset_id: assetId,
-        primary_venue_id: `venue:dex:eth:${address.toLowerCase()}`,
-        identity_status: "resolved",
-        resolution_status: "resolved",
-        confidence: 1
+        target_type: "Asset",
+        target_id: assetId,
+        pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`,
+        resolution_status: "EXACT",
+        reason_codes_json: ["CHAIN_ADDRESS_EXACT"]
       }
     ],
     alerts: []

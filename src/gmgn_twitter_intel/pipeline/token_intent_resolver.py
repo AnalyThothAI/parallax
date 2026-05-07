@@ -1,35 +1,24 @@
 from __future__ import annotations
 
-import time
-from dataclasses import dataclass
 from typing import Any
 
+from .deterministic_token_resolver import (
+    DeterministicResolution,
+    DeterministicTokenResolver,
+    MentionKeys,
+)
 from .token_evidence_builder import TokenEvidenceInput
 from .token_intent_builder import TokenIntentInput
 
-RESOLVER_POLICY_VERSION = "token_intent_resolver_v1"
-
-
-@dataclass(frozen=True, slots=True)
-class TokenIntentResolutionDecision:
-    intent_id: str
-    event_id: str
-    asset_id: str | None
-    primary_venue_id: str | None
-    resolution_status: str
-    identity_status: str
-    confidence: float
-    resolver_policy_version: str
-    reasons: list[str]
-    risks: list[str]
-    decision_time_ms: int
-    created_at_ms: int
+TokenIntentResolutionDecision = DeterministicResolution
 
 
 class TokenIntentResolver:
-    def __init__(self, *, assets, resolutions):
-        self.assets = assets
+    def __init__(self, *, registry, resolutions, discovery=None):
+        self.registry = registry
         self.resolutions = resolutions
+        self.discovery = discovery
+        self.resolver = DeterministicTokenResolver(registry=registry)
 
     def resolve(
         self,
@@ -39,176 +28,71 @@ class TokenIntentResolver:
         decision_time_ms: int | None = None,
         persist: bool = False,
         commit: bool = False,
-    ) -> TokenIntentResolutionDecision:
-        now_ms = int(decision_time_ms or _intent_created_at(intent) or time.time() * 1000)
-        decision = self._decision(intent, evidence, now_ms=now_ms)
+    ) -> DeterministicResolution:
+        now_ms = int(decision_time_ms or _intent_created_at(intent) or 0)
+        decision = self.resolver.resolve(
+            intent_id=str(_intent_value(intent, "intent_id")),
+            event_id=str(_intent_value(intent, "event_id")),
+            keys=_mention_keys(intent, evidence),
+            decision_time_ms=now_ms,
+        )
         if persist:
-            self.resolutions.insert_resolution(decision, commit=commit)
+            self.resolutions.insert_resolution(decision, commit=False)
+            self._enqueue_discovery(decision)
+            if commit:
+                self.resolutions.conn.commit()
         return decision
 
-    def _decision(
-        self,
-        intent: TokenIntentInput | dict[str, Any],
-        evidence: list[TokenEvidenceInput] | list[dict[str, Any]],
-        *,
-        now_ms: int,
-    ) -> TokenIntentResolutionDecision:
-        chain = _intent_value(intent, "chain_hint")
-        address = _intent_value(intent, "address_hint")
-        if address:
-            if chain:
-                symbol = _intent_value(intent, "display_symbol")
-                result = self.assets.upsert_dex_asset(
-                    chain=chain,
-                    address=address,
-                    symbol=symbol,
-                    event_id=str(_intent_value(intent, "event_id")),
-                    observed_at_ms=now_ms,
-                    provider="gmgn" if _has_gmgn_payload(evidence) else "deterministic",
-                    commit=False,
-                )
-                venue = result.venue or {}
-                return _decision(
-                    intent,
-                    asset_id=str(result.asset["asset_id"]),
-                    primary_venue_id=str(venue.get("venue_id")) if venue.get("venue_id") else None,
-                    resolution_status="direct",
-                    identity_status="resolved",
-                    confidence=1.0,
-                    reasons=["gmgn_payload_direct"] if _has_gmgn_payload(evidence) else ["exact_ca_with_chain_hint"],
-                    risks=[],
-                    now_ms=now_ms,
-                )
-            candidates = self.assets.candidates_for_ca(chain=chain, address=address)
-            real = [_real_candidate(row) for row in candidates if _is_real_candidate(row)]
-            if len(real) == 1:
-                candidate = real[0]
-                return _decision(
-                    intent,
-                    asset_id=str(candidate["asset_id"]),
-                    primary_venue_id=str(candidate["venue_id"]),
-                    resolution_status="direct",
-                    identity_status="resolved",
-                    confidence=1.0 if chain else 0.95,
-                    reasons=["exact_ca_with_chain_hint"] if chain else ["local_exact_ca_match"],
-                    risks=[],
-                    now_ms=now_ms,
-                )
-            if len(real) > 1:
-                return _decision(
-                    intent,
-                    asset_id=None,
-                    primary_venue_id=None,
-                    resolution_status="ambiguous",
-                    identity_status="ambiguous",
-                    confidence=0.55,
-                    reasons=["multiple_local_ca_matches"],
-                    risks=["chain_required_for_exact_ca"],
-                    now_ms=now_ms,
-                )
-            return _decision(
-                intent,
-                asset_id=None,
-                primary_venue_id=None,
-                resolution_status="unresolved",
-                identity_status="unresolved",
-                confidence=0.35,
-                reasons=["ca_requires_provider_resolution"],
-                risks=["provider_resolution_pending"],
-                now_ms=now_ms,
+    def _enqueue_discovery(self, decision: DeterministicResolution) -> None:
+        if self.discovery is None:
+            return
+        for task in decision.discovery_tasks:
+            self.discovery.enqueue(
+                task_type=task.task_type,
+                query_key=task.query_key,
+                payload=task.payload,
+                next_run_at_ms=decision.decision_time_ms,
+                created_at_ms=decision.created_at_ms,
+                commit=False,
             )
 
-        symbol = _intent_value(intent, "display_symbol")
-        if symbol:
-            candidates = self.assets.candidates_for_symbol(symbol)
-            real = [_real_candidate(row) for row in candidates if _is_real_candidate(row)]
-            asset_ids = {str(row["asset_id"]) for row in real if row.get("asset_id")}
-            if len(asset_ids) == 1 and real:
-                candidate = real[0]
-                return _decision(
-                    intent,
-                    asset_id=str(candidate["asset_id"]),
-                    primary_venue_id=str(candidate["venue_id"]) if candidate.get("venue_id") else None,
-                    resolution_status="selected",
-                    identity_status="resolved",
-                    confidence=float(candidate.get("asset_confidence") or candidate.get("alias_confidence") or 0.85),
-                    reasons=["single_local_symbol_candidate"],
-                    risks=[],
-                    now_ms=now_ms,
-                )
-            if real:
-                return _decision(
-                    intent,
-                    asset_id=None,
-                    primary_venue_id=None,
-                    resolution_status="ambiguous",
-                    identity_status="ambiguous",
-                    confidence=0.5,
-                    reasons=["multiple_local_symbol_candidates"],
-                    risks=["candidate_selection_requires_provider_resolution"],
-                    now_ms=now_ms,
-                )
 
-        return _decision(
-            intent,
-            asset_id=None,
-            primary_venue_id=None,
-            resolution_status="unresolved",
-            identity_status="unresolved",
-            confidence=0.25,
-            reasons=["no_local_identity_match"],
-            risks=["provider_resolution_pending"],
-            now_ms=now_ms,
-        )
-
-
-def _decision(
+def _mention_keys(
     intent: TokenIntentInput | dict[str, Any],
-    *,
-    asset_id: str | None,
-    primary_venue_id: str | None,
-    resolution_status: str,
-    identity_status: str,
-    confidence: float,
-    reasons: list[str],
-    risks: list[str],
-    now_ms: int,
-) -> TokenIntentResolutionDecision:
-    return TokenIntentResolutionDecision(
-        intent_id=str(_intent_value(intent, "intent_id")),
-        event_id=str(_intent_value(intent, "event_id")),
-        asset_id=asset_id,
-        primary_venue_id=primary_venue_id,
-        resolution_status=resolution_status,
-        identity_status=identity_status,
-        confidence=confidence,
-        resolver_policy_version=RESOLVER_POLICY_VERSION,
-        reasons=reasons,
-        risks=risks,
-        decision_time_ms=now_ms,
-        created_at_ms=now_ms,
+    evidence: list[TokenEvidenceInput] | list[dict[str, Any]],
+) -> MentionKeys:
+    cex_pricefeed_id = _cex_pricefeed_id(evidence)
+    return MentionKeys(
+        symbol=_intent_value(intent, "display_symbol"),
+        chain_id=_chain_id(_intent_value(intent, "chain_hint")),
+        address=_address(_intent_value(intent, "address_hint")),
+        cex_pricefeed_id=cex_pricefeed_id,
+        exchange=_exchange_hint(evidence),
     )
 
 
-def _real_candidate(row: dict[str, Any]) -> dict[str, Any]:
-    return dict(row)
+def _cex_pricefeed_id(evidence: list[TokenEvidenceInput] | list[dict[str, Any]]) -> str | None:
+    for item in evidence:
+        evidence_type = _evidence_value(item, "evidence_type")
+        if evidence_type == "cex_pricefeed":
+            return _evidence_value(item, "provider_ref")
+    return None
 
 
-def _is_real_candidate(row: dict[str, Any]) -> bool:
-    asset_id = str(row.get("asset_id") or "")
-    identity_status = str(row.get("identity_status") or "")
-    asset_type = str(row.get("asset_type") or "")
-    if not asset_id or not row.get("venue_id"):
-        return False
-    if identity_status in {"unresolved", "ambiguous"}:
-        return False
-    if asset_type.startswith(("unresolved", "ambiguous")):
-        return False
-    return not asset_id.startswith(("asset:unresolved", "asset:ambiguous"))
+def _exchange_hint(evidence: list[TokenEvidenceInput] | list[dict[str, Any]]) -> str | None:
+    for item in evidence:
+        provider = _evidence_value(item, "provider")
+        if provider:
+            return str(provider).lower()
+    return None
 
 
 def _intent_value(intent: TokenIntentInput | dict[str, Any], key: str) -> Any:
     return intent.get(key) if isinstance(intent, dict) else getattr(intent, key)
+
+
+def _evidence_value(evidence: TokenEvidenceInput | dict[str, Any], key: str) -> Any:
+    return evidence.get(key) if isinstance(evidence, dict) else getattr(evidence, key)
 
 
 def _intent_created_at(intent: TokenIntentInput | dict[str, Any]) -> int | None:
@@ -216,9 +100,25 @@ def _intent_created_at(intent: TokenIntentInput | dict[str, Any]) -> int | None:
     return int(value) if value is not None else None
 
 
-def _has_gmgn_payload(evidence: list[TokenEvidenceInput] | list[dict[str, Any]]) -> bool:
-    for item in evidence:
-        value = item.get("evidence_type") if isinstance(item, dict) else item.evidence_type
-        if value == "gmgn_token_payload":
-            return True
-    return False
+def _chain_id(chain: Any) -> str | None:
+    if chain is None:
+        return None
+    normalized = str(chain).strip().lower()
+    if normalized in {"", "unknown", "evm_unknown"}:
+        return None
+    if normalized in {"eth", "ethereum"}:
+        return "eip155:1"
+    if normalized == "base":
+        return "eip155:8453"
+    if normalized in {"bsc", "bnb"}:
+        return "eip155:56"
+    if normalized in {"sol", "solana"}:
+        return "solana"
+    return normalized
+
+
+def _address(address: Any) -> str | None:
+    if address is None:
+        return None
+    value = str(address).strip()
+    return value.lower() if value.startswith("0x") else value

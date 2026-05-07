@@ -12,8 +12,14 @@ import uvicorn
 from .api.app import create_app
 from .logging_setup import setup_logging
 from .market.okx_cex_client import OkxCexClient
+from .market.okx_dex_client import OkxDexClient
 from .pipeline.asset_market_sync import sync_okx_cex_universe
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
+from .pipeline.token_discovery_worker import (
+    rebuild_token_radar_windows,
+    reprocess_recent_token_intents,
+    run_token_discovery_once,
+)
 from .pipeline.token_radar_projection import TokenRadarProjection
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
@@ -23,7 +29,12 @@ from .retrieval.harness_service import HarnessService
 from .settings import load_settings, write_default_config
 from .storage.account_quality_repository import AccountQualityRepository
 from .storage.postgres_audit import PostgresOperationalAudit, PostgresQueryAudit, ProjectionValidationAudit
-from .storage.postgres_client import connect_postgres, postgres_health_check, with_password_from_file
+from .storage.postgres_client import (
+    connect_postgres,
+    local_docker_host_dsn,
+    postgres_health_check,
+    with_password_from_file,
+)
 from .storage.postgres_migrations import upgrade_head
 from .storage.projection_repository import ProjectionRepository
 from .storage.repository_session import repositories_for_connection
@@ -171,13 +182,27 @@ def build_parser() -> argparse.ArgumentParser:
     validate_projections.add_argument("--sample", type=int, default=100)
     sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
+    run_token_discovery = ops_subcommands.add_parser(
+        "run-token-discovery",
+        help="process token discovery tasks, reprocess recent intents, and rebuild token radar",
+    )
+    run_token_discovery.add_argument("--limit", type=int, default=50)
+    run_token_discovery.add_argument("--reprocess-limit", type=int, default=500)
+    run_token_discovery.add_argument("--projection-limit", type=int, default=100)
+    reprocess_token_intents = ops_subcommands.add_parser(
+        "reprocess-token-intents",
+        help="re-resolve recent unresolved token intents and rebuild token radar",
+    )
+    reprocess_token_intents.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
+    reprocess_token_intents.add_argument("--limit", type=int, default=500)
+    reprocess_token_intents.add_argument("--projection-limit", type=int, default=100)
     audit_token_intent = ops_subcommands.add_parser(
         "audit-token-intent",
         help="inspect token intent evidence and resolution",
     )
     audit_token_intent.add_argument("--event-id", default="")
     audit_token_intent.add_argument("--intent-id", default="")
-    rebuild_token_radar = ops_subcommands.add_parser("rebuild-token-radar", help="write token radar V3 read model")
+    rebuild_token_radar = ops_subcommands.add_parser("rebuild-token-radar", help="write token radar V4 read model")
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     rebuild_token_radar.add_argument("--limit", type=int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
@@ -301,7 +326,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     settings = load_settings(require_ws_token=False)
     if command == "db" and args.db_command == "migrate":
-        upgrade_head(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
+        dsn = local_docker_host_dsn(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
+        upgrade_head(dsn)
         _emit({"ok": True, "data": {"migration": "head"}}, stdout)
         return 0
     if command == "db" and args.db_command == "health":
@@ -600,7 +626,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             )
             try:
                 data = sync_okx_cex_universe(
-                    assets=assets,
+                    registry=repos.registry,
+                    price_observations=repos.price_observations,
                     client=client,
                     inst_types=inst_types,
                     observed_at_ms=_now_ms(),
@@ -608,6 +635,45 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             finally:
                 client.close()
             _emit({"ok": True, "data": data}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "run-token-discovery":
+            client = OkxDexClient(
+                base_url=settings.okx_dex_base_url,
+                api_key=settings.okx_dex_api_key,
+                secret_key=settings.okx_dex_secret_key,
+                passphrase=settings.okx_dex_passphrase,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            try:
+                data = run_token_discovery_once(
+                    repos=repos,
+                    dex_client=client,
+                    chain_indexes=settings.okx_dex_chain_indexes,
+                    now_ms=_now_ms(),
+                    task_limit=args.limit,
+                    reprocess_limit=args.reprocess_limit,
+                    projection_limit=args.projection_limit,
+                )
+            finally:
+                client.close()
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "reprocess-token-intents":
+            now_ms = _now_ms()
+            reprocess = reprocess_recent_token_intents(
+                repos=repos,
+                now_ms=now_ms,
+                window=args.window,
+                limit=args.limit,
+            )
+            projection = rebuild_token_radar_windows(
+                repos=repos,
+                now_ms=now_ms,
+                limit=args.projection_limit,
+            )
+            _emit({"ok": True, "data": {"reprocess": reprocess, "projection": projection}}, stdout)
             return 0
 
         if command == "ops" and args.ops_command == "audit-token-intent":

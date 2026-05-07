@@ -188,8 +188,8 @@ class NotificationRuleEngine:
         )
         items = []
         if isinstance(data, dict):
-            items.extend(data.get("resolved_assets") or [])
-            items.extend(data.get("attention_candidates") or [])
+            items.extend(data.get("targets") or [])
+            items.extend(data.get("attention") or [])
         candidates: list[NotificationCandidate] = []
         for item in items:
             decision = str(item.get("decision") or "").strip().lower()
@@ -204,30 +204,28 @@ class NotificationRuleEngine:
                 continue
             if rule.opportunity_min is not None and opportunity_score < rule.opportunity_min:
                 continue
-            asset = item.get("asset") if isinstance(item.get("asset"), dict) else {}
-            venue = item.get("primary_venue") if isinstance(item.get("primary_venue"), dict) else {}
+            target = item.get("target") if isinstance(item.get("target"), dict) else {}
             attention = item.get("attention") if isinstance(item.get("attention"), dict) else {}
             data_health = item.get("data_health") if isinstance(item.get("data_health"), dict) else {}
             score = item.get("score") if isinstance(item.get("score"), dict) else {}
-            identity_key = str(asset.get("asset_id") or "").strip()
+            identity_key = str(target.get("target_id") or "").strip()
             if not identity_key:
                 continue
-            symbol = _symbol(asset.get("symbol"))
+            symbol = _symbol(target.get("symbol"))
             occurrence_at_ms = _int(attention.get("latest_seen_ms") or now_ms)
             bucket = occurrence_at_ms // max(1, int(rule.cooldown_seconds or 300) * 1000)
-            venue_type = str(venue.get("venue_type") or "")
-            chain = _chain(venue.get("chain")) if venue_type == "dex" else None
-            address = str(venue.get("address") or "") or None if venue_type == "dex" else None
+            target_type = str(target.get("target_type") or "")
+            venue_type = "cex" if target_type == "CexToken" else "dex" if target_type == "Asset" else None
+            chain = _chain(target.get("chain_id")) if target_type == "Asset" else None
+            address = str(target.get("address") or "") or None if target_type == "Asset" else None
             timing = {"chase_risk": False}
             payload = {
                 "identity_key": identity_key,
-                "asset_id": identity_key,
-                "asset_type": asset.get("asset_type"),
-                "identity_status": asset.get("identity_status"),
-                "venue_id": venue.get("venue_id"),
-                "venue_type": venue_type or None,
-                "exchange": venue.get("exchange"),
-                "inst_id": venue.get("inst_id"),
+                "target_id": identity_key,
+                "target_type": target_type or None,
+                "venue_type": venue_type,
+                "exchange": target.get("provider") if target_type == "CexToken" else None,
+                "inst_id": target.get("native_market_id"),
                 "symbol": symbol,
                 "chain": chain,
                 "address": address,

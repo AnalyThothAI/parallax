@@ -7,6 +7,7 @@ from typing import Any
 
 from .asset_repository import AssetRepository
 from .asset_signal_repository import AssetSignalRepository
+from .discovery_repository import DiscoveryRepository
 from .enrichment_repository import EnrichmentRepository
 from .entity_repository import EntityRepository
 from .evidence_repository import EvidenceRepository
@@ -14,8 +15,11 @@ from .harness_repository import HarnessRepository
 from .intent_resolution_repository import IntentResolutionRepository
 from .market_repository import MarketRepository
 from .notification_repository import NotificationRepository
+from .price_observation_repository import PriceObservationRepository
+from .registry_repository import RegistryRepository
 from .signal_repository import SignalRepository
 from .token_evidence_repository import TokenEvidenceRepository
+from .token_intent_lookup_repository import TokenIntentLookupRepository
 from .token_intent_repository import TokenIntentRepository
 from .token_radar_repository import TokenRadarRepository
 
@@ -30,6 +34,10 @@ class RepositorySession:
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
     intent_resolutions: IntentResolutionRepository
+    registry: RegistryRepository
+    discovery: DiscoveryRepository
+    price_observations: PriceObservationRepository
+    token_intent_lookup: TokenIntentLookupRepository
     market: MarketRepository
     token_radar: TokenRadarRepository
     asset_signals: AssetSignalRepository
@@ -48,6 +56,10 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),
         intent_resolutions=IntentResolutionRepository(conn),
+        registry=RegistryRepository(conn),
+        discovery=DiscoveryRepository(conn),
+        price_observations=PriceObservationRepository(conn),
+        token_intent_lookup=TokenIntentLookupRepository(conn),
         market=MarketRepository(conn),
         token_radar=TokenRadarRepository(conn),
         asset_signals=AssetSignalRepository(conn),

@@ -90,7 +90,10 @@ def open_v3_runtime(tmp_path):
         entities=repos.entities,
         signals=repos.signals,
         enrichment=repos.enrichment,
-        assets=repos.assets,
+        registry=repos.registry,
+        discovery=repos.discovery,
+        price_observations=repos.price_observations,
+        token_intent_lookup=repos.token_intent_lookup,
     )
     return conn, repos, ingest
 

@@ -16,6 +16,9 @@ ASSET_MIGRATION = Path(
 TOKEN_RADAR_V3_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0007_token_radar_v3_intents.py"
 )
+TOKEN_RADAR_V4_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -117,3 +120,28 @@ def test_token_radar_v3_migration_adds_intent_market_and_projection_tables() -> 
         assert f'"{table}"' in text
     assert "DROP TABLE IF EXISTS {table} CASCADE" in text
     assert "DROP TABLE IF EXISTS token_radar_rows" in text
+
+
+def test_token_radar_v4_migration_adds_hard_cut_registry_and_price_tables() -> None:
+    text = TOKEN_RADAR_V4_MIGRATION.read_text()
+
+    for table in {
+        "projects",
+        "registry_assets",
+        "cex_tokens",
+        "price_feeds",
+        "registry_aliases",
+        "price_observations",
+        "discovery_tasks",
+        "registry_versions",
+        "token_intent_lookup_keys",
+    }:
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in text
+
+    assert "ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS target_type TEXT" in text
+    assert "ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS is_current BOOLEAN" in text
+    assert "ALTER TABLE token_intent_resolutions ALTER COLUMN identity_status DROP NOT NULL" in text
+    assert "ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS target_type TEXT" in text
+    assert "ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS price_json JSONB" in text
+    assert "ux_cex_tokens_identity" in text
+    assert "idx_price_observations_subject_latest" in text

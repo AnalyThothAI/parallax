@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.storage.postgres_audit import PostgresOperationalAudit, PostgresQueryAudit
+from gmgn_twitter_intel.storage.postgres_audit import HOT_QUERIES, PostgresOperationalAudit, PostgresQueryAudit
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -38,3 +38,12 @@ def test_query_audit_explains_hot_read_paths_without_analyze(tmp_path):
     assert payload["analyze"] is False
     assert {"recent_all", "search_fts", "token_radar_latest", "asset_posts_recent"}.issubset(names)
     assert all(item["plan"] for item in payload["queries"])
+
+
+def test_query_audit_asset_posts_uses_v4_resolution_targets():
+    query = next(item for item in HOT_QUERIES if item["name"] == "asset_posts_recent")
+
+    assert "target_type" in query["sql"]
+    assert "target_id" in query["sql"]
+    assert "first_seen_ms" not in query["sql"]
+    assert "confidence" not in query["sql"]

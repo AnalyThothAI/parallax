@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -31,17 +32,18 @@ class TokenRadarRepository:
                 """
                 INSERT INTO token_radar_rows(
                   row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
-                  lane, rank, intent_id, event_id, asset_id, primary_venue_id, intent_json,
-                  asset_json, primary_venue_json, attention_json, resolution_json, market_json,
-                  score_json, decision, data_health_json, source_event_ids_json, created_at_ms
+                  lane, rank, intent_id, event_id, target_type, target_id, pricefeed_id, intent_json,
+                  asset_json, primary_venue_json, target_json, attention_json, resolution_json, market_json,
+                  price_json, score_json, decision, data_health_json,
+                  source_event_ids_json, created_at_ms
                 )
                 VALUES (
                   %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
                   %(source_max_received_at_ms)s, %(lane)s, %(rank)s, %(intent_id)s, %(event_id)s,
-                  %(asset_id)s, %(primary_venue_id)s, %(intent_json)s, %(asset_json)s,
-                  %(primary_venue_json)s, %(attention_json)s, %(resolution_json)s, %(market_json)s,
-                  %(score_json)s, %(decision)s, %(data_health_json)s, %(source_event_ids_json)s,
-                  %(created_at_ms)s
+                  %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(intent_json)s, %(asset_json)s,
+                  %(primary_venue_json)s, %(target_json)s, %(attention_json)s, %(resolution_json)s,
+                  %(market_json)s, %(price_json)s, %(score_json)s, %(decision)s, %(data_health_json)s,
+                  %(source_event_ids_json)s, %(created_at_ms)s
                 )
                 """,
                 _json_payload(
@@ -63,7 +65,7 @@ class TokenRadarRepository:
         window: str,
         scope: str,
         limit: int,
-        projection_version: str = "token-radar-v3",
+        projection_version: str = "token-radar-v4",
     ) -> list[dict[str, Any]]:
         latest = self.conn.execute(
             """
@@ -95,12 +97,27 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
         "intent_json",
         "asset_json",
         "primary_venue_json",
+        "target_json",
         "attention_json",
         "resolution_json",
         "market_json",
+        "price_json",
         "score_json",
         "data_health_json",
         "source_event_ids_json",
     ):
-        out[key] = Jsonb(out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {}))
+        payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
+        out[key] = Jsonb(_json_ready(payload))
     return out
+
+
+def _json_ready(value: Any) -> Any:
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, dict):
+        return {key: _json_ready(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_json_ready(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_ready(item) for item in value]
+    return value

@@ -140,9 +140,9 @@ export function App() {
   });
 
   const assetFlowQuery = useQuery({
-    queryKey: ["asset-flow", windowKey, scope],
+    queryKey: ["token-radar", windowKey, scope],
     queryFn: () =>
-      getApi<AssetFlowData>("/api/asset-flow", {
+      getApi<AssetFlowData>("/api/token-radar", {
         token,
         params: { window: windowKey, limit: 48, scope }
       }),
@@ -995,7 +995,7 @@ function assetFlowRows(data?: AssetFlowData | null): AssetFlowRow[] {
   if (!data) {
     return [];
   }
-  return [...data.resolved_assets, ...data.attention_candidates];
+  return [...data.targets, ...data.attention];
 }
 
 function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
@@ -1008,56 +1008,61 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
   const zScore = row.attention.z_score ?? null;
   const newBurstScore = row.attention.new_burst_score ?? null;
   const streamShare = row.attention.stream_share ?? 0;
-  const resolved = row.resolution.status === "resolved";
-  const venue = row.primary_venue ?? null;
-  const market = row.market ?? null;
-  const isDex = venue?.venue_type === "dex";
-  const displaySymbol = row.intent?.display_symbol ?? row.asset.symbol ?? null;
-  const identityKey = row.intent?.intent_id ?? row.asset.asset_id ?? venue?.address ?? venue?.inst_id ?? displaySymbol ?? "unknown-token-intent";
-  const marketObservationStatus = market?.market_observation_status ?? row.data_health?.market ?? "missing_market";
-  const marketHasUsableSnapshot = market?.market_status === "ready" || market?.market_status === "fresh" || market?.market_status === "stale";
-  const priceChangeStatus = market?.price_change_status ?? (marketHasUsableSnapshot ? "ready" : "missing_market");
-  const heat = normalizedScoreBlock(row.score?.heat, "token_radar_v3");
-  const quality = normalizedScoreBlock(row.score?.quality, "token_radar_v3");
-  const propagation = normalizedScoreBlock(row.score?.propagation, "token_radar_v3");
-  const tradeability = normalizedScoreBlock(row.score?.tradeability, "token_radar_v3");
-  const timing = normalizedScoreBlock(row.score?.timing, "token_radar_v3");
-  const opportunity = normalizedScoreBlock(row.score?.opportunity, "token_radar_v3");
+  const resolved = isResolvedResolutionStatus(row.resolution.status);
+  const price = row.price ?? null;
+  const target = row.target ?? {};
+  const isChainAsset = target.target_type === "Asset";
+  const isCexToken = target.target_type === "CexToken";
+  const displaySymbol = row.intent?.display_symbol ?? target.symbol ?? null;
+  const targetId = target.target_id ?? row.resolution.target_id ?? null;
+  const identityKey = targetId ?? row.intent?.intent_id ?? target.address ?? target.native_market_id ?? displaySymbol ?? "unknown-token-intent";
+  const marketObservationStatus = price?.market_observation_status ?? row.data_health?.market ?? "missing_market";
+  const marketHasUsableSnapshot = price?.market_status === "ready" || price?.market_status === "fresh" || price?.market_status === "stale";
+  const priceChangeStatus = price?.price_change_status ?? (marketHasUsableSnapshot ? "ready" : "missing_market");
+  const heat = normalizedScoreBlock(row.score?.heat, "token_radar_v4");
+  const quality = normalizedScoreBlock(row.score?.quality, "token_radar_v4");
+  const propagation = normalizedScoreBlock(row.score?.propagation, "token_radar_v4");
+  const priceHealth = normalizedScoreBlock(row.score?.price_health, "token_radar_v4");
+  const timing = normalizedScoreBlock(row.score?.timing, "token_radar_v4");
+  const opportunity = normalizedScoreBlock(row.score?.opportunity, "token_radar_v4");
   const decision = normalizeDecision(row.decision);
   const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
   const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
+  const marketPrice = price?.price_usd ?? price?.price_quote ?? null;
+  const chain = isChainAsset ? target.chain_id ?? null : null;
+  const address = isChainAsset ? target.address ?? null : null;
   return {
     identity: {
       identity_key: identityKey,
       identity_status: row.resolution.status,
-      asset_id: row.asset.asset_id,
-      asset_type: row.asset.asset_type,
-      venue_type: venue?.venue_type ?? null,
-      exchange: venue?.exchange ?? null,
-      inst_id: venue?.inst_id ?? null,
-      inst_type: venue?.inst_type ?? null,
+      asset_id: targetId ?? undefined,
+      asset_type: target.target_type ?? null,
+      venue_type: isCexToken ? "cex" : isChainAsset ? "dex" : null,
+      exchange: isCexToken ? target.provider ?? null : null,
+      inst_id: isCexToken ? target.native_market_id ?? null : null,
+      inst_type: isCexToken ? target.feed_type ?? null : null,
       token_id: null,
-      chain: isDex ? venue?.chain ?? null : null,
-      address: isDex ? venue?.address ?? null : null,
+      chain,
+      address,
       symbol: displaySymbol
     },
     market: {
-      market_status: market?.market_status ?? "missing",
-      price: market?.price_usd ?? null,
-      market_cap: market?.market_cap_usd ?? null,
-      liquidity: market?.liquidity_usd ?? null,
-      pool_status: isDex && venue?.address ? "ready" : "missing",
-      holder_count: market?.holders ?? null,
-      volume_24h: market?.volume_24h_usd ?? null,
-      snapshot_age_ms: market?.snapshot_age_ms ?? null,
-      snapshot_received_at_ms: market?.snapshot_observed_at_ms ?? null,
+      market_status: price?.market_status ?? "missing",
+      price: marketPrice,
+      market_cap: price?.market_cap_usd ?? null,
+      liquidity: price?.liquidity_usd ?? null,
+      pool_status: marketHasUsableSnapshot ? "ready" : "missing",
+      holder_count: price?.holders ?? null,
+      volume_24h: price?.volume_24h_usd ?? null,
+      snapshot_age_ms: price?.snapshot_age_ms ?? null,
+      snapshot_received_at_ms: price?.snapshot_observed_at_ms ?? null,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
       reference_ms: row.attention.latest_seen_ms ?? null,
-      price_at_social_start: market?.price_at_social_start ?? null,
-      price_at_reference: market?.price_usd ?? null,
-      price_change_since_social_pct: market?.price_change_since_social_pct ?? null,
-      price_before_social_start: market?.price_before_social_start ?? null,
-      price_change_before_social_pct: market?.price_change_before_social_pct ?? null,
+      price_at_social_start: price?.price_at_social_start ?? null,
+      price_at_reference: price?.price_at_reference ?? marketPrice,
+      price_change_since_social_pct: price?.price_change_since_social_pct ?? null,
+      price_before_social_start: price?.price_before_social_start ?? null,
+      price_change_before_social_pct: price?.price_change_before_social_pct ?? null,
       market_observation_status: marketObservationStatus,
       price_change_status: priceChangeStatus
     },
@@ -1120,21 +1125,21 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       top_authors: []
     },
     tradeability: {
-      ...tradeability,
+      ...priceHealth,
       identity_tradeable: resolved,
       market_fresh: marketHasUsableSnapshot,
-      market_cap_present: Boolean(market?.market_cap_usd),
-      liquidity_present: Boolean(market?.liquidity_usd),
-      pool_present: Boolean(isDex && venue?.address),
-      hard_risks: tradeability.hard_risks ?? tradeability.risks
+      market_cap_present: Boolean(price?.market_cap_usd),
+      liquidity_present: Boolean(price?.liquidity_usd),
+      pool_present: marketHasUsableSnapshot,
+      hard_risks: priceHealth.hard_risks ?? priceHealth.risks
     },
     timing: {
       score: timing.score,
       score_version: timing.score_version,
       status: timingStatus,
       social_signal_start_ms: row.attention.latest_seen_ms ?? null,
-      price_change_since_social_pct: market?.price_change_since_social_pct ?? null,
-      price_change_before_social_pct: market?.price_change_before_social_pct ?? null,
+      price_change_since_social_pct: price?.price_change_since_social_pct ?? null,
+      price_change_before_social_pct: price?.price_change_before_social_pct ?? null,
       market_observation_status: marketObservationStatus,
       chase_risk: chaseRisk,
       reasons: timing.reasons,
@@ -1151,7 +1156,7 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
         heat: row.score?.opportunity?.components?.heat ?? heat.score,
         quality: row.score?.opportunity?.components?.quality ?? quality.score,
         propagation: row.score?.opportunity?.components?.propagation ?? propagation.score,
-        tradeability: row.score?.opportunity?.components?.tradeability ?? tradeability.score,
+        tradeability: row.score?.opportunity?.components?.price_health ?? priceHealth.score,
         timing: row.score?.opportunity?.components?.timing ?? timing.score
       }
     },
@@ -1165,9 +1170,13 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       risks: watched ? [] : ["no_watched_confirmation"]
     },
     evidence_total_count: row.intent?.evidence?.length ?? mentions,
-    posts_query: { asset_id: row.asset.asset_id, chain: venue?.chain ?? null, address: venue?.address ?? null, window, scope, range: "current_window" },
-    timeline_query: { asset_id: row.asset.asset_id, chain: venue?.chain ?? null, address: venue?.address ?? null, window, scope }
+    posts_query: { asset_id: targetId ?? undefined, chain, address, window, scope, range: "current_window" },
+    timeline_query: { asset_id: targetId ?? undefined, chain, address, window, scope }
   };
+}
+
+function isResolvedResolutionStatus(status?: string | null): boolean {
+  return status === "EXACT" || status === "UNIQUE_BY_CONTEXT";
 }
 
 type RadarScoreInput = {
@@ -1357,11 +1366,11 @@ function tokenMatchForPayload(
   }
 ): TokenFlowItem | undefined {
   for (const resolution of payload.token_resolutions ?? []) {
-    if (resolution.asset_id && lookup.byAssetId.has(resolution.asset_id)) {
-      return lookup.byAssetId.get(resolution.asset_id);
+    if (resolution.target_id && lookup.byAssetId.has(resolution.target_id)) {
+      return lookup.byAssetId.get(resolution.target_id);
     }
-    if (resolution.asset_id && lookup.byIdentityKey.has(resolution.asset_id)) {
-      return lookup.byIdentityKey.get(resolution.asset_id);
+    if (resolution.target_id && lookup.byIdentityKey.has(resolution.target_id)) {
+      return lookup.byIdentityKey.get(resolution.target_id);
     }
     if (resolution.intent_id && lookup.byIdentityKey.has(resolution.intent_id)) {
       return lookup.byIdentityKey.get(resolution.intent_id);

@@ -244,7 +244,6 @@ def _runtime(tmp_path):
         entities=entities,
         signals=signals,
         enrichment=enrichment,
-        assets=assets,
     )
     return conn, evidence, signals, assets, ingest
 

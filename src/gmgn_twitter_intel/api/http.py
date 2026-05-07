@@ -148,8 +148,8 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.get("/asset-flow")
-    async def asset_flow(
+    @router.get("/token-radar")
+    async def token_radar(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         limit: Annotated[int, Query()] = 20,

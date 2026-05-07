@@ -133,6 +133,8 @@ class CliTests(unittest.TestCase):
             ["ops", "projection-status"],
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
+            ["ops", "run-token-discovery", "--limit", "5"],
+            ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
         ]
@@ -148,8 +150,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[5].ops_command, "validate-projections")
         self.assertEqual(parsed[5].sample, 5)
         self.assertEqual(parsed[6].ops_command, "sync-okx-cex-universe")
-        self.assertEqual(parsed[7].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[8].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[7].ops_command, "run-token-discovery")
+        self.assertEqual(parsed[7].limit, 5)
+        self.assertEqual(parsed[8].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[8].window, "24h")
+        self.assertEqual(parsed[9].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[10].ops_command, "rebuild-token-radar")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -247,8 +253,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
-        self.assertEqual(lines[2]["data"]["resolved_assets"][0]["asset"]["symbol"], "PEPE")
-        self.assertEqual(lines[2]["data"]["resolved_assets"][0]["attention"]["mentions_window"], 1)
+        self.assertEqual(lines[2]["data"]["targets"][0]["target"]["symbol"], "PEPE")
+        self.assertEqual(lines[2]["data"]["targets"][0]["attention"]["mentions_window"], 1)
         self.assertEqual(
             {item["alert_type"] for item in lines[3]["data"]["items"]},
             {"account_token"},

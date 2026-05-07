@@ -107,7 +107,6 @@ def open_runtime(tmp_path):
         entities=entities,
         signals=signals,
         enrichment=enrichment,
-        assets=assets,
     )
     return conn, ingest, signals, assets
 

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.token_radar_projection import _display_symbol, _market, _project_group
+from gmgn_twitter_intel.pipeline.token_radar_projection import (
+    TokenRadarProjection,
+    _display_symbol,
+    _market,
+    _project_group,
+)
 
 
 def test_token_radar_row_id_is_unique_per_window_and_scope():
@@ -10,15 +15,14 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
         "received_at_ms": 1_777_800_000_000,
         "author_handle": "toly",
         "is_watched": True,
-        "resolution_identity_status": "unresolved",
-        "resolution_status": "unresolved",
-        "resolution_confidence": 0.4,
-        "resolved_asset_id": None,
-        "primary_venue_id": None,
+        "resolution_status": "NIL",
+        "target_type": None,
+        "target_id": None,
+        "pricefeed_id": None,
         "display_symbol": "VERSA",
-        "asset_type": None,
-        "reasons_json": ["no_exact_ca"],
-        "risks_json": [],
+        "reason_codes_json": ["SYMBOL_NOT_IN_REGISTRY"],
+        "candidate_ids_json": [],
+        "lookup_keys_json": ["symbol:VERSA"],
     }
 
     all_5m = _project_group([source_row], now_ms=1_777_800_060_000, window="5m", scope="all")
@@ -31,8 +35,8 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
 def test_projection_display_symbol_ignores_address_like_labels():
     row = {
         "display_symbol": "3iqrRNGG111111111111111111111111111111wNpump",
-        "canonical_symbol": "3IQRRNGG111111111111111111111111111111WNPUMP",
-        "base_symbol": "REAL",
+        "asset_symbol": "3IQRRNGG111111111111111111111111111111WNPUMP",
+        "pricefeed_base_symbol": "REAL",
     }
 
     assert _display_symbol(row) == "REAL"
@@ -41,8 +45,8 @@ def test_projection_display_symbol_ignores_address_like_labels():
 def test_projection_display_symbol_returns_none_when_only_ca_is_known():
     row = {
         "display_symbol": None,
-        "canonical_symbol": "3IQRRNGG111111111111111111111111111111WNPUMP",
-        "base_symbol": None,
+        "asset_symbol": "3IQRRNGG111111111111111111111111111111WNPUMP",
+        "pricefeed_base_symbol": None,
     }
 
     assert _display_symbol(row) is None
@@ -51,20 +55,21 @@ def test_projection_display_symbol_returns_none_when_only_ca_is_known():
 def test_projection_market_uses_latest_market_snapshot_fields():
     market = _market(
         {
-            "primary_venue_id": "venue:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "target_type": "Asset",
+            "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
             "market_provider": "gmgn_payload",
             "market_observed_at_ms": 1_777_800_000_000,
             "market_price_usd": 0.01,
+            "market_price_quote": None,
+            "market_quote_symbol": None,
+            "market_price_basis": "usd",
             "market_market_cap_usd": 1_000_000,
             "market_liquidity_usd": 250_000,
             "market_volume_24h_usd": None,
             "market_open_interest_usd": None,
             "market_holders": 1000,
-            "market_price_change_5m_pct": 1.2,
-            "market_price_change_1h_pct": 3.4,
-            "market_price_change_24h_pct": None,
         },
-        identity_status="resolved",
+        resolved=True,
         now_ms=1_777_800_060_000,
     )
 
@@ -79,6 +84,17 @@ def test_projection_market_uses_latest_market_snapshot_fields():
     assert market["snapshot_observed_at_ms"] == 1_777_800_000_000
 
 
+def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
+    conn = FakeConn()
+    repos = type("Repos", (), {"conn": conn})()
+
+    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
+
+    assert "preferred_price_feed" in conn.sql
+    assert "COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id)" in conn.sql
+    assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
+
+
 def test_resolved_pending_market_never_projects_as_driver():
     rows = [
         {
@@ -87,16 +103,15 @@ def test_resolved_pending_market_never_projects_as_driver():
             "received_at_ms": 1_777_800_000_000 + index,
             "author_handle": f"voice{index}",
             "is_watched": True,
-            "resolution_identity_status": "resolved",
-            "resolution_status": "resolved",
-            "resolution_confidence": 0.9,
-            "resolved_asset_id": "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-            "primary_venue_id": "venue:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "resolution_status": "EXACT",
+            "target_type": "Asset",
+            "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "pricefeed_id": "pricefeed:dex-token:gmgn:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
             "display_symbol": "PEPE",
-            "canonical_symbol": "PEPE",
-            "asset_type": "dex_asset",
-            "reasons_json": [],
-            "risks_json": [],
+            "asset_symbol": "PEPE",
+            "reason_codes_json": [],
+            "candidate_ids_json": [],
+            "lookup_keys_json": [],
         }
         for index in range(7)
     ]
@@ -105,3 +120,14 @@ def test_resolved_pending_market_never_projects_as_driver():
 
     assert row["market_json"]["market_observation_status"] == "pending_refresh"
     assert row["decision"] == "watch"
+
+
+class FakeConn:
+    sql = ""
+
+    def execute(self, sql, params=None):
+        self.sql = str(sql)
+        return self
+
+    def fetchall(self):
+        return []

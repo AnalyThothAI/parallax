@@ -1,6 +1,6 @@
 GMGN := uv run gmgn-twitter-intel
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent token-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -50,8 +50,8 @@ status: ## print health and readiness for the running API
 recent: ## print recent matched events
 	@$(GMGN) recent --limit 20
 
-token-flow: ## print 5m token activity
-	@$(GMGN) token-flow --window 5m --limit 20
+asset-flow: ## print 5m token activity
+	@$(GMGN) asset-flow --window 5m --limit 20
 
 account-alerts: ## print watched-account token alerts
 	@$(GMGN) account-alerts --window 24h --limit 50

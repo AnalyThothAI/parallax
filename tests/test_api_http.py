@@ -137,6 +137,8 @@ def test_api_status_exposes_asset_market_sync_status(tmp_path):
     assert response.status_code == 200
     asset_market_sync = response.json()["data"]["asset_market_sync"]
     assert set(asset_market_sync) >= {"worker_running", "last_run_at_ms", "last_result", "providers"}
+    token_discovery = response.json()["data"]["token_discovery"]
+    assert set(token_discovery) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
     token_radar_projection = response.json()["data"]["token_radar_projection"]
     assert set(token_radar_projection) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
 
@@ -184,7 +186,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
         headers = {"Authorization": "Bearer secret"}
         recent = client.get("/api/recent?limit=5", headers=headers)
         search = client.get("/api/search", params={"q": "$PEPE", "limit": 5}, headers=headers)
-        asset_flow = client.get("/api/asset-flow?window=5m&limit=5", headers=headers)
+        asset_flow = client.get("/api/token-radar?window=5m&limit=5", headers=headers)
         account_alerts = client.get("/api/account-alerts?window=24h&limit=5", headers=headers)
 
     assert recent.status_code == 200
@@ -198,7 +200,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
 
     assert asset_flow.status_code == 200
-    assert asset_flow.json()["data"]["resolved_assets"][0]["asset"]["symbol"] == "PEPE"
+    assert asset_flow.json()["data"]["targets"][0]["target"]["symbol"] == "PEPE"
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
@@ -373,15 +375,15 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
 
         headers = {"Authorization": "Bearer secret"}
-        all_flow = client.get("/api/asset-flow", params={"window": "5m", "scope": "all"}, headers=headers)
-        watched_flow = client.get("/api/asset-flow", params={"window": "5m", "scope": "matched"}, headers=headers)
+        all_flow = client.get("/api/token-radar", params={"window": "5m", "scope": "all"}, headers=headers)
+        watched_flow = client.get("/api/token-radar", params={"window": "5m", "scope": "matched"}, headers=headers)
 
     assert all_flow.status_code == 200
-    assert {item["asset"]["symbol"] for item in all_flow.json()["data"]["resolved_assets"]} == {"PEPE", "BONK"}
+    assert {item["target"]["symbol"] for item in all_flow.json()["data"]["targets"]} == {"PEPE", "BONK"}
 
     assert watched_flow.status_code == 200
     assert watched_flow.json()["data"]["scope"] == "matched"
-    assert [item["asset"]["symbol"] for item in watched_flow.json()["data"]["resolved_assets"]] == ["PEPE"]
+    assert [item["target"]["symbol"] for item in watched_flow.json()["data"]["targets"]] == ["PEPE"]
 
 
 def test_api_asset_posts_returns_full_post_pages_and_requires_asset_id(tmp_path):
@@ -401,11 +403,11 @@ def test_api_asset_posts_returns_full_post_pages_and_requires_asset_id(tmp_path)
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
 
         asset_flow = client.get(
-            "/api/asset-flow",
+            "/api/token-radar",
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
-        ).json()["data"]["resolved_assets"][0]
-        asset_id = asset_flow["asset"]["asset_id"]
+        ).json()["data"]["targets"][0]
+        asset_id = asset_flow["target"]["target_id"]
 
         missing = client.get("/api/asset-posts?window=5m", headers={"Authorization": "Bearer secret"})
         first_page = client.get(
@@ -471,11 +473,11 @@ def test_api_asset_social_timeline_returns_buckets_authors_and_posts(tmp_path):
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
 
         asset_flow = client.get(
-            "/api/asset-flow",
+            "/api/token-radar",
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
-        ).json()["data"]["resolved_assets"][0]
-        asset_id = asset_flow["asset"]["asset_id"]
+        ).json()["data"]["targets"][0]
+        asset_id = asset_flow["target"]["target_id"]
 
         missing = client.get("/api/asset-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
         response = client.get(
@@ -515,7 +517,7 @@ def test_api_rejects_removed_1m_window(tmp_path):
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/asset-flow",
+            "/api/token-radar",
             params={"window": "1m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         )

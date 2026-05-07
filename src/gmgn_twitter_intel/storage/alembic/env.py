@@ -6,7 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from gmgn_twitter_intel.settings import load_settings
-from gmgn_twitter_intel.storage.postgres_client import with_password_from_file
+from gmgn_twitter_intel.storage.postgres_client import local_docker_host_dsn, with_password_from_file
 
 config = context.config
 
@@ -19,9 +19,9 @@ target_metadata = None
 def _database_url() -> str:
     configured = config.attributes.get("database_url")
     if configured:
-        return str(configured)
+        return local_docker_host_dsn(str(configured))
     settings = load_settings(require_ws_token=False)
-    return with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
+    return local_docker_host_dsn(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
 
 
 def _sqlalchemy_database_url() -> str:

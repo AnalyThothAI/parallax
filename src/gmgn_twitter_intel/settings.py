@@ -445,7 +445,7 @@ class Settings(BaseModel):
 
     @property
     def okx_dex_configured(self) -> bool:
-        return bool(self.okx_dex_api_key and self.okx_dex_secret_key and self.okx_dex_passphrase)
+        return bool(self.okx_dex_base_url)
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:

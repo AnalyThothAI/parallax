@@ -93,13 +93,13 @@ export type TokenResolutionRecord = {
   resolution_id?: string | null;
   intent_id?: string | null;
   event_id?: string | null;
-  asset_id?: string | null;
-  primary_venue_id?: string | null;
-  identity_status?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
+  pricefeed_id?: string | null;
   resolution_status?: string | null;
-  confidence?: number | null;
-  reasons_json?: string[];
-  risks_json?: string[];
+  reason_codes_json?: string[];
+  candidate_ids_json?: string[];
+  lookup_keys_json?: string[];
 };
 
 export type LivePayload = {
@@ -181,10 +181,26 @@ export type SearchData = {
 };
 
 export type AssetFlowAssetBlock = {
-  asset_id: string;
+  asset_id?: string | null;
   symbol?: string | null;
   asset_type?: string | null;
   identity_status?: string | null;
+};
+
+export type AssetFlowTargetBlock = {
+  target_type?: "Asset" | "CexToken" | "Project" | string | null;
+  target_id?: string | null;
+  symbol?: string | null;
+  name?: string | null;
+  status?: string | null;
+  chain_id?: string | null;
+  token_standard?: string | null;
+  address?: string | null;
+  pricefeed_id?: string | null;
+  native_market_id?: string | null;
+  quote_symbol?: string | null;
+  feed_type?: string | null;
+  provider?: string | null;
 };
 
 export type AssetFlowVenueBlock = {
@@ -237,7 +253,7 @@ export type TokenRadarScoreSet = {
   heat?: TokenRadarScoreBlock;
   quality?: TokenRadarScoreBlock;
   propagation?: TokenRadarScoreBlock;
-  tradeability?: TokenRadarScoreBlock;
+  price_health?: TokenRadarScoreBlock;
   timing?: TokenRadarScoreBlock & {
     status?: string | null;
     chase_risk?: boolean | null;
@@ -247,7 +263,7 @@ export type TokenRadarScoreSet = {
       heat?: number | null;
       quality?: number | null;
       propagation?: number | null;
-      tradeability?: number | null;
+      price_health?: number | null;
       timing?: number | null;
     };
   };
@@ -262,13 +278,15 @@ export type TokenRadarDataHealth = {
 
 export type AssetFlowRow = {
   intent?: TokenRadarIntentBlock;
-  asset: AssetFlowAssetBlock;
-  primary_venue?: AssetFlowVenueBlock | null;
+  target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
-  market?: {
+  price?: {
     market_status: "fresh" | "stale" | "missing" | string;
     provider?: string | null;
     price_usd?: number | null;
+    price_quote?: number | null;
+    quote_symbol?: string | null;
+    price_basis?: string | null;
     market_cap_usd?: number | null;
     liquidity_usd?: number | null;
     volume_24h_usd?: number | null;
@@ -280,6 +298,7 @@ export type AssetFlowRow = {
     price_change_1h_pct?: number | null;
     price_change_24h_pct?: number | null;
     price_at_social_start?: number | null;
+    price_at_reference?: number | null;
     price_before_social_start?: number | null;
     price_change_since_social_pct?: number | null;
     price_change_before_social_pct?: number | null;
@@ -287,8 +306,14 @@ export type AssetFlowRow = {
     price_change_status?: string | null;
   };
   resolution: {
-    status: "resolved" | "unresolved" | "ambiguous" | string;
+    status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
+    target_type?: string | null;
+    target_id?: string | null;
+    pricefeed_id?: string | null;
+    reason_codes?: string[];
+    candidate_ids?: string[];
+    lookup_keys?: string[];
     confidence?: number | null;
     reasons?: string[];
     risks?: string[];
@@ -302,8 +327,8 @@ export type AssetFlowRow = {
 export type AssetFlowData = {
   window: WindowKey;
   scope: ScopeKey;
-  resolved_assets: AssetFlowRow[];
-  attention_candidates: AssetFlowRow[];
+  targets: AssetFlowRow[];
+  attention: AssetFlowRow[];
   projection: {
     status: "fresh" | "stale" | string;
     version: string;

@@ -7,11 +7,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..models import TwitterEvent
-from ..storage.asset_repository import AssetRepository
+from ..storage.discovery_repository import DiscoveryRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository, event_to_row
+from ..storage.intent_resolution_repository import IntentResolutionRepository
 from ..storage.postgres_client import transaction
+from ..storage.price_observation_repository import PriceObservationRepository
+from ..storage.registry_repository import RegistryRepository
 from ..storage.signal_repository import SignalRepository
+from ..storage.token_evidence_repository import TokenEvidenceRepository
+from ..storage.token_intent_lookup_repository import TokenIntentLookupRepository
+from ..storage.token_intent_repository import TokenIntentRepository
 from .entity_extractor import TextSurface, extract_entities_from_surfaces
 from .token_evidence_builder import build_token_evidence
 from .token_intent_builder import build_token_intents
@@ -37,14 +43,19 @@ class IngestService:
         entities: EntityRepository,
         signals: SignalRepository,
         enrichment,
-        assets: AssetRepository | None = None,
+        registry: RegistryRepository | None = None,
+        discovery: DiscoveryRepository | None = None,
+        price_observations: PriceObservationRepository | None = None,
+        token_intent_lookup: TokenIntentLookupRepository | None = None,
     ):
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
         self.enrichment = enrichment
-        self.assets = assets or AssetRepository(evidence.conn)
-        self.intent_resolver = None
+        self.registry = registry or RegistryRepository(evidence.conn)
+        self.discovery = discovery or DiscoveryRepository(evidence.conn)
+        self.price_observations = price_observations or PriceObservationRepository(evidence.conn)
+        self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
 
     def insert_raw_frame(self, **kwargs) -> bool:
         return self.evidence.insert_raw_frame(**kwargs)
@@ -70,13 +81,10 @@ class IngestService:
                 token_snapshot=event.token_snapshot,
                 created_at_ms=event.received_at_ms,
             )
-            from ..storage.intent_resolution_repository import IntentResolutionRepository
-            from ..storage.token_evidence_repository import TokenEvidenceRepository
-            from ..storage.token_intent_repository import TokenIntentRepository
-
             token_evidence_repo = TokenEvidenceRepository(self.evidence.conn)
             token_intent_repo = TokenIntentRepository(self.evidence.conn)
             intent_resolution_repo = IntentResolutionRepository(self.evidence.conn)
+            self._upsert_gmgn_payload_registry(event)
             token_evidence_repo.insert_many(evidence_inputs, commit=False)
             intent_inputs = build_token_intents(
                 event_id=event.event_id,
@@ -84,7 +92,12 @@ class IngestService:
                 created_at_ms=event.received_at_ms,
             )
             token_intents = token_intent_repo.insert_many(intent_inputs, commit=False)
-            resolver = TokenIntentResolver(assets=self.assets, resolutions=intent_resolution_repo)
+            self._upsert_chain_intent_registry(event, intent_inputs)
+            resolver = TokenIntentResolver(
+                registry=self.registry,
+                resolutions=intent_resolution_repo,
+                discovery=self.discovery,
+            )
             decisions = [
                 resolver.resolve(
                     intent,
@@ -95,8 +108,18 @@ class IngestService:
                 )
                 for intent in intent_inputs
             ]
+            for decision in decisions:
+                intent = next((item for item in intent_inputs if item.intent_id == decision.intent_id), None)
+                self.token_intent_lookup.replace_lookup_keys(
+                    intent_id=decision.intent_id,
+                    event_id=decision.event_id,
+                    keys=decision.lookup_keys,
+                    source_evidence_id=getattr(intent, "primary_evidence_id", None),
+                    created_at_ms=event.received_at_ms,
+                    commit=False,
+                )
             token_resolutions = intent_resolution_repo.resolutions_for_event(event.event_id)
-            self._insert_gmgn_payload_market_snapshot(event, decisions)
+            self._insert_gmgn_payload_price_observation(event, decisions)
             alerts = self._insert_token_alerts(
                 event,
                 decisions,
@@ -121,7 +144,41 @@ class IngestService:
             enrichment_job_id=enrichment_job_id,
         )
 
-    def _insert_gmgn_payload_market_snapshot(
+    def _upsert_gmgn_payload_registry(self, event: TwitterEvent) -> dict[str, Any] | None:
+        snapshot = event.token_snapshot
+        if snapshot is None:
+            return None
+        if not snapshot.address or not snapshot.chain:
+            return None
+        return self.registry.upsert_chain_asset(
+            chain_id=snapshot.chain,
+            address=snapshot.address,
+            symbol=snapshot.symbol,
+            name=None,
+            decimals=None,
+            source="gmgn_payload",
+            observed_at_ms=event.received_at_ms,
+            commit=False,
+        )
+
+    def _upsert_chain_intent_registry(self, event: TwitterEvent, intents: list[Any]) -> None:
+        for intent in intents:
+            chain_hint = getattr(intent, "chain_hint", None)
+            address_hint = getattr(intent, "address_hint", None)
+            if not chain_hint or not address_hint:
+                continue
+            self.registry.upsert_chain_asset(
+                chain_id=str(chain_hint),
+                address=str(address_hint),
+                symbol=getattr(intent, "display_symbol", None),
+                name=None,
+                decimals=None,
+                source="tweet_ca",
+                observed_at_ms=event.received_at_ms,
+                commit=False,
+            )
+
+    def _insert_gmgn_payload_price_observation(
         self,
         event: TwitterEvent,
         decisions: list[TokenIntentResolutionDecision],
@@ -131,18 +188,37 @@ class IngestService:
             return
         if snapshot.price is None and snapshot.market_cap is None:
             return
+        asset = self._upsert_gmgn_payload_registry(event)
+        if not asset:
+            return
         for decision in decisions:
-            if not decision.primary_venue_id or not decision.asset_id:
+            if decision.target_type != "Asset" or decision.target_id != asset.get("asset_id"):
                 continue
-            self.assets.insert_market_snapshot(
-                asset_id=decision.asset_id,
-                venue_id=decision.primary_venue_id,
+            pricefeed = self.registry.upsert_pricefeed(
+                feed_type="dex_token",
                 provider="gmgn_payload",
+                subject_type="Asset",
+                subject_id=str(asset["asset_id"]),
                 observed_at_ms=event.received_at_ms,
+                chain_id=str(asset["chain_id"]),
+                address=str(asset["address"]),
+                base_asset_id=str(asset["asset_id"]),
+                base_symbol=str(asset["symbol"]) if asset.get("symbol") else snapshot.symbol,
+                commit=False,
+            )
+            self.price_observations.insert_observation(
+                provider="gmgn_payload",
+                pricefeed_id=str(pricefeed["pricefeed_id"]),
+                observed_at_ms=event.received_at_ms,
+                subject_type="Asset",
+                subject_id=str(asset["asset_id"]),
                 price_usd=snapshot.price,
+                price_basis="usd" if snapshot.price is not None else "unavailable",
                 market_cap_usd=snapshot.market_cap,
-                source_payload_hash=_payload_hash(snapshot.raw),
-                created_at_ms=event.received_at_ms,
+                liquidity_usd=_raw_number(snapshot.raw, "liquidity", "liq", "pool_liquidity"),
+                volume_24h_usd=_raw_number(snapshot.raw, "volume_24h", "v24h", ("stat", "volume_24h")),
+                holders=_raw_int(snapshot.raw, "holder_count", "holders"),
+                raw_payload={**snapshot.raw, "payload_hash": _payload_hash(snapshot.raw)},
                 commit=False,
             )
             return
@@ -162,21 +238,22 @@ class IngestService:
         author_handle = event.author.handle.lower()
         for decision in decisions:
             intent = intents_by_id.get(decision.intent_id)
-            if decision.asset_id is None:
+            if decision.target_type is None or decision.target_id is None:
                 continue
-            seen_global, seen_author = resolutions.asset_seen_before(
-                asset_id=decision.asset_id,
+            seen_global, seen_author = resolutions.target_seen_before(
+                target_type=decision.target_type,
+                target_id=decision.target_id,
                 author_handle=author_handle,
                 before_ms=event.received_at_ms,
             )
             alert = self.signals.insert_account_token_alert(
                 event_id=event.event_id,
                 author_handle=author_handle,
-                entity_key=decision.asset_id,
-                entity_type="asset",
+                entity_key=decision.target_id,
+                entity_type=decision.target_type,
                 normalized_value=_alert_value(intent, decision),
                 chain=None,
-                token_resolution_status=decision.identity_status,
+                token_resolution_status=decision.resolution_status,
                 is_first_seen_global=not seen_global,
                 is_first_seen_by_author=not seen_author,
                 received_at_ms=event.received_at_ms,
@@ -189,10 +266,10 @@ class IngestService:
                         "event_id": alert.event_id,
                         "author_handle": alert.author_handle,
                         "entity_key": alert.entity_key,
-                        "entity_type": "asset",
+                        "entity_type": decision.target_type,
                         "normalized_value": alert.normalized_value,
                         "chain": None,
-                        "token_resolution_status": decision.identity_status,
+                        "token_resolution_status": decision.resolution_status,
                         "is_first_seen_global": alert.is_first_seen_global,
                         "is_first_seen_by_author": alert.is_first_seen_by_author,
                         "received_at_ms": alert.received_at_ms,
@@ -240,9 +317,37 @@ def _now_ms() -> int:
 
 def _alert_value(intent: Any, decision: TokenIntentResolutionDecision) -> str:
     value = getattr(intent, "display_symbol", None) or getattr(intent, "address_hint", None)
-    return str(value or decision.asset_id)
+    return str(value or decision.target_id)
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _raw_number(payload: dict[str, Any], *keys: str | tuple[str, str]) -> float | None:
+    for key in keys:
+        value = _raw_value(payload, key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _raw_int(payload: dict[str, Any], *keys: str | tuple[str, str]) -> int | None:
+    value = _raw_number(payload, *keys)
+    return int(value) if value is not None else None
+
+
+def _raw_value(payload: dict[str, Any], key: str | tuple[str, str]) -> Any:
+    if isinstance(key, tuple):
+        node: Any = payload
+        for part in key:
+            if not isinstance(node, dict):
+                return None
+            node = node.get(part)
+        return node
+    return payload.get(key)

@@ -86,7 +86,7 @@ def test_alembic_migration_is_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version_num"] for row in rows] == ["20260507_0007"]
+    assert [row["version_num"] for row in rows] == ["20260507_0008"]
 
 
 def test_token_radar_v3_schema_supports_span_aware_intents(tmp_path):
@@ -119,3 +119,45 @@ def test_token_radar_v3_schema_supports_span_aware_intents(tmp_path):
     assert {"text_surface", "span_start", "span_end", "sentence_id", "local_group_key"}.issubset(entity_columns)
     assert {"display_symbol", "chain_hint", "address_hint", "intent_status"}.issubset(intent_columns)
     assert intent_columns["intent_status"] == "NO"
+
+
+def test_token_radar_v4_schema_supports_hard_cut_targets(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        table_names = {
+            row["table_name"]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+        resolution_columns = {
+            row["column_name"]: row["is_nullable"]
+            for row in conn.execute(
+                """
+                SELECT column_name, is_nullable
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'token_intent_resolutions'
+                """
+            ).fetchall()
+        }
+        radar_columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'token_radar_rows'
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert {"projects", "registry_assets", "cex_tokens", "price_feeds", "price_observations"}.issubset(table_names)
+    assert {"discovery_tasks", "registry_versions", "token_intent_lookup_keys"}.issubset(table_names)
+    assert {"target_type", "target_id", "pricefeed_id", "reason_codes_json", "lookup_keys_json"}.issubset(
+        resolution_columns
+    )
+    assert resolution_columns["identity_status"] == "YES"
+    assert {"target_type", "target_id", "pricefeed_id", "target_json", "price_json"}.issubset(radar_columns)

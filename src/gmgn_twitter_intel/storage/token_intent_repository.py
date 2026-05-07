@@ -79,6 +79,27 @@ class TokenIntentRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def recent_unresolved(self, *, since_ms: int, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT token_intents.*
+            FROM token_intents
+            JOIN events ON events.event_id = token_intents.event_id
+            LEFT JOIN token_intent_resolutions current_resolution
+              ON current_resolution.intent_id = token_intents.intent_id
+             AND current_resolution.is_current = true
+            WHERE events.received_at_ms >= %s
+              AND (
+                current_resolution.resolution_id IS NULL
+                OR current_resolution.resolution_status IN ('NIL', 'AMBIGUOUS')
+              )
+            ORDER BY events.received_at_ms DESC, token_intents.intent_id
+            LIMIT %s
+            """,
+            (int(since_ms), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
 
 def _payload(item: Any) -> dict[str, Any]:
     if isinstance(item, dict):

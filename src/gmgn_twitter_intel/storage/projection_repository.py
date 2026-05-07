@@ -7,7 +7,7 @@ from typing import Any
 KNOWN_PROJECTIONS = (
     {
         "projection_name": "token-radar",
-        "projection_version": "token-radar-v3",
+        "projection_version": "token-radar-v4",
         "source_table": "token_intent_resolutions",
     },
 )

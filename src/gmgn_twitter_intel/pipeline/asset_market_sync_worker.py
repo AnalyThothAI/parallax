@@ -58,7 +58,8 @@ class AssetMarketSyncWorker:
             try:
                 with self.repository_session() as repos:
                     result["dex"] = sync_okx_dex_prices(
-                        assets=repos.assets,
+                        registry=repos.registry,
+                        price_observations=repos.price_observations,
                         client=self.dex_client,
                         observed_at_ms=observed_at_ms,
                         stale_after_ms=DEX_PRICE_STALE_MS,
@@ -71,7 +72,8 @@ class AssetMarketSyncWorker:
             try:
                 with self.repository_session() as repos:
                     result["cex"] = sync_okx_cex_universe(
-                        assets=repos.assets,
+                        registry=repos.registry,
+                        price_observations=repos.price_observations,
                         client=self.client,
                         inst_types=self.inst_types,
                         observed_at_ms=observed_at_ms,
@@ -90,7 +92,8 @@ class AssetMarketSyncWorker:
     def _sync_dex_once(self, *, now_ms: int) -> dict[str, Any]:
         with self.repository_session() as repos:
             return sync_okx_dex_prices(
-                assets=repos.assets,
+                registry=repos.registry,
+                price_observations=repos.price_observations,
                 client=self.dex_client,
                 observed_at_ms=now_ms,
                 stale_after_ms=DEX_PRICE_STALE_MS,
@@ -100,7 +103,8 @@ class AssetMarketSyncWorker:
     def _sync_cex_once(self, *, now_ms: int) -> dict[str, Any]:
         with self.repository_session() as repos:
             return sync_okx_cex_universe(
-                assets=repos.assets,
+                registry=repos.registry,
+                price_observations=repos.price_observations,
                 client=self.client,
                 inst_types=self.inst_types,
                 observed_at_ms=now_ms,

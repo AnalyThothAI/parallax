@@ -15,45 +15,53 @@ class IntentResolutionRepository:
         resolution_id = _stable_id(
             "token-intent-resolution",
             str(payload["intent_id"]),
-            str(payload.get("asset_id") or ""),
-            str(payload.get("primary_venue_id") or ""),
+            str(payload.get("target_type") or ""),
+            str(payload.get("target_id") or ""),
+            str(payload.get("pricefeed_id") or ""),
             str(payload["decision_time_ms"]),
         )
         self.conn.execute(
             """
             UPDATE token_intent_resolutions
-            SET resolution_status = 'superseded'
-            WHERE intent_id = %s AND resolution_status <> 'superseded'
+            SET record_status = 'superseded',
+                is_current = false,
+                superseded_at_ms = %s
+            WHERE intent_id = %s AND is_current = true
             """,
-            (payload["intent_id"],),
+            (int(payload["decision_time_ms"]), payload["intent_id"]),
         )
         self.conn.execute(
             """
             INSERT INTO token_intent_resolutions(
-              resolution_id, intent_id, event_id, asset_id, primary_venue_id,
-              resolution_status, identity_status, confidence, resolver_policy_version,
-              reasons_json, risks_json, decision_time_ms, created_at_ms
+              resolution_id, intent_id, event_id, resolution_status, resolver_policy_version,
+              target_type, target_id, pricefeed_id, reason_codes_json, candidate_ids_json,
+              lookup_keys_json, record_status, is_current, decision_time_ms, created_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'current', true, %s, %s)
             ON CONFLICT(resolution_id) DO UPDATE SET
               resolution_status = excluded.resolution_status,
-              identity_status = excluded.identity_status,
-              confidence = excluded.confidence,
-              reasons_json = excluded.reasons_json,
-              risks_json = excluded.risks_json
+              resolver_policy_version = excluded.resolver_policy_version,
+              target_type = excluded.target_type,
+              target_id = excluded.target_id,
+              pricefeed_id = excluded.pricefeed_id,
+              reason_codes_json = excluded.reason_codes_json,
+              candidate_ids_json = excluded.candidate_ids_json,
+              lookup_keys_json = excluded.lookup_keys_json,
+              record_status = 'current',
+              is_current = true
             """,
             (
                 resolution_id,
                 payload["intent_id"],
                 payload["event_id"],
-                payload.get("asset_id"),
-                payload.get("primary_venue_id"),
                 payload["resolution_status"],
-                payload["identity_status"],
-                float(payload["confidence"]),
                 payload["resolver_policy_version"],
-                Jsonb(payload.get("reasons") or []),
-                Jsonb(payload.get("risks") or []),
+                payload.get("target_type"),
+                payload.get("target_id"),
+                payload.get("pricefeed_id"),
+                Jsonb(payload.get("reason_codes") or []),
+                Jsonb(payload.get("candidate_ids") or []),
+                Jsonb(payload.get("lookup_keys") or []),
                 int(payload["decision_time_ms"]),
                 int(payload["created_at_ms"]),
             ),
@@ -74,7 +82,7 @@ class IntentResolutionRepository:
             """
             SELECT *
             FROM token_intent_resolutions
-            WHERE intent_id = %s AND resolution_status <> 'superseded'
+            WHERE intent_id = %s AND is_current = true
             ORDER BY decision_time_ms DESC
             LIMIT 1
             """,
@@ -87,17 +95,18 @@ class IntentResolutionRepository:
             """
             SELECT *
             FROM token_intent_resolutions
-            WHERE event_id = %s AND resolution_status <> 'superseded'
+            WHERE event_id = %s AND is_current = true
             ORDER BY decision_time_ms, resolution_id
             """,
             (event_id,),
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def asset_seen_before(
+    def target_seen_before(
         self,
         *,
-        asset_id: str,
+        target_type: str,
+        target_id: str,
         author_handle: str | None,
         before_ms: int,
     ) -> tuple[bool, bool]:
@@ -105,12 +114,13 @@ class IntentResolutionRepository:
             """
             SELECT 1 AS found
             FROM token_intent_resolutions
-            WHERE asset_id = %s
+            WHERE target_type = %s
+              AND target_id = %s
               AND decision_time_ms < %s
-              AND resolution_status <> 'superseded'
+              AND is_current = true
             LIMIT 1
             """,
-            (asset_id, int(before_ms)),
+            (target_type, target_id, int(before_ms)),
         ).fetchone()
         author_seen = False
         if author_handle:
@@ -119,13 +129,14 @@ class IntentResolutionRepository:
                 SELECT 1 AS found
                 FROM token_intent_resolutions
                 JOIN events ON events.event_id = token_intent_resolutions.event_id
-                WHERE token_intent_resolutions.asset_id = %s
+                WHERE token_intent_resolutions.target_type = %s
+                  AND token_intent_resolutions.target_id = %s
                   AND token_intent_resolutions.decision_time_ms < %s
-                  AND token_intent_resolutions.resolution_status <> 'superseded'
+                  AND token_intent_resolutions.is_current = true
                   AND events.author_handle = %s
                 LIMIT 1
                 """,
-                (asset_id, int(before_ms), author_handle),
+                (target_type, target_id, int(before_ms), author_handle),
             ).fetchone()
             author_seen = bool(author_row)
         return bool(global_row), author_seen

@@ -148,8 +148,8 @@ class PublicWebSocketHub:
             if address and _ca_subscription_matches((chain, str(address).lower()), client.cas):
                 return True
         for resolution in payload.get("token_resolutions") or []:
-            asset_id = str(resolution.get("asset_id") or "").strip()
-            if asset_id and any(symbol in asset_id.upper() for symbol in client.symbols):
+            target_id = str(resolution.get("target_id") or "").strip()
+            if target_id and any(symbol in target_id.upper() for symbol in client.symbols):
                 return True
         return False
 

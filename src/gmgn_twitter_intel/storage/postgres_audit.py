@@ -111,7 +111,7 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         "sql": """
             SELECT row_id
             FROM token_radar_rows
-            WHERE projection_version = 'token-radar-v3'
+            WHERE projection_version = 'token-radar-v4'
               AND "window" = '5m'
               AND scope = 'all'
             ORDER BY computed_at_ms DESC, lane DESC, rank ASC
@@ -122,13 +122,21 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
     {
         "name": "asset_posts_recent",
         "sql": """
+            WITH latest_target AS (
+              SELECT target_type, target_id
+              FROM token_intent_resolutions
+              WHERE is_current = true
+                AND target_type IS NOT NULL
+                AND target_id IS NOT NULL
+              ORDER BY decision_time_ms DESC, resolution_id DESC
+              LIMIT 1
+            )
             SELECT tir.event_id
             FROM token_intent_resolutions tir
-            WHERE tir.asset_id = (
-                SELECT asset_id FROM assets ORDER BY first_seen_ms DESC, asset_id DESC LIMIT 1
-            )
-              AND tir.resolution_status <> 'superseded'
-              AND tir.confidence > 0
+            JOIN latest_target
+              ON latest_target.target_type = tir.target_type
+             AND latest_target.target_id = tir.target_id
+            WHERE tir.is_current = true
             ORDER BY tir.decision_time_ms DESC, tir.event_id DESC
             LIMIT 50
         """,

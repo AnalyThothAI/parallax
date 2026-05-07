@@ -49,7 +49,7 @@ def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, notific
         ),
         evidence=FakeEvidence(events or []),
         account_alerts=FakeAccountAlerts(alerts or []),
-        asset_flow=FakeAssetFlow(asset_flow or {"resolved_assets": [], "attention_candidates": []}),
+        asset_flow=FakeAssetFlow(asset_flow or {"targets": [], "attention": []}),
         harness=FakeHarness(snapshots or []),
     )
 
@@ -58,7 +58,7 @@ def radar_score(*, heat: int, quality: int, opportunity: int) -> dict:
     def block(score: int) -> dict:
         return {
             "score": score,
-            "score_version": "token_radar_v3",
+            "score_version": "token_radar_v4",
             "reasons": [],
             "risks": [],
             "contributions": [],
@@ -136,19 +136,13 @@ def test_account_token_alert_candidate_preserves_first_seen_flags():
 def test_hot_quality_token_candidate_uses_asset_flow_contract():
     candidates = engine(
         asset_flow={
-            "resolved_assets": [
+            "targets": [
                 {
-                    "asset": {
-                        "asset_id": "asset:dex:eth:pepe",
+                    "target": {
+                        "target_type": "Asset",
+                        "target_id": "asset:eip155:1:erc20:0xpepe",
                         "symbol": "PEPE",
-                        "asset_type": "token",
-                        "identity_status": "resolved",
-                    },
-                    "primary_venue": {
-                        "venue_id": "venue:dex:eth:0xpepe",
-                        "venue_type": "dex",
-                        "exchange": "uniswap",
-                        "chain": "eth",
+                        "chain_id": "eth",
                         "address": "0xpepe",
                     },
                     "attention": {
@@ -157,38 +151,36 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
                         "watched_mentions": 1,
                         "latest_seen_ms": NOW_MS,
                     },
-                    "resolution": {"status": "resolved"},
+                    "resolution": {"status": "EXACT"},
                     "score": radar_score(heat=92, quality=78, opportunity=81),
                     "decision": "driver",
-                    "data_health": {"identity": "resolved", "market": "ready"},
+                    "data_health": {"identity": "EXACT", "market": "ready"},
                 },
                 {
-                    "asset": {
-                        "asset_id": "asset:unknown:fomo",
+                    "target": {
+                        "target_type": None,
+                        "target_id": None,
                         "symbol": "FOMO",
-                        "asset_type": "unknown",
-                        "identity_status": "unresolved",
                     },
-                    "primary_venue": None,
                     "attention": {
                         "mentions_window": 1,
                         "unique_authors": 1,
                         "watched_mentions": 0,
                         "latest_seen_ms": NOW_MS,
                     },
-                    "resolution": {"status": "unresolved"},
+                    "resolution": {"status": "NIL"},
                     "score": radar_score(heat=100, quality=70, opportunity=96),
                     "decision": "investigate",
-                    "data_health": {"identity": "unresolved", "market": "no_venue"},
+                    "data_health": {"identity": "NIL", "market": "no_resolved_target"},
                 },
             ],
-            "attention_candidates": [],
+            "attention": [],
         }
     ).evaluate(now_ms=NOW_MS)
 
     hot = [item for item in candidates if item.rule_id == "hot_quality_token_5m"]
     assert len(hot) == 1
-    assert hot[0].dedup_key == "hot_quality_token_5m:asset:dex:eth:pepe:1888889"
+    assert hot[0].dedup_key == "hot_quality_token_5m:asset:eip155:1:erc20:0xpepe:1888889"
     assert hot[0].severity == "high"
     assert hot[0].symbol == "PEPE"
     assert "## $PEPE 5m heat alert" in hot[0].body
@@ -198,35 +190,32 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
     assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
     assert "[X Search]" in hot[0].body
     assert hot[0].source_table == "token_radar_rows"
-    assert hot[0].payload["asset_id"] == "asset:dex:eth:pepe"
+    assert hot[0].payload["target_id"] == "asset:eip155:1:erc20:0xpepe"
     assert hot[0].payload["social_heat_score"] == 92
     assert hot[0].payload["decision"] == "driver"
-    assert hot[0].payload["score_version"] == "token_radar_v3"
+    assert hot[0].payload["score_version"] == "token_radar_v4"
 
 
 def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
     candidates = engine(
         asset_flow={
-            "resolved_assets": [],
-            "attention_candidates": [
+            "targets": [],
+            "attention": [
                 {
-                    "asset": {
-                        "asset_id": "",
+                    "target": {
+                        "target_id": None,
                         "symbol": "VERSA",
-                        "asset_type": None,
-                        "identity_status": "unresolved",
                     },
-                    "primary_venue": None,
                     "attention": {
                         "mentions_window": 9,
                         "unique_authors": 5,
                         "watched_mentions": 2,
                         "latest_seen_ms": NOW_MS,
                     },
-                    "resolution": {"status": "unresolved"},
+                    "resolution": {"status": "NIL"},
                     "score": radar_score(heat=100, quality=70, opportunity=98),
                     "decision": "investigate",
-                    "data_health": {"identity": "unresolved", "market": "no_venue"},
+                    "data_health": {"identity": "NIL", "market": "no_resolved_target"},
                 }
             ],
         }
@@ -275,19 +264,18 @@ def test_disabled_rule_does_not_emit_candidates():
     candidates = engine(
         notifications=notifications,
         asset_flow={
-            "resolved_assets": [
+            "targets": [
                 {
-                    "asset": {"asset_id": "asset:dex:eth:pepe", "symbol": "PEPE"},
-                    "primary_venue": None,
+                    "target": {"target_id": "asset:eip155:1:erc20:0xpepe", "symbol": "PEPE"},
                     "attention": {
                         "mentions_window": 10,
                         "unique_authors": 5,
                         "watched_mentions": 2,
                     },
-                    "resolution": {"status": "resolved"},
+                    "resolution": {"status": "EXACT"},
                 },
             ],
-            "attention_candidates": [],
+            "attention": [],
         },
     ).evaluate(now_ms=NOW_MS)
 

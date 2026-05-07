@@ -58,6 +58,20 @@ class TokenEvidenceRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def evidence_for_intent(self, intent_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT token_evidence.*
+            FROM token_intent_evidence
+            JOIN token_evidence ON token_evidence.evidence_id = token_intent_evidence.evidence_id
+            WHERE token_intent_evidence.intent_id = %s
+            ORDER BY token_intent_evidence.role, token_evidence.text_surface, token_evidence.span_start,
+              token_evidence.evidence_id
+            """,
+            (intent_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
 
 def _payload(item: Any) -> dict[str, Any]:
     if isinstance(item, dict):

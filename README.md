@@ -29,7 +29,7 @@ GMGN public WS
   -> credit attribution
   -> report-only weights
   -> /ws live push + replay
-  -> CLI search / token-flow / token-signal-snapshots / social-events / harness-snapshots / harness-credits
+  -> CLI search / asset-flow / token-signal-snapshots / social-events / harness-snapshots / harness-credits
 ```
 
 Harness 链路有一条硬边界：只有 `handles` 中的 watched accounts 会进入 LLM social-event-v2 抽取；全量 GMGN public stream 仍只作为确定性 token flow / market evidence 和 token signal scoring，不会被全量送进 LLM。
@@ -100,6 +100,13 @@ PostgreSQL 数据: gmgn-twitter-intel-postgres -> /var/lib/postgresql
 docker compose exec app gmgn-twitter-intel recent --limit 20
 ```
 
+宿主机 CLI 也可以直接查询同一个 Docker PostgreSQL：
+
+```bash
+uv run gmgn-twitter-intel db health
+uv run gmgn-twitter-intel asset-flow --window 5m --limit 20
+```
+
 手动执行 migration / health check：
 
 ```bash
@@ -107,11 +114,11 @@ docker compose run --rm migrate
 docker compose exec app gmgn-twitter-intel db health
 ```
 
-不要从宿主机直接读取或复制 Docker named volume 里的热数据库；Docker 模式下通过 `/api/*`、`/ws` 或 `docker compose exec app gmgn-twitter-intel ...` 查询。
+不要从宿主机直接读取或复制 Docker named volume 里的热数据库；Docker 模式下通过 `/api/*`、`/ws`、宿主机 CLI 或 `docker compose exec app gmgn-twitter-intel ...` 查询。
 
 ## 配置
 
-唯一应用配置源是 `~/.gmgn-twitter-intel/config.yaml`。服务不读取 `.env`、`SQLITE_PATH`、`MONITOR_HANDLES`、`WS_TOKEN` 等环境变量。PostgreSQL 容器自身使用 Compose `environment` 初始化数据库名、用户和 password secret；应用从 YAML 读取数据库连接，并通过 `password_file` 注入 secret，不在 DSN 中写密码。
+唯一应用配置源是 `~/.gmgn-twitter-intel/config.yaml`。服务不读取 `.env`、`SQLITE_PATH`、`MONITOR_HANDLES`、`WS_TOKEN` 等环境变量。PostgreSQL 容器自身使用 Compose `environment` 初始化数据库名、用户和 password secret；应用从 YAML 读取数据库连接，并通过 `password_file` 自动注入 secret，不需要在本地命令里输入数据库密码。
 
 核心字段：
 
@@ -140,7 +147,7 @@ llm:
   enrichment_poll_interval: 2
 ```
 
-`storage.postgres.password_file` 相对 `~/.gmgn-twitter-intel` 解析；`make init` 会创建该 secret 文件。PostgreSQL 不向宿主机暴露端口，但仍使用容器内 SCRAM 认证，避免同一 Docker 网络内的非预期客户端无认证访问数据库。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
+`storage.postgres.password_file` 相对 `~/.gmgn-twitter-intel` 解析；`make init` 会创建该 secret 文件。Docker Compose 默认只把 PostgreSQL 暴露到宿主机 `127.0.0.1:56532`，容器内仍使用 `postgres:5432`。宿主机 CLI 会把这个 Docker service hostname 确定性映射到 loopback，所以同一份 DSN 可以同时用于容器和本地命令。端口冲突时可用 `GMGN_POSTGRES_PORT=56533 docker compose up -d --build app` 改宿主机端口，并在宿主机 CLI 前同样带上 `GMGN_POSTGRES_PORT=56533`。内部 collector 参数在同一个 `config.yaml` 的 `upstream` 与 `collector` 段中维护。
 
 ## 外部调用
 
@@ -191,7 +198,7 @@ TOKEN="replace-with-a-strong-token"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/status"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/recent?limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/search?q=%24PEPE&limit=20"
-curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-flow?window=5m&limit=20"
+curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-radar?window=5m&limit=20"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/token-posts?token_id=token:eth:0x...&window=5m&limit=50"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/account-alerts?window=24h&limit=50"
 curl -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:8765/api/social-events?window=1h&limit=50"
@@ -221,7 +228,7 @@ uv run gmgn-twitter-intel recent --limit 20
 uv run gmgn-twitter-intel search --symbol PEPE --limit 20
 uv run gmgn-twitter-intel search --ca 0x6982508145454ce325ddbe47a25d4ec3d2311933 --limit 20
 uv run gmgn-twitter-intel search "base stablecoin" --limit 20
-uv run gmgn-twitter-intel token-flow --window 5m --limit 20
+uv run gmgn-twitter-intel asset-flow --window 5m --limit 20
 uv run gmgn-twitter-intel account-alerts --window 24h --limit 50
 uv run gmgn-twitter-intel social-events --window 1h --limit 50
 uv run gmgn-twitter-intel attention-seeds --window 1h --limit 50
@@ -258,9 +265,9 @@ uv run gmgn-twitter-intel ops validate-projections --sample 100
 - token 社交热度来自确定性 CA/cashtag attribution、rolling windows、timeline features、market snapshot 和可解释评分模块；Harness signal 来自 watched-account social-event-v2 extraction 加确定性 scoring。
 - V1 不接外部新闻源，不自动实盘，不自动推广配置；`harness_weights.status` 先保持 `report_only`。
 - 旧 narrative API/CLI 产品入口已移除；历史 narrative rows 不会被解释成新的 harness event。已有 watched 原始事件可用 `ops backfill-harness-jobs` 重新进入 social-event-v2 抽取队列。
-- `token-flow` 返回 `social_heat`、`discussion_quality`、`propagation`、`tradeability`、`timing`、`opportunity` 评分块，以及 `score_versions`、`data_health`、`posts_query`、`timeline_query`。
+- `asset-flow` 返回 resolved 与 attention 两条 lane，以及 target、price、posts、timeline 和 data health。
 - Projection/read model 层只做 PostgreSQL 查询优化和审计闭环，不改变 token attribution、scoring、LLM extraction 或 source facts 语义。
-- `freeze-token-signals` 把当前 token-flow 排名冻结为不可变 snapshot，结算与评估只读取冻结时的 evidence、timeline、component payload、market snapshot id，避免回看偏差。
+- `rebuild-token-radar` 会按当前 token radar 投影重新物化窗口排名。
 - `token-posts` 按 token attribution 返回全量帖子分页，包含 `post_quality`、`total_count`、`has_more` 和 `next_cursor`。
 - `token-social-timeline` 返回 bucket、authors、posts 和传播 summary，用于查看单币社交传播路径。
 - LLM 输出必须绑定原文 evidence substring；不把模型猜测直接当事实。
