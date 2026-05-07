@@ -66,6 +66,21 @@ def test_plain_words_do_not_become_entities_without_structural_markers():
     assert entities == []
 
 
+def test_nan_cashtag_sentinel_is_not_a_token_symbol():
+    entities = extract_entities(
+        "Detect PAID DEXScreener: $MTGA DEDUST TON CA: "
+        "EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL MC: $NaN"
+    )
+
+    assert {
+        (entity.entity_type, entity.normalized_value, entity.chain)
+        for entity in entities
+    } == {
+        ("ca", "EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL", "ton"),
+        ("symbol", "MTGA", None),
+    }
+
+
 def test_normalize_ca_supports_evm_and_solana():
     assert normalize_ca("0x6982508145454ce325ddbe47a25d4ec3d2311933") == (
         "evm_unknown",

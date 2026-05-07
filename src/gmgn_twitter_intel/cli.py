@@ -16,6 +16,7 @@ from .market.okx_dex_client import OkxDexClient
 from .pipeline.asset_market_sync import sync_okx_cex_universe
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_discovery_worker import run_token_discovery_once
+from .pipeline.token_intent_rebuild import rebuild_recent_token_intents
 from .pipeline.token_radar_projection import TokenRadarProjection
 from .pipeline.token_resolution_refresh import rebuild_token_radar_windows, reprocess_recent_token_intents
 from .retrieval.account_alert_service import AccountAlertService
@@ -194,6 +195,13 @@ def build_parser() -> argparse.ArgumentParser:
     reprocess_token_intents.add_argument("--limit", type=int, default=500)
     reprocess_token_intents.add_argument("--projection-limit", type=int, default=100)
     reprocess_token_intents.add_argument("--lookup-key", action="append", default=[])
+    rebuild_token_intents = ops_subcommands.add_parser(
+        "rebuild-token-intents",
+        help="rebuild recent token evidence, intents, resolutions, lookup keys, and token radar",
+    )
+    rebuild_token_intents.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
+    rebuild_token_intents.add_argument("--limit", type=int, default=500)
+    rebuild_token_intents.add_argument("--projection-limit", type=int, default=100)
     audit_token_intent = ops_subcommands.add_parser(
         "audit-token-intent",
         help="inspect token intent evidence and resolution",
@@ -673,6 +681,17 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 limit=args.projection_limit,
             )
             _emit({"ok": True, "data": {"reprocess": reprocess, "projection": projection}}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "rebuild-token-intents":
+            data = rebuild_recent_token_intents(
+                repos=repos,
+                now_ms=_now_ms(),
+                window=args.window,
+                limit=args.limit,
+                projection_limit=args.projection_limit,
+            )
+            _emit({"ok": True, "data": data}, stdout)
             return 0
 
         if command == "ops" and args.ops_command == "audit-token-intent":

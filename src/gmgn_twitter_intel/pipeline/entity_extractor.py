@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -12,6 +14,7 @@ from .tweet_text import CASHTAG_RE, HASHTAG_RE, MENTION_RE, URL_RE
 
 EVM_CA_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 SOLANA_CA_RE = re.compile(r"(?<![A-Za-z0-9])[1-9A-HJ-NP-Za-km-z]{32,44}(?![A-Za-z0-9])")
+TON_CA_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{48}(?![A-Za-z0-9_-])")
 EVM_QUERY_CHAINS = frozenset({"evm_unknown", "evm", "eth", "base", "bsc"})
 RESOLVED_EVM_CHAINS = frozenset({"eth", "base", "bsc"})
 EVM_CHAIN_HINT_PATTERNS = (
@@ -24,6 +27,7 @@ EXPLORER_HOST_CHAINS = {
     "bscscan.com": "bsc",
     "basescan.org": "base",
 }
+IGNORED_CASHTAG_SYMBOLS = frozenset({"NAN"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,8 +102,21 @@ def _extract_surface_entities(
                 _with_span(entity, surface=surface.surface, text=text, start=match.start(), end=match.end()),
             )
 
+    for match in TON_CA_RE.finditer(text):
+        raw = match.group(0)
+        entity = _ton_ca_entity(raw)
+        if entity is not None:
+            _append_unique(
+                entities,
+                seen,
+                _with_span(entity, surface=surface.surface, text=text, start=match.start(), end=match.end()),
+            )
+
     for match in CASHTAG_RE.finditer(text):
         symbol = match.group(1)
+        normalized_symbol = symbol.upper()
+        if normalized_symbol in IGNORED_CASHTAG_SYMBOLS:
+            continue
         _append_unique(
             entities,
             seen,
@@ -107,7 +124,7 @@ def _extract_surface_entities(
                 ExtractedEntity(
                     entity_type="symbol",
                     raw_value=f"${symbol}",
-                    normalized_value=symbol.upper(),
+                    normalized_value=normalized_symbol,
                     chain=None,
                     token_resolution_status="unresolved_symbol",
                     confidence=0.8,
@@ -186,6 +203,8 @@ def normalize_ca(value: str, *, chain: str | None = None) -> tuple[str, str]:
             return ("evm_unknown", to_checksum_address(text))
         if normalized_chain in EVM_QUERY_CHAINS:
             return (normalized_chain, to_checksum_address(text))
+    if _is_valid_ton_friendly_address(text):
+        return ("ton", text)
     try:
         pubkey = Pubkey.from_string(text)
     except ValueError as exc:
@@ -211,6 +230,33 @@ def _solana_ca_entity(raw: str) -> ExtractedEntity | None:
     except ValueError:
         return None
     return ExtractedEntity("ca", raw, str(pubkey), "solana", "resolved_ca", 1.0, "regex")
+
+
+def _ton_ca_entity(raw: str) -> ExtractedEntity | None:
+    if not _is_valid_ton_friendly_address(raw):
+        return None
+    return ExtractedEntity("ca", raw, raw, "ton", "resolved_ca", 1.0, "regex")
+
+
+def _is_valid_ton_friendly_address(raw: str) -> bool:
+    if len(raw) != 48:
+        return False
+    try:
+        decoded = base64.urlsafe_b64decode(raw)
+    except (binascii.Error, ValueError):
+        return False
+    if len(decoded) != 36:
+        return False
+    return _crc16_xmodem(decoded[:34]) == int.from_bytes(decoded[34:], "big")
+
+
+def _crc16_xmodem(data: bytes) -> int:
+    crc = 0
+    for byte in data:
+        crc ^= byte << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) & 0xFFFF if crc & 0x8000 else (crc << 1) & 0xFFFF
+    return crc
 
 
 def _chain_for_evm_ca(text: str, *, raw: str, start: int, end: int) -> str | None:
@@ -316,4 +362,6 @@ def _normalize_chain_hint(chain: str | None) -> str | None:
         return "eth"
     if normalized in {"sol", "solana"}:
         return "solana"
+    if normalized in {"ton", "toncoin", "the open network"}:
+        return "ton"
     return normalized

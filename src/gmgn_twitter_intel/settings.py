@@ -250,7 +250,7 @@ class OkxProviderConfig(BaseModel):
     cex_sync_interval_seconds: float = 300.0
     cex_inst_types: tuple[str, ...] = ("SPOT", "SWAP")
     dex_base_url: str = "https://web3.okx.com"
-    dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453")
+    dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453", "607")
     dex_api_key: str | None = None
     dex_secret_key: str | None = None
     dex_passphrase: str | None = None
@@ -425,7 +425,7 @@ class Settings(BaseModel):
 
     @property
     def okx_dex_chain_indexes(self) -> tuple[str, ...]:
-        return self.providers.okx.dex_chain_indexes or ("501", "1", "56", "8453")
+        return self.providers.okx.dex_chain_indexes or ("501", "1", "56", "8453", "607")
 
     @property
     def okx_dex_api_key(self) -> str | None:
@@ -581,7 +581,7 @@ providers:
     cex_sync_interval_seconds: 300
     cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
-    dex_chain_indexes: ["501", "1", "56", "8453"]
+    dex_chain_indexes: ["501", "1", "56", "8453", "607"]
     dex_api_key:
     dex_secret_key:
     dex_passphrase:

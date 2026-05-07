@@ -5,6 +5,7 @@ OKX_CHAIN_INDEX_TO_CHAIN = {
     "56": "bsc",
     "501": "solana",
     "8453": "base",
+    "607": "ton",
 }
 
 OKX_CHAIN_TO_CHAIN_INDEX = {
@@ -16,4 +17,6 @@ OKX_CHAIN_TO_CHAIN_INDEX = {
     "sol": "501",
     "solana": "501",
     "base": "8453",
+    "ton": "607",
+    "toncoin": "607",
 }

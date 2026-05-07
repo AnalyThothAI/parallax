@@ -99,6 +99,8 @@ def _chain_id(chain: Any) -> str | None:
         return "eip155:56"
     if normalized in {"sol", "solana"}:
         return "solana"
+    if normalized in {"ton", "toncoin", "the open network"}:
+        return "ton"
     return normalized
 
 

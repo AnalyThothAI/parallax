@@ -79,6 +79,73 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
     assert rows[0]["market_json"]["price_usd"] == 1061.0
 
 
+def test_token_discovery_worker_reprocesses_due_intents_when_found_result_is_unchanged(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    now_ms = 1_778_145_100_000
+    address = "0x44b28991b167582f18ba0259e0173176ca125505"
+    try:
+        migrate(conn)
+        ingest = IngestService(
+            evidence=EvidenceRepository(conn),
+            entities=EntityRepository(conn),
+            signals=SignalRepository(conn),
+            enrichment=FakeEnrichment(),
+        )
+        worker = TokenDiscoveryWorker(
+            repository_session=lambda: repository_session_for_connection(conn),
+            dex_client=FakeDexClient(
+                candidates=[
+                    OkxDexTokenCandidate(
+                        chain_index="1",
+                        chain=None,
+                        address=address,
+                        symbol="UPEG",
+                        name="Unipeg",
+                        price_usd=1061.0,
+                        market_cap_usd=10_600_000.0,
+                        liquidity_usd=920_000.0,
+                        holders=4_885,
+                        community_recognized=True,
+                        raw={"tokenSymbol": "UPEG"},
+                    )
+                ]
+            ),
+            chain_indexes=("1",),
+            interval_seconds=60,
+        )
+
+        first_event = make_event(
+            "event-upeg-1",
+            text="$UPEG is getting attention",
+            received_at_ms=now_ms,
+            is_watched=True,
+        )
+        ingest.ingest_event(first_event, is_watched=True)
+        worker.run_once(now_ms=now_ms + 60_000)
+
+        second_event = make_event(
+            "event-upeg-2",
+            text="$UPEG again",
+            received_at_ms=now_ms + 40 * 60_000,
+            is_watched=True,
+        )
+        second_ingested = ingest.ingest_event(second_event, is_watched=True)
+        repos = repositories_for_connection(conn)
+        before = repos.intent_resolutions.active_resolution_for_intent(second_ingested.token_intents[0]["intent_id"])
+
+        result = worker.run_once(now_ms=second_event.received_at_ms + 1_000)
+        after = repos.intent_resolutions.active_resolution_for_intent(second_ingested.token_intents[0]["intent_id"])
+    finally:
+        conn.close()
+
+    assert before["resolution_status"] == "NIL"
+    assert result["lookups_selected"] == 1
+    assert result["lookups_done"] == 1
+    assert result["reprocessed_intents"] == 1
+    assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
+    assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
+
+
 class FakeDexClient:
     def __init__(self, *, candidates):
         self.candidates = candidates

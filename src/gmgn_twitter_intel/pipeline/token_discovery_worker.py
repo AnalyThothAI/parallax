@@ -36,7 +36,7 @@ class TokenDiscoveryWorker:
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
         dex_client=None,
-        chain_indexes: tuple[str, ...] | list[str] = ("501", "1", "56", "8453"),
+        chain_indexes: tuple[str, ...] | list[str] = ("501", "1", "56", "8453", "607"),
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
@@ -141,7 +141,7 @@ def run_token_discovery_once(
             _merge_lookup_result(result, lookup_result)
             candidate_ids = sorted(set(lookup_result["candidate_ids"]))
             status = "found" if candidate_ids else "not_found"
-            changed = repos.discovery.finish_lookup(
+            repos.discovery.finish_lookup(
                 provider=DISCOVERY_PROVIDER,
                 lookup_key=lookup_key,
                 lookup_type=lookup_type,
@@ -154,7 +154,7 @@ def run_token_discovery_once(
             )
             repos.conn.commit()
             result["lookups_done"] += 1
-            if changed and lookup_result["affected_lookup_keys"]:
+            if lookup_result["affected_lookup_keys"]:
                 affected_lookup_keys.update(lookup_result["affected_lookup_keys"])
         except Exception as exc:
             repos.conn.rollback()

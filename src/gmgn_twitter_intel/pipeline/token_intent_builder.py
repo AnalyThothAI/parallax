@@ -6,7 +6,8 @@ from dataclasses import dataclass, field
 from .token_evidence_builder import TokenEvidenceInput
 
 CONSTRUCTION_POLICY = "token_intent_builder_v1"
-MAX_DISPLAY_ALIAS_DISTANCE = 180
+MAX_LOCAL_ALIAS_DISTANCE = 180
+MAX_SINGLE_PRECEDING_ALIAS_DISTANCE = 360
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,9 +137,7 @@ def _display_aliases_by_identity(
         (_span_distance(identity, cashtag), identity.evidence_id, cashtag.evidence_id, identity, cashtag)
         for identity in identities
         for cashtag in cashtags
-        if identity.text_surface == cashtag.text_surface
-        and identity.local_group_key == cashtag.local_group_key
-        and _span_distance(identity, cashtag) <= MAX_DISPLAY_ALIAS_DISTANCE
+        if _is_local_alias_candidate(identity=identity, cashtag=cashtag)
     ]
     for _distance, identity_id, cashtag_id, identity, cashtag in sorted(local_pairs, key=_alias_sort_key):
         if identity_id in assigned_identities or cashtag_id in assigned_cashtags:
@@ -147,33 +146,51 @@ def _display_aliases_by_identity(
         assigned_identities.add(identity_id)
         assigned_cashtags.add(cashtag_id)
 
-    for identity in identities:
-        if identity.evidence_id in assigned_identities:
-            continue
-        same_surface_cashtags = [
-            item
-            for item in cashtags
-            if item.text_surface == identity.text_surface and item.evidence_id not in assigned_cashtags
-        ]
-        same_surface_identities = [
-            item
-            for item in identities
-            if item.text_surface == identity.text_surface and item.evidence_id not in assigned_identities
-        ]
-        if len(same_surface_cashtags) != 1 or len(same_surface_identities) != 1:
-            continue
-        cashtag = same_surface_cashtags[0]
-        if _span_distance(identity, cashtag) > MAX_DISPLAY_ALIAS_DISTANCE:
+    remaining_cashtags = [item for item in cashtags if item.evidence_id not in assigned_cashtags]
+    preceding_pairs = [
+        (_span_distance(identity, cashtag), identity.evidence_id, cashtag.evidence_id, identity, cashtag)
+        for identity in identities
+        if identity.evidence_id not in assigned_identities
+        for cashtag in remaining_cashtags
+        if _is_single_preceding_alias_candidate(identity=identity, cashtag=cashtag, cashtags=remaining_cashtags)
+    ]
+    for _distance, identity_id, cashtag_id, identity, cashtag in sorted(preceding_pairs, key=_alias_sort_key):
+        if identity_id in assigned_identities or cashtag_id in assigned_cashtags:
             continue
         out[identity.evidence_id] = [cashtag]
-        assigned_identities.add(identity.evidence_id)
-        assigned_cashtags.add(cashtag.evidence_id)
-
-    remaining_identities = [item for item in identities if item.evidence_id not in assigned_identities]
-    remaining_cashtags = [item for item in cashtags if item.evidence_id not in assigned_cashtags]
-    if len(remaining_identities) == 1 and len(remaining_cashtags) == 1:
-        out[remaining_identities[0].evidence_id] = [remaining_cashtags[0]]
+        assigned_identities.add(identity_id)
+        assigned_cashtags.add(cashtag_id)
     return out
+
+
+def _is_local_alias_candidate(*, identity: TokenEvidenceInput, cashtag: TokenEvidenceInput) -> bool:
+    return (
+        identity.text_surface == cashtag.text_surface
+        and identity.local_group_key == cashtag.local_group_key
+        and _span_distance(identity, cashtag) <= MAX_LOCAL_ALIAS_DISTANCE
+    )
+
+
+def _is_single_preceding_alias_candidate(
+    *,
+    identity: TokenEvidenceInput,
+    cashtag: TokenEvidenceInput,
+    cashtags: list[TokenEvidenceInput],
+) -> bool:
+    if identity.text_surface != cashtag.text_surface:
+        return False
+    if cashtag.span_end > identity.span_start:
+        return False
+    if _span_distance(identity, cashtag) > MAX_SINGLE_PRECEDING_ALIAS_DISTANCE:
+        return False
+    preceding = [
+        item
+        for item in cashtags
+        if item.text_surface == identity.text_surface
+        and item.span_end <= identity.span_start
+        and _span_distance(identity, item) <= MAX_SINGLE_PRECEDING_ALIAS_DISTANCE
+    ]
+    return len(preceding) == 1 and preceding[0].evidence_id == cashtag.evidence_id
 
 
 def _alias_sort_key(item) -> tuple[int, str, str]:

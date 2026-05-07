@@ -42,7 +42,7 @@ def test_symbol_and_ca_split_by_price_decimals_are_one_intent():
     assert intents[0].address_hint == "69PzM2hDa3MCo7cvKPgiPxhr1FdGdMV3S7h6wpRkpump"
 
 
-def test_single_cross_surface_cashtag_and_ca_are_one_intent():
+def test_single_cross_surface_cashtag_and_ca_stay_separate_without_local_binding():
     primary = "You’ll own $NOTHING and be happy."
     reference = "Could be something, but you will own solana:F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump"
     entities = extract_entities_from_surfaces(
@@ -60,10 +60,70 @@ def test_single_cross_surface_cashtag_and_ca_are_one_intent():
 
     intents = build_token_intents(event_id="event-nothing", evidence=evidence, created_at_ms=1_777_800_000_000)
 
+    assert len(intents) == 2
+    assert {intent.intent_key for intent in intents} == {
+        "symbol:NOTHING",
+        "ca:solana:F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump".lower(),
+    }
+
+
+def test_single_same_surface_symbol_before_ca_pairs_across_line_breaks():
+    text = "$VALEO @ValeoProtocol\n\nCA: nn944oFMxsHg9AnEuBHWxtBpGjRX3DRxx86PseuDrPJ"
+    entities = extract_entities_from_surfaces([TextSurface("reference", text)])
+    evidence = build_token_evidence(
+        event_id="event-valeo",
+        entities=entities,
+        token_snapshot=None,
+        created_at_ms=1_777_800_000_000,
+    )
+
+    intents = build_token_intents(event_id="event-valeo", evidence=evidence, created_at_ms=1_777_800_000_000)
+
     assert len(intents) == 1
-    assert intents[0].display_symbol == "NOTHING"
+    assert intents[0].display_symbol == "VALEO"
     assert intents[0].chain_hint == "solana"
-    assert intents[0].address_hint == "F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump"
+    assert intents[0].address_hint == "nn944oFMxsHg9AnEuBHWxtBpGjRX3DRxx86PseuDrPJ"
+
+
+def test_ton_ca_with_symbol_builds_exact_chain_intent():
+    text = "Detect PAID DEXScreener: $MTGA\n\nDEDUST TON CA: EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL"
+    entities = extract_entities_from_surfaces([TextSurface("primary", text)])
+    evidence = build_token_evidence(
+        event_id="event-mtga",
+        entities=entities,
+        token_snapshot=None,
+        created_at_ms=1_777_800_000_000,
+    )
+
+    intents = build_token_intents(event_id="event-mtga", evidence=evidence, created_at_ms=1_777_800_000_000)
+
+    assert len(intents) == 1
+    assert intents[0].display_symbol == "MTGA"
+    assert intents[0].chain_hint == "ton"
+    assert intents[0].address_hint == "EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL"
+
+
+def test_multiple_symbols_before_ca_do_not_guess_alias_when_not_local():
+    text = (
+        "2026: $HANTA Virus\n"
+        "2030: $Kryntar Virus\n\n"
+        "prediction by the time traveler 3S1FD3XmK7rwpzCNMDnpBaB62Yvh8647iDgEYyvmpump"
+    )
+    entities = extract_entities_from_surfaces([TextSurface("reference", text)])
+    evidence = build_token_evidence(
+        event_id="event-kryntar",
+        entities=entities,
+        token_snapshot=None,
+        created_at_ms=1_777_800_000_000,
+    )
+
+    intents = build_token_intents(event_id="event-kryntar", evidence=evidence, created_at_ms=1_777_800_000_000)
+
+    assert len(intents) == 3
+    by_key = {intent.intent_key: intent for intent in intents}
+    assert by_key["symbol:HANTA"].address_hint is None
+    assert by_key["symbol:KRYNTAR"].address_hint is None
+    assert by_key["ca:solana:3s1fd3xmk7rwpzcnmdnpbab62yvh8647idgeyyvmpump"].display_symbol is None
 
 
 def test_multiple_cashtags_and_cas_pair_by_nearest_identity_without_symbol_only_intents():

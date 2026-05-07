@@ -291,6 +291,32 @@ def test_chain_address_is_exact_asset_and_beats_symbol():
     assert result.reason_codes == ["CHAIN_ADDRESS_EXACT"]
 
 
+def test_ton_chain_address_is_exact_asset():
+    address = "EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL"
+    registry = FakeRegistry(
+        address_assets={
+            ("ton", address.lower()): {
+                "asset_id": f"asset:ton:token:{address}",
+                "chain_id": "ton",
+                "address": address,
+                "symbol": "MTGA",
+            }
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-mtga",
+        event_id="event-mtga",
+        keys=MentionKeys(symbol="MTGA", chain_id="ton", address=address),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "EXACT"
+    assert result.target_type == "Asset"
+    assert result.target_id == f"asset:ton:token:{address}"
+    assert result.reason_codes == ["CHAIN_ADDRESS_EXACT"]
+
+
 class FakeRegistry:
     def __init__(
         self,
