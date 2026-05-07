@@ -20,13 +20,18 @@ class AccountQualityService:
         handles_touched: set[str] = set()
         for row in rows:
             handle = str(row["handle"])
-            token_id = str(row["asset_id"])
+            token_id = str(row["target_id"])
+            target_type = str(row["target_type"])
             first_mention_ms = int(row["first_mention_ms"])
             latest_mention_ms = int(row["latest_mention_ms"])
             mention_count = int(row["mention_count"])
             follower_max = _int_or_none(row.get("follower_max"))
             watched_status = "watched" if int(row.get("watched_count") or 0) else "public"
-            outcome = self._token_outcome(token_id=token_id, first_mention_ms=first_mention_ms)
+            outcome = self._token_outcome(
+                target_type=target_type,
+                target_id=token_id,
+                first_mention_ms=first_mention_ms,
+            )
             self.repository.upsert_profile(
                 handle=handle,
                 first_seen_ms=first_mention_ms,
@@ -76,30 +81,32 @@ class AccountQualityService:
             """
             WITH filtered AS (
               SELECT
-                tir.asset_id,
+                tir.target_type,
+                tir.target_id,
                 lower(events.author_handle) AS handle,
                 tir.event_id,
                 events.received_at_ms,
                 events.author_followers,
                 events.is_watched
               FROM token_intent_resolutions tir
-              JOIN token_intents ti ON ti.intent_id = tir.intent_id
               JOIN events ON events.event_id = tir.event_id
-              WHERE tir.asset_id IS NOT NULL
+              WHERE tir.target_type IN ('Asset', 'CexToken')
+                AND tir.target_id IS NOT NULL
+                AND tir.is_current = true
+                AND tir.resolver_policy_version = 'token_radar_v4_deterministic_resolver'
                 AND events.author_handle IS NOT NULL
                 AND events.author_handle != ''
-                AND tir.resolution_status = 'resolved'
-                AND tir.identity_status = 'resolved'
-                AND tir.confidence > 0
+                AND tir.resolution_status IN ('EXACT', 'UNIQUE_BY_CONTEXT')
             ),
             token_first AS (
-              SELECT asset_id, MIN(received_at_ms) AS global_first_mention_ms
+              SELECT target_type, target_id, MIN(received_at_ms) AS global_first_mention_ms
               FROM filtered
-              GROUP BY asset_id
+              GROUP BY target_type, target_id
             )
             SELECT
               f.handle,
-              f.asset_id,
+              f.target_type,
+              f.target_id,
               MIN(f.received_at_ms) AS first_mention_ms,
               MAX(f.received_at_ms) AS latest_mention_ms,
               COUNT(DISTINCT f.event_id) AS mention_count,
@@ -107,27 +114,32 @@ class AccountQualityService:
               SUM(CASE WHEN f.is_watched = true THEN 1 ELSE 0 END) AS watched_count,
               MIN(tf.global_first_mention_ms) AS global_first_mention_ms
             FROM filtered f
-            JOIN token_first tf ON tf.asset_id = f.asset_id
-            GROUP BY f.handle, f.asset_id
-            ORDER BY first_mention_ms DESC, f.handle, f.asset_id
+            JOIN token_first tf
+              ON tf.target_type = f.target_type
+             AND tf.target_id = f.target_id
+            GROUP BY f.handle, f.target_type, f.target_id
+            ORDER BY first_mention_ms DESC, f.handle, f.target_type, f.target_id
             LIMIT %s
             """,
             (max(0, int(limit)),),
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def _token_outcome(self, *, token_id: str, first_mention_ms: int) -> dict[str, Any]:
+    def _token_outcome(self, *, target_type: str, target_id: str, first_mention_ms: int) -> dict[str, Any]:
         rows = self.conn.execute(
             """
-            SELECT price_usd AS price, observed_at_ms AS received_at_ms
-            FROM asset_market_snapshots
-            WHERE asset_id = %s
+            SELECT
+              COALESCE(price_usd, price_quote) AS price,
+              observed_at_ms AS received_at_ms
+            FROM price_observations
+            WHERE subject_type = %s
+              AND subject_id = %s
               AND observed_at_ms >= %s
               AND observed_at_ms <= %s
-              AND price_usd IS NOT NULL
+              AND COALESCE(price_usd, price_quote) IS NOT NULL
             ORDER BY observed_at_ms ASC
             """,
-            (token_id, first_mention_ms, first_mention_ms + 24 * 60 * 60_000),
+            (target_type, target_id, first_mention_ms, first_mention_ms + 24 * 60 * 60_000),
         ).fetchall()
         if not rows:
             return _empty_outcome("insufficient_market_history")

@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..models import TwitterEvent
-from ..storage.discovery_repository import DiscoveryRepository
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository, event_to_row
 from ..storage.intent_resolution_repository import IntentResolutionRepository
@@ -44,7 +43,6 @@ class IngestService:
         signals: SignalRepository,
         enrichment,
         registry: RegistryRepository | None = None,
-        discovery: DiscoveryRepository | None = None,
         price_observations: PriceObservationRepository | None = None,
         token_intent_lookup: TokenIntentLookupRepository | None = None,
     ):
@@ -53,7 +51,6 @@ class IngestService:
         self.signals = signals
         self.enrichment = enrichment
         self.registry = registry or RegistryRepository(evidence.conn)
-        self.discovery = discovery or DiscoveryRepository(evidence.conn)
         self.price_observations = price_observations or PriceObservationRepository(evidence.conn)
         self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
 
@@ -96,7 +93,6 @@ class IngestService:
             resolver = TokenIntentResolver(
                 registry=self.registry,
                 resolutions=intent_resolution_repo,
-                discovery=self.discovery,
             )
             decisions = [
                 resolver.resolve(

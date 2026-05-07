@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -9,15 +11,23 @@ from typing import Any
 from loguru import logger
 
 from ..market.okx_chains import OKX_CHAIN_INDEX_TO_CHAIN
+from ..storage.discovery_repository import DISCOVERY_PROVIDER
 from .asset_market_sync import _okx_chain_index, _payload_hash
-from .token_intent_resolver import TokenIntentResolver
-from .token_radar_projection import WINDOW_MS, TokenRadarProjection
+from .token_radar_projection import WINDOW_MS
 from .token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
+from .token_resolution_refresh import (
+    DEFAULT_REPROCESS_LIMIT,
+    DEFAULT_REPROCESS_WINDOW,
+    rebuild_token_radar_windows,
+    reprocess_recent_token_intents,
+)
 
 DEFAULT_DISCOVERY_LIMIT = 50
-DEFAULT_REPROCESS_LIMIT = 500
-DEFAULT_REPROCESS_WINDOW = "24h"
 DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000
+FOUND_SYMBOL_REFRESH_MS = 15 * 60 * 1000
+NOT_FOUND_SYMBOL_REFRESH_MS = 5 * 60 * 1000
+FOUND_ADDRESS_REFRESH_MS = 24 * 60 * 60 * 1000
+NOT_FOUND_ADDRESS_REFRESH_MS = 5 * 60 * 1000
 
 
 class TokenDiscoveryWorker:
@@ -28,7 +38,7 @@ class TokenDiscoveryWorker:
         dex_client=None,
         chain_indexes: tuple[str, ...] | list[str] = ("501", "1", "56", "8453"),
         interval_seconds: float = 30.0,
-        task_limit: int = DEFAULT_DISCOVERY_LIMIT,
+        lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
         projection_limit: int = 100,
         windows: tuple[str, ...] = DEFAULT_WINDOWS,
@@ -38,7 +48,7 @@ class TokenDiscoveryWorker:
         self.dex_client = dex_client
         self.chain_indexes = tuple(str(item).strip() for item in chain_indexes if str(item).strip())
         self.interval_seconds = max(1.0, float(interval_seconds))
-        self.task_limit = max(1, int(task_limit))
+        self.lookup_limit = max(1, int(lookup_limit))
         self.reprocess_limit = max(1, int(reprocess_limit))
         self.projection_limit = max(1, int(projection_limit))
         self.windows = tuple(windows)
@@ -69,7 +79,7 @@ class TokenDiscoveryWorker:
                     dex_client=self.dex_client,
                     chain_indexes=self.chain_indexes,
                     now_ms=observed_at_ms,
-                    task_limit=self.task_limit,
+                    lookup_limit=self.lookup_limit,
                     reprocess_limit=self.reprocess_limit,
                     projection_limit=self.projection_limit,
                     windows=self.windows,
@@ -97,41 +107,68 @@ def run_token_discovery_once(
     dex_client,
     chain_indexes: tuple[str, ...] | list[str],
     now_ms: int,
-    task_limit: int = DEFAULT_DISCOVERY_LIMIT,
+    lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
     projection_limit: int = 100,
     windows: tuple[str, ...] = DEFAULT_WINDOWS,
     scopes: tuple[str, ...] = DEFAULT_SCOPES,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
-    tasks = repos.discovery.claim_due(now_ms=now_ms, limit=task_limit)
-    result["tasks_claimed"] = len(tasks)
+    since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
+    lookups = repos.discovery.due_lookup_keys(since_ms=since_ms, now_ms=now_ms, limit=lookup_limit)
+    result["lookups_selected"] = len(lookups)
     affected_lookup_keys: set[str] = set()
-    for task in tasks:
+    for lookup in lookups:
+        lookup_key = str(lookup.get("lookup_key") or "")
+        lookup_type = str(lookup.get("lookup_type") or "")
         try:
-            task_result = _process_task(
+            repos.discovery.start_lookup(
+                provider=DISCOVERY_PROVIDER,
+                lookup_key=lookup_key,
+                lookup_type=lookup_type,
+                now_ms=now_ms,
+                commit=False,
+            )
+            repos.conn.commit()
+            lookup_result = _process_lookup(
                 repos=repos,
-                task=task,
+                lookup_key=lookup_key,
+                lookup_type=lookup_type,
                 dex_client=dex_client,
                 chain_indexes=tuple(chain_indexes),
                 now_ms=now_ms,
             )
-            _merge_task_result(result, task_result)
-            affected_lookup_keys.update(task_result["affected_lookup_keys"])
-            repos.discovery.complete(task_id=str(task["task_id"]), updated_at_ms=now_ms, commit=False)
+            _merge_lookup_result(result, lookup_result)
+            candidate_ids = sorted(set(lookup_result["candidate_ids"]))
+            status = "found" if candidate_ids else "not_found"
+            changed = repos.discovery.finish_lookup(
+                provider=DISCOVERY_PROVIDER,
+                lookup_key=lookup_key,
+                lookup_type=lookup_type,
+                status=status,
+                candidate_ids=candidate_ids,
+                result_hash=_result_hash(candidate_ids),
+                next_refresh_at_ms=now_ms + _refresh_ms(lookup_key=lookup_key, status=status),
+                now_ms=now_ms,
+                commit=False,
+            )
             repos.conn.commit()
-            result["tasks_done"] += 1
+            result["lookups_done"] += 1
+            if changed and lookup_result["affected_lookup_keys"]:
+                affected_lookup_keys.update(lookup_result["affected_lookup_keys"])
         except Exception as exc:
             repos.conn.rollback()
-            repos.discovery.fail(
-                task_id=str(task["task_id"]),
+            repos.discovery.fail_lookup(
+                provider=DISCOVERY_PROVIDER,
+                lookup_key=lookup_key,
+                lookup_type=lookup_type or _lookup_type(lookup_key),
                 last_error=str(exc),
-                next_run_at_ms=now_ms + DEFAULT_RETRY_DELAY_MS,
-                updated_at_ms=now_ms,
+                next_refresh_at_ms=now_ms + DEFAULT_RETRY_DELAY_MS,
+                now_ms=now_ms,
             )
-            result["tasks_failed"] += 1
+            result["lookups_failed"] += 1
             result["provider_errors"] += 1
-            result["errors"].append({"task_id": str(task["task_id"]), "error": str(exc)})
+            result["errors"].append({"lookup_key": lookup_key, "error": str(exc)})
     if affected_lookup_keys:
         reprocess_result = reprocess_recent_token_intents(
             repos=repos,
@@ -150,138 +187,60 @@ def run_token_discovery_once(
             scopes=scopes,
             limit=projection_limit,
         )
-    result["discovery_task_counts"] = repos.discovery.counts()
+    result["discovery_result_counts"] = repos.discovery.counts()
     return result
 
 
-def reprocess_recent_token_intents(
+def _process_lookup(
     *,
     repos,
-    now_ms: int,
-    window: str = DEFAULT_REPROCESS_WINDOW,
-    limit: int = DEFAULT_REPROCESS_LIMIT,
-    lookup_keys: list[str] | None = None,
-) -> dict[str, Any]:
-    since_ms = int(now_ms) - WINDOW_MS.get(window, WINDOW_MS[DEFAULT_REPROCESS_WINDOW])
-    if lookup_keys:
-        intents = repos.token_intent_lookup.recent_unresolved_intents_for_lookup_keys(
-            lookup_keys,
-            since_ms=since_ms,
-            limit=limit,
-        )
-    else:
-        intents = repos.token_intents.recent_unresolved(since_ms=since_ms, limit=limit)
-    resolver = TokenIntentResolver(
-        registry=repos.registry,
-        resolutions=repos.intent_resolutions,
-        discovery=repos.discovery,
-    )
-    reprocessed = 0
-    resolved = 0
-    for intent in intents:
-        evidence = repos.token_evidence.evidence_for_intent(str(intent["intent_id"]))
-        decision = resolver.resolve(
-            intent,
-            evidence,
-            decision_time_ms=now_ms,
-            persist=True,
-            commit=False,
-        )
-        repos.token_intent_lookup.replace_lookup_keys(
-            intent_id=decision.intent_id,
-            event_id=decision.event_id,
-            keys=decision.lookup_keys,
-            source_evidence_id=intent.get("primary_evidence_id"),
-            created_at_ms=now_ms,
-            commit=False,
-        )
-        reprocessed += 1
-        if decision.target_type and decision.target_id:
-            resolved += 1
-    repos.conn.commit()
-    return {
-        "window": window,
-        "lookup_keys": lookup_keys or [],
-        "reprocessed_intents": reprocessed,
-        "resolved_intents": resolved,
-        "since_ms": since_ms,
-    }
-
-
-def rebuild_token_radar_windows(
-    *,
-    repos,
-    now_ms: int,
-    windows: tuple[str, ...] = DEFAULT_WINDOWS,
-    scopes: tuple[str, ...] = DEFAULT_SCOPES,
-    limit: int = 100,
-) -> dict[str, Any]:
-    projection = TokenRadarProjection(repos=repos)
-    result: dict[str, Any] = {"rows_written": 0, "source_rows": 0, "windows": {}}
-    for window in windows:
-        for scope in scopes:
-            key = f"{window}:{scope}"
-            window_result = projection.rebuild(window=window, scope=scope, now_ms=now_ms, limit=limit)
-            result["windows"][key] = window_result
-            result["rows_written"] += int(window_result.get("rows_written") or 0)
-            result["source_rows"] += int(window_result.get("source_rows") or 0)
-    return result
-
-
-def _process_task(
-    *,
-    repos,
-    task: dict[str, Any],
+    lookup_key: str,
+    lookup_type: str,
     dex_client,
     chain_indexes: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
-    task_type = str(task.get("task_type") or "")
-    payload = task.get("payload_json") or {}
-    if task_type == "dex_symbol_lookup":
+    if lookup_type == "dex_symbol_lookup":
         return _process_dex_symbol_lookup(
             repos=repos,
-            payload=payload,
-            query_key=str(task.get("query_key") or ""),
+            lookup_key=lookup_key,
             dex_client=dex_client,
             chain_indexes=chain_indexes,
             now_ms=now_ms,
         )
-    if task_type == "address_lookup":
+    if lookup_type == "address_lookup":
         return _process_address_lookup(
             repos=repos,
-            payload=payload,
+            lookup_key=lookup_key,
             dex_client=dex_client,
             chain_indexes=chain_indexes,
             now_ms=now_ms,
         )
-    if task_type == "cex_pricefeed_lookup":
-        return _process_cex_pricefeed_lookup(repos=repos, payload=payload)
-    return {"affected_lookup_keys": [], "search_requests": 0, "search_hits": 0}
+    return _lookup_result()
 
 
 def _process_dex_symbol_lookup(
     *,
     repos,
-    payload: dict[str, Any],
-    query_key: str,
+    lookup_key: str,
     dex_client,
     chain_indexes: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
     if dex_client is None:
         raise RuntimeError("dex discovery client is not configured")
-    symbol = _normalize_symbol(payload.get("symbol") or query_key.removeprefix("symbol:"))
+    symbol = _normalize_symbol(lookup_key.removeprefix("symbol:"))
     if not symbol:
-        return _task_result()
+        return _lookup_result()
     candidates = dex_client.search_tokens(query=symbol, chain_indexes=chain_indexes)
-    result = _task_result(search_requests=1)
+    result = _lookup_result(search_requests=1)
     for candidate in candidates:
         if _normalize_symbol(getattr(candidate, "symbol", None)) != symbol:
             continue
-        written = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
-        if not written:
+        asset_id = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
+        if not asset_id:
             continue
+        result["candidate_ids"].append(asset_id)
         result["search_hits"] += 1
         result["assets_written"] += 1
         result["pricefeeds_written"] += 1
@@ -294,23 +253,24 @@ def _process_dex_symbol_lookup(
 def _process_address_lookup(
     *,
     repos,
-    payload: dict[str, Any],
+    lookup_key: str,
     dex_client,
     chain_indexes: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
     if dex_client is None:
         raise RuntimeError("dex discovery client is not configured")
-    address = _normalize_address(payload.get("address"))
+    parsed = _parse_address_lookup_key(lookup_key)
+    address = parsed["address"]
     if not address:
-        return _task_result()
-    chain_id = _chain_id(payload.get("chain_id"))
+        return _lookup_result()
+    chain_id = _chain_id(parsed["chain_id"])
     requested_chains = (_okx_chain_index(chain_id),) if chain_id else chain_indexes
     requested_chains = tuple(chain for chain in requested_chains if chain)
     if not requested_chains:
-        return _task_result()
+        return _lookup_result()
     candidates = dex_client.search_tokens(query=address, chain_indexes=requested_chains)
-    result = _task_result(search_requests=1)
+    result = _lookup_result(search_requests=1)
     for candidate in candidates:
         candidate_address = _normalize_address(getattr(candidate, "address", None))
         candidate_chain = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
@@ -318,9 +278,10 @@ def _process_address_lookup(
             continue
         if chain_id and candidate_chain != chain_id:
             continue
-        written = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
-        if not written:
+        asset_id = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
+        if not asset_id:
             continue
+        result["candidate_ids"].append(asset_id)
         result["search_hits"] += 1
         result["assets_written"] += 1
         result["pricefeeds_written"] += 1
@@ -332,25 +293,12 @@ def _process_address_lookup(
     return result
 
 
-def _process_cex_pricefeed_lookup(*, repos, payload: dict[str, Any]) -> dict[str, Any]:
-    exchange = str(payload.get("exchange") or "").strip().lower()
-    native_market_id = str(payload.get("native_market_id") or "").strip().upper()
-    if not exchange or not native_market_id:
-        return _task_result()
-    pricefeed = repos.registry.find_cex_pricefeed(exchange=exchange, native_market_id=native_market_id)
-    result = _task_result()
-    if pricefeed:
-        result["search_hits"] = 1
-        result["affected_lookup_keys"].append(f"cex_pricefeed:{exchange}:{native_market_id}")
-    return result
-
-
-def _write_dex_candidate(*, repos, candidate, now_ms: int) -> bool:
+def _write_dex_candidate(*, repos, candidate, now_ms: int) -> str | None:
     chain_id = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
     address = _normalize_address(getattr(candidate, "address", None))
     symbol = _normalize_symbol(getattr(candidate, "symbol", None))
     if not chain_id or not address or not symbol:
-        return False
+        return None
     asset = repos.registry.upsert_chain_asset(
         chain_id=chain_id,
         address=address,
@@ -387,10 +335,10 @@ def _write_dex_candidate(*, repos, candidate, now_ms: int) -> bool:
         raw_payload={**getattr(candidate, "raw", {}), "payload_hash": _payload_hash(getattr(candidate, "raw", {}))},
         commit=False,
     )
-    return True
+    return str(asset["asset_id"])
 
 
-def _merge_task_result(result: dict[str, Any], task_result: dict[str, Any]) -> None:
+def _merge_lookup_result(result: dict[str, Any], lookup_result: dict[str, Any]) -> None:
     for key in (
         "search_requests",
         "search_hits",
@@ -398,15 +346,15 @@ def _merge_task_result(result: dict[str, Any], task_result: dict[str, Any]) -> N
         "pricefeeds_written",
         "price_observations_written",
     ):
-        result[key] += int(task_result.get(key) or 0)
+        result[key] += int(lookup_result.get(key) or 0)
 
 
 def _empty_result(now_ms: int) -> dict[str, Any]:
     return {
         "now_ms": int(now_ms),
-        "tasks_claimed": 0,
-        "tasks_done": 0,
-        "tasks_failed": 0,
+        "lookups_selected": 0,
+        "lookups_done": 0,
+        "lookups_failed": 0,
         "provider_errors": 0,
         "search_requests": 0,
         "search_hits": 0,
@@ -416,12 +364,12 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "reprocessed_intents": 0,
         "reprocess": None,
         "projection": {"rows_written": 0, "source_rows": 0, "windows": {}},
-        "discovery_task_counts": {},
+        "discovery_result_counts": {},
         "errors": [],
     }
 
 
-def _task_result(
+def _lookup_result(
     *,
     search_requests: int = 0,
     search_hits: int = 0,
@@ -432,8 +380,38 @@ def _task_result(
         "assets_written": 0,
         "pricefeeds_written": 0,
         "price_observations_written": 0,
+        "candidate_ids": [],
         "affected_lookup_keys": [],
     }
+
+
+def _lookup_type(lookup_key: str) -> str:
+    if lookup_key.startswith("symbol:"):
+        return "dex_symbol_lookup"
+    if lookup_key.startswith("address:"):
+        return "address_lookup"
+    return "unsupported"
+
+
+def _parse_address_lookup_key(lookup_key: str) -> dict[str, str | None]:
+    value = lookup_key.removeprefix("address:")
+    chain_id, separator, address = value.rpartition(":")
+    if not separator:
+        return {"chain_id": None, "address": _normalize_address(value)}
+    if chain_id == "unknown":
+        chain_id = ""
+    return {"chain_id": chain_id or None, "address": _normalize_address(address)}
+
+
+def _refresh_ms(*, lookup_key: str, status: str) -> int:
+    if lookup_key.startswith("address:"):
+        return FOUND_ADDRESS_REFRESH_MS if status == "found" else NOT_FOUND_ADDRESS_REFRESH_MS
+    return FOUND_SYMBOL_REFRESH_MS if status == "found" else NOT_FOUND_SYMBOL_REFRESH_MS
+
+
+def _result_hash(candidate_ids: list[str]) -> str:
+    payload = json.dumps(sorted(set(candidate_ids)), separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _chain_id_from_okx_index(value: Any) -> str | None:

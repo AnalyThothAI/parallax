@@ -26,7 +26,6 @@ def test_v4_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
                 reason_codes=["SYMBOL_NOT_IN_REGISTRY"],
                 candidate_ids=[],
                 lookup_keys=["symbol:UPEG"],
-                discovery_tasks=[],
                 decision_time_ms=1_000,
                 created_at_ms=1_000,
             )
@@ -43,7 +42,6 @@ def test_v4_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
                 reason_codes=["MARKET_DOMINANT_CHAIN_ASSET"],
                 candidate_ids=["asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"],
                 lookup_keys=["symbol:UPEG"],
-                discovery_tasks=[],
                 decision_time_ms=2_000,
                 created_at_ms=2_000,
             )

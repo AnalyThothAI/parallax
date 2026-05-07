@@ -22,6 +22,7 @@ from .token_evidence_repository import TokenEvidenceRepository
 from .token_intent_lookup_repository import TokenIntentLookupRepository
 from .token_intent_repository import TokenIntentRepository
 from .token_radar_repository import TokenRadarRepository
+from .token_target_repository import TokenTargetRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +41,7 @@ class RepositorySession:
     token_intent_lookup: TokenIntentLookupRepository
     market: MarketRepository
     token_radar: TokenRadarRepository
+    token_targets: TokenTargetRepository
     asset_signals: AssetSignalRepository
     enrichment: EnrichmentRepository
     harness: HarnessRepository
@@ -62,6 +64,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_intent_lookup=TokenIntentLookupRepository(conn),
         market=MarketRepository(conn),
         token_radar=TokenRadarRepository(conn),
+        token_targets=TokenTargetRepository(conn),
         asset_signals=AssetSignalRepository(conn),
         enrichment=EnrichmentRepository(conn),
         harness=HarnessRepository(conn),

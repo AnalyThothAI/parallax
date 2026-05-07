@@ -26,8 +26,9 @@ def test_versa_symbol_and_ca_build_one_intent(tmp_path):
     assert intents[0]["display_symbol"] == "VERSA"
     assert intents[0]["address_hint"].lower() == VERSA_BASE_CA
     assert len(resolutions) == 1
-    assert resolutions[0]["identity_status"] == "resolved"
-    assert resolutions[0]["primary_venue_id"] == f"venue:dex:base:{VERSA_BASE_CA}"
+    assert resolutions[0]["resolution_status"] == "EXACT"
+    assert resolutions[0]["target_type"] == "Asset"
+    assert resolutions[0]["target_id"] == f"asset:eip155:8453:erc20:{VERSA_BASE_CA}"
     assert result.token_intents[0]["intent_id"] == intents[0]["intent_id"]
     assert result.token_resolutions[0]["resolution_id"] == resolutions[0]["resolution_id"]
 
@@ -50,7 +51,7 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
 
     hanta = next(row for row in rows if row["intent_json"]["display_symbol"] == "HANTA")
     assert hanta["decision"] == "investigate"
-    assert hanta["market_json"]["market_observation_status"] == "no_venue"
+    assert hanta["market_json"]["market_observation_status"] == "no_resolved_target"
 
 
 def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path):
@@ -67,10 +68,10 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
     rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
 
-    assert result.token_resolutions[0]["identity_status"] == "resolved"
-    assert rows[0]["resolution_json"]["status"] == "resolved"
+    assert result.token_resolutions[0]["resolution_status"] == "EXACT"
+    assert rows[0]["resolution_json"]["status"] == "EXACT"
     assert rows[0]["asset_json"]["symbol"] is None
-    assert rows[0]["primary_venue_json"]["address"] == address
+    assert rows[0]["asset_json"]["address"] == address
 
 
 def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
@@ -87,7 +88,7 @@ def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
     rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
 
     market = rows[0]["market_json"]
-    assert rows[0]["resolution_json"]["status"] == "resolved"
+    assert rows[0]["resolution_json"]["status"] == "EXACT"
     assert market["market_status"] == "fresh"
     assert market["market_observation_status"] == "ready"
     assert market["provider"] == "gmgn_payload"

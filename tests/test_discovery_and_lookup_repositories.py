@@ -7,28 +7,13 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_discovery_enqueue_is_idempotent_and_lookup_keys_round_trip(tmp_path):
+def test_discovery_results_select_recent_unresolved_lookup_keys_without_enqueue(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         _insert_event_intent_and_evidence(conn)
-        discovery = DiscoveryRepository(conn)
         lookup = TokenIntentLookupRepository(conn)
-
-        first = discovery.enqueue(
-            task_type="dex_symbol_lookup",
-            query_key="symbol:UPEG",
-            payload={"symbol": "UPEG"},
-            next_run_at_ms=1_000,
-            created_at_ms=1_000,
-        )
-        second = discovery.enqueue(
-            task_type="dex_symbol_lookup",
-            query_key="symbol:UPEG",
-            payload={"symbol": "UPEG"},
-            next_run_at_ms=2_000,
-            created_at_ms=2_000,
-        )
+        discovery = DiscoveryRepository(conn)
         lookup.replace_lookup_keys(
             intent_id="intent-1",
             event_id="event-1",
@@ -36,88 +21,91 @@ def test_discovery_enqueue_is_idempotent_and_lookup_keys_round_trip(tmp_path):
             source_evidence_id="evidence-1",
             created_at_ms=1_000,
         )
+
+        due = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
+        discovery.start_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:UPEG",
+            lookup_type="dex_symbol_lookup",
+            now_ms=2_000,
+        )
+        discovery.finish_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:UPEG",
+            lookup_type="dex_symbol_lookup",
+            status="found",
+            candidate_ids=["asset:eip155:1:erc20:0xupeg"],
+            result_hash="hash-1",
+            next_refresh_at_ms=62_000,
+            now_ms=2_100,
+        )
+        suppressed = discovery.due_lookup_keys(since_ms=0, now_ms=61_000, limit=10)
+        stale = discovery.due_lookup_keys(since_ms=0, now_ms=62_000, limit=10)
+        conn.execute(
+            """
+            UPDATE token_intent_resolutions
+            SET resolution_status = 'AMBIGUOUS',
+                candidate_ids_json = '["asset:eip155:1:erc20:0xupeg"]'::jsonb
+            WHERE resolution_id = 'resolution-1'
+            """
+        )
+        conn.commit()
+        known_ambiguous = discovery.due_lookup_keys(since_ms=0, now_ms=63_000, limit=10)
         intents = lookup.intents_for_lookup_keys(["cex_token:UPEG"], limit=10)
     finally:
         conn.close()
 
-    assert first["task_id"] == second["task_id"]
-    assert second["next_run_at_ms"] == 1_000
+    assert [item["lookup_key"] for item in due] == ["symbol:UPEG"]
+    assert suppressed == []
+    assert [item["lookup_key"] for item in stale] == ["symbol:UPEG"]
+    assert known_ambiguous == []
     assert [item["intent_id"] for item in intents] == ["intent-1"]
 
 
-def test_discovery_repository_claims_completes_and_retries_due_tasks(tmp_path):
+def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         discovery = DiscoveryRepository(conn)
-        discovery.enqueue(
-            task_type="dex_symbol_lookup",
-            query_key="symbol:UPEG",
-            payload={"symbol": "UPEG"},
-            next_run_at_ms=1_000,
-            created_at_ms=1_000,
-        )
 
-        claimed = discovery.claim_due(now_ms=2_000, limit=1)
-        discovery.complete(task_id=claimed[0]["task_id"], updated_at_ms=2_100)
-        done = discovery.task(claimed[0]["task_id"])
-        discovery.enqueue(
-            task_type="dex_symbol_lookup",
-            query_key="symbol:LFI",
-            payload={"symbol": "LFI"},
-            next_run_at_ms=2_000,
-            created_at_ms=2_000,
+        first_changed = discovery.finish_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:SLOP",
+            lookup_type="dex_symbol_lookup",
+            status="found",
+            candidate_ids=["asset:solana:token:slop"],
+            result_hash="hash-1",
+            next_refresh_at_ms=10_000,
+            now_ms=1_000,
         )
-        failed = discovery.claim_due(now_ms=2_000, limit=1)
-        discovery.fail(
-            task_id=failed[0]["task_id"],
-            last_error="rate limited",
-            next_run_at_ms=8_000,
-            updated_at_ms=2_200,
+        unchanged = discovery.finish_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:SLOP",
+            lookup_type="dex_symbol_lookup",
+            status="found",
+            candidate_ids=["asset:solana:token:slop"],
+            result_hash="hash-1",
+            next_refresh_at_ms=20_000,
+            now_ms=2_000,
         )
-        retry = discovery.claim_due(now_ms=8_000, limit=5)
+        changed_again = discovery.finish_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:SLOP",
+            lookup_type="dex_symbol_lookup",
+            status="found",
+            candidate_ids=["asset:solana:token:slop", "asset:eip155:1:erc20:slop"],
+            result_hash="hash-2",
+            next_refresh_at_ms=30_000,
+            now_ms=3_000,
+        )
+        counts = discovery.counts()
     finally:
         conn.close()
 
-    assert claimed[0]["status"] == "running"
-    assert claimed[0]["attempt_count"] == 1
-    assert done["status"] == "done"
-    assert retry[0]["query_key"] == "symbol:LFI"
-    assert retry[0]["attempt_count"] == 2
-
-
-def test_discovery_reenqueue_done_task_uses_new_due_time(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        discovery = DiscoveryRepository(conn)
-        task = discovery.enqueue(
-            task_type="dex_symbol_lookup",
-            query_key="symbol:SATO",
-            payload={"symbol": "SATO"},
-            next_run_at_ms=1_000,
-            created_at_ms=1_000,
-        )
-        claimed = discovery.claim_due(now_ms=1_000, limit=1)
-        discovery.complete(task_id=claimed[0]["task_id"], updated_at_ms=1_100)
-
-        requeued = discovery.enqueue(
-            task_type="dex_symbol_lookup",
-            query_key="symbol:SATO",
-            payload={"symbol": "SATO"},
-            next_run_at_ms=9_000,
-            created_at_ms=9_000,
-        )
-        not_due = discovery.claim_due(now_ms=8_000, limit=1)
-        due = discovery.claim_due(now_ms=9_000, limit=1)
-    finally:
-        conn.close()
-
-    assert task["task_id"] == requeued["task_id"]
-    assert requeued["status"] == "pending"
-    assert requeued["next_run_at_ms"] == 9_000
-    assert not_due == []
-    assert due[0]["query_key"] == "symbol:SATO"
+    assert first_changed is True
+    assert unchanged is False
+    assert changed_again is True
+    assert counts == {"found": 1}
 
 
 def _insert_event_intent_and_evidence(conn):
@@ -149,6 +137,20 @@ def _insert_event_intent_and_evidence(conn):
         VALUES (
           'intent-1', 'event-1', 'symbol:UPEG', 'test', 'evidence-1',
           'UPEG', NULL, NULL, NULL, 'pending', 1.0, 1, 1
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO token_intent_resolutions(
+          resolution_id, intent_id, event_id, resolution_status, resolver_policy_version,
+          target_type, target_id, pricefeed_id, reason_codes_json, candidate_ids_json,
+          lookup_keys_json, record_status, is_current, decision_time_ms, created_at_ms
+        )
+        VALUES (
+          'resolution-1', 'intent-1', 'event-1', 'NIL', 'token_radar_v4_deterministic_resolver',
+          NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, '["symbol:UPEG"]'::jsonb,
+          'current', true, 1, 1
         )
         """
     )

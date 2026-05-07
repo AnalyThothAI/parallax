@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -23,13 +23,6 @@ class MentionKeys:
 
 
 @dataclass(frozen=True, slots=True)
-class DiscoveryTaskInput:
-    task_type: str
-    query_key: str
-    payload: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(frozen=True, slots=True)
 class DeterministicResolution:
     intent_id: str
     event_id: str
@@ -41,7 +34,6 @@ class DeterministicResolution:
     reason_codes: list[str]
     candidate_ids: list[str]
     lookup_keys: list[str]
-    discovery_tasks: list[DiscoveryTaskInput]
     decision_time_ms: int
     created_at_ms: int
 
@@ -99,7 +91,6 @@ class DeterministicTokenResolver:
             target_id=None,
             reason_codes=["NO_RESOLVABLE_MENTION"],
             lookup_keys=lookup_keys,
-            discovery_tasks=[],
             decision_time_ms=decision_time_ms,
         )
 
@@ -140,13 +131,6 @@ class DeterministicTokenResolver:
             target_id=None,
             reason_codes=["CEX_PRICEFEED_NOT_IN_REGISTRY"],
             lookup_keys=lookup_keys,
-            discovery_tasks=[
-                DiscoveryTaskInput(
-                    "cex_pricefeed_lookup",
-                    f"cex_pricefeed:{keys.exchange}:{keys.cex_pricefeed_id}",
-                    {"exchange": keys.exchange, "native_market_id": keys.cex_pricefeed_id},
-                )
-            ],
             decision_time_ms=decision_time_ms,
         )
 
@@ -180,13 +164,6 @@ class DeterministicTokenResolver:
             target_id=None,
             reason_codes=["ADDRESS_NOT_IN_REGISTRY"],
             lookup_keys=lookup_keys,
-            discovery_tasks=[
-                DiscoveryTaskInput(
-                    "address_lookup",
-                    f"address:{keys.chain_id}:{str(keys.address).lower()}",
-                    {"chain_id": keys.chain_id, "address": keys.address},
-                )
-            ],
             decision_time_ms=decision_time_ms,
         )
 
@@ -233,13 +210,6 @@ class DeterministicTokenResolver:
             target_id=None,
             reason_codes=["ADDRESS_NOT_IN_REGISTRY"],
             lookup_keys=lookup_keys,
-            discovery_tasks=[
-                DiscoveryTaskInput(
-                    "address_lookup",
-                    f"address:unknown:{str(keys.address).lower()}",
-                    {"address": keys.address},
-                )
-            ],
             decision_time_ms=decision_time_ms,
         )
 
@@ -325,7 +295,6 @@ class DeterministicTokenResolver:
             target_id=None,
             reason_codes=["SYMBOL_NOT_IN_REGISTRY"],
             lookup_keys=lookup_keys,
-            discovery_tasks=[DiscoveryTaskInput("dex_symbol_lookup", f"symbol:{symbol}", {"symbol": symbol})],
             decision_time_ms=decision_time_ms,
         )
 
@@ -411,7 +380,6 @@ def _resolution(
     lookup_keys: list[str],
     decision_time_ms: int,
     candidate_ids: list[str] | None = None,
-    discovery_tasks: list[DiscoveryTaskInput] | None = None,
     pricefeed_id: str | None = None,
 ) -> DeterministicResolution:
     return DeterministicResolution(
@@ -425,7 +393,6 @@ def _resolution(
         reason_codes=reason_codes,
         candidate_ids=candidate_ids or [],
         lookup_keys=lookup_keys,
-        discovery_tasks=discovery_tasks or [],
         decision_time_ms=int(decision_time_ms),
         created_at_ms=int(decision_time_ms),
     )

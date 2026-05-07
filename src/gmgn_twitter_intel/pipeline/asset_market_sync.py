@@ -21,6 +21,7 @@ def sync_okx_cex_universe(
     cex_tokens_written = 0
     pricefeeds_written = 0
     observations_written = 0
+    affected_lookup_keys: set[str] = set()
     for inst_type in normalized_inst_types:
         for ticker in client.tickers(inst_type=inst_type):
             base_symbol, quote_symbol = _base_quote_from_inst_id(ticker.inst_id)
@@ -64,12 +65,14 @@ def sync_okx_cex_universe(
                 commit=False,
             )
             observations_written += 1
+            affected_lookup_keys.update(_symbol_lookup_keys(base_symbol))
     registry.conn.commit()
     return {
         "inst_types": normalized_inst_types,
         "cex_tokens_written": cex_tokens_written,
         "pricefeeds_written": pricefeeds_written,
         "price_observations_written": observations_written,
+        "affected_lookup_keys": sorted(affected_lookup_keys),
     }
 
 
@@ -91,6 +94,7 @@ def sync_okx_dex_prices(
     address_search_requests = 0
     address_search_hits = 0
     address_search_errors = 0
+    affected_lookup_keys: set[str] = set()
     for index, row in enumerate(rows):
         chain_index = _okx_chain_index(row.get("chain_id"))
         address = str(row.get("address") or "").strip()
@@ -120,6 +124,7 @@ def sync_okx_dex_prices(
             "liquidity_usd": candidate.liquidity_usd,
             "holders": candidate.holders,
         }
+        affected_lookup_keys.update(_asset_lookup_keys(rows[index]))
         pricefeed = registry.upsert_pricefeed(
             feed_type="dex_token",
             provider="okx_dex_search",
@@ -203,6 +208,7 @@ def sync_okx_dex_prices(
                 commit=False,
             )
             observations_written += 1
+            affected_lookup_keys.update(_asset_lookup_keys(asset))
     registry.conn.commit()
     return {
         "assets_scanned": len(rows),
@@ -212,6 +218,7 @@ def sync_okx_dex_prices(
         "price_requests": price_requests,
         "pricefeeds_written": pricefeeds_written,
         "price_observations_written": observations_written,
+        "affected_lookup_keys": sorted(affected_lookup_keys),
     }
 
 
@@ -229,6 +236,30 @@ def _base_quote_from_inst_id(inst_id: str) -> tuple[str | None, str | None]:
 
 def _cex_price_basis(quote_symbol: str) -> str:
     return "quote_as_usd" if quote_symbol.upper() in {"USD", "USDT", "USDC"} else "quote"
+
+
+def _symbol_lookup_keys(symbol: Any) -> set[str]:
+    normalized = str(symbol or "").strip().lstrip("$").upper()
+    if not normalized:
+        return set()
+    return {f"symbol:{normalized}", f"project_symbol:{normalized}", f"cex_token:{normalized}"}
+
+
+def _chain_symbol_lookup_keys(symbol: Any) -> set[str]:
+    normalized = str(symbol or "").strip().lstrip("$").upper()
+    if not normalized:
+        return set()
+    return {f"symbol:{normalized}", f"project_symbol:{normalized}"}
+
+
+def _asset_lookup_keys(row: dict[str, Any]) -> set[str]:
+    keys = _chain_symbol_lookup_keys(row.get("symbol"))
+    chain_id = str(row.get("chain_id") or "").strip()
+    address = str(row.get("address") or "").strip()
+    if address:
+        normalized_address = address.lower() if address.lower().startswith("0x") else address
+        keys.add(f"address:{chain_id or 'unknown'}:{normalized_address}")
+    return keys
 
 
 def _okx_chain_index(chain_id: Any) -> str | None:

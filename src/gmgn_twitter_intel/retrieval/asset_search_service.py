@@ -194,20 +194,25 @@ class AssetSearchService:
                 token_evidence.normalized_symbol,
                 token_evidence.chain_hint,
                 token_evidence.address_hint,
-                token_intent_resolutions.asset_id,
-                token_intent_resolutions.primary_venue_id AS venue_id,
+                token_intent_resolutions.target_type,
+                token_intent_resolutions.target_id,
+                token_intent_resolutions.pricefeed_id,
                 token_intent_resolutions.resolution_status,
-                token_intent_resolutions.identity_status AS resolution_identity_status,
-                token_intent_resolutions.confidence AS resolution_confidence
+                CASE
+                  WHEN token_intent_resolutions.resolution_status = 'EXACT' THEN 1.0
+                  WHEN token_intent_resolutions.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 0.9
+                  WHEN token_intent_resolutions.resolution_status = 'AMBIGUOUS' THEN 0.45
+                  ELSE 0.0
+                END AS resolution_confidence
               FROM token_evidence
               JOIN events ON events.event_id = token_evidence.event_id
               LEFT JOIN token_intent_evidence
                 ON token_intent_evidence.evidence_id = token_evidence.evidence_id
               LEFT JOIN token_intent_resolutions
                 ON token_intent_resolutions.intent_id = token_intent_evidence.intent_id
-               AND token_intent_resolutions.resolution_status <> 'superseded'
+               AND token_intent_resolutions.is_current = true
               WHERE {' AND '.join(clauses)}
-              ORDER BY events.event_id, token_intent_resolutions.confidence DESC NULLS LAST
+              ORDER BY events.event_id, token_intent_resolutions.decision_time_ms DESC NULLS LAST
             )
             SELECT *
             FROM matched

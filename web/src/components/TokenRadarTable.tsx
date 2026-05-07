@@ -96,5 +96,5 @@ function RadarSkeleton() {
 }
 
 function tokenDecisionKey(item: TokenFlowItem): string {
-  return item.identity.token_id ?? item.identity.address ?? item.identity.identity_key;
+  return item.identity.target_id ?? item.identity.address ?? item.identity.identity_key;
 }

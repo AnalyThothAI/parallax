@@ -86,7 +86,7 @@ def test_alembic_migration_is_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version_num"] for row in rows] == ["20260507_0008"]
+    assert [row["version_num"] for row in rows] == ["20260507_0009"]
 
 
 def test_token_radar_v3_schema_supports_span_aware_intents(tmp_path):
@@ -155,7 +155,8 @@ def test_token_radar_v4_schema_supports_hard_cut_targets(tmp_path):
         conn.close()
 
     assert {"projects", "registry_assets", "cex_tokens", "price_feeds", "price_observations"}.issubset(table_names)
-    assert {"discovery_tasks", "registry_versions", "token_intent_lookup_keys"}.issubset(table_names)
+    assert {"token_discovery_results", "registry_versions", "token_intent_lookup_keys"}.issubset(table_names)
+    assert "discovery_tasks" not in table_names
     assert {"target_type", "target_id", "pricefeed_id", "reason_codes_json", "lookup_keys_json"}.issubset(
         resolution_columns
     )

@@ -10,16 +10,16 @@ from fastapi.responses import JSONResponse
 from ..retrieval.account_alert_service import AccountAlertService
 from ..retrieval.account_quality_service import AccountQualityService
 from ..retrieval.asset_flow_service import AssetFlowService
-from ..retrieval.asset_posts_service import (
-    AssetPostsCursorError,
-    AssetPostsRangeError,
-    AssetPostsService,
-    AssetPostsSortError,
-)
 from ..retrieval.asset_search_service import AssetSearchService
-from ..retrieval.asset_social_timeline_service import AssetSocialTimelineService
-from ..retrieval.asset_timeline_cursor import AssetTimelineCursorError
 from ..retrieval.harness_service import HarnessService
+from ..retrieval.token_target_cursor import TokenTargetCursorError
+from ..retrieval.token_target_posts_service import (
+    TokenTargetPostsCursorError,
+    TokenTargetPostsRangeError,
+    TokenTargetPostsService,
+    TokenTargetPostsSortError,
+)
+from ..retrieval.token_target_social_timeline_service import TokenTargetSocialTimelineService
 from ..retrieval.trading_attention_service import KINDS as TRADING_ATTENTION_KINDS
 from ..retrieval.trading_attention_service import TradingAttentionService
 from ..storage.account_quality_repository import AccountQualityRepository
@@ -166,10 +166,11 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
 
-    @router.get("/asset-posts")
-    async def asset_posts(
+    @router.get("/target-posts")
+    async def target_posts(
         request: Request,
-        asset_id: Annotated[str, Query()] = "",
+        target_type: Annotated[str, Query()] = "",
+        target_id: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "5m",
         post_range: Annotated[str, Query(alias="range")] = "current_window",
         sort: Annotated[str, Query()] = "recent",
@@ -178,14 +179,16 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        if not asset_id:
-            raise ApiBadRequest("asset_id_required", field="asset_id")
+        parsed_target_type = _target_type(target_type)
+        if not parsed_target_type or not target_id:
+            raise ApiBadRequest("target_required", field="target_id")
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         try:
             with runtime.repositories() as repos:
-                data = AssetPostsService(assets=repos.assets).asset_posts(
-                    asset_id=asset_id,
+                data = TokenTargetPostsService(targets=repos.token_targets).target_posts(
+                    target_type=parsed_target_type,
+                    target_id=target_id,
                     window=parsed_window,
                     scope=parsed_scope,
                     post_range=_post_range(post_range),
@@ -193,18 +196,19 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                     limit=_limit(limit, maximum=200),
                     cursor=cursor or None,
                 )
-        except AssetPostsRangeError:
+        except TokenTargetPostsRangeError:
             return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)
-        except AssetPostsSortError:
+        except TokenTargetPostsSortError:
             return _json({"ok": False, "error": "invalid_sort", "field": "sort"}, status_code=400)
-        except AssetPostsCursorError:
+        except TokenTargetPostsCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
-    @router.get("/asset-social-timeline")
-    async def asset_social_timeline(
+    @router.get("/target-social-timeline")
+    async def target_social_timeline(
         request: Request,
-        asset_id: Annotated[str, Query()] = "",
+        target_type: Annotated[str, Query()] = "",
+        target_id: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "1h",
         scope: Annotated[str, Query()] = "all",
         limit: Annotated[int, Query()] = 200,
@@ -212,21 +216,23 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         if "bucket" in request.query_params:
             raise ApiBadRequest("unsupported_query_param", field="bucket")
-        if not asset_id:
-            raise ApiBadRequest("asset_id_required", field="asset_id")
+        parsed_target_type = _target_type(target_type)
+        if not parsed_target_type or not target_id:
+            raise ApiBadRequest("target_required", field="target_id")
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         try:
             with runtime.repositories() as repos:
-                data = AssetSocialTimelineService(assets=repos.assets).timeline(
-                    asset_id=asset_id,
+                data = TokenTargetSocialTimelineService(targets=repos.token_targets).timeline(
+                    target_type=parsed_target_type,
+                    target_id=target_id,
                     window=parsed_window,
                     scope=parsed_scope,
                     limit=_limit(limit),
                     cursor=cursor or None,
                 )
-        except AssetTimelineCursorError:
+        except TokenTargetCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
@@ -600,6 +606,10 @@ def _post_range(value: str) -> str:
     if value in {"current_window", "since_ignition", "all_history"}:
         return value
     raise ApiBadRequest("invalid_range", field="range")
+
+
+def _target_type(value: str) -> str | None:
+    return value if value in {"Asset", "CexToken"} else None
 
 
 def _horizon(value: str) -> str:

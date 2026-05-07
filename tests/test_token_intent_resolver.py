@@ -86,7 +86,7 @@ def test_token_intent_resolver_does_not_rediscover_ambiguous_symbol_with_candida
     assert decision.resolution_status == "AMBIGUOUS"
     assert decision.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
     assert len(decision.candidate_ids) == 2
-    assert decision.discovery_tasks == []
+    assert "symbol:SATO" in decision.lookup_keys
 
 
 def _evidence(text: str):

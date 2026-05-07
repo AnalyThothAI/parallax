@@ -532,8 +532,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(await screen.findByRole("button", { name: "Timeline" })).toHaveClass("active");
     await waitFor(() => {
-      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/asset-social-timeline")).toBe(true);
-      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/asset-posts")).toBe(true);
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(true);
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-posts")).toBe(true);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
@@ -575,7 +575,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.change(detailWindow, { target: { value: "4h" } });
 
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-social-timeline");
+      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-social-timeline");
       expect(timelineCall?.[1]?.params).toMatchObject({ window: "4h" });
       expect(timelineCall?.[1]?.params).not.toHaveProperty("bucket");
     });
@@ -613,7 +613,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(postRange).getByRole("button", { name: "history" }));
 
     await waitFor(() => {
-      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-posts");
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
       expect(postsCall?.[1]?.params).toMatchObject({ range: "all_history" });
     });
     expect(await within(drawer).findByText("history does not all participate in current score")).toBeInTheDocument();
@@ -631,7 +631,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(sortControl).getByRole("button", { name: "catalyst" }));
 
     await waitFor(() => {
-      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-posts");
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
       expect(postsCall?.[1]?.params).toMatchObject({ sort: "catalyst", cursor: undefined });
     });
   });
@@ -790,16 +790,22 @@ describe("App Token Radar social heat cockpit", () => {
     expect(await screen.findByText("@traderpow -> $UPEG")).toBeInTheDocument();
   });
 
-  it("requests selected asset detail by asset_id", async () => {
+  it("requests selected token detail by target identity", async () => {
     mockApi({ missingTokenId: true });
     renderWithQuery(<App />);
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-social-timeline");
-      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/asset-posts");
-      expect(timelineCall?.[1]?.params).toMatchObject({ asset_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933" });
-      expect(postsCall?.[1]?.params).toMatchObject({ asset_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933" });
+      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-social-timeline");
+      const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
+      expect(timelineCall?.[1]?.params).toMatchObject({
+        target_type: "Asset",
+        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+      });
+      expect(postsCall?.[1]?.params).toMatchObject({
+        target_type: "Asset",
+        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+      });
     });
   });
 
@@ -981,8 +987,8 @@ function mockApi(options: {
         projection: assetFlowProjection()
       });
     }
-    if (path === "/api/asset-social-timeline") return ok<TokenSocialTimelineData>(timelineData());
-    if (path === "/api/asset-posts") return ok<TokenPostsData>(postsData());
+    if (path === "/api/target-social-timeline") return ok<TokenSocialTimelineData>(timelineData());
+    if (path === "/api/target-posts") return ok<TokenPostsData>(postsData());
     if (path === "/api/account-quality") {
       return ok({
         query: { handles: ["traderpow", "alien19710628"] },
@@ -1197,20 +1203,20 @@ function assetFlowProjection(): AssetFlowData["projection"] {
   };
 }
 
-function tokenFlowItem(options: { tokenId?: string | null; address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {
+function tokenFlowItem(options: { address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
-  const tokenId = options.tokenId === undefined ? `token:eth:${address}` : options.tokenId;
   const assetId = `asset:dex:eth:${address.toLowerCase()}`;
   const symbol = options.symbol ?? "UPEG";
   return {
     identity: {
       identity_key: assetId,
       identity_status: "resolved",
+      target_type: "Asset",
+      target_id: assetId,
       asset_id: assetId,
       asset_type: "dex_token",
       venue_type: "dex",
       exchange: "gmgn",
-      token_id: tokenId,
       chain: "eth",
       address,
       symbol
@@ -1352,8 +1358,8 @@ function tokenFlowItem(options: { tokenId?: string | null; address?: string; sym
       risks: []
     },
     evidence_total_count: 4,
-    posts_query: { asset_id: assetId, token_id: tokenId, chain: "eth", address, window: "1h", scope: "all", range: "current_window" },
-    timeline_query: { asset_id: assetId, token_id: tokenId, chain: "eth", address, window: "1h", scope: "all" }
+    posts_query: { target_type: "Asset", target_id: assetId, chain: "eth", address, window: "1h", scope: "all", range: "current_window" },
+    timeline_query: { target_type: "Asset", target_id: assetId, chain: "eth", address, window: "1h", scope: "all" }
   };
 }
 

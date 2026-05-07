@@ -15,12 +15,9 @@ from .market.okx_cex_client import OkxCexClient
 from .market.okx_dex_client import OkxDexClient
 from .pipeline.asset_market_sync import sync_okx_cex_universe
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
-from .pipeline.token_discovery_worker import (
-    rebuild_token_radar_windows,
-    reprocess_recent_token_intents,
-    run_token_discovery_once,
-)
+from .pipeline.token_discovery_worker import run_token_discovery_once
 from .pipeline.token_radar_projection import TokenRadarProjection
+from .pipeline.token_resolution_refresh import rebuild_token_radar_windows, reprocess_recent_token_intents
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
 from .retrieval.asset_flow_service import AssetFlowService
@@ -184,7 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
     run_token_discovery = ops_subcommands.add_parser(
         "run-token-discovery",
-        help="process token discovery tasks, reprocess recent intents, and rebuild token radar",
+        help="refresh due token discovery results, reprocess recent intents, and rebuild token radar",
     )
     run_token_discovery.add_argument("--limit", type=int, default=50)
     run_token_discovery.add_argument("--reprocess-limit", type=int, default=500)
@@ -651,7 +648,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     dex_client=client,
                     chain_indexes=settings.okx_dex_chain_indexes,
                     now_ms=_now_ms(),
-                    task_limit=args.limit,
+                    lookup_limit=args.limit,
                     reprocess_limit=args.reprocess_limit,
                     projection_limit=args.projection_limit,
                 )

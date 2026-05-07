@@ -14,10 +14,9 @@ TokenIntentResolutionDecision = DeterministicResolution
 
 
 class TokenIntentResolver:
-    def __init__(self, *, registry, resolutions, discovery=None):
+    def __init__(self, *, registry, resolutions):
         self.registry = registry
         self.resolutions = resolutions
-        self.discovery = discovery
         self.resolver = DeterministicTokenResolver(registry=registry)
 
     def resolve(
@@ -38,23 +37,9 @@ class TokenIntentResolver:
         )
         if persist:
             self.resolutions.insert_resolution(decision, commit=False)
-            self._enqueue_discovery(decision)
             if commit:
                 self.resolutions.conn.commit()
         return decision
-
-    def _enqueue_discovery(self, decision: DeterministicResolution) -> None:
-        if self.discovery is None:
-            return
-        for task in decision.discovery_tasks:
-            self.discovery.enqueue(
-                task_type=task.task_type,
-                query_key=task.query_key,
-                payload=task.payload,
-                next_run_at_ms=decision.decision_time_ms,
-                created_at_ms=decision.created_at_ms,
-                commit=False,
-            )
 
 
 def _mention_keys(

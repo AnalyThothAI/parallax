@@ -361,13 +361,14 @@ export type ScoreBlock = {
 export type TokenIdentityBlock = {
   identity_key: string;
   identity_status: "resolved_ca" | string;
+  target_type?: string | null;
+  target_id?: string | null;
   asset_id?: string | null;
   asset_type?: string | null;
   venue_type?: string | null;
   exchange?: string | null;
   inst_id?: string | null;
   inst_type?: string | null;
-  token_id?: string | null;
   chain?: string | null;
   address?: string | null;
   symbol?: string | null;
@@ -501,8 +502,8 @@ export type WatchBlock = {
 };
 
 export type TokenPostsQuery = {
-  asset_id?: string | null;
-  token_id?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
   chain?: string | null;
   address?: string | null;
   window: WindowKey;
@@ -512,8 +513,8 @@ export type TokenPostsQuery = {
 };
 
 export type TokenSocialTimelineParams = {
-  asset_id?: string | null;
-  token_id?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
   chain?: string | null;
   address?: string | null;
   window: WindowKey;
@@ -548,6 +549,8 @@ export type TokenPostItem = {
   url?: string | null;
   received_at_ms?: number | null;
   mention_source?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
   attribution_status?: string | null;
   attribution_confidence?: number | null;
   attribution_weight?: number | null;
@@ -606,6 +609,8 @@ export type TokenTimelinePost = {
   bucket_start_ms?: number | null;
   text?: string | null;
   url?: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
   attribution_status?: string | null;
   is_watched?: boolean | number | null;
   is_first_seen_by_watched_for_token?: boolean | number | null;

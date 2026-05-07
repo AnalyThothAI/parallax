@@ -4,29 +4,30 @@ import time
 from typing import Any
 
 from .asset_flow_service import WINDOW_MS
-from .asset_timeline_cursor import AssetTimelineCursorError, decode_timeline_cursor, encode_timeline_cursor
+from .token_target_cursor import TokenTargetCursorError, decode_target_cursor, encode_target_cursor
 
 
-class AssetPostsCursorError(Exception):
+class TokenTargetPostsCursorError(Exception):
     pass
 
 
-class AssetPostsRangeError(Exception):
+class TokenTargetPostsRangeError(Exception):
     pass
 
 
-class AssetPostsSortError(Exception):
+class TokenTargetPostsSortError(Exception):
     pass
 
 
-class AssetPostsService:
-    def __init__(self, *, assets):
-        self.assets = assets
+class TokenTargetPostsService:
+    def __init__(self, *, targets):
+        self.targets = targets
 
-    def asset_posts(
+    def target_posts(
         self,
         *,
-        asset_id: str,
+        target_type: str,
+        target_id: str,
         window: str,
         scope: str,
         post_range: str,
@@ -36,21 +37,22 @@ class AssetPostsService:
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         if post_range not in {"current_window", "since_ignition", "all_history"}:
-            raise AssetPostsRangeError(post_range)
+            raise TokenTargetPostsRangeError(post_range)
         if sort not in {"recent", "catalyst"}:
-            raise AssetPostsSortError(sort)
+            raise TokenTargetPostsSortError(sort)
         try:
-            timeline_cursor = decode_timeline_cursor(cursor)
-        except AssetTimelineCursorError as exc:
-            raise AssetPostsCursorError(cursor) from exc
+            timeline_cursor = decode_target_cursor(cursor)
+        except TokenTargetCursorError as exc:
+            raise TokenTargetPostsCursorError(cursor) from exc
         resolved_now_ms = int(now_ms or time.time() * 1000)
         since_ms = (
             0
             if post_range in {"since_ignition", "all_history"}
             else resolved_now_ms - WINDOW_MS.get(window, WINDOW_MS["1h"])
         )
-        rows = self.assets.asset_timeline_rows(
-            asset_id=asset_id,
+        rows = self.targets.timeline_rows(
+            target_type=target_type,
+            target_id=target_id,
             since_ms=since_ms,
             watched_only=scope == "matched",
             limit=max(0, int(limit)) + 1,
@@ -58,10 +60,11 @@ class AssetPostsService:
         )
         page_rows = rows[: max(0, int(limit))]
         has_more = len(rows) > len(page_rows)
-        next_cursor = encode_timeline_cursor(page_rows[-1]) if has_more and page_rows else None
+        next_cursor = encode_target_cursor(page_rows[-1]) if has_more and page_rows else None
         return {
             "query": {
-                "asset_id": asset_id,
+                "target_type": target_type,
+                "target_id": target_id,
                 "window": window,
                 "scope": scope,
                 "range": post_range,
@@ -74,6 +77,7 @@ class AssetPostsService:
             "next_cursor": next_cursor,
             "items": [_post(row) for row in page_rows],
         }
+
 
 def _post(row: dict[str, Any]) -> dict[str, Any]:
     text = row.get("text_clean") or row.get("text")
@@ -89,8 +93,10 @@ def _post(row: dict[str, Any]) -> dict[str, Any]:
         "url": row.get("canonical_url"),
         "received_at_ms": row.get("received_at_ms"),
         "mention_source": "token_intent",
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
         "attribution_status": row.get("attribution_status"),
-        "attribution_confidence": row.get("confidence"),
+        "attribution_confidence": confidence,
         "attribution_weight": None,
         "is_watched": row.get("is_watched"),
         "is_first_seen_by_watched_for_token": watched,
@@ -99,7 +105,7 @@ def _post(row: dict[str, Any]) -> dict[str, Any]:
         "catalyst_score": quality_score if watched else None,
         "catalyst_components": None,
         "post_quality": {
-            "score_version": "asset_post_quality_v1",
+            "score_version": "token_target_post_quality_v1",
             "score": quality_score,
             "reasons": reasons,
             "risks": ["public_stream_coverage"],

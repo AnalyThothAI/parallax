@@ -225,9 +225,9 @@ export function App() {
   const tokenPostParams = selectedToken ? { ...selectedToken.posts_query, window: detailWindow, range: postRange, sort: tokenPostRequestSort } : null;
 
   const tokenTimelineQuery = useQuery({
-    queryKey: ["asset-social-timeline", tokenTimelineParams],
+    queryKey: ["target-social-timeline", tokenTimelineParams],
     queryFn: () =>
-      getApi<TokenSocialTimelineData>("/api/asset-social-timeline", {
+      getApi<TokenSocialTimelineData>("/api/target-social-timeline", {
         token,
         params: tokenTimelineParams ?? {}
       }),
@@ -235,12 +235,13 @@ export function App() {
   });
 
   const tokenPostsQuery = useInfiniteQuery({
-    queryKey: ["asset-posts", tokenPostParams],
+    queryKey: ["target-posts", tokenPostParams],
     queryFn: async ({ pageParam }) => {
-      const response = await getApi<TokenPostsData>("/api/asset-posts", {
+      const response = await getApi<TokenPostsData>("/api/target-posts", {
         token,
         params: {
-          asset_id: tokenPostParams?.asset_id,
+          target_type: tokenPostParams?.target_type,
+          target_id: tokenPostParams?.target_id,
           window: tokenPostParams?.window,
           scope: tokenPostParams?.scope,
           range: tokenPostParams?.range,
@@ -1035,13 +1036,14 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
     identity: {
       identity_key: identityKey,
       identity_status: row.resolution.status,
-      asset_id: targetId ?? undefined,
+      target_type: target.target_type ?? null,
+      target_id: targetId,
+      asset_id: isChainAsset ? targetId ?? undefined : undefined,
       asset_type: target.target_type ?? null,
       venue_type: isCexToken ? "cex" : isChainAsset ? "dex" : null,
       exchange: isCexToken ? target.provider ?? null : null,
       inst_id: isCexToken ? target.native_market_id ?? null : null,
       inst_type: isCexToken ? target.feed_type ?? null : null,
-      token_id: null,
       chain,
       address,
       symbol: displaySymbol
@@ -1170,8 +1172,8 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       risks: watched ? [] : ["no_watched_confirmation"]
     },
     evidence_total_count: row.intent?.evidence?.length ?? mentions,
-    posts_query: { asset_id: targetId ?? undefined, chain, address, window, scope, range: "current_window" },
-    timeline_query: { asset_id: targetId ?? undefined, chain, address, window, scope }
+    posts_query: { target_type: target.target_type ?? null, target_id: targetId, chain, address, window, scope, range: "current_window" },
+    timeline_query: { target_type: target.target_type ?? null, target_id: targetId, chain, address, window, scope }
   };
 }
 
@@ -1286,17 +1288,13 @@ function mergeTradingAttentionPages(pages?: TradingAttentionData[]): TradingAtte
 }
 
 function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePayload[]; tokenItems: TokenFlowItem[] }): LiveSignalTapeItem[] {
-  const byAssetId = new Map<string, TokenFlowItem>();
-  const byTokenId = new Map<string, TokenFlowItem>();
+  const byTargetId = new Map<string, TokenFlowItem>();
   const byCa = new Map<string, TokenFlowItem>();
   const byIdentityKey = new Map<string, TokenFlowItem>();
   const bySymbol = new Map<string, TokenFlowItem[]>();
   for (const item of tokenItems) {
-    if (item.identity.asset_id) {
-      byAssetId.set(item.identity.asset_id, item);
-    }
-    if (item.identity.token_id) {
-      byTokenId.set(item.identity.token_id, item);
+    if (item.identity.target_id) {
+      byTargetId.set(item.identity.target_id, item);
     }
     byIdentityKey.set(item.identity.identity_key, item);
     const caKey = tokenCaKey(item.identity.chain, item.identity.address);
@@ -1310,7 +1308,7 @@ function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePa
   }
   const rows: LiveSignalTapeItem[] = [];
   for (const payload of liveItems) {
-    const tokenMatch = tokenMatchForPayload(payload, { byAssetId, byTokenId, byCa, byIdentityKey, bySymbol });
+    const tokenMatch = tokenMatchForPayload(payload, { byTargetId, byCa, byIdentityKey, bySymbol });
     if (tokenMatch) {
       rows.push({
         kind: "token",
@@ -1351,23 +1349,22 @@ function tokenTapeBody(item: TokenFlowItem): string {
   ].join(" · ");
 }
 
-function hasTokenIdentity(params?: { asset_id?: string | null; token_id?: string | null; chain?: string | null; address?: string | null } | null): boolean {
-  return Boolean(params?.asset_id || params?.token_id || (params?.chain && params?.address));
+function hasTokenIdentity(params?: { target_type?: string | null; target_id?: string | null; chain?: string | null; address?: string | null } | null): boolean {
+  return Boolean((params?.target_type && params?.target_id) || (params?.chain && params?.address));
 }
 
 function tokenMatchForPayload(
   payload: LivePayload,
   lookup: {
-    byAssetId: Map<string, TokenFlowItem>;
-    byTokenId: Map<string, TokenFlowItem>;
+    byTargetId: Map<string, TokenFlowItem>;
     byCa: Map<string, TokenFlowItem>;
     byIdentityKey: Map<string, TokenFlowItem>;
     bySymbol: Map<string, TokenFlowItem[]>;
   }
 ): TokenFlowItem | undefined {
   for (const resolution of payload.token_resolutions ?? []) {
-    if (resolution.target_id && lookup.byAssetId.has(resolution.target_id)) {
-      return lookup.byAssetId.get(resolution.target_id);
+    if (resolution.target_id && lookup.byTargetId.has(resolution.target_id)) {
+      return lookup.byTargetId.get(resolution.target_id);
     }
     if (resolution.target_id && lookup.byIdentityKey.has(resolution.target_id)) {
       return lookup.byIdentityKey.get(resolution.target_id);

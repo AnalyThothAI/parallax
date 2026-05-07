@@ -120,7 +120,7 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         "params": (),
     },
     {
-        "name": "asset_posts_recent",
+        "name": "target_posts_recent",
         "sql": """
             WITH latest_target AS (
               SELECT target_type, target_id

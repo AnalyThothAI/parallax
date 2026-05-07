@@ -132,11 +132,16 @@ def test_token_radar_v4_migration_adds_hard_cut_registry_and_price_tables() -> N
         "price_feeds",
         "registry_aliases",
         "price_observations",
-        "discovery_tasks",
         "registry_versions",
         "token_intent_lookup_keys",
     }:
         assert f"CREATE TABLE IF NOT EXISTS {table}" in text
+
+    discovery_result_text = Path(
+        "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0009_token_discovery_results.py"
+    ).read_text()
+    assert "CREATE TABLE IF NOT EXISTS token_discovery_results" in discovery_result_text
+    assert "DROP TABLE IF EXISTS discovery_tasks" in discovery_result_text
 
     assert "ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS target_type TEXT" in text
     assert "ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS is_current BOOLEAN" in text

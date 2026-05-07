@@ -9,7 +9,7 @@ export function tokenForSearchQuery(query: string, items: TokenFlowItem[]): Toke
   const tokenIdentityMatch = uniqueMatch(items, (item) => {
     const normalized = text.toLowerCase();
     return (
-      item.identity.token_id?.toLowerCase() === normalized ||
+      item.identity.target_id?.toLowerCase() === normalized ||
       item.identity.identity_key.toLowerCase() === normalized ||
       item.identity.address?.toLowerCase() === normalized
     );

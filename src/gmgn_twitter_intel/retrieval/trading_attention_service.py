@@ -153,30 +153,39 @@ class TradingAttentionService:
             f"""
             SELECT
               tir.event_id,
-              tir.asset_id,
-              tir.primary_venue_id AS venue_id,
-              tir.identity_status,
+              tir.target_type,
+              tir.target_id,
+              tir.pricefeed_id,
               tir.resolution_status,
-              tir.confidence,
-              assets.asset_type,
-              assets.canonical_symbol,
-              assets.identity_status AS asset_identity_status,
-              av.venue_type,
-              av.exchange,
-              av.chain,
-              av.address,
-              av.inst_id,
-              av.base_symbol,
-              av.quote_symbol,
-              av.inst_type
+              CASE
+                WHEN tir.resolution_status = 'EXACT' THEN 1.0
+                WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 0.9
+                ELSE 0.0
+              END AS confidence,
+              registry_assets.chain_id,
+              registry_assets.token_standard,
+              registry_assets.address,
+              registry_assets.symbol AS asset_symbol,
+              cex_tokens.base_symbol AS cex_base_symbol,
+              price_feeds.provider,
+              price_feeds.native_market_id,
+              price_feeds.quote_symbol,
+              price_feeds.feed_type
             FROM token_intent_resolutions tir
-            JOIN assets ON assets.asset_id = tir.asset_id
-            LEFT JOIN asset_venues av ON av.venue_id = tir.primary_venue_id
+            LEFT JOIN registry_assets
+              ON tir.target_type = 'Asset'
+             AND registry_assets.asset_id = tir.target_id
+            LEFT JOIN cex_tokens
+              ON tir.target_type = 'CexToken'
+             AND cex_tokens.cex_token_id = tir.target_id
+            LEFT JOIN price_feeds
+              ON price_feeds.pricefeed_id = tir.pricefeed_id
             WHERE tir.event_id IN ({placeholders})
-              AND tir.resolution_status = 'resolved'
-              AND tir.identity_status = 'resolved'
-              AND tir.confidence > 0
-            ORDER BY tir.confidence DESC, tir.created_at_ms ASC
+              AND tir.is_current = true
+              AND tir.target_type IN ('Asset', 'CexToken')
+              AND tir.target_id IS NOT NULL
+              AND tir.resolution_status IN ('EXACT', 'UNIQUE_BY_CONTEXT')
+            ORDER BY confidence DESC, tir.created_at_ms ASC
             """,
             event_ids,
         ).fetchall()
@@ -184,11 +193,11 @@ class TradingAttentionService:
         seen: set[tuple[str, str]] = set()
         for row in rows:
             event_id = str(row["event_id"])
-            identity_key = str(row["asset_id"])
+            identity_key = str(row["target_id"])
             if (event_id, identity_key) in seen:
                 continue
             seen.add((event_id, identity_key))
-            relation = "direct" if _float(row.get("confidence"), default=0.0) >= 0.99 else "selected"
+            relation = "direct" if str(row.get("resolution_status")) == "EXACT" else "selected"
             by_event[event_id].append(_asset_link(row, relation=relation))
         return dict(by_event)
 
@@ -301,22 +310,25 @@ def _social_row(row: Any) -> dict[str, Any]:
 
 def _asset_link(row: Any, *, relation: str) -> dict[str, Any]:
     data = dict(row)
-    status = str(data.get("identity_status") or data.get("asset_identity_status") or "resolved")
-    symbol = data.get("canonical_symbol") or data.get("base_symbol")
+    status = str(data.get("resolution_status") or "resolved")
+    target_type = data.get("target_type")
+    target_id = data.get("target_id")
+    symbol = data.get("asset_symbol") or data.get("cex_base_symbol")
     return {
-        "asset_id": data.get("asset_id"),
-        "venue_id": data.get("venue_id"),
-        "identity_key": data.get("asset_id"),
+        "target_type": target_type,
+        "target_id": target_id,
+        "asset_id": target_id if target_type == "Asset" else None,
+        "identity_key": target_id,
         "symbol": symbol,
-        "asset_type": data.get("asset_type"),
-        "venue_type": data.get("venue_type"),
-        "exchange": data.get("exchange"),
-        "chain": data.get("chain"),
+        "asset_type": target_type,
+        "venue_type": "cex" if target_type == "CexToken" else "dex" if target_type == "Asset" else None,
+        "exchange": data.get("provider") if target_type == "CexToken" else None,
+        "chain": data.get("chain_id"),
         "address": data.get("address"),
-        "inst_id": data.get("inst_id"),
-        "base_symbol": data.get("base_symbol"),
+        "inst_id": data.get("native_market_id"),
+        "base_symbol": symbol,
         "quote_symbol": data.get("quote_symbol"),
-        "inst_type": data.get("inst_type"),
+        "inst_type": data.get("feed_type"),
         "relation": relation,
         "confidence": _float(data.get("confidence"), default=1.0),
         "status": status,
@@ -359,7 +371,10 @@ def _kind(
     token_links: list[dict[str, Any]],
     topics: list[dict[str, Any]],
 ) -> str:
-    if any(link.get("asset_id") and link.get("status") == "resolved" for link in token_links):
+    if any(
+        link.get("target_id") and link.get("status") in {"EXACT", "UNIQUE_BY_CONTEXT", "resolved"}
+        for link in token_links
+    ):
         return "direct_token"
     event_type = str(social.get("event_type") if social else "")
     direction = str(social.get("direction_hint") if social else "")
@@ -503,9 +518,9 @@ def _event_text(event: dict[str, Any]) -> str:
 
 def _attention_keys(item: dict[str, Any]) -> list[str]:
     keys = [
-        f"asset:{link.get('asset_id') or link.get('identity_key')}"
+        f"target:{link.get('target_type') or 'target'}:{link.get('target_id') or link.get('identity_key')}"
         for link in item.get("linked_tokens") or []
-        if link.get("asset_id") or link.get("identity_key")
+        if link.get("target_id") or link.get("identity_key")
     ]
     keys.extend(f"topic:{topic['key']}" for topic in item.get("linked_topics") or [] if topic.get("key"))
     return keys or [str(item["item_id"])]

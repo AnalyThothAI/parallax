@@ -63,10 +63,12 @@ describe("format helpers", () => {
 function sampleToken(): TokenFlowItem {
   return {
     identity: {
-      identity_key: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-      identity_status: "resolved_ca",
-      token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-      chain: "eth",
+      identity_key: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      identity_status: "EXACT",
+      target_type: "Asset",
+      target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      asset_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      chain: "eip155:1",
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       symbol: "PEPE"
     },
@@ -179,16 +181,18 @@ function sampleToken(): TokenFlowItem {
     },
     evidence_total_count: 0,
     posts_query: {
-      token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-      chain: "eth",
+      target_type: "Asset",
+      target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      chain: "eip155:1",
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       window: "5m",
       scope: "all",
       range: "current_window"
     },
     timeline_query: {
-      token_id: "token:eth:0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-      chain: "eth",
+      target_type: "Asset",
+      target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+      chain: "eip155:1",
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       window: "5m",
       scope: "all"

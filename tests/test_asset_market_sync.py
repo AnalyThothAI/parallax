@@ -31,6 +31,7 @@ def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
         "cex_tokens_written": 1,
         "pricefeeds_written": 1,
         "price_observations_written": 1,
+        "affected_lookup_keys": ["cex_token:BTC", "project_symbol:BTC", "symbol:BTC"],
     }
     assert client.instrument_requests == []
     assert client.ticker_requests == ["SPOT"]
@@ -81,6 +82,7 @@ def test_asset_market_sync_worker_runs_one_cex_sync_cycle():
     result = worker.sync_once(now_ms=1_700_000_000_000)
 
     assert result["price_observations_written"] == 1
+    assert result["resolution_refresh"]["reprocessed_intents"] == 0
     assert worker.last_result is None
     assert price_observations.observations[0]["price_usd"] == 69000.0
 
@@ -177,6 +179,11 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
         "price_requests": 1,
         "pricefeeds_written": 1,
         "price_observations_written": 1,
+        "affected_lookup_keys": [
+            "address:eip155:56:0x8f32420f2e3728c49399b00dd0a796602d984444",
+            "project_symbol:TEST",
+            "symbol:TEST",
+        ],
     }
     assert client.price_requests == [
         [{"chainIndex": "56", "tokenContractAddress": "0x8f32420f2e3728c49399b00dd0a796602d984444"}]
@@ -242,6 +249,11 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
 
     assert result["address_search_requests"] == 1
     assert result["address_search_errors"] == 0
+    assert result["affected_lookup_keys"] == [
+        f"address:eip155:1:{address}",
+        "project_symbol:UPEG",
+        "symbol:UPEG",
+    ]
     assert registry.chain_assets[-1] == {
         "chain_id": "eip155:1",
         "address": address,
@@ -283,6 +295,9 @@ def test_sync_okx_dex_prices_continues_when_address_search_fails():
     assert result["address_search_hits"] == 0
     assert result["address_search_errors"] == 1
     assert result["price_requests"] == 1
+    assert result["affected_lookup_keys"] == [
+        "address:eip155:56:0x8f32420f2e3728c49399b00dd0a796602d984444"
+    ]
     assert price_observations.observations[-1]["provider"] == "okx_dex_price"
 
 
@@ -445,9 +460,24 @@ class FakeRepositorySession:
     def __init__(self, registry, price_observations):
         self.registry = registry
         self.price_observations = price_observations
+        self.token_intent_lookup = FakeTokenIntentLookup()
+        self.token_intents = FakeTokenIntents()
+        self.intent_resolutions = object()
+        self.token_evidence = object()
+        self.conn = FakeConn()
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
         return None
+
+
+class FakeTokenIntentLookup:
+    def recent_unresolved_intents_for_lookup_keys(self, *_args, **_kwargs):
+        return []
+
+
+class FakeTokenIntents:
+    def recent_unresolved(self, *_args, **_kwargs):
+        return []

@@ -65,12 +65,13 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
 
     assert before["resolution_status"] == "NIL"
     assert before["target_id"] is None
-    assert result["tasks_claimed"] == 1
+    assert result["lookups_selected"] == 1
     assert result["search_requests"] == 1
     assert result["search_hits"] == 1
     assert result["assets_written"] == 1
     assert result["reprocessed_intents"] == 1
     assert result["projection"]["rows_written"] >= 1
+    assert result["discovery_result_counts"] == {"found": 1}
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_type"] == "Asset"
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"

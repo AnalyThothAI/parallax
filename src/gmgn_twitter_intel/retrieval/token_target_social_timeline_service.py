@@ -4,17 +4,18 @@ import time
 from typing import Any
 
 from .asset_flow_service import WINDOW_MS
-from .asset_timeline_cursor import decode_timeline_cursor, encode_timeline_cursor
+from .token_target_cursor import decode_target_cursor, encode_target_cursor
 
 
-class AssetSocialTimelineService:
-    def __init__(self, *, assets):
-        self.assets = assets
+class TokenTargetSocialTimelineService:
+    def __init__(self, *, targets):
+        self.targets = targets
 
     def timeline(
         self,
         *,
-        asset_id: str,
+        target_type: str,
+        target_id: str,
         window: str,
         scope: str,
         limit: int,
@@ -24,19 +25,26 @@ class AssetSocialTimelineService:
         resolved_now_ms = int(now_ms or time.time() * 1000)
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         fetch_limit = max(0, int(limit)) + 1
-        rows = self.assets.asset_timeline_rows(
-            asset_id=asset_id,
+        rows = self.targets.timeline_rows(
+            target_type=target_type,
+            target_id=target_id,
             since_ms=resolved_now_ms - window_ms,
             watched_only=scope == "matched",
             limit=fetch_limit,
-            cursor=decode_timeline_cursor(cursor),
+            cursor=decode_target_cursor(cursor),
         )
         page_rows = rows[: max(0, int(limit))]
         bucket_ms, bucket_label = _bucket(window)
         has_more = len(rows) > len(page_rows)
-        next_cursor = encode_timeline_cursor(page_rows[-1]) if has_more and page_rows else None
+        next_cursor = encode_target_cursor(page_rows[-1]) if has_more and page_rows else None
         return {
-            "query": {"asset_id": asset_id, "window": window, "scope": scope, "bucket": bucket_label},
+            "query": {
+                "target_type": target_type,
+                "target_id": target_id,
+                "window": window,
+                "scope": scope,
+                "bucket": bucket_label,
+            },
             "summary": _summary(page_rows),
             "market_overlay": _market_overlay(page_rows),
             "buckets": _buckets(
@@ -75,19 +83,27 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _market_overlay(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     for row in rows:
-        if not row.get("venue_id"):
-            continue
-        return {
-            "venue_id": row.get("venue_id"),
-            "venue_type": row.get("venue_type"),
-            "exchange": row.get("exchange"),
-            "chain": row.get("chain"),
-            "address": row.get("address"),
-            "inst_id": row.get("inst_id"),
-            "base_symbol": row.get("base_symbol"),
-            "quote_symbol": row.get("quote_symbol"),
-            "inst_type": row.get("inst_type"),
-        }
+        target_type = row.get("target_type")
+        if target_type == "Asset":
+            return {
+                "target_type": "Asset",
+                "target_id": row.get("target_id"),
+                "chain_id": row.get("chain_id"),
+                "address": row.get("address"),
+                "symbol": row.get("symbol"),
+                "pricefeed_id": row.get("pricefeed_id"),
+            }
+        if target_type == "CexToken":
+            return {
+                "target_type": "CexToken",
+                "target_id": row.get("target_id"),
+                "provider": row.get("provider"),
+                "native_market_id": row.get("native_market_id"),
+                "symbol": row.get("symbol"),
+                "quote_symbol": row.get("quote_symbol"),
+                "feed_type": row.get("feed_type"),
+                "pricefeed_id": row.get("pricefeed_id"),
+            }
     return None
 
 
@@ -171,8 +187,9 @@ def _post(row: dict[str, Any], *, bucket_ms: int, since_ms: int) -> dict[str, An
     return {
         "event_id": row.get("event_id"),
         "tweet_id": row.get("tweet_id"),
-        "asset_id": row.get("asset_id"),
-        "symbol": row.get("canonical_symbol"),
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "symbol": row.get("symbol"),
         "handle": row.get("author_handle"),
         "author_handle": row.get("author_handle"),
         "text": row.get("text_clean") or row.get("text"),
@@ -183,10 +200,10 @@ def _post(row: dict[str, Any], *, bucket_ms: int, since_ms: int) -> dict[str, An
         "is_first_seen_by_watched_for_token": watched,
         "event_type": "watched_token_intent" if watched else "public_token_intent",
         "attribution_status": row.get("attribution_status"),
-        "confidence": row.get("confidence"),
+        "confidence": confidence,
         "reference": None,
         "post_quality": {
-            "score_version": "asset_post_quality_v1",
+            "score_version": "token_target_post_quality_v1",
             "score": min(100, round(45 + confidence * 35 + (15 if watched else 0))),
             "reasons": ["watched_token_intent"] if watched else ["token_intent"],
             "risks": ["public_stream_coverage"],

@@ -386,7 +386,7 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
     assert [item["target"]["symbol"] for item in watched_flow.json()["data"]["targets"]] == ["PEPE"]
 
 
-def test_api_asset_posts_returns_full_post_pages_and_requires_asset_id(tmp_path):
+def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -407,18 +407,20 @@ def test_api_asset_posts_returns_full_post_pages_and_requires_asset_id(tmp_path)
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         ).json()["data"]["targets"][0]
-        asset_id = asset_flow["target"]["target_id"]
+        target_type = asset_flow["target"]["target_type"]
+        target_id = asset_flow["target"]["target_id"]
 
-        missing = client.get("/api/asset-posts?window=5m", headers={"Authorization": "Bearer secret"})
+        missing = client.get("/api/target-posts?window=5m", headers={"Authorization": "Bearer secret"})
         first_page = client.get(
-            "/api/asset-posts",
-            params={"asset_id": asset_id, "window": "5m", "scope": "all", "limit": 2},
+            "/api/target-posts",
+            params={"target_type": target_type, "target_id": target_id, "window": "5m", "scope": "all", "limit": 2},
             headers={"Authorization": "Bearer secret"},
         )
         second_page = client.get(
-            "/api/asset-posts",
+            "/api/target-posts",
             params={
-                "asset_id": asset_id,
+                "target_type": target_type,
+                "target_id": target_id,
                 "window": "5m",
                 "scope": "all",
                 "limit": 2,
@@ -428,27 +430,33 @@ def test_api_asset_posts_returns_full_post_pages_and_requires_asset_id(tmp_path)
         )
 
     assert missing.status_code == 400
-    assert missing.json() == {"ok": False, "error": "asset_id_required", "field": "asset_id"}
+    assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
     assert first_page.status_code == 200
     first_body = first_page.json()["data"]
     assert first_body["total_count"] == 3
     assert first_body["returned_count"] == 2
     assert first_body["has_more"] is True
-    assert first_body["query"]["asset_id"] == asset_id
-    assert first_body["items"][0]["post_quality"]["score_version"] == "asset_post_quality_v1"
+    assert first_body["query"]["target_type"] == target_type
+    assert first_body["query"]["target_id"] == target_id
+    assert first_body["items"][0]["post_quality"]["score_version"] == "token_target_post_quality_v1"
     assert first_body["items"][0]["post_quality"]["contributions"]
     assert "score" not in first_body["items"][0]
     assert second_page.status_code == 200
     assert second_page.json()["data"]["returned_count"] == 1
 
 
-def test_api_asset_posts_rejects_malformed_cursor(tmp_path):
+def test_api_target_posts_rejects_malformed_cursor(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/asset-posts",
-            params={"asset_id": "asset:unresolved:PEPE", "window": "5m", "cursor": "abcde"},
+            "/api/target-posts",
+            params={
+                "target_type": "Asset",
+                "target_id": "asset:eip155:1:erc20:0xpepe",
+                "window": "5m",
+                "cursor": "abcde",
+            },
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -456,7 +464,7 @@ def test_api_asset_posts_rejects_malformed_cursor(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_cursor"}
 
 
-def test_api_asset_social_timeline_returns_buckets_authors_and_posts(tmp_path):
+def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -477,20 +485,23 @@ def test_api_asset_social_timeline_returns_buckets_authors_and_posts(tmp_path):
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         ).json()["data"]["targets"][0]
-        asset_id = asset_flow["target"]["target_id"]
+        target_type = asset_flow["target"]["target_type"]
+        target_id = asset_flow["target"]["target_id"]
 
-        missing = client.get("/api/asset-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
+        missing = client.get("/api/target-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
         response = client.get(
-            "/api/asset-social-timeline",
-            params={"asset_id": asset_id, "window": "5m", "scope": "all", "limit": 2},
+            "/api/target-social-timeline",
+            params={"target_type": target_type, "target_id": target_id, "window": "5m", "scope": "all", "limit": 2},
             headers={"Authorization": "Bearer secret"},
         )
 
     assert missing.status_code == 400
-    assert missing.json() == {"ok": False, "error": "asset_id_required", "field": "asset_id"}
+    assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["query"]["bucket"] == "30s"
+    assert data["query"]["target_type"] == target_type
+    assert data["query"]["target_id"] == target_id
     assert data["summary"]["posts"] == 2
     assert data["buckets"]
     assert data["authors"]
@@ -498,13 +509,13 @@ def test_api_asset_social_timeline_returns_buckets_authors_and_posts(tmp_path):
     assert data["has_more"] is True
 
 
-def test_api_asset_social_timeline_rejects_manual_bucket_param(tmp_path):
+def test_api_target_social_timeline_rejects_manual_bucket_param(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/asset-social-timeline",
-            params={"asset_id": "asset:unresolved:PEPE", "window": "5m", "bucket": "1m"},
+            "/api/target-social-timeline",
+            params={"target_type": "Asset", "target_id": "asset:eip155:1:erc20:0xpepe", "window": "5m", "bucket": "1m"},
             headers={"Authorization": "Bearer secret"},
         )
 
@@ -526,18 +537,18 @@ def test_api_rejects_removed_1m_window(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_window", "field": "window"}
 
 
-def test_api_asset_posts_requires_asset_id(tmp_path):
+def test_api_target_posts_requires_target_identity(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/asset-posts",
+            "/api/target-posts",
             params={"window": "5m"},
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 400
-    assert response.json() == {"ok": False, "error": "asset_id_required", "field": "asset_id"}
+    assert response.json() == {"ok": False, "error": "target_required", "field": "target_id"}
 
 
 def test_api_status_exposes_operational_state(tmp_path):

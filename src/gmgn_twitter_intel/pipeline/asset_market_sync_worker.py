@@ -7,6 +7,8 @@ from typing import Any
 from loguru import logger
 
 from .asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
+from .token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
+from .token_resolution_refresh import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
 
 DEX_PRICE_STALE_MS = 5 * 60 * 1000
 DEX_PRICE_REFRESH_LIMIT = 80
@@ -21,12 +23,20 @@ class AssetMarketSyncWorker:
         dex_client=None,
         inst_types: tuple[str, ...],
         interval_seconds: float = 300.0,
+        reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
+        projection_limit: int = 100,
+        windows: tuple[str, ...] = DEFAULT_WINDOWS,
+        scopes: tuple[str, ...] = DEFAULT_SCOPES,
     ) -> None:
         self.client = client
         self.dex_client = dex_client
         self.repository_session = repository_session
         self.inst_types = tuple(str(item).strip().upper() for item in inst_types if str(item).strip())
         self.interval_seconds = interval_seconds
+        self.reprocess_limit = max(1, int(reprocess_limit))
+        self.projection_limit = max(1, int(projection_limit))
+        self.windows = tuple(windows)
+        self.scopes = tuple(scopes)
         self._stopped = False
         self._cex_task: asyncio.Task | None = None
         self._dex_task: asyncio.Task | None = None
@@ -57,27 +67,14 @@ class AssetMarketSyncWorker:
         if self.dex_client is not None:
             try:
                 with self.repository_session() as repos:
-                    result["dex"] = sync_okx_dex_prices(
-                        registry=repos.registry,
-                        price_observations=repos.price_observations,
-                        client=self.dex_client,
-                        observed_at_ms=observed_at_ms,
-                        stale_after_ms=DEX_PRICE_STALE_MS,
-                        limit=DEX_PRICE_REFRESH_LIMIT,
-                    )
+                    result["dex"] = self._sync_dex_with_refresh(repos=repos, now_ms=observed_at_ms)
             except Exception as exc:
                 errors["dex"] = str(exc)
                 logger.exception(f"OKX DEX market price sync failed: {exc}")
         if self.client is not None and self.inst_types:
             try:
                 with self.repository_session() as repos:
-                    result["cex"] = sync_okx_cex_universe(
-                        registry=repos.registry,
-                        price_observations=repos.price_observations,
-                        client=self.client,
-                        inst_types=self.inst_types,
-                        observed_at_ms=observed_at_ms,
-                    )
+                    result["cex"] = self._sync_cex_with_refresh(repos=repos, now_ms=observed_at_ms)
             except Exception as exc:
                 errors["cex"] = str(exc)
                 logger.exception(f"OKX CEX market sync failed: {exc}")
@@ -91,24 +88,53 @@ class AssetMarketSyncWorker:
 
     def _sync_dex_once(self, *, now_ms: int) -> dict[str, Any]:
         with self.repository_session() as repos:
-            return sync_okx_dex_prices(
-                registry=repos.registry,
-                price_observations=repos.price_observations,
-                client=self.dex_client,
-                observed_at_ms=now_ms,
-                stale_after_ms=DEX_PRICE_STALE_MS,
-                limit=DEX_PRICE_REFRESH_LIMIT,
-            )
+            return self._sync_dex_with_refresh(repos=repos, now_ms=now_ms)
 
     def _sync_cex_once(self, *, now_ms: int) -> dict[str, Any]:
         with self.repository_session() as repos:
-            return sync_okx_cex_universe(
-                registry=repos.registry,
-                price_observations=repos.price_observations,
-                client=self.client,
-                inst_types=self.inst_types,
-                observed_at_ms=now_ms,
-            )
+            return self._sync_cex_with_refresh(repos=repos, now_ms=now_ms)
+
+    def _sync_dex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
+        result = sync_okx_dex_prices(
+            registry=repos.registry,
+            price_observations=repos.price_observations,
+            client=self.dex_client,
+            observed_at_ms=now_ms,
+            stale_after_ms=DEX_PRICE_STALE_MS,
+            limit=DEX_PRICE_REFRESH_LIMIT,
+        )
+        return self._with_resolution_refresh(result, repos=repos, now_ms=now_ms)
+
+    def _sync_cex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
+        result = sync_okx_cex_universe(
+            registry=repos.registry,
+            price_observations=repos.price_observations,
+            client=self.client,
+            inst_types=self.inst_types,
+            observed_at_ms=now_ms,
+        )
+        return self._with_resolution_refresh(result, repos=repos, now_ms=now_ms)
+
+    def _with_resolution_refresh(self, result: dict[str, Any], *, repos, now_ms: int) -> dict[str, Any]:
+        lookup_keys = sorted({str(key) for key in result.get("affected_lookup_keys") or [] if str(key)})
+        public_result = {
+            **result,
+            "affected_lookup_key_count": len(lookup_keys),
+            "affected_lookup_key_sample": lookup_keys[:20],
+        }
+        public_result.pop("affected_lookup_keys", None)
+        if not lookup_keys:
+            return {**public_result, "resolution_refresh": None}
+        refresh = refresh_recent_token_state(
+            repos=repos,
+            lookup_keys=lookup_keys,
+            now_ms=now_ms,
+            reprocess_limit=self.reprocess_limit,
+            projection_limit=self.projection_limit,
+            windows=self.windows,
+            scopes=self.scopes,
+        )
+        return {**public_result, "resolution_refresh": _public_refresh(refresh)}
 
     def _start_provider_task(self, name: str, task: asyncio.Task | None, func, *, now_ms: int) -> asyncio.Task:
         if task is not None and not task.done():
@@ -174,3 +200,25 @@ def _provider_state() -> dict[str, Any]:
         "last_result": None,
         "last_error": None,
     }
+
+
+def _public_refresh(refresh: dict[str, Any]) -> dict[str, Any]:
+    lookup_keys = [str(key) for key in refresh.get("lookup_keys") or [] if str(key)]
+    reprocess = refresh.get("reprocess")
+    public_reprocess = None
+    if isinstance(reprocess, dict):
+        reprocess_keys = [str(key) for key in reprocess.get("lookup_keys") or [] if str(key)]
+        public_reprocess = {
+            **reprocess,
+            "lookup_key_count": len(reprocess_keys),
+            "lookup_key_sample": reprocess_keys[:20],
+        }
+        public_reprocess.pop("lookup_keys", None)
+    public_refresh = {
+        **refresh,
+        "lookup_key_count": len(lookup_keys),
+        "lookup_key_sample": lookup_keys[:20],
+        "reprocess": public_reprocess,
+    }
+    public_refresh.pop("lookup_keys", None)
+    return public_refresh

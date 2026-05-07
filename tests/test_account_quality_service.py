@@ -24,4 +24,5 @@ def test_account_quality_service_backfills_first_token_mentions(tmp_path):
     assert result["stats_upserted"] == 1
     assert account["profile"]["handle"] == "early"
     assert account["token_call_stats"][0]["mention_count"] == 2
+    assert account["token_call_stats"][0]["token_id"].startswith("asset:eip155:1:erc20:")
     assert account["token_call_stats"][0]["outcome_status"] == "insufficient_market_history"
