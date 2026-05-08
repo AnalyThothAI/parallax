@@ -127,3 +127,12 @@ def test_postgres_health_check_reports_liveness_and_migration_version():
         "probe": "postgres_liveness",
         "migration_version": "20260506_0003",
     }
+
+
+def test_postgres_health_check_rejects_stale_migration_when_expected_version_is_set():
+    payload = postgres_health_check(FakeConn(), expected_migration_version="20260508_0011")
+
+    assert payload["ok"] is False
+    assert payload["migration_version"] == "20260506_0003"
+    assert payload["expected_migration_version"] == "20260508_0011"
+    assert payload["migration_status"] == "stale"

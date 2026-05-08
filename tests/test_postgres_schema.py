@@ -13,17 +13,23 @@ PROJECTION_MIGRATION = Path(
 ASSET_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py"
 )
-TOKEN_RADAR_V3_MIGRATION = Path(
+TOKEN_RADAR_INTENT_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0007_token_radar_v3_intents.py"
 )
-TOKEN_RADAR_V4_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_v4_deterministic_registry.py"
+TOKEN_RADAR_REGISTRY_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
 )
 AGENTS_SDK_AUDIT_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
 EVENT_PRICE_OBSERVATION_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0011_event_price_observations.py"
+)
+TOKEN_RADAR_PRUNE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"
+)
+TOKEN_RESOLUTION_RETIRE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py"
 )
 
 
@@ -119,8 +125,8 @@ def test_asset_migration_adds_identity_resolution_tables() -> None:
     assert "sqlite" not in text.lower()
 
 
-def test_token_radar_v3_migration_adds_intent_market_and_projection_tables() -> None:
-    text = TOKEN_RADAR_V3_MIGRATION.read_text()
+def test_token_radar_migration_adds_intent_market_and_projection_tables() -> None:
+    text = TOKEN_RADAR_INTENT_MIGRATION.read_text()
 
     expected_tables = {
         "token_evidence",
@@ -153,8 +159,8 @@ def test_token_radar_v3_migration_adds_intent_market_and_projection_tables() -> 
     assert "DROP TABLE IF EXISTS token_radar_rows" in text
 
 
-def test_token_radar_v4_migration_adds_hard_cut_registry_and_price_tables() -> None:
-    text = TOKEN_RADAR_V4_MIGRATION.read_text()
+def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables() -> None:
+    text = TOKEN_RADAR_REGISTRY_MIGRATION.read_text()
 
     for table in {
         "projects",
@@ -181,3 +187,21 @@ def test_token_radar_v4_migration_adds_hard_cut_registry_and_price_tables() -> N
     assert "ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS price_json JSONB" in text
     assert "ux_cex_tokens_identity" in text
     assert "idx_price_observations_subject_latest" in text
+
+
+def test_token_radar_prune_migration_removes_non_current_projection_versions() -> None:
+    text = TOKEN_RADAR_PRUNE_MIGRATION.read_text()
+
+    assert "DELETE FROM token_radar_rows" in text
+    assert "projection_version <> 'token-radar-v5-auditable'" in text
+    assert "DELETE FROM projection_runs" in text
+    assert "DELETE FROM projection_offsets" in text
+
+
+def test_token_resolution_retire_migration_deactivates_old_resolver_policies() -> None:
+    text = TOKEN_RESOLUTION_RETIRE_MIGRATION.read_text()
+
+    assert "UPDATE token_intent_resolutions" in text
+    assert "record_status = 'retired'" in text
+    assert "is_current = false" in text
+    assert "resolver_policy_version <> 'token_radar_v5_identity_resolver'" in text

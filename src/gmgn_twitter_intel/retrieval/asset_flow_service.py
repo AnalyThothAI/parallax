@@ -60,4 +60,5 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "score": row.get("score_json") or {},
         "decision": row.get("decision"),
         "data_health": row.get("data_health_json") or {},
+        "source_event_ids": row.get("source_event_ids_json") or [],
     }

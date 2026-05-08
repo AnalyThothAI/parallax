@@ -27,6 +27,7 @@ WINDOW_MS = {
 }
 MARKET_FRESH_MS = 5 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
+STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 
 
 class TokenRadarProjection:
@@ -72,7 +73,15 @@ class TokenRadarProjection:
             (int(row.get("source_max_received_at_ms") or 0) for row in rows),
             default=0,
         )
-        run = ProjectionRepository(self.repos.conn).start_run(
+        projection_repo = ProjectionRepository(self.repos.conn)
+        projection_repo.mark_stale_running_runs(
+            projection_name=TOKEN_RADAR_PROJECTION_NAME,
+            projection_version=PROJECTION_VERSION,
+            stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
+            finished_at_ms=computed_at_ms,
+            commit=False,
+        )
+        run = projection_repo.start_run(
             projection_name=TOKEN_RADAR_PROJECTION_NAME,
             projection_version=PROJECTION_VERSION,
             mode="rebuild",
@@ -80,7 +89,7 @@ class TokenRadarProjection:
             source_end_ms=computed_at_ms,
             commit=False,
         )
-        self.repos.token_radar.replace_rows(
+        rows_replaced = self.repos.token_radar.replace_rows(
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
@@ -88,7 +97,23 @@ class TokenRadarProjection:
             rows=rows,
             commit=False,
         )
-        ProjectionRepository(self.repos.conn).advance_offset(
+        if not rows_replaced:
+            projection_repo.finish_run(
+                run_id=str(run["run_id"]),
+                status="stale_skipped",
+                rows_read=len(source_rows),
+                rows_written=0,
+                dirty_ranges_written=0,
+                error="newer_projection_exists",
+                commit=True,
+            )
+            return {
+                "rows_written": 0,
+                "source_rows": len(source_rows),
+                "computed_at_ms": computed_at_ms,
+                "status": "stale_skipped",
+            }
+        projection_repo.advance_offset(
             projection_name=TOKEN_RADAR_PROJECTION_NAME,
             projection_version=PROJECTION_VERSION,
             source_table=TOKEN_RADAR_SOURCE_TABLE,
@@ -99,7 +124,7 @@ class TokenRadarProjection:
             status="ready",
             commit=False,
         )
-        ProjectionRepository(self.repos.conn).finish_run(
+        projection_repo.finish_run(
             run_id=str(run["run_id"]),
             status="ready",
             rows_read=len(source_rows),
@@ -107,7 +132,12 @@ class TokenRadarProjection:
             dirty_ranges_written=0,
             commit=True,
         )
-        return {"rows_written": len(rows), "source_rows": len(source_rows), "computed_at_ms": computed_at_ms}
+        return {
+            "rows_written": len(rows),
+            "source_rows": len(source_rows),
+            "computed_at_ms": computed_at_ms,
+            "status": "ready",
+        }
 
     def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
         watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
@@ -123,6 +153,7 @@ class TokenRadarProjection:
               token_intent_resolutions.reason_codes_json,
               token_intent_resolutions.candidate_ids_json,
               token_intent_resolutions.lookup_keys_json,
+              discovery.discovery_results AS discovery_results_json,
               token_intent_resolutions.decision_time_ms,
               events.author_handle,
               events.is_watched,
@@ -214,6 +245,26 @@ class TokenRadarProjection:
                 token_intent_resolutions.pricefeed_id,
                 preferred_price_feed.pricefeed_id
               )
+            LEFT JOIN LATERAL (
+              SELECT jsonb_agg(
+                jsonb_build_object(
+                  'lookup_key', token_discovery_results.lookup_key,
+                  'lookup_type', token_discovery_results.lookup_type,
+                  'status', token_discovery_results.status,
+                  'candidate_count', token_discovery_results.candidate_count,
+                  'last_lookup_at_ms', token_discovery_results.last_lookup_at_ms,
+                  'next_refresh_at_ms', token_discovery_results.next_refresh_at_ms,
+                  'last_error', token_discovery_results.last_error,
+                  'error_count', token_discovery_results.error_count
+                )
+                ORDER BY token_discovery_results.lookup_key
+              ) AS discovery_results
+              FROM token_discovery_results
+              WHERE token_discovery_results.provider = 'okx_dex_search'
+                AND token_discovery_results.lookup_key IN (
+                  SELECT jsonb_array_elements_text(token_intent_resolutions.lookup_keys_json)
+                )
+            ) discovery ON true
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -402,6 +453,7 @@ def _project_group(
             "reason_codes": latest.get("reason_codes_json") or [],
             "candidate_ids": latest.get("candidate_ids_json") or [],
             "lookup_keys": latest.get("lookup_keys_json") or [],
+            "discovery": _resolution_discovery(latest),
         },
         "market_json": market,
         "price_json": market,
@@ -422,6 +474,66 @@ def _has_resolved_target(row: dict[str, Any]) -> bool:
         "EXACT",
         "UNIQUE_BY_CONTEXT",
     }
+
+
+def _resolution_discovery(row: dict[str, Any]) -> list[dict[str, Any]]:
+    lookup_keys = _discovery_lookup_keys(row.get("lookup_keys_json") or [])
+    existing = [
+        _discovery_result(item)
+        for item in row.get("discovery_results_json") or []
+        if isinstance(item, dict) and item.get("lookup_key")
+    ]
+    existing_by_key = {str(item["lookup_key"]): item for item in existing}
+    out: list[dict[str, Any]] = []
+    for key in lookup_keys:
+        out.append(existing_by_key.get(key) or _not_searched_discovery(key))
+    seen = {str(item["lookup_key"]) for item in out}
+    out.extend(item for item in existing if str(item["lookup_key"]) not in seen)
+    return out
+
+
+def _discovery_lookup_keys(raw_keys: list[Any]) -> list[str]:
+    out: list[str] = []
+    for raw_key in raw_keys:
+        key = str(raw_key or "")
+        if key.startswith("symbol:") or key.startswith("address:"):
+            out.append(key)
+    return sorted(set(out))
+
+
+def _discovery_result(item: dict[str, Any]) -> dict[str, Any]:
+    lookup_key = str(item.get("lookup_key") or "")
+    return {
+        "lookup_key": lookup_key,
+        "lookup_type": item.get("lookup_type") or _lookup_type(lookup_key),
+        "status": item.get("status") or "unknown",
+        "candidate_count": int(item.get("candidate_count") or 0),
+        "last_lookup_at_ms": item.get("last_lookup_at_ms"),
+        "next_refresh_at_ms": item.get("next_refresh_at_ms"),
+        "last_error": item.get("last_error"),
+        "error_count": int(item.get("error_count") or 0),
+    }
+
+
+def _not_searched_discovery(lookup_key: str) -> dict[str, Any]:
+    return {
+        "lookup_key": lookup_key,
+        "lookup_type": _lookup_type(lookup_key),
+        "status": "not_searched",
+        "candidate_count": 0,
+        "last_lookup_at_ms": None,
+        "next_refresh_at_ms": None,
+        "last_error": None,
+        "error_count": 0,
+    }
+
+
+def _lookup_type(lookup_key: str) -> str:
+    if lookup_key.startswith("symbol:"):
+        return "dex_symbol_lookup"
+    if lookup_key.startswith("address:"):
+        return "address_lookup"
+    return "unknown_lookup"
 
 
 def _target(row: dict[str, Any]) -> dict[str, Any]:

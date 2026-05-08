@@ -76,18 +76,17 @@ export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRad
       </button>
 
       <span className="venue-cell" data-radar-action="venue">
-        {onOpenPage && targetRef ? (
-          <button type="button" className="venue-link" aria-label={`open token audit page ${tokenLabel(item)}`} onClick={() => onOpenPage(item)}>
-            Page
-          </button>
-        ) : null}
         {venueAction ? (
           <a aria-label={`Open ${tokenLabel(item)} on ${venueAction.label}`} className="venue-link" href={venueAction.url} rel="noreferrer" target="_blank">
             {venueAction.label}
           </a>
-        ) : (
-          <span className="muted">-</span>
-        )}
+        ) : null}
+        {onOpenPage && targetRef ? (
+          <button type="button" className="page-open-button" aria-label={`open token audit page ${tokenLabel(item)}`} onClick={() => onOpenPage(item)}>
+            &gt;
+          </button>
+        ) : null}
+        {!venueAction && !(onOpenPage && targetRef) ? <span className="muted">-</span> : null}
       </span>
     </div>
   );
@@ -107,7 +106,10 @@ function identitySubtitle(item: TokenFlowItem): string {
   if (item.identity.target_type && item.identity.target_id) {
     return item.identity.chain ? `${item.identity.chain} · resolved target` : "resolved target";
   }
-  return "symbol-only · no resolved target";
+  const reason = item.identity.resolution_reasons?.[0] ?? item.identity.identity_status;
+  const candidateText = item.identity.candidate_count ? ` · ${compactNumber(item.identity.candidate_count)} candidates` : "";
+  const discoveryText = item.identity.discovery_status ? ` · ${compactLabel(item.identity.discovery_status)}` : "";
+  return `symbol-only · ${formatRisk(reason)}${candidateText}${discoveryText}`;
 }
 
 function marketPrimary(item: TokenFlowItem): string {

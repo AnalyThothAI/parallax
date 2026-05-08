@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
-from tests.factories_token_radar_v3 import (
+from tests.factories_token_radar import (
     VERSA_BASE_CA,
     insert_base_versa_asset,
     make_gmgn_payload_event,
-    make_v3_event,
-    open_v3_runtime,
+    make_token_event,
+    open_token_radar_runtime,
 )
 
 
 def test_versa_symbol_and_ca_build_one_intent(tmp_path):
-    _, repos, ingest = open_v3_runtime(tmp_path)
+    _, repos, ingest = open_token_radar_runtime(tmp_path)
     insert_base_versa_asset(repos.assets, observed_at_ms=1_777_799_000_000)
-    event = make_v3_event(
+    event = make_token_event(
         text=f"很不错的一个项目，挺有格局的dev， $VERSA {VERSA_BASE_CA}",
         received_at_ms=1_777_800_000_000,
     )
@@ -35,10 +35,10 @@ def test_versa_symbol_and_ca_build_one_intent(tmp_path):
 
 
 def test_unresolved_attention_never_projects_as_driver(tmp_path):
-    _, repos, ingest = open_v3_runtime(tmp_path)
+    _, repos, ingest = open_token_radar_runtime(tmp_path)
     for index in range(7):
         ingest.ingest_event(
-            make_v3_event(
+            make_token_event(
                 event_id=f"event-hanta-{index}",
                 text="$HANTA new burst",
                 received_at_ms=1_777_800_000_000 + index,
@@ -61,7 +61,7 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
 
 
 def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path):
-    _, repos, ingest = open_v3_runtime(tmp_path)
+    _, repos, ingest = open_token_radar_runtime(tmp_path)
     address = "3iqrRNGG111111111111111111111111111111wNpump"
     event = make_gmgn_payload_event(
         symbol=address,
@@ -86,7 +86,7 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
 
 
 def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
-    _, repos, ingest = open_v3_runtime(tmp_path)
+    _, repos, ingest = open_token_radar_runtime(tmp_path)
     event = make_gmgn_payload_event(
         symbol="PEPE",
         chain="eth",

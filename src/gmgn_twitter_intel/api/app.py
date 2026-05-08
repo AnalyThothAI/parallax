@@ -38,6 +38,7 @@ from ..storage.evidence_repository import EvidenceRepository
 from ..storage.harness_repository import HarnessRepository
 from ..storage.notification_repository import NotificationRepository
 from ..storage.postgres_client import create_pool, postgres_health_check, with_password_from_file
+from ..storage.postgres_migrations import latest_migration_version
 from ..storage.repository_session import PooledRepository, repository_session
 from ..storage.signal_repository import SignalRepository
 from .http import ApiBadRequest, ApiUnauthorized, api_bad_request_response, api_unauthorized_response, create_api_router
@@ -208,7 +209,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
     )
     with db_pool.connection() as conn:
-        startup_db = postgres_health_check(conn)
+        startup_db = postgres_health_check(conn, expected_migration_version=latest_migration_version())
     if not startup_db.get("ok"):
         db_pool.close()
         raise RuntimeError(f"postgres health check failed: {startup_db}")
@@ -602,7 +603,7 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
 def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
         with runtime.db_pool.connection() as conn:
-            return postgres_health_check(conn)
+            return postgres_health_check(conn, expected_migration_version=latest_migration_version())
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
 

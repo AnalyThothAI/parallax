@@ -193,7 +193,12 @@ export function formatRisk(value: string | null | undefined): string {
     missing_social_start: "社交起点缺失",
     chase_risk: "追高风险",
     missing_price: "价格缺失",
-    missing_social_history: "社交历史不足"
+    missing_social_history: "社交历史不足",
+    SYMBOL_NOT_IN_REGISTRY: "registry 未命中",
+    SYMBOL_CANDIDATES_STALE: "候选价格过期",
+    ADDRESS_NOT_IN_REGISTRY: "地址未入库",
+    NO_MARKET_DOMINANT_CHAIN_ASSET: "候选不唯一",
+    CEX_PRICEFEED_NOT_IN_REGISTRY: "CEX 行情未入库"
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }

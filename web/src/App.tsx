@@ -1038,7 +1038,7 @@ function assetFlowRows(data?: AssetFlowData | null): AssetFlowRow[] {
   return [...data.targets, ...data.attention];
 }
 
-function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
+export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
   const mentions = row.attention.mentions_window;
   const authors = row.attention.unique_authors;
   const watched = row.attention.watched_mentions;
@@ -1056,15 +1056,18 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
   const displaySymbol = row.intent?.display_symbol ?? target.symbol ?? null;
   const targetId = target.target_id ?? row.resolution.target_id ?? null;
   const identityKey = targetId ?? row.intent?.intent_id ?? target.address ?? target.native_market_id ?? displaySymbol ?? "unknown-token-intent";
+  const resolutionReasons = row.resolution.reason_codes ?? row.resolution.reasons ?? [];
+  const candidateCount = row.resolution.candidate_ids?.length ?? row.resolution.candidates?.length ?? 0;
+  const discoveryStatus = discoveryStatusSummary(row.resolution.discovery);
   const marketObservationStatus = price?.market_observation_status ?? row.data_health?.market ?? "missing_market";
   const marketHasUsableSnapshot = price?.market_status === "ready" || price?.market_status === "fresh";
   const priceChangeStatus = price?.price_change_status ?? (marketHasUsableSnapshot ? "ready" : "missing_market");
-  const heat = normalizedScoreBlock(row.score?.heat, "social_heat_v2");
-  const quality = normalizedScoreBlock(row.score?.quality, "discussion_quality_v2");
-  const propagation = normalizedScoreBlock(row.score?.propagation, "propagation_v2");
-  const tradeability = normalizedScoreBlock(row.score?.tradeability, "tradeability_v2");
-  const timing = normalizedScoreBlock(row.score?.timing, "timing_v4");
-  const opportunity = normalizedScoreBlock(row.score?.opportunity, "social_opportunity_v3");
+  const heat = normalizedScoreBlock(row.score?.heat);
+  const quality = normalizedScoreBlock(row.score?.quality);
+  const propagation = normalizedScoreBlock(row.score?.propagation);
+  const tradeability = normalizedScoreBlock(row.score?.tradeability);
+  const timing = normalizedScoreBlock(row.score?.timing);
+  const opportunity = normalizedScoreBlock(row.score?.opportunity);
   const decision = normalizeDecision(row.decision);
   const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
   const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
@@ -1085,7 +1088,11 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       inst_type: isCexToken ? target.feed_type ?? null : null,
       chain,
       address,
-      symbol: displaySymbol
+      symbol: displaySymbol,
+      resolution_reasons: resolutionReasons,
+      lookup_keys: row.resolution.lookup_keys ?? [],
+      candidate_count: candidateCount,
+      discovery_status: discoveryStatus
     },
     market: {
       market_status: price?.market_status ?? "missing",
@@ -1213,7 +1220,7 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       reasons: watched ? ["watched_source_present"] : [],
       risks: watched ? [] : ["no_watched_confirmation"]
     },
-    evidence_total_count: row.intent?.evidence?.length ?? mentions,
+    evidence_total_count: row.source_event_ids?.length ?? mentions,
     posts_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope, range: "current_window" },
     timeline_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope }
   };
@@ -1235,12 +1242,12 @@ type RadarScoreInput = {
   chase_risk?: boolean | null;
 };
 
-function normalizedScoreBlock(block: RadarScoreInput | undefined, fallbackVersion: string): any {
+function normalizedScoreBlock(block: RadarScoreInput | undefined): any {
   const extra = block && typeof block === "object" ? { ...block } : {};
   return {
     ...extra,
     score: Math.round(Number(block?.score ?? 0)),
-    score_version: block?.score_version ?? fallbackVersion,
+    score_version: block?.score_version ?? "missing_score_version",
     reasons: block?.reasons ?? [],
     risks: block?.risks ?? [],
     hard_risks: block?.hard_risks ?? [],
@@ -1260,6 +1267,18 @@ function normalizeTimingStatus(value: string | null | undefined, resolved: boole
     return value;
   }
   return resolved ? "neutral" : "market_unavailable";
+}
+
+function discoveryStatusSummary(discovery: AssetFlowRow["resolution"]["discovery"]): string | null {
+  if (!discovery?.length) {
+    return null;
+  }
+  const statuses = Array.from(new Set(discovery.map((item) => item.status).filter(Boolean)));
+  if (statuses.length === 1) {
+    const candidateTotal = discovery.reduce((sum, item) => sum + Number(item.candidate_count ?? 0), 0);
+    return candidateTotal > 0 ? `${statuses[0]}:${candidateTotal}` : String(statuses[0]);
+  }
+  return statuses.join("+");
 }
 
 function attentionKindTotal(summary?: TradingAttentionData["summary"]): number {

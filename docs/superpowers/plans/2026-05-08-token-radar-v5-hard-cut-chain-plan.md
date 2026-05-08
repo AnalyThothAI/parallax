@@ -19,10 +19,10 @@ Current path:
 1. `collector/normalizer.py` attaches `TwitterEvent.token_snapshot` when GMGN payload contains token `t`.
 2. `pipeline/ingest_service.py` writes `events`, deterministic entities, token evidence, token intents.
 3. `TokenIntentResolver` calls `DeterministicTokenResolver`.
-4. Current resolver policy is `token_radar_v4_deterministic_resolver`.
+4. Current resolver policy is `token_radar_v5_identity_resolver`.
 5. Resolution rows write `target_type`, `target_id`, and optional `pricefeed_id`.
 
-Decision: keep resolver policy as-is. This is not compatibility code; it is the current identity policy. The hard cut is the radar projection/read contract, not identity migration.
+Decision: keep one current resolver policy only. This is not compatibility code; the resolver policy is part of the v5 audit contract.
 
 ### Price Ledger
 
@@ -41,10 +41,9 @@ Current path:
 
 1. `TokenRadarProjectionWorker` rebuilds all windows/scopes through `TokenRadarProjection`.
 2. discovery/reprocess also calls `rebuild_token_radar_windows()`, which uses the same projection class.
-3. `TokenRadarProjection.PROJECTION_VERSION` is `token-radar-v4`.
-4. `_score()` is a local heuristic and returns `price_health`.
-5. mature scoring modules are not used by production projection.
-6. `_market()` is called with the latest row only, so simply adding social-start fields to source SQL would still use the wrong row for social start.
+3. `TokenRadarProjection.PROJECTION_VERSION` is `token-radar-v5-auditable`.
+4. `_score()` calls the mature scoring modules and returns `tradeability`, not `price_health`.
+5. `_market()` reads social-start, first-snapshot, and latest market points from the group.
 
 Decision: hard-cut `TokenRadarProjection` itself. Once this class is v5, worker, discovery reprocess, CLI rebuild, and API all move together.
 
@@ -54,8 +53,8 @@ Current path:
 
 1. `/api/token-radar` calls `AssetFlowService`.
 2. `AssetFlowService` calls `TokenRadarRepository.latest_rows()` without version.
-3. `TokenRadarRepository.latest_rows()` defaults to `token-radar-v4`.
-4. `ProjectionRepository.KNOWN_PROJECTIONS` and `PostgresQueryAudit` also reference v4.
+3. `TokenRadarRepository.latest_rows()` requires an explicit projection version.
+4. `ProjectionRepository` and operational audit paths reference the v5 projection contract.
 
 Problem: these are hidden compatibility/default paths. v5 must require explicit projection version and audit v5 only.
 
@@ -73,15 +72,14 @@ Decision: both timeline and posts must expose message price and use `post_qualit
 
 ### Frontend
 
-Current path:
+Former path before the v5 cut:
 
-1. `web/src/api/types.ts` still includes `price_health`.
-2. `web/src/App.tsx::tokenRadarRowToTokenItem()` maps `row.score.price_health` into `tradeability`.
-3. Default score versions are `token_radar_v4`.
-4. opportunity components read `components.price_health`.
-5. market status treats stale as usable.
+1. `web/src/api/types.ts` included `price_health`.
+2. `web/src/App.tsx::tokenRadarRowToTokenItem()` mapped `row.score.price_health` into `tradeability`.
+3. opportunity components read `components.price_health`.
+4. market status treated stale as usable.
 
-Decision: remove these paths. Frontend should require v5 `score.tradeability`; it must not translate legacy `price_health`.
+Decision: these paths are removed. Frontend requires v5 `score.tradeability`, surfaces missing score versions as `missing_score_version`, and must not translate legacy `price_health`.
 
 ## No Compatibility Rules
 
@@ -94,9 +92,9 @@ Decision: remove these paths. Frontend should require v5 `score.tradeability`; i
 - Do not compute social-start market fields from the latest row in a group.
 - Do not update `web/dist`; it is a build artifact and should not be part of this source change.
 
-Allowed v4 string:
+Allowed historical references:
 
-- `token_radar_v4_deterministic_resolver` remains in resolver-related code/tests because it names the deterministic identity policy. This is not the projection/scoring compatibility path.
+- Old v3/v4 names may remain only inside dated historical design documents and Alembic migration filenames. Active runtime, frontend mapper code, and current tests should not depend on them.
 
 ## Data-Flow Invariants
 
@@ -199,8 +197,7 @@ rg -n "token-radar-v4|price_health|token_radar_v4" src/gmgn_twitter_intel web/sr
 
 Expected allowed matches only:
 
-- `token_radar_v4_deterministic_resolver`
-- migration filenames or resolver tests that explicitly validate identity policy.
+- migration filenames or schema/audit tests that explicitly reject historical projection fields.
 
 - [ ] **Step 7: Commit**
 
@@ -879,7 +876,7 @@ normalizedScoreBlock(row.score?.price_health, "token_radar_v4")
 with:
 
 ```ts
-normalizedScoreBlock(row.score?.tradeability, "tradeability_v2")
+normalizedScoreBlock(row.score?.tradeability)
 ```
 
 Then remove all references to `priceHealth`.
@@ -1067,9 +1064,8 @@ rg -n "price_health|token-radar-v4|token_radar_v4" src/gmgn_twitter_intel web/sr
 
 Allowed matches:
 
-- `token_radar_v4_deterministic_resolver`
-- resolver policy tests
 - migration filenames/schema tests that refer to historical migration files
+- audit tests that reject historical `price_health` rows
 
 No active projection, API, frontend, notification, or audit code may match `price_health` or `token-radar-v4`.
 
@@ -1137,4 +1133,4 @@ Expected:
 - Spec coverage: mature scoring, message price ledger, social/first snapshot deltas, CEX/DEX separation, token timeline/page, market page delta, and audit command are all covered.
 - Current chain coverage: ingest, resolver, price observations, market sync/discovery, projection worker, repository defaults, API, notification rules, timeline/posts, and frontend mapper are all explicitly addressed.
 - No compatibility code: the plan removes v4 projection defaults, removes `price_health`, forbids frontend fallback, and requires a grep gate.
-- Known exception: `token_radar_v4_deterministic_resolver` remains only as the identity resolver policy name.
+- Known historical references are limited to dated old plans and Alembic filenames, never active runtime or current tests.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-TOKEN_TARGET_RESOLVER_POLICY_VERSION = "token_radar_v4_deterministic_resolver"
+from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
 class TokenTargetRepository:
@@ -26,7 +26,7 @@ class TokenTargetRepository:
             "tir.resolver_policy_version = %s",
             "events.received_at_ms >= %s",
         ]
-        params: list[Any] = [target_type, target_id, TOKEN_TARGET_RESOLVER_POLICY_VERSION, int(since_ms)]
+        params: list[Any] = [target_type, target_id, TOKEN_RADAR_RESOLVER_POLICY_VERSION, int(since_ms)]
         if cursor is not None:
             cursor_ms, cursor_event_id = cursor
             clauses.append("(events.received_at_ms, events.event_id) < (%s, %s)")

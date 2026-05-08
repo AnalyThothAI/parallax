@@ -44,6 +44,25 @@ def test_asset_flow_marks_projection_missing_when_no_radar_rows():
     assert result["projection"]["computed_at_ms"] is None
 
 
+def test_asset_flow_exposes_source_event_ids_for_evidence_counting():
+    service = AssetFlowService(
+        token_radar=FakeTokenRadar(
+            rows=[
+                radar_row(
+                    lane="resolved",
+                    symbol="BTC",
+                    asset_id="asset:cex:BTC",
+                    source_event_ids=["event-a", "event-b", "event-c"],
+                )
+            ]
+        )
+    )
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["targets"][0]["source_event_ids"] == ["event-a", "event-b", "event-c"]
+
+
 def test_unresolved_attention_keeps_backend_investigate_decision_even_with_high_heat():
     service = AssetFlowService(
         token_radar=FakeTokenRadar(
@@ -286,6 +305,7 @@ def radar_row(
     score: dict | None = None,
     decision: str = "watch",
     data_health: dict | None = None,
+    source_event_ids: list[str] | None = None,
 ):
     resolved_intent_id = intent_id or f"intent:{(display_symbol or symbol or asset_id or 'unknown').lower()}"
     return {
@@ -363,7 +383,7 @@ def radar_row(
         "data_health_json": data_health
         if data_health is not None
         else {"identity": identity_status, "market": "pending_refresh", "coverage": "public_stream"},
-        "source_event_ids_json": [f"event:{resolved_intent_id}"],
+        "source_event_ids_json": source_event_ids or [f"event:{resolved_intent_id}"],
         "source_max_received_at_ms": 1_700_000_000_000,
     }
 

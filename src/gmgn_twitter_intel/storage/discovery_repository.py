@@ -15,11 +15,19 @@ class DiscoveryRepository:
     def due_lookup_keys(self, *, since_ms: int, now_ms: int, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            WITH recent_unresolved AS (
+            WITH recent_refresh_candidates AS (
               SELECT
                 token_intent_lookup_keys.lookup_key,
                 MAX(events.received_at_ms) AS latest_seen_ms,
-                COUNT(DISTINCT token_intent_lookup_keys.intent_id) AS intent_count
+                COUNT(DISTINCT token_intent_lookup_keys.intent_id) AS intent_count,
+                MIN(
+                  CASE
+                    WHEN current_resolution.resolution_id IS NULL THEN 0
+                    WHEN current_resolution.resolution_status = 'NIL' THEN 0
+                    WHEN current_resolution.resolution_status = 'AMBIGUOUS' THEN 1
+                    ELSE 9
+                  END
+                ) AS refresh_priority
               FROM token_intent_lookup_keys
               JOIN token_intents
                 ON token_intents.intent_id = token_intent_lookup_keys.intent_id
@@ -32,6 +40,7 @@ class DiscoveryRepository:
                 AND (
                   current_resolution.resolution_id IS NULL
                   OR current_resolution.resolution_status = 'NIL'
+                  OR current_resolution.resolution_status = 'AMBIGUOUS'
                 )
                 AND (
                   token_intent_lookup_keys.lookup_key LIKE 'symbol:%%'
@@ -40,21 +49,22 @@ class DiscoveryRepository:
               GROUP BY token_intent_lookup_keys.lookup_key
             )
             SELECT
-              recent_unresolved.lookup_key,
+              recent_refresh_candidates.lookup_key,
               CASE
-                WHEN recent_unresolved.lookup_key LIKE 'symbol:%%' THEN 'dex_symbol_lookup'
+                WHEN recent_refresh_candidates.lookup_key LIKE 'symbol:%%' THEN 'dex_symbol_lookup'
                 ELSE 'address_lookup'
               END AS lookup_type,
               %s AS provider,
-              recent_unresolved.latest_seen_ms,
-              recent_unresolved.intent_count,
+              recent_refresh_candidates.latest_seen_ms,
+              recent_refresh_candidates.intent_count,
+              recent_refresh_candidates.refresh_priority,
               token_discovery_results.status,
               token_discovery_results.result_hash,
               token_discovery_results.next_refresh_at_ms
-            FROM recent_unresolved
+            FROM recent_refresh_candidates
             LEFT JOIN token_discovery_results
               ON token_discovery_results.provider = %s
-             AND token_discovery_results.lookup_key = recent_unresolved.lookup_key
+             AND token_discovery_results.lookup_key = recent_refresh_candidates.lookup_key
             WHERE token_discovery_results.lookup_key IS NULL
                OR token_discovery_results.next_refresh_at_ms <= %s
                OR (
@@ -62,14 +72,15 @@ class DiscoveryRepository:
                  AND token_discovery_results.updated_at_ms < %s
                )
             ORDER BY
+              recent_refresh_candidates.refresh_priority ASC,
+              recent_refresh_candidates.latest_seen_ms DESC,
               CASE
                 WHEN token_discovery_results.lookup_key IS NULL THEN 0
                 WHEN token_discovery_results.status = 'error' THEN 1
                 ELSE 2
               END,
-              recent_unresolved.latest_seen_ms DESC,
-              recent_unresolved.intent_count DESC,
-              recent_unresolved.lookup_key ASC
+              recent_refresh_candidates.intent_count DESC,
+              recent_refresh_candidates.lookup_key ASC
             LIMIT %s
             """,
             (

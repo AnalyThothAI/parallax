@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from gmgn_twitter_intel.storage.price_observation_repository import PriceObservationRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -206,9 +207,10 @@ def _insert_event_intent_resolution(conn) -> None:
         )
         VALUES (
           'resolution-1', 'intent-1', 'event-1', NULL, NULL, 'EXACT', 1,
-          'token_radar_v4_deterministic_resolver', 1700000000000, 'EXACT', 'Asset',
+          %s, 1700000000000, 'EXACT', 'Asset',
           'asset:eip155:1:erc20:0xabc', 1700000000000, 'current', true
         )
-        """
+        """,
+        (TOKEN_RADAR_RESOLVER_POLICY_VERSION,),
     )
     conn.commit()

@@ -10,7 +10,7 @@ describe("TokenRadarRow", () => {
     render(<TokenRadarRow item={unresolvedSymbolOnly()} selected={false} onSelect={vi.fn()} />);
 
     expect(screen.getByText("$SLOP")).toBeInTheDocument();
-    expect(screen.getByText("symbol-only · no resolved target")).toBeInTheDocument();
+    expect(screen.getByText("symbol-only · 候选价格过期 · 2 candidates · found:2")).toBeInTheDocument();
     expect(screen.queryByText(/8ff41158.*e70faa/i)).not.toBeInTheDocument();
   });
 });
@@ -25,7 +25,10 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       asset_id: null,
       chain: null,
       address: null,
-      symbol: "SLOP"
+      symbol: "SLOP",
+      resolution_reasons: ["SYMBOL_CANDIDATES_STALE"],
+      candidate_count: 2,
+      discovery_status: "found:2"
     },
     market: { market_status: "missing", price_change_status: "missing" },
     flow: {

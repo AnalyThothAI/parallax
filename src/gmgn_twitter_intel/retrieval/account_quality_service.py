@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from ..storage.account_quality_repository import AccountQualityRepository
 
 EARLY_AUTHOR_MS = 5 * 60_000
@@ -93,7 +94,7 @@ class AccountQualityService:
               WHERE tir.target_type IN ('Asset', 'CexToken')
                 AND tir.target_id IS NOT NULL
                 AND tir.is_current = true
-                AND tir.resolver_policy_version = 'token_radar_v4_deterministic_resolver'
+                AND tir.resolver_policy_version = %s
                 AND events.author_handle IS NOT NULL
                 AND events.author_handle != ''
                 AND tir.resolution_status IN ('EXACT', 'UNIQUE_BY_CONTEXT')
@@ -121,7 +122,7 @@ class AccountQualityService:
             ORDER BY first_mention_ms DESC, f.handle, f.target_type, f.target_id
             LIMIT %s
             """,
-            (max(0, int(limit)),),
+            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, max(0, int(limit))),
         ).fetchall()
         return [dict(row) for row in rows]
 

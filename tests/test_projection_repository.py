@@ -13,7 +13,7 @@ def test_projection_offsets_runs_and_dirty_ranges_round_trip(tmp_path):
 
         run = repo.start_run(
             projection_name="token-radar",
-            projection_version="token-radar-v3",
+            projection_version="token-radar-current-test",
             mode="incremental",
             source_start_ms=1_000,
             source_end_ms=2_000,
@@ -28,7 +28,7 @@ def test_projection_offsets_runs_and_dirty_ranges_round_trip(tmp_path):
         )
         repo.advance_offset(
             projection_name="token-radar",
-            projection_version="token-radar-v3",
+            projection_version="token-radar-current-test",
             source_table="token_intent_resolutions",
             source_max_received_at_ms=2_000,
             source_max_id="token-resolution-7",
@@ -38,7 +38,7 @@ def test_projection_offsets_runs_and_dirty_ranges_round_trip(tmp_path):
         )
         dirty_id = repo.enqueue_dirty_range(
             projection_name="token-radar",
-            projection_version="token-radar-v3",
+            projection_version="token-radar-current-test",
             entity_type="asset",
             entity_key="asset:dex:eth:0xpepe",
             window="5m",
@@ -49,7 +49,7 @@ def test_projection_offsets_runs_and_dirty_ranges_round_trip(tmp_path):
         )
         claimed = repo.claim_dirty_ranges(
             projection_name="token-radar",
-            projection_version="token-radar-v3",
+            projection_version="token-radar-current-test",
             limit=5,
         )
         offset = repo.get_offset("token-radar")
@@ -72,7 +72,7 @@ def test_projection_dirty_range_enqueue_is_idempotent(tmp_path):
 
         first_id = repo.enqueue_dirty_range(
             projection_name="token-radar",
-            projection_version="token-radar-v3",
+            projection_version="token-radar-current-test",
             entity_type="asset",
             entity_key="asset:dex:eth:0xpepe",
             window=None,
@@ -83,7 +83,7 @@ def test_projection_dirty_range_enqueue_is_idempotent(tmp_path):
         )
         second_id = repo.enqueue_dirty_range(
             projection_name="token-radar",
-            projection_version="token-radar-v3",
+            projection_version="token-radar-current-test",
             entity_type="asset",
             entity_key="asset:dex:eth:0xpepe",
             window=None,
@@ -98,3 +98,100 @@ def test_projection_dirty_range_enqueue_is_idempotent(tmp_path):
 
     assert second_id == first_id
     assert [item["dirty_id"] for item in ranges] == [first_id]
+
+
+def test_mark_stale_running_runs_marks_abandoned_without_commit():
+    conn = FakeProjectionConn(rowcount=2)
+
+    count = ProjectionRepository(conn).mark_stale_running_runs(
+        projection_name="token-radar",
+        projection_version="token-radar-v5-auditable",
+        stale_before_ms=1_000,
+        finished_at_ms=2_000,
+        commit=False,
+    )
+
+    assert count == 2
+    assert "SET status = 'abandoned'" in conn.sql
+    assert "error = 'stale_running_timeout'" in conn.sql
+    assert conn.params == (2_000, "token-radar", "token-radar-v5-auditable", 1_000)
+    assert conn.commits == 0
+
+
+def test_start_run_generates_unique_ids_when_clock_is_same(monkeypatch):
+    conn = FakeStartRunConn()
+    monkeypatch.setattr("gmgn_twitter_intel.storage.projection_repository._now_ms", lambda: 2_000)
+    repo = ProjectionRepository(conn)
+
+    first = repo.start_run(
+        projection_name="token-radar",
+        projection_version="token-radar-v5-auditable",
+        mode="rebuild",
+        source_start_ms=1_000,
+        source_end_ms=2_000,
+        commit=False,
+    )
+    second = repo.start_run(
+        projection_name="token-radar",
+        projection_version="token-radar-v5-auditable",
+        mode="rebuild",
+        source_start_ms=1_000,
+        source_end_ms=2_000,
+        commit=False,
+    )
+
+    assert first["run_id"] != second["run_id"]
+    assert first["started_at_ms"] == 2_000
+    assert second["started_at_ms"] == 2_000
+
+
+class FakeProjectionConn:
+    def __init__(self, *, rowcount: int):
+        self.rowcount = rowcount
+        self.sql = ""
+        self.params = ()
+        self.commits = 0
+
+    def execute(self, sql, params=None):
+        self.sql = str(sql)
+        self.params = params or ()
+        return self
+
+    def commit(self):
+        self.commits += 1
+
+
+class FakeStartRunConn:
+    def __init__(self):
+        self.rows: dict[str, dict[str, object]] = {}
+        self.selected_run_id = ""
+
+    def execute(self, sql, params=None):
+        sql_text = str(sql)
+        params = params or ()
+        if "INSERT INTO projection_runs" in sql_text:
+            run_id = str(params[0])
+            if run_id in self.rows:
+                raise AssertionError(f"duplicate run_id {run_id}")
+            self.rows[run_id] = {
+                "run_id": run_id,
+                "projection_name": params[1],
+                "projection_version": params[2],
+                "mode": params[3],
+                "status": "running",
+                "source_start_ms": params[4],
+                "source_end_ms": params[5],
+                "rows_read": 0,
+                "rows_written": 0,
+                "dirty_ranges_written": 0,
+                "started_at_ms": params[6],
+            }
+        elif "SELECT * FROM projection_runs" in sql_text:
+            self.selected_run_id = str(params[0])
+        return self
+
+    def fetchone(self):
+        return self.rows.get(self.selected_run_id)
+
+    def commit(self):
+        pass

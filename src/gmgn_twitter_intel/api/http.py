@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from ..retrieval.account_alert_service import AccountAlertService
@@ -640,7 +641,7 @@ def _delivery_status(value: str | None) -> str | None:
 
 
 def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
-    return JSONResponse(payload, status_code=status_code)
+    return JSONResponse(jsonable_encoder(payload), status_code=status_code)
 
 
 def _json_loads(value: Any, default: Any) -> Any:

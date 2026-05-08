@@ -1,4 +1,4 @@
-"""Add Token Radar V4 deterministic registry and price observations."""
+"""Add token radar deterministic registry and price observations."""
 
 from __future__ import annotations
 

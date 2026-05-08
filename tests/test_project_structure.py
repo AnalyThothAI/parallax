@@ -107,7 +107,7 @@ def test_legacy_token_resolution_runtime_modules_stay_removed():
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "token_signal_repository.py").exists()
 
 
-def test_token_radar_v3_runtime_does_not_import_old_token_market_paths():
+def test_current_token_radar_runtime_does_not_import_old_token_market_paths():
     forbidden = {
         "TokenRepository",
         "TokenSignalRepository",
@@ -120,6 +120,23 @@ def test_token_radar_v3_runtime_does_not_import_old_token_market_paths():
         ROOT / "src/gmgn_twitter_intel/pipeline/ingest_service.py",
         ROOT / "src/gmgn_twitter_intel/pipeline/token_radar_projection.py",
         ROOT / "src/gmgn_twitter_intel/storage/repository_session.py",
+    ]
+    text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
+    for item in forbidden:
+        assert item not in text
+
+
+def test_runtime_source_does_not_reference_removed_token_radar_versions():
+    removed_version = "v" + "4"
+    forbidden = {
+        f"token_radar_{removed_version}",
+        f"token-radar-{removed_version}",
+        f"{removed_version}_deterministic_resolver",
+    }
+    runtime_files = [
+        path
+        for path in (ROOT / "src" / "gmgn_twitter_intel").rglob("*.py")
+        if "storage/alembic/versions" not in path.as_posix()
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
     for item in forbidden:

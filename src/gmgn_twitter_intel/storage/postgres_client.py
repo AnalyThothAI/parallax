@@ -113,18 +113,28 @@ def transaction(conn: Connection) -> Iterator[None]:
         yield
 
 
-def postgres_health_check(conn) -> dict[str, object]:
+def postgres_health_check(conn, *, expected_migration_version: str | None = None) -> dict[str, object]:
     try:
         row = conn.execute("SELECT 1 AS ok").fetchone()
         if row is None or int(row["ok"]) != 1:
             return {"ok": False, "probe": "postgres_liveness", "detail": "missing_select_result"}
         version_row = conn.execute("SELECT version_num FROM alembic_version LIMIT 1").fetchone()
+        migration_version = version_row["version_num"] if version_row else None
+        migration_ok = expected_migration_version is None or migration_version == expected_migration_version
         if hasattr(conn, "commit"):
             conn.commit()
         return {
-            "ok": True,
+            "ok": migration_ok,
             "probe": "postgres_liveness",
-            "migration_version": version_row["version_num"] if version_row else None,
+            "migration_version": migration_version,
+            **(
+                {
+                    "expected_migration_version": expected_migration_version,
+                    "migration_status": "ready" if migration_ok else "stale",
+                }
+                if expected_migration_version is not None
+                else {}
+            ),
         }
     except Exception as exc:
         if hasattr(conn, "rollback"):

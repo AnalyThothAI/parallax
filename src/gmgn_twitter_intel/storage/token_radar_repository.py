@@ -19,7 +19,30 @@ class TokenRadarRepository:
         computed_at_ms: int,
         rows: list[dict[str, Any]],
         commit: bool = True,
-    ) -> None:
+    ) -> bool:
+        self.conn.execute(
+            """
+            SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))
+            """,
+            (projection_version, f"{window}:{scope}"),
+        )
+        latest = self.conn.execute(
+            """
+            SELECT MAX(computed_at_ms) AS computed_at_ms
+            FROM token_radar_rows
+            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            """,
+            (projection_version, window, scope),
+        ).fetchone()
+        latest_computed_at_ms = (
+            int(latest["computed_at_ms"])
+            if latest and latest["computed_at_ms"] is not None
+            else None
+        )
+        if latest_computed_at_ms is not None and latest_computed_at_ms > int(computed_at_ms):
+            if commit:
+                self.conn.commit()
+            return False
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
@@ -58,6 +81,7 @@ class TokenRadarRepository:
             )
         if commit:
             self.conn.commit()
+        return True
 
     def latest_rows(
         self,
@@ -67,26 +91,40 @@ class TokenRadarRepository:
         limit: int,
         projection_version: str,
     ) -> list[dict[str, Any]]:
-        latest = self.conn.execute(
-            """
-            SELECT MAX(computed_at_ms) AS computed_at_ms
-            FROM token_radar_rows
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
-            """,
-            (projection_version, window, scope),
-        ).fetchone()
-        computed_at_ms = latest["computed_at_ms"] if latest else None
-        if computed_at_ms is None:
-            return []
         rows = self.conn.execute(
             """
+            WITH latest AS (
+              SELECT MAX(computed_at_ms) AS computed_at_ms
+              FROM token_radar_rows
+              WHERE projection_version = %s AND "window" = %s AND scope = %s
+            ),
+            ranked AS (
+              SELECT
+                token_radar_rows.*,
+                row_number() OVER (PARTITION BY lane ORDER BY rank ASC) AS lane_rank
+              FROM token_radar_rows
+              JOIN latest
+                ON token_radar_rows.computed_at_ms = latest.computed_at_ms
+              WHERE token_radar_rows.projection_version = %s
+                AND token_radar_rows."window" = %s
+                AND token_radar_rows.scope = %s
+            )
             SELECT *
-            FROM token_radar_rows
-            WHERE projection_version = %s AND "window" = %s AND scope = %s AND computed_at_ms = %s
+            FROM ranked
+            WHERE lane_rank <= %s
             ORDER BY lane DESC, rank ASC
             LIMIT %s
             """,
-            (projection_version, window, scope, computed_at_ms, max(0, int(limit))),
+            (
+                projection_version,
+                window,
+                scope,
+                projection_version,
+                window,
+                scope,
+                max(0, int(limit)),
+                max(0, int(limit)) * 2,
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 

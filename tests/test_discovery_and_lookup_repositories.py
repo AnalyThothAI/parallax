@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from gmgn_twitter_intel.storage.discovery_repository import DiscoveryRepository
 from gmgn_twitter_intel.storage.token_intent_lookup_repository import TokenIntentLookupRepository
 from tests.factories import make_event
@@ -58,8 +59,119 @@ def test_discovery_results_select_recent_unresolved_lookup_keys_without_enqueue(
     assert [item["lookup_key"] for item in due] == ["symbol:UPEG"]
     assert suppressed == []
     assert [item["lookup_key"] for item in stale] == ["symbol:UPEG"]
-    assert known_ambiguous == []
+    assert [item["lookup_key"] for item in known_ambiguous] == ["symbol:UPEG"]
     assert [item["intent_id"] for item in intents] == ["intent-1"]
+
+
+def test_discovery_refreshes_ambiguous_lookup_after_nil_backlog(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _insert_event_intent_and_evidence(
+            conn,
+            event_id="event-nil",
+            intent_id="intent-nil",
+            evidence_id="evidence-nil",
+            resolution_id="resolution-nil",
+            symbol="NILCOIN",
+            received_at_ms=1_000,
+        )
+        _insert_event_intent_and_evidence(
+            conn,
+            event_id="event-ambiguous",
+            intent_id="intent-ambiguous",
+            evidence_id="evidence-ambiguous",
+            resolution_id="resolution-ambiguous",
+            symbol="MAYBE",
+            received_at_ms=100_000,
+        )
+        lookup = TokenIntentLookupRepository(conn)
+        lookup.replace_lookup_keys(
+            intent_id="intent-nil",
+            event_id="event-nil",
+            keys=["symbol:NILCOIN"],
+            source_evidence_id="evidence-nil",
+            created_at_ms=1_000,
+        )
+        lookup.replace_lookup_keys(
+            intent_id="intent-ambiguous",
+            event_id="event-ambiguous",
+            keys=["symbol:MAYBE"],
+            source_evidence_id="evidence-ambiguous",
+            created_at_ms=100_000,
+        )
+        conn.execute(
+            """
+            UPDATE token_intent_resolutions
+            SET resolution_status = 'AMBIGUOUS',
+                reason_codes_json = '["NO_MARKET_DOMINANT_CHAIN_ASSET"]'::jsonb,
+                candidate_ids_json = '["asset:solana:token:maybe","asset:eip155:1:erc20:maybe"]'::jsonb
+            WHERE resolution_id = 'resolution-ambiguous'
+            """
+        )
+        conn.commit()
+
+        due = DiscoveryRepository(conn).due_lookup_keys(since_ms=0, now_ms=120_000, limit=2)
+    finally:
+        conn.close()
+
+    assert [item["lookup_key"] for item in due] == ["symbol:NILCOIN", "symbol:MAYBE"]
+
+
+def test_discovery_prioritizes_recent_due_lookup_over_old_never_seen_backlog(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _insert_event_intent_and_evidence(
+            conn,
+            event_id="event-old",
+            intent_id="intent-old",
+            evidence_id="evidence-old",
+            resolution_id="resolution-old",
+            symbol="OLD",
+            received_at_ms=1_000,
+        )
+        _insert_event_intent_and_evidence(
+            conn,
+            event_id="event-recent",
+            intent_id="intent-recent",
+            evidence_id="evidence-recent",
+            resolution_id="resolution-recent",
+            symbol="RECENT",
+            received_at_ms=100_000,
+        )
+        lookup = TokenIntentLookupRepository(conn)
+        lookup.replace_lookup_keys(
+            intent_id="intent-old",
+            event_id="event-old",
+            keys=["symbol:OLD"],
+            source_evidence_id="evidence-old",
+            created_at_ms=1_000,
+        )
+        lookup.replace_lookup_keys(
+            intent_id="intent-recent",
+            event_id="event-recent",
+            keys=["symbol:RECENT"],
+            source_evidence_id="evidence-recent",
+            created_at_ms=100_000,
+        )
+        discovery = DiscoveryRepository(conn)
+        discovery.finish_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:RECENT",
+            lookup_type="dex_symbol_lookup",
+            status="found",
+            candidate_ids=["asset:solana:token:recent"],
+            result_hash="hash-recent",
+            next_refresh_at_ms=90_000,
+            now_ms=80_000,
+        )
+
+        due = discovery.due_lookup_keys(since_ms=0, now_ms=120_000, limit=1)
+    finally:
+        conn.close()
+
+    assert [item["lookup_key"] for item in due] == ["symbol:RECENT"]
 
 
 def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(tmp_path):
@@ -139,10 +251,22 @@ def test_lookup_key_reprocess_can_revisit_already_resolved_intents(tmp_path):
     assert [item["intent_id"] for item in intents] == ["intent-1"]
 
 
-def _insert_event_intent_and_evidence(conn):
+def _insert_event_intent_and_evidence(
+    conn,
+    *,
+    event_id: str = "event-1",
+    intent_id: str = "intent-1",
+    evidence_id: str = "evidence-1",
+    resolution_id: str = "resolution-1",
+    symbol: str = "UPEG",
+    received_at_ms: int | None = None,
+):
     from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 
-    EvidenceRepository(conn).insert_event(make_event(), is_watched=True)
+    EvidenceRepository(conn).insert_event(
+        make_event(event_id, text=f"${symbol}", received_at_ms=received_at_ms),
+        is_watched=True,
+    )
     conn.execute(
         """
         INSERT INTO token_evidence(
@@ -152,11 +276,12 @@ def _insert_event_intent_and_evidence(conn):
           strength, confidence, created_at_ms
         )
         VALUES (
-          'evidence-1', 'event-1', 'entity', 'entity-1', 'cashtag', '$UPEG',
-          'UPEG', NULL, NULL, NULL, NULL, 'primary', 0, 5, 0, 'primary:0',
+          %s, %s, 'entity', %s, 'cashtag', %s,
+          %s, NULL, NULL, NULL, NULL, 'primary', 0, 5, 0, 'primary:0',
           'medium', 0.8, 1
         )
-        """
+        """,
+        (evidence_id, event_id, f"entity-{evidence_id}", f"${symbol}", symbol),
     )
     conn.execute(
         """
@@ -166,10 +291,11 @@ def _insert_event_intent_and_evidence(conn):
           intent_confidence, created_at_ms, updated_at_ms
         )
         VALUES (
-          'intent-1', 'event-1', 'symbol:UPEG', 'test', 'evidence-1',
-          'UPEG', NULL, NULL, NULL, 'pending', 1.0, 1, 1
+          %s, %s, %s, 'test', %s,
+          %s, NULL, NULL, NULL, 'pending', 1.0, 1, 1
         )
-        """
+        """,
+        (intent_id, event_id, f"symbol:{symbol}", evidence_id, symbol),
     )
     conn.execute(
         """
@@ -179,10 +305,11 @@ def _insert_event_intent_and_evidence(conn):
           lookup_keys_json, record_status, is_current, decision_time_ms, created_at_ms
         )
         VALUES (
-          'resolution-1', 'intent-1', 'event-1', 'NIL', 'token_radar_v4_deterministic_resolver',
-          NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, '["symbol:UPEG"]'::jsonb,
+          %s, %s, %s, 'NIL', %s,
+          NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, %s::jsonb,
           'current', true, 1, 1
         )
-        """
+        """,
+        (resolution_id, intent_id, event_id, TOKEN_RADAR_RESOLVER_POLICY_VERSION, f'["symbol:{symbol}"]'),
     )
     conn.commit()

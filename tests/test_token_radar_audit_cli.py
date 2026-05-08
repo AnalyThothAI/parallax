@@ -51,6 +51,18 @@ def test_audit_token_radar_rows_accepts_v5_auditable_scores():
     assert audit["market_lag_ms"] == 500
 
 
+def test_audit_token_radar_rows_rejects_empty_v5_projection_when_sources_exist():
+    audit = _audit_token_radar_rows(
+        [],
+        now_ms=1_700_000_000_000,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(item["code"] == "empty_projection_rows" for item in audit["violations"])
+
+
 def block():
     return {
         "score": 80,

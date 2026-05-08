@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.storage.postgres_migrations import latest_migration_version
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -86,10 +87,10 @@ def test_alembic_migration_is_idempotent(tmp_path):
     finally:
         conn.close()
 
-    assert [row["version_num"] for row in rows] == ["20260507_0009"]
+    assert [row["version_num"] for row in rows] == [latest_migration_version()]
 
 
-def test_token_radar_v3_schema_supports_span_aware_intents(tmp_path):
+def test_token_radar_schema_supports_span_aware_intents(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -121,7 +122,7 @@ def test_token_radar_v3_schema_supports_span_aware_intents(tmp_path):
     assert intent_columns["intent_status"] == "NO"
 
 
-def test_token_radar_v4_schema_supports_hard_cut_targets(tmp_path):
+def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)

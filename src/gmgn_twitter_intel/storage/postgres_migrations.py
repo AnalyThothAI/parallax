@@ -4,6 +4,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 
 
 def alembic_config() -> Config:
@@ -16,3 +17,7 @@ def upgrade_head(database_url: str | None = None) -> None:
     if database_url is not None:
         config.attributes["database_url"] = database_url
     command.upgrade(config, "head")
+
+
+def latest_migration_version() -> str:
+    return str(ScriptDirectory.from_config(alembic_config()).get_current_head())

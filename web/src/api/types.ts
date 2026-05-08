@@ -280,6 +280,7 @@ export type AssetFlowRow = {
   intent?: TokenRadarIntentBlock;
   target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
+  source_event_ids?: string[];
   price?: {
     market_status: "fresh" | "stale" | "missing" | string;
     provider?: string | null;
@@ -318,6 +319,7 @@ export type AssetFlowRow = {
     reason_codes?: string[];
     candidate_ids?: string[];
     lookup_keys?: string[];
+    discovery?: TokenDiscoveryAudit[];
     confidence?: number | null;
     reasons?: string[];
     risks?: string[];
@@ -326,6 +328,17 @@ export type AssetFlowRow = {
   score?: TokenRadarScoreSet;
   decision: Decision | string;
   data_health?: TokenRadarDataHealth;
+};
+
+export type TokenDiscoveryAudit = {
+  lookup_key?: string | null;
+  lookup_type?: string | null;
+  status?: "running" | "found" | "not_found" | "error" | string | null;
+  candidate_count?: number | null;
+  last_lookup_at_ms?: number | null;
+  next_refresh_at_ms?: number | null;
+  last_error?: string | null;
+  error_count?: number | null;
 };
 
 export type AssetFlowData = {
@@ -377,6 +390,10 @@ export type TokenIdentityBlock = {
   chain?: string | null;
   address?: string | null;
   symbol?: string | null;
+  resolution_reasons?: string[];
+  lookup_keys?: string[];
+  candidate_count?: number;
+  discovery_status?: string | null;
 };
 
 export type TokenMarketBlock = {

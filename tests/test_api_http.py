@@ -1,9 +1,12 @@
+import json
 import time
 from dataclasses import replace
+from decimal import Decimal
 
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
+from gmgn_twitter_intel.api.http import _json
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
@@ -12,6 +15,12 @@ from gmgn_twitter_intel.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+
+
+def test_api_json_response_encodes_decimal_payloads():
+    response = _json({"ok": True, "data": {"price": Decimal("1.23")}})
+
+    assert json.loads(response.body) == {"ok": True, "data": {"price": 1.23}}
 
 
 def make_settings(tmp_path) -> Settings:

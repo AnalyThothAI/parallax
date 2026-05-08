@@ -34,7 +34,7 @@ from .storage.postgres_client import (
     postgres_health_check,
     with_password_from_file,
 )
-from .storage.postgres_migrations import upgrade_head
+from .storage.postgres_migrations import latest_migration_version, upgrade_head
 from .storage.projection_repository import ProjectionRepository
 from .storage.repository_session import repositories_for_connection
 
@@ -354,7 +354,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0
     if command == "db" and args.db_command == "health":
         with _postgres_connection(settings) as conn:
-            health = postgres_health_check(conn)
+            health = postgres_health_check(conn, expected_migration_version=latest_migration_version())
         _emit({"ok": bool(health.get("ok")), "data": health}, stdout)
         return 0 if health.get("ok") else 1
     if command == "db" and args.db_command == "audit":
@@ -861,6 +861,8 @@ def _audit_token_radar_rows(
 ) -> dict:
     violations: list[dict] = []
     required = set(TOKEN_RADAR_SCORE_COMPONENTS)
+    if not rows and source_max_resolution_ms:
+        violations.append({"code": "empty_projection_rows"})
     for index, row in enumerate(rows):
         projection_version = row.get("projection_version")
         if projection_version != TOKEN_RADAR_PROJECTION_VERSION:

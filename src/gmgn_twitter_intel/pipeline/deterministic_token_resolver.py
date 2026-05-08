@@ -4,11 +4,14 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-RESOLVER_POLICY_VERSION = "token_radar_v4_deterministic_resolver"
+from .token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+
+RESOLVER_POLICY_VERSION = TOKEN_RADAR_RESOLVER_POLICY_VERSION
 FRESH_OBSERVATION_MS = 20 * 60 * 1000
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
 MIN_DOMINANT_HOLDERS = Decimal("1000")
 MIN_DOMINANT_LIQUIDITY_USD = Decimal("100000")
+MAX_AUDIT_CANDIDATE_IDS = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -248,7 +251,8 @@ class DeterministicTokenResolver:
             for row in assets
             if _fresh(row.get("observed_at_ms"), decision_time_ms) and str(row.get("asset_id") or "")
         ]
-        candidate_ids = [str(row["asset_id"]) for row in active_assets]
+        asset_candidate_ids = _candidate_ids(assets)
+        candidate_ids = _candidate_ids(active_assets)
         if len(active_assets) == 1:
             return _resolution(
                 intent_id=intent_id,
@@ -286,6 +290,18 @@ class DeterministicTokenResolver:
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
+        if assets and not active_assets:
+            return _resolution(
+                intent_id=intent_id,
+                event_id=event_id,
+                status="NIL",
+                target_type=None,
+                target_id=None,
+                reason_codes=["SYMBOL_CANDIDATES_STALE"],
+                lookup_keys=lookup_keys,
+                candidate_ids=asset_candidate_ids,
+                decision_time_ms=decision_time_ms,
+            )
         return _resolution(
             intent_id=intent_id,
             event_id=event_id,
@@ -315,6 +331,14 @@ def _market_dominant_asset(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
     ):
         return None
     return top
+
+
+def _candidate_ids(rows: list[dict[str, Any]]) -> list[str]:
+    return [
+        str(row["asset_id"])
+        for row in rows[:MAX_AUDIT_CANDIDATE_IDS]
+        if str(row.get("asset_id") or "")
+    ]
 
 
 def _dominance_eligible(row: dict[str, Any]) -> bool:

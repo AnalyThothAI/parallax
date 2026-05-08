@@ -65,7 +65,7 @@ export function TokenRadarTable({
           <span>Market</span>
           <span>Timing</span>
           <span>Decision</span>
-          <span>Trade</span>
+          <span>Open</span>
         </div>
         {isLoading ? <RadarSkeleton /> : null}
         {error ? <div className="table-state">Token Radar 暂不可用 · {error.message}</div> : null}

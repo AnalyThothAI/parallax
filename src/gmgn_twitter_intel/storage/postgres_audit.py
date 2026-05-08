@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
+from .postgres_migrations import latest_migration_version
 
 CORE_TABLES = (
     "raw_frames",
@@ -148,19 +149,23 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
 
 
 class PostgresOperationalAudit:
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any, *, expected_migration_version: str | None = None):
         self.conn = conn
+        self.expected_migration_version = expected_migration_version or latest_migration_version()
 
     def run(self) -> dict[str, Any]:
         counts = self._counts(CORE_TABLES)
         projection_schema = self._table_presence(PROJECTION_TABLES)
         foreign_key_checks = self._foreign_key_checks()
         migration_version = self._migration_version()
+        migration_ready = migration_version == self.expected_migration_version
         orphan_count = sum(int(value) for value in foreign_key_checks.values())
         return {
-            "ok": orphan_count == 0 and all(projection_schema.values()),
+            "ok": migration_ready and orphan_count == 0 and all(projection_schema.values()),
             "engine": "postgresql",
             "migration_version": migration_version,
+            "expected_migration_version": self.expected_migration_version,
+            "migration_status": "ready" if migration_ready else "stale",
             "counts": counts,
             "projection_schema": projection_schema,
             "foreign_key_checks": foreign_key_checks,

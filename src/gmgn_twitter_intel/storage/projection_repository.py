@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+import uuid
 from typing import Any
 
 from ..pipeline.token_radar_contract import (
@@ -102,7 +103,14 @@ class ProjectionRepository:
         commit: bool = True,
     ) -> dict[str, Any]:
         now_ms = _now_ms()
-        resolved_run_id = run_id or _id("projection_run", projection_name, projection_version, mode, str(now_ms))
+        resolved_run_id = run_id or _id(
+            "projection_run",
+            projection_name,
+            projection_version,
+            mode,
+            str(now_ms),
+            uuid.uuid4().hex,
+        )
         self.conn.execute(
             """
             INSERT INTO projection_runs(
@@ -124,6 +132,37 @@ class ProjectionRepository:
         if commit:
             self.conn.commit()
         return self.run_by_id(resolved_run_id) or {}
+
+    def mark_stale_running_runs(
+        self,
+        *,
+        projection_name: str,
+        projection_version: str,
+        stale_before_ms: int,
+        finished_at_ms: int,
+        commit: bool = True,
+    ) -> int:
+        result = self.conn.execute(
+            """
+            UPDATE projection_runs
+            SET status = 'abandoned',
+                finished_at_ms = %s,
+                error = 'stale_running_timeout'
+            WHERE projection_name = %s
+              AND projection_version = %s
+              AND status = 'running'
+              AND started_at_ms < %s
+            """,
+            (
+                int(finished_at_ms),
+                projection_name,
+                projection_version,
+                int(stale_before_ms),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return int(getattr(result, "rowcount", 0) or 0)
 
     def finish_run(
         self,
@@ -303,10 +342,13 @@ class ProjectionRepository:
         for item in KNOWN_PROJECTIONS:
             name = item["projection_name"]
             offset = offsets.get(name)
+            offset_version = offset["projection_version"] if offset else None
+            version_ready = offset_version == item["projection_version"] if offset else False
             known.append(
                 {
                     **item,
-                    "status": offset["status"] if offset else "missing",
+                    "status": offset["status"] if version_ready else "wrong_version" if offset else "missing",
+                    "offset_projection_version": offset_version,
                     "lag_ms": offset["lag_ms"] if offset else None,
                     "source_max_received_at_ms": offset["source_max_received_at_ms"] if offset else None,
                     "source_max_id": offset["source_max_id"] if offset else None,

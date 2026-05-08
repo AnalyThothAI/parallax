@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.pipeline.deterministic_token_resolver import DeterministicResolution
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from gmgn_twitter_intel.storage.intent_resolution_repository import IntentResolutionRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_v4_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
+def test_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -22,7 +23,7 @@ def test_v4_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
                 target_type=None,
                 target_id=None,
                 pricefeed_id=None,
-                resolver_policy_version="token_radar_v4_deterministic_resolver",
+                resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
                 reason_codes=["SYMBOL_NOT_IN_REGISTRY"],
                 candidate_ids=[],
                 lookup_keys=["symbol:UPEG"],
@@ -38,7 +39,7 @@ def test_v4_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
                 target_type="Asset",
                 target_id="asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505",
                 pricefeed_id=None,
-                resolver_policy_version="token_radar_v4_deterministic_resolver",
+                resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
                 reason_codes=["MARKET_DOMINANT_CHAIN_ASSET"],
                 candidate_ids=["asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"],
                 lookup_keys=["symbol:UPEG"],

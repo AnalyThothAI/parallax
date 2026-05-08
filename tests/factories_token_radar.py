@@ -14,7 +14,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 VERSA_BASE_CA = "0x2cc0db4f8977accadb5b7da59c5923e14328eba3"
 
 
-def make_v3_event(
+def make_token_event(
     event_id: str = "event-versa",
     *,
     text: str,
@@ -70,7 +70,7 @@ def make_gmgn_payload_event(
         }
     )
     return replace(
-        make_v3_event(event_id, text=f"${symbol} payload", received_at_ms=received_at_ms),
+        make_token_event(event_id, text=f"${symbol} payload", received_at_ms=received_at_ms),
         source=Source(
             provider="gmgn",
             transport="direct_ws",
@@ -81,7 +81,7 @@ def make_gmgn_payload_event(
     )
 
 
-def open_v3_runtime(tmp_path):
+def open_token_radar_runtime(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     repos = repositories_for_connection(conn)

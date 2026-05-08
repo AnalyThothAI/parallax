@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.market.okx_models import OkxCexTicker, OkxDexTokenPrice
 from gmgn_twitter_intel.pipeline.message_market_observation import observe_message_market
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
 def test_message_market_observation_writes_cex_message_quote():
@@ -51,7 +52,7 @@ def test_message_market_observation_writes_cex_message_quote():
     assert "po.source_resolution_id = tir.resolution_id" in repos.conn.sql
     assert "po.source_intent_id = tir.intent_id" not in repos.conn.sql
     assert "tir.resolver_policy_version = %s" in repos.conn.sql
-    assert repos.conn.params[0] == "token_radar_v4_deterministic_resolver"
+    assert repos.conn.params[0] == TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
 def test_message_market_observation_writes_dex_message_quote_per_message():

@@ -6,7 +6,7 @@ from gmgn_twitter_intel.pipeline.token_intent_builder import build_token_intents
 from gmgn_twitter_intel.pipeline.token_intent_resolver import TokenIntentResolver
 
 
-def test_token_intent_resolver_uses_v4_cex_token_before_chain_candidates():
+def test_token_intent_resolver_uses_cex_token_before_chain_candidates():
     registry = FakeRegistry(
         cex_tokens={"PEPE": {"cex_token_id": "cex_token:PEPE", "base_symbol": "PEPE"}},
         symbol_assets={"PEPE": [{"asset_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"}]},
@@ -87,6 +87,35 @@ def test_token_intent_resolver_keeps_low_quality_symbol_candidates_ambiguous():
     assert decision.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
     assert len(decision.candidate_ids) == 2
     assert "symbol:SATO" in decision.lookup_keys
+
+
+def test_token_intent_resolver_audits_stale_symbol_candidates_without_resolving():
+    registry = FakeRegistry(
+        symbol_assets={
+            "SLOP": [
+                {
+                    "asset_id": "asset:solana:token:slop",
+                    "observed_at_ms": 1_778_145_000_000,
+                    "market_cap_usd": 10_000_000,
+                    "liquidity_usd": 900_000,
+                    "holders": 4_000,
+                }
+            ]
+        }
+    )
+    evidence = _evidence("$SLOP")
+    intent = build_token_intents(event_id="event-slop", evidence=evidence, created_at_ms=1_778_145_100_000)[0]
+
+    decision = TokenIntentResolver(registry=registry, resolutions=FakeResolutions()).resolve(
+        intent,
+        evidence,
+        decision_time_ms=1_778_145_000_000 + 25 * 60_000,
+    )
+
+    assert decision.resolution_status == "NIL"
+    assert decision.target_id is None
+    assert decision.reason_codes == ["SYMBOL_CANDIDATES_STALE"]
+    assert decision.candidate_ids == ["asset:solana:token:slop"]
 
 
 def _evidence(text: str):

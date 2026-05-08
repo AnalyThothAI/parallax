@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { App, tokenRadarRowToTokenItem } from "./App";
 import type {
   ApiResponse,
   AssetFlowData,
@@ -570,6 +570,41 @@ describe("App Token Radar social heat cockpit", () => {
     );
     expect(within(drawer).queryByText("Active Snapshots")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Credit Rows")).not.toBeInTheDocument();
+  });
+
+  it("maps radar evidence count from source event ids instead of empty intent evidence", () => {
+    const row = {
+      ...assetFlowRow(),
+      intent: { intent_id: "intent-upeg", display_symbol: "UPEG", display_name: null, evidence: [] },
+      source_event_ids: ["event-1", "event-2", "event-3", "event-4"]
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.evidence_total_count).toBe(4);
+  });
+
+  it("does not invent score versions when the backend omits them", () => {
+    const row = {
+      ...assetFlowRow(),
+      score: {
+        heat: scoreBlock({ score: 11, reasons: [], risks: [] }),
+        quality: scoreBlock({ score: 12, reasons: [], risks: [] }),
+        propagation: scoreBlock({ score: 13, reasons: [], risks: [] }),
+        tradeability: scoreBlock({ score: 14, reasons: [], risks: [] }),
+        timing: scoreBlock({ score: 15, reasons: [], risks: [] }),
+        opportunity: scoreBlock({ score: 16, reasons: [], risks: [] })
+      }
+    } as AssetFlowRow;
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.social_heat.score_version).toBe("missing_score_version");
+    expect(item.discussion_quality.score_version).toBe("missing_score_version");
+    expect(item.propagation.score_version).toBe("missing_score_version");
+    expect(item.tradeability.score_version).toBe("missing_score_version");
+    expect(item.timing.score_version).toBe("missing_score_version");
+    expect(item.opportunity.score_version).toBe("missing_score_version");
   });
 
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
