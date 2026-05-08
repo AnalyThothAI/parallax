@@ -65,7 +65,7 @@ class TokenRadarRepository:
         window: str,
         scope: str,
         limit: int,
-        projection_version: str = "token-radar-v4",
+        projection_version: str,
     ) -> list[dict[str, Any]]:
         latest = self.conn.execute(
             """

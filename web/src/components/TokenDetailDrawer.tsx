@@ -22,7 +22,7 @@ import {
   DetailDrawerTagStrip
 } from "./DetailDrawer";
 import { ScoreLedger } from "./ScoreLedger";
-import { TokenPostsTab } from "./TokenPostsTab";
+import { TokenPostsPanel } from "./TokenPostsPanel";
 import { TokenReplayFocus } from "./TokenReplayFocus";
 import { tokenDrawerSummary } from "./TokenRadarRow";
 import { TokenTimeline } from "./TokenTimeline";
@@ -188,7 +188,7 @@ export function TokenDetailDrawer({
       ) : null}
       {activeTab === "posts" ? (
         <DetailDrawerSection title={<>posts · {detailWindow}</>}>
-          <TokenPostsTab
+          <TokenPostsPanel
             hideDuplicateClusters={hideDuplicateClusters}
             isFetchingNextPage={isPostsFetchingNextPage}
             isLoading={isPostsLoading}

@@ -48,6 +48,7 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
     assert ready.json()["harness_ops"]["worker_running"] is True
     assert ready.json()["token_radar_projection"]["worker_running"] is True
+    assert ready.json()["message_market_observation"]["worker_running"] is False
     assert "token_resolution" not in ready.json()
     assert "provider_status" not in ready.json()
 
@@ -64,7 +65,7 @@ def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
 
     assert status["ok"] is True
     assert status["probe"] == "postgres_liveness"
-    assert status["migration_version"] == "20260507_0010"
+    assert status["migration_version"] == "20260508_0011"
 
 
 def test_runtime_uses_pool_sessions_without_pinned_connections(tmp_path):

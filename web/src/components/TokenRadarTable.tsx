@@ -1,4 +1,5 @@
 import type { RadarSortMode, TokenFlowItem } from "../api/types";
+import { tokenKey } from "../lib/format";
 import { TokenRadarRow } from "./TokenRadarRow";
 
 const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
@@ -16,6 +17,7 @@ type TokenRadarTableProps = {
   isLoading: boolean;
   error?: Error | null;
   onSelect: (item: TokenFlowItem) => void;
+  onOpenPage?: (item: TokenFlowItem) => void;
   onSortModeChange: (mode: RadarSortMode) => void;
 };
 
@@ -26,6 +28,7 @@ export function TokenRadarTable({
   isLoading,
   error,
   onSelect,
+  onOpenPage,
   onSortModeChange
 }: TokenRadarTableProps) {
   return (
@@ -69,13 +72,14 @@ export function TokenRadarTable({
         {!isLoading && !error && items.length === 0 ? <div className="table-state">当前窗口暂无可交易 token 热度</div> : null}
         {!isLoading && !error
           ? items.map((item) => {
-              const key = tokenDecisionKey(item);
+              const key = tokenKey(item);
               return (
                 <TokenRadarRow
                   key={`${key}:${item.flow.window_start_ms ?? ""}`}
                   item={item}
                   selected={selectedKey === key}
                   onSelect={onSelect}
+                  onOpenPage={onOpenPage}
                 />
               );
             })
@@ -93,8 +97,4 @@ function RadarSkeleton() {
       ))}
     </div>
   );
-}
-
-function tokenDecisionKey(item: TokenFlowItem): string {
-  return item.identity.target_id ?? item.identity.address ?? item.identity.identity_key;
 }

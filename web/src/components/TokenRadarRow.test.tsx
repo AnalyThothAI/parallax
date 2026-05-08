@@ -130,7 +130,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       risks: []
     },
     evidence_total_count: 1,
-    posts_query: { target_type: null, target_id: null, chain: null, address: null, window: "5m", scope: "all", range: "current_window" },
-    timeline_query: { target_type: null, target_id: null, chain: null, address: null, window: "5m", scope: "all" }
+    posts_query: { target_type: null, target_id: null, window: "5m", scope: "all", range: "current_window" },
+    timeline_query: { target_type: null, target_id: null, window: "5m", scope: "all" }
   };
 }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.retrieval.asset_flow_service import AssetFlowService
 
 
@@ -27,8 +28,9 @@ def test_asset_flow_has_resolved_and_attention_lanes_from_token_radar_rows():
 
     assert result["targets"][0]["target"]["symbol"] == "BTC"
     assert result["attention"][0]["intent"]["display_symbol"] == "MIRROR"
-    assert result["projection"]["version"] == "token-radar-v4"
+    assert result["projection"]["version"] == TOKEN_RADAR_PROJECTION_VERSION
     assert result["projection"]["source"] == "token_radar_rows"
+    assert service.token_radar.calls[0]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
 
 
 def test_asset_flow_marks_projection_missing_when_no_radar_rows():
@@ -264,8 +266,8 @@ class FakeTokenRadar:
         self.rows = rows
         self.calls = []
 
-    def latest_rows(self, *, window, scope, limit):
-        self.calls.append({"window": window, "scope": scope, "limit": limit})
+    def latest_rows(self, *, window, scope, limit, projection_version):
+        self.calls.append({"window": window, "scope": scope, "limit": limit, "projection_version": projection_version})
         return self.rows[:limit]
 
 
@@ -353,7 +355,7 @@ def radar_row(
             "heat": score_block(50),
             "quality": score_block(70),
             "propagation": score_block(50),
-            "price_health": score_block(60),
+            "tradeability": score_block(60),
             "timing": score_block(50),
             "opportunity": score_block(55),
         },
@@ -369,7 +371,7 @@ def radar_row(
 def score_block(score: int):
     return {
         "score": score,
-        "score_version": "token_radar_v4",
+        "score_version": "social_opportunity_v3",
         "reasons": [],
         "risks": [],
         "hard_risks": [],

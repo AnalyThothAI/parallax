@@ -17,6 +17,7 @@ from .pipeline.asset_market_sync import sync_okx_cex_universe
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_discovery_worker import run_token_discovery_once
 from .pipeline.token_intent_rebuild import rebuild_recent_token_intents
+from .pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION, TOKEN_RADAR_SCORE_COMPONENTS
 from .pipeline.token_radar_projection import TokenRadarProjection
 from .pipeline.token_resolution_refresh import rebuild_token_radar_windows, reprocess_recent_token_intents
 from .retrieval.account_alert_service import AccountAlertService
@@ -208,10 +209,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit_token_intent.add_argument("--event-id", default="")
     audit_token_intent.add_argument("--intent-id", default="")
-    rebuild_token_radar = ops_subcommands.add_parser("rebuild-token-radar", help="write token radar V4 read model")
+    rebuild_token_radar = ops_subcommands.add_parser(
+        "rebuild-token-radar",
+        help="write token radar V5 auditable read model",
+    )
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     rebuild_token_radar.add_argument("--limit", type=int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
+    audit_token_radar = ops_subcommands.add_parser(
+        "audit-token-radar",
+        help="audit token radar V5 rows for scoring and market-readiness regressions",
+    )
+    audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
+    audit_token_radar.add_argument("--limit", type=int, default=100)
+    audit_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
     return parser
 
 
@@ -715,6 +726,17 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
+        if command == "ops" and args.ops_command == "audit-token-radar":
+            data = _audit_token_radar(
+                repos,
+                window=args.window,
+                scope=args.scope,
+                limit=args.limit,
+                now_ms=_now_ms(),
+            )
+            _emit({"ok": data["ok"], "data": data}, stdout)
+            return 0 if data["ok"] else 1
+
     parser.error(f"unknown command: {command}")
     return 2
 
@@ -800,6 +822,86 @@ def _audit_token_intent(repos, *, event_id: str | None, intent_id: str | None) -
         "intent_evidence": evidence,
         "active_resolutions": resolutions,
     }
+
+
+def _audit_token_radar(repos, *, window: str, scope: str, limit: int, now_ms: int) -> dict:
+    rows = repos.token_radar.latest_rows(
+        window=window,
+        scope=scope,
+        limit=limit,
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+    )
+    source_max_resolution_ms = _max_scalar(
+        repos.conn,
+        "SELECT MAX(decision_time_ms) AS value FROM token_intent_resolutions WHERE is_current = true",
+    )
+    source_max_price_observed_at_ms = _max_scalar(
+        repos.conn,
+        "SELECT MAX(observed_at_ms) AS value FROM price_observations",
+    )
+    return {
+        "window": window,
+        "scope": scope,
+        "limit": limit,
+        **_audit_token_radar_rows(
+            rows,
+            now_ms=now_ms,
+            source_max_resolution_ms=source_max_resolution_ms,
+            source_max_price_observed_at_ms=source_max_price_observed_at_ms,
+        ),
+    }
+
+
+def _audit_token_radar_rows(
+    rows: list[dict],
+    *,
+    now_ms: int,
+    source_max_resolution_ms: int | None,
+    source_max_price_observed_at_ms: int | None,
+) -> dict:
+    violations: list[dict] = []
+    required = set(TOKEN_RADAR_SCORE_COMPONENTS)
+    for index, row in enumerate(rows):
+        projection_version = row.get("projection_version")
+        if projection_version != TOKEN_RADAR_PROJECTION_VERSION:
+            violations.append({"row": index, "code": "wrong_projection_version", "value": projection_version})
+        score = row.get("score_json") if isinstance(row.get("score_json"), dict) else {}
+        if "price_health" in score:
+            violations.append({"row": index, "code": "legacy_price_health"})
+        missing = sorted(required - set(score))
+        if missing:
+            violations.append({"row": index, "code": "missing_score_components", "components": missing})
+        for component in sorted(required & set(score)):
+            block = score.get(component) if isinstance(score.get(component), dict) else {}
+            if not block.get("score_version"):
+                violations.append({"row": index, "component": component, "code": "missing_score_version"})
+            if not block.get("contributions"):
+                violations.append({"row": index, "component": component, "code": "empty_contributions"})
+        market = row.get("market_json") if isinstance(row.get("market_json"), dict) else {}
+        if row.get("decision") == "driver" and str(market.get("market_observation_status") or "") != "ready":
+            violations.append({"row": index, "code": "driver_without_ready_market"})
+    social_lag_ms = max(0, int(now_ms) - int(source_max_resolution_ms)) if source_max_resolution_ms else None
+    market_lag_ms = (
+        max(0, int(now_ms) - int(source_max_price_observed_at_ms))
+        if source_max_price_observed_at_ms
+        else None
+    )
+    return {
+        "ok": not violations,
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "row_count": len(rows),
+        "violations": violations,
+        "source_max_resolution_ms": source_max_resolution_ms,
+        "source_max_price_observed_at_ms": source_max_price_observed_at_ms,
+        "social_lag_ms": social_lag_ms,
+        "market_lag_ms": market_lag_ms,
+    }
+
+
+def _max_scalar(conn, sql: str) -> int | None:
+    row = conn.execute(sql).fetchone()
+    value = row["value"] if row else None
+    return int(value) if value is not None else None
 
 
 def _now_ms() -> int:

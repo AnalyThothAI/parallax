@@ -22,6 +22,9 @@ TOKEN_RADAR_V4_MIGRATION = Path(
 AGENTS_SDK_AUDIT_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
+EVENT_PRICE_OBSERVATION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0011_event_price_observations.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -66,6 +69,19 @@ def test_agents_sdk_audit_migration_adds_traceable_model_run_columns() -> None:
     assert "trace_metadata_json JSONB" in text
     assert "idx_model_runs_trace" in text
     assert "DROP TABLE IF EXISTS llm_enrichment_labels" in text
+
+
+def test_event_price_observation_migration_adds_message_attribution_columns() -> None:
+    text = EVENT_PRICE_OBSERVATION_MIGRATION.read_text()
+
+    assert "source_event_id" in text
+    assert "source_intent_id" in text
+    assert "source_resolution_id" in text
+    assert "observation_kind" in text
+    assert "event_received_at_ms" in text
+    assert "observation_lag_ms" in text
+    assert "idx_price_observations_source_event" in text
+    assert "idx_price_observations_subject_time_kind" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

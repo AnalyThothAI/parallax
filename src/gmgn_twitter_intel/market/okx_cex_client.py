@@ -44,6 +44,14 @@ class OkxCexClient:
                 tickers.append(ticker)
         return tickers
 
+    def ticker(self, *, inst_id: str) -> OkxCexTicker | None:
+        rows = self._get("/api/v5/market/ticker", params={"instId": inst_id.strip().upper()})
+        for row in rows:
+            ticker = _ticker_from_row(row)
+            if ticker is not None:
+                return ticker
+        return None
+
     def _get(self, path: str, *, params: dict[str, str]) -> list[dict[str, Any]]:
         response = self._client.get(path, params=params)
         return _rows_from_response(response, endpoint=path)

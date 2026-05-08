@@ -1,8 +1,8 @@
 import { ExternalLink } from "lucide-react";
 import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData } from "../api/types";
-import { eventText, formatReason, formatRelativeTime, formatRisk, formatScore } from "../lib/format";
+import { compactNumber, eventText, formatReason, formatRelativeTime, formatRisk, formatScore, formatSignedPercent } from "../lib/format";
 
-type TokenPostsTabProps = {
+type TokenPostsPanelProps = {
   posts?: TokenPostsData | null;
   isLoading: boolean;
   isFetchingNextPage: boolean;
@@ -10,6 +10,7 @@ type TokenPostsTabProps = {
   postSortMode: TokenPostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
+  selectedStageId?: string | null;
   onPostRangeChange: (range: TokenPostRange) => void;
   onPostSortModeChange: (mode: TokenPostSortMode) => void;
   onHideDuplicateClustersChange: (enabled: boolean) => void;
@@ -17,7 +18,7 @@ type TokenPostsTabProps = {
   onLoadMorePosts: () => void;
 };
 
-export function TokenPostsTab({
+export function TokenPostsPanel({
   posts,
   isLoading,
   isFetchingNextPage,
@@ -25,15 +26,19 @@ export function TokenPostsTab({
   postSortMode,
   hideDuplicateClusters,
   watchedPostsOnly,
+  selectedStageId,
   onPostRangeChange,
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
   onLoadMorePosts
-}: TokenPostsTabProps) {
+}: TokenPostsPanelProps) {
   const allItems = posts?.items ?? [];
   const items = sortPosts(
     allItems.filter((item) => {
+      if (selectedStageId && item.stage_id !== selectedStageId) {
+        return false;
+      }
       if (watchedPostsOnly && !item.is_watched) {
         return false;
       }
@@ -45,7 +50,7 @@ export function TokenPostsTab({
     postSortMode
   );
   return (
-    <div className="token-posts-tab">
+    <div className="token-posts-panel">
       <header className="posts-toolbar">
         <div className="segmented mini range" aria-label="token post range">
           <button className={postRange === "current_window" ? "active" : ""} type="button" onClick={() => onPostRangeChange("current_window")}>
@@ -90,6 +95,7 @@ export function TokenPostsTab({
       <div className="posts-count-line">
         {posts ? `${posts.total_count} total · ${posts.returned_count} loaded · score window ${posts.score_window.window}` : "0 total · 0 loaded"}
       </div>
+      {selectedStageId ? <div className="filter-note">stage filter · {selectedStageId}</div> : null}
       {postRange === "all_history" ? <div className="filter-note">history does not all participate in current score</div> : null}
       {hideDuplicateClusters ? <div className="filter-note">已隐藏重复文本簇</div> : null}
       {isLoading ? <div className="empty-state">加载 token posts 中</div> : null}
@@ -116,7 +122,14 @@ function PostCard({ item }: { item: TokenPostItem }) {
         <strong>@{item.handle ?? "unknown"}</strong>
         <span>{formatScore(item.post_quality.score)}</span>
         <em>{topReason ? formatReason(topReason) : "post quality"}</em>
+        {item.stage_phase ? <i>{item.stage_phase}</i> : null}
+        {item.author_role ? <i>{item.author_role}</i> : null}
+        {item.is_stage_representative ? <i className="catalyst-chip">representative</i> : null}
         {item.catalyst_score !== null && item.catalyst_score !== undefined ? <i className="catalyst-chip">cat {formatScore(item.catalyst_score)}</i> : null}
+        {item.price ? <i>{item.price.status === "ready" && item.price.price_usd ? `$${compactNumber(item.price.price_usd)}` : item.price.status}</i> : null}
+        {item.price_delta_from_previous_post_pct !== null && item.price_delta_from_previous_post_pct !== undefined ? (
+          <i>{formatSignedPercent(item.price_delta_from_previous_post_pct)} prev</i>
+        ) : null}
         {item.post_quality.risks.slice(0, 2).map((risk) => (
           <i key={risk}>{formatRisk(risk)}</i>
         ))}

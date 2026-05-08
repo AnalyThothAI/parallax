@@ -1,4 +1,5 @@
 import type { TokenFlowItem } from "../api/types";
+import { targetRefFromTokenItem } from "../domain/tokenTarget";
 import {
   compactNumber,
   formatPercentShare,
@@ -18,12 +19,14 @@ type TokenRadarRowProps = {
   item: TokenFlowItem;
   selected: boolean;
   onSelect: (item: TokenFlowItem) => void;
+  onOpenPage?: (item: TokenFlowItem) => void;
 };
 
-export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) {
-  const delta = formatSignedPercent(item.market.price_change_since_social_pct);
+export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRadarRowProps) {
+  const delta = formatSignedPercent(item.market.price_change_since_social_pct ?? item.market.price_change_since_first_snapshot_pct);
   const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
   const venueAction = tokenVenueAction(item);
+  const targetRef = targetRefFromTokenItem(item);
   return (
     <div className={`radar-row ${selected ? "selected" : ""}`}>
       <button
@@ -73,6 +76,11 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
       </button>
 
       <span className="venue-cell" data-radar-action="venue">
+        {onOpenPage && targetRef ? (
+          <button type="button" className="venue-link" aria-label={`open token audit page ${tokenLabel(item)}`} onClick={() => onOpenPage(item)}>
+            Page
+          </button>
+        ) : null}
         {venueAction ? (
           <a aria-label={`Open ${tokenLabel(item)} on ${venueAction.label}`} className="venue-link" href={venueAction.url} rel="noreferrer" target="_blank">
             {venueAction.label}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
+
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,
     "1h": 60 * 60 * 1000,
@@ -23,7 +25,12 @@ class AssetFlowService:
         now_ms: int | None = None,
     ) -> dict[str, Any]:
         row_limit = max(0, int(limit)) * 2
-        rows = self.token_radar.latest_rows(window=window, scope=scope, limit=row_limit)
+        rows = self.token_radar.latest_rows(
+            window=window,
+            scope=scope,
+            limit=row_limit,
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        )
         targets = [_public_row(row) for row in rows if row.get("lane") == "resolved"]
         attention = [_public_row(row) for row in rows if row.get("lane") == "attention"]
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
@@ -32,7 +39,7 @@ class AssetFlowService:
             "attention": attention[:limit],
             "projection": {
                 "status": "fresh" if rows else "missing",
-                "version": "token-radar-v4",
+                "version": TOKEN_RADAR_PROJECTION_VERSION,
                 "source": "token_radar_rows",
                 "source_max_received_at_ms": max(
                     (int(row.get("source_max_received_at_ms") or 0) for row in rows),

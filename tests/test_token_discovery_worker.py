@@ -3,6 +3,7 @@ from __future__ import annotations
 from gmgn_twitter_intel.market.okx_models import OkxDexTokenCandidate
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.pipeline.token_discovery_worker import TokenDiscoveryWorker
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.repository_session import repositories_for_connection
@@ -59,7 +60,12 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
 
         result = worker.run_once(now_ms=now_ms + 60_000)
         after = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
-        rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=10)
+        rows = repos.token_radar.latest_rows(
+            window="5m",
+            scope="all",
+            limit=10,
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        )
     finally:
         conn.close()
 

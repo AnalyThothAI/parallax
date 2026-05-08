@@ -253,7 +253,7 @@ export type TokenRadarScoreSet = {
   heat?: TokenRadarScoreBlock;
   quality?: TokenRadarScoreBlock;
   propagation?: TokenRadarScoreBlock;
-  price_health?: TokenRadarScoreBlock;
+  tradeability?: TokenRadarScoreBlock;
   timing?: TokenRadarScoreBlock & {
     status?: string | null;
     chase_risk?: boolean | null;
@@ -263,7 +263,7 @@ export type TokenRadarScoreSet = {
       heat?: number | null;
       quality?: number | null;
       propagation?: number | null;
-      price_health?: number | null;
+      tradeability?: number | null;
       timing?: number | null;
     };
   };
@@ -294,6 +294,7 @@ export type AssetFlowRow = {
     holders?: number | null;
     snapshot_age_ms?: number | null;
     snapshot_observed_at_ms?: number | null;
+    social_signal_start_ms?: number | null;
     price_change_5m_pct?: number | null;
     price_change_1h_pct?: number | null;
     price_change_24h_pct?: number | null;
@@ -302,6 +303,9 @@ export type AssetFlowRow = {
     price_before_social_start?: number | null;
     price_change_since_social_pct?: number | null;
     price_change_before_social_pct?: number | null;
+    price_at_first_snapshot?: number | null;
+    first_snapshot_observed_at_ms?: number | null;
+    price_change_since_first_snapshot_pct?: number | null;
     market_observation_status?: string | null;
     price_change_status?: string | null;
   };
@@ -356,6 +360,7 @@ export type ScoreBlock = {
   risks: string[];
   contributions: ScoreContribution[];
   risk_caps: RiskCap[];
+  data_health?: Record<string, unknown>;
 };
 
 export type TokenIdentityBlock = {
@@ -391,6 +396,9 @@ export type TokenMarketBlock = {
   price_change_since_social_pct?: number | null;
   price_before_social_start?: number | null;
   price_change_before_social_pct?: number | null;
+  price_at_first_snapshot?: number | null;
+  first_snapshot_observed_at_ms?: number | null;
+  price_change_since_first_snapshot_pct?: number | null;
   market_observation_status?: "ready" | "pending" | "running" | "provider_not_configured" | "provider_not_found" | "provider_error" | "rate_limited" | "dead" | string;
   price_change_status: "ready" | "pending_observation" | "insufficient_history" | "missing_market" | "provider_not_configured" | "provider_not_found" | "provider_error" | "rate_limited" | "dead" | string;
 };
@@ -504,8 +512,6 @@ export type WatchBlock = {
 export type TokenPostsQuery = {
   target_type?: string | null;
   target_id?: string | null;
-  chain?: string | null;
-  address?: string | null;
   window: WindowKey;
   scope: ScopeKey;
   range: TokenPostRange;
@@ -515,8 +521,6 @@ export type TokenPostsQuery = {
 export type TokenSocialTimelineParams = {
   target_type?: string | null;
   target_id?: string | null;
-  chain?: string | null;
-  address?: string | null;
   window: WindowKey;
   scope: ScopeKey;
 };
@@ -560,7 +564,26 @@ export type TokenPostItem = {
   reference?: TokenReference | null;
   catalyst_score?: number | null;
   catalyst_components?: CatalystComponents | null;
+  price?: TokenMessagePrice | null;
+  stage_id?: string | null;
+  stage_phase?: string | null;
+  author_role?: string | null;
+  is_stage_representative?: boolean | number | null;
+  price_delta_from_previous_post_pct?: number | null;
   post_quality: ScoreBlock;
+};
+
+export type TokenMessagePrice = {
+  status: "ready" | "stale" | "pending_observation" | string;
+  provider?: string | null;
+  pricefeed_id?: string | null;
+  price_usd?: number | null;
+  price_quote?: number | null;
+  quote_symbol?: string | null;
+  observed_at_ms?: number | null;
+  observation_lag_ms?: number | null;
+  observation_id?: string | null;
+  observation_kind?: string | null;
 };
 
 export type TokenPostsData = {
@@ -587,7 +610,7 @@ export type TokenTimelineBucket = {
   new_authors: number;
   watched_posts: number;
   duplicate_text_share: number;
-  price?: number | null;
+  price?: TokenMessagePrice | null;
   price_change_from_start_pct?: number | null;
 };
 
@@ -616,6 +639,17 @@ export type TokenTimelinePost = {
   is_first_seen_by_watched_for_token?: boolean | number | null;
   event_type?: string | null;
   reference?: TokenReference | null;
+  price?: TokenMessagePrice | null;
+  attribution_confidence?: number | null;
+  attribution_weight?: number | null;
+  mention_source?: string | null;
+  catalyst_score?: number | null;
+  catalyst_components?: CatalystComponents | null;
+  stage_id?: string | null;
+  stage_phase?: string | null;
+  author_role?: string | null;
+  is_stage_representative?: boolean | number | null;
+  price_delta_from_previous_post_pct?: number | null;
   post_quality: ScoreBlock;
 };
 
@@ -657,6 +691,47 @@ export type CatalystComponents = {
   avg_followup_quality?: number;
 };
 
+export type TokenTimelineMarketOverlay = {
+  target_type?: string | null;
+  target_id?: string | null;
+  chain_id?: string | null;
+  address?: string | null;
+  symbol?: string | null;
+  pricefeed_id?: string | null;
+  provider?: string | null;
+  native_market_id?: string | null;
+  quote_symbol?: string | null;
+  feed_type?: string | null;
+};
+
+export type TokenTimelineStage = {
+  stage_id: string;
+  phase: string;
+  start_ms: number;
+  end_ms: number;
+  duration_ms: number;
+  trigger_reason: string;
+  confidence: number;
+  people: {
+    posts: number;
+    authors: number;
+    new_authors: number;
+    watched_posts: number;
+    watched_authors: number;
+    top_author_share: number;
+  };
+  representative_event_ids: string[];
+  price: {
+    status: string;
+    start_price?: number | null;
+    end_price?: number | null;
+    delta_pct?: number | null;
+    observation_ids: string[];
+    max_observation_lag_ms?: number | null;
+  };
+  risks: string[];
+};
+
 export type TokenSocialTimelineData = {
   query: TokenSocialTimelineQuery;
   summary: {
@@ -665,6 +740,7 @@ export type TokenSocialTimelineData = {
     effective_authors: number;
     first_seen_ms?: number | null;
     latest_seen_ms?: number | null;
+    watched_posts?: number | null;
     phase: string;
     top_author_share: number;
     duplicate_text_share: number;
@@ -672,6 +748,8 @@ export type TokenSocialTimelineData = {
     peak_new_authors_per_bucket: number;
     reproduction_rate: number | null;
   };
+  market_overlay?: TokenTimelineMarketOverlay | null;
+  stages: TokenTimelineStage[];
   buckets: TokenTimelineBucket[];
   authors: TokenTimelineAuthor[];
   posts: TokenTimelinePost[];

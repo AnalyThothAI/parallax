@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
 from tests.factories_token_radar_v3 import (
     VERSA_BASE_CA,
@@ -47,7 +48,12 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
         )
 
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
-    rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
+    rows = repos.token_radar.latest_rows(
+        window="5m",
+        scope="all",
+        limit=20,
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+    )
 
     hanta = next(row for row in rows if row["intent_json"]["display_symbol"] == "HANTA")
     assert hanta["decision"] == "investigate"
@@ -66,7 +72,12 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
 
     result = ingest.ingest_event(event, is_watched=True)
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
-    rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
+    rows = repos.token_radar.latest_rows(
+        window="5m",
+        scope="all",
+        limit=20,
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+    )
 
     assert result.token_resolutions[0]["resolution_status"] == "EXACT"
     assert rows[0]["resolution_json"]["status"] == "EXACT"
@@ -85,7 +96,12 @@ def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
 
     ingest.ingest_event(event, is_watched=True)
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
-    rows = repos.token_radar.latest_rows(window="5m", scope="all", limit=20)
+    rows = repos.token_radar.latest_rows(
+        window="5m",
+        scope="all",
+        limit=20,
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+    )
 
     market = rows[0]["market_json"]
     assert rows[0]["resolution_json"]["status"] == "EXACT"

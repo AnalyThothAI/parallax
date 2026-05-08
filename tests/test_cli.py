@@ -138,6 +138,7 @@ class CliTests(unittest.TestCase):
             ["ops", "rebuild-token-intents", "--window", "5m", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
+            ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -160,6 +161,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[9].window, "5m")
         self.assertEqual(parsed[10].ops_command, "audit-token-intent")
         self.assertEqual(parsed[11].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[12].ops_command, "audit-token-radar")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:

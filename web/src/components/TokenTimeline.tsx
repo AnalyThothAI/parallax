@@ -51,32 +51,47 @@ export function TokenTimeline({ timeline, isLoading, selectedBucketStartMs, onBu
       <div className="timeline-controls">
         <span className="muted-pill">auto bucket {timeline.query.bucket}</span>
         {sparse ? <span className="risk-pill">{formatRisk("insufficient_timeline_data")}</span> : null}
-        {timeline.buckets.every((item) => item.price == null) ? <span className="muted-pill">price snapshot missing</span> : null}
+        {timeline.buckets.every((item) => item.price?.status !== "ready") ? <span className="muted-pill">pending_observation</span> : null}
       </div>
 
       <section className="timeline-chart" aria-label="social heat timeline">
         {timeline.buckets.length ? (
-          timeline.buckets.map((item) => (
-            <button
-              aria-label={`open replay bucket ${item.start_ms} ${item.posts} posts`}
-              className={`timeline-bucket ${selectedBucketStartMs === item.start_ms ? "selected" : ""}`}
-              key={item.start_ms}
-              title={`${item.posts} posts / ${item.new_authors} new authors`}
-              type="button"
-              onClick={() => onBucketSelect?.(item.start_ms)}
-            >
-              <span
-                className="bucket-bar"
-                style={{ height: `${Math.max(8, (item.posts / maxPosts) * 88)}%` }}
-                aria-label={`${item.posts} posts`}
-              />
-              {item.watched_posts ? <i style={{ height: `${Math.max(8, (item.watched_posts / maxPosts) * 88)}%` }} /> : null}
-              {item.new_authors ? <strong style={{ height: `${Math.max(8, (item.new_authors / maxPosts) * 88)}%` }} /> : null}
-              {item.price_change_from_start_pct !== null && item.price_change_from_start_pct !== undefined ? (
-                <em className={item.price_change_from_start_pct >= 0 ? "up" : "down"} />
-              ) : null}
-            </button>
-          ))
+          timeline.buckets.map((item) => {
+            const content = (
+              <>
+                <span
+                  className="bucket-bar"
+                  style={{ height: `${Math.max(8, (item.posts / maxPosts) * 88)}%` }}
+                  aria-label={`${item.posts} posts`}
+                />
+                {item.watched_posts ? <i style={{ height: `${Math.max(8, (item.watched_posts / maxPosts) * 88)}%` }} /> : null}
+                {item.new_authors ? <strong style={{ height: `${Math.max(8, (item.new_authors / maxPosts) * 88)}%` }} /> : null}
+                {item.price_change_from_start_pct !== null && item.price_change_from_start_pct !== undefined ? (
+                  <em className={item.price_change_from_start_pct >= 0 ? "up" : "down"} />
+                ) : null}
+              </>
+            );
+            const className = `timeline-bucket ${selectedBucketStartMs === item.start_ms ? "selected" : ""}`;
+            if (!onBucketSelect) {
+              return (
+                <span className={className} key={item.start_ms} title={`${item.posts} posts / ${item.new_authors} new authors`}>
+                  {content}
+                </span>
+              );
+            }
+            return (
+              <button
+                aria-label={`open replay bucket ${item.start_ms} ${item.posts} posts`}
+                className={className}
+                key={item.start_ms}
+                title={`${item.posts} posts / ${item.new_authors} new authors`}
+                type="button"
+                onClick={() => onBucketSelect(item.start_ms)}
+              >
+                {content}
+              </button>
+            );
+          })
         ) : (
           <div className="empty-state">该窗口暂无传播时间线</div>
         )}

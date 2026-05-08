@@ -4,8 +4,20 @@ import hashlib
 import time
 from typing import Any
 
+from ..retrieval.discussion_quality_scoring import discussion_quality_score
+from ..retrieval.opportunity_scoring import opportunity_score
+from ..retrieval.propagation_scoring import propagation_score
+from ..retrieval.social_heat_scoring import social_heat_score
+from ..retrieval.timing_scoring import timing_score
+from ..retrieval.tradeability_scoring import tradeability_score
 from ..storage.projection_repository import ProjectionRepository
 from .deterministic_token_resolver import RESOLVER_POLICY_VERSION
+from .token_radar_contract import (
+    TOKEN_RADAR_PROJECTION_NAME,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_SOURCE_TABLE,
+)
+from .token_radar_feature_builder import build_radar_features
 
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,
@@ -14,7 +26,7 @@ WINDOW_MS = {
     "24h": 24 * 60 * 60 * 1000,
 }
 MARKET_FRESH_MS = 5 * 60 * 1000
-PROJECTION_VERSION = "token-radar-v4"
+PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 
 
 class TokenRadarProjection:
@@ -23,12 +35,30 @@ class TokenRadarProjection:
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
-        since_ms = computed_at_ms - WINDOW_MS.get(window, WINDOW_MS["1h"])
-        source_rows = self._source_rows(since_ms=since_ms, scope=scope, now_ms=computed_at_ms)
+        window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
+        score_since_ms = computed_at_ms - window_ms
+        analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
+        source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
+        total_window_events = len(
+            {
+                str(row["event_id"])
+                for row in source_rows
+                if int(row.get("received_at_ms") or 0) >= score_since_ms
+            }
+        )
         projected = [
-            _project_group(group, now_ms=computed_at_ms, window=window, scope=scope)
+            row
             for group in grouped.values()
+            if (row := _project_group(
+                group,
+                now_ms=computed_at_ms,
+                window=window,
+                scope=scope,
+                score_since_ms=score_since_ms,
+                window_ms=window_ms,
+                total_window_events=total_window_events,
+            ))
         ]
         resolved = [row for row in projected if row["lane"] == "resolved"]
         attention = [row for row in projected if row["lane"] == "attention"]
@@ -43,10 +73,10 @@ class TokenRadarProjection:
             default=0,
         )
         run = ProjectionRepository(self.repos.conn).start_run(
-            projection_name="token-radar",
+            projection_name=TOKEN_RADAR_PROJECTION_NAME,
             projection_version=PROJECTION_VERSION,
             mode="rebuild",
-            source_start_ms=since_ms,
+            source_start_ms=analysis_since_ms,
             source_end_ms=computed_at_ms,
             commit=False,
         )
@@ -59,9 +89,9 @@ class TokenRadarProjection:
             commit=False,
         )
         ProjectionRepository(self.repos.conn).advance_offset(
-            projection_name="token-radar",
+            projection_name=TOKEN_RADAR_PROJECTION_NAME,
             projection_version=PROJECTION_VERSION,
-            source_table="token_intent_resolutions",
+            source_table=TOKEN_RADAR_SOURCE_TABLE,
             source_max_received_at_ms=source_max_received_at_ms,
             source_max_id=str(rows[0]["row_id"]) if rows else "",
             last_run_id=str(run["run_id"]),
@@ -97,6 +127,9 @@ class TokenRadarProjection:
               events.author_handle,
               events.is_watched,
               events.received_at_ms,
+              events.text,
+              events.text_clean,
+              events.reference_json,
               registry_assets.chain_id AS asset_chain_id,
               registry_assets.token_standard AS asset_token_standard,
               registry_assets.address AS asset_address,
@@ -121,7 +154,25 @@ class TokenRadarProjection:
               latest_price.liquidity_usd AS market_liquidity_usd,
               latest_price.volume_24h_usd AS market_volume_24h_usd,
               latest_price.open_interest_usd AS market_open_interest_usd,
-              latest_price.holders AS market_holders
+              latest_price.holders AS market_holders,
+              first_price.observed_at_ms AS first_price_observed_at_ms,
+              first_price.price_usd AS first_price_usd,
+              first_price.price_quote AS first_price_quote,
+              first_price.quote_symbol AS first_price_quote_symbol,
+              first_price.price_basis AS first_price_basis,
+              event_price.observation_id AS event_price_observation_id,
+              event_price.observation_kind AS event_price_observation_kind,
+              event_price.provider AS event_price_provider,
+              event_price.observed_at_ms AS event_price_observed_at_ms,
+              event_price.price_usd AS event_price_usd,
+              event_price.price_quote AS event_price_quote,
+              event_price.quote_symbol AS event_price_quote_symbol,
+              event_price.price_basis AS event_price_basis,
+              before_event_price.observed_at_ms AS before_event_price_observed_at_ms,
+              before_event_price.price_usd AS before_event_price_usd,
+              before_event_price.price_quote AS before_event_price_quote,
+              before_event_price.quote_symbol AS before_event_price_quote_symbol,
+              before_event_price.price_basis AS before_event_price_basis
             FROM token_intents
             JOIN token_intent_resolutions
               ON token_intent_resolutions.intent_id = token_intents.intent_id
@@ -194,6 +245,57 @@ class TokenRadarProjection:
                 observation_id DESC
               LIMIT 1
             ) latest_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+              ORDER BY observed_at_ms ASC, observation_id ASC
+              LIMIT 1
+            ) first_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND (
+                  (
+                    price_observations.source_resolution_id = token_intent_resolutions.resolution_id
+                    AND price_observations.subject_type = token_intent_resolutions.target_type
+                    AND price_observations.subject_id = token_intent_resolutions.target_id
+                    AND price_observations.observation_kind IN ('message_payload', 'message_quote')
+                  )
+                  OR (
+                    price_observations.subject_type = token_intent_resolutions.target_type
+                    AND price_observations.subject_id = token_intent_resolutions.target_id
+                    AND price_observations.observed_at_ms <= events.received_at_ms
+                  )
+                )
+              ORDER BY
+                CASE
+                  WHEN price_observations.source_resolution_id = token_intent_resolutions.resolution_id
+                    AND price_observations.observation_kind = 'message_payload' THEN 0
+                  WHEN price_observations.source_resolution_id = token_intent_resolutions.resolution_id
+                    AND price_observations.observation_kind = 'message_quote' THEN 1
+                  ELSE 2
+                END,
+                observed_at_ms DESC,
+                observation_id DESC
+              LIMIT 1
+            ) event_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+                AND price_observations.observed_at_ms < events.received_at_ms
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) before_event_price ON true
             WHERE events.received_at_ms >= %s {watched_clause}
             """,
             (RESOLVER_POLICY_VERSION, now_ms, since_ms),
@@ -204,16 +306,46 @@ class TokenRadarProjection:
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
         grouped: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
-            key = str(row.get("target_id") or row.get("intent_id"))
+            key = (
+                f"{row.get('target_type')}:{row.get('target_id')}"
+                if row.get("target_type") and row.get("target_id")
+                else str(row.get("intent_id"))
+            )
             grouped.setdefault(key, []).append(row)
         return grouped
 
 
-def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scope: str) -> dict[str, Any]:
-    latest = max(rows, key=lambda row: int(row.get("received_at_ms") or 0))
-    event_ids = sorted({str(row["event_id"]) for row in rows})
-    authors = {str(row.get("author_handle") or "") for row in rows if row.get("author_handle")}
-    watched = sum(1 for row in rows if row.get("is_watched"))
+def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
+    score_since_ms = computed_at_ms - window_ms
+    return max(computed_at_ms - WINDOW_MS["24h"], score_since_ms - window_ms)
+
+
+def _project_group(
+    rows: list[dict[str, Any]],
+    *,
+    now_ms: int,
+    window: str,
+    scope: str,
+    score_since_ms: int | None = None,
+    window_ms: int | None = None,
+    total_window_events: int | None = None,
+) -> dict[str, Any] | None:
+    resolved_window_ms = window_ms or WINDOW_MS.get(window, WINDOW_MS["1h"])
+    resolved_score_since_ms = score_since_ms if score_since_ms is not None else min(
+        int(row.get("received_at_ms") or 0) for row in rows
+    )
+    window_rows = [
+        row for row in rows
+        if int(row.get("received_at_ms") or 0) >= resolved_score_since_ms
+    ]
+    if not window_rows:
+        return None
+    previous_rows = [
+        row for row in rows
+        if resolved_score_since_ms - resolved_window_ms <= int(row.get("received_at_ms") or 0) < resolved_score_since_ms
+    ]
+    latest = max(window_rows, key=lambda row: int(row.get("received_at_ms") or 0))
+    event_ids = sorted({str(row["event_id"]) for row in window_rows})
     latest_seen_ms = max(int(row.get("received_at_ms") or 0) for row in rows)
     resolution_status = str(latest.get("resolution_status") or "NIL")
     target_type = str(latest.get("target_type") or "") or None
@@ -221,9 +353,18 @@ def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scop
     resolved = _has_resolved_target(latest)
     lane = "resolved" if resolved else "attention"
     target = _target(latest)
-    market = _market(latest, resolved=resolved, now_ms=now_ms)
-    score = _score(mentions=len(event_ids), authors=len(authors), watched=watched, resolved=resolved, market=market)
-    decision = _decision(score=score, resolved=resolved, market=market)
+    market = _market(window_rows, resolved=resolved, now_ms=now_ms)
+    scored_window_rows = [{**row, **_market_prefix_for_features(market)} for row in window_rows]
+    features = build_radar_features(
+        window_rows=scored_window_rows,
+        context_rows=rows,
+        previous_rows=previous_rows,
+        now_ms=now_ms,
+        window_ms=resolved_window_ms,
+        total_window_events=total_window_events or len(event_ids),
+    )
+    score = _score(features)
+    decision = str(score["opportunity"].get("decision") or "discard")
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -250,11 +391,7 @@ def _project_group(rows: list[dict[str, Any]], *, now_ms: int, window: str, scop
         "target_json": target,
         "primary_venue_json": None,
         "attention_json": {
-            "mentions_5m": len(event_ids),
-            "mentions_1h": len(event_ids),
-            "mentions_window": len(event_ids),
-            "unique_authors": len(authors),
-            "watched_mentions": watched,
+            **features.attention,
             "latest_seen_ms": latest_seen_ms,
         },
         "resolution_json": {
@@ -322,37 +459,69 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _market(row: dict[str, Any], *, resolved: bool, now_ms: int) -> dict[str, Any]:
+def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
         return _missing_market("no_resolved_target")
-    observed_at_ms = _int_or_none(row.get("market_observed_at_ms"))
+    if not window_rows:
+        return _missing_market("pending_refresh")
+    latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
+    social_start = min(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
+    observed_at_ms = _int_or_none(latest.get("market_observed_at_ms"))
     if observed_at_ms is not None:
         snapshot_age_ms = max(0, int(now_ms) - observed_at_ms)
         fresh = snapshot_age_ms <= MARKET_FRESH_MS
+        reference_value, social_value, social_basis = _comparable_price(
+            _price_values(latest, "market"),
+            _price_values(social_start, "event"),
+        )
+        social_for_before, before_value, before_basis = _comparable_price(
+            _price_values(social_start, "event"),
+            _price_values(social_start, "before_event"),
+        )
+        reference_for_first, first_value, first_basis = _comparable_price(
+            _price_values(latest, "market"),
+            _price_values(latest, "first"),
+        )
+        price_change_status = (
+            "ready" if reference_value is not None and social_value is not None else "insufficient_history"
+        )
+        if social_basis == "basis_mismatch":
+            price_change_status = "basis_mismatch"
         return {
             "market_status": "fresh" if fresh else "stale",
             "market_observation_status": "ready" if fresh else "stale",
-            "price_change_status": "insufficient_history",
-            "provider": row.get("market_provider"),
-            "pricefeed_id": row.get("pricefeed_id"),
-            "price_usd": row.get("market_price_usd"),
-            "price_quote": row.get("market_price_quote"),
-            "quote_symbol": row.get("market_quote_symbol") or row.get("pricefeed_quote_symbol"),
-            "price_basis": row.get("market_price_basis"),
-            "market_cap_usd": row.get("market_market_cap_usd"),
-            "liquidity_usd": row.get("market_liquidity_usd"),
-            "volume_24h_usd": row.get("market_volume_24h_usd"),
-            "open_interest_usd": row.get("market_open_interest_usd"),
-            "holders": row.get("market_holders"),
+            "price_change_status": price_change_status,
+            "provider": latest.get("market_provider"),
+            "pricefeed_id": latest.get("pricefeed_id"),
+            "price_usd": latest.get("market_price_usd"),
+            "price_quote": latest.get("market_price_quote"),
+            "quote_symbol": latest.get("market_quote_symbol") or latest.get("pricefeed_quote_symbol"),
+            "price_basis": latest.get("market_price_basis"),
+            "market_cap_usd": latest.get("market_market_cap_usd"),
+            "liquidity_usd": latest.get("market_liquidity_usd"),
+            "volume_24h_usd": latest.get("market_volume_24h_usd"),
+            "open_interest_usd": latest.get("market_open_interest_usd"),
+            "holders": latest.get("market_holders"),
             "snapshot_age_ms": snapshot_age_ms,
             "snapshot_observed_at_ms": observed_at_ms,
-            "price_at_social_start": None,
-            "price_at_reference": row.get("market_price_usd") or row.get("market_price_quote"),
-            "price_change_since_social_pct": None,
-            "price_before_social_start": None,
-            "price_change_before_social_pct": None,
+            "social_signal_start_ms": social_start.get("received_at_ms"),
+            "price_at_social_start": social_value,
+            "price_at_reference": reference_value,
+            "price_change_since_social_pct": _pct_change(reference_value, social_value),
+            "price_change_basis": social_basis,
+            "price_before_social_start": before_value,
+            "price_change_before_social_pct": _pct_change(social_for_before, before_value)
+            if before_basis != "basis_mismatch"
+            else None,
+            "price_at_first_snapshot": first_value,
+            "first_snapshot_observed_at_ms": latest.get("first_price_observed_at_ms"),
+            "price_change_since_first_snapshot_pct": _pct_change(reference_for_first, first_value)
+            if first_basis != "basis_mismatch"
+            else None,
         }
-    return _missing_market("pending_refresh")
+    missing = _missing_market("pending_refresh")
+    missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
+    return missing
 
 
 def _missing_market(status: str) -> dict[str, Any]:
@@ -373,65 +542,79 @@ def _missing_market(status: str) -> dict[str, Any]:
         "holders": None,
         "snapshot_age_ms": None,
         "snapshot_observed_at_ms": None,
+        "social_signal_start_ms": None,
+        "price_at_social_start": None,
+        "price_at_reference": None,
+        "price_before_social_start": None,
+        "price_at_first_snapshot": None,
+        "first_snapshot_observed_at_ms": None,
         "price_change_since_social_pct": None,
         "price_change_before_social_pct": None,
+        "price_change_since_first_snapshot_pct": None,
     }
 
 
-def _score(*, mentions: int, authors: int, watched: int, resolved: bool, market: dict[str, Any]) -> dict[str, Any]:
-    heat = min(100, 30 + mentions * 6 + authors * 8 + watched * 8)
-    quality = min(100, 70 + watched * 8) if resolved else min(70, 35 + mentions * 8)
-    propagation = min(100, 30 + authors * 14)
-    market_usable = _market_usable_for_driver(market)
-    market_risks = [] if market_usable else [_market_risk(market)]
-    hard_risks = [] if resolved and market_usable else market_risks if resolved else ["unresolved_token_identity"]
-    price_health = 80 if resolved and market_usable else 45 if resolved else 20
-    timing = 50 if resolved else 35
-    opportunity = round(heat * 0.4 + quality * 0.25 + propagation * 0.2 + price_health * 0.1 + timing * 0.05)
+def _score(features) -> dict[str, Any]:
+    components = {
+        "heat": social_heat_score(features.heat),
+        "quality": discussion_quality_score(features.quality),
+        "propagation": propagation_score(features.propagation),
+        "tradeability": tradeability_score(features.tradeability),
+        "timing": timing_score(features.timing),
+    }
+    return {**components, "opportunity": opportunity_score(components)}
+
+
+def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
     return {
-        "heat": _score_block(heat),
-        "quality": _score_block(quality),
-        "propagation": _score_block(propagation),
-        "price_health": _score_block(price_health, hard_risks=hard_risks),
-        "timing": _score_block(timing),
-        "opportunity": _score_block(opportunity, hard_risks=hard_risks),
+        "market_status": market.get("market_status"),
+        "market_observation_status": market.get("market_observation_status"),
+        "price_change_since_social_pct": market.get("price_change_since_social_pct"),
+        "price_change_before_social_pct": market.get("price_change_before_social_pct"),
     }
 
 
-def _score_block(score: int, *, hard_risks: list[str] | None = None) -> dict[str, Any]:
+def _price_values(row: dict[str, Any], prefix: str) -> dict[str, Any]:
+    if prefix == "market":
+        return {
+            "price_usd": row.get("market_price_usd"),
+            "price_quote": row.get("market_price_quote"),
+            "quote_symbol": row.get("market_quote_symbol") or row.get("pricefeed_quote_symbol"),
+            "price_basis": row.get("market_price_basis"),
+        }
     return {
-        "score": int(score),
-        "score_version": "token_radar_v4",
-        "reasons": [],
-        "risks": hard_risks or [],
-        "hard_risks": hard_risks or [],
-        "contributions": [],
-        "risk_caps": [],
+        "price_usd": row.get(f"{prefix}_price_usd"),
+        "price_quote": row.get(f"{prefix}_price_quote"),
+        "quote_symbol": row.get(f"{prefix}_price_quote_symbol"),
+        "price_basis": row.get(f"{prefix}_price_basis"),
     }
 
 
-def _decision(*, score: dict[str, Any], resolved: bool, market: dict[str, Any]) -> str:
-    if not resolved:
-        return "investigate"
-    opportunity = int((score.get("opportunity") or {}).get("score") or 0)
-    if not _market_usable_for_driver(market):
-        return "watch" if opportunity >= 45 else "discard"
-    return "driver" if opportunity >= 75 else "watch" if opportunity >= 45 else "discard"
+def _comparable_price(current: dict[str, Any], base: dict[str, Any]) -> tuple[Any, Any, str]:
+    if current.get("price_usd") is not None and base.get("price_usd") is not None:
+        return current["price_usd"], base["price_usd"], "usd"
+    current_quote = current.get("quote_symbol")
+    base_quote = base.get("quote_symbol")
+    if current_quote and base_quote and current_quote == base_quote:
+        return current.get("price_quote"), base.get("price_quote"), f"quote:{current_quote}"
+    return None, None, "basis_mismatch"
 
 
-def _market_usable_for_driver(market: dict[str, Any]) -> bool:
-    return str(market.get("market_status") or "") in {"fresh", "ready", "stale"} and str(
-        market.get("market_observation_status") or ""
-    ) in {"ready", "stale"}
+def _pct_change(current: Any, base: Any) -> float | None:
+    current_value = _float_or_none(current)
+    base_value = _float_or_none(base)
+    if current_value is None or base_value is None or base_value == 0:
+        return None
+    return round(current_value / base_value - 1.0, 6)
 
 
-def _market_risk(market: dict[str, Any]) -> str:
-    status = str(market.get("market_observation_status") or "missing_market")
-    if status == "pending_refresh":
-        return "market_pending"
-    if status == "no_resolved_target":
-        return "unresolved_token_identity"
-    return status
+def _float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _display_symbol(row: dict[str, Any]) -> str | None:

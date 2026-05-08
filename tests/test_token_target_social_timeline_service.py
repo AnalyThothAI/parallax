@@ -35,8 +35,16 @@ def test_token_target_timeline_reads_rows_by_v4_target_identity():
     assert result["summary"]["authors"] == 1
     assert result["market_overlay"]["target_type"] == "Asset"
     assert result["market_overlay"]["chain_id"] == "eip155:1"
+    assert result["stages"][0]["phase"] == "seed"
+    assert result["stages"][0]["representative_event_ids"] == ["event-1"]
     assert result["posts"][0]["target_id"] == "asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"
-    assert isinstance(result["posts"][0]["confidence"], float)
+    assert isinstance(result["posts"][0]["attribution_confidence"], float)
+    assert "confidence" not in result["posts"][0]
+    assert result["posts"][0]["stage_phase"] == "seed"
+    assert result["posts"][0]["is_stage_representative"] is True
+    assert result["posts"][0]["price"]["status"] == "ready"
+    assert result["posts"][0]["price"]["price_usd"] == 1.23
+    assert result["buckets"][0]["price"]["price_usd"] == 1.23
 
 
 def test_cex_target_timeline_uses_pricefeed_market_overlay():
@@ -157,4 +165,12 @@ def timeline_row(
         "received_at_ms": 1_700_000_000_000,
         "attribution_status": "EXACT",
         "confidence": Decimal("0.95"),
+        "price_observation_id": f"price:{event_id}",
+        "price_provider": "gmgn_payload",
+        "price_usd": Decimal("1.23"),
+        "price_quote": None,
+        "price_quote_symbol": None,
+        "price_observed_at_ms": 1_700_000_000_000,
+        "price_observation_lag_ms": 0,
+        "price_observation_kind": "message_payload",
     }

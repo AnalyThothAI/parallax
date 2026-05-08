@@ -24,6 +24,26 @@ def test_tradeability_scores_resolved_fresh_market_with_mcap():
     assert score["data_health"]["market"] == "fresh"
 
 
+def test_tradeability_scores_cex_without_chain_or_address():
+    score = tradeability_score(
+        {
+            "target_type": "CexToken",
+            "identity_status": "resolved_cex",
+            "token_id": "cex-token:BTC",
+            "pricefeed_id": "pricefeed:okx:BTC-USDT",
+            "native_market_id": "BTC-USDT",
+            "market_status": "fresh",
+            "volume_24h": 120_000_000,
+            "open_interest": 20_000_000,
+        }
+    )
+
+    assert score["identity_tradeable"] is True
+    assert "resolved_cex" in score["reasons"]
+    assert "missing_market_cap" not in score["risks"]
+    assert score["score"] >= 70
+
+
 def test_tradeability_missing_market_sets_hard_risk():
     score = tradeability_score(
         {

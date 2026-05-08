@@ -827,6 +827,43 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
+  it("keeps the audit page pinned to its own target when the drawer selects another token", async () => {
+    const altAddress = "0x2222222222222222222222222222222222222222";
+    mockApi({
+      assetFlowRows: [
+        assetFlowRow(),
+        assetFlowRow({ address: altAddress, symbol: "ALT" })
+      ]
+    });
+    const { container } = renderWithQuery(<App />);
+
+    const pageButtons = await screen.findAllByRole("button", { name: /open token audit page/i });
+    fireEvent.click(pageButtons[0]);
+    const page = await waitFor(() => container.querySelector(".token-target-page") as HTMLElement);
+    await waitFor(() => expect(within(page).getByRole("heading", { name: "$UPEG" })).toBeInTheDocument());
+    expect(within(page).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
+
+    const tape = screen.getByText("实时信号 Tape").closest("section") as HTMLElement;
+    fireEvent.click(within(tape).getByRole("button", { name: /\$ALT/i }));
+
+    await waitFor(() => {
+      const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+      expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$ALT");
+    });
+    expect(within(page).getByRole("heading", { name: "$UPEG" })).toBeInTheDocument();
+    expect(within(page).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
+    expect(within(page).queryByText("$ALT watched account evidence")).not.toBeInTheDocument();
+  });
+
+  it("does not offer an audit page for unresolved token radar rows", async () => {
+    mockApi({ assetFlowRows: [unresolvedAssetFlowRow()] });
+    renderWithQuery(<App />);
+
+    await screen.findByRole("button", { name: "select token $UPEG" });
+    expect(screen.queryByText("Page")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open token audit page/i })).not.toBeInTheDocument();
+  });
+
   it("realigns the drawer when the selected token disappears after a window switch", async () => {
     mockApi({ windowSwapToken: true });
     const { container } = renderWithQuery(<App />);
@@ -1005,8 +1042,12 @@ function mockApi(options: {
         projection: assetFlowProjection()
       });
     }
-    if (path === "/api/target-social-timeline") return ok<TokenSocialTimelineData>(timelineData());
-    if (path === "/api/target-posts") return ok<TokenPostsData>(postsData());
+    if (path === "/api/target-social-timeline") {
+      return ok<TokenSocialTimelineData>(timelineData(targetFixtureOptions(requestOptions?.params?.target_id)));
+    }
+    if (path === "/api/target-posts") {
+      return ok<TokenPostsData>(postsData(targetFixtureOptions(requestOptions?.params?.target_id)));
+    }
     if (path === "/api/account-quality") {
       return ok({
         query: { handles: ["traderpow", "alien19710628"] },
@@ -1189,7 +1230,17 @@ function assetFlowRow(
       heat: scoreBlock({ score_version: "social_heat_v1", score: 86, reasons: ["rising"], risks: ["public_stream_coverage"] }),
       quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
       propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
-      price_health: scoreBlock({ score_version: "price_health_v1", score: marketFresh ? 80 : 60, reasons: ["resolved_target"], risks: [] }),
+      tradeability: scoreBlock({
+        score_version: "tradeability_v2",
+        score: marketFresh ? 80 : 60,
+        reasons: ["resolved_target"],
+        risks: [],
+        identity_tradeable: true,
+        market_fresh: marketFresh,
+        market_cap_present: true,
+        liquidity_present: true,
+        pool_present: marketFresh
+      }),
       timing: scoreBlock({
         score_version: "timing_v4",
         score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
@@ -1203,7 +1254,7 @@ function assetFlowRow(
         score: 79,
         reasons: ["backend_decision"],
         risks: ["public_stream_coverage"],
-        components: { heat: 86, quality: 78, propagation: 72, price_health: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
+        components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
       })
     },
     decision: "driver",
@@ -1211,10 +1262,33 @@ function assetFlowRow(
   };
 }
 
+function unresolvedAssetFlowRow(): AssetFlowRow {
+  const row = assetFlowRow();
+  return {
+    ...row,
+    target: {
+      target_type: null,
+      target_id: null,
+      symbol: row.target?.symbol ?? "UPEG",
+      status: "unresolved"
+    },
+    resolution: {
+      status: "UNRESOLVED",
+      resolution_status: "UNRESOLVED",
+      target_type: null,
+      target_id: null,
+      reason_codes: ["NO_DETERMINISTIC_TARGET"],
+      candidate_ids: [],
+      lookup_keys: []
+    },
+    decision: "investigate"
+  };
+}
+
 function assetFlowProjection(): AssetFlowData["projection"] {
   return {
     status: "fresh",
-    version: "token-radar-v4",
+    version: "token-radar-v5-auditable",
     source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
     computed_at_ms: 1_777_746_300_000
@@ -1376,20 +1450,30 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       risks: []
     },
     evidence_total_count: 4,
-    posts_query: { target_type: "Asset", target_id: assetId, chain: "eth", address, window: "1h", scope: "all", range: "current_window" },
-    timeline_query: { target_type: "Asset", target_id: assetId, chain: "eth", address, window: "1h", scope: "all" }
+    posts_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all", range: "current_window" },
+    timeline_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all" }
   };
 }
 
-function timelineData(): TokenSocialTimelineData {
+function targetFixtureOptions(targetId: unknown): { symbol?: string; address?: string } {
+  const id = String(targetId ?? "");
+  if (id.includes("2222222222222222222222222222222222222222")) {
+    return { symbol: "ALT", address: "0x2222222222222222222222222222222222222222" };
+  }
+  return {};
+}
+
+function timelineData(options: { symbol?: string; address?: string } = {}): TokenSocialTimelineData {
+  const token = tokenFlowItem(options);
   return {
-    query: { ...tokenFlowItem().timeline_query, bucket: "5m" },
+    query: { ...token.timeline_query, bucket: "5m" },
     summary: {
       posts: 3,
       authors: 2,
       effective_authors: 1.8,
       first_seen_ms: 1_777_746_010_000,
       latest_seen_ms: 1_777_746_060_000,
+      watched_posts: 1,
       phase: "expansion",
       top_author_share: 0.5,
       duplicate_text_share: 0,
@@ -1401,11 +1485,34 @@ function timelineData(): TokenSocialTimelineData {
       { start_ms: 1_777_746_000_000, end_ms: 1_777_746_300_000, posts: 2, authors: 1, new_authors: 1, watched_posts: 1, duplicate_text_share: 0, price: null, price_change_from_start_pct: null },
       { start_ms: 1_777_746_300_000, end_ms: 1_777_746_600_000, posts: 1, authors: 1, new_authors: 1, watched_posts: 0, duplicate_text_share: 0, price: null, price_change_from_start_pct: null }
     ],
+    market_overlay: {
+      target_type: "Asset",
+      target_id: token.identity.target_id,
+      chain_id: "eip155:1",
+      address: token.identity.address,
+      symbol: token.identity.symbol,
+      pricefeed_id: "pricefeed:test"
+    },
+    stages: [
+      {
+        stage_id: "seed:1777746010000:1",
+        phase: "seed",
+        start_ms: 1_777_746_010_000,
+        end_ms: 1_777_746_010_000,
+        duration_ms: 0,
+        trigger_reason: "first_token_evidence",
+        confidence: 0.61,
+        people: { posts: 1, authors: 1, new_authors: 1, watched_posts: 1, watched_authors: 1, top_author_share: 1 },
+        representative_event_ids: [`event-${(options.symbol ?? "UPEG").toLowerCase()}-1`],
+        price: { status: "pending_observation", start_price: null, end_price: null, delta_pct: null, observation_ids: [], max_observation_lag_ms: null },
+        risks: []
+      }
+    ],
     authors: [
       { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, posts: 1, followers: 168_905, role: "watched", quality_score: null },
       { handle: "alien19710628", first_seen_ms: 1_777_746_060_000, latest_seen_ms: 1_777_746_060_000, posts: 2, followers: 220, role: "amplifier", quality_score: null }
     ],
-    posts: postsData().items.map((item, index) => ({
+    posts: postsData(options).items.map((item, index) => ({
       ...item,
       bucket_start_ms: index < 2 ? 1_777_746_000_000 : 1_777_746_300_000
     })),
@@ -1428,23 +1535,25 @@ function timelineData(): TokenSocialTimelineData {
   };
 }
 
-function postsData(): TokenPostsData {
+function postsData(options: { symbol?: string; address?: string } = {}): TokenPostsData {
+  const symbol = options.symbol ?? "UPEG";
   return {
-    query: tokenFlowItem().posts_query,
+    query: tokenFlowItem(options).posts_query,
     score_window: { window: "1h" },
     total_count: 3,
     returned_count: 3,
     has_more: false,
     next_cursor: null,
     items: [
-      post("event-upeg-1", "traderpow", "$UPEG watched account evidence", true, 86),
-      post("event-upeg-2", "alien19710628", "$UPEG public follow-through", false, 74),
-      post("event-upeg-3", "alien19710628", "$UPEG another public post", false, 68)
+      post(`event-${symbol.toLowerCase()}-1`, "traderpow", `$${symbol} watched account evidence`, true, 86),
+      post(`event-${symbol.toLowerCase()}-2`, "alien19710628", `$${symbol} public follow-through`, false, 74),
+      post(`event-${symbol.toLowerCase()}-3`, "alien19710628", `$${symbol} another public post`, false, 68)
     ]
   };
 }
 
 function post(eventId: string, handle: string, text: string, watched: boolean, score: number) {
+  const phase = eventId.endsWith("-1") ? "seed" : "ignition";
   return {
     event_id: eventId,
     tweet_id: eventId.replace("event", "tweet"),
@@ -1460,6 +1569,11 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
     is_first_seen_by_watched_for_token: watched,
     event_type: watched ? "watched_token_call" : "public_followup",
     reference: eventId === "event-upeg-2" ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" } : null,
+    stage_id: `${phase}:1777746010000:1`,
+    stage_phase: phase,
+    author_role: watched ? "watched" : "early_amplifier",
+    is_stage_representative: watched,
+    price_delta_from_previous_post_pct: null,
     post_quality: {
       score_version: "post_quality_v1",
       score,

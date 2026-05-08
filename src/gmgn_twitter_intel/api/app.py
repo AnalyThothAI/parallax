@@ -21,6 +21,7 @@ from ..pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 from ..pipeline.enrichment_worker import EnrichmentWorker
 from ..pipeline.harness_ops_worker import HarnessOpsWorker
 from ..pipeline.ingest_service import IngestService
+from ..pipeline.message_market_observation_worker import MessageMarketObservationWorker
 from ..pipeline.notification_delivery import NotificationDeliveryWorker
 from ..pipeline.notification_rules import NotificationRuleEngine
 from ..pipeline.notification_worker import NotificationWorker
@@ -68,6 +69,7 @@ class CliRuntime:
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
     asset_market_sync_worker: AssetMarketSyncWorker | None = None
+    message_market_observation_worker: MessageMarketObservationWorker | None = None
     token_discovery_worker: TokenDiscoveryWorker | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     collector_task: asyncio.Task | None = None
@@ -77,6 +79,7 @@ class CliRuntime:
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
     asset_market_sync_task: asyncio.Task | None = None
+    message_market_observation_task: asyncio.Task | None = None
     token_discovery_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
 
@@ -303,6 +306,30 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             inst_types=settings.okx_cex_inst_types,
             interval_seconds=settings.okx_cex_sync_interval_seconds,
         )
+        message_cex_client = (
+            OkxCexClient(
+                base_url=settings.okx_cex_base_url,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            if settings.okx_cex_sync_enabled
+            else None
+        )
+        message_dex_client = (
+            OkxDexClient(
+                base_url=settings.okx_dex_base_url,
+                api_key=settings.okx_dex_api_key,
+                secret_key=settings.okx_dex_secret_key,
+                passphrase=settings.okx_dex_passphrase,
+                timeout_seconds=settings.okx_timeout_seconds,
+            )
+            if settings.okx_dex_configured
+            else None
+        )
+        runtime.message_market_observation_worker = MessageMarketObservationWorker(
+            cex_client=message_cex_client,
+            dex_client=message_dex_client,
+            repository_session=lambda: repository_session(db_pool),
+        )
     if start_collector and settings.okx_dex_configured:
         okx_dex_discovery_client = OkxDexClient(
             base_url=settings.okx_dex_base_url,
@@ -370,6 +397,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
     if runtime.asset_market_sync_worker is not None and runtime.asset_market_sync_task is None:
         runtime.asset_market_sync_task = asyncio.create_task(runtime.asset_market_sync_worker.run())
+    if runtime.message_market_observation_worker is not None and runtime.message_market_observation_task is None:
+        runtime.message_market_observation_task = asyncio.create_task(runtime.message_market_observation_worker.run())
     if runtime.token_discovery_worker is not None and runtime.token_discovery_task is None:
         runtime.token_discovery_task = asyncio.create_task(runtime.token_discovery_worker.run())
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
@@ -392,6 +421,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_delivery_worker.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.stop()
+    if runtime.message_market_observation_worker is not None:
+        runtime.message_market_observation_worker.stop()
     if runtime.token_discovery_worker is not None:
         runtime.token_discovery_worker.stop()
     if runtime.token_radar_projection_worker is not None:
@@ -406,6 +437,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.notification_task,
             runtime.notification_delivery_task,
             runtime.asset_market_sync_task,
+            runtime.message_market_observation_task,
             runtime.token_discovery_task,
             runtime.token_radar_projection_task,
         )
@@ -418,6 +450,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.close()
+    if runtime.message_market_observation_worker is not None:
+        runtime.message_market_observation_worker.close()
     if runtime.token_discovery_worker is not None:
         runtime.token_discovery_worker.close()
     runtime.db_pool.close()
@@ -484,6 +518,21 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_error": runtime.asset_market_sync_worker.last_error if runtime.asset_market_sync_worker else None,
             "providers": runtime.asset_market_sync_worker.provider_states if runtime.asset_market_sync_worker else {},
         },
+        "message_market_observation": {
+            "worker_running": _task_running(runtime.message_market_observation_task),
+            "last_started_at_ms": runtime.message_market_observation_worker.last_started_at_ms
+            if runtime.message_market_observation_worker
+            else None,
+            "last_run_at_ms": runtime.message_market_observation_worker.last_run_at_ms
+            if runtime.message_market_observation_worker
+            else None,
+            "last_result": runtime.message_market_observation_worker.last_result
+            if runtime.message_market_observation_worker
+            else None,
+            "last_error": runtime.message_market_observation_worker.last_error
+            if runtime.message_market_observation_worker
+            else None,
+        },
         "token_discovery": {
             "worker_running": _task_running(runtime.token_discovery_task),
             "last_started_at_ms": runtime.token_discovery_worker.last_started_at_ms
@@ -518,6 +567,11 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_delivery_worker_stopped")
     if runtime.asset_market_sync_worker is not None and not _task_running(runtime.asset_market_sync_task):
         reasons.append("asset_market_sync_worker_stopped")
+    if (
+        runtime.message_market_observation_worker is not None
+        and not _task_running(runtime.message_market_observation_task)
+    ):
+        reasons.append("message_market_observation_worker_stopped")
     if runtime.token_discovery_worker is not None and not _task_running(runtime.token_discovery_task):
         reasons.append("token_discovery_worker_stopped")
     if runtime.token_radar_projection_worker is not None and not _task_running(runtime.token_radar_projection_task):

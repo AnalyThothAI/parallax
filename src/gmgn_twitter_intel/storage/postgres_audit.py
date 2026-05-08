@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
+
 CORE_TABLES = (
     "raw_frames",
     "events",
@@ -111,13 +113,13 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         "sql": """
             SELECT row_id
             FROM token_radar_rows
-            WHERE projection_version = 'token-radar-v4'
+            WHERE projection_version = %(token_radar_projection_version)s
               AND "window" = '5m'
               AND scope = 'all'
             ORDER BY computed_at_ms DESC, lane DESC, rank ASC
             LIMIT 50
         """,
-        "params": (),
+        "params": {"token_radar_projection_version": TOKEN_RADAR_PROJECTION_VERSION},
     },
     {
         "name": "target_posts_recent",

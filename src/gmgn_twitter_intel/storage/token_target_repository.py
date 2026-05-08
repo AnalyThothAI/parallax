@@ -67,7 +67,15 @@ class TokenTargetRepository:
               price_feeds.native_market_id,
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol,
-              price_feeds.feed_type
+              price_feeds.feed_type,
+              message_price.observation_id AS price_observation_id,
+              message_price.provider AS price_provider,
+              message_price.observed_at_ms AS price_observed_at_ms,
+              message_price.price_usd,
+              message_price.price_quote,
+              message_price.quote_symbol AS price_quote_symbol,
+              message_price.observation_kind AS price_observation_kind,
+              message_price.observation_lag_ms AS price_observation_lag_ms
             FROM token_intent_resolutions tir
             JOIN events ON events.event_id = tir.event_id
             LEFT JOIN registry_assets
@@ -102,6 +110,24 @@ class TokenTargetRepository:
             ) preferred_price_feed ON true
             LEFT JOIN price_feeds
               ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.source_event_id = events.event_id
+                AND price_observations.source_resolution_id = tir.resolution_id
+                AND price_observations.subject_type = tir.target_type
+                AND price_observations.subject_id = tir.target_id
+                AND (
+                  COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
+                  OR price_observations.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
+                )
+                AND price_observations.observation_kind IN ('message_payload', 'message_quote')
+              ORDER BY
+                CASE WHEN price_observations.observation_kind = 'message_payload' THEN 0 ELSE 1 END,
+                price_observations.observed_at_ms DESC,
+                price_observations.observation_id DESC
+              LIMIT 1
+            ) message_price ON true
             WHERE {' AND '.join(clauses)}
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s

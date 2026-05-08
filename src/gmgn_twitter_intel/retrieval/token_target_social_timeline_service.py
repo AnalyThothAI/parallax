@@ -4,7 +4,10 @@ import time
 from typing import Any
 
 from .asset_flow_service import WINDOW_MS
+from .token_message_price_payload import message_price_payload
 from .token_target_cursor import decode_target_cursor, encode_target_cursor
+from .token_target_post_serializer import token_target_post_payload
+from .token_target_stage_builder import build_token_target_stages
 
 
 class TokenTargetSocialTimelineService:
@@ -37,6 +40,7 @@ class TokenTargetSocialTimelineService:
         bucket_ms, bucket_label = _bucket(window)
         has_more = len(rows) > len(page_rows)
         next_cursor = encode_target_cursor(page_rows[-1]) if has_more and page_rows else None
+        stage_build = build_token_target_stages(page_rows)
         return {
             "query": {
                 "target_type": target_type,
@@ -47,6 +51,7 @@ class TokenTargetSocialTimelineService:
             },
             "summary": _summary(page_rows),
             "market_overlay": _market_overlay(page_rows),
+            "stages": stage_build.stages,
             "buckets": _buckets(
                 page_rows,
                 bucket_ms=bucket_ms,
@@ -54,7 +59,15 @@ class TokenTargetSocialTimelineService:
                 now_ms=resolved_now_ms,
             ),
             "authors": _authors(page_rows),
-            "posts": [_post(row, bucket_ms=bucket_ms, since_ms=resolved_now_ms - window_ms) for row in page_rows],
+            "posts": [
+                token_target_post_payload(
+                    row,
+                    stage=stage_build.annotations.get(str(row.get("event_id") or "")),
+                    bucket_ms=bucket_ms,
+                    since_ms=resolved_now_ms - window_ms,
+                )
+                for row in page_rows
+            ],
             "cascade": {"edges": [], "unresolved_parents": []},
             "returned_count": len(page_rows),
             "has_more": has_more,
@@ -141,13 +154,22 @@ def _buckets(rows: list[dict[str, Any]], *, bucket_ms: int, since_ms: int, now_m
             bucket["authors"].add(str(row["author_handle"]))
         if row.get("is_watched"):
             bucket["watched_posts"] += 1
+        price = message_price_payload(row)
+        if price["observation_id"]:
+            bucket["price"] = price
     public = []
     seen_authors: set[str] = set()
+    start_price = None
     for start_ms in sorted(grouped):
         bucket = grouped[start_ms]
         authors = set(bucket["authors"])
         new_authors = len(authors - seen_authors)
         seen_authors.update(authors)
+        price = bucket.get("price")
+        if start_price is None and price and price.get("price_usd") is not None:
+            start_price = float(price["price_usd"])
+        if start_price and price and price.get("price_usd") is not None:
+            bucket["price_change_from_start_pct"] = round(float(price["price_usd"]) / start_price - 1.0, 6)
         public.append({**bucket, "authors": len(authors), "new_authors": new_authors})
     return public
 
@@ -177,40 +199,6 @@ def _authors(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if row.get("is_watched"):
             item["role"] = "watched"
     return sorted(grouped.values(), key=lambda item: (-int(item["posts"]), int(item["first_seen_ms"])))
-
-
-def _post(row: dict[str, Any], *, bucket_ms: int, since_ms: int) -> dict[str, Any]:
-    received_at_ms = int(row.get("received_at_ms") or 0)
-    bucket_start_ms = since_ms + ((received_at_ms - since_ms) // bucket_ms) * bucket_ms
-    confidence = float(row.get("confidence") or 0.0)
-    watched = bool(row.get("is_watched"))
-    return {
-        "event_id": row.get("event_id"),
-        "tweet_id": row.get("tweet_id"),
-        "target_type": row.get("target_type"),
-        "target_id": row.get("target_id"),
-        "symbol": row.get("symbol"),
-        "handle": row.get("author_handle"),
-        "author_handle": row.get("author_handle"),
-        "text": row.get("text_clean") or row.get("text"),
-        "url": row.get("canonical_url"),
-        "received_at_ms": row.get("received_at_ms"),
-        "bucket_start_ms": bucket_start_ms,
-        "is_watched": row.get("is_watched"),
-        "is_first_seen_by_watched_for_token": watched,
-        "event_type": "watched_token_intent" if watched else "public_token_intent",
-        "attribution_status": row.get("attribution_status"),
-        "confidence": confidence,
-        "reference": None,
-        "post_quality": {
-            "score_version": "token_target_post_quality_v1",
-            "score": min(100, round(45 + confidence * 35 + (15 if watched else 0))),
-            "reasons": ["watched_token_intent"] if watched else ["token_intent"],
-            "risks": ["public_stream_coverage"],
-            "contributions": [],
-            "risk_caps": [],
-        },
-    }
 
 
 def _phase(posts: int, authors: int) -> str:

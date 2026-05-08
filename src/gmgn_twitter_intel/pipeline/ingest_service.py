@@ -116,7 +116,7 @@ class IngestService:
                     commit=False,
                 )
             token_resolutions = intent_resolution_repo.resolutions_for_event(event.event_id)
-            self._insert_gmgn_payload_price_observation(event, decisions)
+            self._insert_gmgn_payload_price_observation(event, token_resolutions)
             alerts = self._insert_token_alerts(
                 event,
                 decisions,
@@ -184,7 +184,7 @@ class IngestService:
     def _insert_gmgn_payload_price_observation(
         self,
         event: TwitterEvent,
-        decisions: list[TokenIntentResolutionDecision],
+        token_resolutions: list[dict[str, Any]],
     ) -> None:
         snapshot = event.token_snapshot
         if snapshot is None:
@@ -194,8 +194,8 @@ class IngestService:
         asset = self._upsert_gmgn_payload_registry(event)
         if not asset:
             return
-        for decision in decisions:
-            if decision.target_type != "Asset" or decision.target_id != asset.get("asset_id"):
+        for resolution in token_resolutions:
+            if resolution.get("target_type") != "Asset" or resolution.get("target_id") != asset.get("asset_id"):
                 continue
             pricefeed = self.registry.upsert_pricefeed(
                 feed_type="dex_token",
@@ -221,6 +221,11 @@ class IngestService:
                 liquidity_usd=_raw_number(snapshot.raw, "liquidity", "liq", "pool_liquidity"),
                 volume_24h_usd=_raw_number(snapshot.raw, "volume_24h", "v24h", ("stat", "volume_24h")),
                 holders=_raw_int(snapshot.raw, "holder_count", "holders"),
+                source_event_id=event.event_id,
+                source_intent_id=str(resolution["intent_id"]),
+                source_resolution_id=str(resolution["resolution_id"]),
+                observation_kind="message_payload",
+                event_received_at_ms=event.received_at_ms,
                 raw_payload={**snapshot.raw, "payload_hash": _payload_hash(snapshot.raw)},
                 commit=False,
             )

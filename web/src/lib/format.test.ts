@@ -183,8 +183,6 @@ function sampleToken(): TokenFlowItem {
     posts_query: {
       target_type: "Asset",
       target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-      chain: "eip155:1",
-      address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       window: "5m",
       scope: "all",
       range: "current_window"
@@ -192,8 +190,6 @@ function sampleToken(): TokenFlowItem {
     timeline_query: {
       target_type: "Asset",
       target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-      chain: "eip155:1",
-      address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       window: "5m",
       scope: "all"
     }

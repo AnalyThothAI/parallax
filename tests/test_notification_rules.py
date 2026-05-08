@@ -58,7 +58,7 @@ def radar_score(*, heat: int, quality: int, opportunity: int) -> dict:
     def block(score: int) -> dict:
         return {
             "score": score,
-            "score_version": "token_radar_v4",
+            "score_version": "social_opportunity_v3",
             "reasons": [],
             "risks": [],
             "contributions": [],
@@ -193,7 +193,7 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
     assert hot[0].payload["target_id"] == "asset:eip155:1:erc20:0xpepe"
     assert hot[0].payload["social_heat_score"] == 92
     assert hot[0].payload["decision"] == "driver"
-    assert hot[0].payload["score_version"] == "token_radar_v4"
+    assert hot[0].payload["score_version"] == "social_opportunity_v3"
 
 
 def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():

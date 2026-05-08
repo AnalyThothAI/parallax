@@ -45,6 +45,14 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
     assert first["query"]["target_id"] == "cex_token:BTC"
     assert [item["event_id"] for item in first["items"]] == ["event-3", "event-2"]
     assert isinstance(first["items"][0]["attribution_confidence"], float)
+    assert first["items"][0]["stage_id"]
+    assert first["items"][0]["stage_phase"] in {"seed", "ignition", "concentration"}
+    assert first["items"][0]["author_role"] in {"seed", "early_amplifier", "repeater"}
+    assert isinstance(first["items"][0]["is_stage_representative"], bool)
+    assert "confidence" not in first["items"][0]
+    assert first["items"][0]["price"]["status"] == "ready"
+    assert first["items"][0]["price"]["price_usd"] == 70_000
+    assert first["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
     assert first["next_cursor"] == "1000:event-2"
     assert targets.seen_cursors[-1] == (1_000, "event-2")
     assert [item["event_id"] for item in second["items"]] == ["event-1"]
@@ -76,4 +84,13 @@ def post_row(event_id: str, *, received_at_ms: int) -> dict:
         "attribution_status": "EXACT",
         "confidence": Decimal("0.95"),
         "reference_json": None,
+        "price_observation_id": f"price:{event_id}",
+        "price_provider": "okx_cex",
+        "pricefeed_id": "pricefeed:okx:BTC-USDT",
+        "price_usd": Decimal("70000"),
+        "price_quote": Decimal("70000"),
+        "price_quote_symbol": "USDT",
+        "price_observed_at_ms": received_at_ms + 1_000,
+        "price_observation_lag_ms": 1_000,
+        "price_observation_kind": "message_quote",
     }

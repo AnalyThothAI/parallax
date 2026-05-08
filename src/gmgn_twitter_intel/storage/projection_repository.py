@@ -4,11 +4,17 @@ import hashlib
 import time
 from typing import Any
 
+from ..pipeline.token_radar_contract import (
+    TOKEN_RADAR_PROJECTION_NAME,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_SOURCE_TABLE,
+)
+
 KNOWN_PROJECTIONS = (
     {
-        "projection_name": "token-radar",
-        "projection_version": "token-radar-v4",
-        "source_table": "token_intent_resolutions",
+        "projection_name": TOKEN_RADAR_PROJECTION_NAME,
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+        "source_table": TOKEN_RADAR_SOURCE_TABLE,
     },
 )
 

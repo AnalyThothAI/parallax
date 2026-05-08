@@ -73,6 +73,12 @@ def test_ingest_gmgn_payload_writes_direct_dex_asset(tmp_path):
     assert resolution["target_id"] == "asset:solana:token:So11111111111111111111111111111111111111112"
     assert market is not None
     assert market["provider"] == "gmgn_payload"
+    assert market["observation_kind"] == "message_payload"
+    assert market["source_event_id"] == event.event_id
+    assert market["source_intent_id"] in {row["intent_id"] for row in result.token_intents}
+    assert market["source_resolution_id"] in {row["resolution_id"] for row in result.token_resolutions}
+    assert market["event_received_at_ms"] == event.received_at_ms
+    assert market["observation_lag_ms"] == 0
     assert market["price_usd"] == 150.0
     assert market["market_cap_usd"] == 1_000_000.0
 

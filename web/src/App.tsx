@@ -4,6 +4,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import { getApi, getBootstrap } from "./api/client";
 import { getNotifications, getNotificationSummary, markAllNotificationsRead, markNotificationRead } from "./api/notifications";
+import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "./api/useTokenTargetQueries";
 import type {
   AccountQualityData,
   AssetFlowData,
@@ -19,10 +20,11 @@ import type {
   StatusData,
   TimingBlock,
   TokenFlowItem,
-  TokenPostsData,
-  TokenSocialTimelineData,
+  TokenPostRange,
+  TokenPostSortMode,
   TradingAttentionData,
-  TradingAttentionItem
+  TradingAttentionItem,
+  WindowKey
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
@@ -37,6 +39,7 @@ import { SignalLabWorkbench } from "./components/SignalLabWorkbench";
 import { RadarControls } from "./components/RadarControls";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenRadarTable } from "./components/TokenRadarTable";
+import { TokenTargetPage } from "./components/TokenTargetPage";
 import { WatchlistNotificationDot } from "./components/WatchlistNotificationDot";
 import {
   compactNumber,
@@ -46,6 +49,8 @@ import {
 } from "./lib/format";
 import { tokenForSearchQuery } from "./lib/searchIntent";
 import { buildWatchlistRows } from "./lib/watchlist";
+import type { TargetRef } from "./domain/tokenTarget";
+import { targetRefEquals, targetRefFromTokenItem } from "./domain/tokenTarget";
 import { useTraderStore } from "./store/useTraderStore";
 
 type SelectedSignal =
@@ -102,6 +107,11 @@ export function App() {
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
+  const [pageTargetRef, setPageTargetRef] = useState<TargetRef | null>(null);
+  const [pageWindow, setPageWindow] = useState<WindowKey>(windowKey);
+  const [pagePostRange, setPagePostRange] = useState<TokenPostRange>("current_window");
+  const [pagePostSortMode, setPagePostSortMode] = useState<TokenPostSortMode>("recent");
+  const [pageSelectedStageId, setPageSelectedStageId] = useState<string | null>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const [mobileTask, setMobileTask] = useState<MobileTask>("radar");
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
@@ -222,41 +232,28 @@ export function App() {
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
-  const tokenTimelineParams = selectedToken ? { ...selectedToken.timeline_query, window: detailWindow } : null;
+  const drawerTargetRef = targetRefFromTokenItem(selectedToken);
+  const selectedTokenPage = pageTargetRef ? tokenItems.find((item) => targetRefEquals(targetRefFromTokenItem(item), pageTargetRef)) ?? null : null;
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
-  const tokenPostParams = selectedToken ? { ...selectedToken.posts_query, window: detailWindow, range: postRange, sort: tokenPostRequestSort } : null;
+  const pagePostRequestSort = pagePostSortMode === "catalyst" ? "catalyst" : "recent";
 
-  const tokenTimelineQuery = useQuery({
-    queryKey: ["target-social-timeline", tokenTimelineParams],
-    queryFn: () =>
-      getApi<TokenSocialTimelineData>("/api/target-social-timeline", {
-        token,
-        params: tokenTimelineParams ?? {}
-      }),
-    enabled: Boolean(token && hasTokenIdentity(tokenTimelineParams))
+  const tokenTimelineQuery = useTokenTargetTimeline({ token, target: drawerTargetRef, window: detailWindow, scope });
+  const tokenPostsQuery = useTokenTargetPosts({
+    token,
+    target: drawerTargetRef,
+    window: detailWindow,
+    scope,
+    range: postRange,
+    sort: tokenPostRequestSort,
   });
-
-  const tokenPostsQuery = useInfiniteQuery({
-    queryKey: ["target-posts", tokenPostParams],
-    queryFn: async ({ pageParam }) => {
-      const response = await getApi<TokenPostsData>("/api/target-posts", {
-        token,
-        params: {
-          target_type: tokenPostParams?.target_type,
-          target_id: tokenPostParams?.target_id,
-          window: tokenPostParams?.window,
-          scope: tokenPostParams?.scope,
-          range: tokenPostParams?.range,
-          sort: tokenPostParams?.sort,
-          limit: 24,
-          cursor: tokenPostParams?.sort === "catalyst" ? undefined : pageParam || undefined
-        }
-      });
-      return response.data;
-    },
-    initialPageParam: "",
-    getNextPageParam: (lastPage) => lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
-    enabled: Boolean(token && hasTokenIdentity(tokenPostParams))
+  const pageTimelineQuery = useTokenTargetTimeline({ token, target: pageTargetRef, window: pageWindow, scope });
+  const pagePostsQuery = useTokenTargetPosts({
+    token,
+    target: pageTargetRef,
+    window: pageWindow,
+    scope,
+    range: pagePostRange,
+    sort: pagePostRequestSort,
   });
 
   const accountQualityHandles = useMemo(
@@ -324,7 +321,8 @@ export function App() {
     [liveItems, tokenItems]
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
-  const tokenPostsData = useMemo(() => mergePostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
+  const tokenPostsData = useMemo(() => mergeTokenPostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
+  const pagePostsData = useMemo(() => mergeTokenPostPages(pagePostsQuery.data?.pages), [pagePostsQuery.data?.pages]);
   const selectedAttentionItemId = selectedAttentionItemIdForSelection(selectedSignal);
   const selectedAttentionItem = selectedSignal?.kind === "attention" ? latestAttentionForSelection(selectedSignal.item, tradingAttentionItems) : null;
   const selectedEvidenceDetails = useMemo(
@@ -427,6 +425,21 @@ export function App() {
     setPostRange("current_window");
     setSelectedTapeEventId(tapeId);
     setMobileTask("detail");
+  };
+
+  const openTokenPage = (item: TokenFlowItem) => {
+    const target = targetRefFromTokenItem(item);
+    if (!target) {
+      return;
+    }
+    setSelectedSignal({ kind: "token", key: tokenKey(item), item });
+    setPageTargetRef(target);
+    setPageWindow(windowKey);
+    setPagePostRange("current_window");
+    setPagePostSortMode("recent");
+    setPageSelectedStageId(null);
+    setDetailWindow(windowKey);
+    setMobileTask("radar");
   };
 
   const selectAttentionItem = (item: TradingAttentionItem, options: { openLab?: boolean } = {}) => {
@@ -764,19 +777,43 @@ export function App() {
           ) : (
             <>
               <section className="mobile-task-surface" data-mobile-task-panel="radar">
-                <div className="radar-control-row">
-                  <RadarControls scope={scope} windowKey={windowKey} onScopeChange={setScope} onWindowChange={setWindow} />
-                </div>
+                {selectedTokenPage ? (
+                  <TokenTargetPage
+                    token={selectedTokenPage}
+                    timeline={pageTimelineQuery.data?.data ?? null}
+                    posts={pagePostsData}
+                    windowKey={pageWindow}
+                    postRange={pagePostRange}
+                    postSortMode={pagePostSortMode}
+                    selectedStageId={pageSelectedStageId}
+                    isTimelineLoading={pageTimelineQuery.isFetching}
+                    isPostsLoading={pagePostsQuery.isLoading}
+                    isPostsFetchingNextPage={pagePostsQuery.isFetchingNextPage}
+                    onBack={() => setPageTargetRef(null)}
+                    onWindowChange={setPageWindow}
+                    onPostRangeChange={setPagePostRange}
+                    onPostSortModeChange={setPagePostSortMode}
+                    onStageSelect={setPageSelectedStageId}
+                    onLoadMorePosts={() => void pagePostsQuery.fetchNextPage()}
+                  />
+                ) : (
+                  <>
+                    <div className="radar-control-row">
+                      <RadarControls scope={scope} windowKey={windowKey} onScopeChange={setScope} onWindowChange={setWindow} />
+                    </div>
 
-                <TokenRadarTable
-                  error={assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null}
-                  isLoading={assetFlowQuery.isPending}
-                  items={tokenItems}
-                  selectedKey={selectedTokenKey}
-                  sortMode={radarSortMode}
-                  onSelect={selectToken}
-                  onSortModeChange={setRadarSortMode}
-                />
+                    <TokenRadarTable
+                      error={assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null}
+                      isLoading={assetFlowQuery.isPending}
+                      items={tokenItems}
+                      selectedKey={selectedTokenKey}
+                      sortMode={radarSortMode}
+                      onSelect={selectToken}
+                      onOpenPage={openTokenPage}
+                      onSortModeChange={setRadarSortMode}
+                    />
+                  </>
+                )}
               </section>
 
               <div className="bottom-deck">
@@ -1020,14 +1057,14 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
   const targetId = target.target_id ?? row.resolution.target_id ?? null;
   const identityKey = targetId ?? row.intent?.intent_id ?? target.address ?? target.native_market_id ?? displaySymbol ?? "unknown-token-intent";
   const marketObservationStatus = price?.market_observation_status ?? row.data_health?.market ?? "missing_market";
-  const marketHasUsableSnapshot = price?.market_status === "ready" || price?.market_status === "fresh" || price?.market_status === "stale";
+  const marketHasUsableSnapshot = price?.market_status === "ready" || price?.market_status === "fresh";
   const priceChangeStatus = price?.price_change_status ?? (marketHasUsableSnapshot ? "ready" : "missing_market");
-  const heat = normalizedScoreBlock(row.score?.heat, "token_radar_v4");
-  const quality = normalizedScoreBlock(row.score?.quality, "token_radar_v4");
-  const propagation = normalizedScoreBlock(row.score?.propagation, "token_radar_v4");
-  const priceHealth = normalizedScoreBlock(row.score?.price_health, "token_radar_v4");
-  const timing = normalizedScoreBlock(row.score?.timing, "token_radar_v4");
-  const opportunity = normalizedScoreBlock(row.score?.opportunity, "token_radar_v4");
+  const heat = normalizedScoreBlock(row.score?.heat, "social_heat_v2");
+  const quality = normalizedScoreBlock(row.score?.quality, "discussion_quality_v2");
+  const propagation = normalizedScoreBlock(row.score?.propagation, "propagation_v2");
+  const tradeability = normalizedScoreBlock(row.score?.tradeability, "tradeability_v2");
+  const timing = normalizedScoreBlock(row.score?.timing, "timing_v4");
+  const opportunity = normalizedScoreBlock(row.score?.opportunity, "social_opportunity_v3");
   const decision = normalizeDecision(row.decision);
   const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
   const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
@@ -1060,13 +1097,16 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       volume_24h: price?.volume_24h_usd ?? null,
       snapshot_age_ms: price?.snapshot_age_ms ?? null,
       snapshot_received_at_ms: price?.snapshot_observed_at_ms ?? null,
-      social_signal_start_ms: row.attention.latest_seen_ms ?? null,
+      social_signal_start_ms: price?.social_signal_start_ms ?? row.attention.latest_seen_ms ?? null,
       reference_ms: row.attention.latest_seen_ms ?? null,
       price_at_social_start: price?.price_at_social_start ?? null,
       price_at_reference: price?.price_at_reference ?? marketPrice,
       price_change_since_social_pct: price?.price_change_since_social_pct ?? null,
       price_before_social_start: price?.price_before_social_start ?? null,
       price_change_before_social_pct: price?.price_change_before_social_pct ?? null,
+      price_at_first_snapshot: price?.price_at_first_snapshot ?? null,
+      first_snapshot_observed_at_ms: price?.first_snapshot_observed_at_ms ?? null,
+      price_change_since_first_snapshot_pct: price?.price_change_since_first_snapshot_pct ?? null,
       market_observation_status: marketObservationStatus,
       price_change_status: priceChangeStatus
     },
@@ -1129,13 +1169,13 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       top_authors: []
     },
     tradeability: {
-      ...priceHealth,
-      identity_tradeable: resolved,
-      market_fresh: marketHasUsableSnapshot,
-      market_cap_present: Boolean(price?.market_cap_usd),
-      liquidity_present: Boolean(price?.liquidity_usd),
-      pool_present: marketHasUsableSnapshot,
-      hard_risks: priceHealth.hard_risks ?? priceHealth.risks
+      ...tradeability,
+      identity_tradeable: Boolean(tradeability.identity_tradeable ?? resolved),
+      market_fresh: Boolean(tradeability.market_fresh ?? marketHasUsableSnapshot),
+      market_cap_present: Boolean(tradeability.market_cap_present ?? price?.market_cap_usd),
+      liquidity_present: Boolean(tradeability.liquidity_present ?? price?.liquidity_usd),
+      pool_present: Boolean(tradeability.pool_present ?? marketHasUsableSnapshot),
+      hard_risks: tradeability.hard_risks ?? tradeability.risks
     },
     timing: {
       score: timing.score,
@@ -1160,7 +1200,7 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
         heat: row.score?.opportunity?.components?.heat ?? heat.score,
         quality: row.score?.opportunity?.components?.quality ?? quality.score,
         propagation: row.score?.opportunity?.components?.propagation ?? propagation.score,
-        tradeability: row.score?.opportunity?.components?.price_health ?? priceHealth.score,
+        tradeability: row.score?.opportunity?.components?.tradeability ?? tradeability.score,
         timing: row.score?.opportunity?.components?.timing ?? timing.score
       }
     },
@@ -1174,8 +1214,8 @@ function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow
       risks: watched ? [] : ["no_watched_confirmation"]
     },
     evidence_total_count: row.intent?.evidence?.length ?? mentions,
-    posts_query: { target_type: target.target_type ?? null, target_id: targetId, chain, address, window, scope, range: "current_window" },
-    timeline_query: { target_type: target.target_type ?? null, target_id: targetId, chain, address, window, scope }
+    posts_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope, range: "current_window" },
+    timeline_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope }
   };
 }
 
@@ -1195,8 +1235,10 @@ type RadarScoreInput = {
   chase_risk?: boolean | null;
 };
 
-function normalizedScoreBlock(block: RadarScoreInput | undefined, fallbackVersion: string) {
+function normalizedScoreBlock(block: RadarScoreInput | undefined, fallbackVersion: string): any {
+  const extra = block && typeof block === "object" ? { ...block } : {};
   return {
+    ...extra,
     score: Math.round(Number(block?.score ?? 0)),
     score_version: block?.score_version ?? fallbackVersion,
     reasons: block?.reasons ?? [],
@@ -1235,21 +1277,6 @@ function attentionKindTotal(summary?: TradingAttentionData["summary"]): number {
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
-}
-
-function mergePostPages(pages?: TokenPostsData[]): TokenPostsData | null {
-  if (!pages?.length) {
-    return null;
-  }
-  const first = pages[0];
-  const last = pages[pages.length - 1];
-  return {
-    ...first,
-    returned_count: pages.reduce((total, page) => total + page.returned_count, 0),
-    has_more: last.has_more,
-    next_cursor: last.next_cursor,
-    items: pages.flatMap((page) => page.items)
-  };
 }
 
 function mergeTradingAttentionPages(pages?: TradingAttentionData[]): TradingAttentionData | undefined {
@@ -1349,10 +1376,6 @@ function tokenTapeBody(item: TokenFlowItem): string {
     `作者 ${compactNumber(item.propagation.independent_authors)}`,
     item.timing.status === "market_pending" ? "市场观测处理中" : formatRelativeTime(item.flow.window_end_ms)
   ].join(" · ");
-}
-
-function hasTokenIdentity(params?: { target_type?: string | null; target_id?: string | null; chain?: string | null; address?: string | null } | null): boolean {
-  return Boolean((params?.target_type && params?.target_id) || (params?.chain && params?.address));
 }
 
 function tokenMatchForPayload(
