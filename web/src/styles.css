@@ -2459,6 +2459,23 @@ svg {
   margin: 5px 6px 0 0;
 }
 
+.signal-pulse-venue-links {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 10px 10px 0 0;
+}
+
+.signal-chain-list.compact .signal-pulse-venue-links {
+  padding: 5px 6px 0 0;
+}
+
+.signal-pulse-detail-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .signal-stage-badge {
   display: grid;
   min-height: 20px;
@@ -3754,6 +3771,11 @@ svg {
   .signal-chain-twitter-link,
   .signal-chain-list.compact .signal-chain-twitter-link {
     margin: 10px 10px 0 0;
+  }
+
+  .signal-pulse-venue-links,
+  .signal-chain-list.compact .signal-pulse-venue-links {
+    padding: 10px 10px 0 0;
   }
 
   .signal-chain-score {

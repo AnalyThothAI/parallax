@@ -157,7 +157,8 @@ class PulseCandidateWorker:
         self.last_started_at_ms = started_at_ms
         self.last_error = None
         scan = await asyncio.to_thread(self.scan_triggers_once, now_ms=started_at_ms)
-        process = await self.process_due_jobs_once_async(now_ms=started_at_ms)
+        process_now_ms = started_at_ms if now_ms is not None else None
+        process = await self.process_due_jobs_once_async(now_ms=process_now_ms)
         result = {"scan": scan, "process": process}
         self.last_run_at_ms = _now_ms()
         self.last_result = result
@@ -214,9 +215,9 @@ class PulseCandidateWorker:
         return asyncio.run(self.process_due_jobs_once_async(now_ms=now_ms))
 
     async def process_due_jobs_once_async(self, *, now_ms: int | None = None) -> dict[str, int]:
-        resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
         result = {"claimed": 0, "processed": 0, "failed": 0, "missing_context": 0}
         for _ in range(self.batch_size):
+            resolved_now_ms = int(now_ms if now_ms is not None else _now_ms())
             with self.repository_session() as repos:
                 job = repos.pulse.claim_due_job(now_ms=resolved_now_ms)
             if job is None:
@@ -439,6 +440,7 @@ class PulseCandidateWorker:
                 historical_credit=None,
                 thresholds=self.gate_thresholds,
             )
+            finished_at_ms = _now_ms()
             with self.repository_session() as repos, _transaction(repos.conn):
                 repos.pulse.finish_agent_run(
                     run_id,
@@ -446,7 +448,7 @@ class PulseCandidateWorker:
                     response_json=_payload_dict(thesis),
                     output_hash=result_audit.get("output_hash"),
                     usage_json=result_audit.get("usage") or {},
-                    finished_at_ms=now_ms,
+                    finished_at_ms=finished_at_ms,
                     commit=False,
                 )
                 repos.pulse.upsert_candidate(
@@ -478,7 +480,7 @@ class PulseCandidateWorker:
                     gate_version=PULSE_GATE_VERSION,
                     prompt_version=PULSE_THESIS_PROMPT_VERSION,
                     schema_version=PULSE_THESIS_SCHEMA_VERSION,
-                    updated_at_ms=now_ms,
+                    updated_at_ms=finished_at_ms,
                     commit=False,
                 )
                 if gate.pulse_status in _PLAYBOOK_STATUSES:
@@ -491,18 +493,19 @@ class PulseCandidateWorker:
                         ),
                         commit=False,
                     )
-                repos.pulse.mark_job_succeeded(str(job["job_id"]), now_ms=now_ms, commit=False)
+                repos.pulse.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
         except Exception as exc:
+            failed_at_ms = _now_ms()
             with self.repository_session() as repos, _transaction(repos.conn):
                 if audit is not None:
                     repos.pulse.finish_agent_run(
                         run_id,
                         "failed",
                         error=str(exc)[:1000],
-                        finished_at_ms=now_ms,
+                        finished_at_ms=failed_at_ms,
                         commit=False,
                     )
-                repos.pulse.mark_job_failed(job, str(exc), now_ms=now_ms, commit=False)
+                repos.pulse.mark_job_failed(job, str(exc), now_ms=failed_at_ms, commit=False)
             raise
 
 

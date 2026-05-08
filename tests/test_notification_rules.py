@@ -341,7 +341,7 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
         "trade": "critical",
         "watch": "high",
         "theme": "warning",
-        "risk": "high",
+        "risk": "warning",
     }
     assert all(item.source_id != "blocked" for item in candidates)
     assert pulse.calls[0]["displayable_only"] is True
@@ -399,7 +399,7 @@ def test_signal_pulse_rule_can_be_disabled():
     assert [item for item in candidates if item.rule_id == "signal_pulse_candidate"] == []
 
 
-def test_signal_pulse_candidate_rule_uses_configured_window_scope_heat_and_score_floor():
+def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream_score_gates():
     hot_row = pulse_candidate(
         "pulse-hot",
         window="5m",
@@ -412,13 +412,13 @@ def test_signal_pulse_candidate_rule_uses_configured_window_scope_heat_and_score
         window="5m",
         scope="all",
         candidate_score=74,
-        radar_score={"heat": {"score": 69}},
+        radar_score={"heat": {"score": 12}},
     )
     low_score_row = pulse_candidate(
         "pulse-low-score",
         window="5m",
         scope="all",
-        candidate_score=71,
+        candidate_score=9,
         radar_score={"heat": {"score": 75}},
     )
     ignored_scope_row = pulse_candidate(
@@ -451,8 +451,6 @@ def test_signal_pulse_candidate_rule_uses_configured_window_scope_heat_and_score
                 "window": "5m",
                 "scopes": ["all"],
                 "statuses": ["token_watch", "theme_watch"],
-                "social_heat_min": 70,
-                "candidate_score_min": 72,
                 "cooldown_seconds": 120,
             }
         }
@@ -461,7 +459,12 @@ def test_signal_pulse_candidate_rule_uses_configured_window_scope_heat_and_score
     candidates = engine(pulse=pulse, notifications=notifications).evaluate(now_ms=NOW_MS)
     pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]
 
-    assert [item.source_id for item in pulse_candidates] == ["pulse-hot", "pulse-source-seed"]
+    assert [item.source_id for item in pulse_candidates] == [
+        "pulse-hot",
+        "pulse-cold",
+        "pulse-low-score",
+        "pulse-source-seed",
+    ]
     assert pulse_candidates[0].channels == ("in_app", "pushdeer")
     assert pulse_candidates[0].dedup_key.endswith(f":{NOW_MS // 120_000}")
     assert pulse.calls == [

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TokenFlowItem } from "../api/types";
-import { tokenVenueAction } from "./venue";
+import type { SignalPulseItem, TokenFlowItem } from "../api/types";
+import { signalPulseVenueActions, tokenVenueAction } from "./venue";
 
 describe("venue links", () => {
   it("opens OKX spot instruments for CEX assets", () => {
@@ -22,6 +22,33 @@ describe("venue links", () => {
       label: "GMGN",
       url: "https://gmgn.ai/sol/token/So11111111111111111111111111111111111111112"
     });
+  });
+
+  it("opens Signal Pulse DEX targets on GMGN", () => {
+    expect(signalPulseVenueActions(pulse({ targetType: "Asset", targetId: "asset:eip155:8453:erc20:0x920738cbe6ddf7399187ffcf85c4b19154123be4" }))).toEqual([
+      {
+        label: "GMGN",
+        url: "https://gmgn.ai/base/token/0x920738cbe6ddf7399187ffcf85c4b19154123be4"
+      }
+    ]);
+  });
+
+  it("opens Signal Pulse CEX targets on the exact OKX pricefeed instrument", () => {
+    expect(
+      signalPulseVenueActions(
+        pulse({
+          targetType: "CexToken",
+          targetId: "cex_token:SOL",
+          symbol: "SOL",
+          marketContext: { pricefeed_id: "pricefeed:cex:okx:spot:SOL-USDT" }
+        })
+      )
+    ).toEqual([
+      {
+        label: "OKX",
+        url: "https://www.okx.com/trade-spot/sol-usdt"
+      }
+    ]);
   });
 });
 
@@ -103,4 +130,38 @@ function token(options: {
 
 function scoreBlock() {
   return { score: 0, score_version: "test", reasons: [], risks: [], contributions: [], risk_caps: [] };
+}
+
+function pulse(options: {
+  targetType: "Asset" | "CexToken";
+  targetId: string;
+  symbol?: string | null;
+  marketContext?: Record<string, unknown>;
+}): SignalPulseItem {
+  return {
+    candidate_id: "pulse-1",
+    candidate_type: "token_target",
+    subject_key: options.symbol ?? "token",
+    target_type: options.targetType,
+    target_id: options.targetId,
+    symbol: options.symbol ?? "TOKEN",
+    window: "1h",
+    scope: "all",
+    pulse_status: "token_watch",
+    bull_case_zh: [],
+    bear_case_zh: [],
+    confirmation_triggers_zh: [],
+    invalidation_triggers_zh: [],
+    top_risks: [],
+    gate_reasons: [],
+    risk_reasons: [],
+    evidence_event_ids: [],
+    source_event_ids: [],
+    radar_score_json: {},
+    market_context_json: options.marketContext ?? {},
+    thesis_json: {},
+    created_at_ms: 1,
+    updated_at_ms: 1,
+    playbooks: []
+  } as SignalPulseItem;
 }

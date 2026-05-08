@@ -1,6 +1,7 @@
 import { FlaskConical } from "lucide-react";
 import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "../api/types";
 import { compactNumber, formatRelativeTime } from "../lib/format";
+import { signalPulseVenueActions } from "../lib/venue";
 
 type SignalLabPulseProps = {
   data?: SignalPulseData;
@@ -58,6 +59,7 @@ export function SignalPulseList({ compact, isLoading, items, selectedItemId, onS
         const topRisks = stringList(item.top_risks);
         const confirmationTriggers = stringList(item.confirmation_triggers_zh);
         const invalidationTriggers = stringList(item.invalidation_triggers_zh);
+        const venueActions = signalPulseVenueActions(item);
         return (
           <article className={`signal-chain-row ${selectedItemId === item.candidate_id ? "selected" : ""}`} key={rowKey}>
             <button
@@ -89,6 +91,20 @@ export function SignalPulseList({ compact, isLoading, items, selectedItemId, onS
               </span>
               <span className="signal-chain-time">{formatRelativeTime(item.updated_at_ms)}</span>
             </button>
+            <span className="signal-pulse-venue-links" data-signal-pulse-action="venue">
+              {venueActions.map((action) => (
+                <a
+                  aria-label={`Open ${itemTitle(item)} on ${action.label}`}
+                  className="venue-link"
+                  href={action.url}
+                  key={`${action.label}:${action.url}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {action.label}
+                </a>
+              ))}
+            </span>
           </article>
         );
       })}

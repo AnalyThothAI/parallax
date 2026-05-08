@@ -290,7 +290,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                         "channels": ["in_app"],
                         "social_heat_min": 82,
                         "discussion_quality_min": 72,
-                        "suppress_chase_risk": True,
                         "cooldown_seconds": 600,
                     },
                     "signal_pulse_candidate": {
@@ -299,8 +298,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                         "window": "5m",
                         "scopes": ["all"],
                         "statuses": ["trade_candidate", "token_watch"],
-                        "social_heat_min": 70,
-                        "candidate_score_min": 72,
                         "cooldown_seconds": 120,
                     },
                 },
@@ -324,18 +321,57 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.rules["watched_account_activity"].channels == ("in_app",)
     assert settings.notifications.rules["hot_quality_token_5m"].social_heat_min == 82
     assert settings.notifications.rules["hot_quality_token_5m"].discussion_quality_min == 72
-    assert settings.notifications.rules["hot_quality_token_5m"].suppress_chase_risk is True
     assert settings.notifications.rules["hot_quality_token_5m"].cooldown_seconds == 600
     pulse_rule = settings.notifications.rules["signal_pulse_candidate"]
     assert pulse_rule.channels == ("in_app", "pushdeer")
     assert pulse_rule.window == "5m"
     assert pulse_rule.scopes == ("all",)
     assert pulse_rule.statuses == ("trade_candidate", "token_watch")
-    assert pulse_rule.social_heat_min == 70
-    assert pulse_rule.candidate_score_min == 72
     assert pulse_rule.cooldown_seconds == 120
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
+
+
+def test_notification_settings_reject_removed_rule_fields(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "signal_pulse_candidate": {
+                        "candidate_score_min": 70,
+                    }
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+def test_signal_pulse_rule_rejects_token_flow_thresholds(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "notifications": {
+                "rules": {
+                    "signal_pulse_candidate": {
+                        "social_heat_min": 70,
+                    }
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
 
 
 def test_load_settings_accepts_config_without_ws_token(tmp_path, monkeypatch):

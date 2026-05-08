@@ -1,5 +1,6 @@
 import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime } from "../lib/format";
+import { signalPulseVenueActions } from "../lib/venue";
 import {
   DetailDrawerCard,
   DetailDrawerField,
@@ -18,6 +19,7 @@ type SignalLabInspectorProps = {
 
 export function SignalLabInspector({ item }: SignalLabInspectorProps) {
   const outcomeData = extractOutcomeData(item);
+  const venueActions = signalPulseVenueActions(item);
   const bullCase = stringList(item.bull_case_zh);
   const bearCase = stringList(item.bear_case_zh);
   const confirmationTriggers = stringList(item.confirmation_triggers_zh);
@@ -50,6 +52,27 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
         <DetailDrawerCard title="Why now" tone="accent">
           <p>{item.why_now_zh || item.summary_zh || "No thesis text available."}</p>
           {item.summary_zh ? <p>{item.summary_zh}</p> : null}
+        </DetailDrawerCard>
+
+        <DetailDrawerCard title="Token venue">
+          {venueActions.length ? (
+            <div className="signal-pulse-detail-links">
+              {venueActions.map((action) => (
+                <a
+                  aria-label={`Open selected Signal Pulse token on ${action.label}`}
+                  className="venue-link drawer-venue-link"
+                  href={action.url}
+                  key={`${action.label}:${action.url}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {action.label}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p>No venue link available for this candidate.</p>
+          )}
         </DetailDrawerCard>
 
         <DetailDrawerCard title="Cases">

@@ -181,8 +181,6 @@ class NotificationRuleConfig(BaseModel):
     discussion_quality_min: int | None = None
     opportunity_min: int | None = None
     combined_score_min: float | None = None
-    candidate_score_min: float | None = None
-    suppress_chase_risk: bool = False
     cooldown_seconds: int = 0
     window: str | None = None
     scopes: tuple[str, ...] | None = None
@@ -271,11 +269,17 @@ class NotificationsConfig(BaseModel):
             if key not in NOTIFICATION_RULE_IDS:
                 raise ValueError(f"unknown notification rule: {key}")
             if isinstance(payload, NotificationRuleConfig):
-                payload = payload.model_dump()
+                payload = payload.model_dump(exclude_unset=True)
             if payload is None:
                 payload = {}
             if not isinstance(payload, Mapping):
                 raise ValueError(f"notifications.rules.{key} must be a mapping")
+            if key == "signal_pulse_candidate":
+                forbidden = {"social_heat_min", "discussion_quality_min", "opportunity_min", "combined_score_min"}
+                present = sorted(forbidden.intersection(payload))
+                if present:
+                    joined = ", ".join(present)
+                    raise ValueError(f"notifications.rules.{key} does not accept token-flow thresholds: {joined}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
 
@@ -764,14 +768,12 @@ notifications:
       channels: ["in_app"]
       social_heat_min: 80
       discussion_quality_min: 70
-      suppress_chase_risk: true
       cooldown_seconds: 900
     quality_token_5m:
       enabled: true
       channels: ["in_app"]
       social_heat_min: 65
       discussion_quality_min: 80
-      suppress_chase_risk: true
       cooldown_seconds: 900
     harness_snapshot_high_score:
       enabled: true
@@ -784,8 +786,6 @@ notifications:
       window: "1h"
       scopes: ["all", "matched"]
       statuses: ["trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"]
-      social_heat_min:
-      candidate_score_min:
       cooldown_seconds: 0
   channels: {{}}
 """
@@ -842,7 +842,6 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "channels": ("in_app",),
             "social_heat_min": 80,
             "discussion_quality_min": 70,
-            "suppress_chase_risk": True,
             "cooldown_seconds": 900,
         },
         "quality_token_5m": {
@@ -850,7 +849,6 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "channels": ("in_app",),
             "social_heat_min": 65,
             "discussion_quality_min": 80,
-            "suppress_chase_risk": True,
             "cooldown_seconds": 900,
         },
         "harness_snapshot_high_score": {

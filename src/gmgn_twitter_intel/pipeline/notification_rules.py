@@ -20,7 +20,7 @@ SIGNAL_PULSE_SEVERITY = {
     "trade_candidate": "critical",
     "token_watch": "high",
     "theme_watch": "warning",
-    "risk_rejected_high_info": "high",
+    "risk_rejected_high_info": "warning",
 }
 SIGNAL_PULSE_COOLDOWN_MS = {
     "trade_candidate": 15 * 60_000,
@@ -379,15 +379,6 @@ class NotificationRuleEngine:
             status = str(row.get("pulse_status") or "")
             if status not in statuses:
                 continue
-            heat_score = _pulse_heat_score(row)
-            if (
-                rule.social_heat_min is not None
-                and _pulse_candidate_has_token_target(row)
-                and (heat_score is None or heat_score < rule.social_heat_min)
-            ):
-                continue
-            if rule.candidate_score_min is not None and _float(row.get("candidate_score")) < rule.candidate_score_min:
-                continue
             severity = SIGNAL_PULSE_SEVERITY.get(status)
             if severity is None:
                 continue
@@ -430,22 +421,6 @@ def _score_value(item: dict[str, Any], key: str) -> int:
     score = item.get("score") if isinstance(item.get("score"), dict) else {}
     block = score.get(key) if isinstance(score.get(key), dict) else {}
     return _int(block.get("score"))
-
-
-def _pulse_heat_score(row: dict[str, Any]) -> int | None:
-    radar = _dict(row.get("radar_score_json"))
-    heat = radar.get("heat")
-    if isinstance(heat, dict):
-        if "score" not in heat:
-            return None
-        return _int(heat.get("score"))
-    if heat is None:
-        return None
-    return _int(heat)
-
-
-def _pulse_candidate_has_token_target(row: dict[str, Any]) -> bool:
-    return bool(row.get("symbol") or row.get("target_id") or row.get("candidate_type") == "token_target")
 
 
 def _score_version(block: Any) -> str | None:
@@ -571,13 +546,6 @@ def _int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
-
-
-def _float(value: Any) -> float:
-    try:
-        return float(value or 0)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def _handle(value: Any) -> str | None:

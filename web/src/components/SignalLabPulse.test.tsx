@@ -48,6 +48,10 @@ describe("SignalLabPulse", () => {
     expect(screen.getAllByText("liquidity thin").length).toBeGreaterThan(0);
     expect(screen.getAllByText("confirm: volume confirms").length).toBeGreaterThan(0);
     expect(screen.getAllByText("invalidate: author concentration fades").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: "Open TOKEN6 on OKX" })).toHaveAttribute(
+      "href",
+      "https://www.okx.com/trade-spot/token6-usdt"
+    );
     expect(screen.queryByText(["Direct", "token"].join(" "))).not.toBeInTheDocument();
     expect(screen.queryByText(["Topic", "heat"].join(" "))).not.toBeInTheDocument();
     expect(screen.queryByText(["low", "signal"].join("_"))).not.toBeInTheDocument();
