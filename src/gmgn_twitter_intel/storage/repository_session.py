@@ -16,6 +16,7 @@ from .intent_resolution_repository import IntentResolutionRepository
 from .market_repository import MarketRepository
 from .notification_repository import NotificationRepository
 from .price_observation_repository import PriceObservationRepository
+from .pulse_repository import PulseRepository
 from .registry_repository import RegistryRepository
 from .signal_repository import SignalRepository
 from .token_evidence_repository import TokenEvidenceRepository
@@ -46,6 +47,7 @@ class RepositorySession:
     enrichment: EnrichmentRepository
     harness: HarnessRepository
     notifications: NotificationRepository
+    pulse: PulseRepository
 
 
 def repositories_for_connection(conn: Any) -> RepositorySession:
@@ -69,6 +71,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         enrichment=EnrichmentRepository(conn),
         harness=HarnessRepository(conn),
         notifications=NotificationRepository(conn),
+        pulse=PulseRepository(conn),
     )
 
 

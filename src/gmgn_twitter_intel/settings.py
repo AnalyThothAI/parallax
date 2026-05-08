@@ -20,6 +20,7 @@ NOTIFICATION_RULE_IDS = (
     "hot_quality_token_5m",
     "quality_token_5m",
     "harness_snapshot_high_score",
+    "signal_pulse_candidate",
 )
 
 
@@ -75,6 +76,21 @@ class LlmConfig(BaseModel):
     trace_enabled: bool = True
     trace_api_key: str | None = None
     trace_include_sensitive_data: bool = False
+    pulse_agent_enabled: bool = True
+    pulse_agent_interval_seconds: float = 60.0
+    pulse_agent_batch_size: int = 10
+    pulse_agent_max_attempts: int = 3
+    pulse_agent_model: str | None = None
+    pulse_agent_asset_heat_min: int = 80
+    pulse_agent_asset_propagation_min: int = 70
+    pulse_agent_trade_heat_min: int = 75
+    pulse_agent_trade_quality_min: int = 62
+    pulse_agent_trade_propagation_min: int = 62
+    pulse_agent_tradeability_min: int = 70
+    pulse_agent_timing_min: int = 50
+    pulse_agent_confidence_min: float = 0.65
+    pulse_agent_token_watch_signal_min: int = 45
+    pulse_agent_high_conviction_min: int = 78
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -84,7 +100,7 @@ class LlmConfig(BaseModel):
             raise ValueError("llm.provider must be 'openai'")
         return normalized
 
-    @field_validator("api_key", "model", "trace_api_key", mode="before")
+    @field_validator("api_key", "model", "trace_api_key", "pulse_agent_model", mode="before")
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
@@ -165,14 +181,32 @@ class NotificationRuleConfig(BaseModel):
     discussion_quality_min: int | None = None
     opportunity_min: int | None = None
     combined_score_min: float | None = None
+    candidate_score_min: float | None = None
     suppress_chase_risk: bool = False
     cooldown_seconds: int = 0
+    window: str | None = None
+    scopes: tuple[str, ...] | None = None
+    statuses: tuple[str, ...] | None = None
 
     @field_validator("channels", mode="before")
     @classmethod
     def parse_channels(cls, value: Any) -> tuple[str, ...]:
         parsed = tuple(_split_values(value))
         return parsed or ("in_app",)
+
+    @field_validator("scopes", "statuses", mode="before")
+    @classmethod
+    def parse_optional_tuple(cls, value: Any) -> tuple[str, ...] | None:
+        parsed = tuple(_split_values(value))
+        return parsed or None
+
+    @field_validator("window", mode="before")
+    @classmethod
+    def parse_optional_window(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
 
 
 class NotificationChannelConfig(BaseModel):
@@ -388,6 +422,70 @@ class Settings(BaseModel):
         return max(1, min(16, int(self.llm.enrichment_concurrency)))
 
     @property
+    def pulse_agent_enabled(self) -> bool:
+        return bool(self.llm.pulse_agent_enabled)
+
+    @property
+    def pulse_agent_interval_seconds(self) -> float:
+        return max(1.0, min(3600.0, float(self.llm.pulse_agent_interval_seconds)))
+
+    @property
+    def pulse_agent_batch_size(self) -> int:
+        return max(1, min(100, int(self.llm.pulse_agent_batch_size)))
+
+    @property
+    def pulse_agent_max_attempts(self) -> int:
+        return max(1, min(10, int(self.llm.pulse_agent_max_attempts)))
+
+    @property
+    def pulse_agent_model(self) -> str | None:
+        return self.llm.pulse_agent_model or self.llm_model
+
+    @property
+    def pulse_agent_configured(self) -> bool:
+        return bool(self.llm_api_key and self.pulse_agent_model)
+
+    @property
+    def pulse_agent_asset_heat_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_asset_heat_min, low=0, high=100)
+
+    @property
+    def pulse_agent_asset_propagation_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_asset_propagation_min, low=0, high=100)
+
+    @property
+    def pulse_agent_trade_heat_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_trade_heat_min, low=0, high=100)
+
+    @property
+    def pulse_agent_trade_quality_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_trade_quality_min, low=0, high=100)
+
+    @property
+    def pulse_agent_trade_propagation_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_trade_propagation_min, low=0, high=100)
+
+    @property
+    def pulse_agent_tradeability_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_tradeability_min, low=0, high=100)
+
+    @property
+    def pulse_agent_timing_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_timing_min, low=0, high=100)
+
+    @property
+    def pulse_agent_confidence_min(self) -> float:
+        return _clamp_float(self.llm.pulse_agent_confidence_min, low=0.0, high=1.0)
+
+    @property
+    def pulse_agent_token_watch_signal_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_token_watch_signal_min, low=0, high=100)
+
+    @property
+    def pulse_agent_high_conviction_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_high_conviction_min, low=0, high=100)
+
+    @property
     def llm_trace_enabled(self) -> bool:
         return bool(self.llm.trace_enabled)
 
@@ -403,7 +501,11 @@ class Settings(BaseModel):
     def llm_trace_export_configured(self) -> bool:
         if self.llm_trace_api_key:
             return True
-        return self.llm_base_url.startswith("https://api.openai.com/") and bool(self.llm_api_key)
+        normalized_base_url = self.llm_base_url.rstrip("/")
+        is_openai_base_url = normalized_base_url == "https://api.openai.com" or normalized_base_url.startswith(
+            "https://api.openai.com/"
+        )
+        return is_openai_base_url and bool(self.llm_api_key)
 
     @property
     def llm_configured(self) -> bool:
@@ -597,6 +699,21 @@ llm:
   trace_enabled: true
   trace_api_key:
   trace_include_sensitive_data: false
+  pulse_agent_enabled: true
+  pulse_agent_interval_seconds: 60
+  pulse_agent_batch_size: 10
+  pulse_agent_max_attempts: 3
+  pulse_agent_model:
+  pulse_agent_asset_heat_min: 80
+  pulse_agent_asset_propagation_min: 70
+  pulse_agent_trade_heat_min: 75
+  pulse_agent_trade_quality_min: 62
+  pulse_agent_trade_propagation_min: 62
+  pulse_agent_tradeability_min: 70
+  pulse_agent_timing_min: 50
+  pulse_agent_confidence_min: 0.65
+  pulse_agent_token_watch_signal_min: 45
+  pulse_agent_high_conviction_min: 78
 
 gmgn:
   api_key:
@@ -661,6 +778,15 @@ notifications:
       channels: ["in_app"]
       combined_score_min: 0.8
       cooldown_seconds: 900
+    signal_pulse_candidate:
+      enabled: true
+      channels: ["in_app"]
+      window: "1h"
+      scopes: ["all", "matched"]
+      statuses: ["trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"]
+      social_heat_min:
+      candidate_score_min:
+      cooldown_seconds: 0
   channels: {{}}
 """
 
@@ -683,6 +809,22 @@ def _split_values(value: Any) -> list[str]:
     if isinstance(value, (list, tuple, set)):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
+
+
+def _clamp_int(value: Any, *, low: int, high: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = low
+    return max(low, min(high, parsed))
+
+
+def _clamp_float(value: Any, *, low: float, high: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = low
+    return max(low, min(high, parsed))
 
 
 def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
@@ -716,5 +858,13 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "channels": ("in_app",),
             "combined_score_min": 0.8,
             "cooldown_seconds": 900,
+        },
+        "signal_pulse_candidate": {
+            "enabled": True,
+            "channels": ("in_app",),
+            "window": "1h",
+            "scopes": ("all", "matched"),
+            "statuses": ("trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"),
+            "cooldown_seconds": 0,
         },
     }

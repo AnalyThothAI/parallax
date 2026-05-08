@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type {
   RadarSortMode,
   ScopeKey,
-  TradingAttentionKindFilter,
+  SignalPulseStatusFilter,
   TokenDetailMode,
   TokenDetailTab,
   TokenPostRange,
@@ -30,7 +30,7 @@ type TraderState = {
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
   activeView: ActiveView;
-  signalLabKind: TradingAttentionKindFilter;
+  signalLabStatus: SignalPulseStatusFilter;
   signalLabHandle: string;
   signalLabSearch: string;
   setToken: (token: string) => void;
@@ -51,7 +51,7 @@ type TraderState = {
   setHideDuplicateClusters: (enabled: boolean) => void;
   setWatchedPostsOnly: (enabled: boolean) => void;
   setActiveView: (view: ActiveView) => void;
-  setSignalLabKind: (kind: TradingAttentionKindFilter) => void;
+  setSignalLabStatus: (status: SignalPulseStatusFilter) => void;
   setSignalLabHandle: (handle: string) => void;
   setSignalLabSearch: (search: string) => void;
 };
@@ -74,7 +74,7 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   hideDuplicateClusters: false,
   watchedPostsOnly: false,
   activeView: "live",
-  signalLabKind: "all",
+  signalLabStatus: "all",
   signalLabHandle: "",
   signalLabSearch: "",
   setToken: (token) => set({ token }),
@@ -95,7 +95,7 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),
   setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly }),
   setActiveView: (activeView) => set({ activeView }),
-  setSignalLabKind: (signalLabKind) => set({ signalLabKind }),
+  setSignalLabStatus: (signalLabStatus) => set({ signalLabStatus }),
   setSignalLabHandle: (signalLabHandle) => set({ signalLabHandle }),
   setSignalLabSearch: (signalLabSearch) => set({ signalLabSearch })
 }));

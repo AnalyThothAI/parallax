@@ -34,6 +34,9 @@ TOKEN_RESOLUTION_RETIRE_MIGRATION = Path(
 TOKEN_RADAR_V6_PRUNE_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py"
 )
+SIGNAL_PULSE_AGENT_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -208,3 +211,40 @@ def test_token_resolution_retire_migration_deactivates_old_resolver_policies() -
     assert "record_status = 'retired'" in text
     assert "is_current = false" in text
     assert "resolver_policy_version <> 'token_radar_v5_identity_resolver'" in text
+
+
+def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
+    text = SIGNAL_PULSE_AGENT_MIGRATION.read_text()
+
+    assert 'revision = "20260508_0015"' in text
+    assert 'down_revision = "20260508_0014"' in text
+    for table in {
+        "pulse_agent_jobs",
+        "pulse_agent_runs",
+        "pulse_candidates",
+        "pulse_playbook_snapshots",
+        "pulse_playbook_outcomes",
+    }:
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in text
+
+    assert "UNIQUE(candidate_id)" in text
+    assert "context_json JSONB NOT NULL DEFAULT '{}'::jsonb" in text
+    assert "REFERENCES pulse_agent_jobs(job_id) ON DELETE CASCADE" in text
+    assert "REFERENCES pulse_agent_runs(run_id) ON DELETE SET NULL" in text
+    assert "playbook_id TEXT PRIMARY KEY" in text
+    assert "side TEXT NOT NULL" in text
+    assert "setup_json JSONB NOT NULL" in text
+    assert "confirmation_json JSONB NOT NULL" in text
+    assert "invalidation_json JSONB NOT NULL" in text
+    assert "risk_json JSONB NOT NULL" in text
+    assert "actual_return DOUBLE PRECISION" in text
+    assert "confirmation_hit BOOLEAN NOT NULL DEFAULT false" in text
+    assert "idx_pulse_candidates_latest" in text
+    assert 'ON pulse_candidates(pulse_version, "window", scope, pulse_status, updated_at_ms DESC)' in text
+    assert "idx_pulse_candidates_target" in text
+    assert "idx_pulse_candidates_subject" in text
+    assert "idx_pulse_agent_jobs_claim" in text
+    assert "idx_pulse_agent_runs_job_finished" in text
+    assert "idx_pulse_playbook_snapshots_candidate" in text
+    assert "idx_pulse_playbook_snapshots_target" in text
+    assert "idx_pulse_playbook_outcomes_settled" in text

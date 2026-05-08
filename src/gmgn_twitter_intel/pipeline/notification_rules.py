@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from typing import Any
 from urllib.parse import quote
@@ -9,6 +11,23 @@ from .notification_models import NotificationCandidate
 
 WATCHED_ACTIVITY_WINDOW_MS = 60 * 60_000
 DEFAULT_LIMIT = 50
+MAX_SIGNAL_PULSE_NOTIFICATION_PAGES = 5
+SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
+DEFAULT_SIGNAL_PULSE_WINDOW = "1h"
+DEFAULT_SIGNAL_PULSE_SCOPES = ("all", "matched")
+DEFAULT_SIGNAL_PULSE_STATUSES = ("trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info")
+SIGNAL_PULSE_SEVERITY = {
+    "trade_candidate": "critical",
+    "token_watch": "high",
+    "theme_watch": "warning",
+    "risk_rejected_high_info": "high",
+}
+SIGNAL_PULSE_COOLDOWN_MS = {
+    "trade_candidate": 15 * 60_000,
+    "token_watch": 30 * 60_000,
+    "theme_watch": 2 * 60 * 60_000,
+    "risk_rejected_high_info": 60 * 60_000,
+}
 
 
 class NotificationRuleEngine:
@@ -20,12 +39,14 @@ class NotificationRuleEngine:
         account_alerts,
         asset_flow,
         harness,
+        pulse=None,
     ):
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
         self.asset_flow = asset_flow
         self.harness = harness
+        self.pulse = pulse
 
     def evaluate(self, *, now_ms: int | None = None) -> list[NotificationCandidate]:
         now = int(now_ms if now_ms is not None else _now_ms())
@@ -40,6 +61,7 @@ class NotificationRuleEngine:
         candidates.extend(hot_candidates)
         candidates.extend(self._quality_tokens(now_ms=now, skip_entity_keys=hot_entity_keys))
         candidates.extend(self._harness_snapshots(now_ms=now))
+        candidates.extend(self._signal_pulse_candidates(now_ms=now))
         return candidates
 
     def _watched_account_activity(self, *, now_ms: int) -> list[NotificationCandidate]:
@@ -320,6 +342,83 @@ class NotificationRuleEngine:
             )
         return candidates
 
+    def _signal_pulse_candidates(self, *, now_ms: int) -> list[NotificationCandidate]:
+        rule = self._rule(SIGNAL_PULSE_RULE_ID)
+        if not rule.enabled or self.pulse is None:
+            return []
+        rows: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        window = rule.window or DEFAULT_SIGNAL_PULSE_WINDOW
+        scopes = rule.scopes or DEFAULT_SIGNAL_PULSE_SCOPES
+        statuses = set(rule.statuses or DEFAULT_SIGNAL_PULSE_STATUSES)
+        for scope in scopes:
+            cursor = None
+            for _ in range(MAX_SIGNAL_PULSE_NOTIFICATION_PAGES):
+                page = self.pulse.list_candidates(
+                    window=window,
+                    scope=scope,
+                    status=None,
+                    limit=self._limit(),
+                    cursor=cursor,
+                    displayable_only=True,
+                )
+                for row in page.get("items", []) if isinstance(page, dict) else []:
+                    if not isinstance(row, dict):
+                        continue
+                    candidate_id = str(row.get("candidate_id") or "")
+                    if not candidate_id or candidate_id in seen:
+                        continue
+                    seen.add(candidate_id)
+                    rows.append(row)
+                cursor = page.get("next_cursor") if isinstance(page, dict) else None
+                if not cursor:
+                    break
+
+        candidates: list[NotificationCandidate] = []
+        for row in rows:
+            status = str(row.get("pulse_status") or "")
+            if status not in statuses:
+                continue
+            heat_score = _pulse_heat_score(row)
+            if (
+                rule.social_heat_min is not None
+                and _pulse_candidate_has_token_target(row)
+                and (heat_score is None or heat_score < rule.social_heat_min)
+            ):
+                continue
+            if rule.candidate_score_min is not None and _float(row.get("candidate_score")) < rule.candidate_score_min:
+                continue
+            severity = SIGNAL_PULSE_SEVERITY.get(status)
+            if severity is None:
+                continue
+            candidate_id = str(row.get("candidate_id") or "")
+            occurrence_at_ms = _int(row.get("updated_at_ms") or now_ms)
+            cooldown_ms = max(0, int(rule.cooldown_seconds)) * 1000 or SIGNAL_PULSE_COOLDOWN_MS[status]
+            bucket = occurrence_at_ms // cooldown_ms
+            signature = _pulse_notification_signature(row)
+            payload = _pulse_payload(row, notification_signature=signature)
+            symbol = _symbol(row.get("symbol"))
+            subject = _compact_text(row.get("subject_key") or candidate_id, limit=80)
+            title_subject = f"${symbol}" if symbol else subject
+            candidates.append(
+                NotificationCandidate(
+                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{candidate_id}:{signature}:{bucket}",
+                    rule_id=SIGNAL_PULSE_RULE_ID,
+                    severity=severity,
+                    title=f"{title_subject} {status.replace('_', ' ')}",
+                    body=_pulse_body(row),
+                    entity_type="pulse_candidate",
+                    entity_key=f"pulse_candidate:{candidate_id}",
+                    symbol=symbol,
+                    source_table="pulse_candidates",
+                    source_id=candidate_id,
+                    occurrence_at_ms=occurrence_at_ms,
+                    payload=payload,
+                    channels=rule.channels,
+                )
+            )
+        return candidates
+
     def _rule(self, rule_id: str) -> NotificationRuleConfig:
         return self.settings.notifications.rules[rule_id]
 
@@ -333,8 +432,138 @@ def _score_value(item: dict[str, Any], key: str) -> int:
     return _int(block.get("score"))
 
 
+def _pulse_heat_score(row: dict[str, Any]) -> int | None:
+    radar = _dict(row.get("radar_score_json"))
+    heat = radar.get("heat")
+    if isinstance(heat, dict):
+        if "score" not in heat:
+            return None
+        return _int(heat.get("score"))
+    if heat is None:
+        return None
+    return _int(heat)
+
+
+def _pulse_candidate_has_token_target(row: dict[str, Any]) -> bool:
+    return bool(row.get("symbol") or row.get("target_id") or row.get("candidate_type") == "token_target")
+
+
 def _score_version(block: Any) -> str | None:
     return str(block.get("score_version")) if isinstance(block, dict) and block.get("score_version") else None
+
+
+def _pulse_notification_signature(row: dict[str, Any]) -> str:
+    thesis = _dict(row.get("thesis_json"))
+    evidence_ids = _list(row.get("evidence_event_ids_json"))
+    source_ids = _list(row.get("source_event_ids_json"))
+    payload = {
+        "pulse_version": row.get("pulse_version"),
+        "candidate_id": row.get("candidate_id"),
+        "pulse_status": row.get("pulse_status"),
+        "score_band": row.get("score_band"),
+        "social_phase": row.get("social_phase"),
+        "top_risk_keys": _risk_keys(row),
+        "confirmation_trigger_keys": _fingerprints(_list(thesis.get("confirmation_triggers_zh"))),
+        "latest_evidence_event_id_bucket": _event_id_bucket([*evidence_ids, *source_ids]),
+        "source_event_fingerprint": _short_hash(_stable_list(source_ids)),
+    }
+    return _stable_hash(payload)
+
+
+def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[str, Any]:
+    thesis = _dict(row.get("thesis_json"))
+    return {
+        "candidate_id": row.get("candidate_id"),
+        "pulse_status": row.get("pulse_status"),
+        "score_band": row.get("score_band"),
+        "social_phase": row.get("social_phase"),
+        "narrative_type": row.get("narrative_type"),
+        "top_risks": _list(thesis.get("top_risks")),
+        "confirmation_triggers_zh": _list(thesis.get("confirmation_triggers_zh")),
+        "invalidation_triggers_zh": _list(thesis.get("invalidation_triggers_zh")),
+        "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
+        "source_event_ids": _list(row.get("source_event_ids_json")),
+        "candidate_score": row.get("candidate_score"),
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "symbol": _symbol(row.get("symbol")),
+        "notification_signature": notification_signature,
+    }
+
+
+def _pulse_body(row: dict[str, Any]) -> str:
+    thesis = _dict(row.get("thesis_json"))
+    symbol = _symbol(row.get("symbol"))
+    display = f"${symbol}" if symbol else str(row.get("subject_key") or row.get("candidate_id") or "Signal Pulse")
+    lines = [
+        f"## {display} Signal Pulse",
+        "",
+        f"- **Status:** {str(row.get('pulse_status') or '').replace('_', ' ')}",
+        f"- **Score band:** {row.get('score_band') or 'unknown'}",
+        f"- **Social phase:** {row.get('social_phase') or 'unknown'}",
+        f"- **Candidate score:** {row.get('candidate_score')}",
+    ]
+    why_now = _compact_text(thesis.get("why_now_zh") or thesis.get("summary_zh"), limit=240)
+    if why_now:
+        lines.extend(["", why_now])
+    risks = _list(thesis.get("top_risks")) or _list(row.get("risk_reasons_json"))
+    if risks:
+        lines.extend(["", "**Risks**"])
+        lines.extend(f"- {risk}" for risk in risks[:4])
+    confirmations = _list(thesis.get("confirmation_triggers_zh"))
+    if confirmations:
+        lines.extend(["", "**Confirmation**"])
+        lines.extend(f"- {item}" for item in confirmations[:3])
+    return "\n".join(lines)
+
+
+def _risk_keys(row: dict[str, Any]) -> list[str]:
+    thesis = _dict(row.get("thesis_json"))
+    values = [
+        *_list(thesis.get("top_risks")),
+        *_list(row.get("risk_reasons_json")),
+    ]
+    return sorted({str(value).strip() for value in values if str(value).strip()})[:8]
+
+
+def _fingerprints(values: list[Any]) -> list[str]:
+    return [_short_hash(str(value).strip().lower()) for value in values if str(value).strip()][:8]
+
+
+def _event_id_bucket(values: list[Any]) -> str:
+    stable = _stable_list(values)
+    if not stable:
+        return ""
+    return _short_hash(stable[-1])
+
+
+def _stable_list(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _stable_hash(payload: Any) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _short_hash(value: Any) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()[:16]
 
 
 def _int(value: Any) -> int:
@@ -342,6 +571,13 @@ def _int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
+
+
+def _float(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _handle(value: Any) -> str | None:

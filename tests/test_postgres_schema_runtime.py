@@ -163,3 +163,25 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
     )
     assert resolution_columns["identity_status"] == "YES"
     assert {"target_type", "target_id", "pricefeed_id", "target_json", "price_json"}.issubset(radar_columns)
+
+
+def test_runtime_schema_contains_signal_pulse_tables(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        table_names = {
+            row["table_name"]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert {
+        "pulse_agent_jobs",
+        "pulse_agent_runs",
+        "pulse_candidates",
+        "pulse_playbook_snapshots",
+        "pulse_playbook_outcomes",
+    }.issubset(table_names)

@@ -1,4 +1,4 @@
-import type { TradingAttentionItem } from "../api/types";
+import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime } from "../lib/format";
 import {
   DetailDrawerCard,
@@ -13,73 +13,135 @@ import {
 } from "./DetailDrawer";
 
 type SignalLabInspectorProps = {
-  item: TradingAttentionItem;
+  item: SignalPulseItem;
 };
 
 export function SignalLabInspector({ item }: SignalLabInspectorProps) {
+  const outcomeData = extractOutcomeData(item);
+  const bullCase = stringList(item.bull_case_zh);
+  const bearCase = stringList(item.bear_case_zh);
+  const confirmationTriggers = stringList(item.confirmation_triggers_zh);
+  const invalidationTriggers = stringList(item.invalidation_triggers_zh);
+  const topRisks = stringList(item.top_risks);
+  const sourceEventIds = stringList(item.source_event_ids);
+  const evidenceEventIds = stringList(item.evidence_event_ids);
+  const playbooks = Array.isArray(item.playbooks) ? item.playbooks : [];
   return (
     <DetailDrawerShell className="signal-lab-inspector">
       <DetailDrawerHeader
-        badge={item.priority.toUpperCase()}
-        eyebrow="selected trading attention"
+        badge={item.score_band ?? item.pulse_status}
+        eyebrow="selected Signal Pulse"
         metrics={
           <DetailDrawerMetricGrid>
-            <DetailDrawerMetric label="heat" value={compactNumber(item.heat_score)} />
-            <DetailDrawerMetric label="mentions" value={compactNumber(item.metrics.window_mentions)} />
-            <DetailDrawerMetric label="accounts" value={compactNumber(item.metrics.watched_author_count)} />
-            <DetailDrawerMetric label="confidence" value={compactNumber(item.metrics.confidence * 100)} />
+            <DetailDrawerMetric label="score" value={compactNumber(item.candidate_score)} />
+            <DetailDrawerMetric label="status" value={statusLabel(item.pulse_status)} />
+            <DetailDrawerMetric label="phase" value={item.social_phase ?? "-"} />
+            <DetailDrawerMetric label="updated" value={`${formatRelativeTime(item.updated_at_ms)} ago`} />
           </DetailDrawerMetricGrid>
         }
         subtitle={
           <>
-            @{item.source.handle ?? "unknown"} · {item.kind_label} · {formatRelativeTime(item.received_at_ms)} ago
+            {item.verdict ?? "no verdict"} · {item.narrative_type ?? "narrative unknown"} · {item.window}/{item.scope}
           </>
         }
-        title={item.title}
+        title={item.symbol || item.subject_key || item.candidate_id}
       />
       <DetailDrawerSection className="detail-drawer-card-stack">
-        <DetailDrawerCard title="Why it matters" tone="accent">
-          <p>{item.why_it_matters}</p>
-          <p>{item.summary}</p>
+        <DetailDrawerCard title="Why now" tone="accent">
+          <p>{item.why_now_zh || item.summary_zh || "No thesis text available."}</p>
+          {item.summary_zh ? <p>{item.summary_zh}</p> : null}
         </DetailDrawerCard>
-        <DetailDrawerCard title="Original post">
+
+        <DetailDrawerCard title="Cases">
           <DetailDrawerFieldGrid>
-            <DetailDrawerField label="event" value={item.event.event_id} />
-            <DetailDrawerField label="source" value={`@${item.source.handle ?? "unknown"}`} />
-            <DetailDrawerField label="event_type" value={item.event_type ?? "unclassified"} />
-            <DetailDrawerField label="direction" value={item.direction_hint ?? "unknown"} />
+            <DetailDrawerField label="bull_case_zh" value={<ListValue items={bullCase} />} />
+            <DetailDrawerField label="bear_case_zh" value={<ListValue items={bearCase} />} />
           </DetailDrawerFieldGrid>
-          <p>{item.event.text || "No text available."}</p>
         </DetailDrawerCard>
-        <DetailDrawerCard title="Linked tokens">
-          {item.linked_tokens.length ? (
-            <DetailDrawerFieldGrid>
-              {item.linked_tokens.map((token) => (
-                <DetailDrawerField
-                  key={token.asset_id ?? token.identity_key ?? token.symbol}
-                  label={token.symbol ?? token.identity_key ?? "token"}
-                  value={[token.status, token.relation, token.venue_type, token.chain ?? token.inst_id, token.address].filter(Boolean).join(" · ")}
-                />
-              ))}
-            </DetailDrawerFieldGrid>
-          ) : (
-            <p>No direct token link. This stays as topic attention until a token relationship is proven.</p>
-          )}
+
+        <DetailDrawerCard title="Triggers">
+          <DetailDrawerFieldGrid>
+            <DetailDrawerField label="confirmation_triggers_zh" value={<ListValue items={confirmationTriggers} />} />
+            <DetailDrawerField label="invalidation_triggers_zh" value={<ListValue items={invalidationTriggers} />} />
+          </DetailDrawerFieldGrid>
         </DetailDrawerCard>
-        <DetailDrawerCard title="Linked topics">
-          {item.linked_topics.length ? (
-            <DetailDrawerFieldGrid>
-              {item.linked_topics.map((topic) => <DetailDrawerField key={topic.key} label={topic.label} value={topic.role} />)}
-            </DetailDrawerFieldGrid>
-          ) : (
-            <p>No topic terms extracted.</p>
-          )}
+
+        <DetailDrawerCard title="top risks">
+          <DetailDrawerTagStrip emptyLabel="No top risks." items={topRisks} />
         </DetailDrawerCard>
-        <DetailDrawerCard title="Risks">
-          <DetailDrawerTagStrip emptyLabel="No explicit risk flags." items={item.risks} />
-          <DetailDrawerField label="next_action" value={item.next_action} />
+
+        <DetailDrawerCard title="Ids">
+          <DetailDrawerFieldGrid>
+            <DetailDrawerField label="candidate_id" value={item.candidate_id} />
+            <DetailDrawerField label="candidate_type" value={item.candidate_type} />
+            <DetailDrawerField label="target" value={[item.target_type, item.target_id].filter(Boolean).join(" · ")} />
+            <DetailDrawerField label="agent_run_id" value={item.agent_run_id} />
+            <DetailDrawerField label="source_event_ids" value={<ListValue items={sourceEventIds} />} />
+            <DetailDrawerField label="evidence_event_ids" value={<ListValue items={evidenceEventIds} />} />
+          </DetailDrawerFieldGrid>
+        </DetailDrawerCard>
+
+        <JsonCard title="radar_score_json" value={jsonValue(item.radar_score_json)} />
+        <JsonCard title="market_context_json" value={jsonValue(item.market_context_json)} />
+        <JsonCard title="thesis_json" value={jsonValue(item.thesis_json)} />
+        <JsonCard title="gate_reasons_json" value={jsonValue(item.gate_reasons)} />
+        <JsonCard title="risk_reasons_json" value={jsonValue(item.risk_reasons)} />
+        {playbooks.length ? <JsonCard title="playbooks" value={playbooks} /> : null}
+        {outcomeData ? <JsonCard title="outcome_json" value={outcomeData} /> : null}
+
+        <DetailDrawerCard title="Versions">
+          <DetailDrawerFieldGrid>
+            <DetailDrawerField label="pulse_version" value={item.pulse_version} />
+            <DetailDrawerField label="gate_version" value={item.gate_version} />
+            <DetailDrawerField label="prompt_version" value={item.prompt_version} />
+            <DetailDrawerField label="schema_version" value={item.schema_version} />
+          </DetailDrawerFieldGrid>
         </DetailDrawerCard>
       </DetailDrawerSection>
     </DetailDrawerShell>
   );
+}
+
+function ListValue({ items }: { items: string[] }) {
+  if (!items.length) {
+    return <>-</>;
+  }
+  return <>{items.join(" · ")}</>;
+}
+
+function JsonCard({ title, value }: { title: string; value: unknown }) {
+  return (
+    <DetailDrawerCard title={title}>
+      <pre>
+        <code>{JSON.stringify(value, null, 2)}</code>
+      </pre>
+    </DetailDrawerCard>
+  );
+}
+
+function extractOutcomeData(item: SignalPulseItem): unknown | null {
+  const thesis = jsonObject(item.thesis_json);
+  const market = jsonObject(item.market_context_json);
+  const thesisOutcome = thesis.outcome ?? thesis.outcomes;
+  const marketOutcome = market.outcome ?? market.outcomes;
+  return thesisOutcome ?? marketOutcome ?? null;
+}
+
+function statusLabel(status: SignalPulseItem["pulse_status"]): string {
+  if (status === "trade_candidate") return "trade";
+  if (status === "token_watch") return "token";
+  if (status === "theme_watch") return "theme";
+  return "rejected";
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+}
+
+function jsonValue(value: unknown): unknown {
+  return value ?? {};
+}
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }

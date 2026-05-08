@@ -1,31 +1,30 @@
-import type { TradingAttentionData, TradingAttentionItem, TradingAttentionKind, TradingAttentionKindFilter } from "../api/types";
-import { TradingAttentionList } from "./SignalLabPulse";
+import type { SignalPulseData, SignalPulseItem, SignalPulseStatus, SignalPulseStatusFilter } from "../api/types";
+import { SignalPulseList } from "./SignalLabPulse";
 
-const ATTENTION_KINDS: Array<{ kind: TradingAttentionKind; label: string; description: string }> = [
-  { kind: "direct_token", label: "Direct token", description: "Concrete token, CA, or ticker attention." },
-  { kind: "topic_heat", label: "Topic heat", description: "Keyword or meme attention without forced tokenization." },
-  { kind: "ecosystem_signal", label: "Ecosystem", description: "Chain, sector, or product direction." },
-  { kind: "market_structure", label: "Structure", description: "Positioning, liquidity, and regime comments." },
-  { kind: "risk_alert", label: "Risk", description: "Regulation, exchange, contract, or market risk." }
+const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; description: string }> = [
+  { status: "trade_candidate", label: "Trade candidate", description: "Actionable setup with enough social and market context." },
+  { status: "token_watch", label: "Token watch", description: "Token-specific signal that still needs confirmation." },
+  { status: "theme_watch", label: "Theme watch", description: "Narrative or cluster worth monitoring." },
+  { status: "risk_rejected_high_info", label: "Rejected high info", description: "Informative but rejected by gates." }
 ];
 
 type SignalLabWorkbenchProps = {
-  data?: TradingAttentionData;
+  data?: SignalPulseData;
   handleFilter: string;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
   isLoading?: boolean;
-  kindFilter: TradingAttentionKindFilter;
-  overviewData?: TradingAttentionData;
+  overviewData?: SignalPulseData;
   searchFilter: string;
   selectedItemId?: string | null;
+  statusFilter: SignalPulseStatusFilter;
   windowLabel: string;
   onClearFilters: () => void;
   onHandleChange: (handle: string) => void;
-  onKindChange: (kind: TradingAttentionKindFilter) => void;
   onLoadMore: () => void;
   onSearchChange: (search: string) => void;
-  onSelect: (item: TradingAttentionItem) => void;
+  onSelect: (item: SignalPulseItem) => void;
+  onStatusChange: (status: SignalPulseStatusFilter) => void;
 };
 
 export function SignalLabWorkbench({
@@ -34,36 +33,37 @@ export function SignalLabWorkbench({
   hasNextPage,
   isFetchingNextPage,
   isLoading,
-  kindFilter,
   overviewData,
   searchFilter,
   selectedItemId,
+  statusFilter,
   windowLabel,
   onClearFilters,
   onHandleChange,
-  onKindChange,
   onLoadMore,
   onSearchChange,
-  onSelect
+  onSelect,
+  onStatusChange
 }: SignalLabWorkbenchProps) {
   const items = data?.items ?? [];
   const summary = overviewData?.summary ?? data?.summary;
-  const hasActiveFilters = kindFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
-  const categoryLabel = kindFilter === "all" ? "all categories" : labelForKind(kindFilter);
-  const totalAttention = totalByKind(summary);
+  const health = overviewData?.health ?? data?.health;
+  const hasActiveFilters = statusFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
+  const statusLabel = statusFilter === "all" ? "all statuses" : labelForStatus(statusFilter);
+  const totalPulse = totalByStatus(summary);
   return (
     <section className="signal-lab-workbench">
       <header className="signal-lab-workbench-head">
         <div>
           <h2>Signal Lab</h2>
-          <p>Track watched-account trading attention across direct tokens, topics, ecosystems, risk, and market structure.</p>
+          <p>Review Signal Pulse agent candidates by status, source, and query.</p>
         </div>
         <div className="signal-lab-workbench-state">
           <span>
             window <b>{windowLabel}</b>
           </span>
           <span>
-            total <b>{totalAttention}</b>
+            candidates <b>{health?.candidate_count ?? totalPulse}</b>
           </span>
           <span>
             shown <b>{items.length}</b>
@@ -71,16 +71,16 @@ export function SignalLabWorkbench({
         </div>
       </header>
 
-      <div className="signal-stage-grid" aria-label="Trading attention categories">
-        {ATTENTION_KINDS.map((item) => (
+      <div className="signal-stage-grid" aria-label="Signal Pulse statuses">
+        {PULSE_STATUSES.map((item) => (
           <button
-            className={kindFilter === item.kind ? "active" : ""}
-            key={item.kind}
+            className={statusFilter === item.status ? "active" : ""}
+            key={item.status}
             type="button"
-            onClick={() => onKindChange(kindFilter === item.kind ? "all" : item.kind)}
+            onClick={() => onStatusChange(statusFilter === item.status ? "all" : item.status)}
           >
             <span>{item.label}</span>
-            <b>{summary?.[item.kind] ?? 0}</b>
+            <b>{summary?.[item.status] ?? 0}</b>
             <em>{item.description}</em>
           </button>
         ))}
@@ -88,8 +88,8 @@ export function SignalLabWorkbench({
 
       <div className="signal-filter-bar" aria-label="Signal Lab filters">
         <div className="filter-cell signal-stage-filter">
-          <span>Kind</span>
-          <b>{kindFilter === "all" ? "All attention" : ATTENTION_KINDS.find((item) => item.kind === kindFilter)?.label}</b>
+          <span>Status</span>
+          <b>{statusFilter === "all" ? "All pulse" : PULSE_STATUSES.find((item) => item.status === statusFilter)?.label}</b>
         </div>
         <FilterField
           label="Source"
@@ -99,15 +99,15 @@ export function SignalLabWorkbench({
           onChange={onHandleChange}
         />
         <FilterField
-          label="Search"
-          ariaLabel="Signal Lab text filter"
+          label="Symbol/target"
+          ariaLabel="Signal Lab identity filter"
           value={searchFilter}
-          placeholder="grok, build, solana"
+          placeholder="BNB, token:SOL, asset:..."
           onChange={onSearchChange}
         />
         <div className="filter-cell signal-sort-cell">
           <span>Sort</span>
-          <b>Heat</b>
+          <b>Updated</b>
         </div>
         <button className="signal-clear-filters" disabled={!hasActiveFilters} type="button" onClick={onClearFilters}>
           Reset
@@ -116,15 +116,15 @@ export function SignalLabWorkbench({
 
       <section className="signal-chain-workbench-list">
         <header>
-          <h3>Trading Attention</h3>
+          <h3>Signal Pulse</h3>
           <span>
-            {items.length} shown · {categoryLabel}
+            {items.length} shown · {statusLabel}
           </span>
         </header>
         {!isLoading && !items.length ? (
           <SignalLabEmptyState hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
         ) : (
-          <TradingAttentionList isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
+          <SignalPulseList isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
         )}
         {hasNextPage ? (
           <button className="signal-load-more" disabled={isFetchingNextPage} type="button" onClick={onLoadMore}>
@@ -139,7 +139,7 @@ export function SignalLabWorkbench({
 function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFilters: boolean; onClearFilters: () => void }) {
   return (
     <div className="signal-empty-panel">
-      <b>{hasActiveFilters ? "No matching trading attention" : "No trading attention in this window"}</b>
+      <b>{hasActiveFilters ? "No matching Signal Pulse items" : "No Signal Pulse items in this window"}</b>
       {hasActiveFilters ? (
         <button type="button" onClick={onClearFilters}>
           Clear filters
@@ -149,14 +149,14 @@ function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFi
   );
 }
 
-function labelForKind(kind: TradingAttentionKindFilter): string {
-  if (kind === "all") return "all categories";
-  return ATTENTION_KINDS.find((item) => item.kind === kind)?.label ?? kind;
+function labelForStatus(status: SignalPulseStatusFilter): string {
+  if (status === "all") return "all statuses";
+  return PULSE_STATUSES.find((item) => item.status === status)?.label ?? status;
 }
 
-function totalByKind(summary?: TradingAttentionData["summary"]): number {
+function totalByStatus(summary?: SignalPulseData["summary"]): number {
   if (!summary) return 0;
-  return ATTENTION_KINDS.reduce((total, item) => total + Number(summary[item.kind] ?? 0), 0);
+  return PULSE_STATUSES.reduce((total, item) => total + Number(summary[item.status] ?? 0), 0);
 }
 
 function FilterField({

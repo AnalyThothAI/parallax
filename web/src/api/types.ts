@@ -783,96 +783,73 @@ export type TokenSocialTimelineData = {
   next_cursor?: string | null;
 };
 
-export type TradingAttentionKind =
-  | "direct_token"
-  | "topic_heat"
-  | "ecosystem_signal"
-  | "market_structure"
-  | "risk_alert"
-  | "low_signal";
-export type TradingAttentionKindFilter = "all" | TradingAttentionKind;
-export type TradingAttentionPriority = "hot" | "watch" | "context" | "muted";
+export type SignalPulseStatus = "trade_candidate" | "token_watch" | "theme_watch" | "risk_rejected_high_info";
+export type SignalPulseStatusFilter = "all" | SignalPulseStatus;
 
-export type TradingAttentionToken = {
-  asset_id?: string | null;
-  venue_id?: string | null;
-  identity_key?: string | null;
+export type SignalPulseQuery = {
+  window: WindowKey;
+  scope: ScopeKey;
+  status?: SignalPulseStatus | null;
+  handle?: string | null;
+  q?: string | null;
+};
+
+export type SignalPulseHealth = {
+  pulse_ready: boolean;
+  agent_worker_running: boolean;
+  candidate_count: number;
+  blocked_low_information_count: number;
+  dead_job_count: number;
+  market_ready_rate: number;
+  settlement_coverage: number | null;
+};
+
+export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number>;
+
+export type SignalPulseItem = {
+  candidate_id: string;
+  candidate_type: string;
+  subject_key: string;
+  target_type?: string | null;
+  target_id?: string | null;
   symbol?: string | null;
-  asset_type?: string | null;
-  venue_type?: string | null;
-  exchange?: string | null;
-  chain?: string | null;
-  address?: string | null;
-  inst_id?: string | null;
-  base_symbol?: string | null;
-  quote_symbol?: string | null;
-  inst_type?: string | null;
-  relation: string;
-  confidence: number;
-  status: string;
-  source?: string | null;
-};
-
-export type TradingAttentionTopic = {
-  key: string;
-  label: string;
-  role: string;
-};
-
-export type TradingAttentionItem = {
-  item_id: string;
-  kind: TradingAttentionKind;
-  kind_label: string;
-  priority: TradingAttentionPriority;
-  heat_score: number;
-  received_at_ms: number;
+  window: WindowKey | string;
+  scope: ScopeKey | string;
+  pulse_status: SignalPulseStatus;
+  verdict?: string | null;
+  social_phase?: string | null;
+  narrative_type?: string | null;
+  candidate_score?: number | null;
+  score_band?: string | null;
+  summary_zh?: string | null;
+  why_now_zh?: string | null;
+  bull_case_zh: string[];
+  bear_case_zh: string[];
+  confirmation_triggers_zh: string[];
+  invalidation_triggers_zh: string[];
+  top_risks: string[];
+  gate_reasons: unknown[];
+  risk_reasons: unknown[];
+  evidence_event_ids: string[];
+  source_event_ids: string[];
+  radar_score_json: Record<string, unknown>;
+  market_context_json: Record<string, unknown>;
+  thesis_json: Record<string, unknown>;
+  agent_run_id?: string | null;
+  pulse_version?: string | null;
+  gate_version?: string | null;
+  prompt_version?: string | null;
+  schema_version?: string | null;
+  created_at_ms: number;
   updated_at_ms: number;
-  source: {
-    handle?: string | null;
-    followers?: number | null;
-  };
-  event: {
-    event_id: string;
-    tweet_id?: string | null;
-    canonical_url?: string | null;
-    author_handle?: string | null;
-    text?: string | null;
-    received_at_ms?: number | null;
-  };
-  event_type?: string | null;
-  direction_hint?: string | null;
-  attention_mechanism?: string | null;
-  title: string;
-  summary: string;
-  why_it_matters: string;
-  linked_tokens: TradingAttentionToken[];
-  linked_topics: TradingAttentionTopic[];
-  metrics: {
-    impact: number;
-    novelty: number;
-    confidence: number;
-    direct_token_count: number;
-    topic_count: number;
-    account_alert_count: number;
-    window_mentions: number;
-    watched_author_count: number;
-  };
-  risks: string[];
-  next_action: string;
+  playbooks: unknown[];
 };
 
-export type TradingAttentionSummary = Record<TradingAttentionKind | TradingAttentionPriority, number>;
-
-export type TradingAttentionData = {
-  query: {
-    window: WindowKey;
-    scope: ScopeKey;
-    kind?: TradingAttentionKind | null;
-    handle?: string | null;
-    q?: string | null;
-  };
-  summary: TradingAttentionSummary;
-  items: TradingAttentionItem[];
+export type SignalPulseData = {
+  query: SignalPulseQuery;
+  health: SignalPulseHealth;
+  summary: SignalPulseSummary;
+  items: SignalPulseItem[];
   returned_count: number;
   has_more: boolean;
   next_cursor?: string | null;

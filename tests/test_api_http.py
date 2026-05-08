@@ -3,10 +3,18 @@ import time
 from dataclasses import replace
 from decimal import Decimal
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.api.app import create_app
-from gmgn_twitter_intel.api.http import _json
+from gmgn_twitter_intel.api.http import (
+    ApiBadRequest,
+    ApiUnauthorized,
+    _json,
+    api_bad_request_response,
+    api_unauthorized_response,
+    create_api_router,
+)
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
@@ -32,6 +40,119 @@ def make_settings(tmp_path) -> Settings:
     )
     settings.set_config_dir(tmp_path / "app-home")
     return settings
+
+
+class FakePulseTask:
+    def done(self) -> bool:
+        return False
+
+
+class FakeSignalPulseRepository:
+    def __init__(self):
+        self.list_calls: list[dict[str, object]] = []
+        self.summary_calls: list[dict[str, object]] = []
+
+    def list_candidates(
+        self,
+        window,
+        scope,
+        status=None,
+        limit=50,
+        cursor=None,
+        q=None,
+        handle=None,
+        displayable_only=False,
+    ):
+        self.list_calls.append(
+            {
+                "window": window,
+                "scope": scope,
+                "status": status,
+                "limit": limit,
+                "cursor": cursor,
+                "q": q,
+                "handle": handle,
+                "displayable_only": displayable_only,
+            }
+        )
+        return {
+            "items": [
+                {
+                    "candidate_id": "candidate-fake",
+                    "candidate_type": "token_target",
+                    "subject_key": "toly",
+                    "target_type": "Asset",
+                    "target_id": "asset:pepe",
+                    "symbol": "PEPE",
+                    "window": window,
+                    "scope": scope,
+                    "pulse_status": "token_watch",
+                    "verdict": "token_watch",
+                    "social_phase": "ignition",
+                    "narrative_type": "direct_token",
+                    "candidate_score": 0.84,
+                    "score_band": "watch",
+                    "thesis_json": {"summary_zh": "PEPE 社交热度显著上升。"},
+                    "radar_score_json": {"score": 0.84},
+                    "market_context_json": {"market_status": "fresh"},
+                    "gate_reasons_json": ["fresh_attention"],
+                    "risk_reasons_json": [],
+                    "evidence_event_ids_json": ["event-fake"],
+                    "source_event_ids_json": ["event-fake"],
+                    "agent_run_id": "run-fake",
+                    "pulse_version": "pulse-v1",
+                    "gate_version": "gate-v1",
+                    "prompt_version": "prompt-v1",
+                    "schema_version": "schema-v1",
+                    "created_at_ms": 1_000,
+                    "updated_at_ms": 2_000,
+                }
+            ],
+            "next_cursor": None,
+        }
+
+    def pulse_summary(self, window, scope, q=None, handle=None):
+        self.summary_calls.append({"window": window, "scope": scope, "q": q, "handle": handle})
+        return {
+            "summary": {
+                "trade_candidate": 0,
+                "token_watch": 1,
+                "theme_watch": 0,
+                "risk_rejected_high_info": 0,
+                "blocked_low_information": 0,
+            },
+            "candidate_count": 1,
+            "blocked_low_information_count": 0,
+            "dead_job_count": 0,
+            "market_ready_rate": 1.0,
+        }
+
+
+class FakeHarnessRepository:
+    def health(self):
+        return {"settlement_coverage": 0.5}
+
+
+class FakeRepositoryContext:
+    def __init__(self, pulse):
+        self.pulse = pulse
+        self.harness = FakeHarnessRepository()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class FakeRuntime:
+    def __init__(self, pulse):
+        self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
+        self.pulse_candidate_task = FakePulseTask()
+        self.pulse = pulse
+
+    def repositories(self):
+        return FakeRepositoryContext(self.pulse)
 
 
 def make_event(
@@ -343,24 +464,231 @@ def test_api_exposes_empty_harness_read_models_without_404(tmp_path):
     assert responses[6].json()["data"]["items"][2]["bucket"] == "-0.4 to 0.4"
 
 
-def test_api_exposes_trading_attention_pulse_without_harness_chains(tmp_path):
+def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        event = make_token_event("event-attention-pulse", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
-        client.app.state.service.ingest.ingest_event(event, is_watched=True)
-
         response = client.get(
             "/api/signal-lab/pulse",
-            params={"window": "1h", "scope": "matched", "limit": 5},
+            params={
+                "window": "1h",
+                "scope": "matched",
+                "status": "token_watch",
+                "handle": "toly",
+                "q": "PEPE",
+                "limit": 5,
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+        invalid_status = client.get(
+            "/api/signal-lab/pulse",
+            params={"status": "direct_token"},
+            headers={"Authorization": "Bearer secret"},
+        )
+        blocked_status = client.get(
+            "/api/signal-lab/pulse",
+            params={"status": "blocked_low_information"},
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["summary"]["direct_token"] == 1
-    assert data["items"][0]["kind"] == "direct_token"
-    assert data["items"][0]["linked_tokens"][0]["symbol"] == "PEPE"
+    assert data["query"] == {
+        "window": "1h",
+        "scope": "matched",
+        "status": "token_watch",
+        "handle": "toly",
+        "q": "PEPE",
+    }
+    assert data["health"]["pulse_ready"] is False
+    assert data["summary"] == {
+        "trade_candidate": 0,
+        "token_watch": 0,
+        "theme_watch": 0,
+        "risk_rejected_high_info": 0,
+        "blocked_low_information": 0,
+    }
+    assert data["items"] == []
+    assert data["returned_count"] == 0
+    assert data["has_more"] is False
+    assert data["next_cursor"] is None
+    assert invalid_status.status_code == 400
+    assert invalid_status.json() == {"ok": False, "error": "invalid_status", "field": "status"}
+    assert blocked_status.status_code == 400
+    assert blocked_status.json() == {"ok": False, "error": "invalid_status", "field": "status"}
+
+
+def test_signal_pulse_api_uses_fake_runtime_without_postgres():
+    pulse = FakeSignalPulseRepository()
+    app = FastAPI()
+    app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
+    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
+    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.state.service = FakeRuntime(pulse)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/signal-lab/pulse",
+            params={"window": "1h", "scope": "matched", "q": "PEPE", "handle": "toly", "limit": 5},
+            headers={"Authorization": "Bearer secret"},
+        )
+        invalid = client.get(
+            "/api/signal-lab/pulse",
+            params={"status": "blocked_low_information"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert pulse.list_calls == [
+        {
+            "window": "1h",
+            "scope": "matched",
+            "status": None,
+            "limit": 5,
+            "cursor": None,
+            "q": "PEPE",
+            "handle": "toly",
+            "displayable_only": True,
+        }
+    ]
+    assert pulse.summary_calls == [{"window": "1h", "scope": "matched", "q": "PEPE", "handle": "toly"}]
+    assert data["health"]["agent_worker_running"] is True
+    assert data["health"]["settlement_coverage"] == 0.5
+    assert data["summary"]["token_watch"] == 1
+    assert data["items"][0]["candidate_id"] == "candidate-fake"
+    assert "kind" not in data["items"][0]
+    assert invalid.status_code == 400
+    assert invalid.json() == {"ok": False, "error": "invalid_status", "field": "status"}
+
+
+def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        with client.app.state.service.repositories() as repos:
+            repos.pulse.upsert_candidate(
+                candidate_id="candidate-api-token",
+                candidate_type="token_target",
+                subject_key="toly",
+                target_type="Asset",
+                target_id="asset:pepe",
+                symbol="PEPE",
+                window="1h",
+                scope="matched",
+                pulse_status="token_watch",
+                verdict="token_watch",
+                social_phase="ignition",
+                narrative_type="direct_token",
+                candidate_score=0.84,
+                score_band="watch",
+                trigger_signature="trigger-api-token",
+                timeline_signature="timeline-api-token",
+                thesis={
+                    "summary_zh": "PEPE 社交热度显著上升。",
+                    "why_now_zh": "多源讨论同步出现。",
+                    "bull_case_zh": ["新增独立作者扩散"],
+                    "bear_case_zh": ["市场确认不足"],
+                    "confirmation_triggers_zh": ["更多独立账号确认"],
+                    "invalidation_triggers_zh": ["讨论迅速降温"],
+                    "top_risks": ["public_stream_coverage"],
+                },
+                radar_score={"score": 0.84},
+                market_context={"market_status": "fresh"},
+                gate_reasons=["fresh_attention"],
+                risk_reasons=["thin_liquidity"],
+                evidence_event_ids=["event-api-1"],
+                source_event_ids=["event-api-1"],
+                agent_run_id="run-api-1",
+                pulse_version="pulse-v1",
+                gate_version="gate-v1",
+                prompt_version="prompt-v1",
+                schema_version="schema-v1",
+                created_at_ms=1_000,
+                updated_at_ms=2_000,
+            )
+            repos.pulse.upsert_candidate(
+                candidate_id="candidate-api-blocked",
+                candidate_type="token_target",
+                subject_key="toly",
+                target_type="Asset",
+                target_id="asset:lowinfo",
+                symbol="LOW",
+                window="1h",
+                scope="matched",
+                pulse_status="blocked_low_information",
+                verdict="blocked_low_information",
+                social_phase="unknown",
+                narrative_type="unknown",
+                candidate_score=0.1,
+                score_band="blocked",
+                trigger_signature="trigger-api-blocked",
+                timeline_signature="timeline-api-blocked",
+                thesis={"summary_zh": "信息不足。"},
+                radar_score={},
+                market_context={"market_status": "fresh"},
+                gate_reasons=["low_information"],
+                risk_reasons=["low_information"],
+                evidence_event_ids=["event-api-2"],
+                source_event_ids=["event-api-2"],
+                pulse_version="pulse-v1",
+                gate_version="gate-v1",
+                prompt_version="prompt-v1",
+                schema_version="schema-v1",
+                created_at_ms=900,
+                updated_at_ms=3_000,
+            )
+            repos.pulse.upsert_candidate(
+                candidate_id="candidate-api-blocked-2",
+                candidate_type="token_target",
+                subject_key="toly",
+                target_type="Asset",
+                target_id="asset:lowinfo2",
+                symbol="LOW2",
+                window="1h",
+                scope="matched",
+                pulse_status="blocked_low_information",
+                verdict="blocked_low_information",
+                social_phase="unknown",
+                narrative_type="unknown",
+                candidate_score=0.1,
+                score_band="blocked",
+                trigger_signature="trigger-api-blocked-2",
+                timeline_signature="timeline-api-blocked-2",
+                thesis={"summary_zh": "信息不足。"},
+                radar_score={},
+                market_context={},
+                gate_reasons=["low_information"],
+                risk_reasons=["low_information"],
+                evidence_event_ids=["event-api-3"],
+                source_event_ids=["event-api-3"],
+                pulse_version="pulse-v1",
+                gate_version="gate-v1",
+                prompt_version="prompt-v1",
+                schema_version="schema-v1",
+                created_at_ms=800,
+                updated_at_ms=2_500,
+            )
+
+        response = client.get(
+            "/api/signal-lab/pulse",
+            params={"window": "1h", "scope": "matched", "limit": 1},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["summary"]["token_watch"] == 1
+    assert data["summary"]["blocked_low_information"] == 2
+    assert data["health"]["pulse_ready"] is True
+    assert data["health"]["candidate_count"] == 3
+    assert data["health"]["blocked_low_information_count"] == 2
+    assert data["health"]["market_ready_rate"] == 1.0
+    assert data["returned_count"] == 1
+    assert data["items"][0]["candidate_id"] == "candidate-api-token"
+    assert data["items"][0]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert data["items"][0]["radar_score_json"] == {"score": 0.84}
+    assert "kind" not in data["items"][0]
 
 
 def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):

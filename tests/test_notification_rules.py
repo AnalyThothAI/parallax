@@ -40,7 +40,36 @@ class FakeHarness:
         return {"items": self.items}
 
 
-def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, notifications=None):
+class FakePulse:
+    def __init__(self, items, *, page_size: int | None = None):
+        self.items = items
+        self.page_size = page_size
+        self.calls = []
+
+    def list_candidates(self, **kwargs):
+        self.calls.append(kwargs)
+        rows = [
+            item
+            for item in self.items
+            if item.get("window") == kwargs.get("window") and item.get("scope") == kwargs.get("scope")
+        ]
+        if kwargs.get("displayable_only"):
+            rows = [
+                item
+                for item in rows
+                if item.get("pulse_status")
+                in {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
+                and item.get("verdict") != "blocked_low_information"
+            ]
+        limit = int(kwargs.get("limit") or len(rows))
+        page_size = min(limit, self.page_size) if self.page_size else limit
+        cursor = int(kwargs.get("cursor") or 0)
+        page_rows = rows[cursor : cursor + page_size]
+        next_cursor = str(cursor + page_size) if cursor + page_size < len(rows) else None
+        return {"items": page_rows, "next_cursor": next_cursor}
+
+
+def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, pulse=None, notifications=None):
     return NotificationRuleEngine(
         settings=Settings(
             ws_token="secret",
@@ -51,6 +80,7 @@ def engine(*, events=None, alerts=None, asset_flow=None, snapshots=None, notific
         account_alerts=FakeAccountAlerts(alerts or []),
         asset_flow=FakeAssetFlow(asset_flow or {"targets": [], "attention": []}),
         harness=FakeHarness(snapshots or []),
+        pulse=pulse or FakePulse([]),
     )
 
 
@@ -280,3 +310,241 @@ def test_disabled_rule_does_not_emit_candidates():
     ).evaluate(now_ms=NOW_MS)
 
     assert [item for item in candidates if item.rule_id == "hot_quality_token_5m"] == []
+
+
+def test_signal_pulse_rule_is_enabled_by_default():
+    rules = NotificationsConfig().rules
+
+    assert "signal_pulse_candidate" in rules
+    assert rules["signal_pulse_candidate"].enabled is True
+    assert rules["signal_pulse_candidate"].channels == ("in_app",)
+
+
+def test_signal_pulse_notifications_use_materialized_candidates_and_severity_mapping():
+    pulse = FakePulse(
+        [
+            pulse_candidate("trade", status="trade_candidate", score_band="high_conviction", symbol="PEPE"),
+            pulse_candidate("watch", status="token_watch", score_band="watch", symbol="BONK"),
+            pulse_candidate("theme", status="theme_watch", score_band="speculative", symbol=None),
+            pulse_candidate("risk", status="risk_rejected_high_info", score_band="blocked", risks=["chase_risk"]),
+            pulse_candidate("blocked", status="blocked_low_information", score_band="blocked"),
+        ]
+    )
+
+    candidates = [
+        item for item in engine(pulse=pulse).evaluate(now_ms=NOW_MS) if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert {item.source_table for item in candidates} == {"pulse_candidates"}
+    assert {item.source_id for item in candidates} == {"trade", "watch", "theme", "risk"}
+    assert {item.source_id: item.severity for item in candidates} == {
+        "trade": "critical",
+        "watch": "high",
+        "theme": "warning",
+        "risk": "high",
+    }
+    assert all(item.source_id != "blocked" for item in candidates)
+    assert pulse.calls[0]["displayable_only"] is True
+    assert candidates[0].payload["candidate_id"] == "trade"
+    assert "kind" not in candidates[0].payload
+
+
+def test_signal_pulse_dedup_key_uses_candidate_signature_and_status_cooldown_bucket():
+    watch_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS)
+    next_bucket_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS + 30 * 60_000)
+    trade_row = pulse_candidate("trade", status="trade_candidate", updated_at_ms=NOW_MS)
+
+    watch = _only_pulse_notification(watch_row)
+    next_bucket = _only_pulse_notification(next_bucket_row)
+    trade = _only_pulse_notification(trade_row)
+
+    assert watch.dedup_key.startswith("signal_pulse_candidate:watch:sha256:")
+    assert watch.payload["notification_signature"].startswith("sha256:")
+    assert watch.dedup_key.endswith(f":{NOW_MS // (30 * 60_000)}")
+    assert next_bucket.dedup_key.endswith(f":{(NOW_MS + 30 * 60_000) // (30 * 60_000)}")
+    assert trade.dedup_key.endswith(f":{NOW_MS // (15 * 60_000)}")
+    assert watch.dedup_key != next_bucket.dedup_key
+
+
+def test_signal_pulse_signature_changes_on_meaningful_state_changes():
+    base = pulse_candidate("watch", status="token_watch", score_band="watch", risks=["public_stream_coverage"])
+
+    signatures = {
+        "base": _only_pulse_notification(base).payload["notification_signature"],
+        "high_conviction": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
+            "notification_signature"
+        ],
+        "risk_breakout": _only_pulse_notification(
+            pulse_candidate("watch", status="risk_rejected_high_info", risks=["chase_risk"])
+        ).payload["notification_signature"],
+        "confirmation": _only_pulse_notification(
+            pulse_candidate("watch", confirmations=["新增独立作者确认", "价格未先于社交拉升"])
+        ).payload["notification_signature"],
+        "new_source": _only_pulse_notification(
+            pulse_candidate("watch", evidence_ids=["event-1", "event-9"], source_ids=["event-1", "event-9"])
+        ).payload["notification_signature"],
+    }
+
+    assert len(set(signatures.values())) == len(signatures)
+
+
+def test_signal_pulse_rule_can_be_disabled():
+    notifications = NotificationsConfig(rules={"signal_pulse_candidate": NotificationRuleConfig(enabled=False)})
+
+    candidates = engine(
+        pulse=FakePulse([pulse_candidate("watch", status="token_watch")]),
+        notifications=notifications,
+    ).evaluate(now_ms=NOW_MS)
+
+    assert [item for item in candidates if item.rule_id == "signal_pulse_candidate"] == []
+
+
+def test_signal_pulse_candidate_rule_uses_configured_window_scope_heat_and_score_floor():
+    hot_row = pulse_candidate(
+        "pulse-hot",
+        window="5m",
+        scope="all",
+        candidate_score=74,
+        radar_score={"heat": {"score": 72}},
+    )
+    cold_row = pulse_candidate(
+        "pulse-cold",
+        window="5m",
+        scope="all",
+        candidate_score=74,
+        radar_score={"heat": {"score": 69}},
+    )
+    low_score_row = pulse_candidate(
+        "pulse-low-score",
+        window="5m",
+        scope="all",
+        candidate_score=71,
+        radar_score={"heat": {"score": 75}},
+    )
+    ignored_scope_row = pulse_candidate(
+        "pulse-ignored-scope",
+        window="5m",
+        scope="matched",
+        candidate_score=90,
+        radar_score={"heat": {"score": 90}},
+    )
+    source_seed_row = {
+        **pulse_candidate(
+            "pulse-source-seed",
+            window="5m",
+            scope="all",
+            status="theme_watch",
+            symbol=None,
+            candidate_score=80,
+            radar_score={},
+        ),
+        "candidate_type": "source_seed",
+        "target_type": None,
+        "target_id": None,
+    }
+    pulse = FakePulse([hot_row, cold_row, low_score_row, ignored_scope_row, source_seed_row])
+    notifications = NotificationsConfig(
+        rules={
+            "signal_pulse_candidate": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "window": "5m",
+                "scopes": ["all"],
+                "statuses": ["token_watch", "theme_watch"],
+                "social_heat_min": 70,
+                "candidate_score_min": 72,
+                "cooldown_seconds": 120,
+            }
+        }
+    )
+
+    candidates = engine(pulse=pulse, notifications=notifications).evaluate(now_ms=NOW_MS)
+    pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]
+
+    assert [item.source_id for item in pulse_candidates] == ["pulse-hot", "pulse-source-seed"]
+    assert pulse_candidates[0].channels == ("in_app", "pushdeer")
+    assert pulse_candidates[0].dedup_key.endswith(f":{NOW_MS // 120_000}")
+    assert pulse.calls == [
+        {
+            "window": "5m",
+            "scope": "all",
+            "status": None,
+            "limit": 50,
+            "cursor": None,
+            "displayable_only": True,
+        }
+    ]
+
+
+def test_signal_pulse_notifications_follow_candidate_pages():
+    pulse = FakePulse(
+        [
+            pulse_candidate("page-1", status="token_watch"),
+            pulse_candidate("page-2", status="token_watch"),
+            pulse_candidate("page-3", status="token_watch"),
+        ],
+        page_size=1,
+    )
+
+    candidates = [
+        item for item in engine(pulse=pulse).evaluate(now_ms=NOW_MS) if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert [item.source_id for item in candidates] == ["page-1", "page-2", "page-3"]
+    assert [call["cursor"] for call in pulse.calls[:3]] == [None, "1", "2"]
+
+
+def _only_pulse_notification(row: dict):
+    candidates = engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+    pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]
+    assert len(pulse_candidates) == 1
+    return pulse_candidates[0]
+
+
+def pulse_candidate(
+    candidate_id: str,
+    *,
+    status: str = "token_watch",
+    score_band: str = "watch",
+    symbol: str | None = "PEPE",
+    window: str = "1h",
+    scope: str = "all",
+    candidate_score: float = 82.0,
+    radar_score: dict | None = None,
+    risks: list[str] | None = None,
+    confirmations: list[str] | None = None,
+    evidence_ids: list[str] | None = None,
+    source_ids: list[str] | None = None,
+    updated_at_ms: int = NOW_MS,
+) -> dict:
+    return {
+        "candidate_id": candidate_id,
+        "candidate_type": "token_target",
+        "subject_key": symbol or "source:event",
+        "target_type": "Asset" if symbol else None,
+        "target_id": f"asset:{candidate_id}" if symbol else None,
+        "symbol": symbol,
+        "window": window,
+        "scope": scope,
+        "pulse_status": status,
+        "verdict": status,
+        "social_phase": "ignition",
+        "narrative_type": "direct_token",
+        "candidate_score": candidate_score,
+        "score_band": score_band,
+        "radar_score_json": radar_score or {"heat": {"score": 82}},
+        "thesis_json": {
+            "summary_zh": "社交热度正在上升。",
+            "why_now_zh": "多源讨论在当前窗口同步出现。",
+            "confirmation_triggers_zh": confirmations or ["新增独立作者确认"],
+            "invalidation_triggers_zh": ["讨论迅速降温"],
+            "top_risks": risks or ["public_stream_coverage"],
+        },
+        "risk_reasons_json": risks or ["public_stream_coverage"],
+        "gate_reasons_json": ["trade_gate_incomplete"],
+        "evidence_event_ids_json": evidence_ids or ["event-1"],
+        "source_event_ids_json": source_ids or ["event-1"],
+        "pulse_version": "signal-pulse-v2-agent-thesis",
+        "created_at_ms": updated_at_ms - 60_000,
+        "updated_at_ms": updated_at_ms,
+    }

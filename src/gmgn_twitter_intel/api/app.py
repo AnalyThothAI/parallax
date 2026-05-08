@@ -25,6 +25,9 @@ from ..pipeline.message_market_observation_worker import MessageMarketObservatio
 from ..pipeline.notification_delivery import NotificationDeliveryWorker
 from ..pipeline.notification_rules import NotificationRuleEngine
 from ..pipeline.notification_worker import NotificationWorker
+from ..pipeline.pulse_candidate_gate import PulseGateThresholds
+from ..pipeline.pulse_candidate_worker import PulseCandidateWorker, PulseTriggerThresholds
+from ..pipeline.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
 from ..pipeline.social_event_agent_client import OpenAIAgentsSocialEventClient
 from ..pipeline.token_discovery_worker import TokenDiscoveryWorker
 from ..pipeline.token_radar_projection_worker import TokenRadarProjectionWorker
@@ -73,6 +76,7 @@ class CliRuntime:
     message_market_observation_worker: MessageMarketObservationWorker | None = None
     token_discovery_worker: TokenDiscoveryWorker | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
+    pulse_candidate_worker: PulseCandidateWorker | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
@@ -83,6 +87,7 @@ class CliRuntime:
     message_market_observation_task: asyncio.Task | None = None
     token_discovery_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
+    pulse_candidate_task: asyncio.Task | None = None
 
     def repositories(self):
         return repository_session(self.db_pool)
@@ -263,6 +268,37 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
         repository_session=lambda: repository_session(db_pool),
     )
+    if settings.pulse_agent_enabled and settings.pulse_agent_configured:
+        pulse_client = OpenAIAgentsPulseThesisClient(
+            api_key=settings.llm_api_key or "",
+            model=settings.pulse_agent_model or "",
+            base_url=settings.llm_base_url,
+            timeout_seconds=settings.llm_timeout_seconds,
+            trace_enabled=settings.llm_trace_enabled,
+            trace_api_key=settings.llm_trace_api_key,
+            trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
+        )
+        runtime.pulse_candidate_worker = PulseCandidateWorker(
+            thesis_client=pulse_client,
+            repository_session=lambda: repository_session(db_pool),
+            poll_interval=settings.pulse_agent_interval_seconds,
+            batch_size=settings.pulse_agent_batch_size,
+            max_attempts=settings.pulse_agent_max_attempts,
+            trigger_thresholds=PulseTriggerThresholds(
+                asset_heat_min=settings.pulse_agent_asset_heat_min,
+                asset_propagation_min=settings.pulse_agent_asset_propagation_min,
+            ),
+            gate_thresholds=PulseGateThresholds(
+                trade_heat_min=settings.pulse_agent_trade_heat_min,
+                trade_quality_min=settings.pulse_agent_trade_quality_min,
+                trade_propagation_min=settings.pulse_agent_trade_propagation_min,
+                tradeability_min=settings.pulse_agent_tradeability_min,
+                timing_min=settings.pulse_agent_timing_min,
+                confidence_min=settings.pulse_agent_confidence_min,
+                token_watch_signal_min=settings.pulse_agent_token_watch_signal_min,
+                high_conviction_min=settings.pulse_agent_high_conviction_min,
+            ),
+        )
     if settings.notifications.enabled:
         runtime.notification_worker = NotificationWorker(
             repository_session=lambda: repository_session(db_pool),
@@ -384,6 +420,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         account_alerts=AccountAlertService(repos.signals),
         asset_flow=AssetFlowService(token_radar=repos.token_radar),
         harness=HarnessService(repos.harness),
+        pulse=repos.pulse,
     )
 
 
@@ -404,6 +441,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.token_discovery_task = asyncio.create_task(runtime.token_discovery_worker.run())
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
         runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
+    if runtime.pulse_candidate_worker is not None and runtime.pulse_candidate_task is None:
+        runtime.pulse_candidate_task = asyncio.create_task(runtime.pulse_candidate_worker.run())
     if runtime.start_collector:
         if runtime.collector_task is None:
             runtime.collector_task = asyncio.create_task(runtime.collector.run())
@@ -428,6 +467,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.token_discovery_worker.stop()
     if runtime.token_radar_projection_worker is not None:
         runtime.token_radar_projection_worker.stop()
+    if runtime.pulse_candidate_worker is not None:
+        runtime.pulse_candidate_worker.stop()
     tasks = [
         task
         for task in (
@@ -441,6 +482,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.message_market_observation_task,
             runtime.token_discovery_task,
             runtime.token_radar_projection_task,
+            runtime.pulse_candidate_task,
         )
         if task is not None
     ]
@@ -455,6 +497,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.message_market_observation_worker.close()
     if runtime.token_discovery_worker is not None:
         runtime.token_discovery_worker.close()
+    if runtime.pulse_candidate_worker is not None:
+        await runtime.pulse_candidate_worker.aclose()
     runtime.db_pool.close()
 
 
@@ -505,6 +549,23 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_error": runtime.token_radar_projection_worker.last_error
             if runtime.token_radar_projection_worker
             else None,
+        },
+        "pulse_agent": {
+            "enabled": runtime.settings.pulse_agent_enabled,
+            "configured": runtime.settings.pulse_agent_configured,
+            "worker_running": _task_running(runtime.pulse_candidate_task),
+            "model": runtime.settings.pulse_agent_model,
+            "batch_size": runtime.settings.pulse_agent_batch_size,
+            "interval_seconds": runtime.settings.pulse_agent_interval_seconds,
+            "max_attempts": runtime.settings.pulse_agent_max_attempts,
+            "last_started_at_ms": runtime.pulse_candidate_worker.last_started_at_ms
+            if runtime.pulse_candidate_worker
+            else None,
+            "last_run_at_ms": runtime.pulse_candidate_worker.last_run_at_ms
+            if runtime.pulse_candidate_worker
+            else None,
+            "last_result": runtime.pulse_candidate_worker.last_result if runtime.pulse_candidate_worker else None,
+            "last_error": runtime.pulse_candidate_worker.last_error if runtime.pulse_candidate_worker else None,
         },
         "asset_market_sync": {
             "okx_cex_sync_enabled": runtime.settings.okx_cex_sync_enabled,
@@ -577,6 +638,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("token_discovery_worker_stopped")
     if runtime.token_radar_projection_worker is not None and not _task_running(runtime.token_radar_projection_task):
         reasons.append("token_radar_projection_worker_stopped")
+    if runtime.pulse_candidate_worker is not None and not _task_running(runtime.pulse_candidate_task):
+        reasons.append("pulse_candidate_worker_stopped")
     return reasons
 
 

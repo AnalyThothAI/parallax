@@ -107,6 +107,31 @@ def test_legacy_token_resolution_runtime_modules_stay_removed():
     assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "token_signal_repository.py").exists()
 
 
+def test_trading_attention_service_has_been_hard_deleted():
+    assert not (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "trading_attention_service.py").exists()
+    assert not (ROOT / "tests" / "test_trading_attention_service.py").exists()
+
+
+def test_pulse_agent_repository_has_no_dual_name_compatibility_arguments():
+    text = (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "pulse_repository.py").read_text(encoding="utf-8")
+    forbidden = {
+        "context: dict[str, Any]",
+        "request: dict[str, Any]",
+        "response: dict[str, Any]",
+        "trace_metadata: dict[str, Any]",
+        "usage: dict[str, Any]",
+        "thesis: dict[str, Any]",
+        "radar_score: dict[str, Any]",
+        "market_context: dict[str, Any]",
+        "gate_reasons: list[Any]",
+        "risk_reasons: list[Any]",
+        "evidence_event_ids: list[Any]",
+        "source_event_ids: list[Any]",
+    }
+    for item in forbidden:
+        assert item not in text
+
+
 def test_current_token_radar_runtime_does_not_import_old_token_market_paths():
     forbidden = {
         "TokenRepository",

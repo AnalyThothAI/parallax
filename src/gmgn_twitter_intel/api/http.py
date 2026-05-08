@@ -13,6 +13,7 @@ from ..retrieval.account_quality_service import AccountQualityService
 from ..retrieval.asset_flow_service import AssetFlowService
 from ..retrieval.asset_search_service import AssetSearchService
 from ..retrieval.harness_service import HarnessService
+from ..retrieval.signal_pulse_service import SignalPulseService
 from ..retrieval.token_target_cursor import TokenTargetCursorError
 from ..retrieval.token_target_posts_service import (
     TokenTargetPostsCursorError,
@@ -21,9 +22,6 @@ from ..retrieval.token_target_posts_service import (
     TokenTargetPostsSortError,
 )
 from ..retrieval.token_target_social_timeline_service import TokenTargetSocialTimelineService
-from ..retrieval.trading_attention_service import KINDS as TRADING_ATTENTION_KINDS
-from ..retrieval.trading_attention_service import SORTS as TRADING_ATTENTION_SORTS
-from ..retrieval.trading_attention_service import TradingAttentionService
 from ..storage.account_quality_repository import AccountQualityRepository
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
@@ -32,6 +30,7 @@ ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
+SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
 
 
 class ApiUnauthorized(Exception):
@@ -441,30 +440,27 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         request: Request,
         window: Annotated[str, Query()] = "1h",
         scope: Annotated[str, Query()] = "matched",
-        kind: Annotated[str, Query()] = "",
+        status: Annotated[str, Query()] = "",
         handle: Annotated[str, Query()] = "",
         q: Annotated[str, Query()] = "",
-        sort: Annotated[str, Query()] = "priority",
         limit: Annotated[int, Query()] = 80,
         cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
+        parsed_window = _window(window)
         parsed_scope = _scope(scope)
+        parsed_limit = _limit(limit, maximum=500)
+        parsed_status = _signal_pulse_status(status)
         with runtime.repositories() as repos:
-            data = TradingAttentionService(
-                evidence=repos.evidence,
-                signals=repos.signals,
-                assets=repos.assets,
-            ).pulse(
-                window=_window(window),
+            data = SignalPulseService(pulse=repos.pulse, harness=repos.harness).pulse(
+                window=parsed_window,
                 scope=parsed_scope,
-                kind=_trading_attention_kind(kind),
+                status=parsed_status,
                 handle=handle or None,
                 q=q or None,
-                handles=set(runtime.settings.handles) if parsed_scope == "matched" else None,
-                sort=_trading_attention_sort(sort),
-                limit=_limit(limit, maximum=500),
+                limit=parsed_limit,
                 cursor=cursor or None,
+                agent_worker_running=_task_running(getattr(runtime, "pulse_candidate_task", None)),
             )
         return _json({"ok": True, "data": data})
 
@@ -620,16 +616,20 @@ def _horizon(value: str) -> str:
     return value if value in HORIZONS else "6h"
 
 
-def _trading_attention_kind(value: str) -> str | None:
-    return value if value in TRADING_ATTENTION_KINDS else None
-
-
-def _trading_attention_sort(value: str) -> str:
-    return value if value in TRADING_ATTENTION_SORTS else "priority"
-
-
 def _alert_type(value: str | None) -> str | None:
     return value if value in ALERT_TYPES else None
+
+
+def _signal_pulse_status(value: str) -> str | None:
+    if not value:
+        return None
+    if value in SIGNAL_PULSE_STATUSES:
+        return value
+    raise ApiBadRequest("invalid_status", field="status")
+
+
+def _task_running(task: Any | None) -> bool:
+    return task is not None and not task.done()
 
 
 def _job_status(value: str | None) -> str | None:

@@ -37,6 +37,22 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.llm_timeout_seconds * 1000 < RUNNING_TIMEOUT_MS
+    assert settings.pulse_agent_enabled is True
+    assert settings.pulse_agent_interval_seconds == 60
+    assert settings.pulse_agent_batch_size == 10
+    assert settings.pulse_agent_max_attempts == 3
+    assert settings.pulse_agent_model is None
+    assert settings.pulse_agent_configured is False
+    assert settings.pulse_agent_asset_heat_min == 80
+    assert settings.pulse_agent_asset_propagation_min == 70
+    assert settings.pulse_agent_trade_heat_min == 75
+    assert settings.pulse_agent_trade_quality_min == 62
+    assert settings.pulse_agent_trade_propagation_min == 62
+    assert settings.pulse_agent_tradeability_min == 70
+    assert settings.pulse_agent_timing_min == 50
+    assert settings.pulse_agent_confidence_min == 0.65
+    assert settings.pulse_agent_token_watch_signal_min == 45
+    assert settings.pulse_agent_high_conviction_min == 78
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
@@ -92,6 +108,21 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 "trace_enabled": True,
                 "trace_api_key": "sk-trace",
                 "trace_include_sensitive_data": False,
+                "pulse_agent_enabled": True,
+                "pulse_agent_interval_seconds": 0,
+                "pulse_agent_batch_size": 999,
+                "pulse_agent_max_attempts": 0,
+                "pulse_agent_model": " ",
+                "pulse_agent_asset_heat_min": 70,
+                "pulse_agent_asset_propagation_min": 60,
+                "pulse_agent_trade_heat_min": 70,
+                "pulse_agent_trade_quality_min": 58,
+                "pulse_agent_trade_propagation_min": 58,
+                "pulse_agent_tradeability_min": 65,
+                "pulse_agent_timing_min": 45,
+                "pulse_agent_confidence_min": 0.6,
+                "pulse_agent_token_watch_signal_min": 40,
+                "pulse_agent_high_conviction_min": 74,
             },
         },
     )
@@ -114,6 +145,89 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.llm_trace_api_key == "sk-trace"
     assert settings.llm_trace_export_configured is True
     assert settings.llm_trace_include_sensitive_data is False
+    assert settings.pulse_agent_enabled is True
+    assert settings.pulse_agent_interval_seconds == 1
+    assert settings.pulse_agent_batch_size == 100
+    assert settings.pulse_agent_max_attempts == 1
+    assert settings.pulse_agent_model == "gpt-test"
+    assert settings.pulse_agent_configured is True
+    assert settings.pulse_agent_asset_heat_min == 70
+    assert settings.pulse_agent_asset_propagation_min == 60
+    assert settings.pulse_agent_trade_heat_min == 70
+    assert settings.pulse_agent_trade_quality_min == 58
+    assert settings.pulse_agent_trade_propagation_min == 58
+    assert settings.pulse_agent_tradeability_min == 65
+    assert settings.pulse_agent_timing_min == 45
+    assert settings.pulse_agent_confidence_min == 0.6
+    assert settings.pulse_agent_token_watch_signal_min == 40
+    assert settings.pulse_agent_high_conviction_min == 74
+
+
+def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "model": "gpt-base",
+                "pulse_agent_model": "gpt-pulse",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm_model == "gpt-base"
+    assert settings.pulse_agent_model == "gpt-pulse"
+    assert settings.pulse_agent_configured is True
+
+
+def test_pulse_agent_can_be_configured_without_enrichment_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "pulse_agent_model": "gpt-pulse",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm_model is None
+    assert settings.llm_configured is False
+    assert settings.pulse_agent_model == "gpt-pulse"
+    assert settings.pulse_agent_configured is True
+
+
+def test_openai_root_base_url_with_api_key_counts_as_trace_export_configured(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "base_url": "https://api.openai.com",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm_base_url == "https://api.openai.com"
+    assert settings.llm_trace_export_configured is True
 
 
 def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
@@ -179,6 +293,16 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                         "suppress_chase_risk": True,
                         "cooldown_seconds": 600,
                     },
+                    "signal_pulse_candidate": {
+                        "enabled": True,
+                        "channels": ["in_app", "pushdeer"],
+                        "window": "5m",
+                        "scopes": ["all"],
+                        "statuses": ["trade_candidate", "token_watch"],
+                        "social_heat_min": 70,
+                        "candidate_score_min": 72,
+                        "cooldown_seconds": 120,
+                    },
                 },
                 "channels": {
                     "pushdeer": {
@@ -202,6 +326,14 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.rules["hot_quality_token_5m"].discussion_quality_min == 72
     assert settings.notifications.rules["hot_quality_token_5m"].suppress_chase_risk is True
     assert settings.notifications.rules["hot_quality_token_5m"].cooldown_seconds == 600
+    pulse_rule = settings.notifications.rules["signal_pulse_candidate"]
+    assert pulse_rule.channels == ("in_app", "pushdeer")
+    assert pulse_rule.window == "5m"
+    assert pulse_rule.scopes == ("all",)
+    assert pulse_rule.statuses == ("trade_candidate", "token_watch")
+    assert pulse_rule.social_heat_min == 70
+    assert pulse_rule.candidate_score_min == 72
+    assert pulse_rule.cooldown_seconds == 120
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
 
