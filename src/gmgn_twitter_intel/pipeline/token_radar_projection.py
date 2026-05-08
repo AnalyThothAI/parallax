@@ -11,10 +11,10 @@ from ..retrieval.social_heat_scoring import social_heat_score
 from ..retrieval.timing_scoring import timing_score
 from ..retrieval.tradeability_scoring import tradeability_score
 from ..storage.projection_repository import ProjectionRepository
-from .deterministic_token_resolver import RESOLVER_POLICY_VERSION
 from .token_radar_contract import (
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
 from .token_radar_feature_builder import BASELINE_SLOT_COUNT, build_radar_features
@@ -350,7 +350,7 @@ class TokenRadarProjection:
             ) before_event_price ON true
             WHERE events.received_at_ms >= %s {watched_clause}
             """,
-            (RESOLVER_POLICY_VERSION, now_ms, since_ms),
+            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, since_ms),
         ).fetchall()
         return [dict(row) for row in rows]
 

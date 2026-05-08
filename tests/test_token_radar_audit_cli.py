@@ -16,6 +16,7 @@ def test_audit_token_radar_rows_rejects_legacy_price_health():
             }
         ],
         now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
         source_max_price_observed_at_ms=1_699_999_999_500,
     )
@@ -44,6 +45,7 @@ def test_audit_token_radar_rows_accepts_v6_auditable_scores():
             }
         ],
         now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
         source_max_price_observed_at_ms=1_699_999_999_500,
     )
@@ -57,12 +59,26 @@ def test_audit_token_radar_rows_rejects_empty_v6_projection_when_sources_exist()
     audit = _audit_token_radar_rows(
         [],
         now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
         source_max_price_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
     assert any(item["code"] == "empty_projection_rows" for item in audit["violations"])
+
+
+def test_audit_token_radar_rows_accepts_empty_projection_when_current_scope_is_empty():
+    audit = _audit_token_radar_rows(
+        [],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=0,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is True
+    assert audit["source_current_window_rows"] == 0
 
 
 def test_audit_token_radar_rows_rejects_missing_baseline_contract():
@@ -85,6 +101,7 @@ def test_audit_token_radar_rows_rejects_missing_baseline_contract():
             }
         ],
         now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
         source_max_price_observed_at_ms=1_699_999_999_500,
     )

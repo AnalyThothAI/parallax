@@ -21,9 +21,10 @@ from .pipeline.token_radar_contract import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS,
     TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SCORE_COMPONENTS,
 )
-from .pipeline.token_radar_projection import TokenRadarProjection
+from .pipeline.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from .pipeline.token_resolution_refresh import rebuild_token_radar_windows, reprocess_recent_token_intents
 from .retrieval.account_alert_service import AccountAlertService
 from .retrieval.account_quality_service import AccountQualityService
@@ -836,6 +837,11 @@ def _audit_token_radar(repos, *, window: str, scope: str, limit: int, now_ms: in
         limit=limit,
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )
+    source_current_window_rows = _token_radar_source_count(
+        repos.conn,
+        since_ms=now_ms - WINDOW_MS[window],
+        scope=scope,
+    )
     source_max_resolution_ms = _max_scalar(
         repos.conn,
         "SELECT MAX(decision_time_ms) AS value FROM token_intent_resolutions WHERE is_current = true",
@@ -851,6 +857,7 @@ def _audit_token_radar(repos, *, window: str, scope: str, limit: int, now_ms: in
         **_audit_token_radar_rows(
             rows,
             now_ms=now_ms,
+            source_current_window_rows=source_current_window_rows,
             source_max_resolution_ms=source_max_resolution_ms,
             source_max_price_observed_at_ms=source_max_price_observed_at_ms,
         ),
@@ -861,12 +868,13 @@ def _audit_token_radar_rows(
     rows: list[dict],
     *,
     now_ms: int,
+    source_current_window_rows: int,
     source_max_resolution_ms: int | None,
     source_max_price_observed_at_ms: int | None,
 ) -> dict:
     violations: list[dict] = []
     required = set(TOKEN_RADAR_SCORE_COMPONENTS)
-    if not rows and source_max_resolution_ms:
+    if not rows and source_current_window_rows:
         violations.append({"code": "empty_projection_rows"})
     for index, row in enumerate(rows):
         projection_version = row.get("projection_version")
@@ -930,11 +938,30 @@ def _audit_token_radar_rows(
         "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
         "row_count": len(rows),
         "violations": violations,
+        "source_current_window_rows": source_current_window_rows,
         "source_max_resolution_ms": source_max_resolution_ms,
         "source_max_price_observed_at_ms": source_max_price_observed_at_ms,
         "social_lag_ms": social_lag_ms,
         "market_lag_ms": market_lag_ms,
     }
+
+
+def _token_radar_source_count(conn, *, since_ms: int, scope: str) -> int:
+    watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
+    row = conn.execute(
+        f"""
+        SELECT COUNT(*) AS value
+        FROM token_intents
+        JOIN token_intent_resolutions
+          ON token_intent_resolutions.intent_id = token_intents.intent_id
+         AND token_intent_resolutions.is_current = true
+         AND token_intent_resolutions.resolver_policy_version = %s
+        JOIN events ON events.event_id = token_intents.event_id
+        WHERE events.received_at_ms >= %s {watched_clause}
+        """,
+        (TOKEN_RADAR_RESOLVER_POLICY_VERSION, since_ms),
+    ).fetchone()
+    return int(row["value"] or 0) if row else 0
 
 
 def _max_scalar(conn, sql: str) -> int | None:
