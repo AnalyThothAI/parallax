@@ -63,6 +63,29 @@ def test_tradeability_missing_market_sets_hard_risk():
     assert "missing_market_cap" in score["risks"]
     assert "missing_market" in score["hard_risks"]
     assert score["score"] <= 40
+    assert any(item["feature"] == "tradeability.market_fresh" and item["value"] == 0 for item in score["contributions"])
+
+
+def test_tradeability_unresolved_attention_lane_has_diagnostic_zero_contributions():
+    score = tradeability_score(
+        {
+            "target_type": "Asset",
+            "identity_status": "unresolved",
+            "token_id": None,
+            "chain": None,
+            "address": None,
+            "market_status": "missing",
+            "market_cap": None,
+            "liquidity": None,
+            "pool_status": "missing",
+        }
+    )
+
+    assert score["score"] <= 20
+    assert "unresolved_token_identity" in score["hard_risks"]
+    assert score["contributions"]
+    assert any(item["feature"] == "tradeability.identity" and item["value"] == 0 for item in score["contributions"])
+    assert any(item["feature"] == "tradeability.market_cap" and item["value"] == 0 for item in score["contributions"])
 
 
 def test_tradeability_lookahead_risk_is_hard_risk():

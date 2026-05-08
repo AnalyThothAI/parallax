@@ -17,7 +17,7 @@ from .token_radar_contract import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
-from .token_radar_feature_builder import build_radar_features
+from .token_radar_feature_builder import BASELINE_SLOT_COUNT, build_radar_features
 
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,
@@ -26,6 +26,7 @@ WINDOW_MS = {
     "24h": 24 * 60 * 60 * 1000,
 }
 MARKET_FRESH_MS = 5 * 60 * 1000
+ATTENTION_HISTORY_MS = 24 * 60 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 
@@ -368,7 +369,9 @@ class TokenRadarProjection:
 
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
-    return max(computed_at_ms - WINDOW_MS["24h"], score_since_ms - window_ms)
+    baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
+    attention_since_ms = computed_at_ms - ATTENTION_HISTORY_MS
+    return min(baseline_since_ms, attention_since_ms)
 
 
 def _project_group(
@@ -773,9 +776,18 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
-def _rank_key(row: dict[str, Any]) -> tuple[int, int]:
+def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
     attention = row["attention_json"]
-    return (-int(attention["mentions_window"]), -int(attention["latest_seen_ms"]))
+    score = row.get("score_json") if isinstance(row.get("score_json"), dict) else {}
+    decision_priority = {"driver": 0, "watch": 1, "investigate": 2, "discard": 3}
+    opportunity = score.get("opportunity") if isinstance(score.get("opportunity"), dict) else {}
+    heat = score.get("heat") if isinstance(score.get("heat"), dict) else {}
+    return (
+        decision_priority.get(str(row.get("decision") or "discard"), 3),
+        -int(opportunity.get("score") or 0),
+        -int(heat.get("score") or 0),
+        -int(attention["latest_seen_ms"]),
+    )
 
 
 def _stable_id(*parts: str) -> str:

@@ -218,18 +218,25 @@ export type AssetFlowVenueBlock = {
 export type AssetFlowAttentionBlock = {
   mentions_5m: number;
   mentions_1h: number;
+  mentions_4h: number;
+  mentions_24h: number;
   mentions_window: number;
   unique_authors: number;
   watched_mentions: number;
-  latest_seen_ms?: number | null;
-  previous_mentions?: number | null;
-  mention_delta?: number | null;
-  mention_delta_pct?: number | null;
-  z_score?: number | null;
-  new_burst_score?: number | null;
-  stream_share?: number | null;
-  baseline_status?: string | null;
-  baseline_sample_count?: number | null;
+  latest_seen_ms: number;
+  previous_mentions: number;
+  mention_delta: number;
+  mention_delta_pct: number | null;
+  z_score: number | null;
+  z_ewma: number | null;
+  robust_z: number | null;
+  new_burst_score: number | null;
+  stream_share: number;
+  baseline_version: string;
+  baseline_status: string;
+  baseline_sample_count: number;
+  baseline_nonzero_sample_count: number;
+  zero_slot_count: number;
 };
 
 export type TokenRadarIntentBlock = {
@@ -241,30 +248,30 @@ export type TokenRadarIntentBlock = {
 
 export type TokenRadarScoreBlock = {
   score: number;
-  score_version?: string | null;
-  reasons?: string[];
-  risks?: string[];
+  score_version: string;
+  reasons: string[];
+  risks: string[];
   hard_risks?: string[];
-  contributions?: ScoreContribution[];
-  risk_caps?: RiskCap[];
+  contributions: ScoreContribution[];
+  risk_caps: RiskCap[];
 };
 
 export type TokenRadarScoreSet = {
-  heat?: TokenRadarScoreBlock;
-  quality?: TokenRadarScoreBlock;
-  propagation?: TokenRadarScoreBlock;
-  tradeability?: TokenRadarScoreBlock;
-  timing?: TokenRadarScoreBlock & {
+  heat: TokenRadarScoreBlock;
+  quality: TokenRadarScoreBlock;
+  propagation: TokenRadarScoreBlock;
+  tradeability: TokenRadarScoreBlock;
+  timing: TokenRadarScoreBlock & {
     status?: string | null;
     chase_risk?: boolean | null;
   };
-  opportunity?: TokenRadarScoreBlock & {
-    components?: {
-      heat?: number | null;
-      quality?: number | null;
-      propagation?: number | null;
-      tradeability?: number | null;
-      timing?: number | null;
+  opportunity: TokenRadarScoreBlock & {
+    components: {
+      heat: number;
+      quality: number;
+      propagation: number;
+      tradeability: number;
+      timing: number;
     };
   };
 };
@@ -325,7 +332,7 @@ export type AssetFlowRow = {
     risks?: string[];
     candidates?: unknown[];
   };
-  score?: TokenRadarScoreSet;
+  score: TokenRadarScoreSet;
   decision: Decision | string;
   data_health?: TokenRadarDataHealth;
 };

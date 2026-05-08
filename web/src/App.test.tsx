@@ -14,7 +14,8 @@ import type {
   TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData,
-  TradingAttentionData
+  TradingAttentionData,
+  WindowKey
 } from "./api/types";
 import { getApi, getBootstrap } from "./api/client";
 import { useTraderStore } from "./store/useTraderStore";
@@ -273,6 +274,8 @@ describe("App Token Radar social heat cockpit", () => {
           },
           price: {
             market_status: "fresh",
+            market_observation_status: "ready",
+            price_change_status: "ready",
             provider: "okx_cex",
             price_usd: 69_000,
             market_cap_usd: null,
@@ -383,6 +386,7 @@ describe("App Token Radar social heat cockpit", () => {
           symbol: "USDUC",
           price: {
             market_status: "fresh",
+            market_observation_status: "ready",
             provider: "okx_dex",
             price_usd: 0.02,
             market_cap_usd: 20_000_000,
@@ -584,7 +588,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(item.evidence_total_count).toBe(4);
   });
 
-  it("does not invent score versions when the backend omits them", () => {
+  it("rejects token radar rows when the backend omits score versions", () => {
     const row = {
       ...assetFlowRow(),
       score: {
@@ -595,16 +599,17 @@ describe("App Token Radar social heat cockpit", () => {
         timing: scoreBlock({ score: 15, reasons: [], risks: [] }),
         opportunity: scoreBlock({ score: 16, reasons: [], risks: [] })
       }
-    } as AssetFlowRow;
+    } as unknown as AssetFlowRow;
 
-    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(/score\.heat\.score_version/);
+  });
 
-    expect(item.social_heat.score_version).toBe("missing_score_version");
-    expect(item.discussion_quality.score_version).toBe("missing_score_version");
-    expect(item.propagation.score_version).toBe("missing_score_version");
-    expect(item.tradeability.score_version).toBe("missing_score_version");
-    expect(item.timing.score_version).toBe("missing_score_version");
-    expect(item.opportunity.score_version).toBe("missing_score_version");
+  it("rejects token radar rows when baseline fields are missing", () => {
+    const row = assetFlowRow();
+    const attention = { ...(row.attention as Partial<AssetFlowRow["attention"]>) };
+    delete attention.baseline_status;
+
+    expect(() => tokenRadarRowToTokenItem({ ...row, attention } as unknown as AssetFlowRow, "1h", "all")).toThrow(/attention\.baseline_status/);
   });
 
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
@@ -874,7 +879,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const pageButtons = await screen.findAllByRole("button", { name: /open token audit page/i });
     fireEvent.click(pageButtons[0]);
-    const page = await waitFor(() => container.querySelector(".token-target-page") as HTMLElement);
+    const page = await waitFor(() => requireElement(container.querySelector(".token-target-page") as HTMLElement | null));
     await waitFor(() => expect(within(page).getByRole("heading", { name: "$UPEG" })).toBeInTheDocument());
     expect(within(page).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
 
@@ -888,6 +893,56 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(page).getByRole("heading", { name: "$UPEG" })).toBeInTheDocument();
     expect(within(page).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     expect(within(page).queryByText("$ALT watched account evidence")).not.toBeInTheDocument();
+  });
+
+  it("loads score audit from the audit page window instead of the global radar window", async () => {
+    const oneHour = assetFlowRow({ attention: { baseline_status: "ready", baseline_sample_count: 6 } });
+    const fourHour = assetFlowRow({
+      attention: {
+        mentions_window: 12,
+        mentions_4h: 12,
+        baseline_status: "ready",
+        baseline_sample_count: 24,
+        previous_mentions: 5,
+        mention_delta: 7,
+        z_score: 3.4,
+        robust_z: 3.4,
+        new_burst_score: 0
+      },
+      score: {
+        heat: scoreBlock({ score_version: "social_heat_v2", score: 37, status: "burst", reasons: ["four_hour_heat"], risks: [] }),
+        quality: scoreBlock({ score_version: "discussion_quality_v1", score: 66, reasons: [], risks: [] }),
+        propagation: scoreBlock({ score_version: "propagation_v1", score: 70, reasons: [], risks: [] }),
+        tradeability: scoreBlock({ score_version: "tradeability_v2", score: 72, reasons: [], risks: [] }),
+        timing: scoreBlock({ score_version: "timing_v4", score: 50, status: "neutral", chase_risk: false, reasons: [], risks: [] }),
+        opportunity: scoreBlock({
+          score_version: "social_opportunity_v3",
+          score: 64,
+          reasons: [],
+          risks: [],
+          components: { heat: 37, quality: 66, propagation: 70, tradeability: 72, timing: 50 }
+        })
+      }
+    });
+    mockApi({ assetFlowRowsByWindow: { "1h": [oneHour], "4h": [fourHour] } });
+    const { container } = renderWithQuery(<App />);
+
+    const pageButtons = await screen.findAllByRole("button", { name: /open token audit page/i });
+    fireEvent.click(pageButtons[0]);
+    const page = await waitFor(() => requireElement(container.querySelector(".token-target-page") as HTMLElement | null));
+    await waitFor(() => expect(within(page).getByText("ready · n6")).toBeInTheDocument());
+
+    mockedGetApi.mockClear();
+    fireEvent.click(within(page).getByRole("button", { name: "4h" }));
+
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(([path, request]) => path === "/api/token-radar" && request?.params?.window === "4h")
+      ).toBe(true);
+      const updatedPage = container.querySelector(".token-target-page") as HTMLElement;
+      expect(within(updatedPage).getByText("ready · n24")).toBeInTheDocument();
+      expect(within(updatedPage).getAllByText("37").length).toBeGreaterThan(0);
+    });
   });
 
   it("does not offer an audit page for unresolved token radar rows", async () => {
@@ -1038,6 +1093,7 @@ function mockApi(options: {
   tradingAttention?: TradingAttentionData;
   tradingAttentionPages?: Record<string, TradingAttentionData>;
   assetFlowRows?: AssetFlowRow[];
+  assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -1063,10 +1119,11 @@ function mockApi(options: {
       }
       const window = String(requestOptions?.params?.window ?? "1h");
       const swapped = options.windowSwapToken && window === "5m";
+      const rowsForWindow = options.assetFlowRowsByWindow?.[window as WindowKey];
       return ok<AssetFlowData>({
         window: window as AssetFlowData["window"],
         scope: "all",
-        targets: options.assetFlowRows ?? [
+        targets: rowsForWindow ?? options.assetFlowRows ?? [
           assetFlowRow({
             address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
             symbol: swapped ? "ALT" : undefined,
@@ -1179,6 +1236,8 @@ function assetFlowRow(
       quote_symbol?: string | null;
     };
     price?: AssetFlowRow["price"];
+    attention?: Partial<AssetFlowRow["attention"]>;
+    score?: Partial<NonNullable<AssetFlowRow["score"]>>;
     insufficientTiming?: boolean;
   } = {}
 ): AssetFlowRow {
@@ -1238,6 +1297,8 @@ function assetFlowRow(
     attention: {
       mentions_5m: 2,
       mentions_1h: 4,
+      mentions_4h: 4,
+      mentions_24h: 4,
       mentions_window: 4,
       unique_authors: 3,
       watched_mentions: 1,
@@ -1246,10 +1307,16 @@ function assetFlowRow(
       mention_delta: 4,
       mention_delta_pct: null,
       z_score: null,
+      z_ewma: null,
+      robust_z: null,
       new_burst_score: 80,
       stream_share: 0,
+      baseline_version: "token_baseline_v2",
       baseline_status: "insufficient_history",
-      baseline_sample_count: 0
+      baseline_sample_count: 0,
+      baseline_nonzero_sample_count: 0,
+      zero_slot_count: 6,
+      ...options.attention
     },
     price,
     resolution: {
@@ -1262,7 +1329,7 @@ function assetFlowRow(
       lookup_keys: []
     },
     score: {
-      heat: scoreBlock({ score_version: "social_heat_v1", score: 86, reasons: ["rising"], risks: ["public_stream_coverage"] }),
+      heat: scoreBlock({ score_version: "social_heat_v1", score: 86, status: "rising", reasons: ["rising"], risks: ["public_stream_coverage"] }),
       quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
       propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
       tradeability: scoreBlock({
@@ -1291,9 +1358,12 @@ function assetFlowRow(
         risks: ["public_stream_coverage"],
         components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
       })
+      ,
+      ...options.score
     },
     decision: "driver",
-    data_health: { identity: "EXACT", market: price.market_observation_status ?? "pending", coverage: "public_stream" }
+    data_health: { identity: "EXACT", market: price.market_observation_status ?? "pending", coverage: "public_stream" },
+    source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3", "event-upeg-4"]
   };
 }
 
@@ -1323,7 +1393,7 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
 function assetFlowProjection(): AssetFlowData["projection"] {
   return {
     status: "fresh",
-    version: "token-radar-v5-auditable",
+    version: "token-radar-v6-auditable",
     source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
     computed_at_ms: 1_777_746_300_000
@@ -1763,6 +1833,11 @@ function renderWithQuery(children: ReactNode) {
     }
   });
   return render(<QueryClientProvider client={client}>{children}</QueryClientProvider>);
+}
+
+function requireElement<T extends Element>(element: T | null): T {
+  expect(element).toBeInTheDocument();
+  return element as T;
 }
 
 function ok<T>(data: T): ApiResponse<T> {

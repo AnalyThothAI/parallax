@@ -10,12 +10,17 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
     weighted_mentions = safe_float(features.get("weighted_mentions"), float(mentions))
     previous_mentions = safe_int(features.get("previous_mentions"))
     mention_delta = safe_int(features.get("mention_delta"), mentions - previous_mentions)
-    z_raw = features.get("robust_z", features.get("z_ewma", features.get("z_score")))
     robust_z = safe_float(features.get("robust_z")) if features.get("robust_z") is not None else None
     z_ewma = safe_float(features.get("z_ewma")) if features.get("z_ewma") is not None else None
+    z_raw = robust_z if robust_z is not None else z_ewma
     z_value = safe_float(z_raw) if z_raw is not None else None
     new_burst = features.get("new_burst_score")
     new_burst_value = safe_float(new_burst) if new_burst is not None else None
+    baseline_status = str(features["baseline_status"])
+    baseline_version = str(features["baseline_version"])
+    baseline_sample_count = safe_int(features["baseline_sample_count"])
+    baseline_nonzero_sample_count = safe_int(features["baseline_nonzero_sample_count"])
+    zero_slot_count = safe_int(features["zero_slot_count"])
     stream_share = safe_float(features.get("stream_share", features.get("stream_dominance")))
     watched_share = safe_float(features.get("watched_share", features.get("watched_mindshare")))
     is_new = bool(features.get("is_new_local_evidence"))
@@ -33,6 +38,10 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
 
     surprise_points = 0.0
     status = "cold"
+    if baseline_status != "ready":
+        risks.append("sparse_baseline")
+        risk_caps.append(cap("sparse_baseline", 70))
+
     if robust_z is not None and robust_z >= 3:
         surprise_points = 24.0
         status = "burst"
@@ -48,10 +57,10 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
     elif new_burst_value is not None and new_burst_value > 0:
         surprise_points = min(18.0, 8.0 + new_burst_value * 4.0)
         status = "new_burst"
-        reasons.append("insufficient_baseline_new_burst")
+        reasons.append("sparse_baseline_new_burst")
     else:
-        risks.append("insufficient_baseline")
-        status = "insufficient_history"
+        risks.append("baseline_not_discriminative")
+        status = "insufficient_history" if baseline_status != "ready" else "cold"
     score += surprise_points
     contributions.append(contribution("heat.surprise", surprise_points, "baseline_surprise"))
 
@@ -89,8 +98,6 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
     if mentions < 3 and watched_share == 0:
         risks.append("thin_public_only")
         risk_caps.append(cap("thin_public_only", 55))
-    if z_value is None and new_burst_value is None:
-        risk_caps.append(cap("insufficient_baseline", 70))
     if stream_share > 0.50:
         risks.append("market_wide_noise_or_query_bias")
         risk_caps.append(cap("market_wide_noise_or_query_bias", 75))
@@ -103,8 +110,12 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
         contributions=contributions,
         risk_caps=risk_caps,
         data_health={
-            "baseline_ready": z_value is not None,
-            "baseline_status": "ready" if z_value is not None else "insufficient_history",
+            "baseline_ready": baseline_status == "ready",
+            "baseline_status": baseline_status,
+            "sample_count": baseline_sample_count,
+            "nonzero_sample_count": baseline_nonzero_sample_count,
+            "zero_slot_count": zero_slot_count,
+            "baseline_version": baseline_version,
             "public_stream_coverage": True,
         },
         extra={

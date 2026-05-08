@@ -17,7 +17,12 @@ from .pipeline.asset_market_sync import sync_okx_cex_universe
 from .pipeline.harness_ops import attribute_harness_credits, settle_harness_snapshots, update_harness_weights
 from .pipeline.token_discovery_worker import run_token_discovery_once
 from .pipeline.token_intent_rebuild import rebuild_recent_token_intents
-from .pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION, TOKEN_RADAR_SCORE_COMPONENTS
+from .pipeline.token_radar_contract import (
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS,
+    TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS,
+    TOKEN_RADAR_SCORE_COMPONENTS,
+)
 from .pipeline.token_radar_projection import TokenRadarProjection
 from .pipeline.token_resolution_refresh import rebuild_token_radar_windows, reprocess_recent_token_intents
 from .retrieval.account_alert_service import AccountAlertService
@@ -211,14 +216,14 @@ def build_parser() -> argparse.ArgumentParser:
     audit_token_intent.add_argument("--intent-id", default="")
     rebuild_token_radar = ops_subcommands.add_parser(
         "rebuild-token-radar",
-        help="write token radar V5 auditable read model",
+        help="write token radar V6 auditable read model",
     )
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     rebuild_token_radar.add_argument("--limit", type=int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
     audit_token_radar = ops_subcommands.add_parser(
         "audit-token-radar",
-        help="audit token radar V5 rows for scoring and market-readiness regressions",
+        help="audit token radar V6 rows for scoring and market-readiness regressions",
     )
     audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     audit_token_radar.add_argument("--limit", type=int, default=100)
@@ -867,6 +872,10 @@ def _audit_token_radar_rows(
         projection_version = row.get("projection_version")
         if projection_version != TOKEN_RADAR_PROJECTION_VERSION:
             violations.append({"row": index, "code": "wrong_projection_version", "value": projection_version})
+        attention = row.get("attention_json") if isinstance(row.get("attention_json"), dict) else {}
+        missing_attention = sorted(set(TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS) - set(attention))
+        if missing_attention:
+            violations.append({"row": index, "code": "missing_attention_fields", "fields": missing_attention})
         score = row.get("score_json") if isinstance(row.get("score_json"), dict) else {}
         if "price_health" in score:
             violations.append({"row": index, "code": "legacy_price_health"})
@@ -879,6 +888,34 @@ def _audit_token_radar_rows(
                 violations.append({"row": index, "component": component, "code": "missing_score_version"})
             if not block.get("contributions"):
                 violations.append({"row": index, "component": component, "code": "empty_contributions"})
+            data_health = block.get("data_health") if isinstance(block.get("data_health"), dict) else {}
+            if not data_health:
+                violations.append({"row": index, "component": component, "code": "missing_data_health"})
+            if component == "heat":
+                missing_heat_health = sorted(set(TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS) - set(data_health))
+                if missing_heat_health:
+                    violations.append(
+                        {
+                            "row": index,
+                            "component": component,
+                            "code": "missing_heat_data_health_fields",
+                            "fields": missing_heat_health,
+                        }
+                    )
+                if (
+                    "baseline_status" in attention
+                    and "baseline_status" in data_health
+                    and attention["baseline_status"] != data_health["baseline_status"]
+                ):
+                    violations.append(
+                        {
+                            "row": index,
+                            "component": component,
+                            "code": "baseline_status_mismatch",
+                            "attention": attention["baseline_status"],
+                            "score": data_health["baseline_status"],
+                        }
+                    )
         market = row.get("market_json") if isinstance(row.get("market_json"), dict) else {}
         if row.get("decision") == "driver" and str(market.get("market_observation_status") or "") != "ready":
             violations.append({"row": index, "code": "driver_without_ready_market"})

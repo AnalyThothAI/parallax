@@ -41,19 +41,59 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
     assert len({all_5m["row_id"], matched_5m["row_id"], all_1h["row_id"]}) == 3
 
 
-def test_token_radar_projection_uses_v5_auditable_contract():
+def test_token_radar_projection_uses_v6_auditable_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
-    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v5-auditable"
+    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v6-auditable"
     assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+price_observations"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
 
 
-def test_analysis_window_caps_small_windows_to_previous_window():
+def test_analysis_window_loads_baseline_and_attention_history():
     now_ms = 1_777_800_000_000
 
-    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["5m"]) == now_ms - 10 * 60 * 1000
-    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["1h"]) == now_ms - 2 * 60 * 60 * 1000
-    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["24h"]) == now_ms - 24 * 60 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["5m"]) == now_ms - 24 * 60 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["1h"]) == now_ms - 24 * 60 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["4h"]) == now_ms - 7 * 4 * 60 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["24h"]) == now_ms - 7 * 24 * 60 * 60 * 1000
+
+
+def test_project_group_persists_baseline_fields_into_attention_and_heat_score():
+    now_ms = 1_777_800_000_000
+    window_ms = WINDOW_MS["5m"]
+    score_since_ms = now_ms - window_ms
+    rows = [
+        source_row(f"current-{index}", received_at_ms=now_ms - 60_000 - index * 1_000, author=f"voice{index}")
+        for index in range(4)
+    ]
+    rows.extend(
+        source_row(
+            f"baseline-{index}",
+            received_at_ms=score_since_ms - index * window_ms - 60_000,
+            author=f"base{index}",
+        )
+        for index in range(6)
+    )
+
+    row = _project_group(
+        rows,
+        now_ms=now_ms,
+        window="5m",
+        scope="all",
+        score_since_ms=score_since_ms,
+        window_ms=window_ms,
+        total_window_events=4,
+    )
+
+    assert row is not None
+    assert row["attention_json"]["baseline_status"] == "ready"
+    assert row["attention_json"]["baseline_sample_count"] == 6
+    assert row["attention_json"]["baseline_nonzero_sample_count"] == 6
+    assert row["attention_json"]["previous_mentions"] == 1
+    assert row["attention_json"]["mention_delta"] == 3
+    assert row["score_json"]["heat"]["data_health"]["baseline_status"] == "ready"
+    assert row["score_json"]["heat"]["data_health"]["sample_count"] == 6
+    assert row["score_json"]["heat"]["robust_z"] == 3
+    assert row["score_json"]["heat"]["z_score"] == 3
 
 
 def test_projection_display_symbol_ignores_address_like_labels():
@@ -293,6 +333,40 @@ def test_resolved_pending_market_never_projects_as_driver():
     for block in row["score_json"].values():
         assert block["score_version"]
         assert block["contributions"]
+
+
+def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> dict:
+    return {
+        "event_id": event_id,
+        "intent_id": f"intent-{event_id}",
+        "received_at_ms": received_at_ms,
+        "author_handle": author,
+        "is_watched": author == "alice",
+        "text": "$PEPE strong follow-through",
+        "text_clean": "$pepe strong follow-through",
+        "intent_confidence": 1.0,
+        "resolution_status": "EXACT",
+        "target_type": "Asset",
+        "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "pricefeed_id": "pricefeed:dex-token:gmgn:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "display_symbol": "PEPE",
+        "asset_symbol": "PEPE",
+        "asset_chain_id": "eip155:1",
+        "asset_address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "reason_codes_json": [],
+        "candidate_ids_json": [],
+        "lookup_keys_json": [],
+        "market_provider": "gmgn_payload",
+        "market_observed_at_ms": received_at_ms,
+        "market_price_usd": 0.01,
+        "market_price_basis": "usd",
+        "event_price_usd": 0.01,
+        "event_price_basis": "usd",
+        "first_price_usd": 0.01,
+        "first_price_observed_at_ms": received_at_ms,
+        "market_market_cap_usd": 1_000_000,
+        "market_liquidity_usd": 250_000,
+    }
 
 
 class FakeConn:

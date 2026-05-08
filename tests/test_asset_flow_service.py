@@ -150,6 +150,17 @@ def test_asset_flow_exposes_market_snapshot_health_from_read_model():
     assert price["snapshot_age_ms"] == 60_000
 
 
+def test_asset_flow_uses_price_json_only_without_legacy_market_fallback():
+    row = radar_row(lane="resolved", symbol="BTC", asset_id="asset:cex:BTC")
+    row["price_json"] = None
+    row["market_json"] = {"market_status": "ready", "market_observation_status": "ready"}
+    service = AssetFlowService(token_radar=FakeTokenRadar(rows=[row]))
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["targets"][0]["price"] == {}
+
+
 def test_asset_flow_keeps_diagnosable_missing_market_status():
     service = AssetFlowService(
         token_radar=FakeTokenRadar(

@@ -56,7 +56,7 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "target": row.get("target_json") or {},
         "attention": row.get("attention_json") or {},
         "resolution": row.get("resolution_json") or {},
-        "price": row.get("price_json") or row.get("market_json") or {},
+        "price": row.get("price_json") or {},
         "score": row.get("score_json") or {},
         "decision": row.get("decision"),
         "data_health": row.get("data_health_json") or {},

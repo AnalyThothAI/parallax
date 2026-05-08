@@ -51,6 +51,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
         risks.append("unresolved_token_identity")
         hard_risks.append("unresolved_token_identity")
         risk_caps.append(cap("unresolved_token_identity", 20))
+        contributions.append(contribution("tradeability.identity", 0.0, "unresolved_token_identity"))
 
     if market_fresh:
         score += 25.0
@@ -64,6 +65,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
             risk_caps.append(cap(risk, 35))
         else:
             risk_caps.append(cap(risk, 70))
+        contributions.append(contribution("tradeability.market_fresh", 0.0, risk))
 
     if target_type == "CexToken":
         if volume_present:
@@ -72,14 +74,20 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
             contributions.append(contribution("tradeability.cex_volume", 25.0, "cex_volume_present"))
         else:
             risks.append("missing_cex_volume")
+            contributions.append(contribution("tradeability.cex_volume", 0.0, "missing_cex_volume"))
         if open_interest_present:
             score += 10.0
             reasons.append("cex_open_interest_present")
             contributions.append(contribution("tradeability.cex_open_interest", 10.0, "cex_open_interest_present"))
+        else:
+            contributions.append(contribution("tradeability.cex_open_interest", 0.0, "missing_cex_open_interest"))
         if pool_present:
             score += 10.0
             reasons.append("native_market_present")
             contributions.append(contribution("tradeability.native_market", 10.0, "native_market_present"))
+        else:
+            risks.append("missing_native_market")
+            contributions.append(contribution("tradeability.native_market", 0.0, "missing_native_market"))
     else:
         if market_cap_present:
             score += 20.0
@@ -89,6 +97,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
             risks.append("missing_market_cap")
             hard_risks.append("missing_market_cap")
             risk_caps.append(cap("missing_market_cap", 40))
+            contributions.append(contribution("tradeability.market_cap", 0.0, "missing_market_cap"))
 
         if liquidity_present:
             score += 15.0
@@ -96,6 +105,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
             contributions.append(contribution("tradeability.liquidity", 15.0, "liquidity_present"))
         else:
             risks.append("missing_liquidity")
+            contributions.append(contribution("tradeability.liquidity", 0.0, "missing_liquidity"))
 
         if pool_present:
             score += 10.0
@@ -103,6 +113,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
             contributions.append(contribution("tradeability.pool", 10.0, "pool_present"))
         else:
             risks.append("missing_pool")
+            contributions.append(contribution("tradeability.pool", 0.0, "missing_pool"))
     if lookahead_risk:
         risks.append("lookahead_risk")
         hard_risks.append("lookahead_risk")

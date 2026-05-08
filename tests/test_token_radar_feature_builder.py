@@ -30,6 +30,40 @@ def test_radar_feature_builder_counts_windows_and_stream_share():
     assert features.propagation["independent_authors"] == 1
 
 
+def test_radar_feature_builder_materializes_baseline_contract():
+    now_ms = 1_700_000_000_000
+    window_ms = 5 * 60_000
+    score_start_ms = now_ms - window_ms
+    baseline_rows = [
+        row(f"baseline-{index}", received_at_ms=score_start_ms - index * window_ms - 60_000, author=f"base{index}")
+        for index in range(6)
+    ]
+    current_rows = [
+        row(f"current-{index}", received_at_ms=now_ms - 60_000 - index * 1_000, author=f"voice{index}")
+        for index in range(4)
+    ]
+
+    features = build_radar_features(
+        window_rows=current_rows,
+        context_rows=[*current_rows, *baseline_rows],
+        previous_rows=[baseline_rows[0]],
+        now_ms=now_ms,
+        window_ms=window_ms,
+        total_window_events=4,
+    )
+
+    assert features.attention["baseline_status"] == "ready"
+    assert features.attention["baseline_sample_count"] == 6
+    assert features.attention["baseline_nonzero_sample_count"] == 6
+    assert features.attention["zero_slot_count"] == 0
+    assert features.attention["previous_mentions"] == 1
+    assert features.attention["mention_delta"] == 3
+    assert features.heat["baseline_version"] == "token_baseline_v2"
+    assert features.heat["robust_z"] == 3
+    assert features.heat["z_score"] == features.heat["robust_z"]
+    assert features.heat["new_burst_score"] == 0
+
+
 def test_radar_feature_builder_sets_cex_tradeability_features():
     now_ms = 1_700_000_000_000
     features = build_radar_features(

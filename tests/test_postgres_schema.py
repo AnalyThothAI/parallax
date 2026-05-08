@@ -31,6 +31,9 @@ TOKEN_RADAR_PRUNE_MIGRATION = Path(
 TOKEN_RESOLUTION_RETIRE_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py"
 )
+TOKEN_RADAR_V6_PRUNE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -190,10 +193,10 @@ def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables(
 
 
 def test_token_radar_prune_migration_removes_non_current_projection_versions() -> None:
-    text = TOKEN_RADAR_PRUNE_MIGRATION.read_text()
+    text = TOKEN_RADAR_V6_PRUNE_MIGRATION.read_text()
 
     assert "DELETE FROM token_radar_rows" in text
-    assert "projection_version <> 'token-radar-v5-auditable'" in text
+    assert "projection_version <> 'token-radar-v6-auditable'" in text
     assert "DELETE FROM projection_runs" in text
     assert "DELETE FROM projection_offsets" in text
 

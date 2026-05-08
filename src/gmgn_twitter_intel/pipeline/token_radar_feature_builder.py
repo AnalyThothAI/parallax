@@ -5,7 +5,10 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
+from ..retrieval.baseline_scoring import token_baseline_v2
 from ..retrieval.post_text_quality import post_quality_score, post_text_features
+
+BASELINE_SLOT_COUNT = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +37,29 @@ def build_radar_features(
     window = list(window_rows)
     previous = list(previous_rows)
     attention = _attention(window=window, context=context, now_ms=now_ms, total_window_events=total_window_events)
-    heat = _heat_features(window=window, previous=previous, attention=attention)
+    heat = _heat_features(
+        window=window,
+        context=context,
+        previous=previous,
+        attention=attention,
+        now_ms=now_ms,
+        window_ms=window_ms,
+    )
+    attention = {
+        **attention,
+        "previous_mentions": heat["previous_mentions"],
+        "mention_delta": heat["mention_delta"],
+        "mention_delta_pct": heat["mention_delta_pct"],
+        "z_score": heat["z_score"],
+        "z_ewma": heat["z_ewma"],
+        "robust_z": heat["robust_z"],
+        "new_burst_score": heat["new_burst_score"],
+        "baseline_version": heat["baseline_version"],
+        "baseline_status": heat["baseline_status"],
+        "baseline_sample_count": heat["baseline_sample_count"],
+        "baseline_nonzero_sample_count": heat["baseline_nonzero_sample_count"],
+        "zero_slot_count": heat["zero_slot_count"],
+    }
     quality = _quality_features(window)
     propagation = _propagation_features(window=window, previous=previous, window_ms=window_ms)
     market = _latest_market_row(window)
@@ -89,31 +114,70 @@ def _attention(
 def _heat_features(
     *,
     window: list[dict[str, Any]],
+    context: list[dict[str, Any]],
     previous: list[dict[str, Any]],
     attention: dict[str, Any],
+    now_ms: int,
+    window_ms: int,
 ) -> dict[str, Any]:
     mentions = len({str(row["event_id"]) for row in window})
     previous_mentions = len({str(row["event_id"]) for row in previous})
     watched_mentions = int(attention.get("watched_mentions") or 0)
     mention_delta = mentions - previous_mentions
+    weighted_mentions = sum(_confidence(row) for row in window)
+    baseline = token_baseline_v2(
+        slot_counts=_baseline_slot_counts(context=context, now_ms=now_ms, window_ms=window_ms),
+        current_mentions=mentions,
+        current_weighted_mentions=weighted_mentions,
+    )
+    z_score = baseline["robust_z"] if baseline["robust_z"] is not None else baseline["z_ewma"]
     return {
         "mentions": mentions,
         "mentions_5m": attention.get("mentions_5m"),
         "mentions_1h": attention.get("mentions_1h"),
         "mentions_4h": attention.get("mentions_4h"),
         "mentions_24h": attention.get("mentions_24h"),
-        "weighted_mentions": sum(_confidence(row) for row in window),
+        "weighted_mentions": weighted_mentions,
         "previous_mentions": previous_mentions,
         "mention_delta": mention_delta,
         "mention_delta_pct": mention_delta / max(previous_mentions, 1) if previous_mentions else None,
-        "robust_z": None,
-        "z_ewma": None,
-        "new_burst_score": mentions if previous_mentions == 0 and mentions > 0 else 0,
+        "baseline_version": baseline["baseline_version"],
+        "baseline_status": baseline["baseline_status"],
+        "baseline_sample_count": baseline["sample_count"],
+        "baseline_nonzero_sample_count": baseline["nonzero_sample_count"],
+        "zero_slot_count": baseline["zero_slot_count"],
+        "ewma_mean": baseline["ewma_mean"],
+        "ewma_stddev": baseline["ewma_stddev"],
+        "median_count": baseline["median_count"],
+        "mad": baseline["mad"],
+        "robust_z": baseline["robust_z"],
+        "z_ewma": baseline["z_ewma"],
+        "z_score": z_score,
+        "new_burst_score": baseline["new_burst_score"],
         "stream_share": attention.get("stream_share"),
         "watched_share": watched_mentions / max(1, mentions),
         "is_new_local_evidence": previous_mentions == 0 and mentions > 0,
         "is_first_seen_by_watched": watched_mentions > 0 and not any(row.get("is_watched") for row in previous),
     }
+
+
+def _baseline_slot_counts(*, context: list[dict[str, Any]], now_ms: int, window_ms: int) -> list[int]:
+    score_start_ms = int(now_ms) - int(window_ms)
+    first_slot_start_ms = score_start_ms - BASELINE_SLOT_COUNT * int(window_ms)
+    counts: list[int] = []
+    for slot_index in range(BASELINE_SLOT_COUNT):
+        slot_start_ms = first_slot_start_ms + slot_index * int(window_ms)
+        slot_end_ms = slot_start_ms + int(window_ms)
+        counts.append(
+            len(
+                {
+                    str(row["event_id"])
+                    for row in context
+                    if slot_start_ms <= int(row.get("received_at_ms") or 0) < slot_end_ms
+                }
+            )
+        )
+    return counts
 
 
 def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:

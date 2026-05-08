@@ -12,6 +12,11 @@ def test_social_heat_burst_scores_abnormal_acceleration():
             "z_ewma": 2.8,
             "robust_z": 3.4,
             "new_burst_score": None,
+            "baseline_version": "token_baseline_v2",
+            "baseline_status": "ready",
+            "baseline_sample_count": 6,
+            "baseline_nonzero_sample_count": 6,
+            "zero_slot_count": 0,
             "stream_share": 0.18,
             "watched_share": 0.25,
             "is_new_local_evidence": True,
@@ -37,7 +42,12 @@ def test_social_heat_marks_single_mention_as_thin():
             "mention_delta": 1,
             "z_ewma": None,
             "robust_z": None,
-            "new_burst_score": None,
+            "new_burst_score": 0.69,
+            "baseline_version": "token_baseline_v2",
+            "baseline_status": "insufficient_history",
+            "baseline_sample_count": 6,
+            "baseline_nonzero_sample_count": 1,
+            "zero_slot_count": 5,
             "stream_share": 0.01,
             "watched_share": 0.0,
             "is_new_local_evidence": True,
@@ -45,8 +55,10 @@ def test_social_heat_marks_single_mention_as_thin():
         }
     )
 
-    assert score["status"] == "insufficient_history"
+    assert score["status"] == "new_burst"
+    assert "sparse_baseline" in score["risks"]
     assert "thin_mentions" in score["risks"]
     assert score["score"] <= 45
     assert any(cap["risk"] == "thin_mentions" for cap in score["risk_caps"])
     assert any(cap["risk"] == "thin_public_only" for cap in score["risk_caps"])
+    assert any(cap["risk"] == "sparse_baseline" for cap in score["risk_caps"])

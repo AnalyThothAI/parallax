@@ -50,7 +50,7 @@ import {
 import { tokenForSearchQuery } from "./lib/searchIntent";
 import { buildWatchlistRows } from "./lib/watchlist";
 import type { TargetRef } from "./domain/tokenTarget";
-import { targetRefEquals, targetRefFromTokenItem } from "./domain/tokenTarget";
+import { targetRefEquals, targetRefFromTokenItem, targetRefKey } from "./domain/tokenTarget";
 import { useTraderStore } from "./store/useTraderStore";
 
 type SelectedSignal =
@@ -59,6 +59,8 @@ type SelectedSignal =
   | { kind: "attention"; item: TradingAttentionItem }
   | { kind: "query"; query: string }
   | null;
+
+const TOKEN_RADAR_CONTRACT_VERSION = "token-radar-v6-auditable";
 
 export function App() {
   const queryClient = useQueryClient();
@@ -226,14 +228,30 @@ export function App() {
   });
 
   const rawTokenItems = useMemo(
-    () => assetFlowRows(assetFlowQuery.data?.data).map((row) => tokenRadarRowToTokenItem(row, windowKey, scope)),
+    () => tokenRadarItems(assetFlowQuery.data?.data, windowKey, scope),
     [assetFlowQuery.data?.data, scope, windowKey]
   );
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const drawerTargetRef = targetRefFromTokenItem(selectedToken);
-  const selectedTokenPage = pageTargetRef ? tokenItems.find((item) => targetRefEquals(targetRefFromTokenItem(item), pageTargetRef)) ?? null : null;
+  const pageTargetKey = pageTargetRef ? targetRefKey(pageTargetRef) : null;
+  const pageAssetFlowQuery = useQuery({
+    queryKey: ["token-radar-page", pageWindow, scope, pageTargetKey],
+    queryFn: () =>
+      getApi<AssetFlowData>("/api/token-radar", {
+        token,
+        params: { window: pageWindow, limit: 48, scope }
+      }),
+    enabled: Boolean(token && pageTargetRef),
+    refetchInterval: 10_000
+  });
+  const pageRawTokenItems = useMemo(
+    () => tokenRadarItems(pageAssetFlowQuery.data?.data, pageWindow, scope),
+    [pageAssetFlowQuery.data?.data, pageWindow, scope]
+  );
+  const pageTokenItems = useMemo(() => sortTokenItems(pageRawTokenItems, radarSortMode), [pageRawTokenItems, radarSortMode]);
+  const selectedTokenPage = pageTargetRef ? pageTokenItems.find((item) => targetRefEquals(targetRefFromTokenItem(item), pageTargetRef)) ?? null : null;
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
   const pagePostRequestSort = pagePostSortMode === "catalyst" ? "catalyst" : "recent";
 
@@ -777,25 +795,29 @@ export function App() {
           ) : (
             <>
               <section className="mobile-task-surface" data-mobile-task-panel="radar">
-                {selectedTokenPage ? (
-                  <TokenTargetPage
-                    token={selectedTokenPage}
-                    timeline={pageTimelineQuery.data?.data ?? null}
-                    posts={pagePostsData}
-                    windowKey={pageWindow}
-                    postRange={pagePostRange}
-                    postSortMode={pagePostSortMode}
-                    selectedStageId={pageSelectedStageId}
-                    isTimelineLoading={pageTimelineQuery.isFetching}
-                    isPostsLoading={pagePostsQuery.isLoading}
-                    isPostsFetchingNextPage={pagePostsQuery.isFetchingNextPage}
-                    onBack={() => setPageTargetRef(null)}
-                    onWindowChange={setPageWindow}
-                    onPostRangeChange={setPagePostRange}
-                    onPostSortModeChange={setPagePostSortMode}
-                    onStageSelect={setPageSelectedStageId}
-                    onLoadMorePosts={() => void pagePostsQuery.fetchNextPage()}
-                  />
+                {pageTargetRef ? (
+                  selectedTokenPage ? (
+                    <TokenTargetPage
+                      token={selectedTokenPage}
+                      timeline={pageTimelineQuery.data?.data ?? null}
+                      posts={pagePostsData}
+                      windowKey={pageWindow}
+                      postRange={pagePostRange}
+                      postSortMode={pagePostSortMode}
+                      selectedStageId={pageSelectedStageId}
+                      isTimelineLoading={pageTimelineQuery.isFetching}
+                      isPostsLoading={pagePostsQuery.isLoading}
+                      isPostsFetchingNextPage={pagePostsQuery.isFetchingNextPage}
+                      onBack={() => setPageTargetRef(null)}
+                      onWindowChange={setPageWindow}
+                      onPostRangeChange={setPagePostRange}
+                      onPostSortModeChange={setPagePostSortMode}
+                      onStageSelect={setPageSelectedStageId}
+                      onLoadMorePosts={() => void pagePostsQuery.fetchNextPage()}
+                    />
+                  ) : (
+                    <div className="empty-state">{pageAssetFlowQuery.isPending ? "loading token audit" : "token audit target missing"}</div>
+                  )
                 ) : (
                   <>
                     <div className="radar-control-row">
@@ -1038,18 +1060,38 @@ function assetFlowRows(data?: AssetFlowData | null): AssetFlowRow[] {
   return [...data.targets, ...data.attention];
 }
 
+function tokenRadarItems(
+  data: AssetFlowData | null | undefined,
+  window: TokenFlowItem["flow"]["window"],
+  scope: TokenFlowItem["posts_query"]["scope"],
+): TokenFlowItem[] {
+  if (!data || data.projection.version !== TOKEN_RADAR_CONTRACT_VERSION) {
+    return [];
+  }
+  return assetFlowRows(data).map((row) => tokenRadarRowToTokenItem(row, window, scope));
+}
+
 export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
-  const mentions = row.attention.mentions_window;
-  const authors = row.attention.unique_authors;
-  const watched = row.attention.watched_mentions;
-  const previousMentions = row.attention.previous_mentions ?? 0;
-  const mentionDelta = row.attention.mention_delta ?? mentions;
-  const mentionDeltaPct = row.attention.mention_delta_pct ?? null;
-  const zScore = row.attention.z_score ?? null;
-  const newBurstScore = row.attention.new_burst_score ?? null;
-  const streamShare = row.attention.stream_share ?? 0;
+  const attention = row.attention as unknown as Record<string, unknown>;
+  const mentions = requiredNumber(row.attention.mentions_window, "attention.mentions_window");
+  const authors = requiredNumber(row.attention.unique_authors, "attention.unique_authors");
+  const watched = requiredNumber(row.attention.watched_mentions, "attention.watched_mentions");
+  const latestSeenMs = requiredNumber(row.attention.latest_seen_ms, "attention.latest_seen_ms");
+  const previousMentions = requiredNumber(row.attention.previous_mentions, "attention.previous_mentions");
+  const mentionDelta = requiredNumber(row.attention.mention_delta, "attention.mention_delta");
+  const mentionDeltaPct = requiredNullableNumber(attention, "mention_delta_pct", "attention.mention_delta_pct");
+  const zScore = requiredNullableNumber(attention, "z_score", "attention.z_score");
+  const newBurstScore = requiredNullableNumber(attention, "new_burst_score", "attention.new_burst_score");
+  const streamShare = requiredNumber(row.attention.stream_share, "attention.stream_share");
+  const baselineStatus = requiredString(row.attention.baseline_status, "attention.baseline_status");
+  const baselineSampleCount = requiredNumber(row.attention.baseline_sample_count, "attention.baseline_sample_count");
+  const mentions5m = requiredNumber(row.attention.mentions_5m, "attention.mentions_5m");
+  const mentions1h = requiredNumber(row.attention.mentions_1h, "attention.mentions_1h");
+  const mentions4h = requiredNumber(row.attention.mentions_4h, "attention.mentions_4h");
+  const mentions24h = requiredNumber(row.attention.mentions_24h, "attention.mentions_24h");
+  const sourceEventIds = requiredArray(row.source_event_ids, "source_event_ids");
   const resolved = isResolvedResolutionStatus(row.resolution.status);
-  const price = row.price ?? null;
+  const price = requiredObject(row.price, "price");
   const target = row.target ?? {};
   const isChainAsset = target.target_type === "Asset";
   const isCexToken = target.target_type === "CexToken";
@@ -1059,19 +1101,21 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
   const resolutionReasons = row.resolution.reason_codes ?? row.resolution.reasons ?? [];
   const candidateCount = row.resolution.candidate_ids?.length ?? row.resolution.candidates?.length ?? 0;
   const discoveryStatus = discoveryStatusSummary(row.resolution.discovery);
-  const marketObservationStatus = price?.market_observation_status ?? row.data_health?.market ?? "missing_market";
-  const marketHasUsableSnapshot = price?.market_status === "ready" || price?.market_status === "fresh";
-  const priceChangeStatus = price?.price_change_status ?? (marketHasUsableSnapshot ? "ready" : "missing_market");
-  const heat = normalizedScoreBlock(row.score?.heat);
-  const quality = normalizedScoreBlock(row.score?.quality);
-  const propagation = normalizedScoreBlock(row.score?.propagation);
-  const tradeability = normalizedScoreBlock(row.score?.tradeability);
-  const timing = normalizedScoreBlock(row.score?.timing);
-  const opportunity = normalizedScoreBlock(row.score?.opportunity);
+  const marketObservationStatus = requiredString(price.market_observation_status, "price.market_observation_status");
+  const marketStatus = requiredString(price.market_status, "price.market_status");
+  const marketHasUsableSnapshot = marketStatus === "fresh";
+  const priceChangeStatus = requiredString(price.price_change_status, "price.price_change_status");
+  const heat = normalizedScoreBlock(row.score?.heat, "heat");
+  const quality = normalizedScoreBlock(row.score?.quality, "quality");
+  const propagation = normalizedScoreBlock(row.score?.propagation, "propagation");
+  const tradeability = normalizedScoreBlock(row.score?.tradeability, "tradeability");
+  const timing = normalizedScoreBlock(row.score?.timing, "timing");
+  const opportunity = normalizedScoreBlock(row.score?.opportunity, "opportunity");
   const decision = normalizeDecision(row.decision);
+  const heatStatus = requiredString(heat.status, "score.heat.status");
   const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
   const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
-  const marketPrice = price?.price_usd ?? price?.price_quote ?? null;
+  const marketPrice = price.price_usd ?? price.price_quote ?? null;
   const chain = isChainAsset ? target.chain_id ?? null : null;
   const address = isChainAsset ? target.address ?? null : null;
   return {
@@ -1095,32 +1139,32 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       discovery_status: discoveryStatus
     },
     market: {
-      market_status: price?.market_status ?? "missing",
+      market_status: marketStatus,
       price: marketPrice,
-      market_cap: price?.market_cap_usd ?? null,
-      liquidity: price?.liquidity_usd ?? null,
+      market_cap: price.market_cap_usd ?? null,
+      liquidity: price.liquidity_usd ?? null,
       pool_status: marketHasUsableSnapshot ? "ready" : "missing",
-      holder_count: price?.holders ?? null,
-      volume_24h: price?.volume_24h_usd ?? null,
-      snapshot_age_ms: price?.snapshot_age_ms ?? null,
-      snapshot_received_at_ms: price?.snapshot_observed_at_ms ?? null,
-      social_signal_start_ms: price?.social_signal_start_ms ?? row.attention.latest_seen_ms ?? null,
-      reference_ms: row.attention.latest_seen_ms ?? null,
-      price_at_social_start: price?.price_at_social_start ?? null,
-      price_at_reference: price?.price_at_reference ?? marketPrice,
-      price_change_since_social_pct: price?.price_change_since_social_pct ?? null,
-      price_before_social_start: price?.price_before_social_start ?? null,
-      price_change_before_social_pct: price?.price_change_before_social_pct ?? null,
-      price_at_first_snapshot: price?.price_at_first_snapshot ?? null,
-      first_snapshot_observed_at_ms: price?.first_snapshot_observed_at_ms ?? null,
-      price_change_since_first_snapshot_pct: price?.price_change_since_first_snapshot_pct ?? null,
+      holder_count: price.holders ?? null,
+      volume_24h: price.volume_24h_usd ?? null,
+      snapshot_age_ms: price.snapshot_age_ms ?? null,
+      snapshot_received_at_ms: price.snapshot_observed_at_ms ?? null,
+      social_signal_start_ms: price.social_signal_start_ms ?? latestSeenMs,
+      reference_ms: latestSeenMs,
+      price_at_social_start: price.price_at_social_start ?? null,
+      price_at_reference: price.price_at_reference ?? marketPrice,
+      price_change_since_social_pct: price.price_change_since_social_pct ?? null,
+      price_before_social_start: price.price_before_social_start ?? null,
+      price_change_before_social_pct: price.price_change_before_social_pct ?? null,
+      price_at_first_snapshot: price.price_at_first_snapshot ?? null,
+      first_snapshot_observed_at_ms: price.first_snapshot_observed_at_ms ?? null,
+      price_change_since_first_snapshot_pct: price.price_change_since_first_snapshot_pct ?? null,
       market_observation_status: marketObservationStatus,
       price_change_status: priceChangeStatus
     },
     flow: {
       window,
       window_start_ms: null,
-      window_end_ms: row.attention.latest_seen_ms ?? null,
+      window_end_ms: latestSeenMs,
       mentions,
       direct_mentions: resolved ? mentions : 0,
       symbol_mentions: mentions,
@@ -1133,17 +1177,17 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       z_score: zScore,
       new_burst_score: newBurstScore,
       stream_dominance: 0,
-      baseline_status: row.attention.baseline_status ?? "insufficient_history",
-      baseline_sample_count: row.attention.baseline_sample_count ?? 0
+      baseline_status: baselineStatus,
+      baseline_sample_count: baselineSampleCount
     },
     social_heat: {
       ...heat,
       window,
       mentions,
-      mentions_5m: row.attention.mentions_5m,
-      mentions_1h: row.attention.mentions_1h,
-      mentions_4h: window === "4h" ? mentions : row.attention.mentions_1h,
-      mentions_24h: window === "24h" ? mentions : row.attention.mentions_1h,
+      mentions_5m: mentions5m,
+      mentions_1h: mentions1h,
+      mentions_4h: mentions4h,
+      mentions_24h: mentions24h,
       weighted_mentions: mentions,
       previous_mentions: previousMentions,
       mention_delta: mentionDelta,
@@ -1152,7 +1196,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       new_burst_score: newBurstScore,
       stream_share: streamShare,
       watched_share: mentions ? watched / mentions : 0,
-      status: heat.reasons[0] ?? (newBurstScore !== null ? "rising" : "insufficient_history")
+      status: heatStatus
     },
     discussion_quality: {
       ...quality,
@@ -1179,8 +1223,8 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       ...tradeability,
       identity_tradeable: Boolean(tradeability.identity_tradeable ?? resolved),
       market_fresh: Boolean(tradeability.market_fresh ?? marketHasUsableSnapshot),
-      market_cap_present: Boolean(tradeability.market_cap_present ?? price?.market_cap_usd),
-      liquidity_present: Boolean(tradeability.liquidity_present ?? price?.liquidity_usd),
+      market_cap_present: Boolean(tradeability.market_cap_present ?? price.market_cap_usd),
+      liquidity_present: Boolean(tradeability.liquidity_present ?? price.liquidity_usd),
       pool_present: Boolean(tradeability.pool_present ?? marketHasUsableSnapshot),
       hard_risks: tradeability.hard_risks ?? tradeability.risks
     },
@@ -1188,9 +1232,9 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       score: timing.score,
       score_version: timing.score_version,
       status: timingStatus,
-      social_signal_start_ms: row.attention.latest_seen_ms ?? null,
-      price_change_since_social_pct: price?.price_change_since_social_pct ?? null,
-      price_change_before_social_pct: price?.price_change_before_social_pct ?? null,
+      social_signal_start_ms: latestSeenMs,
+      price_change_since_social_pct: price.price_change_since_social_pct ?? null,
+      price_change_before_social_pct: price.price_change_before_social_pct ?? null,
       market_observation_status: marketObservationStatus,
       chase_risk: chaseRisk,
       reasons: timing.reasons,
@@ -1204,11 +1248,11 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
       hard_risks: opportunity.hard_risks ?? opportunity.risks,
       components: {
-        heat: row.score?.opportunity?.components?.heat ?? heat.score,
-        quality: row.score?.opportunity?.components?.quality ?? quality.score,
-        propagation: row.score?.opportunity?.components?.propagation ?? propagation.score,
-        tradeability: row.score?.opportunity?.components?.tradeability ?? tradeability.score,
-        timing: row.score?.opportunity?.components?.timing ?? timing.score
+        heat: requiredNumber(row.score.opportunity.components.heat, "score.opportunity.components.heat"),
+        quality: requiredNumber(row.score.opportunity.components.quality, "score.opportunity.components.quality"),
+        propagation: requiredNumber(row.score.opportunity.components.propagation, "score.opportunity.components.propagation"),
+        tradeability: requiredNumber(row.score.opportunity.components.tradeability, "score.opportunity.components.tradeability"),
+        timing: requiredNumber(row.score.opportunity.components.timing, "score.opportunity.components.timing")
       }
     },
     watch: {
@@ -1220,7 +1264,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       reasons: watched ? ["watched_source_present"] : [],
       risks: watched ? [] : ["no_watched_confirmation"]
     },
-    evidence_total_count: row.source_event_ids?.length ?? mentions,
+    evidence_total_count: sourceEventIds.length,
     posts_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope, range: "current_window" },
     timeline_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope }
   };
@@ -1242,20 +1286,74 @@ type RadarScoreInput = {
   chase_risk?: boolean | null;
 };
 
-function normalizedScoreBlock(block: RadarScoreInput | undefined): any {
-  const extra = block && typeof block === "object" ? { ...block } : {};
+function normalizedScoreBlock(block: RadarScoreInput | undefined, component: string): any {
+  if (!block || typeof block !== "object") {
+    throw new Error(`token_radar_contract:score.${component}`);
+  }
+  const extra = { ...block };
   return {
     ...extra,
-    score: Math.round(Number(block?.score ?? 0)),
-    score_version: block?.score_version ?? "missing_score_version",
-    reasons: block?.reasons ?? [],
-    risks: block?.risks ?? [],
-    hard_risks: block?.hard_risks ?? [],
-    contributions: block?.contributions ?? [],
-    risk_caps: block?.risk_caps ?? [],
-    status: block?.status ?? undefined,
-    chase_risk: block?.chase_risk ?? undefined
+    score: Math.round(requiredNumber(block.score, `score.${component}.score`)),
+    score_version: requiredString(block.score_version, `score.${component}.score_version`),
+    reasons: requiredStringArray(block.reasons, `score.${component}.reasons`),
+    risks: requiredStringArray(block.risks, `score.${component}.risks`),
+    hard_risks: Array.isArray(block.hard_risks) ? block.hard_risks : [],
+    contributions: requiredNonEmptyArray(block.contributions, `score.${component}.contributions`),
+    risk_caps: requiredArray(block.risk_caps, `score.${component}.risk_caps`),
+    status: block.status ?? undefined,
+    chase_risk: block.chase_risk ?? undefined
   };
+}
+
+function requiredNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`token_radar_contract:${field}`);
+  }
+  return value;
+}
+
+function requiredNullableNumber(record: Record<string, unknown>, key: string, field: string): number | null {
+  if (!(key in record)) {
+    throw new Error(`token_radar_contract:${field}`);
+  }
+  const value = record[key];
+  if (value === null) {
+    return null;
+  }
+  return requiredNumber(value, field);
+}
+
+function requiredString(value: unknown, field: string): string {
+  if (typeof value !== "string" || !value) {
+    throw new Error(`token_radar_contract:${field}`);
+  }
+  return value;
+}
+
+function requiredObject<T extends object>(value: T | null | undefined, field: string): T {
+  if (!value || typeof value !== "object") {
+    throw new Error(`token_radar_contract:${field}`);
+  }
+  return value;
+}
+
+function requiredArray<T>(value: T[] | undefined, field: string): T[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`token_radar_contract:${field}`);
+  }
+  return value;
+}
+
+function requiredNonEmptyArray<T>(value: T[] | undefined, field: string): T[] {
+  const items = requiredArray(value, field);
+  if (!items.length) {
+    throw new Error(`token_radar_contract:${field}`);
+  }
+  return items;
+}
+
+function requiredStringArray(value: string[] | undefined, field: string): string[] {
+  return requiredArray(value, field).map((item) => requiredString(item, field));
 }
 
 function normalizeDecision(value: string | null | undefined): Decision {
