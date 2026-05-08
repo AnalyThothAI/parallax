@@ -1,0 +1,863 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - heading "intel.cockpit" [level=1] [ref=e8]
+      - paragraph [ref=e9]: /ws · localhost:8765
+    - generic [ref=e10]:
+      - generic [ref=e11]: token ready
+      - generic [ref=e12]: connecting
+      - generic [ref=e13]: checking
+      - generic [ref=e14]: no msg
+    - generic [ref=e15]:
+      - img [ref=e16]
+      - textbox "搜索 CA / $TOKEN / @handle / 文本" [ref=e19]: $PEPE
+      - button "检索" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: MATCHED -
+      - generic [ref=e23]: flow·1h 0
+      - generic [ref=e24]: direct 0
+      - generic [ref=e25]: topics 0
+      - generic [ref=e26]: risk 0
+    - button "notifications" [ref=e27] [cursor=pointer]:
+      - img [ref=e28]
+    - button "刷新" [ref=e31] [cursor=pointer]:
+      - img [ref=e32]
+  - generic [ref=e37]:
+    - complementary [ref=e38]:
+      - generic [ref=e39]:
+        - heading "views" [level=2] [ref=e40]
+        - button "1 Live 0" [ref=e41] [cursor=pointer]:
+          - generic [ref=e42]: "1"
+          - generic [ref=e43]: Live
+          - emphasis [ref=e44]: "0"
+        - button "2 Signal Lab 0" [ref=e45] [cursor=pointer]:
+          - generic [ref=e46]: "2"
+          - generic [ref=e47]: Signal Lab
+          - emphasis [ref=e48]: "0"
+      - generic [ref=e49]:
+        - heading "scope" [level=2] [ref=e50]
+        - generic [ref=e51]:
+          - button "watched" [ref=e52] [cursor=pointer]
+          - button "all stream" [ref=e53] [cursor=pointer]
+        - generic [ref=e54]:
+          - img [ref=e55]
+          - textbox [ref=e58]:
+            - /placeholder: toly, ansem
+      - generic [ref=e59]:
+        - heading "decisions" [level=2] [ref=e60]
+        - generic [ref=e61]:
+          - generic [ref=e62]: driver
+          - generic [ref=e63]: "0"
+        - generic [ref=e64]:
+          - generic [ref=e65]: watch
+          - generic [ref=e66]: "0"
+        - generic [ref=e67]:
+          - generic [ref=e68]: investigate
+          - generic [ref=e69]: "0"
+        - generic [ref=e70]:
+          - generic [ref=e71]: discard
+          - generic [ref=e72]: "0"
+      - generic [ref=e73]:
+        - heading "watchlist" [level=2] [ref=e74]
+        - generic [ref=e75]:
+          - button "T @toly no recent" [ref=e76] [cursor=pointer]:
+            - generic [ref=e77]: T
+            - generic [ref=e78]:
+              - generic [ref=e79]: "@toly"
+              - generic [ref=e80]: no recent
+          - button "T @traderpow no recent" [ref=e81] [cursor=pointer]:
+            - generic [ref=e82]: T
+            - generic [ref=e83]:
+              - generic [ref=e84]: "@traderpow"
+              - generic [ref=e85]: no recent
+          - button "T @theunipcs no recent" [ref=e86] [cursor=pointer]:
+            - generic [ref=e87]: T
+            - generic [ref=e88]:
+              - generic [ref=e89]: "@theunipcs"
+              - generic [ref=e90]: no recent
+          - button "D @dotyyds1234 no recent" [ref=e91] [cursor=pointer]:
+            - generic [ref=e92]: D
+            - generic [ref=e93]:
+              - generic [ref=e94]: "@dotyyds1234"
+              - generic [ref=e95]: no recent
+          - button "B @brc20niubi no recent" [ref=e96] [cursor=pointer]:
+            - generic [ref=e97]: B
+            - generic [ref=e98]:
+              - generic [ref=e99]: "@brc20niubi"
+              - generic [ref=e100]: no recent
+          - button "J @jessepollak no recent" [ref=e101] [cursor=pointer]:
+            - generic [ref=e102]: J
+            - generic [ref=e103]:
+              - generic [ref=e104]: "@jessepollak"
+              - generic [ref=e105]: no recent
+          - button "C @cz_binance no recent" [ref=e106] [cursor=pointer]:
+            - generic [ref=e107]: C
+            - generic [ref=e108]:
+              - generic [ref=e109]: "@cz_binance"
+              - generic [ref=e110]: no recent
+          - button "H @heyibinance no recent" [ref=e111] [cursor=pointer]:
+            - generic [ref=e112]: H
+            - generic [ref=e113]:
+              - generic [ref=e114]: "@heyibinance"
+              - generic [ref=e115]: no recent
+          - button "E @elonmusk no recent" [ref=e116] [cursor=pointer]:
+            - generic [ref=e117]: E
+            - generic [ref=e118]:
+              - generic [ref=e119]: "@elonmusk"
+              - generic [ref=e120]: no recent
+          - button "C @cookerflips no recent" [ref=e121] [cursor=pointer]:
+            - generic [ref=e122]: C
+            - generic [ref=e123]:
+              - generic [ref=e124]: "@cookerflips"
+              - generic [ref=e125]: no recent
+          - button "H @himgajria no recent" [ref=e126] [cursor=pointer]:
+            - generic [ref=e127]: H
+            - generic [ref=e128]:
+              - generic [ref=e129]: "@himgajria"
+              - generic [ref=e130]: no recent
+          - button "C @cryptodevinl no recent" [ref=e131] [cursor=pointer]:
+            - generic [ref=e132]: C
+            - generic [ref=e133]:
+              - generic [ref=e134]: "@cryptodevinl"
+              - generic [ref=e135]: no recent
+          - button "S @spidercrypto0x no recent" [ref=e136] [cursor=pointer]:
+            - generic [ref=e137]: S
+            - generic [ref=e138]:
+              - generic [ref=e139]: "@spidercrypto0x"
+              - generic [ref=e140]: no recent
+          - button "C @changefomo no recent" [ref=e141] [cursor=pointer]:
+            - generic [ref=e142]: C
+            - generic [ref=e143]:
+              - generic [ref=e144]: "@changefomo"
+              - generic [ref=e145]: no recent
+          - button "P @pmarca no recent" [ref=e146] [cursor=pointer]:
+            - generic [ref=e147]: P
+            - generic [ref=e148]:
+              - generic [ref=e149]: "@pmarca"
+              - generic [ref=e150]: no recent
+          - button "W @whitehouse no recent" [ref=e151] [cursor=pointer]:
+            - generic [ref=e152]: W
+            - generic [ref=e153]:
+              - generic [ref=e154]: "@whitehouse"
+              - generic [ref=e155]: no recent
+          - button "R @realdonaldtrump no recent" [ref=e156] [cursor=pointer]:
+            - generic [ref=e157]: R
+            - generic [ref=e158]:
+              - generic [ref=e159]: "@realdonaldtrump"
+              - generic [ref=e160]: no recent
+          - button "B @blknoiz06 no recent" [ref=e161] [cursor=pointer]:
+            - generic [ref=e162]: B
+            - generic [ref=e163]:
+              - generic [ref=e164]: "@blknoiz06"
+              - generic [ref=e165]: no recent
+          - button "V @vitalikbuterin no recent" [ref=e166] [cursor=pointer]:
+            - generic [ref=e167]: V
+            - generic [ref=e168]:
+              - generic [ref=e169]: "@vitalikbuterin"
+              - generic [ref=e170]: no recent
+          - button "A @aster_dex no recent" [ref=e171] [cursor=pointer]:
+            - generic [ref=e172]: A
+            - generic [ref=e173]:
+              - generic [ref=e174]: "@aster_dex"
+              - generic [ref=e175]: no recent
+          - button "D @donaldjtrumpjr no recent" [ref=e176] [cursor=pointer]:
+            - generic [ref=e177]: D
+            - generic [ref=e178]:
+              - generic [ref=e179]: "@donaldjtrumpjr"
+              - generic [ref=e180]: no recent
+          - button "S @sama no recent" [ref=e181] [cursor=pointer]:
+            - generic [ref=e182]: S
+            - generic [ref=e183]:
+              - generic [ref=e184]: "@sama"
+              - generic [ref=e185]: no recent
+          - button "S @sbf_ftx no recent" [ref=e186] [cursor=pointer]:
+            - generic [ref=e187]: S
+            - generic [ref=e188]:
+              - generic [ref=e189]: "@sbf_ftx"
+              - generic [ref=e190]: no recent
+          - button "N @nasa no recent" [ref=e191] [cursor=pointer]:
+            - generic [ref=e192]: "N"
+            - generic [ref=e193]:
+              - generic [ref=e194]: "@nasa"
+              - generic [ref=e195]: no recent
+          - button "A @america no recent" [ref=e196] [cursor=pointer]:
+            - generic [ref=e197]: A
+            - generic [ref=e198]:
+              - generic [ref=e199]: "@america"
+              - generic [ref=e200]: no recent
+          - button "T @theroaringkitty no recent" [ref=e201] [cursor=pointer]:
+            - generic [ref=e202]: T
+            - generic [ref=e203]:
+              - generic [ref=e204]: "@theroaringkitty"
+              - generic [ref=e205]: no recent
+          - button "N @naval no recent" [ref=e206] [cursor=pointer]:
+            - generic [ref=e207]: "N"
+            - generic [ref=e208]:
+              - generic [ref=e209]: "@naval"
+              - generic [ref=e210]: no recent
+          - button "L @liping007 no recent" [ref=e211] [cursor=pointer]:
+            - generic [ref=e212]: L
+            - generic [ref=e213]:
+              - generic [ref=e214]: "@liping007"
+              - generic [ref=e215]: no recent
+          - button "B @btcdayu no recent" [ref=e216] [cursor=pointer]:
+            - generic [ref=e217]: B
+            - generic [ref=e218]:
+              - generic [ref=e219]: "@btcdayu"
+              - generic [ref=e220]: no recent
+          - button "0 @0xcryptowizard no recent" [ref=e221] [cursor=pointer]:
+            - generic [ref=e222]: "0"
+            - generic [ref=e223]:
+              - generic [ref=e224]: "@0xcryptowizard"
+              - generic [ref=e225]: no recent
+          - button "L @lanaaielsa no recent" [ref=e226] [cursor=pointer]:
+            - generic [ref=e227]: L
+            - generic [ref=e228]:
+              - generic [ref=e229]: "@lanaaielsa"
+              - generic [ref=e230]: no recent
+          - button "A @a1lon9 no recent" [ref=e231] [cursor=pointer]:
+            - generic [ref=e232]: A
+            - generic [ref=e233]:
+              - generic [ref=e234]: "@a1lon9"
+              - generic [ref=e235]: no recent
+          - button "B @binance no recent" [ref=e236] [cursor=pointer]:
+            - generic [ref=e237]: B
+            - generic [ref=e238]:
+              - generic [ref=e239]: "@binance"
+              - generic [ref=e240]: no recent
+          - button "B @binancezh no recent" [ref=e241] [cursor=pointer]:
+            - generic [ref=e242]: B
+            - generic [ref=e243]:
+              - generic [ref=e244]: "@binancezh"
+              - generic [ref=e245]: no recent
+          - button "B @bnbchain no recent" [ref=e246] [cursor=pointer]:
+            - generic [ref=e247]: B
+            - generic [ref=e248]:
+              - generic [ref=e249]: "@bnbchain"
+              - generic [ref=e250]: no recent
+          - button "B @binance_intern no recent" [ref=e251] [cursor=pointer]:
+            - generic [ref=e252]: B
+            - generic [ref=e253]:
+              - generic [ref=e254]: "@binance_intern"
+              - generic [ref=e255]: no recent
+          - button "E @ed_x0101 no recent" [ref=e256] [cursor=pointer]:
+            - generic [ref=e257]: E
+            - generic [ref=e258]:
+              - generic [ref=e259]: "@ed_x0101"
+              - generic [ref=e260]: no recent
+          - button "B @binancewallet no recent" [ref=e261] [cursor=pointer]:
+            - generic [ref=e262]: B
+            - generic [ref=e263]:
+              - generic [ref=e264]: "@binancewallet"
+              - generic [ref=e265]: no recent
+          - button "B @binanceus no recent" [ref=e266] [cursor=pointer]:
+            - generic [ref=e267]: B
+            - generic [ref=e268]:
+              - generic [ref=e269]: "@binanceus"
+              - generic [ref=e270]: no recent
+          - button "C @cb_doge no recent" [ref=e271] [cursor=pointer]:
+            - generic [ref=e272]: C
+            - generic [ref=e273]:
+              - generic [ref=e274]: "@cb_doge"
+              - generic [ref=e275]: no recent
+          - button "_ @_richardteng no recent" [ref=e276] [cursor=pointer]:
+            - generic [ref=e277]: _
+            - generic [ref=e278]:
+              - generic [ref=e279]: "@_richardteng"
+              - generic [ref=e280]: no recent
+          - button "N @nikitabier no recent" [ref=e281] [cursor=pointer]:
+            - generic [ref=e282]: "N"
+            - generic [ref=e283]:
+              - generic [ref=e284]: "@nikitabier"
+              - generic [ref=e285]: no recent
+          - button "S @saylor no recent" [ref=e286] [cursor=pointer]:
+            - generic [ref=e287]: S
+            - generic [ref=e288]:
+              - generic [ref=e289]: "@saylor"
+              - generic [ref=e290]: no recent
+          - button "C @cobratate no recent" [ref=e291] [cursor=pointer]:
+            - generic [ref=e292]: C
+            - generic [ref=e293]:
+              - generic [ref=e294]: "@cobratate"
+              - generic [ref=e295]: no recent
+          - button "D @dogeofficialceo no recent" [ref=e296] [cursor=pointer]:
+            - generic [ref=e297]: D
+            - generic [ref=e298]:
+              - generic [ref=e299]: "@dogeofficialceo"
+              - generic [ref=e300]: no recent
+          - button "M @mrbeast no recent" [ref=e301] [cursor=pointer]:
+            - generic [ref=e302]: M
+            - generic [ref=e303]:
+              - generic [ref=e304]: "@mrbeast"
+              - generic [ref=e305]: no recent
+          - button "J @jdvance no recent" [ref=e306] [cursor=pointer]:
+            - generic [ref=e307]: J
+            - generic [ref=e308]:
+              - generic [ref=e309]: "@jdvance"
+              - generic [ref=e310]: no recent
+          - button "Z @zachxbt no recent" [ref=e311] [cursor=pointer]:
+            - generic [ref=e312]: Z
+            - generic [ref=e313]:
+              - generic [ref=e314]: "@zachxbt"
+              - generic [ref=e315]: no recent
+          - button "B @brian_armstrong no recent" [ref=e316] [cursor=pointer]:
+            - generic [ref=e317]: B
+            - generic [ref=e318]:
+              - generic [ref=e319]: "@brian_armstrong"
+              - generic [ref=e320]: no recent
+          - button "D @dior100x no recent" [ref=e321] [cursor=pointer]:
+            - generic [ref=e322]: D
+            - generic [ref=e323]:
+              - generic [ref=e324]: "@dior100x"
+              - generic [ref=e325]: no recent
+          - button "O @openai no recent" [ref=e326] [cursor=pointer]:
+            - generic [ref=e327]: O
+            - generic [ref=e328]:
+              - generic [ref=e329]: "@openai"
+              - generic [ref=e330]: no recent
+          - button "C @chatgptapp no recent" [ref=e331] [cursor=pointer]:
+            - generic [ref=e332]: C
+            - generic [ref=e333]:
+              - generic [ref=e334]: "@chatgptapp"
+              - generic [ref=e335]: no recent
+          - button "S @soraofficialapp no recent" [ref=e336] [cursor=pointer]:
+            - generic [ref=e337]: S
+            - generic [ref=e338]:
+              - generic [ref=e339]: "@soraofficialapp"
+              - generic [ref=e340]: no recent
+          - button "O @openaidevs no recent" [ref=e341] [cursor=pointer]:
+            - generic [ref=e342]: O
+            - generic [ref=e343]:
+              - generic [ref=e344]: "@openaidevs"
+              - generic [ref=e345]: no recent
+          - button "O @openainewsroom no recent" [ref=e346] [cursor=pointer]:
+            - generic [ref=e347]: O
+            - generic [ref=e348]:
+              - generic [ref=e349]: "@openainewsroom"
+              - generic [ref=e350]: no recent
+          - button "F @fidjissimo no recent" [ref=e351] [cursor=pointer]:
+            - generic [ref=e352]: F
+            - generic [ref=e353]:
+              - generic [ref=e354]: "@fidjissimo"
+              - generic [ref=e355]: no recent
+          - button "G @gdb no recent" [ref=e356] [cursor=pointer]:
+            - generic [ref=e357]: G
+            - generic [ref=e358]:
+              - generic [ref=e359]: "@gdb"
+              - generic [ref=e360]: no recent
+          - button "M @mayemusk no recent" [ref=e361] [cursor=pointer]:
+            - generic [ref=e362]: M
+            - generic [ref=e363]:
+              - generic [ref=e364]: "@mayemusk"
+              - generic [ref=e365]: no recent
+          - button "K @kanyewest no recent" [ref=e366] [cursor=pointer]:
+            - generic [ref=e367]: K
+            - generic [ref=e368]:
+              - generic [ref=e369]: "@kanyewest"
+              - generic [ref=e370]: no recent
+          - button "B @bybit_official no recent" [ref=e371] [cursor=pointer]:
+            - generic [ref=e372]: B
+            - generic [ref=e373]:
+              - generic [ref=e374]: "@bybit_official"
+              - generic [ref=e375]: no recent
+          - button "J @jack no recent" [ref=e376] [cursor=pointer]:
+            - generic [ref=e377]: J
+            - generic [ref=e378]:
+              - generic [ref=e379]: "@jack"
+              - generic [ref=e380]: no recent
+          - button "A @a16z no recent" [ref=e381] [cursor=pointer]:
+            - generic [ref=e382]: A
+            - generic [ref=e383]:
+              - generic [ref=e384]: "@a16z"
+              - generic [ref=e385]: no recent
+          - button "M @marcellxmarcell no recent" [ref=e386] [cursor=pointer]:
+            - generic [ref=e387]: M
+            - generic [ref=e388]:
+              - generic [ref=e389]: "@marcellxmarcell"
+              - generic [ref=e390]: no recent
+          - button "T @techdevnotes no recent" [ref=e391] [cursor=pointer]:
+            - generic [ref=e392]: T
+            - generic [ref=e393]:
+              - generic [ref=e394]: "@techdevnotes"
+              - generic [ref=e395]: no recent
+          - button "D @dogwifcoin no recent" [ref=e396] [cursor=pointer]:
+            - generic [ref=e397]: D
+            - generic [ref=e398]:
+              - generic [ref=e399]: "@dogwifcoin"
+              - generic [ref=e400]: no recent
+          - button "B @base no recent" [ref=e401] [cursor=pointer]:
+            - generic [ref=e402]: B
+            - generic [ref=e403]:
+              - generic [ref=e404]: "@base"
+              - generic [ref=e405]: no recent
+          - button "T @time no recent" [ref=e406] [cursor=pointer]:
+            - generic [ref=e407]: T
+            - generic [ref=e408]:
+              - generic [ref=e409]: "@time"
+              - generic [ref=e410]: no recent
+          - button "X @xai no recent" [ref=e411] [cursor=pointer]:
+            - generic [ref=e412]: X
+            - generic [ref=e413]:
+              - generic [ref=e414]: "@xai"
+              - generic [ref=e415]: no recent
+          - button "6 @6551news no recent" [ref=e416] [cursor=pointer]:
+            - generic [ref=e417]: "6"
+            - generic [ref=e418]:
+              - generic [ref=e419]: "@6551news"
+              - generic [ref=e420]: no recent
+          - button "K @kabosumama no recent" [ref=e421] [cursor=pointer]:
+            - generic [ref=e422]: K
+            - generic [ref=e423]:
+              - generic [ref=e424]: "@kabosumama"
+              - generic [ref=e425]: no recent
+          - button "B @bitcloutcat no recent" [ref=e426] [cursor=pointer]:
+            - generic [ref=e427]: B
+            - generic [ref=e428]:
+              - generic [ref=e429]: "@bitcloutcat"
+              - generic [ref=e430]: no recent
+          - button "X @xcreators no recent" [ref=e431] [cursor=pointer]:
+            - generic [ref=e432]: X
+            - generic [ref=e433]:
+              - generic [ref=e434]: "@xcreators"
+              - generic [ref=e435]: no recent
+          - button "E @ethereum no recent" [ref=e436] [cursor=pointer]:
+            - generic [ref=e437]: E
+            - generic [ref=e438]:
+              - generic [ref=e439]: "@ethereum"
+              - generic [ref=e440]: no recent
+          - button "R @rus no recent" [ref=e441] [cursor=pointer]:
+            - generic [ref=e442]: R
+            - generic [ref=e443]:
+              - generic [ref=e444]: "@rus"
+              - generic [ref=e445]: no recent
+          - button "U @uniswap no recent" [ref=e446] [cursor=pointer]:
+            - generic [ref=e447]: U
+            - generic [ref=e448]:
+              - generic [ref=e449]: "@uniswap"
+              - generic [ref=e450]: no recent
+          - button "0 @0xdeployer no recent" [ref=e451] [cursor=pointer]:
+            - generic [ref=e452]: "0"
+            - generic [ref=e453]:
+              - generic [ref=e454]: "@0xdeployer"
+              - generic [ref=e455]: no recent
+          - button "A @achichuchu no recent" [ref=e456] [cursor=pointer]:
+            - generic [ref=e457]: A
+            - generic [ref=e458]:
+              - generic [ref=e459]: "@achichuchu"
+              - generic [ref=e460]: no recent
+          - button "C @claudeai no recent" [ref=e461] [cursor=pointer]:
+            - generic [ref=e462]: C
+            - generic [ref=e463]:
+              - generic [ref=e464]: "@claudeai"
+              - generic [ref=e465]: no recent
+          - button "A @anthropicai no recent" [ref=e466] [cursor=pointer]:
+            - generic [ref=e467]: A
+            - generic [ref=e468]:
+              - generic [ref=e469]: "@anthropicai"
+              - generic [ref=e470]: no recent
+          - button "C @chat no recent" [ref=e471] [cursor=pointer]:
+            - generic [ref=e472]: C
+            - generic [ref=e473]:
+              - generic [ref=e474]: "@chat"
+              - generic [ref=e475]: no recent
+          - button "B @broleon no recent" [ref=e476] [cursor=pointer]:
+            - generic [ref=e477]: B
+            - generic [ref=e478]:
+              - generic [ref=e479]: "@broleon"
+              - generic [ref=e480]: no recent
+          - button "R @real_dr_pump no recent" [ref=e481] [cursor=pointer]:
+            - generic [ref=e482]: R
+            - generic [ref=e483]:
+              - generic [ref=e484]: "@real_dr_pump"
+              - generic [ref=e485]: no recent
+          - button "U @unipioneer no recent" [ref=e486] [cursor=pointer]:
+            - generic [ref=e487]: U
+            - generic [ref=e488]:
+              - generic [ref=e489]: "@unipioneer"
+              - generic [ref=e490]: no recent
+          - button "C @cutepanda no recent" [ref=e491] [cursor=pointer]:
+            - generic [ref=e492]: C
+            - generic [ref=e493]:
+              - generic [ref=e494]: "@cutepanda"
+              - generic [ref=e495]: no recent
+          - button "S @sencrazy_1 no recent" [ref=e496] [cursor=pointer]:
+            - generic [ref=e497]: S
+            - generic [ref=e498]:
+              - generic [ref=e499]: "@sencrazy_1"
+              - generic [ref=e500]: no recent
+          - button "0 @0xsleepinrain no recent" [ref=e501] [cursor=pointer]:
+            - generic [ref=e502]: "0"
+            - generic [ref=e503]:
+              - generic [ref=e504]: "@0xsleepinrain"
+              - generic [ref=e505]: no recent
+          - button "0 @0xnono_1 no recent" [ref=e506] [cursor=pointer]:
+            - generic [ref=e507]: "0"
+            - generic [ref=e508]:
+              - generic [ref=e509]: "@0xnono_1"
+              - generic [ref=e510]: no recent
+          - button "0 @0xpicklecati no recent" [ref=e511] [cursor=pointer]:
+            - generic [ref=e512]: "0"
+            - generic [ref=e513]:
+              - generic [ref=e514]: "@0xpicklecati"
+              - generic [ref=e515]: no recent
+          - button "0 @0xmagnolia no recent" [ref=e516] [cursor=pointer]:
+            - generic [ref=e517]: "0"
+            - generic [ref=e518]:
+              - generic [ref=e519]: "@0xmagnolia"
+              - generic [ref=e520]: no recent
+          - button "S @shytoshikusama no recent" [ref=e521] [cursor=pointer]:
+            - generic [ref=e522]: S
+            - generic [ref=e523]:
+              - generic [ref=e524]: "@shytoshikusama"
+              - generic [ref=e525]: no recent
+          - button "Y @yenhong123 no recent" [ref=e526] [cursor=pointer]:
+            - generic [ref=e527]: "Y"
+            - generic [ref=e528]:
+              - generic [ref=e529]: "@yenhong123"
+              - generic [ref=e530]: no recent
+          - button "C @cobie no recent" [ref=e531] [cursor=pointer]:
+            - generic [ref=e532]: C
+            - generic [ref=e533]:
+              - generic [ref=e534]: "@cobie"
+              - generic [ref=e535]: no recent
+          - button "S @solana no recent" [ref=e536] [cursor=pointer]:
+            - generic [ref=e537]: S
+            - generic [ref=e538]:
+              - generic [ref=e539]: "@solana"
+              - generic [ref=e540]: no recent
+          - button "Z @zachwitkoff no recent" [ref=e541] [cursor=pointer]:
+            - generic [ref=e542]: Z
+            - generic [ref=e543]:
+              - generic [ref=e544]: "@zachwitkoff"
+              - generic [ref=e545]: no recent
+          - button "Z @zakfolkman no recent" [ref=e546] [cursor=pointer]:
+            - generic [ref=e547]: Z
+            - generic [ref=e548]:
+              - generic [ref=e549]: "@zakfolkman"
+              - generic [ref=e550]: no recent
+          - button "0 @0xsunnft no recent" [ref=e551] [cursor=pointer]:
+            - generic [ref=e552]: "0"
+            - generic [ref=e553]:
+              - generic [ref=e554]: "@0xsunnft"
+              - generic [ref=e555]: no recent
+          - button "A @autismcapital no recent" [ref=e556] [cursor=pointer]:
+            - generic [ref=e557]: A
+            - generic [ref=e558]:
+              - generic [ref=e559]: "@autismcapital"
+              - generic [ref=e560]: no recent
+          - button "T @trumpdailyposts no recent" [ref=e561] [cursor=pointer]:
+            - generic [ref=e562]: T
+            - generic [ref=e563]:
+              - generic [ref=e564]: "@trumpdailyposts"
+              - generic [ref=e565]: no recent
+          - button "B @bitcoin no recent" [ref=e566] [cursor=pointer]:
+            - generic [ref=e567]: B
+            - generic [ref=e568]:
+              - generic [ref=e569]: "@bitcoin"
+              - generic [ref=e570]: no recent
+          - button "W @watcherguru no recent" [ref=e571] [cursor=pointer]:
+            - generic [ref=e572]: W
+            - generic [ref=e573]:
+              - generic [ref=e574]: "@watcherguru"
+              - generic [ref=e575]: no recent
+          - button "M @matt_furie no recent" [ref=e576] [cursor=pointer]:
+            - generic [ref=e577]: M
+            - generic [ref=e578]:
+              - generic [ref=e579]: "@matt_furie"
+              - generic [ref=e580]: no recent
+          - button "F @four_form_ no recent" [ref=e581] [cursor=pointer]:
+            - generic [ref=e582]: F
+            - generic [ref=e583]:
+              - generic [ref=e584]: "@four_form_"
+              - generic [ref=e585]: no recent
+          - button "M @mert no recent" [ref=e586] [cursor=pointer]:
+            - generic [ref=e587]: M
+            - generic [ref=e588]:
+              - generic [ref=e589]: "@mert"
+              - generic [ref=e590]: no recent
+          - button "_ @_shadow36 no recent" [ref=e591] [cursor=pointer]:
+            - generic [ref=e592]: _
+            - generic [ref=e593]:
+              - generic [ref=e594]: "@_shadow36"
+              - generic [ref=e595]: no recent
+          - button "E @eth_cedric no recent" [ref=e596] [cursor=pointer]:
+            - generic [ref=e597]: E
+            - generic [ref=e598]:
+              - generic [ref=e599]: "@eth_cedric"
+              - generic [ref=e600]: no recent
+          - button "F @flapdotsh no recent" [ref=e601] [cursor=pointer]:
+            - generic [ref=e602]: F
+            - generic [ref=e603]:
+              - generic [ref=e604]: "@flapdotsh"
+              - generic [ref=e605]: no recent
+          - button "M @moonshot no recent" [ref=e606] [cursor=pointer]:
+            - generic [ref=e607]: M
+            - generic [ref=e608]:
+              - generic [ref=e609]: "@moonshot"
+              - generic [ref=e610]: no recent
+          - button "W @worldlibertyfi no recent" [ref=e611] [cursor=pointer]:
+            - generic [ref=e612]: W
+            - generic [ref=e613]:
+              - generic [ref=e614]: "@worldlibertyfi"
+              - generic [ref=e615]: no recent
+          - button "F @finnbags no recent" [ref=e616] [cursor=pointer]:
+            - generic [ref=e617]: F
+            - generic [ref=e618]:
+              - generic [ref=e619]: "@finnbags"
+              - generic [ref=e620]: no recent
+          - button "D @degeneratenews no recent" [ref=e621] [cursor=pointer]:
+            - generic [ref=e622]: D
+            - generic [ref=e623]:
+              - generic [ref=e624]: "@degeneratenews"
+              - generic [ref=e625]: no recent
+          - button "W @weremeow no recent" [ref=e626] [cursor=pointer]:
+            - generic [ref=e627]: W
+            - generic [ref=e628]:
+              - generic [ref=e629]: "@weremeow"
+              - generic [ref=e630]: no recent
+          - button "R @rajgokal no recent" [ref=e631] [cursor=pointer]:
+            - generic [ref=e632]: R
+            - generic [ref=e633]:
+              - generic [ref=e634]: "@rajgokal"
+              - generic [ref=e635]: no recent
+          - button "K @karpathy no recent" [ref=e636] [cursor=pointer]:
+            - generic [ref=e637]: K
+            - generic [ref=e638]:
+              - generic [ref=e639]: "@karpathy"
+              - generic [ref=e640]: no recent
+          - button "C @calilyliu no recent" [ref=e641] [cursor=pointer]:
+            - generic [ref=e642]: C
+            - generic [ref=e643]:
+              - generic [ref=e644]: "@calilyliu"
+              - generic [ref=e645]: no recent
+          - button "M @monad no recent" [ref=e646] [cursor=pointer]:
+            - generic [ref=e647]: M
+            - generic [ref=e648]:
+              - generic [ref=e649]: "@monad"
+              - generic [ref=e650]: no recent
+          - button "P @pokemon no recent" [ref=e651] [cursor=pointer]:
+            - generic [ref=e652]: P
+            - generic [ref=e653]:
+              - generic [ref=e654]: "@pokemon"
+              - generic [ref=e655]: no recent
+          - button "Z @zora no recent" [ref=e656] [cursor=pointer]:
+            - generic [ref=e657]: Z
+            - generic [ref=e658]:
+              - generic [ref=e659]: "@zora"
+              - generic [ref=e660]: no recent
+          - button "L @lookonchain no recent" [ref=e661] [cursor=pointer]:
+            - generic [ref=e662]: L
+            - generic [ref=e663]:
+              - generic [ref=e664]: "@lookonchain"
+              - generic [ref=e665]: no recent
+          - button "N @naddotfun no recent" [ref=e666] [cursor=pointer]:
+            - generic [ref=e667]: "N"
+            - generic [ref=e668]:
+              - generic [ref=e669]: "@naddotfun"
+              - generic [ref=e670]: no recent
+          - button "C @chillhousesol no recent" [ref=e671] [cursor=pointer]:
+            - generic [ref=e672]: C
+            - generic [ref=e673]:
+              - generic [ref=e674]: "@chillhousesol"
+              - generic [ref=e675]: no recent
+          - button "S @southpark no recent" [ref=e676] [cursor=pointer]:
+            - generic [ref=e677]: S
+            - generic [ref=e678]:
+              - generic [ref=e679]: "@southpark"
+              - generic [ref=e680]: no recent
+          - button "M @molandak no recent" [ref=e681] [cursor=pointer]:
+            - generic [ref=e682]: M
+            - generic [ref=e683]:
+              - generic [ref=e684]: "@molandak"
+              - generic [ref=e685]: no recent
+          - button "I @intern no recent" [ref=e686] [cursor=pointer]:
+            - generic [ref=e687]: I
+            - generic [ref=e688]:
+              - generic [ref=e689]: "@intern"
+              - generic [ref=e690]: no recent
+          - button "C @corleonefnf no recent" [ref=e691] [cursor=pointer]:
+            - generic [ref=e692]: C
+            - generic [ref=e693]:
+              - generic [ref=e694]: "@corleonefnf"
+              - generic [ref=e695]: no recent
+          - button "S @shibtoken no recent" [ref=e696] [cursor=pointer]:
+            - generic [ref=e697]: S
+            - generic [ref=e698]:
+              - generic [ref=e699]: "@shibtoken"
+              - generic [ref=e700]: no recent
+          - button "P @pepecoineth no recent" [ref=e701] [cursor=pointer]:
+            - generic [ref=e702]: P
+            - generic [ref=e703]:
+              - generic [ref=e704]: "@pepecoineth"
+              - generic [ref=e705]: no recent
+          - button "D @darkfarms1 no recent" [ref=e706] [cursor=pointer]:
+            - generic [ref=e707]: D
+            - generic [ref=e708]:
+              - generic [ref=e709]: "@darkfarms1"
+              - generic [ref=e710]: no recent
+          - button "D @dogecoin no recent" [ref=e711] [cursor=pointer]:
+            - generic [ref=e712]: D
+            - generic [ref=e713]:
+              - generic [ref=e714]: "@dogecoin"
+              - generic [ref=e715]: no recent
+          - button "G @ga__ke no recent" [ref=e716] [cursor=pointer]:
+            - generic [ref=e717]: G
+            - generic [ref=e718]:
+              - generic [ref=e719]: "@ga__ke"
+              - generic [ref=e720]: no recent
+          - button "H @hexiecs no recent" [ref=e721] [cursor=pointer]:
+            - generic [ref=e722]: H
+            - generic [ref=e723]:
+              - generic [ref=e724]: "@hexiecs"
+              - generic [ref=e725]: no recent
+          - button "P @pumpfun no recent" [ref=e726] [cursor=pointer]:
+            - generic [ref=e727]: P
+            - generic [ref=e728]:
+              - generic [ref=e729]: "@pumpfun"
+              - generic [ref=e730]: no recent
+          - button "S @star_okx no recent" [ref=e731] [cursor=pointer]:
+            - generic [ref=e732]: S
+            - generic [ref=e733]:
+              - generic [ref=e734]: "@star_okx"
+              - generic [ref=e735]: no recent
+          - button "J @justinsuntron no recent" [ref=e736] [cursor=pointer]:
+            - generic [ref=e737]: J
+            - generic [ref=e738]:
+              - generic [ref=e739]: "@justinsuntron"
+              - generic [ref=e740]: no recent
+          - button "B @binanceresearch no recent" [ref=e741] [cursor=pointer]:
+            - generic [ref=e742]: B
+            - generic [ref=e743]:
+              - generic [ref=e744]: "@binanceresearch"
+              - generic [ref=e745]: no recent
+          - button "B @bwenews no recent" [ref=e746] [cursor=pointer]:
+            - generic [ref=e747]: B
+            - generic [ref=e748]:
+              - generic [ref=e749]: "@bwenews"
+              - generic [ref=e750]: no recent
+          - button "Y @yzilabs no recent" [ref=e751] [cursor=pointer]:
+            - generic [ref=e752]: "Y"
+            - generic [ref=e753]:
+              - generic [ref=e754]: "@yzilabs"
+              - generic [ref=e755]: no recent
+          - button "S @solporttom no recent" [ref=e756] [cursor=pointer]:
+            - generic [ref=e757]: S
+            - generic [ref=e758]:
+              - generic [ref=e759]: "@solporttom"
+              - generic [ref=e760]: no recent
+          - button "C @coinbase no recent" [ref=e761] [cursor=pointer]:
+            - generic [ref=e762]: C
+            - generic [ref=e763]:
+              - generic [ref=e764]: "@coinbase"
+              - generic [ref=e765]: no recent
+          - button "E @erictrump no recent" [ref=e766] [cursor=pointer]:
+            - generic [ref=e767]: E
+            - generic [ref=e768]:
+              - generic [ref=e769]: "@erictrump"
+              - generic [ref=e770]: no recent
+          - button "M @marionawfal no recent" [ref=e771] [cursor=pointer]:
+            - generic [ref=e772]: M
+            - generic [ref=e773]:
+              - generic [ref=e774]: "@marionawfal"
+              - generic [ref=e775]: no recent
+          - button "P @polymarket no recent" [ref=e776] [cursor=pointer]:
+            - generic [ref=e777]: P
+            - generic [ref=e778]:
+              - generic [ref=e779]: "@polymarket"
+              - generic [ref=e780]: no recent
+          - button "B @bonkfun no recent" [ref=e781] [cursor=pointer]:
+            - generic [ref=e782]: B
+            - generic [ref=e783]:
+              - generic [ref=e784]: "@bonkfun"
+              - generic [ref=e785]: no recent
+          - button "N @notthreadguy no recent" [ref=e786] [cursor=pointer]:
+            - generic [ref=e787]: "N"
+            - generic [ref=e788]:
+              - generic [ref=e789]: "@notthreadguy"
+              - generic [ref=e790]: no recent
+          - button "L @litecoin no recent" [ref=e791] [cursor=pointer]:
+            - generic [ref=e792]: L
+            - generic [ref=e793]:
+              - generic [ref=e794]: "@litecoin"
+              - generic [ref=e795]: no recent
+          - button "K @knowyourmeme no recent" [ref=e796] [cursor=pointer]:
+            - generic [ref=e797]: K
+            - generic [ref=e798]:
+              - generic [ref=e799]: "@knowyourmeme"
+              - generic [ref=e800]: no recent
+          - button "A @antcaveclub no recent" [ref=e801] [cursor=pointer]:
+            - generic [ref=e802]: A
+            - generic [ref=e803]:
+              - generic [ref=e804]: "@antcaveclub"
+              - generic [ref=e805]: no recent
+          - button "G @giggleacademy no recent" [ref=e806] [cursor=pointer]:
+            - generic [ref=e807]: G
+            - generic [ref=e808]:
+              - generic [ref=e809]: "@giggleacademy"
+              - generic [ref=e810]: no recent
+          - button "T @truth_terminal no recent" [ref=e811] [cursor=pointer]:
+            - generic [ref=e812]: T
+            - generic [ref=e813]:
+              - generic [ref=e814]: "@truth_terminal"
+              - generic [ref=e815]: no recent
+      - generic [ref=e817]: kbd · 1-4 radar · / search
+    - generic [ref=e818]:
+      - generic [ref=e819]:
+        - generic [ref=e820]:
+          - generic "radar window" [ref=e821]:
+            - button "5m" [ref=e822] [cursor=pointer]
+            - button "1h" [ref=e823] [cursor=pointer]
+            - button "4h" [ref=e824] [cursor=pointer]
+            - button "24h" [ref=e825] [cursor=pointer]
+          - generic "token flow scope" [ref=e826]:
+            - button "watched" [ref=e827] [cursor=pointer]
+            - button "all" [ref=e828] [cursor=pointer]
+        - region "Token Radar" [ref=e829]:
+          - generic [ref=e830]:
+            - generic [ref=e831]:
+              - heading "Token Radar" [level=2] [ref=e832]
+              - generic [ref=e833]: TOKEN RADAR 0
+            - generic "token radar toolbar" [ref=e834]:
+              - generic "token radar sort" [ref=e835]:
+                - button "Opportunity" [ref=e836] [cursor=pointer]
+                - button "Heat" [ref=e837] [cursor=pointer]
+                - button "Quality" [ref=e838] [cursor=pointer]
+                - button "Propagation" [ref=e839] [cursor=pointer]
+                - button "Timing" [ref=e840] [cursor=pointer]
+          - generic [ref=e841]:
+            - generic [ref=e842]:
+              - generic [ref=e843]: Token
+              - generic [ref=e844]: Heat
+              - generic [ref=e845]: Quality
+              - generic [ref=e846]: Propagation
+              - generic [ref=e847]: Market
+              - generic [ref=e848]: Timing
+              - generic [ref=e849]: Decision
+              - generic [ref=e850]: Trade
+            - generic "loading token radar" [ref=e851]
+      - generic [ref=e860]:
+        - generic [ref=e861]:
+          - generic [ref=e862]:
+            - heading "实时信号 Tape" [level=2] [ref=e864]
+            - generic [ref=e865]: ws disconnected
+          - generic [ref=e867]: 读取 replay 中
+        - generic [ref=e868]:
+          - generic [ref=e869]:
+            - generic [ref=e870]:
+              - img [ref=e871]
+              - heading "Signal Lab Pulse" [level=2] [ref=e873]
+            - button "Open Lab" [ref=e874] [cursor=pointer]
+          - generic "trading attention summary" [ref=e875]:
+            - generic [ref=e876]: direct 0
+            - generic [ref=e877]: topics 0
+            - generic [ref=e878]: risk 0
+          - generic [ref=e879]: loading trading attention
+    - complementary [ref=e881]:
+      - generic [ref=e883]:
+        - generic [ref=e884]:
+          - generic [ref=e885]: selected token
+          - heading "Select Token" [level=2] [ref=e886]
+          - paragraph [ref=e887]: no token selected
+        - generic [ref=e888]: "-"
+      - generic [ref=e890]: 从 Token Radar 或实时信号 Tape 选择一个币
+  - region "Notifications alt+T"

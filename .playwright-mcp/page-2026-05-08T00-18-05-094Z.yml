@@ -1,0 +1,290 @@
+- main [ref=e3]:
+  - generic [ref=e4]:
+    - generic [ref=e7]:
+      - heading "intel.cockpit" [level=1] [ref=e8]
+      - paragraph [ref=e9]: /ws · localhost:8765
+    - generic [ref=e10]:
+      - generic [ref=e11]: token ready
+      - generic [ref=e12]: connected
+      - generic [ref=e13]: ready
+      - generic [ref=e14]: 4s ago
+    - generic [ref=e15]:
+      - img [ref=e16]
+      - textbox "搜索 CA / $TOKEN / @handle / 文本" [ref=e19]: $PEPE
+      - button "检索" [ref=e20] [cursor=pointer]
+    - generic [ref=e21]:
+      - generic [ref=e22]: MATCHED 147
+      - generic [ref=e23]: flow·1h 48
+      - generic [ref=e24]: direct 13
+      - generic [ref=e25]: topics 0
+      - generic [ref=e26]: risk 0
+    - button "notifications" [ref=e27] [cursor=pointer]:
+      - img [ref=e28]
+      - generic [ref=e891]: 99+
+    - button "刷新" [ref=e31] [cursor=pointer]:
+      - img [ref=e32]
+  - generic [ref=e37]:
+    - region "cockpit controls" [ref=e3789]:
+      - generic "radar window" [ref=e3790]:
+        - button "5m" [ref=e3791] [cursor=pointer]
+        - button "1h" [ref=e3792] [cursor=pointer]
+        - button "4h" [ref=e3793] [cursor=pointer]
+        - button "24h" [ref=e3794] [cursor=pointer]
+      - generic "token flow scope" [ref=e3795]:
+        - button "watched" [ref=e3796] [cursor=pointer]
+        - button "all" [ref=e3797] [cursor=pointer]
+      - generic [ref=e3798]:
+        - img [ref=e3799]
+        - textbox [ref=e3802]:
+          - /placeholder: handles
+    - region "Token audit page" [ref=e3821]:
+      - generic [ref=e3822]:
+        - button "Back to Token Radar" [ref=e3823] [cursor=pointer]:
+          - img [ref=e3824]
+          - generic [ref=e3826]: Radar
+        - generic [ref=e3827]:
+          - generic [ref=e3828]: CexToken · TON-USDT
+          - heading "$TON" [level=2] [ref=e3829]
+        - generic [ref=e3830]:
+          - generic [ref=e3831]: driver
+          - strong [ref=e3832]: "90"
+          - link "Open $TON on OKX" [ref=e3833] [cursor=pointer]:
+            - /url: https://www.okx.com/trade-spot/ton-usdt
+            - text: OKX
+            - img [ref=e3834]
+      - region "token trading thesis" [ref=e3838]:
+        - generic [ref=e3839]:
+          - generic [ref=e3840]: current phase
+          - generic [ref=e3841]: expansion
+        - generic [ref=e3842]:
+          - generic [ref=e3843]: social vs price
+          - generic [ref=e3844]: insufficient_history
+        - generic [ref=e3845]:
+          - generic [ref=e3846]: people
+          - generic [ref=e3847]: 8 authors · 9 posts
+        - generic [ref=e3848]:
+          - generic [ref=e3849]: risk
+          - generic [ref=e3850]: "-"
+      - generic "audit page window" [ref=e3852]:
+        - button "5m" [ref=e3853] [cursor=pointer]
+        - button "1h" [ref=e3854] [cursor=pointer]
+        - button "4h" [ref=e3855] [cursor=pointer]
+        - button "24h" [ref=e3856] [cursor=pointer]
+      - region "market ledger" [ref=e3857]:
+        - generic [ref=e3858]:
+          - generic [ref=e3859]: first snapshot
+          - generic [ref=e3860]: "-"
+        - generic [ref=e3861]:
+          - generic [ref=e3862]: social start
+          - generic [ref=e3863]: "-"
+        - generic [ref=e3864]:
+          - generic [ref=e3865]: latest
+          - generic [ref=e3866]: $2.75
+        - generic [ref=e3867]:
+          - generic [ref=e3868]: volume
+          - generic [ref=e3869]: 90M
+      - generic [ref=e3870]:
+        - generic [ref=e3871]:
+          - generic [ref=e3872]:
+            - generic [ref=e3873]: stage timeline
+            - generic [ref=e3874]: 0 stages
+          - generic [ref=e3875]: 暂无阶段证据
+        - generic [ref=e3876]:
+          - generic [ref=e3877]:
+            - generic [ref=e3878]: stage evidence
+            - generic [ref=e3879]: "-"
+          - generic [ref=e3880]: 选择一个阶段查看证据
+      - generic [ref=e3881]:
+        - generic [ref=e3882]:
+          - generic [ref=e3883]: message evidence
+          - generic [ref=e3884]: all loaded posts
+        - generic [ref=e3885]:
+          - generic [ref=e3886]:
+            - generic "token post range" [ref=e3887]:
+              - button "window" [ref=e3888] [cursor=pointer]
+              - button "ignition" [ref=e3889] [cursor=pointer]
+              - button "history" [ref=e3890] [cursor=pointer]
+            - generic "token post sort" [ref=e3891]:
+              - button "recent" [ref=e3892] [cursor=pointer]
+              - button "catalyst" [ref=e3893] [cursor=pointer]
+              - button "quality" [ref=e3894] [cursor=pointer]
+            - generic [ref=e3895]:
+              - checkbox "watched" [ref=e3896]
+              - text: watched
+            - generic [ref=e3897]:
+              - checkbox "hide duplicates" [ref=e3898]
+              - text: hide duplicates
+          - generic [ref=e3899]: 9 total · 9 loaded · score window 1h
+          - generic [ref=e3900]:
+            - article [ref=e3901]:
+              - generic [ref=e3902]:
+                - strong [ref=e3903]: "@lookonchain"
+                - generic [ref=e3904]: "92"
+                - emphasis [ref=e3905]: watched token intent
+                - generic [ref=e3906]: cat 92
+                - generic [ref=e3907]: 公共流覆盖
+                - time [ref=e3908]: 21m
+                - link "打开原文" [ref=e3909] [cursor=pointer]:
+                  - /url: https://x.com/lookonchain/status/2052538143354843371
+                  - img [ref=e3910]
+              - paragraph [ref=e3914]: "Whale 0xee25 opened a 3x long on 1.97M $TON($5.39M) in the past 5 hours. Liquidation Price: $0.944"
+            - article [ref=e3915]:
+              - generic [ref=e3916]:
+                - strong [ref=e3917]: "@citadelwolff"
+                - generic [ref=e3918]: "76"
+                - emphasis [ref=e3919]: token intent
+                - generic [ref=e3920]: 公共流覆盖
+                - time [ref=e3921]: 22m
+                - link "打开原文" [ref=e3922] [cursor=pointer]:
+                  - /url: https://x.com/citadelwolff/status/2052537880904692135
+                  - img [ref=e3923]
+              - paragraph [ref=e3927]: $TON looks very primed to break out here
+            - article [ref=e3928]:
+              - generic [ref=e3929]:
+                - strong [ref=e3930]: "@toochieonearth"
+                - generic [ref=e3931]: "76"
+                - emphasis [ref=e3932]: token intent
+                - generic [ref=e3933]: 公共流覆盖
+                - time [ref=e3934]: 22m
+                - link "打开原文" [ref=e3935] [cursor=pointer]:
+                  - /url: https://x.com/toochieonearth/status/2052537840253522365
+                  - img [ref=e3936]
+              - paragraph [ref=e3940]: +1 for $chadurov
+            - article [ref=e3941]:
+              - generic [ref=e3942]:
+                - strong [ref=e3943]: "@poizerr"
+                - generic [ref=e3944]: "76"
+                - emphasis [ref=e3945]: token intent
+                - generic [ref=e3946]: 公共流覆盖
+                - time [ref=e3947]: 43m
+                - link "打开原文" [ref=e3948] [cursor=pointer]:
+                  - /url: https://x.com/POIZERR/status/2052532492629143833
+                  - img [ref=e3949]
+              - paragraph [ref=e3953]: WSB is in? Send it so much fucking higher!! Generational run confirmed bros The ticker is $DIAMOND
+            - article [ref=e3954]:
+              - generic [ref=e3955]:
+                - strong [ref=e3956]: "@cryptocowboy_au"
+                - generic [ref=e3957]: "76"
+                - emphasis [ref=e3958]: token intent
+                - generic [ref=e3959]: 公共流覆盖
+                - time [ref=e3960]: 46m
+                - link "打开原文" [ref=e3961] [cursor=pointer]:
+                  - /url: https://x.com/CryptoCowboy_AU/status/2052531826007416903
+                  - img [ref=e3962]
+              - paragraph [ref=e3966]: $DIAMOND might actually be the one. This communtiy WSB literally started the trend. Now they are publicly backing it. Do you understand yet? @durov do you have ?
+            - article [ref=e3967]:
+              - generic [ref=e3968]:
+                - strong [ref=e3969]: "@cryptocowboy_au"
+                - generic [ref=e3970]: "76"
+                - emphasis [ref=e3971]: token intent
+                - generic [ref=e3972]: 公共流覆盖
+                - time [ref=e3973]: 49m
+                - link "打开原文" [ref=e3974] [cursor=pointer]:
+                  - /url: https://x.com/CryptoCowboy_AU/status/2052530984869106164
+                  - img [ref=e3975]
+              - paragraph [ref=e3979]: WSB is in? Send it fucking higher
+            - article [ref=e3980]:
+              - generic [ref=e3981]:
+                - strong [ref=e3982]: "@wwtlitee"
+                - generic [ref=e3983]: "76"
+                - emphasis [ref=e3984]: token intent
+                - generic [ref=e3985]: 公共流覆盖
+                - time [ref=e3986]: 50m
+                - link "打开原文" [ref=e3987] [cursor=pointer]:
+                  - /url: https://x.com/WWTLitee/status/2052530768967274665
+                  - img [ref=e3988]
+              - paragraph [ref=e3992]: 看着是真焦虑，但又不舍得走
+            - article [ref=e3993]:
+              - generic [ref=e3994]:
+                - strong [ref=e3995]: "@geppetto_88"
+                - generic [ref=e3996]: "76"
+                - emphasis [ref=e3997]: token intent
+                - generic [ref=e3998]: 公共流覆盖
+                - time [ref=e3999]: 56m
+                - link "打开原文" [ref=e4000] [cursor=pointer]:
+                  - /url: https://x.com/Geppetto_88/status/2052529318673494269
+                  - img [ref=e4001]
+              - paragraph [ref=e4005]: EQDcAkKNxhExGiDweLlVRK0bKzUwIE7Y7rdPgjybWwKAnmh_
+            - article [ref=e4006]:
+              - generic [ref=e4007]:
+                - strong [ref=e4008]: "@learnernoearner"
+                - generic [ref=e4009]: "76"
+                - emphasis [ref=e4010]: token intent
+                - generic [ref=e4011]: 公共流覆盖
+                - time [ref=e4012]: 59m
+                - link "打开原文" [ref=e4013] [cursor=pointer]:
+                  - /url: https://x.com/Learnernoearner/status/2052528643629351362
+                  - img [ref=e4014]
+              - paragraph [ref=e4018]: 2.5% up, move sl to entry
+      - generic [ref=e4019]:
+        - generic [ref=e4020]:
+          - generic [ref=e4021]: score audit
+          - generic [ref=e4022]: token_radar_v4
+        - generic [ref=e4023]:
+          - generic [ref=e4024]:
+            - generic [ref=e4025]:
+              - text: score type
+              - generic [ref=e4026]: deterministic ranking
+            - generic [ref=e4027]:
+              - text: baseline
+              - generic [ref=e4028]: insufficient_history · n0
+            - generic [ref=e4029]:
+              - text: market
+              - generic [ref=e4030]: insufficient_history
+            - generic [ref=e4031]:
+              - text: evidence
+              - generic [ref=e4032]: 0 posts
+          - generic [ref=e4033]:
+            - generic [ref=e4034]:
+              - text: Opportunity
+              - generic [ref=e4035]: "90"
+            - generic [ref=e4036]:
+              - text: heat
+              - generic [ref=e4037]: "100"
+            - generic [ref=e4038]:
+              - text: quality
+              - generic [ref=e4039]: "78"
+            - generic [ref=e4040]:
+              - text: propagation
+              - generic [ref=e4041]: "100"
+            - generic [ref=e4042]:
+              - text: tradeability
+              - generic [ref=e4043]: "0"
+            - generic [ref=e4044]:
+              - text: timing
+              - generic [ref=e4045]: "50"
+          - generic [ref=e4046]:
+            - article [ref=e4047]:
+              - generic [ref=e4048]:
+                - generic [ref=e4049]: Heat
+                - generic [ref=e4050]: "100"
+            - article [ref=e4051]:
+              - generic [ref=e4052]:
+                - generic [ref=e4053]: Quality
+                - generic [ref=e4054]: "78"
+            - article [ref=e4055]:
+              - generic [ref=e4056]:
+                - generic [ref=e4057]: Propagation
+                - generic [ref=e4058]: "100"
+            - article [ref=e4059]:
+              - generic [ref=e4060]:
+                - generic [ref=e4061]: Tradeability
+                - generic [ref=e4062]: "0"
+            - article [ref=e4063]:
+              - generic [ref=e4064]:
+                - generic [ref=e4065]: Timing
+                - generic [ref=e4066]: "50"
+  - navigation "mobile cockpit tasks" [ref=e3803]:
+    - button "Radar" [ref=e3804] [cursor=pointer]:
+      - img [ref=e3805]
+      - generic [ref=e3808]: Radar
+    - button "Tape" [ref=e3809] [cursor=pointer]:
+      - img [ref=e3810]
+      - generic [ref=e3812]: Tape
+    - button "Lab" [ref=e3813] [cursor=pointer]:
+      - img [ref=e3814]
+      - generic [ref=e3816]: Lab
+    - button "Detail" [ref=e3817] [cursor=pointer]:
+      - img [ref=e3818]
+      - generic [ref=e3820]: Detail
+  - region "Notifications alt+T"
