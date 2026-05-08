@@ -439,7 +439,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     async def signal_lab_pulse(
         request: Request,
         window: Annotated[str, Query()] = "1h",
-        scope: Annotated[str, Query()] = "matched",
+        scope: Annotated[str, Query()] = "all",
         status: Annotated[str, Query()] = "",
         handle: Annotated[str, Query()] = "",
         q: Annotated[str, Query()] = "",

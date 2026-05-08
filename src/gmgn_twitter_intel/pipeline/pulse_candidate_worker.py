@@ -421,7 +421,14 @@ class PulseCandidateWorker:
                     started_at_ms=now_ms,
                     commit=False,
                 )
-            result = await self.thesis_client.write_thesis(context=agent_context, run_id=run_id, job=job)
+            timeout_seconds = max(0.1, float(getattr(self.thesis_client, "timeout_seconds", 30.0) or 30.0))
+            try:
+                result = await asyncio.wait_for(
+                    self.thesis_client.write_thesis(context=agent_context, run_id=run_id, job=job),
+                    timeout=timeout_seconds,
+                )
+            except TimeoutError as exc:
+                raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
             thesis = result.payload
             result_audit = result.agent_run_audit or audit or {}
             gate = self.gate_func(

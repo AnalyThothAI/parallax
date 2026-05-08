@@ -562,6 +562,26 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert invalid.json() == {"ok": False, "error": "invalid_status", "field": "status"}
 
 
+def test_signal_pulse_api_defaults_to_produced_agent_window_and_scope():
+    pulse = FakeSignalPulseRepository()
+    app = FastAPI()
+    app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
+    app.add_exception_handler(ApiBadRequest, api_bad_request_response)
+    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.state.service = FakeRuntime(pulse)
+
+    with TestClient(app) as client:
+        response = client.get("/api/signal-lab/pulse", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["query"]["window"] == "1h"
+    assert data["query"]["scope"] == "all"
+    assert pulse.list_calls[0]["window"] == "1h"
+    assert pulse.list_calls[0]["scope"] == "all"
+    assert pulse.summary_calls[0] == {"window": "1h", "scope": "all", "q": None, "handle": None}
+
+
 def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

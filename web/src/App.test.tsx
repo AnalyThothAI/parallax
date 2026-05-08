@@ -474,6 +474,7 @@ describe("App Token Radar social heat cockpit", () => {
           ([path, options]) =>
             path === "/api/signal-lab/pulse" &&
             options?.params?.window === "1h" &&
+            options?.params?.scope === "all" &&
             options?.params?.limit === 80 &&
             options?.params?.sort === "recent"
         )
@@ -537,7 +538,8 @@ describe("App Token Radar social heat cockpit", () => {
         mockedGetApi.mock.calls.some(
           ([path, options]) =>
             path === "/api/signal-lab/pulse" &&
-            options?.params?.window === "24h" &&
+            options?.params?.window === "1h" &&
+            options?.params?.scope === "all" &&
             options?.params?.handle === "@traderpow" &&
             options?.params?.q === undefined
         )
@@ -724,7 +726,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getAllByText("Signal Lab").length).toBeGreaterThan(0);
   });
 
-  it("uses the trading-attention read model as the only Signal Lab product source in the UI", async () => {
+  it("uses the Signal Pulse read model as the only Signal Lab product source in the UI", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("Signal Lab Pulse");
@@ -768,7 +770,8 @@ describe("App Token Radar social heat cockpit", () => {
         mockedGetApi.mock.calls.some(
           ([path, options]) =>
             path === "/api/signal-lab/pulse" &&
-            options?.params?.window === "24h" &&
+            options?.params?.window === "1h" &&
+            options?.params?.scope === "all" &&
             options?.params?.status === "token_watch" &&
             !("kind" in (options?.params ?? {})) &&
             options?.params?.handle === "@cz_binance" &&
@@ -1222,13 +1225,14 @@ function mockApi(options: {
     if (path === "/api/signal-lab/pulse") {
       const cursor = String(requestOptions?.params?.cursor ?? "");
       const window = String(requestOptions?.params?.window ?? "");
-      if (window === "1h" && options.signalPulseCompact) {
+      const sort = String(requestOptions?.params?.sort ?? "");
+      if (window === "1h" && sort === "recent" && options.signalPulseCompact) {
         return ok(options.signalPulseCompact);
       }
-      if (window === "24h" && options.signalPulsePages) {
+      if (window === "1h" && options.signalPulsePages) {
         return ok(options.signalPulsePages[cursor] ?? options.signalPulsePages[""] ?? signalPulseData());
       }
-      if (window === "24h" && options.signalPulseWorkbench) {
+      if (window === "1h" && options.signalPulseWorkbench) {
         return ok(options.signalPulseWorkbench);
       }
       return ok(options.signalPulse ?? signalPulseData());

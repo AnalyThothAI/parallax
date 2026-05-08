@@ -6,7 +6,18 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
-from agents import Agent, RunConfig, Runner, set_tracing_export_api_key
+from agents import (
+    Agent,
+    AgentOutputSchema,
+    AgentOutputSchemaBase,
+    ModelBehaviorError,
+    ModelRetrySettings,
+    ModelSettings,
+    RunConfig,
+    Runner,
+    retry_policies,
+    set_tracing_export_api_key,
+)
 from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI
 
@@ -45,6 +56,32 @@ class PulseThesisClientProtocol(Protocol):
 class PulseThesisAgentResult:
     payload: PulseThesisPayload
     agent_run_audit: dict[str, Any]
+
+
+class PulseThesisOutputSchema(AgentOutputSchemaBase):
+    def __init__(self) -> None:
+        self._schema = AgentOutputSchema(PulseThesisPayload)
+
+    def is_plain_text(self) -> bool:
+        return self._schema.is_plain_text()
+
+    def name(self) -> str:
+        return self._schema.name()
+
+    def json_schema(self) -> dict[str, Any]:
+        return self._schema.json_schema()
+
+    def is_strict_json_schema(self) -> bool:
+        return self._schema.is_strict_json_schema()
+
+    def validate_json(self, json_str: str) -> Any:
+        try:
+            return self._schema.validate_json(json_str)
+        except ModelBehaviorError:
+            normalized = _strip_single_json_fence(json_str)
+            if normalized == json_str:
+                raise
+            return self._schema.validate_json(normalized)
 
 
 class OpenAIAgentsPulseThesisClient:
@@ -106,9 +143,26 @@ class OpenAIAgentsPulseThesisClient:
         agent = Agent(
             name=AGENT_NAME,
             instructions=pulse_thesis_agent_instructions(),
-            output_type=PulseThesisPayload,
+            output_type=PulseThesisOutputSchema(),
             tools=[],
             model=self._model,
+            model_settings=ModelSettings(
+                retry=ModelRetrySettings(
+                    max_retries=2,
+                    backoff={
+                        "initial_delay": 0.5,
+                        "max_delay": 4.0,
+                        "multiplier": 2.0,
+                        "jitter": True,
+                    },
+                    policy=retry_policies.any(
+                        retry_policies.provider_suggested(),
+                        retry_policies.retry_after(),
+                        retry_policies.network_error(),
+                        retry_policies.http_status([408, 409, 429, 500, 502, 503, 504]),
+                    ),
+                )
+            ),
         )
         result = await self._runner.run(
             agent,
@@ -203,6 +257,18 @@ def _input_source_event_ids(context: dict[str, Any]) -> list[str]:
     for segment in _iter_mapping_items(context.get("stage_segments")):
         values.extend(_iter_list(segment.get("representative_event_ids")))
     return _stable_unique_strings(values)
+
+
+def _strip_single_json_fence(value: str) -> str:
+    text = str(value or "").strip()
+    lines = text.splitlines()
+    if len(lines) < 3:
+        return value
+    if lines[0].strip().lower() != "```json":
+        return value
+    if lines[-1].strip() != "```":
+        return value
+    return "\n".join(lines[1:-1]).strip()
 
 
 def _iter_list(value: Any) -> list[Any]:

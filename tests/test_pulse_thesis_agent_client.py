@@ -4,6 +4,7 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from agents import ModelBehaviorError
 
 from gmgn_twitter_intel.pipeline.pulse_contract import (
     AGENT_NAME,
@@ -13,7 +14,10 @@ from gmgn_twitter_intel.pipeline.pulse_contract import (
     WORKFLOW_NAME,
 )
 from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.pipeline.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
+from gmgn_twitter_intel.pipeline.pulse_thesis_agent_client import (
+    OpenAIAgentsPulseThesisClient,
+    PulseThesisOutputSchema,
+)
 
 
 class FakeRunner:
@@ -108,7 +112,11 @@ def test_openai_agents_pulse_client_uses_typed_output_and_trace_metadata() -> No
     run_config = call["run_config"]
     assert agent.name == AGENT_NAME
     assert agent.tools == []
-    assert agent.output_type is PulseThesisPayload
+    assert isinstance(agent.output_type, PulseThesisOutputSchema)
+    assert agent.output_type.name() == "PulseThesisPayload"
+    assert agent.model_settings.retry is not None
+    assert agent.model_settings.retry.max_retries == 2
+    assert agent.model_settings.retry.policy is not None
     assert agent.model is None
     assert call["max_turns"] == 3
     assert run_config.workflow_name == WORKFLOW_NAME
@@ -141,6 +149,25 @@ def test_openai_agents_pulse_client_uses_typed_output_and_trace_metadata() -> No
     assert result.agent_run_audit["schema_version"] == PULSE_THESIS_SCHEMA_VERSION
     assert result.agent_run_audit["sdk_trace_id"] == run_config.trace_id
     assert result.agent_run_audit["output_hash"].startswith("sha256:")
+
+
+def test_pulse_thesis_output_schema_accepts_single_json_fence() -> None:
+    schema = PulseThesisOutputSchema()
+    payload_json = _payload().model_dump_json()
+
+    parsed = schema.validate_json(f"```json\n{payload_json}\n```")
+
+    assert isinstance(parsed, PulseThesisPayload)
+    assert parsed.symbol == "PEPE"
+    assert parsed.verdict == "trade_candidate"
+
+
+def test_pulse_thesis_output_schema_rejects_prose_wrapped_json_fence() -> None:
+    schema = PulseThesisOutputSchema()
+    payload_json = _payload().model_dump_json()
+
+    with pytest.raises(ModelBehaviorError):
+        schema.validate_json(f"Here is the JSON:\n```json\n{payload_json}\n```")
 
 
 def test_openai_agents_pulse_client_uses_subject_key_group_without_candidate_id() -> None:

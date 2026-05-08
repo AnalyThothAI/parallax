@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from typing import Any
 
@@ -296,6 +297,67 @@ def test_failure_path_marks_job_failed_and_finishes_failed_run_when_audit_exists
     assert repos.pulse.failures[0]["error"] == "agent unavailable"
 
 
+def test_timed_out_agent_job_is_failed_and_next_job_continues() -> None:
+    repos = FakeRepos()
+    context = _candidate_context(
+        {
+            "heat_bucket": "80-89",
+            "social_phase": "ignition",
+            "watched_confirmation": False,
+            "independent_author_count": 3,
+            "market_status": "fresh",
+            "hard_risks": [],
+        }
+    )
+    first_context = context.agent_context()
+    second_context = {**first_context, "candidate_id": "candidate-2", "subject_key": "target:Asset:asset-2"}
+    repos.pulse.enqueue_job(
+        candidate_id="candidate-1",
+        candidate_type="token_target",
+        subject_key="target:Asset:asset-1",
+        target_type="Asset",
+        target_id="asset-1",
+        window="1h",
+        scope="all",
+        trigger_signature="trigger-1",
+        timeline_signature="timeline-1",
+        context_json=first_context,
+        priority=80,
+        max_attempts=3,
+        next_run_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+    repos.pulse.enqueue_job(
+        candidate_id="candidate-2",
+        candidate_type="token_target",
+        subject_key="target:Asset:asset-2",
+        target_type="Asset",
+        target_id="asset-2",
+        window="1h",
+        scope="all",
+        trigger_signature="trigger-2",
+        timeline_signature="timeline-2",
+        context_json=second_context,
+        priority=79,
+        max_attempts=3,
+        next_run_at_ms=NOW_MS,
+        now_ms=NOW_MS,
+    )
+    client = SlowThenSuccessClient()
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=client)
+
+    result = asyncio.run(worker.process_due_jobs_once_async(now_ms=NOW_MS))
+
+    assert result["failed"] == 1
+    assert result["processed"] == 1
+    assert client.calls == 2
+    assert repos.pulse.finished_runs[0]["status"] == "failed"
+    assert repos.pulse.finished_runs[0]["error"] == "Agents SDK request timed out after 0.1s"
+    assert repos.pulse.failures[0]["error"] == "Agents SDK request timed out after 0.1s"
+    assert repos.pulse.finished_runs[1]["status"] == "done"
+    assert repos.pulse.successes == ["job-2"]
+
+
 @contextmanager
 def _session(repos: FakeRepos):
     yield repos
@@ -474,6 +536,26 @@ class FakeClient:
         )
         audit = self.request_audit(context=context, run_id=run_id, job=job)
         return PulseThesisAgentResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
+
+
+class SlowThenSuccessClient(FakeClient):
+    timeout_seconds = 0.01
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    async def write_thesis(
+        self,
+        *,
+        context: dict[str, Any],
+        run_id: str,
+        job: dict[str, Any],
+    ) -> PulseThesisAgentResult:
+        self.calls += 1
+        if self.calls == 1:
+            await asyncio.sleep(5)
+        return await super().write_thesis(context=context, run_id=run_id, job=job)
 
 
 def _candidate_context(metrics: dict[str, Any]):

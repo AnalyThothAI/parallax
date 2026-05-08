@@ -66,8 +66,8 @@ export function App() {
   const queryClient = useQueryClient();
   const windowKey = useTraderStore((state) => state.window);
   const scope = useTraderStore((state) => state.scope);
-  const signalLabScope = "matched";
-  const signalLabWindow = "24h";
+  const signalLabScope = "all";
+  const signalLabWindow = "1h";
   const signalLabCompactWindow = "1h";
   const handles = useTraderStore((state) => state.handles);
   const search = useTraderStore((state) => state.search);
