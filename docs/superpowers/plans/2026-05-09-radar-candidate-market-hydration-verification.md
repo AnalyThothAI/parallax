@@ -63,6 +63,28 @@ The token extraction state machine was not rewritten.
 
 Only the radar projection contract and market hydration scheduling changed.
 
+## Runtime Query Hotfix
+
+Docker verification after the first merge exposed a runtime bug: the token radar projection source query could saturate PostgreSQL on larger windows because price observation lookup used `OR` inside lateral subqueries. The hotfix keeps the same output semantics but splits lookups into index-friendly lateral paths:
+
+- latest feed price via `pricefeed_id, observed_at_ms`
+- latest subject price via `subject_type, subject_id, observed_at_ms`
+- message-scoped event price via `source_resolution_id`
+- event-history and before-event prices via `subject_type, subject_id, observed_at_ms`
+
+Additional hotfix verification:
+
+| Command | Result |
+|---------|--------|
+| `uv run pytest tests/test_token_radar_projection.py -q` | Passed: `13 passed` |
+| `uv run ruff check src/gmgn_twitter_intel/pipeline/token_radar_projection.py tests/test_token_radar_projection.py` | Passed: `All checks passed!` |
+| `uv run ruff check .` | Passed: `All checks passed!` |
+| `uv run pytest` | Passed for executable tests: `337 passed, 133 skipped` |
+| `uv run python -m compileall src tests` | Passed |
+| Hotfix `_source_rows` 24h/all against Docker PostgreSQL | Passed: `42689` rows in `17.287s` |
+| Hotfix `TokenRadarProjectionWorker.rebuild_once()` against Docker PostgreSQL | Passed: `622` rows written across all windows/scopes in `54.516s` |
+| Direct `AssetFlowService.asset_flow(window='5m', scope='all')` against Docker PostgreSQL | Passed: `5` targets, `5` attention rows, `fresh`, `0.09s` |
+
 ## Risks And Follow-Ups
 
 - The new DEX refresh selector depends on current token intent resolutions. If resolver refresh is delayed, DEX market hydration follows the delayed resolved set rather than unresolved attention rows.
