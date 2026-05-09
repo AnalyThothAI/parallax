@@ -10,6 +10,7 @@ from ..retrieval.post_text_quality import post_quality_score, post_text_features
 from .atomic_mention import mention_confidence_from_status, tweet_quality
 
 BASELINE_SLOT_COUNT = 6
+_SATURATED_AGE_MS = 180 * 24 * 60 * 60_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,11 +190,7 @@ def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:
     text_features = [post_text_features(str(row.get("text") or row.get("text_clean") or "")) for row in window]
     informative_count = sum(1 for item in text_features if item.get("informative"))
     market_context_count = sum(1 for item in text_features if item.get("has_market_context"))
-    llm_utility_values = [
-        _llm_utility(row)
-        for row in window
-        if _llm_utility(row) is not None
-    ]
+    llm_utility_values = [v for row in window if (v := _llm_utility(row)) is not None]
     llm_confidence_values = [
         float(row["llm_label_confidence"])
         for row in window
@@ -306,6 +303,8 @@ def _post_score(row: dict[str, Any]) -> int:
 
 
 def _confidence(row: dict[str, Any]) -> float:
+    # resolution_status is the authoritative enum from the deterministic
+    # resolver; intent_confidence is the legacy numeric shadow kept for fallback.
     status_conf = mention_confidence_from_status(row.get("resolution_status"))
     if status_conf > 0:
         return status_conf
@@ -336,10 +335,13 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def _age_ms(first_seen_ms: Any, received_at_ms: Any) -> int:
-    first = _int_or_none(first_seen_ms)
     received = _int_or_none(received_at_ms)
-    if first is None or received is None:
+    if received is None:
         return 0
+    first = _int_or_none(first_seen_ms)
+    if first is None:
+        # No profile data → treat as mature; tag/follower floors still apply
+        return _SATURATED_AGE_MS
     return max(0, received - first)
 
 
