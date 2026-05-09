@@ -176,30 +176,42 @@ class TokenRadarProjection:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol AS pricefeed_quote_symbol,
               price_feeds.status AS pricefeed_status,
-              latest_price.provider AS market_provider,
-              latest_price.observed_at_ms AS market_observed_at_ms,
-              latest_price.price_usd AS market_price_usd,
-              latest_price.price_quote AS market_price_quote,
-              latest_price.quote_symbol AS market_quote_symbol,
-              latest_price.price_basis AS market_price_basis,
-              latest_price.market_cap_usd AS market_market_cap_usd,
-              latest_price.liquidity_usd AS market_liquidity_usd,
-              latest_price.volume_24h_usd AS market_volume_24h_usd,
-              latest_price.open_interest_usd AS market_open_interest_usd,
-              latest_price.holders AS market_holders,
+              COALESCE(latest_feed_price.provider, latest_subject_price.provider) AS market_provider,
+              COALESCE(latest_feed_price.observed_at_ms, latest_subject_price.observed_at_ms) AS market_observed_at_ms,
+              COALESCE(latest_feed_price.price_usd, latest_subject_price.price_usd) AS market_price_usd,
+              COALESCE(latest_feed_price.price_quote, latest_subject_price.price_quote) AS market_price_quote,
+              COALESCE(latest_feed_price.quote_symbol, latest_subject_price.quote_symbol) AS market_quote_symbol,
+              COALESCE(latest_feed_price.price_basis, latest_subject_price.price_basis) AS market_price_basis,
+              COALESCE(latest_feed_price.market_cap_usd, latest_subject_price.market_cap_usd) AS market_market_cap_usd,
+              COALESCE(latest_feed_price.liquidity_usd, latest_subject_price.liquidity_usd) AS market_liquidity_usd,
+              COALESCE(latest_feed_price.volume_24h_usd, latest_subject_price.volume_24h_usd) AS market_volume_24h_usd,
+              COALESCE(
+                latest_feed_price.open_interest_usd,
+                latest_subject_price.open_interest_usd
+              ) AS market_open_interest_usd,
+              COALESCE(latest_feed_price.holders, latest_subject_price.holders) AS market_holders,
               first_price.observed_at_ms AS first_price_observed_at_ms,
               first_price.price_usd AS first_price_usd,
               first_price.price_quote AS first_price_quote,
               first_price.quote_symbol AS first_price_quote_symbol,
               first_price.price_basis AS first_price_basis,
-              event_price.observation_id AS event_price_observation_id,
-              event_price.observation_kind AS event_price_observation_kind,
-              event_price.provider AS event_price_provider,
-              event_price.observed_at_ms AS event_price_observed_at_ms,
-              event_price.price_usd AS event_price_usd,
-              event_price.price_quote AS event_price_quote,
-              event_price.quote_symbol AS event_price_quote_symbol,
-              event_price.price_basis AS event_price_basis,
+              COALESCE(
+                message_event_price.observation_id,
+                event_history_price.observation_id
+              ) AS event_price_observation_id,
+              COALESCE(
+                message_event_price.observation_kind,
+                event_history_price.observation_kind
+              ) AS event_price_observation_kind,
+              COALESCE(message_event_price.provider, event_history_price.provider) AS event_price_provider,
+              COALESCE(
+                message_event_price.observed_at_ms,
+                event_history_price.observed_at_ms
+              ) AS event_price_observed_at_ms,
+              COALESCE(message_event_price.price_usd, event_history_price.price_usd) AS event_price_usd,
+              COALESCE(message_event_price.price_quote, event_history_price.price_quote) AS event_price_quote,
+              COALESCE(message_event_price.quote_symbol, event_history_price.quote_symbol) AS event_price_quote_symbol,
+              COALESCE(message_event_price.price_basis, event_history_price.price_basis) AS event_price_basis,
               before_event_price.observed_at_ms AS before_event_price_observed_at_ms,
               before_event_price.price_usd AS before_event_price_usd,
               before_event_price.price_quote AS before_event_price_quote,
@@ -270,33 +282,25 @@ class TokenRadarProjection:
               SELECT *
               FROM price_observations
               WHERE price_observations.observed_at_ms <= %s
-                AND (
-                  (
-                    COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id) IS NOT NULL
-                    AND price_observations.pricefeed_id = COALESCE(
-                      token_intent_resolutions.pricefeed_id,
-                      preferred_price_feed.pricefeed_id
-                    )
-                  )
-                  OR (
-                    token_intent_resolutions.target_type IS NOT NULL
-                    AND token_intent_resolutions.target_id IS NOT NULL
-                    AND price_observations.subject_type = token_intent_resolutions.target_type
-                    AND price_observations.subject_id = token_intent_resolutions.target_id
-                  )
+                AND COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id) IS NOT NULL
+                AND price_observations.pricefeed_id = COALESCE(
+                  token_intent_resolutions.pricefeed_id,
+                  preferred_price_feed.pricefeed_id
                 )
-              ORDER BY
-                CASE
-                  WHEN price_observations.pricefeed_id = COALESCE(
-                    token_intent_resolutions.pricefeed_id,
-                    preferred_price_feed.pricefeed_id
-                  ) THEN 0
-                  ELSE 1
-                END,
-                observed_at_ms DESC,
-                observation_id DESC
+              ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
-            ) latest_price ON true
+            ) latest_feed_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.observed_at_ms <= %s
+                AND token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) latest_subject_price ON true
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -312,31 +316,31 @@ class TokenRadarProjection:
               FROM price_observations
               WHERE token_intent_resolutions.target_type IS NOT NULL
                 AND token_intent_resolutions.target_id IS NOT NULL
-                AND (
-                  (
-                    price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                    AND price_observations.subject_type = token_intent_resolutions.target_type
-                    AND price_observations.subject_id = token_intent_resolutions.target_id
-                    AND price_observations.observation_kind IN ('message_payload', 'message_quote')
-                  )
-                  OR (
-                    price_observations.subject_type = token_intent_resolutions.target_type
-                    AND price_observations.subject_id = token_intent_resolutions.target_id
-                    AND price_observations.observed_at_ms <= events.received_at_ms
-                  )
-                )
+                AND price_observations.source_resolution_id = token_intent_resolutions.resolution_id
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+                AND price_observations.observation_kind IN ('message_payload', 'message_quote')
               ORDER BY
                 CASE
-                  WHEN price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                    AND price_observations.observation_kind = 'message_payload' THEN 0
-                  WHEN price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                    AND price_observations.observation_kind = 'message_quote' THEN 1
+                  WHEN price_observations.observation_kind = 'message_payload' THEN 0
+                  WHEN price_observations.observation_kind = 'message_quote' THEN 1
                   ELSE 2
                 END,
                 observed_at_ms DESC,
                 observation_id DESC
               LIMIT 1
-            ) event_price ON true
+            ) message_event_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+                AND price_observations.observed_at_ms <= events.received_at_ms
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) event_history_price ON true
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -350,7 +354,7 @@ class TokenRadarProjection:
             ) before_event_price ON true
             WHERE events.received_at_ms >= %s {watched_clause}
             """,
-            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, since_ms),
+            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, now_ms, since_ms),
         ).fetchall()
         return [dict(row) for row in rows]
 

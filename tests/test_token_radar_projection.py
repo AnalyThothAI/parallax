@@ -4,6 +4,7 @@ import gmgn_twitter_intel.pipeline.token_radar_projection as token_radar_project
 from gmgn_twitter_intel.pipeline.token_radar_contract import (
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
 from gmgn_twitter_intel.pipeline.token_radar_projection import (
@@ -317,6 +318,22 @@ def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefe
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
+def test_source_rows_keeps_price_observation_laterals_index_friendly():
+    conn = FakeConn()
+    repos = type("Repos", (), {"conn": conn})()
+
+    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
+
+    assert "latest_feed_price" in conn.sql
+    assert "latest_subject_price" in conn.sql
+    assert "message_event_price" in conn.sql
+    assert "event_history_price" in conn.sql
+    assert "latest_price" not in conn.sql
+    assert ") event_price ON true" not in conn.sql
+    assert " OR " not in conn.sql
+    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 2, 2, 1)
+
+
 def test_resolved_pending_market_never_projects_as_driver():
     rows = [
         {
@@ -390,9 +407,11 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
 
 class FakeConn:
     sql = ""
+    params = None
 
     def execute(self, sql, params=None):
         self.sql = str(sql)
+        self.params = params
         return self
 
     def fetchall(self):
