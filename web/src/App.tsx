@@ -60,8 +60,6 @@ type SelectedSignal =
   | { kind: "query"; query: string }
   | null;
 
-const TOKEN_RADAR_CONTRACT_VERSION = "token-radar-v6-auditable";
-
 export function App() {
   const queryClient = useQueryClient();
   const windowKey = useTraderStore((state) => state.window);
@@ -1106,7 +1104,7 @@ function tokenRadarItems(
   window: TokenFlowItem["flow"]["window"],
   scope: TokenFlowItem["posts_query"]["scope"],
 ): TokenFlowItem[] {
-  if (!data || data.projection.version !== TOKEN_RADAR_CONTRACT_VERSION) {
+  if (!data) {
     return [];
   }
   return assetFlowRows(data).map((row) => tokenRadarRowToTokenItem(row, window, scope));

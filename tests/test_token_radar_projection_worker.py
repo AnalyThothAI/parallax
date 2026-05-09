@@ -15,8 +15,10 @@ def test_token_radar_projection_worker_rebuilds_all_windows_and_scopes(monkeypat
     calls: list[dict[str, object]] = []
 
     class FakeProjection:
-        def __init__(self, *, repos):
+        def __init__(self, *, repos, market_hydrator=None, preflight_hydration_limit=40):
             self.repos = repos
+            self.market_hydrator = market_hydrator
+            self.preflight_hydration_limit = preflight_hydration_limit
 
         def rebuild(self, *, window, scope, now_ms=None, limit=100):
             calls.append({"window": window, "scope": scope, "now_ms": now_ms, "limit": limit})
@@ -30,18 +32,21 @@ def test_token_radar_projection_worker_rebuilds_all_windows_and_scopes(monkeypat
         limit=7,
     )
 
-    result = worker.rebuild_once(now_ms=1_777_800_000_000)
+    first = worker.rebuild_once(now_ms=1_777_800_000_000)
+    second = worker.rebuild_once(now_ms=1_777_800_010_000)
 
     assert calls == [
         {"window": "5m", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "5m", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "1h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
-        {"window": "1h", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "5m", "scope": "matched", "now_ms": 1_777_800_010_000, "limit": 7},
     ]
-    assert result["rows_written"] == 8
-    assert result["source_rows"] == 12
-    assert result["windows"]["5m:all"]["rows_written"] == 2
-    assert worker.last_started_at_ms == 1_777_800_000_000
+    assert first["rows_written"] == 2
+    assert first["source_rows"] == 3
+    assert first["window"] == "5m"
+    assert first["scope"] == "all"
+    assert second["window"] == "5m"
+    assert second["scope"] == "matched"
+    assert first["windows"]["5m:all"]["rows_written"] == 2
+    assert worker.last_started_at_ms == 1_777_800_010_000
     assert worker.last_run_at_ms is not None
-    assert worker.last_result == result
+    assert worker.last_result == second
     assert worker.last_error is None

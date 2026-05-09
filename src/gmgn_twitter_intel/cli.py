@@ -195,11 +195,10 @@ def build_parser() -> argparse.ArgumentParser:
     sync_gmgn_directory.add_argument("--max-pages", type=int, default=200)
     run_token_discovery = ops_subcommands.add_parser(
         "run-token-discovery",
-        help="refresh due token discovery results, reprocess recent intents, and rebuild token radar",
+        help="refresh due token discovery results and reprocess recent intents",
     )
     run_token_discovery.add_argument("--limit", type=int, default=50)
     run_token_discovery.add_argument("--reprocess-limit", type=int, default=500)
-    run_token_discovery.add_argument("--projection-limit", type=int, default=100)
     reprocess_token_intents = ops_subcommands.add_parser(
         "reprocess-token-intents",
         help="re-resolve recent unresolved token intents and rebuild token radar",
@@ -223,14 +222,14 @@ def build_parser() -> argparse.ArgumentParser:
     audit_token_intent.add_argument("--intent-id", default="")
     rebuild_token_radar = ops_subcommands.add_parser(
         "rebuild-token-radar",
-        help="write token radar V6 auditable read model",
+        help="write the current token radar read model",
     )
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     rebuild_token_radar.add_argument("--limit", type=int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
     audit_token_radar = ops_subcommands.add_parser(
         "audit-token-radar",
-        help="audit token radar V6 rows for scoring and market-readiness regressions",
+        help="audit token radar rows for scoring and market-readiness regressions",
     )
     audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     audit_token_radar.add_argument("--limit", type=int, default=100)
@@ -704,7 +703,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     now_ms=_now_ms(),
                     lookup_limit=args.limit,
                     reprocess_limit=args.reprocess_limit,
-                    projection_limit=args.projection_limit,
                 )
             finally:
                 client.close()

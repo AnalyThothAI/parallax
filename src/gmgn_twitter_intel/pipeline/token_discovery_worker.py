@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import math
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -14,11 +15,10 @@ from ..market.okx_chains import OKX_CHAIN_INDEX_TO_CHAIN
 from ..storage.discovery_repository import DISCOVERY_PROVIDER
 from .asset_market_sync import _okx_chain_index, _payload_hash
 from .token_radar_projection import WINDOW_MS
-from .token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
 from .token_resolution_refresh import (
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
-    rebuild_token_radar_windows,
+    deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
 
@@ -28,6 +28,7 @@ FOUND_SYMBOL_REFRESH_MS = 15 * 60 * 1000
 NOT_FOUND_SYMBOL_REFRESH_MS = 5 * 60 * 1000
 FOUND_ADDRESS_REFRESH_MS = 24 * 60 * 60 * 1000
 NOT_FOUND_ADDRESS_REFRESH_MS = 5 * 60 * 1000
+MAX_DEX_SYMBOL_CANDIDATES_PER_CHAIN = 3
 
 
 class TokenDiscoveryWorker:
@@ -40,9 +41,6 @@ class TokenDiscoveryWorker:
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
-        projection_limit: int = 100,
-        windows: tuple[str, ...] = DEFAULT_WINDOWS,
-        scopes: tuple[str, ...] = DEFAULT_SCOPES,
     ) -> None:
         self.repository_session = repository_session
         self.dex_client = dex_client
@@ -50,9 +48,6 @@ class TokenDiscoveryWorker:
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.lookup_limit = max(1, int(lookup_limit))
         self.reprocess_limit = max(1, int(reprocess_limit))
-        self.projection_limit = max(1, int(projection_limit))
-        self.windows = tuple(windows)
-        self.scopes = tuple(scopes)
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
         self.last_result: dict[str, Any] | None = None
@@ -81,9 +76,6 @@ class TokenDiscoveryWorker:
                     now_ms=observed_at_ms,
                     lookup_limit=self.lookup_limit,
                     reprocess_limit=self.reprocess_limit,
-                    projection_limit=self.projection_limit,
-                    windows=self.windows,
-                    scopes=self.scopes,
                 )
         except Exception as exc:
             self.last_error = str(exc)
@@ -109,9 +101,6 @@ def run_token_discovery_once(
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
-    projection_limit: int = 100,
-    windows: tuple[str, ...] = DEFAULT_WINDOWS,
-    scopes: tuple[str, ...] = DEFAULT_SCOPES,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
     since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
@@ -180,13 +169,7 @@ def run_token_discovery_once(
         result["reprocess"] = reprocess_result
         result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
     if result["reprocessed_intents"]:
-        result["projection"] = rebuild_token_radar_windows(
-            repos=repos,
-            now_ms=now_ms,
-            windows=windows,
-            scopes=scopes,
-            limit=projection_limit,
-        )
+        result["projection"] = deferred_token_radar_projection()
     result["discovery_result_counts"] = repos.discovery.counts()
     return result
 
@@ -234,17 +217,33 @@ def _process_dex_symbol_lookup(
         return _lookup_result()
     candidates = dex_client.search_tokens(query=symbol, chain_indexes=chain_indexes)
     result = _lookup_result(search_requests=1)
-    for candidate in candidates:
-        if _normalize_symbol(getattr(candidate, "symbol", None)) != symbol:
-            continue
+    matched_candidates = [
+        candidate for candidate in candidates if _normalize_symbol(getattr(candidate, "symbol", None)) == symbol
+    ]
+    retained_candidates = _retained_symbol_candidates(
+        matched_candidates,
+        per_chain_limit=MAX_DEX_SYMBOL_CANDIDATES_PER_CHAIN,
+    )
+    result["search_candidates_seen"] = len(matched_candidates)
+    result["search_candidates_rejected"] = max(0, len(matched_candidates) - len(retained_candidates))
+    retained_asset_ids: list[str] = []
+    for candidate in retained_candidates:
         asset_id = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
         if not asset_id:
             continue
+        retained_asset_ids.append(asset_id)
         result["candidate_ids"].append(asset_id)
         result["search_hits"] += 1
         result["assets_written"] += 1
         result["pricefeeds_written"] += 1
         result["price_observations_written"] += 1
+    if retained_asset_ids:
+        result["search_assets_demoted"] = repos.registry.demote_unretained_symbol_assets(
+            symbol=symbol,
+            retained_asset_ids=retained_asset_ids,
+            now_ms=now_ms,
+            commit=False,
+        )
     if result["search_hits"]:
         result["affected_lookup_keys"].extend([f"symbol:{symbol}", f"project_symbol:{symbol}", f"cex_token:{symbol}"])
     return result
@@ -342,6 +341,9 @@ def _merge_lookup_result(result: dict[str, Any], lookup_result: dict[str, Any]) 
     for key in (
         "search_requests",
         "search_hits",
+        "search_candidates_seen",
+        "search_candidates_rejected",
+        "search_assets_demoted",
         "assets_written",
         "pricefeeds_written",
         "price_observations_written",
@@ -358,12 +360,15 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "provider_errors": 0,
         "search_requests": 0,
         "search_hits": 0,
+        "search_candidates_seen": 0,
+        "search_candidates_rejected": 0,
+        "search_assets_demoted": 0,
         "assets_written": 0,
         "pricefeeds_written": 0,
         "price_observations_written": 0,
         "reprocessed_intents": 0,
         "reprocess": None,
-        "projection": {"rows_written": 0, "source_rows": 0, "windows": {}},
+        "projection": deferred_token_radar_projection(),
         "discovery_result_counts": {},
         "errors": [],
     }
@@ -377,12 +382,59 @@ def _lookup_result(
     return {
         "search_requests": int(search_requests),
         "search_hits": int(search_hits),
+        "search_candidates_seen": 0,
+        "search_candidates_rejected": 0,
+        "search_assets_demoted": 0,
         "assets_written": 0,
         "pricefeeds_written": 0,
         "price_observations_written": 0,
         "candidate_ids": [],
         "affected_lookup_keys": [],
     }
+
+
+def _retained_symbol_candidates(candidates: list[Any], *, per_chain_limit: int) -> list[Any]:
+    by_chain: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        chain_id = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
+        address = _normalize_address(getattr(candidate, "address", None))
+        if not chain_id or not address:
+            continue
+        chain_bucket = by_chain.setdefault(chain_id, {})
+        existing = chain_bucket.get(address)
+        if existing is None or _candidate_rank_key(candidate) < _candidate_rank_key(existing):
+            chain_bucket[address] = candidate
+    retained: list[Any] = []
+    for chain_id in sorted(by_chain):
+        ranked = sorted(by_chain[chain_id].values(), key=_candidate_rank_key)
+        retained.extend(ranked[: max(0, int(per_chain_limit))])
+    return retained
+
+
+def _candidate_rank_key(candidate: Any) -> tuple[float, int, str]:
+    address = _normalize_address(getattr(candidate, "address", None))
+    has_price_rank = 0 if getattr(candidate, "price_usd", None) is not None else 1
+    return (-_candidate_quality_score(candidate), has_price_rank, address)
+
+
+def _candidate_quality_score(candidate: Any) -> float:
+    return (
+        0.5 * _log10_number(getattr(candidate, "market_cap_usd", None))
+        + 0.3 * _log10_number(getattr(candidate, "liquidity_usd", None))
+        + 0.2 * _log10_number(getattr(candidate, "holders", None))
+    )
+
+
+def _log10_number(value: Any) -> float:
+    if value is None:
+        return 0.0
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if numeric <= 0:
+        return 0.0
+    return math.log10(numeric + 1.0)
 
 
 def _lookup_type(lookup_key: str) -> str:

@@ -17,16 +17,13 @@ def refresh_recent_token_state(
     now_ms: int,
     window: str = DEFAULT_REPROCESS_WINDOW,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
-    projection_limit: int = 100,
-    windows: tuple[str, ...] = DEFAULT_WINDOWS,
-    scopes: tuple[str, ...] = DEFAULT_SCOPES,
 ) -> dict[str, Any]:
     keys = sorted({key for key in lookup_keys if key})
     result = {
         "lookup_keys": keys,
         "reprocess": None,
         "reprocessed_intents": 0,
-        "projection": {"rows_written": 0, "source_rows": 0, "windows": {}},
+        "projection": deferred_token_radar_projection(),
     }
     if not keys:
         return result
@@ -39,14 +36,6 @@ def refresh_recent_token_state(
     )
     result["reprocess"] = reprocess
     result["reprocessed_intents"] = reprocess["reprocessed_intents"]
-    if result["reprocessed_intents"]:
-        result["projection"] = rebuild_token_radar_windows(
-            repos=repos,
-            now_ms=now_ms,
-            windows=windows,
-            scopes=scopes,
-            limit=projection_limit,
-        )
     return result
 
 
@@ -121,3 +110,12 @@ def rebuild_token_radar_windows(
             result["rows_written"] += int(window_result.get("rows_written") or 0)
             result["source_rows"] += int(window_result.get("source_rows") or 0)
     return result
+
+
+def deferred_token_radar_projection() -> dict[str, Any]:
+    return {
+        "status": "deferred_to_worker",
+        "rows_written": 0,
+        "source_rows": 0,
+        "windows": {},
+    }

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Callable
 from typing import Any
 
 from ..retrieval.discussion_quality_scoring import discussion_quality_score
@@ -29,19 +30,37 @@ WINDOW_MS = {
     "24h": 24 * 60 * 60 * 1000,
 }
 MARKET_FRESH_MS = 5 * 60 * 1000
-ATTENTION_HISTORY_MS = 24 * 60 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
+PREFLIGHT_HYDRATION_WINDOWS = {"5m", "1h"}
+DEFAULT_PREFLIGHT_HYDRATION_LIMIT = 40
 
 
 class TokenRadarProjection:
-    def __init__(self, *, repos):
+    def __init__(
+        self,
+        *,
+        repos,
+        market_hydrator: Callable[..., dict[str, Any]] | None = None,
+        preflight_hydration_limit: int = DEFAULT_PREFLIGHT_HYDRATION_LIMIT,
+        preflight_windows: set[str] | tuple[str, ...] = tuple(PREFLIGHT_HYDRATION_WINDOWS),
+    ):
         self.repos = repos
+        self.market_hydrator = market_hydrator
+        self.preflight_hydration_limit = max(0, int(preflight_hydration_limit))
+        self.preflight_windows = {str(window) for window in preflight_windows}
+        self._preflight_cache: dict[tuple[str, int], dict[str, Any]] = {}
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
+        market_hydration = self._preflight_market_hydration(
+            window=window,
+            scope=scope,
+            now_ms=computed_at_ms,
+            score_since_ms=score_since_ms,
+        )
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
         source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
@@ -117,6 +136,7 @@ class TokenRadarProjection:
                 "source_rows": len(source_rows),
                 "computed_at_ms": computed_at_ms,
                 "status": "stale_skipped",
+                "market_hydration": market_hydration,
             }
         projection_repo.advance_offset(
             projection_name=TOKEN_RADAR_PROJECTION_NAME,
@@ -142,7 +162,39 @@ class TokenRadarProjection:
             "source_rows": len(source_rows),
             "computed_at_ms": computed_at_ms,
             "status": "ready",
+            "market_hydration": market_hydration,
         }
+
+    def _preflight_market_hydration(
+        self,
+        *,
+        window: str,
+        scope: str,
+        now_ms: int,
+        score_since_ms: int,
+    ) -> dict[str, Any]:
+        if window not in self.preflight_windows:
+            return _hydration_status("not_required")
+        if self.market_hydrator is None or self.preflight_hydration_limit <= 0:
+            return _hydration_status("not_configured")
+        cache_key = (window, int(now_ms))
+        if cache_key in self._preflight_cache:
+            return self._preflight_cache[cache_key]
+        try:
+            raw_result = self.market_hydrator(
+                repos=self.repos,
+                window=window,
+                scope=scope,
+                now_ms=now_ms,
+                score_since_ms=score_since_ms,
+                stale_before_ms=now_ms - MARKET_FRESH_MS,
+                limit=self.preflight_hydration_limit,
+            )
+            result = _hydration_result(raw_result)
+        except Exception as exc:
+            result = _hydration_status("error", error=str(exc))
+        self._preflight_cache[cache_key] = result
+        return result
 
     def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
         watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
@@ -188,30 +240,42 @@ class TokenRadarProjection:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol AS pricefeed_quote_symbol,
               price_feeds.status AS pricefeed_status,
-              latest_price.provider AS market_provider,
-              latest_price.observed_at_ms AS market_observed_at_ms,
-              latest_price.price_usd AS market_price_usd,
-              latest_price.price_quote AS market_price_quote,
-              latest_price.quote_symbol AS market_quote_symbol,
-              latest_price.price_basis AS market_price_basis,
-              latest_price.market_cap_usd AS market_market_cap_usd,
-              latest_price.liquidity_usd AS market_liquidity_usd,
-              latest_price.volume_24h_usd AS market_volume_24h_usd,
-              latest_price.open_interest_usd AS market_open_interest_usd,
-              latest_price.holders AS market_holders,
+              COALESCE(latest_feed_price.provider, latest_subject_price.provider) AS market_provider,
+              COALESCE(latest_feed_price.observed_at_ms, latest_subject_price.observed_at_ms) AS market_observed_at_ms,
+              COALESCE(latest_feed_price.price_usd, latest_subject_price.price_usd) AS market_price_usd,
+              COALESCE(latest_feed_price.price_quote, latest_subject_price.price_quote) AS market_price_quote,
+              COALESCE(latest_feed_price.quote_symbol, latest_subject_price.quote_symbol) AS market_quote_symbol,
+              COALESCE(latest_feed_price.price_basis, latest_subject_price.price_basis) AS market_price_basis,
+              COALESCE(latest_feed_price.market_cap_usd, latest_subject_price.market_cap_usd) AS market_market_cap_usd,
+              COALESCE(latest_feed_price.liquidity_usd, latest_subject_price.liquidity_usd) AS market_liquidity_usd,
+              COALESCE(latest_feed_price.volume_24h_usd, latest_subject_price.volume_24h_usd) AS market_volume_24h_usd,
+              COALESCE(
+                latest_feed_price.open_interest_usd,
+                latest_subject_price.open_interest_usd
+              ) AS market_open_interest_usd,
+              COALESCE(latest_feed_price.holders, latest_subject_price.holders) AS market_holders,
               first_price.observed_at_ms AS first_price_observed_at_ms,
               first_price.price_usd AS first_price_usd,
               first_price.price_quote AS first_price_quote,
               first_price.quote_symbol AS first_price_quote_symbol,
               first_price.price_basis AS first_price_basis,
-              event_price.observation_id AS event_price_observation_id,
-              event_price.observation_kind AS event_price_observation_kind,
-              event_price.provider AS event_price_provider,
-              event_price.observed_at_ms AS event_price_observed_at_ms,
-              event_price.price_usd AS event_price_usd,
-              event_price.price_quote AS event_price_quote,
-              event_price.quote_symbol AS event_price_quote_symbol,
-              event_price.price_basis AS event_price_basis,
+              COALESCE(
+                message_event_price.observation_id,
+                event_history_price.observation_id
+              ) AS event_price_observation_id,
+              COALESCE(
+                message_event_price.observation_kind,
+                event_history_price.observation_kind
+              ) AS event_price_observation_kind,
+              COALESCE(message_event_price.provider, event_history_price.provider) AS event_price_provider,
+              COALESCE(
+                message_event_price.observed_at_ms,
+                event_history_price.observed_at_ms
+              ) AS event_price_observed_at_ms,
+              COALESCE(message_event_price.price_usd, event_history_price.price_usd) AS event_price_usd,
+              COALESCE(message_event_price.price_quote, event_history_price.price_quote) AS event_price_quote,
+              COALESCE(message_event_price.quote_symbol, event_history_price.quote_symbol) AS event_price_quote_symbol,
+              COALESCE(message_event_price.price_basis, event_history_price.price_basis) AS event_price_basis,
               before_event_price.observed_at_ms AS before_event_price_observed_at_ms,
               before_event_price.price_usd AS before_event_price_usd,
               before_event_price.price_quote AS before_event_price_quote,
@@ -284,33 +348,25 @@ class TokenRadarProjection:
               SELECT *
               FROM price_observations
               WHERE price_observations.observed_at_ms <= %s
-                AND (
-                  (
-                    COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id) IS NOT NULL
-                    AND price_observations.pricefeed_id = COALESCE(
-                      token_intent_resolutions.pricefeed_id,
-                      preferred_price_feed.pricefeed_id
-                    )
-                  )
-                  OR (
-                    token_intent_resolutions.target_type IS NOT NULL
-                    AND token_intent_resolutions.target_id IS NOT NULL
-                    AND price_observations.subject_type = token_intent_resolutions.target_type
-                    AND price_observations.subject_id = token_intent_resolutions.target_id
-                  )
+                AND COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id) IS NOT NULL
+                AND price_observations.pricefeed_id = COALESCE(
+                  token_intent_resolutions.pricefeed_id,
+                  preferred_price_feed.pricefeed_id
                 )
-              ORDER BY
-                CASE
-                  WHEN price_observations.pricefeed_id = COALESCE(
-                    token_intent_resolutions.pricefeed_id,
-                    preferred_price_feed.pricefeed_id
-                  ) THEN 0
-                  ELSE 1
-                END,
-                observed_at_ms DESC,
-                observation_id DESC
+              ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
-            ) latest_price ON true
+            ) latest_feed_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.observed_at_ms <= %s
+                AND token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) latest_subject_price ON true
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -326,31 +382,31 @@ class TokenRadarProjection:
               FROM price_observations
               WHERE token_intent_resolutions.target_type IS NOT NULL
                 AND token_intent_resolutions.target_id IS NOT NULL
-                AND (
-                  (
-                    price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                    AND price_observations.subject_type = token_intent_resolutions.target_type
-                    AND price_observations.subject_id = token_intent_resolutions.target_id
-                    AND price_observations.observation_kind IN ('message_payload', 'message_quote')
-                  )
-                  OR (
-                    price_observations.subject_type = token_intent_resolutions.target_type
-                    AND price_observations.subject_id = token_intent_resolutions.target_id
-                    AND price_observations.observed_at_ms <= events.received_at_ms
-                  )
-                )
+                AND price_observations.source_resolution_id = token_intent_resolutions.resolution_id
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+                AND price_observations.observation_kind IN ('message_payload', 'message_quote')
               ORDER BY
                 CASE
-                  WHEN price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                    AND price_observations.observation_kind = 'message_payload' THEN 0
-                  WHEN price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                    AND price_observations.observation_kind = 'message_quote' THEN 1
+                  WHEN price_observations.observation_kind = 'message_payload' THEN 0
+                  WHEN price_observations.observation_kind = 'message_quote' THEN 1
                   ELSE 2
                 END,
                 observed_at_ms DESC,
                 observation_id DESC
               LIMIT 1
-            ) event_price ON true
+            ) message_event_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE token_intent_resolutions.target_type IS NOT NULL
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+                AND price_observations.observed_at_ms <= events.received_at_ms
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) event_history_price ON true
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -365,7 +421,7 @@ class TokenRadarProjection:
             WHERE events.received_at_ms >= %s {watched_clause}
             ORDER BY events.received_at_ms ASC, events.event_id ASC
             """,
-            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, since_ms),
+            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, now_ms, since_ms),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -440,9 +496,36 @@ class TokenRadarProjection:
 
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
-    baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
-    attention_since_ms = computed_at_ms - ATTENTION_HISTORY_MS
-    return min(baseline_since_ms, attention_since_ms)
+    return score_since_ms - BASELINE_SLOT_COUNT * window_ms
+
+
+def _hydration_result(raw_result: dict[str, Any] | None) -> dict[str, Any]:
+    result = dict(raw_result or {})
+    assets_scanned = int(result.get("assets_scanned") or 0)
+    observations_written = int(result.get("price_observations_written") or 0)
+    address_errors = int(result.get("address_search_errors") or 0)
+    status = "ready"
+    if assets_scanned and observations_written < assets_scanned:
+        status = "partial"
+    if address_errors:
+        status = "partial"
+    return {
+        **result,
+        "status": status,
+        "assets_scanned": assets_scanned,
+        "price_observations_written": observations_written,
+    }
+
+
+def _hydration_status(status: str, *, error: str | None = None) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "status": status,
+        "assets_scanned": 0,
+        "price_observations_written": 0,
+    }
+    if error:
+        result["error"] = error
+    return result
 
 
 def _project_group(
@@ -546,6 +629,8 @@ def _project_group(
         "data_health_json": {
             "identity": resolution_status,
             "market": market["market_observation_status"],
+            "market_readiness": market["market_readiness"],
+            "event_price_readiness": market["event_price_readiness"],
             "coverage": "public_stream",
         },
         "source_event_ids_json": event_ids,
@@ -557,10 +642,14 @@ def _project_group(
 
 
 def _has_resolved_target(row: dict[str, Any]) -> bool:
-    return bool(row.get("target_id")) and str(row.get("resolution_status") or "") in {
+    if not bool(row.get("target_id")) or str(row.get("resolution_status") or "") not in {
         "EXACT",
         "UNIQUE_BY_CONTEXT",
-    }
+    }:
+        return False
+    return not (
+        row.get("target_type") == "Asset" and row.get("asset_registry_status") not in {"candidate", "canonical"}
+    )
 
 
 def _resolution_discovery(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -686,7 +775,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         )
         if social_basis == "basis_mismatch":
             price_change_status = "basis_mismatch"
-        return {
+        market = {
             "market_status": "fresh" if fresh else "stale",
             "market_observation_status": "ready" if fresh else "stale",
             "price_change_status": price_change_status,
@@ -718,13 +807,14 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             if first_basis != "basis_mismatch"
             else None,
         }
+        return _with_readiness(market)
     missing = _missing_market("pending_refresh")
     missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
-    return missing
+    return _with_readiness(missing)
 
 
 def _missing_market(status: str) -> dict[str, Any]:
-    return {
+    market = {
         "market_status": "missing",
         "market_observation_status": status,
         "price_change_status": status,
@@ -750,6 +840,37 @@ def _missing_market(status: str) -> dict[str, Any]:
         "price_change_since_social_pct": None,
         "price_change_before_social_pct": None,
         "price_change_since_first_snapshot_pct": None,
+    }
+    return _with_readiness(market)
+
+
+def _with_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **market,
+        "market_readiness": _market_readiness(market),
+        "event_price_readiness": _event_price_readiness(market),
+    }
+
+
+def _market_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": market.get("market_status") or "missing",
+        "observation_status": market.get("market_observation_status") or "missing",
+        "provider": market.get("provider"),
+        "snapshot_age_ms": market.get("snapshot_age_ms"),
+        "snapshot_observed_at_ms": market.get("snapshot_observed_at_ms"),
+    }
+
+
+def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    value = market.get("price_at_social_start")
+    status = "ready" if value is not None else "missing"
+    return {
+        "status": status,
+        "source": "message_or_history" if status == "ready" else market.get("price_change_status"),
+        "social_signal_start_ms": market.get("social_signal_start_ms"),
+        "price_at_social_start": value,
+        "price_change_status": market.get("price_change_status"),
     }
 
 

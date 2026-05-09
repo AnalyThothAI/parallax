@@ -259,6 +259,15 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
   });
 
+  it("renders valid token radar rows regardless of backend projection version metadata", async () => {
+    mockApi({ projectionVersion: "token-radar-next-internal-version" });
+
+    renderWithQuery(<App />);
+
+    expect(await screen.findByRole("button", { name: "select token $UPEG" })).toBeInTheDocument();
+    expect(screen.getByText("TOKEN RADAR")).toBeInTheDocument();
+  });
+
   it("renders fresh CEX token-radar market as tradeable instead of pending", async () => {
     mockApi({
       assetFlowRows: [
@@ -1201,6 +1210,7 @@ function mockApi(options: {
   notifications?: NotificationItem[];
   assetFlowRows?: AssetFlowRow[];
   assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
+  projectionVersion?: string;
 } = {}) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
@@ -1224,7 +1234,7 @@ function mockApi(options: {
             assetFlowRow({ address: "0x2222222222222222222222222222222222222222" })
           ],
           attention: [],
-          projection: assetFlowProjection()
+          projection: assetFlowProjection(options.projectionVersion)
         });
       }
       const window = String(requestOptions?.params?.window ?? "1h");
@@ -1241,7 +1251,7 @@ function mockApi(options: {
           })
         ],
         attention: [],
-        projection: assetFlowProjection()
+        projection: assetFlowProjection(options.projectionVersion)
       });
     }
     if (path === "/api/target-social-timeline") {
@@ -1515,10 +1525,10 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
   };
 }
 
-function assetFlowProjection(): AssetFlowData["projection"] {
+function assetFlowProjection(version = "token-radar-fixture-current"): AssetFlowData["projection"] {
   return {
     status: "fresh",
-    version: "token-radar-v6-auditable",
+    version,
     source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
     computed_at_ms: 1_777_746_300_000

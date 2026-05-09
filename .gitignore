@@ -18,6 +18,7 @@ web/coverage/
 .worktrees/
 .codex/
 .superpowers/
+.playwright-mcp/
 
 # IDE & OS
 .vscode/
