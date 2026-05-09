@@ -47,6 +47,51 @@ class AccountQualityRepository:
         if commit:
             self.conn.commit()
 
+    def upsert_directory_entry(
+        self,
+        *,
+        handle: str,
+        gmgn_user_id: str | None,
+        user_tags: tuple[str, ...],
+        platform_followers: int | None,
+        observed_at_ms: int,
+        commit: bool = True,
+    ) -> None:
+        normalized = _handle(handle)
+        now_ms = _now_ms()
+        tags_list = list(user_tags)
+        self.conn.execute(
+            """
+            INSERT INTO account_profiles(
+              handle, first_seen_ms, latest_seen_ms, follower_max, watched_status,
+              gmgn_user_id, gmgn_user_tags, gmgn_platform_followers, gmgn_directory_observed_at_ms,
+              created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(handle) DO UPDATE SET
+              gmgn_user_id = excluded.gmgn_user_id,
+              gmgn_user_tags = excluded.gmgn_user_tags,
+              gmgn_platform_followers = excluded.gmgn_platform_followers,
+              gmgn_directory_observed_at_ms = excluded.gmgn_directory_observed_at_ms,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                normalized,
+                int(observed_at_ms),
+                int(observed_at_ms),
+                None,
+                "public",
+                gmgn_user_id,
+                tags_list,
+                int(platform_followers) if platform_followers is not None else None,
+                int(observed_at_ms),
+                now_ms,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
     def upsert_token_call_stat(
         self,
         *,
