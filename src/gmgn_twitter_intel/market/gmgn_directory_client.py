@@ -42,7 +42,7 @@ class GmgnDirectoryEntry:
     platform_followers: int | None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class GmgnDirectoryPage:
     entries: list[GmgnDirectoryEntry]
     next_page_token: str | None
@@ -117,14 +117,26 @@ class GmgnDirectoryClient:
     def _send(self, params: list[tuple[str, str]]) -> dict[str, Any]:
         if self._httpx_client is not None:
             response = self._httpx_client.get(self._path, params=params)
-            payload = response.json()
+            status_code = response.status_code
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise GmgnDirectoryError(
+                    f"GET {self._path} returned non-JSON HTTP {status_code}"
+                ) from exc
         elif self._curl_session is not None:
             response = self._curl_session.get(
                 f"{self._base_url}{self._path}",
                 params=params,
                 timeout=self._timeout_seconds,
             )
-            payload = response.json()
+            status_code = response.status_code
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise GmgnDirectoryError(
+                    f"GET {self._path} returned non-JSON HTTP {status_code}"
+                ) from exc
         else:
             raise GmgnDirectoryError("client not initialized")
         if not isinstance(payload, dict):

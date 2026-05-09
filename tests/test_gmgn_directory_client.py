@@ -96,6 +96,7 @@ def test_iter_pages_walks_until_empty_token_and_dedupes_by_handle():
     client = GmgnDirectoryClient(
         base_url="https://example.test",
         transport=httpx.MockTransport(handler),
+        sleep_between_pages_seconds=0,
     )
     try:
         entries = list(client.iter_entries(max_pages=10))
@@ -119,3 +120,50 @@ def test_client_raises_on_non_zero_envelope_code():
             client.fetch_page(page_token=None)
     finally:
         client.close()
+
+
+def test_iter_entries_dedupes_repeated_handles_across_pages():
+    pages = iter([
+        {
+            "code": 0, "reason": "", "message": "",
+            "data": {
+                "users": [
+                    {"handle": "cz", "user_id": "X1", "user_tags": ["kol"],
+                     "platform": 2, "followers": 100, "followed": False},
+                    {"handle": "elonmusk", "user_id": "Y1", "user_tags": ["founder"],
+                     "platform": 2, "followers": 200, "followed": False},
+                ],
+                "page_token": "p2",
+            },
+        },
+        {
+            "code": 0, "reason": "", "message": "",
+            "data": {
+                "users": [
+                    {"handle": "cz", "user_id": "X2", "user_tags": ["kol"],
+                     "platform": 2, "followers": 99, "followed": False},
+                    {"handle": "", "user_id": "blank", "user_tags": [],
+                     "platform": 2, "followers": 0, "followed": False},
+                    {"handle": "vitalik", "user_id": "V1", "user_tags": ["founder"],
+                     "platform": 2, "followers": 50, "followed": False},
+                ],
+                "page_token": "",
+            },
+        },
+    ])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=next(pages))
+
+    client = GmgnDirectoryClient(
+        base_url="https://example.test",
+        transport=httpx.MockTransport(handler),
+        sleep_between_pages_seconds=0,
+    )
+    try:
+        entries = list(client.iter_entries(max_pages=10))
+    finally:
+        client.close()
+
+    assert [entry.handle for entry in entries] == ["cz", "elonmusk", "vitalik"]
+    assert entries[0].platform_followers == 100  # first observation wins; second cz row is skipped
