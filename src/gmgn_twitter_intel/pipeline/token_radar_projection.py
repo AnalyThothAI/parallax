@@ -11,6 +11,7 @@ from ..retrieval.social_heat_scoring import social_heat_score
 from ..retrieval.timing_scoring import timing_score
 from ..retrieval.tradeability_scoring import tradeability_score
 from ..storage.projection_repository import ProjectionRepository
+from .atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
 from .cross_section_normalizer import NORMALIZER_VERSION, rank_within_cohort
 from .factor_cohort import COHORT_DEFINITION_VERSION, is_active_cohort_member
 from .token_radar_contract import (
@@ -491,15 +492,13 @@ def _project_group(
     decision = str(score["opportunity"].get("decision") or "discard")
     # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
     # These internal fields use the _cohort_* prefix and are stripped before persistence.
-    _cohort_high_conf_statuses = {"EXACT", "UNIQUE_BY_CONTEXT"}
-    _cohort_kol_tags = {"kol", "founder", "master"}
     cohort_high_conf_count = sum(
         1 for r in window_rows
-        if (r.get("resolution_status") or "") in _cohort_high_conf_statuses
+        if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
     )
     cohort_kol_count = sum(
         1 for r in window_rows
-        if set(r.get("gmgn_user_tags") or ()) & _cohort_kol_tags
+        if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS
     )
     return {
         "row_id": _stable_id(

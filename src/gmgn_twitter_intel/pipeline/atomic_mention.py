@@ -26,6 +26,8 @@ _RESOLUTION_CONFIDENCE = {
     "UNIQUE_BY_CONTEXT": 0.85,
 }
 
+HIGH_CONF_RESOLUTION_STATUSES: frozenset[str] = frozenset(_RESOLUTION_CONFIDENCE.keys())
+
 
 def tweet_quality(
     *,
