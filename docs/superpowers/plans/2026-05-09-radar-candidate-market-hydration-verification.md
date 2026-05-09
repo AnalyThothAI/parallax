@@ -76,10 +76,10 @@ Additional hotfix verification:
 
 | Command | Result |
 |---------|--------|
-| `uv run pytest tests/test_token_radar_projection.py -q` | Passed: `13 passed` |
+| `uv run pytest tests/test_token_radar_projection.py -q` | Passed: `14 passed` |
 | `uv run ruff check src/gmgn_twitter_intel/pipeline/token_radar_projection.py tests/test_token_radar_projection.py` | Passed: `All checks passed!` |
 | `uv run ruff check .` | Passed: `All checks passed!` |
-| `uv run pytest` | Passed for executable tests: `337 passed, 133 skipped` |
+| `uv run pytest` | Passed for executable tests: `338 passed, 133 skipped` |
 | `uv run python -m compileall src tests` | Passed |
 | Hotfix `_source_rows` 24h/all against Docker PostgreSQL | Passed: `42689` rows in `17.287s` |
 | Hotfix `TokenRadarProjectionWorker.rebuild_once()` against Docker PostgreSQL | Passed: `622` rows written across all windows/scopes in `54.516s` |

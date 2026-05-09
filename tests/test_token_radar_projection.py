@@ -348,6 +348,7 @@ def test_resolved_pending_market_never_projects_as_driver():
             "pricefeed_id": "pricefeed:dex-token:gmgn:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
             "display_symbol": "PEPE",
             "asset_symbol": "PEPE",
+            "asset_registry_status": "candidate",
             "reason_codes_json": [],
             "candidate_ids_json": [],
             "lookup_keys_json": [],
@@ -369,6 +370,20 @@ def test_resolved_pending_market_never_projects_as_driver():
     for block in row["score_json"].values():
         assert block["score_version"]
         assert block["contributions"]
+
+
+def test_demoted_search_asset_does_not_project_as_resolved_driver():
+    row = source_row(
+        "event-1",
+        received_at_ms=1_777_800_000_000,
+    )
+    row["asset_registry_status"] = "demoted_search"
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
+
+    assert projected["lane"] == "attention"
+    assert projected["market_json"]["market_observation_status"] == "no_resolved_target"
+    assert projected["data_health_json"]["identity"] == "EXACT"
 
 
 def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> dict:
