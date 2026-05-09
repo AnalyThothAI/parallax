@@ -362,6 +362,7 @@ class TokenRadarProjection:
               LIMIT 1
             ) before_event_price ON true
             WHERE events.received_at_ms >= %s {watched_clause}
+            ORDER BY events.received_at_ms ASC, events.event_id ASC
             """,
             (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, since_ms),
         ).fetchall()
