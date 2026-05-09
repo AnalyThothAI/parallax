@@ -22,14 +22,14 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS account_profiles_gmgn_followers_idx
+        CREATE INDEX IF NOT EXISTS idx_account_profiles_gmgn_followers
           ON account_profiles (gmgn_platform_followers DESC NULLS LAST)
         """
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS account_profiles_gmgn_followers_idx")
+    op.execute("DROP INDEX IF EXISTS idx_account_profiles_gmgn_followers")
     op.execute(
         """
         ALTER TABLE account_profiles

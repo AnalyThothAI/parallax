@@ -65,7 +65,7 @@ def test_account_profiles_has_gmgn_directory_columns(tmp_path):
             """
             SELECT indexname FROM pg_indexes
             WHERE tablename = 'account_profiles'
-              AND indexname = 'account_profiles_gmgn_followers_idx'
+              AND indexname = 'idx_account_profiles_gmgn_followers'
             """
         ).fetchall()
     finally:
@@ -114,14 +114,14 @@ def upgrade() -> None:
     )
     op.execute(
         """
-        CREATE INDEX IF NOT EXISTS account_profiles_gmgn_followers_idx
+        CREATE INDEX IF NOT EXISTS idx_account_profiles_gmgn_followers
           ON account_profiles (gmgn_platform_followers DESC NULLS LAST)
         """
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS account_profiles_gmgn_followers_idx")
+    op.execute("DROP INDEX IF EXISTS idx_account_profiles_gmgn_followers")
     op.execute(
         """
         ALTER TABLE account_profiles

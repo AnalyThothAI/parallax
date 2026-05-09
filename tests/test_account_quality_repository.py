@@ -72,9 +72,9 @@ def test_account_profiles_has_gmgn_directory_columns(tmp_path):
         actual = {row["column_name"]: (row["data_type"], row["is_nullable"]) for row in rows}
         index_rows = conn.execute(
             """
-            SELECT indexname FROM pg_indexes
+            SELECT indexname, indexdef FROM pg_indexes
             WHERE tablename = 'account_profiles'
-              AND indexname = 'account_profiles_gmgn_followers_idx'
+              AND indexname = 'idx_account_profiles_gmgn_followers'
             """
         ).fetchall()
     finally:
@@ -87,3 +87,4 @@ def test_account_profiles_has_gmgn_directory_columns(tmp_path):
         "gmgn_directory_observed_at_ms": ("bigint", "YES"),
     }
     assert len(index_rows) == 1
+    assert "gmgn_platform_followers DESC NULLS LAST" in index_rows[0]["indexdef"]
