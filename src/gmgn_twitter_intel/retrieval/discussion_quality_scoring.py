@@ -82,7 +82,7 @@ def discussion_quality_score(features: dict[str, Any]) -> dict[str, Any]:
         risk_caps.append(cap("low_informative_ratio", 55))
 
     return score_payload(
-        score_version="discussion_quality_v2",
+        score_version="discussion_quality_v3",
         score=score,
         reasons=reasons,
         risks=risks,

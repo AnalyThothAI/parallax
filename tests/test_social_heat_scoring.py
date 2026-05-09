@@ -25,7 +25,7 @@ def test_social_heat_burst_scores_abnormal_acceleration():
     )
 
     assert score["status"] == "burst"
-    assert score["score_version"] == "social_heat_v2"
+    assert score["score_version"] == "social_heat_v3"
     assert score["score"] >= 75
     assert "robust_z_above_3" in score["reasons"]
     assert "positive_mention_delta" in score["reasons"]

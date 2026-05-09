@@ -7,6 +7,7 @@ from typing import Any
 
 from ..retrieval.baseline_scoring import token_baseline_v2
 from ..retrieval.post_text_quality import post_quality_score, post_text_features
+from .atomic_mention import mention_confidence_from_status, tweet_quality
 
 BASELINE_SLOT_COUNT = 6
 
@@ -124,7 +125,7 @@ def _heat_features(
     previous_mentions = len({str(row["event_id"]) for row in previous})
     watched_mentions = int(attention.get("watched_mentions") or 0)
     mention_delta = mentions - previous_mentions
-    weighted_mentions = sum(_confidence(row) for row in window)
+    weighted_mentions = sum(_atomic_quality(row) * _confidence(row) for row in window)
     baseline = token_baseline_v2(
         slot_counts=_baseline_slot_counts(context=context, now_ms=now_ms, window_ms=window_ms),
         current_mentions=mentions,
@@ -188,6 +189,24 @@ def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:
     text_features = [post_text_features(str(row.get("text") or row.get("text_clean") or "")) for row in window]
     informative_count = sum(1 for item in text_features if item.get("informative"))
     market_context_count = sum(1 for item in text_features if item.get("has_market_context"))
+    llm_utility_values = [
+        _llm_utility(row)
+        for row in window
+        if _llm_utility(row) is not None
+    ]
+    llm_confidence_values = [
+        float(row["llm_label_confidence"])
+        for row in window
+        if row.get("llm_label_confidence") is not None
+    ]
+    llm_semantic_utility = (
+        sum(llm_utility_values) / len(llm_utility_values)
+        if llm_utility_values else None
+    )
+    llm_label_confidence = (
+        sum(llm_confidence_values) / len(llm_confidence_values)
+        if llm_confidence_values else None
+    )
     return {
         "mentions": mentions,
         "direct_mentions": mentions,
@@ -197,6 +216,8 @@ def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:
         "watched_source_count": sum(1 for row in window if row.get("is_watched")),
         "market_context_count": market_context_count,
         "avg_post_quality": round(sum(post_scores) / max(1, len(post_scores))),
+        "llm_semantic_utility": llm_semantic_utility,
+        "llm_label_confidence": llm_label_confidence,
     }
 
 
@@ -285,10 +306,52 @@ def _post_score(row: dict[str, Any]) -> int:
 
 
 def _confidence(row: dict[str, Any]) -> float:
+    status_conf = mention_confidence_from_status(row.get("resolution_status"))
+    if status_conf > 0:
+        return status_conf
+    fallback = row.get("intent_confidence") or row.get("confidence") or 0.0
+    return float(fallback)
+
+
+def _atomic_quality(row: dict[str, Any]) -> float:
+    return tweet_quality(
+        gmgn_platform_followers=_int_or_none(row.get("gmgn_platform_followers")),
+        ws_author_followers=_int_or_none(row.get("ws_author_followers"))
+        or _int_or_none(row.get("author_followers")),
+        user_tags=row.get("gmgn_user_tags") or (),
+        first_seen_age_ms=_age_ms(
+            row.get("account_profile_first_seen_ms"),
+            row.get("received_at_ms"),
+        ),
+    )
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
     try:
-        return float(row.get("intent_confidence") or row.get("confidence") or 0.0)
+        return int(value)
     except (TypeError, ValueError):
-        return 0.0
+        return None
+
+
+def _age_ms(first_seen_ms: Any, received_at_ms: Any) -> int:
+    first = _int_or_none(first_seen_ms)
+    received = _int_or_none(received_at_ms)
+    if first is None or received is None:
+        return 0
+    return max(0, received - first)
+
+
+def _llm_utility(row: dict[str, Any]) -> float | None:
+    novelty = row.get("llm_semantic_novelty_hint")
+    impact = row.get("llm_impact_hint")
+    if novelty is None or impact is None:
+        return None
+    try:
+        return max(0.0, min(1.0, 0.5 * float(novelty) + 0.5 * float(impact)))
+    except (TypeError, ValueError):
+        return None
 
 
 def _duplicate_share(texts: list[str]) -> float:

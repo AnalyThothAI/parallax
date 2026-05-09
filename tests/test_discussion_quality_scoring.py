@@ -14,7 +14,7 @@ def test_discussion_quality_rewards_direct_ca_and_original_context():
         }
     )
 
-    assert score["score_version"] == "discussion_quality_v2"
+    assert score["score_version"] == "discussion_quality_v3"
     assert score["score"] >= 75
     assert "resolved_direct_evidence" in score["reasons"]
     assert "informative_discussion" in score["reasons"]

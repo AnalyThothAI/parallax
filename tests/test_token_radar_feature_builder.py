@@ -106,7 +106,9 @@ def row(
     market_observed_at_ms: int | None = None,
     market_volume_24h_usd: float | None = None,
     market_open_interest_usd: float | None = None,
+    **kwargs,
 ) -> dict:
+    followers = kwargs.pop("followers", None)
     return {
         "event_id": event_id,
         "intent_id": f"intent-{event_id}",
@@ -128,4 +130,130 @@ def row(
         "market_liquidity_usd": 250_000,
         "market_volume_24h_usd": market_volume_24h_usd,
         "market_open_interest_usd": market_open_interest_usd,
+        "ws_author_followers": kwargs.pop("ws_author_followers", followers),
+        "gmgn_platform_followers": kwargs.pop("gmgn_platform_followers", None),
+        "gmgn_user_tags": kwargs.pop("gmgn_user_tags", []),
+        "account_profile_first_seen_ms": kwargs.pop(
+            "account_profile_first_seen_ms",
+            received_at_ms - 365 * 86_400_000,
+        ),
+        "llm_direction_hint": kwargs.pop("llm_direction_hint", None),
+        "llm_impact_hint": kwargs.pop("llm_impact_hint", None),
+        "llm_semantic_novelty_hint": kwargs.pop("llm_semantic_novelty_hint", None),
+        "llm_label_confidence": kwargs.pop("llm_label_confidence", None),
+        **kwargs,
     }
+
+
+def test_weighted_mentions_uses_quality_when_account_profiles_present():
+    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+
+    now_ms = 1_700_000_000_000
+    base_row = {
+        "event_id": "e1",
+        "received_at_ms": now_ms - 60_000,
+        "author_handle": "kol_alice",
+        "intent_confidence": 1.0,
+        "ws_author_followers": 100,
+        "gmgn_platform_followers": 20000,
+        "gmgn_user_tags": ["kol"],
+        "account_profile_first_seen_ms": now_ms - 365 * 86_400_000,
+        "is_watched": True,
+        "text_clean": "alice talks about $TOKEN",
+        "search_text": "alice talks about $TOKEN",
+        "resolution_status": "EXACT",
+        "llm_direction_hint": None,
+        "llm_impact_hint": None,
+        "llm_semantic_novelty_hint": None,
+        "llm_label_confidence": None,
+    }
+    features = build_radar_features(
+        window_rows=[base_row],
+        context_rows=[base_row],
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=3_600_000,
+        total_window_events=1,
+    )
+    assert features.heat["mentions"] == 1
+    assert features.heat["weighted_mentions"] > 0.5
+    assert features.heat["weighted_mentions"] <= 1.0
+
+
+def test_weighted_mentions_lower_for_no_tag_account():
+    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+
+    now_ms = 1_700_000_000_000
+
+    def _row(handle, tags):
+        return {
+            "event_id": f"e_{handle}",
+            "received_at_ms": now_ms - 60_000,
+            "author_handle": handle,
+            "intent_confidence": 1.0,
+            "ws_author_followers": None,
+            "gmgn_platform_followers": 20000,
+            "gmgn_user_tags": tags,
+            "account_profile_first_seen_ms": now_ms - 365 * 86_400_000,
+            "is_watched": False,
+            "text_clean": "talks about $TOKEN",
+            "search_text": "talks about $TOKEN",
+            "resolution_status": "EXACT",
+            "llm_direction_hint": None,
+            "llm_impact_hint": None,
+            "llm_semantic_novelty_hint": None,
+            "llm_label_confidence": None,
+        }
+
+    kol_features = build_radar_features(
+        window_rows=[_row("kol", ["kol"])],
+        context_rows=[_row("kol", ["kol"])],
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=3_600_000,
+        total_window_events=1,
+    )
+    untagged_features = build_radar_features(
+        window_rows=[_row("anon", [])],
+        context_rows=[_row("anon", [])],
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=3_600_000,
+        total_window_events=1,
+    )
+    assert kol_features.heat["weighted_mentions"] > untagged_features.heat["weighted_mentions"]
+
+
+def test_quality_features_consume_llm_hints_when_present():
+    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+
+    now_ms = 1_700_000_000_000
+    row_data = {
+        "event_id": "e1",
+        "received_at_ms": now_ms - 60_000,
+        "author_handle": "alice",
+        "intent_confidence": 1.0,
+        "ws_author_followers": 5000,
+        "gmgn_platform_followers": None,
+        "gmgn_user_tags": [],
+        "account_profile_first_seen_ms": now_ms - 365 * 86_400_000,
+        "is_watched": False,
+        "text_clean": "good things about $TOKEN",
+        "search_text": "good things about $TOKEN",
+        "resolution_status": "EXACT",
+        "llm_direction_hint": "bullish",
+        "llm_impact_hint": 0.8,
+        "llm_semantic_novelty_hint": 0.7,
+        "llm_label_confidence": 0.9,
+    }
+    features = build_radar_features(
+        window_rows=[row_data],
+        context_rows=[row_data],
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=3_600_000,
+        total_window_events=1,
+    )
+    assert features.quality["llm_semantic_utility"] is not None
+    assert features.quality["llm_label_confidence"] is not None
+    assert 0.0 <= features.quality["llm_semantic_utility"] <= 1.0

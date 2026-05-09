@@ -162,6 +162,14 @@ class TokenRadarProjection:
               events.text,
               events.text_clean,
               events.reference_json,
+              events.author_followers AS ws_author_followers,
+              ap.gmgn_platform_followers AS gmgn_platform_followers,
+              ap.gmgn_user_tags AS gmgn_user_tags,
+              ap.first_seen_ms AS account_profile_first_seen_ms,
+              see.direction_hint AS llm_direction_hint,
+              see.impact_hint AS llm_impact_hint,
+              see.semantic_novelty_hint AS llm_semantic_novelty_hint,
+              see.confidence AS llm_label_confidence,
               registry_assets.chain_id AS asset_chain_id,
               registry_assets.token_standard AS asset_token_standard,
               registry_assets.address AS asset_address,
@@ -211,6 +219,8 @@ class TokenRadarProjection:
              AND token_intent_resolutions.is_current = true
              AND token_intent_resolutions.resolver_policy_version = %s
             JOIN events ON events.event_id = token_intents.event_id
+            LEFT JOIN account_profiles ap ON ap.handle = LOWER(events.author_handle)
+            LEFT JOIN social_event_extractions see ON see.event_id = events.event_id
             LEFT JOIN registry_assets
               ON token_intent_resolutions.target_type = 'Asset'
              AND registry_assets.asset_id = token_intent_resolutions.target_id

@@ -103,7 +103,7 @@ def social_heat_score(features: dict[str, Any]) -> dict[str, Any]:
         risk_caps.append(cap("market_wide_noise_or_query_bias", 75))
 
     return score_payload(
-        score_version="social_heat_v2",
+        score_version="social_heat_v3",
         score=score,
         reasons=reasons,
         risks=risks,
