@@ -547,6 +547,42 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
+  it("shows watched account events when an account lens has no Signal Pulse candidates", async () => {
+    mockApi({
+      recentItemsByHandle: { traderpow: [watchedAccountLensEvent("traderpow")] },
+      signalPulseByHandle: { traderpow: emptySignalPulseData("@traderpow") }
+    });
+    const { container } = renderWithQuery(<App />);
+
+    await screen.findByText("Token");
+    const rail = container.querySelector(".desktop-side-rail") as HTMLElement;
+    const traderpowButton = await within(rail).findByRole("button", { name: /@traderpow/ });
+
+    fireEvent.click(traderpowButton);
+
+    expect(await screen.findByText("Watched account events")).toBeInTheDocument();
+    expect(screen.getByText("Account lens raw post without pulse")).toBeInTheDocument();
+    expect(screen.queryByText("No matching Signal Pulse items")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/recent" &&
+            options?.params?.scope === "all" &&
+            options?.params?.handles === "traderpow" &&
+            options?.params?.limit === 80
+        )
+      ).toBe(true);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "open watched post Account lens raw post without pulse" }));
+
+    await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
+    const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
+    expect(within(drawer).getByText("@traderpow")).toBeInTheDocument();
+    expect(within(drawer).getByText("Account lens raw post without pulse")).toBeInTheDocument();
+  });
+
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
     const { container } = renderWithQuery(<App />);
 
@@ -1159,7 +1195,9 @@ function mockApi(options: {
   signalPulse?: SignalPulseData;
   signalPulseCompact?: SignalPulseData;
   signalPulseWorkbench?: SignalPulseData;
+  signalPulseByHandle?: Record<string, SignalPulseData>;
   signalPulsePages?: Record<string, SignalPulseData>;
+  recentItemsByHandle?: Record<string, LivePayload[]>;
   notifications?: NotificationItem[];
   assetFlowRows?: AssetFlowRow[];
   assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
@@ -1172,7 +1210,10 @@ function mockApi(options: {
     if (path === "/api/notifications") {
       return ok({ items: options.notifications ?? [], summary: statusData.notifications?.summary });
     }
-    if (path === "/api/recent") return ok({ scope: requestOptions?.params?.scope, events: [], items: [liveUpegEvent()] });
+    if (path === "/api/recent") {
+      const handle = normalizedHandle(String(requestOptions?.params?.handles ?? ""));
+      return ok({ scope: requestOptions?.params?.scope, events: [], items: options.recentItemsByHandle?.[handle] ?? [liveUpegEvent()] });
+    }
     if (path === "/api/token-radar") {
       if (options.duplicateSymbol) {
         return ok<AssetFlowData>({
@@ -1226,6 +1267,10 @@ function mockApi(options: {
       const cursor = String(requestOptions?.params?.cursor ?? "");
       const window = String(requestOptions?.params?.window ?? "");
       const sort = String(requestOptions?.params?.sort ?? "");
+      const handle = normalizedHandle(String(requestOptions?.params?.handle ?? ""));
+      if (handle && options.signalPulseByHandle?.[handle]) {
+        return ok(options.signalPulseByHandle[handle]);
+      }
       if (window === "1h" && sort === "recent" && options.signalPulseCompact) {
         return ok(options.signalPulseCompact);
       }
@@ -1841,6 +1886,56 @@ function signalPulseData(): SignalPulseData {
   };
 }
 
+function emptySignalPulseData(handle: string | null = null): SignalPulseData {
+  const data = signalPulseData();
+  return {
+    ...data,
+    query: {
+      ...data.query,
+      handle
+    },
+    health: {
+      ...data.health,
+      pulse_ready: false,
+      candidate_count: 0,
+      blocked_low_information_count: 0
+    },
+    summary: {
+      trade_candidate: 0,
+      token_watch: 0,
+      theme_watch: 0,
+      risk_rejected_high_info: 0,
+      blocked_low_information: 0
+    },
+    items: [],
+    returned_count: 0,
+    has_more: false,
+    next_cursor: null
+  };
+}
+
+function watchedAccountLensEvent(handle: string): LivePayload {
+  return {
+    type: "event",
+    event: {
+      event_id: `event-${handle}-lens`,
+      canonical_url: `https://x.com/${handle}/status/lens`,
+      author_handle: handle,
+      received_at_ms: 1_777_746_070_000,
+      text_clean: "Account lens raw post without pulse",
+      cashtags: [],
+      hashtags: ["macro"],
+      mentions: [],
+      is_watched: 1
+    },
+    entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_070_000 }],
+    token_intents: [],
+    token_resolutions: [],
+    alerts: [],
+    harness: null
+  };
+}
+
 function signalPulseNotification(): NotificationItem {
   return {
     notification_id: "notification-1",
@@ -1871,6 +1966,10 @@ function signalPulseNotification(): NotificationItem {
     },
     channels: ["in_app", "pushdeer"]
   };
+}
+
+function normalizedHandle(handle: string): string {
+  return handle.trim().replace(/^@/, "").toLowerCase();
 }
 
 function liveUpegEvent(options: { assetId?: string; address?: string } = {}): LivePayload {

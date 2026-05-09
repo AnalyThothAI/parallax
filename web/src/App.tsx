@@ -133,6 +133,7 @@ export function App() {
 
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
   const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true });
+  const activeSignalLabHandle = normalizedHandle(signalLabHandle);
 
   const statusQuery = useQuery({
     queryKey: ["status"],
@@ -199,6 +200,21 @@ export function App() {
       }),
     enabled: Boolean(token),
     refetchInterval: 12_000
+  });
+
+  const signalLabAccountEventsQuery = useQuery({
+    queryKey: ["signal-lab-account-events", signalLabScope, activeSignalLabHandle],
+    queryFn: () =>
+      getApi<RecentData>("/api/recent", {
+        token,
+        params: {
+          limit: 80,
+          scope: signalLabScope,
+          handles: activeSignalLabHandle
+        }
+      }),
+    enabled: Boolean(token && activeView === "signal_lab" && activeSignalLabHandle),
+    refetchInterval: 15_000
   });
 
   const signalLabPulseQuery = useQuery({
@@ -335,6 +351,7 @@ export function App() {
   const signalLabPulseTotal = signalPulseTotal(signalLabOverviewData?.summary);
   const workbenchSignalPulseItems = signalPulseData?.items ?? [];
   const compactSignalPulseItems = signalLabPulseData?.items ?? [];
+  const signalLabAccountEvents = signalLabAccountEventsQuery.data?.data.items ?? [];
   const activeSignalPulseItems = activeView === "signal_lab" ? workbenchSignalPulseItems : compactSignalPulseItems;
   const activeSignalPulseFetching = activeView === "signal_lab" ? signalPulseQuery.isFetching : signalLabPulseQuery.isFetching;
   const liveSignalTapeItems = useMemo(
@@ -367,7 +384,6 @@ export function App() {
       }),
     [bootstrapQuery.data?.data.handles, liveItems, notificationSummary?.account_unread_counts, statusQuery.data?.data.handles]
   );
-  const activeWatchHandle = normalizedHandle(signalLabHandle);
 
   useEffect(() => {
     if (!latestSocketNotificationId) {
@@ -471,6 +487,12 @@ export function App() {
       setActiveView("signal_lab");
       setMobileTask("lab");
     }
+  };
+
+  const selectAccountEvent = (item: LivePayload) => {
+    setSelectedSignal({ kind: "event", item });
+    setSelectedTapeEventId(item.event.event_id);
+    setMobileTask("detail");
   };
 
   const clearSignalLabFilters = () => {
@@ -762,7 +784,7 @@ export function App() {
             <div className="watchlist">
               {watchlistRows.map((row) => (
                 <button
-                  className={activeView === "signal_lab" && activeWatchHandle === row.handle ? "active" : ""}
+                  className={activeView === "signal_lab" && activeSignalLabHandle === row.handle ? "active" : ""}
                   type="button"
                   key={row.handle}
                   onClick={() => focusWatchHandle(row.handle)}
@@ -790,12 +812,15 @@ export function App() {
             <section className="mobile-task-surface signal-lab-task-surface" data-mobile-task-panel="lab">
               <SignalLabWorkbench
                 data={signalPulseData}
+                accountEvents={signalLabAccountEvents}
                 handleFilter={signalLabHandle}
+                isAccountEventsLoading={signalLabAccountEventsQuery.isPending && !signalLabAccountEvents.length}
                 isLoading={signalPulseQuery.isPending}
                 isFetchingNextPage={signalPulseQuery.isFetchingNextPage}
                 hasNextPage={Boolean(signalPulseQuery.hasNextPage)}
                 overviewData={signalLabOverviewData}
                 searchFilter={signalLabSearch}
+                selectedAccountEventId={selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null}
                 selectedItemId={selectedPulseItemId}
                 statusFilter={signalLabStatus}
                 windowLabel={signalLabWindow}
@@ -803,6 +828,7 @@ export function App() {
                 onHandleChange={setSignalLabHandle}
                 onLoadMore={() => void signalPulseQuery.fetchNextPage()}
                 onSearchChange={setSignalLabSearch}
+                onSelectAccountEvent={selectAccountEvent}
                 onSelect={selectPulseItem}
                 onStatusChange={setSignalLabStatus}
               />

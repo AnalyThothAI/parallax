@@ -1,4 +1,5 @@
-import type { SignalPulseData, SignalPulseItem, SignalPulseStatus, SignalPulseStatusFilter } from "../api/types";
+import type { LivePayload, SignalPulseData, SignalPulseItem, SignalPulseStatus, SignalPulseStatusFilter } from "../api/types";
+import { eventHandle, eventText, formatRelativeTime } from "../lib/format";
 import { SignalPulseList } from "./SignalLabPulse";
 
 const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; description: string }> = [
@@ -9,13 +10,16 @@ const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; descript
 ];
 
 type SignalLabWorkbenchProps = {
+  accountEvents?: LivePayload[];
   data?: SignalPulseData;
   handleFilter: string;
   hasNextPage?: boolean;
+  isAccountEventsLoading?: boolean;
   isFetchingNextPage?: boolean;
   isLoading?: boolean;
   overviewData?: SignalPulseData;
   searchFilter: string;
+  selectedAccountEventId?: string | null;
   selectedItemId?: string | null;
   statusFilter: SignalPulseStatusFilter;
   windowLabel: string;
@@ -23,18 +27,22 @@ type SignalLabWorkbenchProps = {
   onHandleChange: (handle: string) => void;
   onLoadMore: () => void;
   onSearchChange: (search: string) => void;
+  onSelectAccountEvent: (item: LivePayload) => void;
   onSelect: (item: SignalPulseItem) => void;
   onStatusChange: (status: SignalPulseStatusFilter) => void;
 };
 
 export function SignalLabWorkbench({
+  accountEvents = [],
   data,
   handleFilter,
   hasNextPage,
+  isAccountEventsLoading,
   isFetchingNextPage,
   isLoading,
   overviewData,
   searchFilter,
+  selectedAccountEventId,
   selectedItemId,
   statusFilter,
   windowLabel,
@@ -42,6 +50,7 @@ export function SignalLabWorkbench({
   onHandleChange,
   onLoadMore,
   onSearchChange,
+  onSelectAccountEvent,
   onSelect,
   onStatusChange
 }: SignalLabWorkbenchProps) {
@@ -49,6 +58,8 @@ export function SignalLabWorkbench({
   const summary = overviewData?.summary ?? data?.summary;
   const health = overviewData?.health ?? data?.health;
   const hasActiveFilters = statusFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
+  const hasAccountLens = Boolean(handleFilter.trim()) && !searchFilter.trim();
+  const showAccountEvents = !isLoading && !items.length && hasAccountLens && (Boolean(isAccountEventsLoading) || accountEvents.length > 0);
   const statusLabel = statusFilter === "all" ? "all statuses" : labelForStatus(statusFilter);
   const totalPulse = totalByStatus(summary);
   return (
@@ -116,12 +127,19 @@ export function SignalLabWorkbench({
 
       <section className="signal-chain-workbench-list">
         <header>
-          <h3>Signal Pulse</h3>
+          <h3>{showAccountEvents ? "Watched account events" : "Signal Pulse"}</h3>
           <span>
-            {items.length} shown · {statusLabel}
+            {showAccountEvents ? `${accountEvents.length} posts · account lens` : `${items.length} shown · ${statusLabel}`}
           </span>
         </header>
-        {!isLoading && !items.length ? (
+        {showAccountEvents ? (
+          <AccountEventList
+            isLoading={isAccountEventsLoading}
+            items={accountEvents}
+            selectedEventId={selectedAccountEventId}
+            onSelect={onSelectAccountEvent}
+          />
+        ) : !isLoading && !items.length ? (
           <SignalLabEmptyState hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
         ) : (
           <SignalPulseList isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
@@ -136,6 +154,59 @@ export function SignalLabWorkbench({
   );
 }
 
+function AccountEventList({
+  isLoading,
+  items,
+  selectedEventId,
+  onSelect
+}: {
+  isLoading?: boolean;
+  items: LivePayload[];
+  selectedEventId?: string | null;
+  onSelect: (item: LivePayload) => void;
+}) {
+  if (isLoading && !items.length) {
+    return <div className="empty-state">loading watched account events</div>;
+  }
+  return (
+    <div className="signal-chain-list signal-account-event-list">
+      {items.map((item) => {
+        const title = eventText(item.event) || "no text";
+        const chips = accountEventChips(item);
+        return (
+          <article className={`signal-chain-row ${selectedEventId === item.event.event_id ? "selected" : ""}`} key={item.event.event_id}>
+            <button
+              aria-label={`open watched post ${title}`}
+              className="signal-chain-select"
+              type="button"
+              onClick={() => onSelect(item)}
+            >
+              <span className="signal-stage-badge account_event">{item.event.action ?? "post"}</span>
+              <span className="signal-chain-main">
+                <strong>@{eventHandle(item.event)}</strong>
+                <em>
+                  watched · {formatRelativeTime(item.event.received_at_ms)} ago
+                </em>
+                <p>{title}</p>
+                <span className="signal-chain-chipline">
+                  {chips.slice(0, 4).map((chip) => (
+                    <span key={chip}>{chip}</span>
+                  ))}
+                </span>
+              </span>
+              <span className="signal-chain-score">
+                <b>{chips.length || "-"}</b>
+                <small>{item.alerts.length ? "alerts" : "entities"}</small>
+              </span>
+              <span className="signal-chain-time">{formatRelativeTime(item.event.received_at_ms)}</span>
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFilters: boolean; onClearFilters: () => void }) {
   return (
     <div className="signal-empty-panel">
@@ -147,6 +218,24 @@ function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFi
       ) : null}
     </div>
   );
+}
+
+function accountEventChips(item: LivePayload): string[] {
+  const values = [
+    ...(item.event.cashtags ?? []).map((value) => `$${value}`),
+    ...(item.event.hashtags ?? []).map((value) => `#${value}`),
+    ...(item.event.mentions ?? []).map((value) => `@${value}`),
+    ...item.entities.map((entity) => `${entity.entity_type}:${entity.normalized_value}`),
+    ...item.alerts.map((alert) => alert.alert_type)
+  ];
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    if (!value || seen.has(value)) {
+      return false;
+    }
+    seen.add(value);
+    return true;
+  });
 }
 
 function labelForStatus(status: SignalPulseStatusFilter): string {
