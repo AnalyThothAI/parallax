@@ -51,7 +51,7 @@ def opportunity_score(components: dict[str, dict[str, Any]]) -> dict[str, Any]:
         ]
 
     score_payload_base = score_payload(
-        score_version="social_opportunity_v3",
+        score_version="social_opportunity_v4",
         score=weighted_score,
         reasons=reasons,
         risks=risks,

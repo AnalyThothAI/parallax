@@ -32,7 +32,7 @@ def test_opportunity_driver_for_balanced_high_quality_setup():
     )
 
     assert score["decision"] == "driver"
-    assert score["score_version"] == "social_opportunity_v3"
+    assert score["score_version"] == "social_opportunity_v4"
     assert score["score"] >= 75
     assert score["components"] == {
         "heat": 88,

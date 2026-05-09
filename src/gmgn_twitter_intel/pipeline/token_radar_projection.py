@@ -11,6 +11,8 @@ from ..retrieval.social_heat_scoring import social_heat_score
 from ..retrieval.timing_scoring import timing_score
 from ..retrieval.tradeability_scoring import tradeability_score
 from ..storage.projection_repository import ProjectionRepository
+from .cross_section_normalizer import NORMALIZER_VERSION, rank_within_cohort
+from .factor_cohort import COHORT_DEFINITION_VERSION, is_active_cohort_member
 from .token_radar_contract import (
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
@@ -62,6 +64,7 @@ class TokenRadarProjection:
                 total_window_events=total_window_events,
             ))
         ]
+        projected = self._apply_cross_section(projected)
         resolved = [row for row in projected if row["lane"] == "resolved"]
         attention = [row for row in projected if row["lane"] == "attention"]
         resolved.sort(key=_rank_key)
@@ -375,6 +378,60 @@ class TokenRadarProjection:
             )
             grouped.setdefault(key, []).append(row)
         return grouped
+
+    @staticmethod
+    def _apply_cross_section(projected: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        scores: dict[str, float | None] = {}
+        cohort: set[str] = set()
+        cohort_metadata: dict[str, dict[str, Any]] = {}
+
+        for row in projected:
+            target_id = str(row.get("target_id") or "")
+            if not target_id:
+                continue
+            score_json = row.get("score_json") or {}
+            opportunity = (score_json.get("opportunity") or {}).get("score")
+            scores[target_id] = float(opportunity) if opportunity is not None else None
+
+            high_conf = _count_high_conf(row)
+            kol_count = _count_kol_authors(row)
+            first_seen_global = bool(row.get("first_seen_global_24h", False))
+            # symbol lives in target_json since score_json has no symbol field
+            symbol = (
+                (row.get("target_json") or {}).get("symbol")
+                or (row.get("intent_json") or {}).get("display_symbol")
+                or ""
+            ).upper()
+            if is_active_cohort_member(
+                symbol=symbol,
+                high_confidence_mention_count=high_conf,
+                kol_mention_count=kol_count,
+                was_first_seen_global_24h=first_seen_global,
+            ):
+                cohort.add(target_id)
+            cohort_metadata[target_id] = {
+                "high_confidence_mentions": high_conf,
+                "kol_mentions": kol_count,
+                "first_seen_global_24h": first_seen_global,
+                "symbol": symbol,
+            }
+
+        ranks = rank_within_cohort(scores=scores, cohort=cohort)
+
+        for row in projected:
+            target_id = str(row.get("target_id") or "")
+            score_json = dict(row.get("score_json") or {})
+            score_json["cross_section_rank"] = ranks.get(target_id)
+            score_json["cohort"] = {
+                "in_cohort": target_id in cohort,
+                "size": len(cohort),
+                "definition_version": COHORT_DEFINITION_VERSION,
+                "normalizer_version": NORMALIZER_VERSION,
+                **(cohort_metadata.get(target_id, {})),
+            }
+            row["score_json"] = score_json
+
+        return projected
 
 
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
@@ -802,3 +859,21 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
 
 def _stable_id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _count_high_conf(row: dict[str, Any]) -> int:
+    # Proxy for "mentions with resolution_status == EXACT".
+    # Per-mention resolution_status is not stored in score_json; we use
+    # quality.watched_source_count as a structural proxy — watched sources
+    # are a reliable indicator of confirmed-identity (EXACT-resolution) events.
+    return int((row.get("score_json") or {}).get("quality", {}).get("watched_source_count", 0))
+
+
+def _count_kol_authors(row: dict[str, Any]) -> int:
+    # Proxy for "mentions from authors with KOL/founder/master gmgn_user_tags".
+    # gmgn_user_tags are per-author fields not aggregated into score_json; we use
+    # attention_json.watched_mentions as a conservative proxy — watched events
+    # are tracked accounts which overlap significantly with KOL-tagged authors.
+    # This over-counts (any watched author = KOL) but ensures no KOL token is
+    # excluded from the cohort when a KOL is present.
+    return int((row.get("attention_json") or {}).get("watched_mentions", 0))
