@@ -4,8 +4,11 @@ import base64
 import json
 from typing import Any
 
+from gmgn_twitter_intel.storage import pulse_repository
+from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.pulse_repository import PulseRepository
 from gmgn_twitter_intel.storage.repository_session import repositories_for_connection
+from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -317,6 +320,62 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
     assert [item["candidate_id"] for item in query_filtered["items"]] == ["candidate-older"]
 
 
+def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        EvidenceRepository(conn).insert_event(
+            make_event("event-watch", author_handle="traderpow", received_at_ms=1_000),
+            is_watched=True,
+        )
+        EvidenceRepository(conn).insert_event(
+            make_event("event-other", author_handle="otheralpha", received_at_ms=1_100),
+            is_watched=True,
+        )
+        repo = PulseRepository(conn)
+        repo.upsert_candidate(
+            **_candidate_payload(
+                "candidate-watch-source",
+                symbol="PEPE",
+                subject_key="PEPE",
+                source_event_ids=["event-watch"],
+                evidence_event_ids=["event-watch"],
+                updated_at_ms=3_000,
+            )
+        )
+        repo.upsert_candidate(
+            **_candidate_payload(
+                "candidate-other-source",
+                symbol="BONK",
+                subject_key="BONK",
+                source_event_ids=["event-other"],
+                evidence_event_ids=["event-other"],
+                updated_at_ms=2_000,
+            )
+        )
+
+        filtered = repo.list_candidates(window="1h", scope="global", handle="@traderpow", limit=10)
+        summary = repo.pulse_summary(window="1h", scope="global", handle="@traderpow")
+    finally:
+        conn.close()
+
+    assert [item["candidate_id"] for item in filtered["items"]] == ["candidate-watch-source"]
+    assert summary["candidate_count"] == 1
+    assert summary["summary"]["token_watch"] == 1
+
+
+def test_candidate_handle_filter_clause_checks_source_event_authors() -> None:
+    clause, params = pulse_repository._candidate_handle_filter_clause("candidate", "@TraderPow")
+
+    assert "candidate.subject_key" in clause
+    assert "candidate.source_event_ids_json" in clause
+    assert "candidate.evidence_event_ids_json" in clause
+    assert "jsonb_array_elements_text" in clause
+    assert "events" in clause
+    assert "social_event_extractions" in clause
+    assert params == ["traderpow", "traderpow"]
+
+
 def test_list_candidates_ignores_malformed_structured_cursor(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -542,6 +601,8 @@ def _candidate_payload(
     score_band: str = "watch",
     social_phase: str = "ignition",
     narrative_type: str = "direct_token",
+    source_event_ids: list[str] | None = None,
+    evidence_event_ids: list[str] | None = None,
     updated_at_ms: int,
 ) -> dict[str, Any]:
     resolved_verdict = verdict if verdict is not None else pulse_status
@@ -567,8 +628,8 @@ def _candidate_payload(
         "market_context_json": {"regime": "risk_on"},
         "gate_reasons_json": ["fresh_attention"],
         "risk_reasons_json": ["thin_liquidity"],
-        "evidence_event_ids_json": ["event-1"],
-        "source_event_ids_json": ["event-1"],
+        "evidence_event_ids_json": evidence_event_ids or ["event-1"],
+        "source_event_ids_json": source_event_ids or ["event-1"],
         "pulse_version": "pulse-v1",
         "gate_version": "gate-v1",
         "prompt_version": "prompt-v1",

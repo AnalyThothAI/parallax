@@ -483,32 +483,36 @@ class PulseRepository:
         displayable_only: bool = False,
     ) -> dict[str, Any]:
         bounded_limit = max(0, min(int(limit), 200))
-        clauses = ['"window" = %s', "scope = %s"]
+        clauses = ['candidate."window" = %s', "candidate.scope = %s"]
         params: list[Any] = [window, scope]
         if status:
-            clauses.append("pulse_status = %s")
+            clauses.append("candidate.pulse_status = %s")
             params.append(status)
         if displayable_only:
-            clauses.append(f"pulse_status IN {DISPLAY_PULSE_STATUS_SQL}")
-            clauses.append("verdict IS DISTINCT FROM 'blocked_low_information'")
+            clauses.append(f"candidate.pulse_status IN {DISPLAY_PULSE_STATUS_SQL}")
+            clauses.append("candidate.verdict IS DISTINCT FROM 'blocked_low_information'")
         if handle:
-            clauses.append("subject_key = %s")
-            params.append(_normalize_subject(handle))
+            handle_clause, handle_params = _candidate_handle_filter_clause("candidate", handle)
+            if handle_clause:
+                clauses.append(handle_clause)
+                params.extend(handle_params)
         if q:
             pattern = f"%{q.strip()}%"
-            clauses.append("(symbol ILIKE %s OR subject_key ILIKE %s OR target_id ILIKE %s)")
+            clauses.append(
+                "(candidate.symbol ILIKE %s OR candidate.subject_key ILIKE %s OR candidate.target_id ILIKE %s)"
+            )
             params.extend([pattern, pattern, pattern])
         cursor_payload = _decode_cursor(cursor)
         if cursor_payload is not None:
-            clauses.append("(updated_at_ms, candidate_id) < (%s, %s)")
+            clauses.append("(candidate.updated_at_ms, candidate.candidate_id) < (%s, %s)")
             params.extend([int(cursor_payload["updated_at_ms"]), str(cursor_payload["candidate_id"])])
 
         rows = self.conn.execute(
             f"""
-            SELECT *
-            FROM pulse_candidates
+            SELECT candidate.*
+            FROM pulse_candidates AS candidate
             WHERE {" AND ".join(clauses)}
-            ORDER BY updated_at_ms DESC, candidate_id DESC
+            ORDER BY candidate.updated_at_ms DESC, candidate.candidate_id DESC
             LIMIT %s
             """,
             (*params, bounded_limit + 1),
@@ -528,14 +532,18 @@ class PulseRepository:
         q: str | None = None,
         handle: str | None = None,
     ) -> dict[str, Any]:
-        clauses = ['"window" = %s', "scope = %s"]
+        clauses = ['candidate."window" = %s', "candidate.scope = %s"]
         params: list[Any] = [window, scope]
         if handle:
-            clauses.append("subject_key = %s")
-            params.append(_normalize_subject(handle))
+            handle_clause, handle_params = _candidate_handle_filter_clause("candidate", handle)
+            if handle_clause:
+                clauses.append(handle_clause)
+                params.extend(handle_params)
         if q:
             pattern = f"%{q.strip()}%"
-            clauses.append("(symbol ILIKE %s OR subject_key ILIKE %s OR target_id ILIKE %s)")
+            clauses.append(
+                "(candidate.symbol ILIKE %s OR candidate.subject_key ILIKE %s OR candidate.target_id ILIKE %s)"
+            )
             params.extend([pattern, pattern, pattern])
         candidate_row = self.conn.execute(
             f"""
@@ -561,6 +569,7 @@ class PulseRepository:
                   AND market_context_json->>'market_status' = 'fresh'
               ) AS market_fresh_count
             FROM pulse_candidates
+            AS candidate
             WHERE {" AND ".join(clauses)}
             """,
             tuple(params),
@@ -568,8 +577,11 @@ class PulseRepository:
         job_clauses = ['job."window" = %s', "job.scope = %s", "job.status = 'dead'"]
         job_params: list[Any] = [window, scope]
         if handle:
-            job_clauses.append("job.subject_key = %s")
-            job_params.append(_normalize_subject(handle))
+            normalized_handle = _normalize_subject(handle)
+            candidate_handle_clause, candidate_handle_params = _candidate_handle_filter_clause("candidate", handle)
+            if normalized_handle and candidate_handle_clause:
+                job_clauses.append(f"(lower(job.subject_key) = %s OR {candidate_handle_clause})")
+                job_params.extend([normalized_handle, *candidate_handle_params])
         if q:
             pattern = f"%{q.strip()}%"
             job_clauses.append(
@@ -846,6 +858,43 @@ def _normalize_subject(value: str | None) -> str | None:
         return None
     normalized = str(value).strip().lstrip("@").lower()
     return normalized or None
+
+
+def _candidate_handle_filter_clause(candidate_alias: str, handle: str | None) -> tuple[str, list[Any]]:
+    normalized = _normalize_subject(handle)
+    if not normalized:
+        return "", []
+    event_ids_sql = f"""
+        (
+          CASE
+            WHEN jsonb_typeof({candidate_alias}.source_event_ids_json) = 'array'
+            THEN {candidate_alias}.source_event_ids_json
+            ELSE '[]'::jsonb
+          END
+          ||
+          CASE
+            WHEN jsonb_typeof({candidate_alias}.evidence_event_ids_json) = 'array'
+            THEN {candidate_alias}.evidence_event_ids_json
+            ELSE '[]'::jsonb
+          END
+        )
+    """
+    return (
+        f"""
+        (
+          lower({candidate_alias}.subject_key) = %s
+          OR EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text({event_ids_sql}) AS pulse_event(event_id)
+            LEFT JOIN events ON events.event_id = pulse_event.event_id
+            LEFT JOIN social_event_extractions
+              ON social_event_extractions.event_id = pulse_event.event_id
+            WHERE lower(coalesce(social_event_extractions.author_handle, events.author_handle, '')) = %s
+          )
+        )
+        """,
+        [normalized, normalized],
+    )
 
 
 def _normalize_symbol(value: str | None) -> str | None:
