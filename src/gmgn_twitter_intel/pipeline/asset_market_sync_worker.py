@@ -7,7 +7,6 @@ from typing import Any
 from loguru import logger
 
 from .asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
-from .token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
 from .token_resolution_refresh import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
 
 DEX_PRICE_STALE_MS = 5 * 60 * 1000
@@ -24,9 +23,6 @@ class AssetMarketSyncWorker:
         inst_types: tuple[str, ...],
         interval_seconds: float = 300.0,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
-        projection_limit: int = 100,
-        windows: tuple[str, ...] = DEFAULT_WINDOWS,
-        scopes: tuple[str, ...] = DEFAULT_SCOPES,
     ) -> None:
         self.client = client
         self.dex_client = dex_client
@@ -34,9 +30,6 @@ class AssetMarketSyncWorker:
         self.inst_types = tuple(str(item).strip().upper() for item in inst_types if str(item).strip())
         self.interval_seconds = interval_seconds
         self.reprocess_limit = max(1, int(reprocess_limit))
-        self.projection_limit = max(1, int(projection_limit))
-        self.windows = tuple(windows)
-        self.scopes = tuple(scopes)
         self._stopped = False
         self._cex_task: asyncio.Task | None = None
         self._dex_task: asyncio.Task | None = None
@@ -130,9 +123,6 @@ class AssetMarketSyncWorker:
             lookup_keys=lookup_keys,
             now_ms=now_ms,
             reprocess_limit=self.reprocess_limit,
-            projection_limit=self.projection_limit,
-            windows=self.windows,
-            scopes=self.scopes,
         )
         return {**public_result, "resolution_refresh": _public_refresh(refresh)}
 

@@ -52,8 +52,8 @@ def test_token_radar_projection_uses_v7_candidate_hydration_contract():
 def test_analysis_window_loads_baseline_and_attention_history():
     now_ms = 1_777_800_000_000
 
-    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["5m"]) == now_ms - 24 * 60 * 60 * 1000
-    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["1h"]) == now_ms - 24 * 60 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["5m"]) == now_ms - 7 * 5 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["1h"]) == now_ms - 7 * 60 * 60 * 1000
     assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["4h"]) == now_ms - 7 * 4 * 60 * 60 * 1000
     assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["24h"]) == now_ms - 7 * 24 * 60 * 60 * 1000
 
@@ -190,6 +190,11 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "source_rows": 1,
         "computed_at_ms": 1_777_800_060_000,
         "status": "stale_skipped",
+        "market_hydration": {
+            "status": "not_configured",
+            "assets_scanned": 0,
+            "price_observations_written": 0,
+        },
     }
     assert recorder.stale_calls == [
         {
@@ -212,6 +217,98 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
             "commit": True,
         }
     ]
+
+
+def test_short_window_projection_hydrates_market_before_loading_source_rows(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    hydrated: list[dict[str, object]] = []
+    now_ms = 1_777_800_060_000
+
+    def hydrate(**kwargs):
+        hydrated.append(kwargs)
+        return {
+            "assets_scanned": 1,
+            "price_observations_written": 1,
+            "refresh_universe": "radar_projection_preflight",
+        }
+
+    def source_rows(self, since_ms, scope, now_ms):
+        assert hydrated
+        return [source_row("event-1", received_at_ms=now_ms - 60_000)]
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(TokenRadarProjection, "_source_rows", source_rows)
+
+    result = TokenRadarProjection(
+        repos=repos,
+        market_hydrator=hydrate,
+        preflight_hydration_limit=7,
+    ).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert hydrated == [
+        {
+            "repos": repos,
+            "window": "5m",
+            "scope": "all",
+            "now_ms": now_ms,
+            "score_since_ms": now_ms - WINDOW_MS["5m"],
+            "stale_before_ms": now_ms - token_radar_projection_module.MARKET_FRESH_MS,
+            "limit": 7,
+        }
+    ]
+    assert result["market_hydration"]["status"] == "ready"
+    assert token_radar.rows[0]["market_json"]["market_status"] == "fresh"
+
+
+def test_projection_continues_with_error_hydration_status_when_preflight_fails(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    now_ms = 1_777_800_060_000
+
+    def hydrate(**kwargs):
+        raise RuntimeError("provider timeout")
+
+    def source_rows(self, since_ms, scope, now_ms):
+        return [
+            {
+                **source_row("event-1", received_at_ms=now_ms - 60_000),
+                "market_provider": None,
+                "market_observed_at_ms": None,
+                "market_price_usd": None,
+                "event_price_usd": None,
+                "first_price_usd": None,
+            }
+        ]
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(TokenRadarProjection, "_source_rows", source_rows)
+
+    result = TokenRadarProjection(repos=repos, market_hydrator=hydrate).rebuild(
+        window="5m",
+        scope="all",
+        now_ms=now_ms,
+        limit=20,
+    )
+
+    assert result["status"] == "ready"
+    assert result["market_hydration"] == {
+        "status": "error",
+        "error": "provider timeout",
+        "assets_scanned": 0,
+        "price_observations_written": 0,
+    }
+    assert token_radar.rows[0]["market_json"]["market_observation_status"] == "pending_refresh"
 
 
 def test_projection_market_uses_latest_market_snapshot_fields():
@@ -404,6 +501,7 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "asset_symbol": "PEPE",
         "asset_chain_id": "eip155:1",
         "asset_address": "0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "asset_registry_status": "candidate",
         "reason_codes_json": [],
         "candidate_ids_json": [],
         "lookup_keys_json": [],
@@ -462,3 +560,12 @@ class FakeProjectionRepository:
 class FakeRejectingTokenRadar:
     def replace_rows(self, **kwargs):
         return False
+
+
+class FakeTokenRadar:
+    def __init__(self):
+        self.rows: list[dict[str, object]] = []
+
+    def replace_rows(self, **kwargs):
+        self.rows = list(kwargs["rows"])
+        return True

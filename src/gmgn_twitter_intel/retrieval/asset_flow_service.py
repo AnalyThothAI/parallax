@@ -46,6 +46,7 @@ class AssetFlowService:
                     default=0,
                 ),
                 "computed_at_ms": computed_at_ms,
+                "market_hydration": _market_hydration(rows),
             },
         }
 
@@ -62,3 +63,31 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
     }
+
+
+def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    if not rows:
+        return {
+            "status": "missing",
+            "fresh": 0,
+            "stale": 0,
+            "missing": 0,
+            "pending": 0,
+            "total": 0,
+        }
+    counts = {"fresh": 0, "stale": 0, "missing": 0, "pending": 0}
+    for row in rows:
+        price = row.get("price_json") if isinstance(row.get("price_json"), dict) else {}
+        market_status = str(price.get("market_status") or "")
+        observation_status = str(price.get("market_observation_status") or "")
+        if market_status in {"fresh", "ready"}:
+            counts["fresh"] += 1
+        elif market_status == "stale" or observation_status == "stale":
+            counts["stale"] += 1
+        else:
+            counts["missing"] += 1
+        if observation_status == "pending_refresh":
+            counts["pending"] += 1
+    total = len(rows)
+    status = "ready" if counts["stale"] == 0 and counts["missing"] == 0 else "partial"
+    return {**counts, "status": status, "total": total}

@@ -86,11 +86,18 @@ def sync_okx_dex_prices(
     observed_at_ms: int,
     stale_after_ms: int,
     limit: int,
+    radar_since_ms: int | None = None,
+    hot_since_ms: int | None = None,
+    refresh_universe: str = "radar_candidates",
 ) -> dict[str, Any]:
     rows = registry.chain_assets_needing_radar_price_refresh(
         stale_before_ms=int(observed_at_ms) - int(stale_after_ms),
-        radar_since_ms=int(observed_at_ms) - RADAR_PRICE_CANDIDATE_LOOKBACK_MS,
-        hot_since_ms=int(observed_at_ms) - RADAR_PRICE_HOT_LOOKBACK_MS,
+        radar_since_ms=int(radar_since_ms)
+        if radar_since_ms is not None
+        else int(observed_at_ms) - RADAR_PRICE_CANDIDATE_LOOKBACK_MS,
+        hot_since_ms=int(hot_since_ms)
+        if hot_since_ms is not None
+        else int(observed_at_ms) - RADAR_PRICE_HOT_LOOKBACK_MS,
         limit=max(0, int(limit)),
     )
     pricefeeds_written = 0
@@ -216,7 +223,7 @@ def sync_okx_dex_prices(
     registry.conn.commit()
     return {
         "assets_scanned": len(rows),
-        "refresh_universe": "radar_candidates",
+        "refresh_universe": refresh_universe,
         "address_search_requests": address_search_requests,
         "address_search_hits": address_search_hits,
         "address_search_errors": address_search_errors,
