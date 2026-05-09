@@ -11,7 +11,7 @@ import uvicorn
 
 from .api.app import create_app
 from .logging_setup import setup_logging
-from .market.gmgn_directory_client import GmgnDirectoryClient
+from .market.gmgn_directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from .market.okx_cex_client import OkxCexClient
 from .market.okx_dex_client import OkxDexClient
 from .pipeline.asset_market_sync import sync_okx_cex_universe
@@ -678,8 +678,11 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     client=client,
                     repository=AccountQualityRepository(signals.conn),
                     now_ms=_now_ms(),
-                    max_pages=int(args.max_pages),
+                    max_pages=args.max_pages,
                 )
+            except GmgnDirectoryError as exc:
+                _emit({"ok": False, "error": str(exc)}, stdout)
+                return 1
             finally:
                 client.close()
             _emit({"ok": True, "data": data}, stdout)
@@ -775,12 +778,8 @@ def _run_sync_gmgn_directory(
     max_pages: int,
 ) -> dict:
     upserted = 0
-    skipped_no_handle = 0
     handles: list[str] = []
     for entry in client.iter_entries(max_pages=max_pages):
-        if not entry.handle:
-            skipped_no_handle += 1
-            continue
         repository.upsert_directory_entry(
             handle=entry.handle,
             gmgn_user_id=entry.gmgn_user_id,
@@ -791,10 +790,10 @@ def _run_sync_gmgn_directory(
         )
         upserted += 1
         handles.append(entry.handle)
+    # single transaction: all-or-nothing for the full directory sync
     repository.conn.commit()
     return {
         "upserted": upserted,
-        "skipped_no_handle": skipped_no_handle,
         "first_handles": handles[:5],
         "last_handles": handles[-5:],
         "observed_at_ms": now_ms,

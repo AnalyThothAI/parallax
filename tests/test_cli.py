@@ -465,7 +465,6 @@ def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
 
     entries = [
         GmgnDirectoryEntry(handle="cz", gmgn_user_id="X", user_tags=("kol",), platform_followers=100),
-        GmgnDirectoryEntry(handle="", gmgn_user_id=None, user_tags=(), platform_followers=None),
         GmgnDirectoryEntry(handle="elonmusk", gmgn_user_id="Y", user_tags=("founder",), platform_followers=200),
     ]
     client = FakeClient(entries)
@@ -485,7 +484,6 @@ def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
     assert all(u["commit"] is False for u in repo.upserts)
     assert summary == {
         "upserted": 2,
-        "skipped_no_handle": 1,
         "first_handles": ["cz", "elonmusk"],
         "last_handles": ["cz", "elonmusk"],
         "observed_at_ms": 1_700_000_000_000,
@@ -505,13 +503,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
         captured["repository_type"] = type(repository).__name__
         captured["now_ms"] = now_ms
         captured["max_pages"] = max_pages
-        return {
-            "upserted": 7,
-            "skipped_no_handle": 0,
-            "first_handles": [],
-            "last_handles": [],
-            "observed_at_ms": now_ms,
-        }
+        return {"upserted": 7, "first_handles": [], "last_handles": [], "observed_at_ms": now_ms}
 
     class FakeClient:
         def __init__(self, **kwargs):
@@ -536,7 +528,6 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
         "ok": True,
         "data": {
             "upserted": 7,
-            "skipped_no_handle": 0,
             "first_handles": [],
             "last_handles": [],
             "observed_at_ms": 1_700_000_000_000,
@@ -545,6 +536,33 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     assert captured["max_pages"] == 3
     assert captured["repository_type"] == "AccountQualityRepository"
     assert isinstance(captured["client"], FakeClient)
+
+
+def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch):
+    import io
+    import json
+
+    from gmgn_twitter_intel import cli as cli_module
+    from gmgn_twitter_intel.market.gmgn_directory_client import GmgnDirectoryError
+
+    def boom(*, client, repository, now_ms, max_pages):
+        raise GmgnDirectoryError("Cloudflare 403")
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(cli_module, "_run_sync_gmgn_directory", boom)
+    monkeypatch.setattr(cli_module, "GmgnDirectoryClient", FakeClient)
+
+    stdout = io.StringIO()
+    code = cli_module.main(["ops", "sync-gmgn-directory"], stdout=stdout)
+
+    assert code == 1
+    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "Cloudflare 403"}
 
 
 if __name__ == "__main__":
