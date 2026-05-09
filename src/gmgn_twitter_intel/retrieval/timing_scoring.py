@@ -46,7 +46,7 @@ def timing_score(features: dict[str, Any]) -> dict[str, Any]:
 
     contributions.append(contribution("timing.status", score, status))
     return score_payload(
-        score_version="timing_v4",
+        score_version="timing_v5",
         score=score,
         reasons=reasons,
         risks=risks,

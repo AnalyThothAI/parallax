@@ -13,7 +13,7 @@ def test_timing_ready_market_is_neutral_not_alpha_boost():
     )
 
     assert score["status"] == "neutral"
-    assert score["score_version"] == "timing_v4"
+    assert score["score_version"] == "timing_v5"
     assert score["score"] == 50
     assert score["chase_risk"] is False
     assert "social_before_price_move" not in score["reasons"]
@@ -93,3 +93,8 @@ def test_timing_accepts_string_social_signal_start_ms():
     )
 
     assert score["social_signal_start_ms"] == 1_700_000_000_000
+
+
+def test_timing_v5_version_string():
+    result = timing_score({"market_observation_status": "ready"})
+    assert result["score_version"] == "timing_v5"

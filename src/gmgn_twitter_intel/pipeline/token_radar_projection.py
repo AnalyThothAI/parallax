@@ -354,7 +354,7 @@ class TokenRadarProjection:
                 AND token_intent_resolutions.target_id IS NOT NULL
                 AND price_observations.subject_type = token_intent_resolutions.target_type
                 AND price_observations.subject_id = token_intent_resolutions.target_id
-                AND price_observations.observed_at_ms < events.received_at_ms
+                AND price_observations.observed_at_ms < events.received_at_ms - 300000
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
             ) before_event_price ON true
