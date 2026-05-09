@@ -80,7 +80,7 @@ class AccountQualityRepository:
                 int(observed_at_ms),
                 int(observed_at_ms),
                 None,
-                "public",
+                "public",  # weakest status; upsert_profile promotes to 'watched' on event arrival
                 gmgn_user_id,
                 tags_list,
                 int(platform_followers) if platform_followers is not None else None,

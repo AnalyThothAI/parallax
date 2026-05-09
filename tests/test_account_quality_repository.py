@@ -102,6 +102,9 @@ def test_upsert_directory_entry_inserts_then_updates_directory_fields_only(tmp_p
             follower_max=1234,
             watched_status="public",
         )
+        cz_initial = repo.account_quality("cz")["profile"]
+        cz_initial_updated_at = cz_initial["updated_at_ms"]
+        cz_initial_created_at = cz_initial["created_at_ms"]
         repo.upsert_directory_entry(
             handle="cz",
             gmgn_user_id="dxCeCLOM7uOFJKX8EnS3Kw",
@@ -144,3 +147,7 @@ def test_upsert_directory_entry_inserts_then_updates_directory_fields_only(tmp_p
     assert elon["watched_status"] == "public"
     assert elon["first_seen_ms"] == 1_700_000_000_001
     assert elon["latest_seen_ms"] == 1_700_000_000_001
+
+    assert cz["updated_at_ms"] >= cz_initial_updated_at  # may be equal if all calls land in same ms
+    assert cz["created_at_ms"] == cz_initial_created_at  # never changes after first INSERT
+    assert elon["updated_at_ms"] >= elon["created_at_ms"]
