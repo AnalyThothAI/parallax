@@ -41,10 +41,10 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
     assert len({all_5m["row_id"], matched_5m["row_id"], all_1h["row_id"]}) == 3
 
 
-def test_token_radar_projection_uses_v6_auditable_contract():
+def test_token_radar_projection_uses_v7_candidate_hydration_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
-    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v6-auditable"
-    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+price_observations"
+    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v7-candidate-hydration"
+    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+candidate_market_hydration+price_observations"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
 
 
@@ -251,6 +251,20 @@ def test_projection_market_uses_latest_market_snapshot_fields():
     assert market["holders"] == 1000
     assert market["snapshot_age_ms"] == 60_000
     assert market["snapshot_observed_at_ms"] == 1_777_800_000_000
+    assert market["market_readiness"] == {
+        "status": "fresh",
+        "observation_status": "ready",
+        "provider": "gmgn_payload",
+        "snapshot_age_ms": 60_000,
+        "snapshot_observed_at_ms": 1_777_800_000_000,
+    }
+    assert market["event_price_readiness"] == {
+        "status": "ready",
+        "source": "message_or_history",
+        "social_signal_start_ms": 1_777_800_000_000,
+        "price_at_social_start": 0.01,
+        "price_change_status": "ready",
+    }
 
 
 def test_projection_market_uses_social_start_row_not_latest_row():
@@ -328,6 +342,11 @@ def test_resolved_pending_market_never_projects_as_driver():
 
     assert row["market_json"]["market_observation_status"] == "pending_refresh"
     assert row["decision"] == "discard"
+    assert row["market_json"]["market_readiness"]["status"] == "missing"
+    assert row["market_json"]["event_price_readiness"]["status"] == "missing"
+    assert row["data_health_json"]["market"] == "pending_refresh"
+    assert row["data_health_json"]["market_readiness"]["status"] == "missing"
+    assert row["data_health_json"]["event_price_readiness"]["status"] == "missing"
     assert set(row["score_json"]) == {"heat", "quality", "propagation", "tradeability", "timing", "opportunity"}
     assert "price_health" not in row["score_json"]
     for block in row["score_json"].values():

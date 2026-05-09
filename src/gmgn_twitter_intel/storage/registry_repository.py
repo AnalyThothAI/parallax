@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+
 DEX_SEARCH_SOURCE = "okx_dex_search"
 
 _SOURCE_PRECEDENCE = {
@@ -314,6 +316,73 @@ class RegistryRepository:
             LIMIT %s
             """,
             (int(stale_before_ms), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def chain_assets_needing_radar_price_refresh(
+        self,
+        *,
+        stale_before_ms: int,
+        radar_since_ms: int,
+        hot_since_ms: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH candidate_mentions AS (
+              SELECT
+                token_intent_resolutions.target_id AS asset_id,
+                MAX(events.received_at_ms) AS latest_candidate_received_at_ms,
+                COUNT(DISTINCT events.event_id) AS candidate_event_count
+              FROM token_intent_resolutions
+              JOIN events ON events.event_id = token_intent_resolutions.event_id
+              WHERE token_intent_resolutions.is_current = true
+                AND token_intent_resolutions.resolver_policy_version = %s
+                AND token_intent_resolutions.target_type = 'Asset'
+                AND token_intent_resolutions.target_id IS NOT NULL
+                AND events.received_at_ms >= %s
+              GROUP BY token_intent_resolutions.target_id
+            )
+            SELECT
+              registry_assets.*,
+              latest_price.observed_at_ms AS latest_price_observed_at_ms,
+              latest_price.market_cap_usd,
+              latest_price.liquidity_usd,
+              latest_price.volume_24h_usd,
+              latest_price.open_interest_usd,
+              latest_price.holders,
+              candidate_mentions.latest_candidate_received_at_ms,
+              candidate_mentions.candidate_event_count
+            FROM candidate_mentions
+            JOIN registry_assets ON registry_assets.asset_id = candidate_mentions.asset_id
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.subject_type = 'Asset'
+                AND price_observations.subject_id = registry_assets.asset_id
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) latest_price ON true
+            WHERE registry_assets.status IN ('candidate', 'canonical')
+              AND (
+                latest_price.observed_at_ms IS NULL
+                OR latest_price.observed_at_ms < %s
+              )
+            ORDER BY
+              CASE WHEN candidate_mentions.latest_candidate_received_at_ms >= %s THEN 0 ELSE 1 END,
+              candidate_mentions.latest_candidate_received_at_ms DESC,
+              COALESCE(latest_price.observed_at_ms, 0) ASC,
+              registry_assets.updated_at_ms DESC,
+              registry_assets.asset_id
+            LIMIT %s
+            """,
+            (
+                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                int(radar_since_ms),
+                int(stale_before_ms),
+                int(hot_since_ms),
+                max(0, int(limit)),
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 

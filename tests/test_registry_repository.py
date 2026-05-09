@@ -4,6 +4,7 @@ from decimal import Decimal
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.price_observation_repository import PriceObservationRepository
 from gmgn_twitter_intel.storage.registry_repository import RegistryRepository
@@ -22,11 +23,13 @@ def _insert_current_resolution(
     event_id: str,
     intent_id: str,
     target_id: str | None,
+    received_at_ms: int = 1_778_145_000_000,
+    resolver_policy_version: str = "test",
     candidate_ids: list[str] | None = None,
     reason_codes: list[str] | None = None,
 ) -> None:
     EvidenceRepository(conn).insert_event(
-        make_event(event_id, text="$HANTA", received_at_ms=1_778_145_000_000, is_watched=True),
+        make_event(event_id, text="$HANTA", received_at_ms=received_at_ms, is_watched=True),
         is_watched=True,
     )
     conn.execute(
@@ -37,7 +40,7 @@ def _insert_current_resolution(
         )
         VALUES (%s, %s, %s, 'deterministic', 'HANTA', 'active', 1.0, %s, %s)
         """,
-        (intent_id, event_id, f"symbol:HANTA:{intent_id}", 1_778_145_000_000, 1_778_145_000_000),
+        (intent_id, event_id, f"symbol:HANTA:{intent_id}", received_at_ms, received_at_ms),
     )
     conn.execute(
         """
@@ -48,7 +51,7 @@ def _insert_current_resolution(
           registry_version, record_status, is_current
         )
         VALUES (
-          %s, %s, %s, 'UNIQUE_BY_CONTEXT', 'resolved', 1.0, 'test',
+          %s, %s, %s, 'UNIQUE_BY_CONTEXT', 'resolved', 1.0, %s,
           %s, %s, %s, %s, 'Asset', %s, %s, %s, %s, 'test', 'current', true
         )
         """,
@@ -56,10 +59,11 @@ def _insert_current_resolution(
             f"resolution:{intent_id}",
             intent_id,
             event_id,
+            resolver_policy_version,
             Jsonb([]),
             Jsonb([]),
-            1_778_145_000_000,
-            1_778_145_000_000,
+            received_at_ms,
+            received_at_ms,
             target_id,
             Jsonb(reason_codes or ["TEST"]),
             Jsonb(candidate_ids or []),
@@ -328,3 +332,65 @@ def test_symbol_lookup_and_price_refresh_ignore_demoted_search_assets(tmp_path):
     refresh_ids = {row["asset_id"] for row in refresh_assets}
     assert active["asset_id"] in refresh_ids
     assert demoted["asset_id"] not in refresh_ids
+
+
+def test_radar_price_refresh_selects_current_candidates_not_cold_registry_assets(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        hot_asset = registry.upsert_chain_asset(
+            chain_id="eip155:56",
+            address=_evm_address(7),
+            symbol="HANTA",
+            name="Hot",
+            decimals=18,
+            source="tweet_ca",
+            observed_at_ms=1_778_145_000_000,
+        )
+        registry.upsert_chain_asset(
+            chain_id="eip155:56",
+            address=_evm_address(8),
+            symbol="HANTA",
+            name="Cold",
+            decimals=18,
+            source="okx_dex_search",
+            observed_at_ms=1_778_145_000_000,
+        )
+        demoted = registry.upsert_chain_asset(
+            chain_id="eip155:56",
+            address=_evm_address(9),
+            symbol="HANTA",
+            name="Demoted",
+            decimals=18,
+            source="okx_dex_search",
+            observed_at_ms=1_778_145_000_000,
+        )
+        conn.execute("UPDATE registry_assets SET status = 'demoted_search' WHERE asset_id = %s", (demoted["asset_id"],))
+        _insert_current_resolution(
+            conn,
+            event_id="evt-hot-radar-target",
+            intent_id="intent-hot-radar-target",
+            target_id=hot_asset["asset_id"],
+            received_at_ms=1_778_145_200_000,
+            resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+        )
+        _insert_current_resolution(
+            conn,
+            event_id="evt-demoted-radar-target",
+            intent_id="intent-demoted-radar-target",
+            target_id=demoted["asset_id"],
+            received_at_ms=1_778_145_210_000,
+            resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+        )
+
+        rows = registry.chain_assets_needing_radar_price_refresh(
+            stale_before_ms=1_778_145_300_000,
+            radar_since_ms=1_778_141_400_000,
+            hot_since_ms=1_778_141_400_000,
+            limit=10,
+        )
+    finally:
+        conn.close()
+
+    assert [row["asset_id"] for row in rows] == [hot_asset["asset_id"]]

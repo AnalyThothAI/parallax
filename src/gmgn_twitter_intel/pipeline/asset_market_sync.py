@@ -7,6 +7,8 @@ from typing import Any
 from ..market.okx_chains import OKX_CHAIN_TO_CHAIN_INDEX
 
 DEX_PRICE_BATCH_SIZE = 20
+RADAR_PRICE_CANDIDATE_LOOKBACK_MS = 24 * 60 * 60 * 1000
+RADAR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
 
 
 def sync_okx_cex_universe(
@@ -85,8 +87,10 @@ def sync_okx_dex_prices(
     stale_after_ms: int,
     limit: int,
 ) -> dict[str, Any]:
-    rows = registry.chain_assets_needing_price_refresh(
+    rows = registry.chain_assets_needing_radar_price_refresh(
         stale_before_ms=int(observed_at_ms) - int(stale_after_ms),
+        radar_since_ms=int(observed_at_ms) - RADAR_PRICE_CANDIDATE_LOOKBACK_MS,
+        hot_since_ms=int(observed_at_ms) - RADAR_PRICE_HOT_LOOKBACK_MS,
         limit=max(0, int(limit)),
     )
     pricefeeds_written = 0
@@ -212,6 +216,7 @@ def sync_okx_dex_prices(
     registry.conn.commit()
     return {
         "assets_scanned": len(rows),
+        "refresh_universe": "radar_candidates",
         "address_search_requests": address_search_requests,
         "address_search_hits": address_search_hits,
         "address_search_errors": address_search_errors,
