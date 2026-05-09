@@ -7,6 +7,8 @@ from typing import Any
 from .asset_market_sync import DEX_PRICE_BATCH_SIZE, _okx_chain_index
 from .deterministic_token_resolver import RESOLVER_POLICY_VERSION
 
+MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
+
 
 def observe_message_market(
     *,
@@ -16,7 +18,7 @@ def observe_message_market(
     now_ms: int,
     limit: int = 100,
 ) -> dict[str, Any]:
-    rows = _select_pending_rows(repos.conn, limit=limit)
+    rows = _select_pending_rows(repos.conn, now_ms=now_ms, limit=limit)
     result = {
         "rows_selected": len(rows),
         "cex_ticker_requests": 0,
@@ -55,7 +57,8 @@ def observe_message_market(
     return result
 
 
-def _select_pending_rows(conn, *, limit: int) -> list[dict[str, Any]]:
+def _select_pending_rows(conn, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    hot_since_ms = int(now_ms) - MESSAGE_MARKET_HOT_LOOKBACK_MS
     rows = conn.execute(
         """
         SELECT
@@ -136,10 +139,13 @@ def _select_pending_rows(conn, *, limit: int) -> list[dict[str, Any]]:
               )
               AND po.observation_kind IN ('message_payload', 'message_quote')
           )
-        ORDER BY events.received_at_ms ASC, tir.resolution_id ASC
+        ORDER BY
+          CASE WHEN events.received_at_ms >= %s THEN 0 ELSE 1 END,
+          events.received_at_ms DESC,
+          tir.resolution_id ASC
         LIMIT %s
         """,
-        (RESOLVER_POLICY_VERSION, max(0, int(limit))),
+        (RESOLVER_POLICY_VERSION, hot_since_ms, max(0, int(limit))),
     ).fetchall()
     return [dict(row) for row in rows]
 

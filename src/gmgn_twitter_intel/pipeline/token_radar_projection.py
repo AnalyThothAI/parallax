@@ -465,6 +465,8 @@ def _project_group(
         "data_health_json": {
             "identity": resolution_status,
             "market": market["market_observation_status"],
+            "market_readiness": market["market_readiness"],
+            "event_price_readiness": market["event_price_readiness"],
             "coverage": "public_stream",
         },
         "source_event_ids_json": event_ids,
@@ -602,7 +604,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         )
         if social_basis == "basis_mismatch":
             price_change_status = "basis_mismatch"
-        return {
+        market = {
             "market_status": "fresh" if fresh else "stale",
             "market_observation_status": "ready" if fresh else "stale",
             "price_change_status": price_change_status,
@@ -634,13 +636,14 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             if first_basis != "basis_mismatch"
             else None,
         }
+        return _with_readiness(market)
     missing = _missing_market("pending_refresh")
     missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
-    return missing
+    return _with_readiness(missing)
 
 
 def _missing_market(status: str) -> dict[str, Any]:
-    return {
+    market = {
         "market_status": "missing",
         "market_observation_status": status,
         "price_change_status": status,
@@ -666,6 +669,37 @@ def _missing_market(status: str) -> dict[str, Any]:
         "price_change_since_social_pct": None,
         "price_change_before_social_pct": None,
         "price_change_since_first_snapshot_pct": None,
+    }
+    return _with_readiness(market)
+
+
+def _with_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **market,
+        "market_readiness": _market_readiness(market),
+        "event_price_readiness": _event_price_readiness(market),
+    }
+
+
+def _market_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "status": market.get("market_status") or "missing",
+        "observation_status": market.get("market_observation_status") or "missing",
+        "provider": market.get("provider"),
+        "snapshot_age_ms": market.get("snapshot_age_ms"),
+        "snapshot_observed_at_ms": market.get("snapshot_observed_at_ms"),
+    }
+
+
+def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    value = market.get("price_at_social_start")
+    status = "ready" if value is not None else "missing"
+    return {
+        "status": status,
+        "source": "message_or_history" if status == "ready" else market.get("price_change_status"),
+        "social_signal_start_ms": market.get("social_signal_start_ms"),
+        "price_at_social_start": value,
+        "price_change_status": market.get("price_change_status"),
     }
 
 

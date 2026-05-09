@@ -53,6 +53,10 @@ def test_message_market_observation_writes_cex_message_quote():
     assert "po.source_intent_id = tir.intent_id" not in repos.conn.sql
     assert "tir.resolver_policy_version = %s" in repos.conn.sql
     assert repos.conn.params[0] == TOKEN_RADAR_RESOLVER_POLICY_VERSION
+    assert "CASE WHEN events.received_at_ms >= %s THEN 0 ELSE 1 END" in repos.conn.sql
+    assert "events.received_at_ms DESC" in repos.conn.sql
+    assert repos.conn.params[-2] == 1_700_000_001_000 - 60 * 60 * 1000
+    assert repos.conn.params[-1] == 10
 
 
 def test_message_market_observation_writes_dex_message_quote_per_message():

@@ -173,6 +173,7 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
 
     assert result == {
         "assets_scanned": 1,
+        "refresh_universe": "radar_candidates",
         "address_search_requests": 0,
         "address_search_hits": 0,
         "address_search_errors": 0,
@@ -185,6 +186,15 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
             "symbol:TEST",
         ],
     }
+    assert registry.radar_refresh_calls == [
+        {
+            "stale_before_ms": 1_778_084_800_000,
+            "radar_since_ms": 1_777_998_700_000,
+            "hot_since_ms": 1_778_081_500_000,
+            "limit": 100,
+        }
+    ]
+    assert registry.global_refresh_calls == []
     assert client.price_requests == [
         [{"chainIndex": "56", "tokenContractAddress": "0x8f32420f2e3728c49399b00dd0a796602d984444"}]
     ]
@@ -375,6 +385,8 @@ class FakeRegistry:
         self.pricefeeds = []
         self.chain_assets = []
         self.dex_refresh_rows = []
+        self.radar_refresh_calls = []
+        self.global_refresh_calls = []
         self.conn = FakeConn()
 
     def upsert_cex_token(self, *, base_symbol, project_id, source, observed_at_ms, commit=False):
@@ -423,6 +435,25 @@ class FakeRegistry:
         }
 
     def chain_assets_needing_price_refresh(self, *, stale_before_ms, limit):
+        self.global_refresh_calls.append({"stale_before_ms": stale_before_ms, "limit": limit})
+        return self.dex_refresh_rows[:limit]
+
+    def chain_assets_needing_radar_price_refresh(
+        self,
+        *,
+        stale_before_ms,
+        radar_since_ms,
+        hot_since_ms,
+        limit,
+    ):
+        self.radar_refresh_calls.append(
+            {
+                "stale_before_ms": stale_before_ms,
+                "radar_since_ms": radar_since_ms,
+                "hot_since_ms": hot_since_ms,
+                "limit": limit,
+            }
+        )
         return self.dex_refresh_rows[:limit]
 
 
