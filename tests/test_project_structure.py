@@ -62,8 +62,8 @@ def test_project_uses_standard_uv_src_layout():
 
 def test_current_projection_docs_are_postgres_only():
     paths = [
-        ROOT / "docs" / "superpowers" / "specs" / "2026-05-06-materialized-read-models-production-cn.md",
-        ROOT / "docs" / "superpowers" / "plans" / "2026-05-06-postgresql-projection-closure.md",
+        ROOT / "docs" / "superpowers" / "specs" / "completed" / "2026-05-06-materialized-read-models-production-cn.md",
+        ROOT / "docs" / "superpowers" / "plans" / "completed" / "2026-05-06-postgresql-projection-closure.md",
     ]
     for path in paths:
         text = path.read_text(encoding="utf-8").lower()
