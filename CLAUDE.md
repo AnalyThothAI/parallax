@@ -38,3 +38,5 @@ When the `superpowers:` skills are available, use them in this order:
 8. `finishing-a-development-branch` — decide on merge / PR / cleanup.
 
 Process skills take priority over implementation skills when both could apply.
+
+CLI surface: `uv run gmgn-twitter-intel --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).

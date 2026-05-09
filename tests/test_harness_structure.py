@@ -1,7 +1,7 @@
 """Structural assertions for the docs harness.
 
 Each test maps to an acceptance criterion in
-docs/superpowers/specs/2026-05-09-harness-engineering-restructure.md.
+docs/superpowers/specs/completed/2026-05-09-harness-engineering-restructure.md.
 """
 from __future__ import annotations
 
