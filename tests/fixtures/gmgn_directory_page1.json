@@ -1,0 +1,12 @@
+{
+  "code": 0,
+  "reason": "",
+  "message": "",
+  "data": {
+    "users": [
+      {"handle": "realdonaldtrump", "name": "Donald J. Trump", "avatar": "https://example.test/trump.png", "user_id": "107780257626128497", "user_tags": ["politics"], "platform": 2, "followers": 19782, "followed": false},
+      {"handle": "cz", "name": "CZ", "avatar": "https://example.test/cz.png", "user_id": "dxCeCLOM7uOFJKX8EnS3Kw", "user_tags": ["binance_square"], "platform": 2, "followers": 18548, "followed": false}
+    ],
+    "page_token": "Y3o6MTg1NDg="
+  }
+}

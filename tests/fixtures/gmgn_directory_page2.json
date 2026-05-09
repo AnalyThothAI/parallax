@@ -1,0 +1,11 @@
+{
+  "code": 0,
+  "reason": "",
+  "message": "",
+  "data": {
+    "users": [
+      {"handle": "elonmusk", "name": "Elon Musk", "avatar": "https://example.test/elon.png", "user_id": "44196397", "user_tags": ["founder", "kol"], "platform": 2, "followers": 29396, "followed": false}
+    ],
+    "page_token": ""
+  }
+}
