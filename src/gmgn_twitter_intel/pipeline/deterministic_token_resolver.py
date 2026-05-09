@@ -7,7 +7,6 @@ from typing import Any
 from .token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 RESOLVER_POLICY_VERSION = TOKEN_RADAR_RESOLVER_POLICY_VERSION
-FRESH_OBSERVATION_MS = 20 * 60 * 1000
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
 MIN_DOMINANT_HOLDERS = Decimal("1000")
 MIN_DOMINANT_LIQUIDITY_USD = Decimal("100000")
@@ -246,26 +245,21 @@ class DeterministicTokenResolver:
                 decision_time_ms=decision_time_ms,
             )
         assets = self.registry.find_assets_by_symbol_with_latest_observation(symbol)
-        active_assets = [
-            row
-            for row in assets
-            if _fresh(row.get("observed_at_ms"), decision_time_ms) and str(row.get("asset_id") or "")
-        ]
-        asset_candidate_ids = _candidate_ids(assets)
-        candidate_ids = _candidate_ids(active_assets)
-        if len(active_assets) == 1:
+        assets = [row for row in assets if str(row.get("asset_id") or "")]
+        candidate_ids = _candidate_ids(assets)
+        if len(assets) == 1:
             return _resolution(
                 intent_id=intent_id,
                 event_id=event_id,
                 status="UNIQUE_BY_CONTEXT",
                 target_type="Asset",
-                target_id=str(active_assets[0]["asset_id"]),
+                target_id=str(assets[0]["asset_id"]),
                 reason_codes=["SINGLE_ACTIVE_CHAIN_ASSET"],
                 lookup_keys=lookup_keys,
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
-        dominant = _market_dominant_asset(active_assets)
+        dominant = _market_dominant_asset(assets)
         if dominant is not None:
             return _resolution(
                 intent_id=intent_id,
@@ -288,18 +282,6 @@ class DeterministicTokenResolver:
                 reason_codes=["NO_MARKET_DOMINANT_CHAIN_ASSET"],
                 lookup_keys=lookup_keys,
                 candidate_ids=candidate_ids,
-                decision_time_ms=decision_time_ms,
-            )
-        if assets and not active_assets:
-            return _resolution(
-                intent_id=intent_id,
-                event_id=event_id,
-                status="NIL",
-                target_type=None,
-                target_id=None,
-                reason_codes=["SYMBOL_CANDIDATES_STALE"],
-                lookup_keys=lookup_keys,
-                candidate_ids=asset_candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
         return _resolution(
@@ -371,12 +353,6 @@ def _decimal(value: Any) -> Decimal:
         return Decimal(str(value))
     except (InvalidOperation, ValueError):
         return Decimal("0")
-
-
-def _fresh(observed_at_ms: Any, decision_time_ms: int) -> bool:
-    if observed_at_ms is None:
-        return False
-    return max(0, int(decision_time_ms) - int(observed_at_ms)) <= FRESH_OBSERVATION_MS
 
 
 def _lookup_keys(keys: MentionKeys) -> list[str]:

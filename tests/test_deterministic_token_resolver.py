@@ -261,6 +261,36 @@ def test_symbol_selects_highest_quality_market_asset_without_gap_threshold():
     assert result.reason_codes == ["MARKET_DOMINANT_CHAIN_ASSET"]
 
 
+def test_symbol_resolution_uses_retained_asset_even_when_price_observation_is_stale():
+    registry = FakeRegistry(
+        symbol_assets={
+            "UPEG": [
+                {
+                    "asset_id": "asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505",
+                    "chain_id": "eip155:1",
+                    "symbol": "UPEG",
+                    "market_cap_usd": Decimal("13215222.41"),
+                    "holders": 4913,
+                    "liquidity_usd": Decimal("1029326.55"),
+                    "observed_at_ms": 1_778_145_000_000,
+                }
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-upeg-stale",
+        event_id="event-upeg-stale",
+        keys=MentionKeys(symbol="UPEG"),
+        decision_time_ms=1_778_145_000_000 + 8 * 60 * 60 * 1000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"
+    assert result.reason_codes == ["SINGLE_ACTIVE_CHAIN_ASSET"]
+
+
 def test_chain_address_is_exact_asset_and_beats_symbol():
     registry = FakeRegistry(
         address_assets={

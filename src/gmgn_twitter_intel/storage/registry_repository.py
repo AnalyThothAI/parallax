@@ -3,6 +3,16 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+DEX_SEARCH_SOURCE = "okx_dex_search"
+
+_SOURCE_PRECEDENCE = {
+    DEX_SEARCH_SOURCE: 10,
+    "okx_dex": 20,
+    "gmgn_token_payload": 70,
+    "tweet_ca": 80,
+    "gmgn_openapi": 90,
+}
+
 
 class RegistryRepository:
     def __init__(self, conn: Any):
@@ -57,8 +67,10 @@ class RegistryRepository:
         normalized_address = _address(address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = f"asset:{normalized_chain}:{standard}:{normalized_address}"
+        source_rank = _source_precedence(source)
+        existing_source_rank_sql = _source_precedence_sql("registry_assets.primary_source")
         self.conn.execute(
-            """
+            f"""
             INSERT INTO registry_assets(
               asset_id, project_id, chain_id, token_standard, address, symbol, name, decimals,
               status, evidence_level, primary_source, first_seen_at_ms, updated_at_ms
@@ -70,7 +82,14 @@ class RegistryRepository:
               name = COALESCE(excluded.name, registry_assets.name),
               decimals = COALESCE(excluded.decimals, registry_assets.decimals),
               evidence_level = excluded.evidence_level,
-              primary_source = excluded.primary_source,
+              primary_source = CASE
+                WHEN %s >= {existing_source_rank_sql} THEN excluded.primary_source
+                ELSE registry_assets.primary_source
+              END,
+              status = CASE
+                WHEN registry_assets.status = 'demoted_search' THEN 'candidate'
+                ELSE registry_assets.status
+              END,
               updated_at_ms = excluded.updated_at_ms
             """,
             (
@@ -85,6 +104,7 @@ class RegistryRepository:
                 source,
                 int(observed_at_ms),
                 int(observed_at_ms),
+                source_rank,
             ),
         )
         if commit:
@@ -297,6 +317,65 @@ class RegistryRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def demote_unretained_symbol_assets(
+        self,
+        *,
+        symbol: str,
+        retained_asset_ids: list[str],
+        now_ms: int,
+        commit: bool = True,
+    ) -> int:
+        normalized_symbol = _symbol(symbol)
+        retained = sorted({str(asset_id) for asset_id in retained_asset_ids if str(asset_id or "").strip()})
+        if not normalized_symbol:
+            return 0
+        row = self.conn.execute(
+            """
+            WITH retained_assets(asset_id) AS (
+              SELECT unnest(%s::text[])
+            ),
+            protected_assets(asset_id) AS (
+              SELECT target_id
+              FROM token_intent_resolutions
+              WHERE is_current = true
+                AND record_status = 'current'
+                AND target_type = 'Asset'
+                AND target_id IS NOT NULL
+              UNION
+              SELECT jsonb_array_elements_text(candidate_ids_json)
+              FROM token_intent_resolutions
+              WHERE is_current = true
+                AND record_status = 'current'
+                AND candidate_ids_json IS NOT NULL
+            ),
+            demoted AS (
+              UPDATE registry_assets
+              SET status = 'demoted_search',
+                  updated_at_ms = %s
+              WHERE symbol = %s
+                AND primary_source = %s
+                AND status = 'candidate'
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM retained_assets
+                  WHERE retained_assets.asset_id = registry_assets.asset_id
+                )
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM protected_assets
+                  WHERE protected_assets.asset_id = registry_assets.asset_id
+                )
+              RETURNING asset_id
+            )
+            SELECT count(*) AS demoted_count
+            FROM demoted
+            """,
+            (retained, int(now_ms), normalized_symbol, DEX_SEARCH_SOURCE),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return int(row["demoted_count"] if row else 0)
+
     def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
         row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()
         return dict(row) if row else None
@@ -344,3 +423,12 @@ def _address(value: str) -> str:
 
 def _address_lookup(value: str) -> str:
     return value.strip().lower()
+
+
+def _source_precedence(source: str | None) -> int:
+    return _SOURCE_PRECEDENCE.get(str(source or "").strip().lower(), 50)
+
+
+def _source_precedence_sql(expression: str) -> str:
+    cases = "\n".join(f"WHEN '{source}' THEN {rank}" for source, rank in _SOURCE_PRECEDENCE.items())
+    return f"(CASE {expression} {cases} ELSE 50 END)"
