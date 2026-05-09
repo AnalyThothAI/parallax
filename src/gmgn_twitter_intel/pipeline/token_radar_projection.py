@@ -479,10 +479,14 @@ def _project_group(
 
 
 def _has_resolved_target(row: dict[str, Any]) -> bool:
-    return bool(row.get("target_id")) and str(row.get("resolution_status") or "") in {
+    if not bool(row.get("target_id")) or str(row.get("resolution_status") or "") not in {
         "EXACT",
         "UNIQUE_BY_CONTEXT",
-    }
+    }:
+        return False
+    return not (
+        row.get("target_type") == "Asset" and row.get("asset_registry_status") not in {"candidate", "canonical"}
+    )
 
 
 def _resolution_discovery(row: dict[str, Any]) -> list[dict[str, Any]]:
