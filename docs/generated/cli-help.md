@@ -86,8 +86,8 @@ positional arguments:
                         one-shot sync of GMGN twitter directory into
                         account_profiles
     run-token-discovery
-                        refresh due token discovery results, reprocess recent
-                        intents, and rebuild token radar
+                        refresh due token discovery results and reprocess
+                        recent intents
     reprocess-token-intents
                         re-resolve recent unresolved token intents and rebuild
                         token radar
@@ -96,8 +96,8 @@ positional arguments:
                         lookup keys, and token radar
     audit-token-intent  inspect token intent evidence and resolution
     rebuild-token-radar
-                        write token radar V6 auditable read model
-    audit-token-radar   audit token radar V6 rows for scoring and market-
+                        write the current token radar read model
+    audit-token-radar   audit token radar rows for scoring and market-
                         readiness regressions
 
 options:
