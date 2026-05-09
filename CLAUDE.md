@@ -13,11 +13,11 @@ Claude-specific router. Mirrors `AGENTS.md` for the routing table and adds the C
 | Install, run, docker | `docs/SETUP.md` |
 | Layer boundaries & data flow | `docs/ARCHITECTURE.md` |
 | Frontend architecture | `docs/FRONTEND.md` |
-| Public surfaces | `docs/CONTRACTS.md` |
+| Public surfaces (config, WS, HTTP, CLI) | `docs/CONTRACTS.md` |
 | Spec→plan→tasks→verification flow | `docs/WORKFLOW.md` |
-| Design rules | `docs/DESIGN_DISCIPLINE.md` |
+| Design rules (audit, reuse, scoring) | `docs/DESIGN_DISCIPLINE.md` |
 | Testing & completion gates | `docs/TESTING.md` |
-| Secrets & sensitive changes | `docs/SECURITY.md` |
+| Secrets, config, authn changes | `docs/SECURITY.md` |
 | Operational invariants | `docs/RELIABILITY.md` |
 | Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` |
 | External references & papers | `docs/references/` |
