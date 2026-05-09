@@ -430,6 +430,8 @@ class TokenRadarProjection:
                 **(cohort_metadata.get(target_id, {})),
             }
             row["score_json"] = score_json
+            row.pop("_cohort_high_conf_count", None)
+            row.pop("_cohort_kol_count", None)
 
         return projected
 
@@ -486,6 +488,18 @@ def _project_group(
     )
     score = _score(features)
     decision = str(score["opportunity"].get("decision") or "discard")
+    # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
+    # These internal fields use the _cohort_* prefix and are stripped before persistence.
+    _cohort_high_conf_statuses = {"EXACT", "UNIQUE_BY_CONTEXT"}
+    _cohort_kol_tags = {"kol", "founder", "master"}
+    cohort_high_conf_count = sum(
+        1 for r in window_rows
+        if (r.get("resolution_status") or "") in _cohort_high_conf_statuses
+    )
+    cohort_kol_count = sum(
+        1 for r in window_rows
+        if set(r.get("gmgn_user_tags") or ()) & _cohort_kol_tags
+    )
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -536,6 +550,9 @@ def _project_group(
         },
         "source_event_ids_json": event_ids,
         "created_at_ms": now_ms,
+        # Internal cohort fields — NOT persisted (stripped in _apply_cross_section).
+        "_cohort_high_conf_count": cohort_high_conf_count,
+        "_cohort_kol_count": cohort_kol_count,
     }
 
 
@@ -862,18 +879,8 @@ def _stable_id(*parts: str) -> str:
 
 
 def _count_high_conf(row: dict[str, Any]) -> int:
-    # Proxy for "mentions with resolution_status == EXACT".
-    # Per-mention resolution_status is not stored in score_json; we use
-    # quality.watched_source_count as a structural proxy — watched sources
-    # are a reliable indicator of confirmed-identity (EXACT-resolution) events.
-    return int((row.get("score_json") or {}).get("quality", {}).get("watched_source_count", 0))
+    return int(row.get("_cohort_high_conf_count") or 0)
 
 
 def _count_kol_authors(row: dict[str, Any]) -> int:
-    # Proxy for "mentions from authors with KOL/founder/master gmgn_user_tags".
-    # gmgn_user_tags are per-author fields not aggregated into score_json; we use
-    # attention_json.watched_mentions as a conservative proxy — watched events
-    # are tracked accounts which overlap significantly with KOL-tagged authors.
-    # This over-counts (any watched author = KOL) but ensures no KOL token is
-    # excluded from the cohort when a KOL is present.
-    return int((row.get("attention_json") or {}).get("watched_mentions", 0))
+    return int(row.get("_cohort_kol_count") or 0)
