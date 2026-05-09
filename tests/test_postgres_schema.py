@@ -40,6 +40,9 @@ SIGNAL_PULSE_AGENT_MIGRATION = Path(
 TOKEN_SEARCH_DEMOTION_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0017_demote_search_only_registry_assets.py"
 )
+TOKEN_SEARCH_AUDIT_TAIL_DEMOTION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0018_demote_search_tail_candidate_audit_refs.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -265,4 +268,18 @@ def test_token_search_demotion_migration_demotes_only_unprotected_search_assets(
     assert "PARTITION BY registry_assets.symbol, registry_assets.chain_id" in text
     assert "candidate_ids_json" in text
     assert "target_id" in text
+    assert "CREATE TABLE" not in text
+
+
+def test_token_search_audit_tail_migration_does_not_protect_candidate_audit_lists() -> None:
+    text = TOKEN_SEARCH_AUDIT_TAIL_DEMOTION_MIGRATION.read_text()
+
+    assert 'revision = "20260509_0018"' in text
+    assert 'down_revision = "20260509_0017"' in text
+    assert "status = 'demoted_search'" in text
+    assert "primary_source = 'okx_dex_search'" in text
+    assert "ROW_NUMBER() OVER" in text
+    assert "protected_targets" in text
+    assert "target_id" in text
+    assert "candidate_ids_json" not in text
     assert "CREATE TABLE" not in text

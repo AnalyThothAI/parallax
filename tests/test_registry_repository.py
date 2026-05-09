@@ -213,7 +213,7 @@ def test_low_confidence_search_source_does_not_downgrade_explicit_source(tmp_pat
     assert searched["name"] == "Search Hanta"
 
 
-def test_demote_unretained_symbol_assets_keeps_current_resolution_references(tmp_path):
+def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_audit(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -288,7 +288,7 @@ def test_demote_unretained_symbol_assets_keeps_current_resolution_references(tmp
     assert demoted == 1
     assert statuses[retained["asset_id"]] == "candidate"
     assert statuses[protected_target["asset_id"]] == "candidate"
-    assert statuses[protected_candidate["asset_id"]] == "candidate"
+    assert statuses[protected_candidate["asset_id"]] == "demoted_search"
     assert statuses[unretained["asset_id"]] == "demoted_search"
 
 

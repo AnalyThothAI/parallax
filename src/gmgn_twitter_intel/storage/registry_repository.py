@@ -341,12 +341,6 @@ class RegistryRepository:
                 AND record_status = 'current'
                 AND target_type = 'Asset'
                 AND target_id IS NOT NULL
-              UNION
-              SELECT jsonb_array_elements_text(candidate_ids_json)
-              FROM token_intent_resolutions
-              WHERE is_current = true
-                AND record_status = 'current'
-                AND candidate_ids_json IS NOT NULL
             ),
             demoted AS (
               UPDATE registry_assets
