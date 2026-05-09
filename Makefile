@@ -75,3 +75,19 @@ docker-shell: ## open shell in container
 clean: ## remove local test/cache artifacts
 	@rm -rf .pytest_cache .ruff_cache __pycache__
 	@find src tests -type d -name __pycache__ -prune -exec rm -rf {} +
+
+.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol
+
+docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol ## regenerate docs/generated/*
+
+docs-db-schema: ## regenerate docs/generated/db-schema.md (requires Postgres)
+	@uv run python scripts/regen_db_schema.py
+
+docs-cli-help: ## regenerate docs/generated/cli-help.md
+	@uv run python scripts/regen_cli_help.py
+
+docs-score-versions: ## regenerate docs/generated/score-versions.md
+	@uv run python scripts/regen_score_versions.py
+
+docs-ws-protocol: ## regenerate docs/generated/ws-protocol.md
+	@uv run python scripts/regen_ws_protocol.py
