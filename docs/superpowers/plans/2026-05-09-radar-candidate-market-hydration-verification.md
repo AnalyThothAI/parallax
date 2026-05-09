@@ -103,6 +103,66 @@ Additional hotfix verification:
 | Hotfix `TokenRadarProjectionWorker.rebuild_once()` against Docker PostgreSQL | Passed: `622` rows written across all windows/scopes in `54.516s` |
 | Direct `AssetFlowService.asset_flow(window='5m', scope='all')` against Docker PostgreSQL | Passed: `5` targets, `5` attention rows, `fresh`, `0.09s` |
 
+## A+B Projection Ownership And Historical Tail Cleanup
+
+The A+B hard cut was implemented and verified in the isolated worktree `codex/radar-hydration-cleanup`.
+
+### Code-Level Verification
+
+| Command | Result |
+|---------|--------|
+| `uv run ruff check .` | Passed: `All checks passed!` |
+| `uv run pytest` | Passed for executable tests: `343 passed, 134 skipped` |
+| `uv run python -m compileall src tests` | Passed |
+| `uv run pytest tests/test_cli.py tests/test_token_radar_projection_worker.py tests/test_token_radar_projection.py tests/test_asset_flow_service.py -q` | Passed after removing stale CLI V6 wording: `37 passed, 5 skipped` |
+| `git diff --check` | Passed |
+
+### Runtime Verification
+
+The Docker app was rebuilt from this worktree and restarted with migration `20260509_0020`.
+
+| Check | Result |
+|-------|--------|
+| `docker compose ps` | `app` and `postgres` healthy; app exposed at `127.0.0.1:8765` |
+| `/readyz` | `ok=true`, `migration_version=20260509_0020`, `token_radar_projection.worker_running=true`, `last_error=null` |
+| Asset-market refresh result | `projection.status=deferred_to_worker`, confirming market sync no longer synchronously rebuilds radar windows |
+| Token discovery result | `projection.status=deferred_to_worker`, confirming discovery no longer synchronously rebuilds radar windows |
+
+Latest live HTTP reads after rebuild:
+
+| Endpoint | Result |
+|----------|--------|
+| `/api/token-radar?window=5m&scope=all&limit=10` | `ok=true`, `target_count=10`, `attention_count=5`, `projection.status=fresh`, `market_hydration={fresh:15, stale:1, missing:5, pending:0, status:partial, total:21}` |
+| `/api/token-radar?window=5m&scope=matched&limit=10` | `ok=true`, `target_count=0`, `attention_count=0`, `projection.status=missing`, `market_hydration.total=0` |
+| `/api/token-radar?window=1h&scope=matched&limit=10` | `ok=true`, `target_count=1`, `attention_count=0`, `projection.status=fresh`, `market_hydration={fresh:1, stale:0, missing:0, pending:0, status:ready, total:1}` |
+
+The current `5m/matched` empty state is input-driven: the latest worker tick saw no matched source rows for that short watched-account window. The read path now returns an explicit missing projection instead of silently showing stale or fabricated rows.
+
+### Historical Search-Candidate Cleanup
+
+Migration `20260509_0020_sweep_symbol_search_tail_assets.py` demotes unprotected `okx_dex_search` symbol-search tail candidates after the top three per `(symbol, chain_id)` ranking.
+
+The protection boundary is before ranking:
+
+- current `CHAIN_ADDRESS_EXACT` targets are excluded from demotion;
+- current `ADDRESS_UNIQUE_ACROSS_TRACKED_CHAINS` targets are excluded from demotion;
+- protected exact CA rows therefore do not consume the search-candidate top-three budget and are not demoted.
+
+Post-migration live check:
+
+| Query | Result |
+|-------|--------|
+| unprotected active search candidates with rank greater than 3 | `0` |
+| active unprotected search candidates retained across all symbols/chains | `4937` |
+
+This means the historical long tail was cleared without deleting the bounded top-three search candidates or touching current exact-address CA resolutions.
+
+### Behavioral Boundaries
+
+- No compatibility fallback was added for prior radar projection versions.
+- `token_evidence_builder.py`, `token_intent_builder.py`, and `deterministic_token_resolver.py` remain untouched.
+- The mature token extraction and resolver state machine continues to produce CA/address resolutions; the new cleanup only changes downstream search-candidate stewardship and projection hydration ownership.
+
 ## Risks And Follow-Ups
 
 - The new DEX refresh selector depends on current token intent resolutions. If resolver refresh is delayed, DEX market hydration follows the delayed resolved set rather than unresolved attention rows.

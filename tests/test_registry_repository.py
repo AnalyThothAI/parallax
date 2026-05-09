@@ -298,6 +298,54 @@ def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_aud
     assert statuses[unretained["asset_id"]] == "demoted_search"
 
 
+def test_demote_symbol_search_tail_assets_preserves_address_exact_targets(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        assets = [
+            registry.upsert_chain_asset(
+                chain_id="eip155:56",
+                address=_evm_address(index),
+                symbol="HANTA",
+                name=f"Hanta {index}",
+                decimals=18,
+                source="okx_dex_search",
+                observed_at_ms=1_778_145_000_000 + index,
+            )
+            for index in range(1, 6)
+        ]
+        _insert_current_resolution(
+            conn,
+            event_id="evt-protected-address",
+            intent_id="intent-protected-address",
+            target_id=assets[4]["asset_id"],
+            reason_codes=["CHAIN_ADDRESS_EXACT"],
+        )
+
+        demoted = registry.demote_symbol_search_tail_assets(
+            now_ms=1_778_145_100_000,
+        )
+        rows = conn.execute(
+            """
+            SELECT asset_id, status
+            FROM registry_assets
+            WHERE upper(symbol) = 'HANTA'
+            ORDER BY updated_at_ms DESC, asset_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    statuses = {row["asset_id"]: row["status"] for row in rows}
+    assert demoted == 1
+    assert statuses[assets[4]["asset_id"]] == "candidate"
+    assert statuses[assets[3]["asset_id"]] == "candidate"
+    assert statuses[assets[2]["asset_id"]] == "candidate"
+    assert statuses[assets[1]["asset_id"]] == "candidate"
+    assert statuses[assets[0]["asset_id"]] == "demoted_search"
+
+
 def test_symbol_lookup_and_price_refresh_ignore_demoted_search_assets(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

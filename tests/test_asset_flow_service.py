@@ -42,6 +42,45 @@ def test_asset_flow_marks_projection_missing_when_no_radar_rows():
     assert result["attention"] == []
     assert result["projection"]["status"] == "missing"
     assert result["projection"]["computed_at_ms"] is None
+    assert result["projection"]["market_hydration"]["status"] == "missing"
+
+
+def test_asset_flow_exposes_projection_market_hydration_summary():
+    service = AssetFlowService(
+        token_radar=FakeTokenRadar(
+            rows=[
+                radar_row(
+                    lane="resolved",
+                    symbol="FRESH",
+                    asset_id="asset:dex:fresh",
+                    market={"market_status": "fresh", "market_observation_status": "ready"},
+                ),
+                radar_row(
+                    lane="resolved",
+                    symbol="STALE",
+                    asset_id="asset:dex:stale",
+                    market={"market_status": "stale", "market_observation_status": "stale"},
+                ),
+                radar_row(
+                    lane="resolved",
+                    symbol="MISS",
+                    asset_id="asset:dex:missing",
+                    market={"market_status": "missing", "market_observation_status": "pending_refresh"},
+                ),
+            ]
+        )
+    )
+
+    result = service.asset_flow(window="5m", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["projection"]["market_hydration"] == {
+        "status": "partial",
+        "fresh": 1,
+        "stale": 1,
+        "missing": 1,
+        "pending": 1,
+        "total": 3,
+    }
 
 
 def test_asset_flow_exposes_source_event_ids_for_evidence_counting():

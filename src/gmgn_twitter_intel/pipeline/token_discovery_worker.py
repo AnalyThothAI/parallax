@@ -15,11 +15,10 @@ from ..market.okx_chains import OKX_CHAIN_INDEX_TO_CHAIN
 from ..storage.discovery_repository import DISCOVERY_PROVIDER
 from .asset_market_sync import _okx_chain_index, _payload_hash
 from .token_radar_projection import WINDOW_MS
-from .token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
 from .token_resolution_refresh import (
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
-    rebuild_token_radar_windows,
+    deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
 
@@ -42,9 +41,6 @@ class TokenDiscoveryWorker:
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
-        projection_limit: int = 100,
-        windows: tuple[str, ...] = DEFAULT_WINDOWS,
-        scopes: tuple[str, ...] = DEFAULT_SCOPES,
     ) -> None:
         self.repository_session = repository_session
         self.dex_client = dex_client
@@ -52,9 +48,6 @@ class TokenDiscoveryWorker:
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.lookup_limit = max(1, int(lookup_limit))
         self.reprocess_limit = max(1, int(reprocess_limit))
-        self.projection_limit = max(1, int(projection_limit))
-        self.windows = tuple(windows)
-        self.scopes = tuple(scopes)
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
         self.last_result: dict[str, Any] | None = None
@@ -83,9 +76,6 @@ class TokenDiscoveryWorker:
                     now_ms=observed_at_ms,
                     lookup_limit=self.lookup_limit,
                     reprocess_limit=self.reprocess_limit,
-                    projection_limit=self.projection_limit,
-                    windows=self.windows,
-                    scopes=self.scopes,
                 )
         except Exception as exc:
             self.last_error = str(exc)
@@ -111,9 +101,6 @@ def run_token_discovery_once(
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
-    projection_limit: int = 100,
-    windows: tuple[str, ...] = DEFAULT_WINDOWS,
-    scopes: tuple[str, ...] = DEFAULT_SCOPES,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
     since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
@@ -182,13 +169,7 @@ def run_token_discovery_once(
         result["reprocess"] = reprocess_result
         result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
     if result["reprocessed_intents"]:
-        result["projection"] = rebuild_token_radar_windows(
-            repos=repos,
-            now_ms=now_ms,
-            windows=windows,
-            scopes=scopes,
-            limit=projection_limit,
-        )
+        result["projection"] = deferred_token_radar_projection()
     result["discovery_result_counts"] = repos.discovery.counts()
     return result
 
@@ -387,7 +368,7 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "price_observations_written": 0,
         "reprocessed_intents": 0,
         "reprocess": None,
-        "projection": {"rows_written": 0, "source_rows": 0, "windows": {}},
+        "projection": deferred_token_radar_projection(),
         "discovery_result_counts": {},
         "errors": [],
     }
