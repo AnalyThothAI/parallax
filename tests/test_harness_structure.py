@@ -27,13 +27,12 @@ EXPECTED_GOVERNANCE = {
 ROUTER_FILES = ("AGENTS.md", "CLAUDE.md")
 
 RULE_PHRASES = {
-    "single ASGI worker": "RELIABILITY.md",
-    "score_version": "CONTRACTS.md",
-    "real PostgreSQL": "TESTING.md",
-    "git worktree add": "WORKFLOW.md",
-    "ruff check": "TESTING.md",
-    "audit-before-design": "DESIGN_DISCIPLINE.md",
-    "single config source": "SECURITY.md",
+    "Single ASGI worker": "RELIABILITY.md",
+    "`score_version` is bumped on any scoring change": "CONTRACTS.md",
+    "Integration tests should hit a real PostgreSQL": "TESTING.md",
+    "git worktree add .worktrees": "WORKFLOW.md",
+    "Audit before design": "DESIGN_DISCIPLINE.md",
+    "Single config source": "SECURITY.md",
 }
 
 
