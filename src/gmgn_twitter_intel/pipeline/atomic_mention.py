@@ -16,6 +16,8 @@ _MID_WEIGHT = 0.85
 _LOW_WEIGHT = 0.7
 _NO_TAG_WEIGHT = 0.5
 
+# 100k provides headroom; top-known GMGN platform accounts (cz_binance, elonmusk)
+# are ~30k as of 2026-05. Real account caps reach ~86% of normalizer.
 _FOLLOWERS_NORMALIZER = math.log1p(100_000.0)
 _AGE_SATURATION_MS = 180 * 24 * 60 * 60_000
 
@@ -29,7 +31,7 @@ def tweet_quality(
     *,
     gmgn_platform_followers: int | None,
     ws_author_followers: int | None,
-    user_tags: Iterable[str],
+    user_tags: Iterable[str] | None,
     first_seen_age_ms: int,
 ) -> float:
     followers = _select_followers(gmgn_platform_followers, ws_author_followers)
@@ -50,10 +52,12 @@ def _select_followers(gmgn: int | None, ws: int | None) -> int:
         return int(gmgn)
     if ws is not None and ws > 0:
         return int(ws)
-    return 0
+    return 1  # spec §8.1: minimum floor — log1p(1)/log1p(100000) ≈ 0.06 weight
 
 
-def _tag_weight(tags: Iterable[str]) -> float:
+def _tag_weight(tags: Iterable[str] | None) -> float:
+    if tags is None:
+        return _NO_TAG_WEIGHT
     normalized = {tag.lower() for tag in tags if tag}
     if not normalized:
         return _NO_TAG_WEIGHT

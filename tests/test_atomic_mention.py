@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from gmgn_twitter_intel.pipeline.atomic_mention import (
     KOL_TIER_TAGS,
     LOW_TIER_TAGS,
@@ -100,3 +102,36 @@ def test_kol_mid_low_tier_constants_exhaust_known_tags():
     assert known == KOL_TIER_TAGS | MID_TIER_TAGS | LOW_TIER_TAGS
     assert set() == KOL_TIER_TAGS & MID_TIER_TAGS
     assert set() == MID_TIER_TAGS & LOW_TIER_TAGS
+    assert set() == KOL_TIER_TAGS & LOW_TIER_TAGS
+
+
+def test_tweet_quality_max_input_yields_exactly_one():
+    score = tweet_quality(
+        gmgn_platform_followers=100_000,
+        ws_author_followers=None,
+        user_tags=("kol",),
+        first_seen_age_ms=180 * 86_400_000,
+    )
+    assert score == pytest.approx(1.0)
+
+
+def test_tweet_quality_returns_floor_signal_when_followers_missing():
+    score = tweet_quality(
+        gmgn_platform_followers=None,
+        ws_author_followers=None,
+        user_tags=("kol",),
+        first_seen_age_ms=180 * 86_400_000,
+    )
+    # log1p(1) / log1p(100000) ≈ 0.0602; tag=1.0; age=1.0
+    assert score == pytest.approx(0.0602, abs=0.001)
+
+
+def test_tweet_quality_handles_none_user_tags():
+    score = tweet_quality(
+        gmgn_platform_followers=10000,
+        ws_author_followers=None,
+        user_tags=None,
+        first_seen_age_ms=180 * 86_400_000,
+    )
+    # tag_weight = _NO_TAG_WEIGHT = 0.5
+    assert 0.0 < score < 0.5
