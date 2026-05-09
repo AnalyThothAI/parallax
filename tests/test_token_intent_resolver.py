@@ -89,7 +89,7 @@ def test_token_intent_resolver_keeps_low_quality_symbol_candidates_ambiguous():
     assert "symbol:SATO" in decision.lookup_keys
 
 
-def test_token_intent_resolver_audits_stale_symbol_candidates_without_resolving():
+def test_token_intent_resolver_resolves_retained_symbol_candidates_without_freshness_gate():
     registry = FakeRegistry(
         symbol_assets={
             "SLOP": [
@@ -112,9 +112,9 @@ def test_token_intent_resolver_audits_stale_symbol_candidates_without_resolving(
         decision_time_ms=1_778_145_000_000 + 25 * 60_000,
     )
 
-    assert decision.resolution_status == "NIL"
-    assert decision.target_id is None
-    assert decision.reason_codes == ["SYMBOL_CANDIDATES_STALE"]
+    assert decision.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert decision.target_id == "asset:solana:token:slop"
+    assert decision.reason_codes == ["SINGLE_ACTIVE_CHAIN_ASSET"]
     assert decision.candidate_ids == ["asset:solana:token:slop"]
 
 

@@ -37,6 +37,9 @@ TOKEN_RADAR_V6_PRUNE_MIGRATION = Path(
 SIGNAL_PULSE_AGENT_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py"
 )
+TOKEN_SEARCH_DEMOTION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0017_demote_search_only_registry_assets.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -248,3 +251,18 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
     assert "idx_pulse_playbook_snapshots_candidate" in text
     assert "idx_pulse_playbook_snapshots_target" in text
     assert "idx_pulse_playbook_outcomes_settled" in text
+
+
+def test_token_search_demotion_migration_demotes_only_unprotected_search_assets() -> None:
+    text = TOKEN_SEARCH_DEMOTION_MIGRATION.read_text()
+
+    assert 'revision = "20260509_0017"' in text
+    assert 'down_revision = "20260509_0016"' in text
+    assert "status = 'demoted_search'" in text
+    assert "status = 'candidate'" in text
+    assert "primary_source = 'okx_dex_search'" in text
+    assert "ROW_NUMBER() OVER" in text
+    assert "PARTITION BY registry_assets.symbol, registry_assets.chain_id" in text
+    assert "candidate_ids_json" in text
+    assert "target_id" in text
+    assert "CREATE TABLE" not in text
