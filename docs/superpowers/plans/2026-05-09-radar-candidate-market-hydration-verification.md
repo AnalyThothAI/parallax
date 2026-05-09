@@ -52,6 +52,24 @@ The local Docker PostgreSQL store was cleaned after the implementation verificat
   - `registry_assets.status = 'demoted_search'`: 0
   - missing current Asset targets: 0
 
+Additional cleanup after Docker data-flow verification found current resolutions still pointing at newly accumulated `demoted_search / okx_dex_search` assets.
+
+- Backup directory: `/tmp/gmgn_demoted_search_cleanup_20260509_191006/`
+- Backed up before deletion:
+  - `registry_assets.csv`: 52 deleted asset rows plus header
+  - `price_feeds.csv`: 59 deleted pricefeed rows plus header
+  - `price_observations.csv`: 1237 deleted observation rows plus header
+  - `current_resolutions.csv`: 249 current resolution rows plus header
+- Repaired before deletion:
+  - 249 current resolutions targeting demoted search assets were reset to `NIL` with reason `DEMOTED_SEARCH_ASSET_PURGED`.
+- Deleted in one transaction:
+  - `price_observations`: 1237
+  - `price_feeds`: 59
+  - `registry_assets`: 52
+- Post-cleanup validation:
+  - `registry_assets.status = 'demoted_search'`: 0
+  - current resolutions targeting demoted registry assets: 0
+
 ## State Machine Boundary
 
 The token extraction state machine was not rewritten.
