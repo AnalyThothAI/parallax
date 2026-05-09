@@ -1,67 +1,62 @@
 # CLAUDE.md
 
-Guidance for coding agents working in this repository.
+Guidance for Claude Code working in this repository. Project-wide rules shared with other agents (Codex, Cursor, generic LLM tooling) live in `AGENTS.md` — when one file changes the other must be updated. This file adds the Claude-specific workflow (Skills, Superpowers, plan mode, worktree, completion gates) that other agents do not load.
 
-## Commands
+## Reference
 
-```bash
-uv sync
-uv run pytest
-uv run ruff check .
-uv run python -m compileall src tests
-```
+`AGENTS.md` is the source of truth for setup commands, layered architecture, public contracts, and operational invariants. Read it first; the sections below add only Claude-specific protocol on top.
 
-Run:
+The CLI surface evolves: when you need a command list, run `uv run gmgn-twitter-intel --help` rather than copy a stale list from memory. The full subcommand groups are `db`, `ops`, plus query verbs (search, asset-flow, account-*, social-events, attention-seeds, harness-*, enrichment-jobs, notification-deliveries).
 
-```bash
-uv run gmgn-twitter-intel init
-uv run gmgn-twitter-intel serve
-```
+## Worktree Workflow
 
-Trader queries:
+Coding work MUST happen in an isolated git worktree, not the main checkout.
 
-```bash
-uv run gmgn-twitter-intel recent --limit 20
-uv run gmgn-twitter-intel search --symbol PEPE --limit 20
-uv run gmgn-twitter-intel token-flow --window 5m --limit 20
-uv run gmgn-twitter-intel account-alerts --window 24h --limit 50
-uv run gmgn-twitter-intel narrative-flow --window 1h --limit 20
-uv run gmgn-twitter-intel account-narratives --window 24h --limit 50
-```
+- Default location: `.worktrees/<branch-slug>/` at the repo root. Already gitignored.
+- Create with `git worktree add .worktrees/<slug> -b <branch> main`. Branch from `main` unless the user names a different base.
+- Before any edit, verify with `git worktree list`, `git status --short`, and `git branch --show-current`.
+- Trivial single-file low-risk doc edits may go direct in the main checkout. Anything touching `src/` or `tests/` uses a worktree.
+- Existing worktrees in `.worktrees/` belong to other tasks — do not edit them unless explicitly asked.
 
-## Architecture
+## Spec Workflow
 
-This repository is a standard `uv + src/` Python service backed by PostgreSQL:
+Non-trivial implementation follows the spec → plan → tasks → verification lane sequence. Templates live at `docs/superpowers/_templates/`.
 
-- `src/gmgn_twitter_intel/settings.py`: YAML config loader and typed runtime settings.
-- `src/gmgn_twitter_intel/api/app.py`: FastAPI app, `/healthz`, `/readyz`, `/ws`, lifespan background tasks.
-- `src/gmgn_twitter_intel/api/ws.py`: authenticated public WebSocket hub.
-- `src/gmgn_twitter_intel/collector/direct_ws.py`: GMGN anonymous upstream WebSocket client.
-- `src/gmgn_twitter_intel/collector/normalizer.py`: GMGN frame parsing and event normalization.
-- `src/gmgn_twitter_intel/collector/service.py`: snapshot gate, handle filtering, store-first publish.
-- `src/gmgn_twitter_intel/pipeline/entity_extractor.py`: deterministic entity extraction.
-- `src/gmgn_twitter_intel/pipeline/ingest_service.py`: evidence/entity/signal ingest orchestration.
-- `src/gmgn_twitter_intel/pipeline/signal_builder.py`: account token alerts and token windows.
-- `src/gmgn_twitter_intel/pipeline/social_event_extraction.py`: strict social-event extraction parsing.
-- `src/gmgn_twitter_intel/pipeline/enrichment_worker.py`: async watched-account enrichment jobs.
-- `src/gmgn_twitter_intel/retrieval/*`: PostgreSQL-backed search, token-flow, account-alert, and harness services.
-- `src/gmgn_twitter_intel/storage/*`: PostgreSQL client, Alembic migrations, and repositories.
-- `src/gmgn_twitter_intel/cli.py`: `serve`, query, signal, and ops commands.
+| Lane | Path | When |
+|------|------|------|
+| Spec | `docs/superpowers/specs/YYYY-MM-DD-<slug>.md` (or `…/<slug>/spec.md`) | Before implementation; answers *why & what* |
+| Plan | `docs/superpowers/plans/YYYY-MM-DD-<slug>.md` (or `…/<slug>/plan.md`) | After spec approval; answers *how & when* |
+| Tasks | `…/<slug>/tasks.md` | When the plan spans multiple PRs or parallel sub-agents |
+| Verification | `…/<slug>/verification.md` | Before declaring complete or opening a PR |
 
-External users pass handles, symbols, or CAs to this service. GMGN chains/channels are internal collector strategy.
+Order: spec before plan, plan before code, code before verification claim. Get explicit user approval at each lane boundary; do not write the next lane until the prior is approved. Existing `docs/superpowers/specs/2026-*.md` and `docs/superpowers/plans/2026-*.md` files predate the templates and stay in their current single-file form — new work uses the templates.
 
-## Operational Notes
+## Superpowers Integration
 
-- Public WebSocket endpoint: `/ws`.
-- Auth message: `{"type":"auth","token":"..."}`.
-- Subscribe message: `{"type":"subscribe","handles":["toly"],"replay":20}`.
-- Payloads include `event`, `entities`, `alerts`, and `enrichment`.
-- Run one ASGI worker; multiple workers duplicate the upstream collector.
-- There is no macOS LaunchAgent, systemd unit, or `service` subcommand. Use foreground CLI or Docker Compose.
-- The only application config source is `~/.gmgn-twitter-intel/config.yaml`.
-- Docker Compose bind-mounts host `~/.gmgn-twitter-intel` to container `/root/.gmgn-twitter-intel`.
-- Local foreground and Docker use the same host config. Docker Compose runs PostgreSQL with the `gmgn-twitter-intel-postgres` named volume.
-- MCP/FastMCP is optional control/query infrastructure only, not the live event push mechanism.
+When the `superpowers:` skills are available, use them in this order:
+
+1. `brainstorming` — clarify intent before writing any spec.
+2. `writing-plans` — produce the spec / plan; iterate with the user.
+3. `using-git-worktrees` — set up `.worktrees/<slug>/` once the plan is approved.
+4. `test-driven-development` — write the failing test before each implementation slice.
+5. `executing-plans` or `subagent-driven-development` — drive the plan to completion.
+6. `verification-before-completion` — run the verification commands and capture output.
+7. `requesting-code-review` — surface the diff and the verification artefact for review.
+8. `finishing-a-development-branch` — decide on merge / PR / cleanup.
+
+Process skills take priority over implementation skills when both could apply.
+
+## Completion Criteria
+
+Do not claim a task is complete, fixed, or passing until all of the following are true and have been written into the verification artefact:
+
+- The implementation matches the approved spec; deviations are documented.
+- `uv run ruff check .`, `uv run pytest`, `uv run python -m compileall src tests` all passed in the worktree.
+- The diff was reviewed against the plan.
+- UI / live-WebSocket / docker compose flows that cannot be exercised by tests were exercised manually, or the gap is explicitly stated.
+- Remaining risks and follow-ups are listed.
+
+If any of the above cannot be satisfied, surface the gap rather than claiming completion.
 
 ## Design Discipline
 
