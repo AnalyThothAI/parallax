@@ -341,6 +341,10 @@ class RegistryRepository:
                 AND record_status = 'current'
                 AND target_type = 'Asset'
                 AND target_id IS NOT NULL
+                AND (
+                  reason_codes_json ? 'CHAIN_ADDRESS_EXACT'
+                  OR reason_codes_json ? 'ADDRESS_UNIQUE_ACROSS_TRACKED_CHAINS'
+                )
             ),
             demoted AS (
               UPDATE registry_assets

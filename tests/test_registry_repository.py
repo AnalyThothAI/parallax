@@ -23,6 +23,7 @@ def _insert_current_resolution(
     intent_id: str,
     target_id: str | None,
     candidate_ids: list[str] | None = None,
+    reason_codes: list[str] | None = None,
 ) -> None:
     EvidenceRepository(conn).insert_event(
         make_event(event_id, text="$HANTA", received_at_ms=1_778_145_000_000, is_watched=True),
@@ -60,7 +61,7 @@ def _insert_current_resolution(
             1_778_145_000_000,
             1_778_145_000_000,
             target_id,
-            Jsonb(["TEST"]),
+            Jsonb(reason_codes or ["TEST"]),
             Jsonb(candidate_ids or []),
             Jsonb(["symbol:HANTA"]),
         ),
@@ -259,6 +260,7 @@ def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_aud
             event_id="evt-protected-target",
             intent_id="intent-protected-target",
             target_id=protected_target["asset_id"],
+            reason_codes=["CHAIN_ADDRESS_EXACT"],
         )
         _insert_current_resolution(
             conn,
@@ -285,7 +287,7 @@ def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_aud
         conn.close()
 
     statuses = {row["asset_id"]: row["status"] for row in rows}
-    assert demoted == 1
+    assert demoted == 2
     assert statuses[retained["asset_id"]] == "candidate"
     assert statuses[protected_target["asset_id"]] == "candidate"
     assert statuses[protected_candidate["asset_id"]] == "demoted_search"

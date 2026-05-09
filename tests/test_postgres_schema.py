@@ -43,6 +43,9 @@ TOKEN_SEARCH_DEMOTION_MIGRATION = Path(
 TOKEN_SEARCH_AUDIT_TAIL_DEMOTION_MIGRATION = Path(
     "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0018_demote_search_tail_candidate_audit_refs.py"
 )
+TOKEN_SYMBOL_SEARCH_TARGET_DEMOTION_MIGRATION = Path(
+    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0019_demote_symbol_search_tail_targets.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -282,4 +285,19 @@ def test_token_search_audit_tail_migration_does_not_protect_candidate_audit_list
     assert "protected_targets" in text
     assert "target_id" in text
     assert "candidate_ids_json" not in text
+    assert "CREATE TABLE" not in text
+
+
+def test_token_symbol_search_target_migration_preserves_only_address_targets() -> None:
+    text = TOKEN_SYMBOL_SEARCH_TARGET_DEMOTION_MIGRATION.read_text()
+
+    assert 'revision = "20260509_0019"' in text
+    assert 'down_revision = "20260509_0018"' in text
+    assert "status = 'demoted_search'" in text
+    assert "primary_source = 'okx_dex_search'" in text
+    assert "protected_address_targets" in text
+    assert "CHAIN_ADDRESS_EXACT" in text
+    assert "ADDRESS_UNIQUE_ACROSS_TRACKED_CHAINS" in text
+    assert "MARKET_DOMINANT_CHAIN_ASSET" not in text
+    assert "SINGLE_ACTIVE_CHAIN_ASSET" not in text
     assert "CREATE TABLE" not in text
