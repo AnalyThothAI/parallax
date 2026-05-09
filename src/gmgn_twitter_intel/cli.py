@@ -11,6 +11,7 @@ import uvicorn
 
 from .api.app import create_app
 from .logging_setup import setup_logging
+from .market.gmgn_directory_client import GmgnDirectoryClient
 from .market.okx_cex_client import OkxCexClient
 from .market.okx_dex_client import OkxDexClient
 from .pipeline.asset_market_sync import sync_okx_cex_universe
@@ -187,6 +188,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate_projections.add_argument("--sample", type=int, default=100)
     sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
+    sync_gmgn_directory = ops_subcommands.add_parser(
+        "sync-gmgn-directory",
+        help="one-shot sync of GMGN twitter directory into account_profiles",
+    )
+    sync_gmgn_directory.add_argument("--max-pages", type=int, default=200)
     run_token_discovery = ops_subcommands.add_parser(
         "run-token-discovery",
         help="refresh due token discovery results, reprocess recent intents, and rebuild token radar",
@@ -665,6 +671,20 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
+        if command == "ops" and args.ops_command == "sync-gmgn-directory":
+            client = GmgnDirectoryClient()
+            try:
+                data = _run_sync_gmgn_directory(
+                    client=client,
+                    repository=AccountQualityRepository(signals.conn),
+                    now_ms=_now_ms(),
+                    max_pages=int(args.max_pages),
+                )
+            finally:
+                client.close()
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
         if command == "ops" and args.ops_command == "run-token-discovery":
             client = OkxDexClient(
                 base_url=settings.okx_dex_base_url,
@@ -745,6 +765,40 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
 
     parser.error(f"unknown command: {command}")
     return 2
+
+
+def _run_sync_gmgn_directory(
+    *,
+    client: object,
+    repository: object,
+    now_ms: int,
+    max_pages: int,
+) -> dict:
+    upserted = 0
+    skipped_no_handle = 0
+    handles: list[str] = []
+    for entry in client.iter_entries(max_pages=max_pages):
+        if not entry.handle:
+            skipped_no_handle += 1
+            continue
+        repository.upsert_directory_entry(
+            handle=entry.handle,
+            gmgn_user_id=entry.gmgn_user_id,
+            user_tags=entry.user_tags,
+            platform_followers=entry.platform_followers,
+            observed_at_ms=now_ms,
+            commit=False,
+        )
+        upserted += 1
+        handles.append(entry.handle)
+    repository.conn.commit()
+    return {
+        "upserted": upserted,
+        "skipped_no_handle": skipped_no_handle,
+        "first_handles": handles[:5],
+        "last_handles": handles[-5:],
+        "observed_at_ms": now_ms,
+    }
 
 
 @contextmanager

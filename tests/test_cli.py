@@ -434,5 +434,118 @@ def test_init_creates_runtime_config(tmp_path, monkeypatch):
     assert (tmp_path / ".gmgn-twitter-intel" / "config.yaml").is_file()
 
 
+def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
+    from gmgn_twitter_intel.cli import _run_sync_gmgn_directory
+    from gmgn_twitter_intel.market.gmgn_directory_client import GmgnDirectoryEntry
+
+    class FakeClient:
+        def __init__(self, entries):
+            self._entries = entries
+            self.calls: list[int] = []
+
+        def iter_entries(self, *, max_pages):
+            self.calls.append(max_pages)
+            return iter(self._entries)
+
+    class FakeRepo:
+        def __init__(self):
+            self.upserts: list[dict] = []
+            self.commits = 0
+
+            class _Conn:
+                outer = self
+
+                def commit(self_inner):
+                    self_inner.outer.commits += 1
+
+            self.conn = _Conn()
+
+        def upsert_directory_entry(self, **kwargs):
+            self.upserts.append(kwargs)
+
+    entries = [
+        GmgnDirectoryEntry(handle="cz", gmgn_user_id="X", user_tags=("kol",), platform_followers=100),
+        GmgnDirectoryEntry(handle="", gmgn_user_id=None, user_tags=(), platform_followers=None),
+        GmgnDirectoryEntry(handle="elonmusk", gmgn_user_id="Y", user_tags=("founder",), platform_followers=200),
+    ]
+    client = FakeClient(entries)
+    repo = FakeRepo()
+
+    summary = _run_sync_gmgn_directory(
+        client=client,
+        repository=repo,
+        now_ms=1_700_000_000_000,
+        max_pages=42,
+    )
+
+    assert client.calls == [42]
+    assert repo.commits == 1
+    assert [u["handle"] for u in repo.upserts] == ["cz", "elonmusk"]
+    assert all(u["observed_at_ms"] == 1_700_000_000_000 for u in repo.upserts)
+    assert all(u["commit"] is False for u in repo.upserts)
+    assert summary == {
+        "upserted": 2,
+        "skipped_no_handle": 1,
+        "first_handles": ["cz", "elonmusk"],
+        "last_handles": ["cz", "elonmusk"],
+        "observed_at_ms": 1_700_000_000_000,
+    }
+
+
+def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path):
+    import io
+    import json
+
+    from gmgn_twitter_intel import cli as cli_module
+
+    captured = {}
+
+    def fake_runner(*, client, repository, now_ms, max_pages):
+        captured["client"] = client
+        captured["repository_type"] = type(repository).__name__
+        captured["now_ms"] = now_ms
+        captured["max_pages"] = max_pages
+        return {
+            "upserted": 7,
+            "skipped_no_handle": 0,
+            "first_handles": [],
+            "last_handles": [],
+            "observed_at_ms": now_ms,
+        }
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(cli_module, "_run_sync_gmgn_directory", fake_runner)
+    monkeypatch.setattr(cli_module, "GmgnDirectoryClient", FakeClient)
+    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+
+    stdout = io.StringIO()
+    code = cli_module.main(
+        ["ops", "sync-gmgn-directory", "--max-pages", "3"],
+        stdout=stdout,
+    )
+
+    assert code == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload == {
+        "ok": True,
+        "data": {
+            "upserted": 7,
+            "skipped_no_handle": 0,
+            "first_handles": [],
+            "last_handles": [],
+            "observed_at_ms": 1_700_000_000_000,
+        },
+    }
+    assert captured["max_pages"] == 3
+    assert captured["repository_type"] == "AccountQualityRepository"
+    assert isinstance(captured["client"], FakeClient)
+
+
 if __name__ == "__main__":
     unittest.main()
