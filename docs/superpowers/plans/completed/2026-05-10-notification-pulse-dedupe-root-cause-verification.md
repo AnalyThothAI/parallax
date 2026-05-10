@@ -29,9 +29,22 @@
 
 ## Live Smoke Evidence
 
-- `/readyz`: not run against patched code. The currently running `127.0.0.1:8765` service is not started from this worktree, and restarting the single ASGI worker would affect the active local service.
-- Notification duplicate SQL probe: not run because the patched worker has not been deployed/restarted.
-- Pulse run churn SQL probe: not run because the patched worker has not been deployed/restarted.
+- Docker rebuild/recreate:
+  - Command: `docker compose up -d --build`
+  - Result: `gmgn-twitter-intel-migrate` and `gmgn-twitter-intel-app` images built; `migrate` exited; `app` recreated and started.
+- Container health:
+  - Command: `docker compose ps`
+  - Result: `gmgn-twitter-intel-app-1` is `Up ... (healthy)` and PostgreSQL is `Up ... (healthy)`.
+- `/healthz`:
+  - Command: `curl -sS http://127.0.0.1:8765/healthz`
+  - Result: `ok`
+- `/readyz`:
+  - Command: `curl -sS http://127.0.0.1:8765/readyz`
+  - Result: `ok=true`, `db.ok=true`, `notifications.worker_running=true`, `pulse_agent.worker_running=true`.
+- Collector reconnect:
+  - App logs show `GMGN 直连 WS 已连接` and subscriptions for `twitter_monitor_basic` / `twitter_monitor_token`.
+- Notification duplicate SQL probe: not run for a post-deploy window because the new app had just started; use the probe in the plan after at least one full notification/Pulse cycle.
+- Pulse run churn SQL probe: not run for a post-deploy window because the new app had just started; use the probe in the plan after at least one full Pulse cycle.
 
 ## Additional Notes
 
