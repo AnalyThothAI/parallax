@@ -360,7 +360,8 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
         conn.close()
 
     assert [item["candidate_id"] for item in first_page["items"]] == ["candidate-newer"]
-    assert first_page["items"][0]["thesis_json"] == {"summary": "watch social acceleration"}
+    assert first_page["items"][0]["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v1"
+    assert first_page["items"][0]["agent_recommendation_json"]["recommendation"] == "watch"
     assert first_page["items"][0]["gate_reasons_json"] == ["fresh_attention"]
     assert second_page["items"][0]["candidate_id"] == "candidate-older"
     assert second_page["next_cursor"] is None
@@ -377,6 +378,7 @@ def test_upsert_candidate_signature_uses_factor_snapshot_contract() -> None:
     assert "gate_json" in signature.parameters
     assert "radar_score_json" not in signature.parameters
     assert "market_context_json" not in signature.parameters
+    assert "thesis_json" not in signature.parameters
 
 
 def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation(tmp_path) -> None:
@@ -771,7 +773,6 @@ def _candidate_payload(
         "score_band": score_band,
         "trigger_signature": f"trigger:{candidate_id}",
         "timeline_signature": f"timeline:{candidate_id}",
-        "thesis_json": {"summary": "watch social acceleration"},
         "factor_snapshot_json": factor_snapshot_json
         or {"schema_version": "token_factor_snapshot_v1", "composite": {"rank_score": 82}},
         "agent_recommendation_json": agent_recommendation_json
