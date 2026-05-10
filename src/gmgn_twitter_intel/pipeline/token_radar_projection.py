@@ -726,7 +726,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
         return {
             "target_type": "CexToken",
             "target_id": target_id,
-            "symbol": _display_symbol(row),
+            "symbol": _target_symbol(row),
             "status": row.get("cex_token_status"),
             "pricefeed_id": row.get("pricefeed_id"),
             "native_market_id": row.get("native_market_id"),
@@ -737,7 +737,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "target_type": "Asset",
         "target_id": target_id,
-        "symbol": _display_symbol(row),
+        "symbol": _target_symbol(row),
         "name": row.get("asset_name"),
         "chain_id": row.get("asset_chain_id"),
         "token_standard": row.get("asset_token_standard"),
@@ -944,6 +944,30 @@ def _display_symbol(row: dict[str, Any]) -> str | None:
         row.get("asset_symbol"),
         row.get("pricefeed_base_symbol"),
     ):
+        symbol = _real_symbol(value)
+        if symbol:
+            return symbol
+    return None
+
+
+def _target_symbol(row: dict[str, Any]) -> str | None:
+    if row.get("target_type") == "Asset":
+        return _first_real_symbol(
+            row.get("asset_symbol"),
+            row.get("pricefeed_base_symbol"),
+            row.get("display_symbol"),
+        )
+    if row.get("target_type") == "CexToken":
+        return _first_real_symbol(
+            row.get("cex_base_symbol"),
+            row.get("pricefeed_base_symbol"),
+            row.get("display_symbol"),
+        )
+    return _display_symbol(row)
+
+
+def _first_real_symbol(*values: Any) -> str | None:
+    for value in values:
         symbol = _real_symbol(value)
         if symbol:
             return symbol

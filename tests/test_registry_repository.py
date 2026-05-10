@@ -7,7 +7,7 @@ from psycopg.types.json import Jsonb
 from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.storage.registry_repository import RegistryRepository
+from gmgn_twitter_intel.storage.registry_repository import RegistryRepository, _source_precedence
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -216,6 +216,41 @@ def test_low_confidence_search_source_does_not_downgrade_explicit_source(tmp_pat
     assert explicit["primary_source"] == "tweet_ca"
     assert searched["primary_source"] == "tweet_ca"
     assert searched["name"] == "Search Hanta"
+
+
+def test_gmgn_payload_source_outweighs_tweet_alias_source():
+    assert _source_precedence("gmgn_payload") > _source_precedence("tweet_ca")
+
+
+def test_tweet_ca_does_not_overwrite_gmgn_payload_symbol(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        payload_asset = registry.upsert_chain_asset(
+            chain_id="eip155:1",
+            address=_evm_address(42),
+            symbol="SLOP",
+            name=None,
+            decimals=18,
+            source="gmgn_payload",
+            observed_at_ms=1_778_145_000_000,
+        )
+        alias_asset = registry.upsert_chain_asset(
+            chain_id="eip155:1",
+            address=_evm_address(42),
+            symbol="SHIT",
+            name=None,
+            decimals=18,
+            source="tweet_ca",
+            observed_at_ms=1_778_145_060_000,
+        )
+    finally:
+        conn.close()
+
+    assert payload_asset["symbol"] == "SLOP"
+    assert alias_asset["symbol"] == "SLOP"
+    assert alias_asset["primary_source"] == "gmgn_payload"
 
 
 def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_audit(tmp_path):

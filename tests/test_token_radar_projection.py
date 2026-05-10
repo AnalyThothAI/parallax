@@ -117,6 +117,23 @@ def test_projection_display_symbol_returns_none_when_only_ca_is_known():
     assert _display_symbol(row) is None
 
 
+def test_project_group_keeps_resolved_asset_symbol_separate_from_mention_symbol():
+    row = source_row(
+        "event-asset-symbol-mismatch",
+        received_at_ms=1_777_800_000_000,
+    )
+    row["display_symbol"] = "SHIT"
+    row["asset_symbol"] = "SLOP"
+    row["asset_name"] = "Dogeshit"
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
+
+    assert projected is not None
+    assert projected["intent_json"]["display_symbol"] == "SHIT"
+    assert projected["target_json"]["symbol"] == "SLOP"
+    assert projected["asset_json"]["symbol"] == "SLOP"
+
+
 def test_projection_marks_unqueried_lookup_keys_as_not_searched():
     source_row = {
         "event_id": "event-1",

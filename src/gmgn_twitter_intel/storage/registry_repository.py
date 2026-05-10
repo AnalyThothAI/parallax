@@ -10,7 +10,8 @@ DEX_SEARCH_SOURCE = "okx_dex_search"
 _SOURCE_PRECEDENCE = {
     DEX_SEARCH_SOURCE: 10,
     "okx_dex": 20,
-    "gmgn_token_payload": 70,
+    "gmgn_token_payload": 85,
+    "gmgn_payload": 85,
     "tweet_ca": 80,
     "gmgn_openapi": 90,
 }
@@ -80,7 +81,12 @@ class RegistryRepository:
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'candidate', 'price_observation', %s, %s, %s)
             ON CONFLICT(asset_id) DO UPDATE SET
               project_id = COALESCE(excluded.project_id, registry_assets.project_id),
-              symbol = COALESCE(excluded.symbol, registry_assets.symbol),
+              symbol = CASE
+                WHEN excluded.symbol IS NULL THEN registry_assets.symbol
+                WHEN registry_assets.symbol IS NULL THEN excluded.symbol
+                WHEN %s >= {existing_source_rank_sql} THEN excluded.symbol
+                ELSE registry_assets.symbol
+              END,
               name = COALESCE(excluded.name, registry_assets.name),
               decimals = COALESCE(excluded.decimals, registry_assets.decimals),
               evidence_level = excluded.evidence_level,
@@ -106,6 +112,7 @@ class RegistryRepository:
                 source,
                 int(observed_at_ms),
                 int(observed_at_ms),
+                source_rank,
                 source_rank,
             ),
         )
