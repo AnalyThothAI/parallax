@@ -938,3 +938,90 @@ def test_api_rejects_removed_narrative_product_surfaces(tmp_path):
     assert seeds.status_code == 404
     assert flow.status_code == 404
     assert frontier.status_code == 404
+
+
+def _seed_displayable_candidate(app, *, candidate_id: str) -> None:
+    """Seed one displayable pulse_candidates row for HTTP-layer tests."""
+    with app.state.service.repositories() as repos:
+        repos.pulse.upsert_candidate(
+            candidate_id=candidate_id,
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="all",
+            pulse_status="token_watch",
+            verdict="token_watch",
+            social_phase="ignition",
+            narrative_type="direct_token",
+            candidate_score=0.82,
+            score_band="watch",
+            trigger_signature="trigger-sig",
+            timeline_signature="timeline-sig",
+            pulse_version="pulse-v1",
+            gate_version="gate-v1",
+            prompt_version="prompt-v1",
+            schema_version="schema-v1",
+            thesis_json={
+                "summary_zh": "test",
+                "why_now_zh": "test",
+                "bull_case_zh": [],
+                "bear_case_zh": [],
+                "confirmation_triggers_zh": [],
+                "invalidation_triggers_zh": [],
+                "top_risks": [],
+            },
+            target_type="Asset",
+            target_id="asset:pepe",
+            symbol="PEPE",
+            radar_score_json={"score": 0.82},
+            market_context_json={"market_status": "fresh"},
+            gate_reasons_json=["fresh_attention"],
+            risk_reasons_json=[],
+            evidence_event_ids_json=["event-1"],
+            source_event_ids_json=["event-1"],
+        )
+
+
+def test_api_signal_pulse_by_id_returns_item(tmp_path):
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, start_collector=False)
+    with TestClient(app) as client:
+        _seed_displayable_candidate(client.app, candidate_id="cand-real")
+        response = client.get(
+            "/api/signal-lab/pulse/cand-real",
+            headers={"Authorization": "Bearer secret"},
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["candidate_id"] == "cand-real"
+    assert payload["data"]["pulse_status"] == "token_watch"
+
+
+def test_api_signal_pulse_by_id_returns_404_when_missing(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/signal-lab/pulse/ghost-id",
+            headers={"Authorization": "Bearer secret"},
+        )
+    assert response.status_code == 404
+    assert response.json() == {"ok": False, "error": "not_found", "field": "candidate_id"}
+
+
+def test_api_signal_pulse_by_id_rejects_blank(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/signal-lab/pulse/%20",
+            headers={"Authorization": "Bearer secret"},
+        )
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_candidate_id", "field": "candidate_id"}
+
+
+def test_api_signal_pulse_by_id_requires_auth(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    with TestClient(app) as client:
+        response = client.get("/api/signal-lab/pulse/cand-1")
+    assert response.status_code == 401
