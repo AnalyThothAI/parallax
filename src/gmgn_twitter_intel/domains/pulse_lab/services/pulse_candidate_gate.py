@@ -191,5 +191,3 @@ def _stable_strings(values: Any) -> list[str]:
 def _dedupe(values: Any) -> list[str]:
     return list(dict.fromkeys(str(value) for value in values if value))
 
-
-gate_pulse_candidate = gate_pulse_candidate_from_factor_snapshot
