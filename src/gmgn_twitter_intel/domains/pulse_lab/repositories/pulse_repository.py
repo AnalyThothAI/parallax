@@ -604,7 +604,7 @@ class PulseRepository:
               COUNT(*) FILTER (
                 WHERE pulse_status IN {DISPLAY_PULSE_STATUS_SQL}
                   AND verdict IS DISTINCT FROM 'blocked_low_information'
-                  AND market_context_json->>'market_status' = 'fresh'
+                  AND factor_snapshot_json #>> '{{families,market_quality,facts,market_status}}' = 'fresh'
               ) AS market_fresh_count
             FROM pulse_candidates
             AS candidate

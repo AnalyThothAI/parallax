@@ -412,6 +412,59 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
     assert row["gate_json"] == {"pulse_status": "blocked_low_information", "candidate_score": 12}
 
 
+def test_pulse_summary_reads_market_fresh_count_from_factor_snapshot_contract() -> None:
+    conn = FakePulseSummaryConn()
+
+    summary = PulseRepository(conn).pulse_summary(window="1h", scope="global")
+
+    assert summary["market_ready_rate"] == 1.0
+    assert "factor_snapshot_json #>> '{families,market_quality,facts,market_status}' = 'fresh'" in conn.summary_sql
+    assert "market_context_json" not in conn.summary_sql
+
+
+def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        repo.upsert_candidate(
+            **_candidate_payload(
+                "candidate-fresh-factor",
+                factor_snapshot_json={
+                    "families": {
+                        "market_quality": {
+                            "facts": {
+                                "market_status": "fresh",
+                            }
+                        }
+                    }
+                },
+                updated_at_ms=3_000,
+            )
+        )
+        repo.upsert_candidate(
+            **_candidate_payload(
+                "candidate-stale-factor",
+                factor_snapshot_json={
+                    "families": {
+                        "market_quality": {
+                            "facts": {
+                                "market_status": "stale",
+                            }
+                        }
+                    }
+                },
+                updated_at_ms=2_000,
+            )
+        )
+
+        summary = repo.pulse_summary(window="1h", scope="global")
+    finally:
+        conn.close()
+
+    assert summary["market_ready_rate"] == 0.5
+
+
 def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -735,3 +788,39 @@ def _candidate_payload(
         "created_at_ms": updated_at_ms - 100,
         "updated_at_ms": updated_at_ms,
     }
+
+
+class FakePulseSummaryConn:
+    summary_sql = ""
+
+    def execute(self, sql, params=None):
+        text = str(sql)
+        if "FROM pulse_candidates" in text:
+            self.summary_sql = text
+            return FakePulseSummaryResult(
+                {
+                    "candidate_count": 1,
+                    "trade_candidate_count": 0,
+                    "token_watch_count": 1,
+                    "theme_watch_count": 0,
+                    "risk_rejected_high_info_count": 0,
+                    "blocked_low_information_status_count": 0,
+                    "blocked_low_information_count": 0,
+                    "displayable_count": 1,
+                    "market_fresh_count": (
+                        1
+                        if "factor_snapshot_json #>> '{families,market_quality,facts,market_status}' = 'fresh'"
+                        in text
+                        else 0
+                    ),
+                }
+            )
+        return FakePulseSummaryResult({"dead_job_count": 0})
+
+
+class FakePulseSummaryResult:
+    def __init__(self, row: dict[str, Any]):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
