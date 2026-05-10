@@ -5,6 +5,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
+
 
 class TokenRadarRepository:
     def __init__(self, conn: Any):
@@ -154,8 +156,22 @@ def _validate_factor_contract(row: dict[str, Any]) -> None:
     factor_snapshot = row.get("factor_snapshot_json")
     if not isinstance(factor_snapshot, dict) or not factor_snapshot:
         raise ValueError("factor_snapshot_json must be non-empty for token radar row hard-cut contract")
-    if not str(row.get("factor_version") or "").strip():
+    factor_version = str(row.get("factor_version") or "").strip()
+    if not factor_version:
         raise ValueError("factor_version is required for token radar row hard-cut contract")
+    schema_version = str(factor_snapshot.get("schema_version") or "").strip()
+    if not schema_version:
+        raise ValueError("factor_snapshot_json.schema_version is required for token radar row hard-cut contract")
+    if schema_version != factor_version:
+        raise ValueError("factor_snapshot_json.schema_version must match factor_version")
+    if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        raise ValueError(
+            f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}"
+        )
+    for key in ("families", "hard_gates", "composite"):
+        payload = factor_snapshot.get(key)
+        if not isinstance(payload, dict) or not payload:
+            raise ValueError(f"factor_snapshot_json.{key} is required for token radar row hard-cut contract")
 
 
 def _json_ready(value: Any) -> Any:

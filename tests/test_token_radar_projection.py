@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -64,6 +66,40 @@ def test_rank_key_breaks_ties_with_factor_snapshot_latest_seen_ms():
     newer = ranking_row(target_id="newer", latest_seen_ms=1_777_800_030_000)
 
     assert [row["target_id"] for row in sorted([older, newer], key=_rank_key)] == ["newer", "older"]
+
+
+def test_rank_key_does_not_promote_malformed_snapshot_from_row_decision():
+    malformed_high_alert = {
+        "target_id": "bad",
+        "decision": "high_alert",
+        "factor_snapshot_json": {},
+    }
+    valid_discard = ranking_row(
+        target_id="valid-discard",
+        latest_seen_ms=1_777_800_030_000,
+        decision="discard",
+        rank_score=1,
+    )
+
+    assert [row["target_id"] for row in sorted([malformed_high_alert, valid_discard], key=_rank_key)] == [
+        "valid-discard",
+        "bad",
+    ]
+
+
+def test_apply_cross_section_rejects_rows_with_malformed_factor_snapshot():
+    rows = [
+        {
+            "target_id": "asset:bad",
+            "target_json": {"symbol": "BAD"},
+            "factor_snapshot_json": {},
+            "_cohort_high_conf_count": 1,
+            "_cohort_kol_count": 0,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="factor_snapshot_json must be non-empty"):
+        TokenRadarProjection._apply_cross_section(rows)
 
 
 def test_project_group_outputs_factor_snapshot_not_score_contract():
@@ -590,23 +626,38 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
     }
 
 
-def ranking_row(*, target_id: str, latest_seen_ms: int) -> dict:
+def ranking_row(
+    *,
+    target_id: str,
+    latest_seen_ms: int,
+    decision: str = "watch",
+    rank_score: float = 42,
+) -> dict:
     return {
         "target_id": target_id,
-        "decision": "watch",
+        "decision": decision,
         "factor_snapshot_json": {
+            "schema_version": "token_factor_snapshot_v1",
             "composite": {
-                "recommended_decision": "watch",
-                "rank_score": 42,
+                "recommended_decision": decision,
+                "rank_score": rank_score,
             },
             "families": {
+                "identity": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
                 "social_attention": {
+                    "score": 80,
+                    "data_health": "ready",
                     "facts": {
                         "watched_mentions": 1,
                         "mentions_1h": 5,
                         "latest_seen_ms": latest_seen_ms,
-                    }
-                }
+                    },
+                    "factors": {},
+                },
+                "social_quality": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "social_semantics": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "market_quality": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "timing": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
             },
         },
     }

@@ -13,14 +13,11 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
 def test_json_payload_converts_decimal_values_before_jsonb_binding():
+    snapshot = _valid_factor_snapshot(rank_score=Decimal("12.5"))
+    snapshot["nested"] = {"volume_24h_usd": Decimal("123.45")}
     payload = _json_payload(
         {
-            "factor_snapshot_json": {
-                "composite": {
-                    "rank_score": Decimal("12.5"),
-                },
-                "nested": {"volume_24h_usd": Decimal("123.45")},
-            },
+            "factor_snapshot_json": snapshot,
             "intent_json": {},
             "asset_json": {},
             "primary_venue_json": None,
@@ -51,16 +48,7 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
         "asset_json": {},
         "primary_venue_json": None,
         "target_json": {"symbol": "BOV"},
-        "factor_snapshot_json": {
-            "schema_version": "token_factor_snapshot_v1",
-            "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "BOV"},
-            "families": {},
-            "hard_gates": {
-                "eligible_for_high_alert": False,
-                "blocked_reasons": ["liquidity_below_high_alert_floor"],
-            },
-            "composite": {"rank_score": 12, "recommended_decision": "discard"},
-        },
+        "factor_snapshot_json": _valid_factor_snapshot(rank_score=12),
         "factor_version": "token_factor_snapshot_v1",
         "decision": "discard",
         "data_health_json": {"factor_snapshot": "ready"},
@@ -106,7 +94,7 @@ def test_replace_rows_insert_uses_factor_snapshot_columns_without_legacy_score_c
         "asset_json": {},
         "primary_venue_json": None,
         "target_json": {"symbol": "BOV"},
-        "factor_snapshot_json": {"schema_version": "token_factor_snapshot_v1"},
+        "factor_snapshot_json": _valid_factor_snapshot(),
         "factor_version": "token_factor_snapshot_v1",
         "decision": "discard",
         "data_health_json": {"factor_snapshot": "ready"},
@@ -170,6 +158,42 @@ def test_replace_rows_requires_factor_version_before_insert():
     del row["factor_version"]
 
     with pytest.raises(ValueError, match="factor_version is required"):
+        TokenRadarRepository(conn).replace_rows(
+            projection_version="token-radar-v9-factor-snapshot",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[row],
+            commit=False,
+        )
+
+    assert conn.insert_sql == ""
+
+
+def test_replace_rows_requires_complete_factor_snapshot_contract_before_insert():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+    del row["factor_snapshot_json"]["hard_gates"]
+
+    with pytest.raises(ValueError, match="factor_snapshot_json.hard_gates is required"):
+        TokenRadarRepository(conn).replace_rows(
+            projection_version="token-radar-v9-factor-snapshot",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[row],
+            commit=False,
+        )
+
+    assert conn.insert_sql == ""
+
+
+def test_replace_rows_rejects_factor_snapshot_version_mismatch_before_insert():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+    row["factor_snapshot_json"]["schema_version"] = "token_factor_snapshot_legacy"
+
+    with pytest.raises(ValueError, match="factor_snapshot_json.schema_version must match factor_version"):
         TokenRadarRepository(conn).replace_rows(
             projection_version="token-radar-v9-factor-snapshot",
             window="1h",
@@ -276,10 +300,31 @@ def _valid_factor_row() -> dict[str, object]:
         "asset_json": {},
         "primary_venue_json": None,
         "target_json": {"symbol": "BOV"},
-        "factor_snapshot_json": {"schema_version": "token_factor_snapshot_v1"},
+        "factor_snapshot_json": _valid_factor_snapshot(),
         "factor_version": "token_factor_snapshot_v1",
         "decision": "discard",
         "data_health_json": {"factor_snapshot": "ready"},
         "source_event_ids_json": ["event-1"],
         "created_at_ms": 1_778_000_000_000,
+    }
+
+
+def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
+    return {
+        "schema_version": "token_factor_snapshot_v1",
+        "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "BOV"},
+        "families": {
+            "identity": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+            "social_attention": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+            "social_quality": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+            "social_semantics": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+            "market_quality": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+            "timing": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+        },
+        "hard_gates": {
+            "eligible_for_high_alert": False,
+            "blocked_reasons": ["liquidity_below_high_alert_floor"],
+            "gates": [{"reason": "liquidity_below_high_alert_floor", "action": "block_high_alert"}],
+        },
+        "composite": {"rank_score": rank_score, "recommended_decision": "discard"},
     }

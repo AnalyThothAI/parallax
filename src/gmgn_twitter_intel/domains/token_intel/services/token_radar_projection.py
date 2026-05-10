@@ -20,7 +20,10 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
     COHORT_DEFINITION_VERSION,
     is_active_cohort_member,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import build_token_factor_snapshot
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    build_token_factor_snapshot,
+)
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
     build_radar_features,
@@ -168,15 +171,11 @@ class TokenRadarProjection:
         cohort_metadata: dict[str, dict[str, Any]] = {}
 
         for row in projected:
+            factor_snapshot = _factor_snapshot_or_raise(row)
             target_id = str(row.get("target_id") or "")
             if not target_id:
                 continue
-            factor_snapshot = (
-                row.get("factor_snapshot_json")
-                if isinstance(row.get("factor_snapshot_json"), dict)
-                else {}
-            )
-            composite = factor_snapshot.get("composite") if isinstance(factor_snapshot.get("composite"), dict) else {}
+            composite = factor_snapshot["composite"]
             rank_score = composite.get("rank_score")
             scores[target_id] = float(rank_score) if rank_score is not None else None
 
@@ -206,11 +205,7 @@ class TokenRadarProjection:
 
         for row in projected:
             target_id = str(row.get("target_id") or "")
-            factor_snapshot = (
-                row.get("factor_snapshot_json")
-                if isinstance(row.get("factor_snapshot_json"), dict)
-                else {}
-            )
+            factor_snapshot = _factor_snapshot_or_raise(row)
             factor_snapshot["normalization"] = {
                 "cross_section_rank": ranks.get(target_id),
                 "cohort": {
@@ -758,13 +753,15 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
-    snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
-    composite = snapshot.get("composite") if isinstance(snapshot.get("composite"), dict) else {}
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
+    snapshot = _factor_snapshot_for_ranking(row)
+    if snapshot is None:
+        return (3, 0.0, 0, 0, 0)
+    composite = snapshot["composite"]
+    families = snapshot["families"]
     social_attention = families.get("social_attention") if isinstance(families.get("social_attention"), dict) else {}
     attention = social_attention.get("facts") if isinstance(social_attention.get("facts"), dict) else {}
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
-    decision = composite.get("recommended_decision") or row.get("decision") or "discard"
+    decision = composite.get("recommended_decision") or "discard"
     rank_score = _float_or_none(composite.get("rank_score")) or 0.0
     return (
         decision_priority.get(str(decision), 2),
@@ -773,6 +770,29 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         -int(attention.get("mentions_1h") or 0),
         -int(attention.get("latest_seen_ms") or 0),
     )
+
+
+def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        return _factor_snapshot_or_raise(row)
+    except ValueError:
+        return None
+
+
+def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
+    factor_snapshot = row.get("factor_snapshot_json")
+    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
+        raise ValueError("factor_snapshot_json must be non-empty for token radar projection")
+    schema_version = str(factor_snapshot.get("schema_version") or "").strip()
+    if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
+    families = factor_snapshot.get("families")
+    if not isinstance(families, dict):
+        raise ValueError("factor_snapshot_json.families is required for token radar projection")
+    composite = factor_snapshot.get("composite")
+    if not isinstance(composite, dict):
+        raise ValueError("factor_snapshot_json.composite is required for token radar projection")
+    return factor_snapshot
 
 
 def _stable_id(*parts: str) -> str:

@@ -40,6 +40,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
     rebuild_token_radar_windows,
     reprocess_recent_token_intents,
 )
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
@@ -388,7 +389,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
         return 0 if audit.get("ok") else 1
     if command == "db" and args.db_command == "query-audit":
         with _postgres_connection(settings) as conn:
-            audit = PostgresQueryAudit(conn).run(analyze=bool(args.analyze))
+            audit = PostgresQueryAudit(
+                conn,
+                token_radar_projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            ).run(analyze=bool(args.analyze))
         _emit({"ok": bool(audit.get("ok")), "data": audit}, stdout)
         return 0 if audit.get("ok") else 1
 
@@ -941,7 +945,7 @@ def _audit_token_radar_rows(
         factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
         if not factor_snapshot:
             violations.append({"row": index, "code": "missing_factor_snapshot"})
-        elif factor_snapshot.get("schema_version") != "token_factor_snapshot_v1":
+        elif factor_snapshot.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
             violations.append(
                 {
                     "row": index,

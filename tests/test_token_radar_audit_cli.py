@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.app.surfaces.cli import main as cli_main
 from gmgn_twitter_intel.cli import _audit_token_radar_rows
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
 def test_audit_token_radar_rows_rejects_legacy_runtime_payload_without_snapshot():
@@ -102,6 +104,34 @@ def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
 
     assert audit["ok"] is False
     assert any(item["code"] == "missing_factor_families" for item in audit["violations"])
+
+
+def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch):
+    runtime_version = "token_factor_snapshot_runtime_test"
+    monkeypatch.setattr(cli_main, "TOKEN_FACTOR_SNAPSHOT_VERSION", runtime_version)
+    snapshot = factor_snapshot()
+    snapshot["schema_version"] = runtime_version
+
+    audit = cli_main._audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v1"
+    assert audit["ok"] is True
 
 
 def factor_snapshot():
