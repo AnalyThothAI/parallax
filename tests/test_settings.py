@@ -305,6 +305,30 @@ def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
         load_settings()
 
 
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("dex_sync_interval_seconds", 0),
+        ("dex_price_hot_stale_seconds", -1),
+        ("dex_price_warm_stale_seconds", 0),
+        ("dex_price_refresh_limit", -10),
+    ],
+)
+def test_okx_provider_rejects_invalid_dex_refresh_knobs(tmp_path, monkeypatch, key, value):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {"okx": {key: value}},
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
 def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(

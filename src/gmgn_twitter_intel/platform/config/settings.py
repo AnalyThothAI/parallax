@@ -293,10 +293,10 @@ class OkxProviderConfig(BaseModel):
     cex_inst_types: tuple[str, ...] = ("SPOT", "SWAP")
     dex_base_url: str = "https://web3.okx.com"
     dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453", "607")
-    dex_sync_interval_seconds: float = 30.0
-    dex_price_hot_stale_seconds: float = 90.0
-    dex_price_warm_stale_seconds: float = 300.0
-    dex_price_refresh_limit: int = 160
+    dex_sync_interval_seconds: float = Field(default=30.0, gt=0)
+    dex_price_hot_stale_seconds: float = Field(default=90.0, gt=0)
+    dex_price_warm_stale_seconds: float = Field(default=300.0, gt=0)
+    dex_price_refresh_limit: int = Field(default=160, gt=0)
     dex_api_key: str | None = None
     dex_secret_key: str | None = None
     dex_passphrase: str | None = None

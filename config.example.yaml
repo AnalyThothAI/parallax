@@ -53,7 +53,11 @@ providers:
     cex_sync_interval_seconds: 300
     cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
-    dex_chain_indexes: ["501", "1", "56", "8453"]
+    dex_chain_indexes: ["501", "1", "56", "8453", "607"]
+    dex_sync_interval_seconds: 30
+    dex_price_hot_stale_seconds: 90
+    dex_price_warm_stale_seconds: 300
+    dex_price_refresh_limit: 160
     timeout_seconds: 15
 
 upstream:
