@@ -56,16 +56,16 @@ class TokenRadarRepository:
                 INSERT INTO token_radar_rows(
                   row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
                   lane, rank, intent_id, event_id, target_type, target_id, pricefeed_id, intent_json,
-                  asset_json, primary_venue_json, target_json, attention_json, resolution_json, market_json,
-                  price_json, score_json, decision, data_health_json,
+                  asset_json, primary_venue_json, target_json, factor_snapshot_json, factor_version,
+                  decision, data_health_json,
                   source_event_ids_json, created_at_ms
                 )
                 VALUES (
                   %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
                   %(source_max_received_at_ms)s, %(lane)s, %(rank)s, %(intent_id)s, %(event_id)s,
                   %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(intent_json)s, %(asset_json)s,
-                  %(primary_venue_json)s, %(target_json)s, %(attention_json)s, %(resolution_json)s,
-                  %(market_json)s, %(price_json)s, %(score_json)s, %(decision)s, %(data_health_json)s,
+                  %(primary_venue_json)s, %(target_json)s, %(factor_snapshot_json)s, %(factor_version)s,
+                  %(decision)s, %(data_health_json)s,
                   %(source_event_ids_json)s, %(created_at_ms)s
                 )
                 """,
@@ -132,15 +132,11 @@ class TokenRadarRepository:
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
     out = dict(row)
     for key in (
+        "factor_snapshot_json",
         "intent_json",
         "asset_json",
         "primary_venue_json",
         "target_json",
-        "attention_json",
-        "resolution_json",
-        "market_json",
-        "price_json",
-        "score_json",
         "data_health_json",
         "source_event_ids_json",
     ):

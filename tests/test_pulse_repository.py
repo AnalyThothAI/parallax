@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 from typing import Any
 
@@ -368,6 +369,49 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
     assert [item["candidate_id"] for item in query_filtered["items"]] == ["candidate-older"]
 
 
+def test_upsert_candidate_signature_uses_factor_snapshot_contract() -> None:
+    signature = inspect.signature(PulseRepository.upsert_candidate)
+
+    assert "factor_snapshot_json" in signature.parameters
+    assert "agent_recommendation_json" in signature.parameters
+    assert "gate_json" in signature.parameters
+    assert "radar_score_json" not in signature.parameters
+    assert "market_context_json" not in signature.parameters
+
+
+def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        row = PulseRepository(conn).upsert_candidate(
+            **_candidate_payload(
+                "candidate-factor-snapshot",
+                factor_snapshot_json={
+                    "schema_version": "token_factor_snapshot_v1",
+                    "hard_gates": {"eligible_for_high_alert": False},
+                },
+                agent_recommendation_json={
+                    "schema_version": "pulse_recommendation_v1",
+                    "recommendation": "ignore",
+                },
+                gate_json={"pulse_status": "blocked_low_information", "candidate_score": 12},
+                updated_at_ms=3_000,
+            )
+        )
+    finally:
+        conn.close()
+
+    assert row["factor_snapshot_json"] == {
+        "schema_version": "token_factor_snapshot_v1",
+        "hard_gates": {"eligible_for_high_alert": False},
+    }
+    assert row["agent_recommendation_json"] == {
+        "schema_version": "pulse_recommendation_v1",
+        "recommendation": "ignore",
+    }
+    assert row["gate_json"] == {"pulse_status": "blocked_low_information", "candidate_score": 12}
+
+
 def test_handle_filter_matches_candidate_source_event_author(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -651,6 +695,9 @@ def _candidate_payload(
     narrative_type: str = "direct_token",
     source_event_ids: list[str] | None = None,
     evidence_event_ids: list[str] | None = None,
+    factor_snapshot_json: dict[str, Any] | None = None,
+    agent_recommendation_json: dict[str, Any] | None = None,
+    gate_json: dict[str, Any] | None = None,
     updated_at_ms: int,
 ) -> dict[str, Any]:
     resolved_verdict = verdict if verdict is not None else pulse_status
@@ -672,8 +719,11 @@ def _candidate_payload(
         "trigger_signature": f"trigger:{candidate_id}",
         "timeline_signature": f"timeline:{candidate_id}",
         "thesis_json": {"summary": "watch social acceleration"},
-        "radar_score_json": {"score": 0.82},
-        "market_context_json": {"regime": "risk_on"},
+        "factor_snapshot_json": factor_snapshot_json
+        or {"schema_version": "token_factor_snapshot_v1", "composite": {"rank_score": 82}},
+        "agent_recommendation_json": agent_recommendation_json
+        or {"schema_version": "pulse_recommendation_v1", "recommendation": "watch"},
+        "gate_json": gate_json or {"pulse_status": pulse_status, "candidate_score": 82},
         "gate_reasons_json": ["fresh_attention"],
         "risk_reasons_json": ["thin_liquidity"],
         "evidence_event_ids_json": evidence_event_ids or ["event-1"],
