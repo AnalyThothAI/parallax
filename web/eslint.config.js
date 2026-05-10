@@ -10,7 +10,7 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["dist/**", "node_modules/**", "src/api/types.ts"],
+    ignores: ["dist/**", "node_modules/**", "src/api/types.ts", "src/api/openapi.ts"],
   },
   {
     files: ["src/**/*.{ts,tsx}"],

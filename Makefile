@@ -58,11 +58,12 @@ check-all: ## the only command that may produce verification-artefact evidence (
 coverage: ## run coverage report (real config in P6)
 	@echo "[P6] coverage gate not yet wired; place-holder"
 
-contract-check: ## verify OpenAPI types are in sync (real impl in P4)
-	@echo "[P4] contract-check not yet wired; place-holder"
+contract-check: ## verify OpenAPI types are in sync (gate 2)
+	@uv run python -m pytest tests/contract -m contract
 
-regen-contract: ## regenerate openapi.json + web/src/api/types.ts (real impl in P4)
-	@echo "[P4] regen-contract not yet wired; place-holder"
+regen-contract: ## regenerate openapi.json + web/src/api/openapi.ts
+	@uv run python scripts/regen_openapi.py
+	@cd web && npm run generate:types && cd ..
 
 install-hooks: ## install pre-commit hooks
 	@uv run pre-commit install

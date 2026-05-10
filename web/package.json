@@ -12,7 +12,7 @@
     "lint": "eslint --max-warnings=0 src",
     "format:check": "prettier --check 'src/**/*.{ts,tsx,css,json}'",
     "format": "prettier --write 'src/**/*.{ts,tsx,css,json}'",
-    "generate:types": "openapi-typescript ../docs/generated/openapi.json -o src/api/types.ts"
+    "generate:types": "openapi-typescript ../docs/generated/openapi.json -o src/api/openapi.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.0",
@@ -41,6 +41,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "globals": "^15.15.0",
     "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
