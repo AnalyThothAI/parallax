@@ -25,6 +25,14 @@
   - Result: 396 passed, 139 skipped.
 - `uv run python -m compileall src tests`
   - Result: passed.
+- `docker compose up -d --build`
+  - Result: app and migrate images rebuilt; app container recreated and started.
+- `curl -fsS http://127.0.0.1:8765/readyz`
+  - Result: `ok: true`, database migration status `ready`, app container healthy.
+- Post-rebuild smoke using app cutoff `1778374851139`:
+  - `notifications`: 5 `watched_account_activity` rows and 1 `signal_pulse_candidate` row, all with `max_occurrences = 1`.
+  - `notification_deliveries`: 0 rows after cutoff, so no PushDeer replay burst.
+  - `pulse_agent_runs`: repeated runs after cutoff used the same `input_hash` per candidate, matching retry behavior rather than signature/hash churn re-enqueue.
 
 The temporary PostgreSQL container used for focused repository tests was stopped after verification.
 
