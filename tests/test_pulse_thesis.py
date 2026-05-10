@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from gmgn_twitter_intel.pipeline.pulse_contract import (
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     DISPLAY_PULSE_STATUSES,
     PULSE_THESIS_SCHEMA_VERSION,
 )
-from gmgn_twitter_intel.pipeline.pulse_thesis import (
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import (
     PulseThesisPayload,
     is_displayable_pulse_status,
     payload_from_output,

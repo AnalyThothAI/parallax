@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
-from .notification_models import NotificationCandidate
+from ..types import NotificationCandidate
 
 WATCHED_ACTIVITY_WINDOW_MS = 60 * 60_000
 DEFAULT_LIMIT = 50

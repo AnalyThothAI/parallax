@@ -222,6 +222,79 @@ class AccountQualityRepository:
     def accounts_quality(self, handles: list[str]) -> list[dict[str, Any]]:
         return [self.account_quality(handle) for handle in handles]
 
+    def account_token_rows(self, *, resolver_policy_version: str, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH filtered AS (
+              SELECT
+                tir.target_type,
+                tir.target_id,
+                lower(events.author_handle) AS handle,
+                tir.event_id,
+                events.received_at_ms,
+                events.author_followers,
+                events.is_watched
+              FROM token_intent_resolutions tir
+              JOIN events ON events.event_id = tir.event_id
+              WHERE tir.target_type IN ('Asset', 'CexToken')
+                AND tir.target_id IS NOT NULL
+                AND tir.is_current = true
+                AND tir.resolver_policy_version = %s
+                AND events.author_handle IS NOT NULL
+                AND events.author_handle != ''
+                AND tir.resolution_status IN ('EXACT', 'UNIQUE_BY_CONTEXT')
+            ),
+            token_first AS (
+              SELECT target_type, target_id, MIN(received_at_ms) AS global_first_mention_ms
+              FROM filtered
+              GROUP BY target_type, target_id
+            )
+            SELECT
+              f.handle,
+              f.target_type,
+              f.target_id,
+              MIN(f.received_at_ms) AS first_mention_ms,
+              MAX(f.received_at_ms) AS latest_mention_ms,
+              COUNT(DISTINCT f.event_id) AS mention_count,
+              MAX(f.author_followers) AS follower_max,
+              SUM(CASE WHEN f.is_watched = true THEN 1 ELSE 0 END) AS watched_count,
+              MIN(tf.global_first_mention_ms) AS global_first_mention_ms
+            FROM filtered f
+            JOIN token_first tf
+              ON tf.target_type = f.target_type
+             AND tf.target_id = f.target_id
+            GROUP BY f.handle, f.target_type, f.target_id
+            ORDER BY first_mention_ms DESC, f.handle, f.target_type, f.target_id
+            LIMIT %s
+            """,
+            (resolver_policy_version, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def price_observations_for_token(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        first_mention_ms: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              COALESCE(price_usd, price_quote) AS price,
+              observed_at_ms AS received_at_ms
+            FROM price_observations
+            WHERE subject_type = %s
+              AND subject_id = %s
+              AND observed_at_ms >= %s
+              AND observed_at_ms <= %s
+              AND COALESCE(price_usd, price_quote) IS NOT NULL
+            ORDER BY observed_at_ms ASC
+            """,
+            (target_type, target_id, first_mention_ms, first_mention_ms + 24 * 60 * 60_000),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
 
 def _handle(handle: str) -> str:
     return handle.strip().lstrip("@").lower()

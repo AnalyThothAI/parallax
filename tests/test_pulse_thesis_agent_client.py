@@ -6,18 +6,18 @@ from types import SimpleNamespace
 import pytest
 from agents import ModelBehaviorError
 
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import (
-    OpenAIAgentsPulseThesisClient,
-    PulseThesisOutputSchema,
-)
-from gmgn_twitter_intel.pipeline.pulse_contract import (
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     AGENT_NAME,
     BACKEND,
     PULSE_THESIS_PROMPT_VERSION,
     PULSE_THESIS_SCHEMA_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
+from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import (
+    OpenAIAgentsPulseThesisClient,
+    PulseThesisOutputSchema,
+)
 
 
 class FakeRunner:

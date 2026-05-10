@@ -11,6 +11,9 @@ import uvicorn
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
+from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
+from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_okx_cex_universe
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
@@ -53,9 +56,6 @@ from gmgn_twitter_intel.platform.db.postgres_client import (
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version, upgrade_head
 from gmgn_twitter_intel.platform.logging.setup import setup_logging
 from gmgn_twitter_intel.platform.paths.runtime_paths import config_path
-from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.retrieval.account_quality_service import AccountQualityService
-from gmgn_twitter_intel.storage.account_quality_repository import AccountQualityRepository
 
 
 def build_parser() -> argparse.ArgumentParser:

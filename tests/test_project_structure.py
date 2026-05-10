@@ -107,7 +107,10 @@ def test_trading_attention_service_has_been_hard_deleted():
 
 
 def test_pulse_agent_repository_has_no_dual_name_compatibility_arguments():
-    text = (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "pulse_repository.py").read_text(encoding="utf-8")
+    pulse_repo_path = (
+        ROOT / "src" / "gmgn_twitter_intel" / "domains" / "pulse_lab" / "repositories" / "pulse_repository.py"
+    )
+    text = pulse_repo_path.read_text(encoding="utf-8")
     forbidden = {
         "context: dict[str, Any]",
         "request: dict[str, Any]",

@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from gmgn_twitter_intel.pipeline.pulse_contract import (
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     CANDIDATE_TYPES,
     DISPLAY_PULSE_STATUSES,
     NARRATIVE_TYPES,

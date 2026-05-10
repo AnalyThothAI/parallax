@@ -22,6 +22,7 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
     create_api_router,
 )
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
+from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.message_market_observation_worker import (
     MessageMarketObservationWorker,
@@ -33,6 +34,15 @@ from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import E
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
+from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
+from gmgn_twitter_intel.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
+from gmgn_twitter_intel.domains.notifications.runtime.notification_worker import NotificationWorker
+from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
+from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
+    PulseCandidateWorker,
+    PulseTriggerThresholds,
+)
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
 from gmgn_twitter_intel.domains.social_enrichment.interfaces import EnrichmentRepository
 from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -42,16 +52,9 @@ from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
 from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
-from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
-from gmgn_twitter_intel.pipeline.notification_rules import NotificationRuleEngine
-from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
-from gmgn_twitter_intel.pipeline.pulse_candidate_gate import PulseGateThresholds
-from gmgn_twitter_intel.pipeline.pulse_candidate_worker import PulseCandidateWorker, PulseTriggerThresholds
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
-from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 
 

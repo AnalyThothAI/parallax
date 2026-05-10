@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from .notification_models import NotificationCandidate
+from ..types import NotificationCandidate
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
 

@@ -8,7 +8,11 @@ from fastapi import APIRouter, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
+from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
+from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
+from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_cursor import TokenTargetCursorError
@@ -21,10 +25,6 @@ from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_servi
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_timeline_service import (
     TokenTargetSocialTimelineService,
 )
-from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.retrieval.account_quality_service import AccountQualityService
-from gmgn_twitter_intel.retrieval.signal_pulse_service import SignalPulseService
-from gmgn_twitter_intel.storage.account_quality_repository import AccountQualityRepository
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
 SCOPES = {"all", "matched"}

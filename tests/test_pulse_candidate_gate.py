@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.pipeline.pulse_candidate_gate import PulseGateThresholds, gate_pulse_candidate
-from gmgn_twitter_intel.pipeline.pulse_contract import PULSE_THESIS_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_THESIS_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds, gate_pulse_candidate
 
 
 def _thesis(**overrides: object) -> dict[str, object]:

@@ -5,7 +5,7 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
-from ..storage.account_quality_repository import AccountQualityRepository
+from ..repositories.account_quality_repository import AccountQualityRepository
 
 EARLY_AUTHOR_MS = 5 * 60_000
 MIN_OUTCOME_HORIZON_MS = 5 * 60_000
@@ -15,7 +15,6 @@ class AccountQualityService:
     def __init__(self, *, signals, repository: AccountQualityRepository):
         self.signals = signals
         self.repository = repository
-        self.conn: Any = signals.conn
 
     def backfill_account_token_call_stats(self, *, limit: int = 1000) -> dict[str, Any]:
         rows = self._account_token_rows(limit=limit)
@@ -58,7 +57,7 @@ class AccountQualityService:
             handles_touched.add(handle)
         for handle in sorted(handles_touched):
             self._write_quality_snapshot(handle)
-        self.conn.commit()
+        self.repository.conn.commit()
         return {
             "accounts_touched": len(handles_touched),
             "stats_upserted": len(rows),
@@ -79,70 +78,17 @@ class AccountQualityService:
         }
 
     def _account_token_rows(self, *, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH filtered AS (
-              SELECT
-                tir.target_type,
-                tir.target_id,
-                lower(events.author_handle) AS handle,
-                tir.event_id,
-                events.received_at_ms,
-                events.author_followers,
-                events.is_watched
-              FROM token_intent_resolutions tir
-              JOIN events ON events.event_id = tir.event_id
-              WHERE tir.target_type IN ('Asset', 'CexToken')
-                AND tir.target_id IS NOT NULL
-                AND tir.is_current = true
-                AND tir.resolver_policy_version = %s
-                AND events.author_handle IS NOT NULL
-                AND events.author_handle != ''
-                AND tir.resolution_status IN ('EXACT', 'UNIQUE_BY_CONTEXT')
-            ),
-            token_first AS (
-              SELECT target_type, target_id, MIN(received_at_ms) AS global_first_mention_ms
-              FROM filtered
-              GROUP BY target_type, target_id
-            )
-            SELECT
-              f.handle,
-              f.target_type,
-              f.target_id,
-              MIN(f.received_at_ms) AS first_mention_ms,
-              MAX(f.received_at_ms) AS latest_mention_ms,
-              COUNT(DISTINCT f.event_id) AS mention_count,
-              MAX(f.author_followers) AS follower_max,
-              SUM(CASE WHEN f.is_watched = true THEN 1 ELSE 0 END) AS watched_count,
-              MIN(tf.global_first_mention_ms) AS global_first_mention_ms
-            FROM filtered f
-            JOIN token_first tf
-              ON tf.target_type = f.target_type
-             AND tf.target_id = f.target_id
-            GROUP BY f.handle, f.target_type, f.target_id
-            ORDER BY first_mention_ms DESC, f.handle, f.target_type, f.target_id
-            LIMIT %s
-            """,
-            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, max(0, int(limit))),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        return self.repository.account_token_rows(
+            resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+            limit=limit,
+        )
 
     def _token_outcome(self, *, target_type: str, target_id: str, first_mention_ms: int) -> dict[str, Any]:
-        rows = self.conn.execute(
-            """
-            SELECT
-              COALESCE(price_usd, price_quote) AS price,
-              observed_at_ms AS received_at_ms
-            FROM price_observations
-            WHERE subject_type = %s
-              AND subject_id = %s
-              AND observed_at_ms >= %s
-              AND observed_at_ms <= %s
-              AND COALESCE(price_usd, price_quote) IS NOT NULL
-            ORDER BY observed_at_ms ASC
-            """,
-            (target_type, target_id, first_mention_ms, first_mention_ms + 24 * 60 * 60_000),
-        ).fetchall()
+        rows = self.repository.price_observations_for_token(
+            target_type=target_type,
+            target_id=target_id,
+            first_mention_ms=first_mention_ms,
+        )
         if not rows:
             return _empty_outcome("insufficient_market_history")
         first_price = _float_or_none(rows[0]["price"])
