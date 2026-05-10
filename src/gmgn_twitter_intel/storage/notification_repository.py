@@ -10,6 +10,8 @@ from psycopg.types.json import Jsonb
 from .postgres_client import transaction
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
+_AGGREGATION_SOURCE_REFS_KEY = "_aggregation_source_refs"
+_SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
 
 
 class NotificationRepository:
@@ -42,6 +44,34 @@ class NotificationRepository:
         notification_id = _id("notification", dedup_key)
         normalized_severity = _normalize_severity(severity)
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
+        normalized_payload = payload or {}
+        semantic_duplicate = self._pulse_source_status_duplicate(
+            rule_id=rule_id,
+            source_table=source_table,
+            source_id=source_id,
+            payload=normalized_payload,
+        )
+        if semantic_duplicate is not None:
+            self._aggregate_notification_row(
+                existing=semantic_duplicate,
+                normalized_severity=normalized_severity,
+                title=title,
+                body=body,
+                author_handle=_normalize_handle(author_handle),
+                symbol=_normalize_symbol(symbol),
+                chain=_normalize_chain(chain),
+                address=_normalize_address(address),
+                event_id=event_id,
+                source_table=source_table,
+                source_id=source_id,
+                occurrence_at_ms=int(occurrence_at_ms),
+                payload=normalized_payload,
+                channels=list(normalized_channels),
+                now_ms=now_ms,
+            )
+            if commit:
+                self.conn.commit()
+            return None
         cursor = self.conn.execute(
             """
             INSERT INTO notifications(
@@ -72,50 +102,33 @@ class NotificationRepository:
                 1,
                 int(occurrence_at_ms),
                 int(occurrence_at_ms),
-                _json(payload or {}),
+                _json(normalized_payload),
                 _json(list(normalized_channels)),
                 now_ms,
                 now_ms,
             ),
         )
         if cursor.rowcount == 0:
-            self.conn.execute(
-                """
-                UPDATE notifications
-                SET severity = %s,
-                    title = %s,
-                    body = %s,
-                    author_handle = %s,
-                    symbol = %s,
-                    chain = %s,
-                    address = %s,
-                    event_id = %s,
-                    source_table = %s,
-                    source_id = %s,
-                    occurrence_count = occurrence_count + 1,
-                    last_seen_at_ms = GREATEST(last_seen_at_ms, %s),
-                    payload_json = %s,
-                    channels_json = %s,
-                    updated_at_ms = %s
-                WHERE dedup_key = %s
-                """,
-                (
-                    normalized_severity,
-                    title,
-                    body,
-                    _normalize_handle(author_handle),
-                    _normalize_symbol(symbol),
-                    _normalize_chain(chain),
-                    _normalize_address(address),
-                    event_id,
-                    source_table,
-                    source_id,
-                    int(occurrence_at_ms),
-                    _json(payload or {}),
-                    _json(list(normalized_channels)),
-                    now_ms,
-                    dedup_key,
-                ),
+            existing = self.conn.execute(
+                "SELECT * FROM notifications WHERE dedup_key = %s FOR UPDATE",
+                (dedup_key,),
+            ).fetchone()
+            self._aggregate_notification_row(
+                existing=dict(existing) if existing is not None else None,
+                normalized_severity=normalized_severity,
+                title=title,
+                body=body,
+                author_handle=_normalize_handle(author_handle),
+                symbol=_normalize_symbol(symbol),
+                chain=_normalize_chain(chain),
+                address=_normalize_address(address),
+                event_id=event_id,
+                source_table=source_table,
+                source_id=source_id,
+                occurrence_at_ms=int(occurrence_at_ms),
+                payload=normalized_payload,
+                channels=list(normalized_channels),
+                now_ms=now_ms,
             )
             if commit:
                 self.conn.commit()
@@ -123,6 +136,111 @@ class NotificationRepository:
         if commit:
             self.conn.commit()
         return self.notification_by_id(notification_id, subscriber_key=None)
+
+    def _pulse_source_status_duplicate(
+        self,
+        *,
+        rule_id: str,
+        source_table: str,
+        source_id: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if rule_id != _SIGNAL_PULSE_RULE_ID or not source_table or not source_id:
+            return None
+        pulse_status = str(payload.get("pulse_status") or "").strip()
+        if not pulse_status:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM notifications
+            WHERE rule_id = %s
+              AND source_table = %s
+              AND source_id = %s
+              AND payload_json->>'pulse_status' = %s
+            ORDER BY last_seen_at_ms DESC, created_at_ms DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (rule_id, source_table, source_id, pulse_status),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def _aggregate_notification_row(
+        self,
+        *,
+        existing: dict[str, Any] | None,
+        normalized_severity: str,
+        title: str,
+        body: str,
+        author_handle: str | None,
+        symbol: str | None,
+        chain: str | None,
+        address: str | None,
+        event_id: str | None,
+        source_table: str,
+        source_id: str,
+        occurrence_at_ms: int,
+        payload: dict[str, Any],
+        channels: list[str],
+        now_ms: int,
+    ) -> None:
+        if existing is None:
+            return
+        existing_payload = _payload_dict(existing.get("payload_json"))
+        existing_refs = _aggregation_source_refs(existing_payload)
+        existing_ref = _aggregation_source_ref(
+            str(existing.get("source_table") or ""),
+            str(existing.get("source_id") or ""),
+            existing.get("event_id"),
+        )
+        if existing_ref:
+            existing_refs = _append_unique(existing_refs, existing_ref)
+        incoming_ref = _aggregation_source_ref(source_table, source_id, event_id)
+        if incoming_ref and incoming_ref in existing_refs:
+            return
+        merged_refs = _append_unique(existing_refs, incoming_ref)
+        next_payload = dict(payload)
+        if merged_refs:
+            next_payload[_AGGREGATION_SOURCE_REFS_KEY] = merged_refs[-100:]
+        self.conn.execute(
+            """
+            UPDATE notifications
+            SET severity = %s,
+                title = %s,
+                body = %s,
+                author_handle = %s,
+                symbol = %s,
+                chain = %s,
+                address = %s,
+                event_id = %s,
+                source_table = %s,
+                source_id = %s,
+                occurrence_count = occurrence_count + 1,
+                last_seen_at_ms = GREATEST(last_seen_at_ms, %s),
+                payload_json = %s,
+                channels_json = %s,
+                updated_at_ms = %s
+            WHERE notification_id = %s
+            """,
+            (
+                normalized_severity,
+                title,
+                body,
+                author_handle,
+                symbol,
+                chain,
+                address,
+                event_id,
+                source_table,
+                source_id,
+                int(occurrence_at_ms),
+                _json(next_payload),
+                _json(channels),
+                now_ms,
+                existing["notification_id"],
+            ),
+        )
 
     def notification_by_id(
         self,
@@ -422,6 +540,37 @@ class NotificationRepository:
 
 def _json(value: Any) -> Jsonb:
     return Jsonb(value, dumps=lambda item: json.dumps(item, ensure_ascii=False, sort_keys=True))
+
+
+def _payload_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _aggregation_source_refs(payload: dict[str, Any]) -> list[str]:
+    values = payload.get(_AGGREGATION_SOURCE_REFS_KEY)
+    if not isinstance(values, list):
+        return []
+    refs: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if item and item not in refs:
+            refs.append(item)
+    return refs
+
+
+def _aggregation_source_ref(source_table: str, source_id: str, event_id: str | None) -> str | None:
+    source = str(source_id or event_id or "").strip()
+    table = str(source_table or "").strip()
+    if not source:
+        return None
+    return f"{table}:{source}" if table else source
+
+
+def _append_unique(values: list[str], value: str | None) -> list[str]:
+    result = list(values)
+    if value and value not in result:
+        result.append(value)
+    return result
 
 
 def _id(*parts: str) -> str:
