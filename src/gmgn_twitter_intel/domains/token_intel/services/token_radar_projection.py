@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
@@ -16,20 +17,17 @@ from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer imp
     NORMALIZER_VERSION,
     rank_within_cohort,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import discussion_quality_score
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
     COHORT_DEFINITION_VERSION,
     is_active_cohort_member,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.opportunity_scoring import opportunity_score
-from gmgn_twitter_intel.domains.token_intel.scoring.propagation_scoring import propagation_score
-from gmgn_twitter_intel.domains.token_intel.scoring.social_heat_scoring import social_heat_score
-from gmgn_twitter_intel.domains.token_intel.scoring.timing_scoring import timing_score
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
+    build_token_factor_snapshot,
+)
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
     build_radar_features,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.tradeability_scoring import tradeability_score
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
 
 MARKET_FRESH_MS = 5 * 60 * 1000
@@ -173,17 +171,17 @@ class TokenRadarProjection:
         cohort_metadata: dict[str, dict[str, Any]] = {}
 
         for row in projected:
+            factor_snapshot = _factor_snapshot_or_raise(row)
             target_id = str(row.get("target_id") or "")
             if not target_id:
                 continue
-            score_json = row.get("score_json") or {}
-            opportunity = (score_json.get("opportunity") or {}).get("score")
-            scores[target_id] = float(opportunity) if opportunity is not None else None
+            composite = factor_snapshot["composite"]
+            rank_score = composite.get("rank_score")
+            scores[target_id] = float(rank_score) if rank_score is not None else None
 
             high_conf = _count_high_conf(row)
             kol_count = _count_kol_authors(row)
             first_seen_global = bool(row.get("first_seen_global_24h", False))
-            # symbol lives in target_json since score_json has no symbol field
             symbol = (
                 (row.get("target_json") or {}).get("symbol")
                 or (row.get("intent_json") or {}).get("display_symbol")
@@ -207,16 +205,18 @@ class TokenRadarProjection:
 
         for row in projected:
             target_id = str(row.get("target_id") or "")
-            score_json = dict(row.get("score_json") or {})
-            score_json["cross_section_rank"] = ranks.get(target_id)
-            score_json["cohort"] = {
-                "in_cohort": target_id in cohort,
-                "size": len(cohort),
-                "definition_version": COHORT_DEFINITION_VERSION,
-                "normalizer_version": NORMALIZER_VERSION,
-                **(cohort_metadata.get(target_id, {})),
+            factor_snapshot = _factor_snapshot_or_raise(row)
+            factor_snapshot["normalization"] = {
+                "cross_section_rank": ranks.get(target_id),
+                "cohort": {
+                    "in_cohort": target_id in cohort,
+                    "size": len(cohort),
+                    "definition_version": COHORT_DEFINITION_VERSION,
+                    "normalizer_version": NORMALIZER_VERSION,
+                    **(cohort_metadata.get(target_id, {})),
+                },
             }
-            row["score_json"] = score_json
+            row["factor_snapshot_json"] = factor_snapshot
             row.pop("_cohort_high_conf_count", None)
             row.pop("_cohort_kol_count", None)
 
@@ -271,8 +271,17 @@ def _project_group(
         window_ms=resolved_window_ms,
         total_window_events=total_window_events or len(event_ids),
     )
-    score = _score(features)
-    decision = str(score["opportunity"].get("decision") or "discard")
+    factor_snapshot = build_token_factor_snapshot(
+        target=target,
+        attention=features.attention,
+        social_quality={**features.quality, **features.propagation},
+        social_semantics=_social_semantics(window_rows),
+        market=market,
+        timing=features.timing,
+        source_event_ids=event_ids,
+        computed_at_ms=now_ms,
+    )
+    decision = str(factor_snapshot["composite"]["recommended_decision"])
     # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
     # These internal fields use the _cohort_* prefix and are stripped before persistence.
     cohort_high_conf_count = sum(
@@ -308,10 +317,9 @@ def _project_group(
         "asset_json": target if target_type == "Asset" else {},
         "target_json": target,
         "primary_venue_json": None,
-        "attention_json": {
-            **features.attention,
-            "latest_seen_ms": latest_seen_ms,
-        },
+        "factor_snapshot_json": factor_snapshot,
+        "factor_version": factor_snapshot["schema_version"],
+        "attention_json": {},
         "resolution_json": {
             "status": resolution_status,
             "target_type": target_type,
@@ -322,16 +330,14 @@ def _project_group(
             "lookup_keys": latest.get("lookup_keys_json") or [],
             "discovery": _resolution_discovery(latest),
         },
-        "market_json": market,
-        "price_json": market,
-        "score_json": score,
+        "market_json": {},
+        "price_json": {},
+        "score_json": {},
         "decision": decision,
         "data_health_json": {
-            "identity": resolution_status,
-            "market": market["market_observation_status"],
-            "market_readiness": market["market_readiness"],
-            "event_price_readiness": market["event_price_readiness"],
-            "coverage": "public_stream",
+            "factor_snapshot": "ready",
+            "identity": factor_snapshot["families"]["identity"]["data_health"],
+            "market": factor_snapshot["families"]["market_quality"]["data_health"],
         },
         "source_event_ids_json": event_ids,
         "created_at_ms": now_ms,
@@ -339,6 +345,53 @@ def _project_group(
         "_cohort_high_conf_count": cohort_high_conf_count,
         "_cohort_kol_count": cohort_kol_count,
     }
+
+
+def _social_semantics(window_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    direction_counts: dict[str, int] = {}
+    impact_values: list[float] = []
+    novelty_values: list[float] = []
+    confidence_values: list[float] = []
+
+    for row in window_rows:
+        direction = _semantic_direction(row.get("llm_direction_hint"))
+        if direction:
+            direction_counts[direction] = direction_counts.get(direction, 0) + 1
+        impact = _float_or_none(row.get("llm_impact_hint"))
+        if impact is not None:
+            impact_values.append(impact)
+        novelty = _float_or_none(row.get("llm_semantic_novelty_hint"))
+        if novelty is not None:
+            novelty_values.append(novelty)
+        confidence = _float_or_none(row.get("llm_label_confidence"))
+        if confidence is not None:
+            confidence_values.append(confidence)
+
+    return {
+        "direction_counts": direction_counts,
+        "impact_mean": _mean_or_none(impact_values),
+        "novelty_mean": _mean_or_none(novelty_values),
+        "confidence_mean": _mean_or_none(confidence_values),
+    }
+
+
+def _semantic_direction(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text in {"bullish", "positive", "attention_positive"} or "positive" in text:
+        return "bullish"
+    if text in {"bearish", "negative", "attention_negative"} or "negative" in text:
+        return "bearish"
+    if text == "neutral" or "neutral" in text:
+        return "neutral"
+    return text
+
+
+def _mean_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 6)
 
 
 def _has_resolved_target(row: dict[str, Any]) -> bool:
@@ -439,6 +492,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
         "target_id": target_id,
         "symbol": _target_symbol(row),
         "name": row.get("asset_name"),
+        "chain": row.get("asset_chain_id"),
         "chain_id": row.get("asset_chain_id"),
         "token_standard": row.get("asset_token_standard"),
         "address": row.get("asset_address"),
@@ -454,7 +508,8 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
 
 def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
-        return _missing_market("no_resolved_target")
+        latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0)) if window_rows else {}
+        return _missing_market("no_resolved_target", native_market_id=latest.get("native_market_id"))
     if not window_rows:
         return _missing_market("pending_refresh")
     latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
@@ -486,6 +541,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             "price_change_status": price_change_status,
             "provider": latest.get("market_provider"),
             "pricefeed_id": latest.get("pricefeed_id"),
+            "native_market_id": latest.get("native_market_id"),
             "price_usd": latest.get("market_price_usd"),
             "price_quote": latest.get("market_price_quote"),
             "quote_symbol": latest.get("market_quote_symbol") or latest.get("pricefeed_quote_symbol"),
@@ -513,18 +569,19 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             else None,
         }
         return _with_readiness(market)
-    missing = _missing_market("pending_refresh")
+    missing = _missing_market("pending_refresh", native_market_id=latest.get("native_market_id"))
     missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
     return _with_readiness(missing)
 
 
-def _missing_market(status: str) -> dict[str, Any]:
+def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, Any]:
     market = {
         "market_status": "missing",
         "market_observation_status": status,
         "price_change_status": status,
         "provider": None,
         "pricefeed_id": None,
+        "native_market_id": native_market_id,
         "price_usd": None,
         "price_quote": None,
         "quote_symbol": None,
@@ -577,17 +634,6 @@ def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
         "price_at_social_start": value,
         "price_change_status": market.get("price_change_status"),
     }
-
-
-def _score(features) -> dict[str, Any]:
-    components = {
-        "heat": social_heat_score(features.heat),
-        "quality": discussion_quality_score(features.quality),
-        "propagation": propagation_score(features.propagation),
-        "tradeability": tradeability_score(features.tradeability),
-        "timing": timing_score(features.timing),
-    }
-    return {**components, "opportunity": opportunity_score(components)}
 
 
 def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
@@ -706,18 +752,47 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
-def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
-    attention = row["attention_json"]
-    score = row.get("score_json") if isinstance(row.get("score_json"), dict) else {}
-    decision_priority = {"driver": 0, "watch": 1, "investigate": 2, "discard": 3}
-    opportunity = score.get("opportunity") if isinstance(score.get("opportunity"), dict) else {}
-    heat = score.get("heat") if isinstance(score.get("heat"), dict) else {}
+def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
+    snapshot = _factor_snapshot_for_ranking(row)
+    if snapshot is None:
+        return (3, 0.0, 0, 0, 0)
+    composite = snapshot["composite"]
+    families = snapshot["families"]
+    social_attention = families.get("social_attention") if isinstance(families.get("social_attention"), dict) else {}
+    attention = social_attention.get("facts") if isinstance(social_attention.get("facts"), dict) else {}
+    decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
+    decision = composite.get("recommended_decision") or "discard"
+    rank_score = _float_or_none(composite.get("rank_score")) or 0.0
     return (
-        decision_priority.get(str(row.get("decision") or "discard"), 3),
-        -int(opportunity.get("score") or 0),
-        -int(heat.get("score") or 0),
-        -int(attention["latest_seen_ms"]),
+        decision_priority.get(str(decision), 2),
+        -rank_score,
+        -int(attention.get("watched_mentions") or 0),
+        -int(attention.get("mentions_1h") or 0),
+        -int(attention.get("latest_seen_ms") or 0),
     )
+
+
+def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        return _factor_snapshot_or_raise(row)
+    except ValueError:
+        return None
+
+
+def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
+    factor_snapshot = row.get("factor_snapshot_json")
+    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
+        raise ValueError("factor_snapshot_json must be non-empty for token radar projection")
+    schema_version = str(factor_snapshot.get("schema_version") or "").strip()
+    if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
+    families = factor_snapshot.get("families")
+    if not isinstance(families, dict):
+        raise ValueError("factor_snapshot_json.families is required for token radar projection")
+    composite = factor_snapshot.get("composite")
+    if not isinstance(composite, dict):
+        raise ValueError("factor_snapshot_json.composite is required for token radar projection")
+    return factor_snapshot
 
 
 def _stable_id(*parts: str) -> str:

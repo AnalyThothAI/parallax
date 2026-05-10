@@ -4,8 +4,7 @@ from typing import Any
 
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 
-# Platform layer cannot import from domains; this constant mirrors TOKEN_RADAR_PROJECTION_VERSION
-TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v8-identity-evidence"
+TOKEN_RADAR_PROJECTION_VERSION_PARAM = "token_radar_projection_version"
 
 CORE_TABLES = (
     "raw_frames",
@@ -122,7 +121,7 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
             ORDER BY computed_at_ms DESC, lane DESC, rank ASC
             LIMIT 50
         """,
-        "params": {"token_radar_projection_version": TOKEN_RADAR_PROJECTION_VERSION},
+        "params": {TOKEN_RADAR_PROJECTION_VERSION_PARAM: None},
     },
     {
         "name": "target_posts_recent",
@@ -211,8 +210,9 @@ class PostgresOperationalAudit:
 
 
 class PostgresQueryAudit:
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any, *, token_radar_projection_version: str | None = None):
         self.conn = conn
+        self.token_radar_projection_version = token_radar_projection_version
 
     def run(self, *, analyze: bool = False) -> dict[str, Any]:
         queries = [self._explain(item, analyze=analyze) for item in HOT_QUERIES]
@@ -226,7 +226,7 @@ class PostgresQueryAudit:
     def _explain(self, item: dict[str, Any], *, analyze: bool) -> dict[str, Any]:
         prefix = "EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)" if analyze else "EXPLAIN (FORMAT TEXT)"
         try:
-            rows = self.conn.execute(f"{prefix} {item['sql']}", item["params"]).fetchall()
+            rows = self.conn.execute(f"{prefix} {item['sql']}", self._params(item["params"])).fetchall()
             return {
                 "ok": True,
                 "name": item["name"],
@@ -240,6 +240,14 @@ class PostgresQueryAudit:
                 "detail": str(exc),
                 "plan": [],
             }
+
+    def _params(self, params: Any) -> Any:
+        if not isinstance(params, dict) or TOKEN_RADAR_PROJECTION_VERSION_PARAM not in params:
+            return params
+        return {
+            **params,
+            TOKEN_RADAR_PROJECTION_VERSION_PARAM: self.token_radar_projection_version,
+        }
 
 
 class ProjectionValidationAudit:

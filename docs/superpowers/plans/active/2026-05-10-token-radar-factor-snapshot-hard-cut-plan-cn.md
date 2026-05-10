@@ -4,16 +4,16 @@
 
 **Goal:** Hard-cut Token Radar, Signal Lab Pulse, notifications, and frontend reads from score/thesis-centered runtime contracts to a professional `TokenFactorSnapshot` contract with no legacy fallback.
 
-**Architecture:** Keep `TokenRadarProjection` as the production projection entrypoint, but change its output contract to `factor_snapshot_json`. Build deterministic factor families from existing raw source rows, derive score/gate/rank from the snapshot, then pass that same snapshot to Pulse, notifications, and UI. Historical old JSON columns may remain in the database, but current runtime paths must not read them as fallback.
+**Architecture:** Keep `TokenRadarProjection` as the production projection entrypoint, but change its output contract to `factor_snapshot_json`. Build deterministic factor families from existing raw source rows, derive score/gate/rank from the snapshot, then pass that same snapshot to Pulse, notifications, and UI. Migration `20260510_0023` drops legacy Signal Pulse `thesis_json`, `radar_score_json`, and `market_context_json` columns; current runtime paths must not read them as fallback.
 
 **Tech Stack:** Python 3.13, PostgreSQL JSONB, Alembic, pytest, Pydantic, OpenAI Agents SDK, React/TypeScript, Vitest.
 
 ---
 
-**Status**: Draft  
-**Date**: 2026-05-10  
-**Owning spec**: `docs/superpowers/specs/active/2026-05-10-token-radar-factor-snapshot-architecture-cn.md`  
-**Worktree**: `.worktrees/token-radar-factor-snapshot-hard-cut/`  
+**Status**: Implemented and verified in `codex/token-radar-factor-snapshot-hard-cut`
+**Date**: 2026-05-10
+**Owning spec**: `docs/superpowers/specs/active/2026-05-10-token-radar-factor-snapshot-architecture-cn.md`
+**Worktree**: `.worktrees/token-radar-factor-snapshot-hard-cut/`
 **Branch**: `codex/token-radar-factor-snapshot-hard-cut`
 
 ## Pre-flight

@@ -6,6 +6,7 @@ import time
 from typing import Any
 from urllib.parse import quote
 
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
@@ -19,7 +20,6 @@ DEFAULT_SIGNAL_PULSE_SCOPES = ("all", "matched")
 DEFAULT_SIGNAL_PULSE_STATUSES = ("trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info")
 SIGNAL_PULSE_SEVERITY = {
     "trade_candidate": "critical",
-    "token_watch": "high",
     "theme_watch": "warning",
     "risk_rejected_high_info": "warning",
 }
@@ -395,8 +395,14 @@ class NotificationRuleEngine:
             status = str(row.get("pulse_status") or "")
             if status not in statuses:
                 continue
-            severity = SIGNAL_PULSE_SEVERITY.get(status)
+            factor_snapshot = _dict(row.get("factor_snapshot_json"))
+            if not _valid_factor_snapshot(factor_snapshot):
+                continue
+            gate = _dict(row.get("gate_json"))
+            severity = _signal_pulse_severity(row, factor_snapshot=factor_snapshot, gate=gate)
             if severity is None:
+                continue
+            if severity in {"high", "critical"} and not _has_resolved_pulse_target(row, factor_snapshot):
                 continue
             candidate_id = str(row.get("candidate_id") or "")
             occurrence_at_ms = _int(row.get("updated_at_ms") or now_ms)
@@ -474,7 +480,6 @@ def _alert_dedup_key(
 
 
 def _pulse_notification_signature(row: dict[str, Any]) -> str:
-    thesis = _dict(row.get("thesis_json"))
     evidence_ids = _list(row.get("evidence_event_ids_json"))
     source_ids = _list(row.get("source_event_ids_json"))
     payload = {
@@ -482,9 +487,9 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
         "candidate_id": row.get("candidate_id"),
         "pulse_status": row.get("pulse_status"),
         "score_band": row.get("score_band"),
-        "social_phase": row.get("social_phase"),
-        "top_risk_keys": _risk_keys(row),
-        "confirmation_trigger_keys": _fingerprints(_list(thesis.get("confirmation_triggers_zh"))),
+        "gate": _dict(row.get("gate_json")),
+        "agent_recommendation": _dict(row.get("agent_recommendation_json")),
+        "factor_snapshot_fingerprint": _short_hash(_dict(row.get("factor_snapshot_json"))),
         "latest_evidence_event_id_bucket": _event_id_bucket([*evidence_ids, *source_ids]),
         "source_event_fingerprint": _short_hash(_stable_list(source_ids)),
     }
@@ -492,16 +497,15 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
 
 
 def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[str, Any]:
-    thesis = _dict(row.get("thesis_json"))
     return {
         "candidate_id": row.get("candidate_id"),
         "pulse_status": row.get("pulse_status"),
         "score_band": row.get("score_band"),
         "social_phase": row.get("social_phase"),
         "narrative_type": row.get("narrative_type"),
-        "top_risks": _list(thesis.get("top_risks")),
-        "confirmation_triggers_zh": _list(thesis.get("confirmation_triggers_zh")),
-        "invalidation_triggers_zh": _list(thesis.get("invalidation_triggers_zh")),
+        "agent_recommendation": _dict(row.get("agent_recommendation_json")),
+        "gate": _dict(row.get("gate_json")),
+        "factor_snapshot": _dict(row.get("factor_snapshot_json")),
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
         "candidate_score": row.get("candidate_score"),
@@ -513,42 +517,131 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
 
 
 def _pulse_body(row: dict[str, Any]) -> str:
-    thesis = _dict(row.get("thesis_json"))
-    symbol = _symbol(row.get("symbol"))
+    snapshot = _dict(row.get("factor_snapshot_json"))
+    gate = _dict(row.get("gate_json"))
+    recommendation = _dict(row.get("agent_recommendation_json"))
+    subject = _dict(snapshot.get("subject"))
+    symbol = _symbol(row.get("symbol") or subject.get("symbol"))
     display = f"${symbol}" if symbol else str(row.get("subject_key") or row.get("candidate_id") or "Signal Pulse")
+    market = _market_fact_line(snapshot)
+    social = _social_fact_line(snapshot)
+    blocked_reasons = _list(gate.get("blocked_reasons"))
+    summary = _compact_text(
+        recommendation.get("summary_zh")
+        or recommendation.get("summary")
+        or recommendation.get("rationale_zh")
+        or recommendation.get("rationale"),
+        limit=240,
+    )
     lines = [
         f"## {display} Signal Pulse",
         "",
         f"- **Status:** {str(row.get('pulse_status') or '').replace('_', ' ')}",
-        f"- **Score band:** {row.get('score_band') or 'unknown'}",
-        f"- **Social phase:** {row.get('social_phase') or 'unknown'}",
-        f"- **Candidate score:** {row.get('candidate_score')}",
+        f"- **Gate:** {_human_reasons(blocked_reasons) if blocked_reasons else 'clear'}",
+        f"- **Market:** {market}",
+        f"- **Social:** {social}",
     ]
-    why_now = _compact_text(thesis.get("why_now_zh") or thesis.get("summary_zh"), limit=240)
-    if why_now:
-        lines.extend(["", why_now])
-    risks = _list(thesis.get("top_risks")) or _list(row.get("risk_reasons_json"))
-    if risks:
-        lines.extend(["", "**Risks**"])
-        lines.extend(f"- {risk}" for risk in risks[:4])
-    confirmations = _list(thesis.get("confirmation_triggers_zh"))
-    if confirmations:
-        lines.extend(["", "**Confirmation**"])
-        lines.extend(f"- {item}" for item in confirmations[:3])
+    if summary:
+        lines.extend(["", summary])
     return "\n".join(lines)
 
 
-def _risk_keys(row: dict[str, Any]) -> list[str]:
-    thesis = _dict(row.get("thesis_json"))
-    values = [
-        *_list(thesis.get("top_risks")),
-        *_list(row.get("risk_reasons_json")),
+def _signal_pulse_severity(
+    row: dict[str, Any],
+    *,
+    factor_snapshot: dict[str, Any],
+    gate: dict[str, Any],
+) -> str | None:
+    status = str(row.get("pulse_status") or "")
+    eligible_for_high_alert = bool(_nested(factor_snapshot, "hard_gates", "eligible_for_high_alert")) and bool(
+        gate.get("eligible_for_high_alert")
+    )
+    blocked_reasons = _list(gate.get("blocked_reasons")) or _list(
+        _nested(factor_snapshot, "hard_gates", "blocked_reasons")
+    )
+    max_recommendation = str(gate.get("max_recommendation") or "").strip()
+    gate_allows_high = eligible_for_high_alert and not blocked_reasons and max_recommendation in {
+        "watch",
+        "trade_candidate",
+        "alert",
+        "high_alert",
+    }
+    if status == "token_watch":
+        return "high" if gate_allows_high else None
+    if status == "trade_candidate":
+        return "critical" if gate_allows_high and max_recommendation == "trade_candidate" else None
+    return SIGNAL_PULSE_SEVERITY.get(status)
+
+
+def _has_resolved_pulse_target(row: dict[str, Any], factor_snapshot: dict[str, Any]) -> bool:
+    subject = _dict(factor_snapshot.get("subject"))
+    target_type = str(row.get("target_type") or subject.get("target_type") or "").strip()
+    target_id = str(row.get("target_id") or subject.get("target_id") or "").strip()
+    return bool(target_type and target_id and target_type not in {"source_seed", "SourceSeed", "unresolved"})
+
+
+def _market_fact_line(snapshot: dict[str, Any]) -> str:
+    facts = _family_facts(snapshot, "market_quality")
+    parts = [
+        f"mcap {_money(facts.get('market_cap_usd'))}",
+        f"liq {_money(facts.get('liquidity_usd'))}",
+        f"holders {_int(facts.get('holders'))}",
     ]
-    return sorted({str(value).strip() for value in values if str(value).strip()})[:8]
+    volume = facts.get("volume_24h_usd")
+    if volume is not None:
+        parts.append(f"vol24h {_money(volume)}")
+    status = str(facts.get("market_status") or "").strip()
+    if status:
+        parts.append(status)
+    return " · ".join(parts)
 
 
-def _fingerprints(values: list[Any]) -> list[str]:
-    return [_short_hash(str(value).strip().lower()) for value in values if str(value).strip()][:8]
+def _social_fact_line(snapshot: dict[str, Any]) -> str:
+    attention = _family_facts(snapshot, "social_attention")
+    quality = _family_facts(snapshot, "social_quality")
+    mentions = _int(attention.get("mentions_1h"))
+    authors = _int(quality.get("independent_authors") or attention.get("unique_authors"))
+    watched = _int(attention.get("watched_mentions"))
+    return f"{mentions} mentions · {authors} authors · watched {watched}"
+
+
+def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
+    families = _dict(snapshot.get("families"))
+    payload = _dict(families.get(family))
+    return _dict(payload.get("facts"))
+
+
+def _valid_factor_snapshot(value: Any) -> bool:
+    snapshot = _dict(value)
+    return (
+        bool(snapshot)
+        and snapshot.get("schema_version") == TOKEN_FACTOR_SNAPSHOT_VERSION
+        and isinstance(snapshot.get("subject"), dict)
+        and isinstance(snapshot.get("families"), dict)
+        and isinstance(snapshot.get("hard_gates"), dict)
+        and isinstance(snapshot.get("composite"), dict)
+    )
+
+
+def _human_reasons(reasons: list[Any]) -> str:
+    values = [str(reason).strip().replace("_", " ") for reason in reasons if str(reason).strip()]
+    return ", ".join(values) if values else "clear"
+
+
+def _money(value: Any) -> str:
+    amount = float(_int(value))
+    if amount >= 1_000_000_000:
+        return f"${amount / 1_000_000_000:.1f}b"
+    if amount >= 1_000_000:
+        return f"${amount / 1_000_000:.1f}m"
+    if amount >= 1_000:
+        return f"${amount / 1_000:.1f}k"
+    return f"${amount:.0f}"
+
+
+def _nested(data: dict[str, Any], outer: str, inner: str) -> Any:
+    value = data.get(outer)
+    return value.get(inner) if isinstance(value, dict) else None
 
 
 def _event_id_bucket(values: list[Any]) -> str:

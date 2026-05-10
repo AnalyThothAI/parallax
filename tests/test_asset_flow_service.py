@@ -18,7 +18,7 @@ def test_asset_flow_has_resolved_and_attention_lanes_from_token_radar_rows():
                     asset_id=None,
                     identity_status="NIL",
                     resolution_status="NIL",
-                    decision="investigate",
+                    decision="discard",
                 ),
             ]
         )
@@ -28,6 +28,7 @@ def test_asset_flow_has_resolved_and_attention_lanes_from_token_radar_rows():
 
     assert result["targets"][0]["target"]["symbol"] == "BTC"
     assert result["attention"][0]["intent"]["display_symbol"] == "MIRROR"
+    assert result["attention"][0]["target"]["symbol"] == "MIRROR"
     assert result["projection"]["version"] == TOKEN_RADAR_PROJECTION_VERSION
     assert result["projection"]["source"] == "token_radar_rows"
     assert service.token_radar.calls[0]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
@@ -53,19 +54,19 @@ def test_asset_flow_exposes_projection_market_hydration_summary():
                     lane="resolved",
                     symbol="FRESH",
                     asset_id="asset:dex:fresh",
-                    market={"market_status": "fresh", "market_observation_status": "ready"},
+                    market={"market_status": "fresh"},
                 ),
                 radar_row(
                     lane="resolved",
                     symbol="STALE",
                     asset_id="asset:dex:stale",
-                    market={"market_status": "stale", "market_observation_status": "stale"},
+                    market={"market_status": "stale"},
                 ),
                 radar_row(
                     lane="resolved",
                     symbol="MISS",
                     asset_id="asset:dex:missing",
-                    market={"market_status": "missing", "market_observation_status": "pending_refresh"},
+                    market={"market_status": "missing"},
                 ),
             ]
         )
@@ -78,7 +79,7 @@ def test_asset_flow_exposes_projection_market_hydration_summary():
         "fresh": 1,
         "stale": 1,
         "missing": 1,
-        "pending": 1,
+        "pending": 0,
         "total": 3,
     }
 
@@ -102,7 +103,7 @@ def test_asset_flow_exposes_source_event_ids_for_evidence_counting():
     assert result["targets"][0]["source_event_ids"] == ["event-a", "event-b", "event-c"]
 
 
-def test_unresolved_attention_keeps_backend_investigate_decision_even_with_high_heat():
+def test_unresolved_attention_uses_snapshot_composite_without_score_fallback():
     service = AssetFlowService(
         token_radar=FakeTokenRadar(
             rows=[
@@ -112,8 +113,8 @@ def test_unresolved_attention_keeps_backend_investigate_decision_even_with_high_
                     asset_id=None,
                     identity_status="NIL",
                     resolution_status="NIL",
-                    score={"heat": score_block(100), "opportunity": score_block(96)},
-                    decision="investigate",
+                    rank_score=12,
+                    decision="discard",
                 )
             ]
         )
@@ -123,9 +124,20 @@ def test_unresolved_attention_keeps_backend_investigate_decision_even_with_high_
 
     versa = result["attention"][0]
     assert versa["resolution"]["status"] == "NIL"
-    assert versa["score"]["heat"]["score"] == 100
-    assert versa["score"]["opportunity"]["score"] == 96
-    assert versa["decision"] == "investigate"
+    assert versa["score"] == {
+        "family_scores": {
+            "identity": 80,
+            "social_attention": 80,
+            "social_quality": 80,
+            "social_semantics": 80,
+            "market_quality": 80,
+            "timing": 80,
+        },
+        "rank_score": 12,
+        "recommended_decision": "discard",
+    }
+    assert versa["decision"] == "discard"
+    assert versa["score"] == versa["factor_snapshot"]["composite"]
 
 
 def test_btc_cex_row_does_not_require_chain_address():
@@ -154,7 +166,10 @@ def test_btc_cex_row_does_not_require_chain_address():
 
     btc = result["targets"][0]
     assert btc["target"]["target_type"] == "CexToken"
-    assert btc["target"]["native_market_id"] == "BTC-USDT"
+    assert btc["target"]["target_market_type"] == "cex"
+    assert btc["target"]["chain"] is None
+    assert btc["target"]["address"] is None
+    assert btc["market"]["native_market_id"] == "BTC-USDT"
 
 
 def test_asset_flow_exposes_market_snapshot_health_from_read_model():
@@ -167,12 +182,8 @@ def test_asset_flow_exposes_market_snapshot_health_from_read_model():
                     asset_id="asset:cex:BTC",
                     market={
                         "market_status": "ready",
-                        "market_observation_status": "ready",
-                        "provider": "okx_cex",
-                        "price_usd": 69_000.0,
                         "volume_24h_usd": 123_000_000.0,
-                        "snapshot_age_ms": 60_000,
-                        "snapshot_observed_at_ms": 1_700_000_000_000,
+                        "open_interest_usd": 45_000_000.0,
                     },
                 )
             ]
@@ -183,21 +194,36 @@ def test_asset_flow_exposes_market_snapshot_health_from_read_model():
 
     price = result["targets"][0]["price"]
     assert price["market_status"] == "ready"
-    assert price["market_observation_status"] == "ready"
-    assert price["provider"] == "okx_cex"
-    assert price["price_usd"] == 69_000.0
-    assert price["snapshot_age_ms"] == 60_000
+    assert price["volume_24h_usd"] == 123_000_000.0
+    assert price["open_interest_usd"] == 45_000_000.0
+    assert price == result["targets"][0]["market"]
+    assert price == result["targets"][0]["factor_snapshot"]["families"]["market_quality"]["facts"]
 
 
-def test_asset_flow_uses_price_json_only_without_legacy_market_fallback():
+def test_asset_flow_ignores_legacy_market_and_price_payloads():
     row = radar_row(lane="resolved", symbol="BTC", asset_id="asset:cex:BTC")
-    row["price_json"] = None
-    row["market_json"] = {"market_status": "ready", "market_observation_status": "ready"}
+    row["price_json"] = {"market_status": "legacy_price_ready"}
+    row["market_json"] = {"market_status": "legacy_market_ready"}
+    service = AssetFlowService(token_radar=FakeTokenRadar(rows=[row]))
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["targets"][0]["price"]["market_status"] == "missing"
+    assert result["targets"][0]["market"]["market_status"] == "missing"
+
+
+def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing():
+    row = radar_row(lane="resolved", symbol="BTC", asset_id="asset:cex:BTC")
+    row.pop("factor_snapshot_json")
+    row["price_json"] = {"market_status": "legacy_price_ready"}
+    row["score_json"] = {"heat": {"score": 99}}
     service = AssetFlowService(token_radar=FakeTokenRadar(rows=[row]))
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     assert result["targets"][0]["price"] == {}
+    assert result["targets"][0]["market"] == {}
+    assert result["targets"][0]["score"] == {}
 
 
 def test_asset_flow_keeps_diagnosable_missing_market_status():
@@ -211,16 +237,14 @@ def test_asset_flow_keeps_diagnosable_missing_market_status():
                     asset_type="dex_asset",
                     market={
                         "market_status": "missing",
-                        "market_observation_status": "provider_not_configured",
-                        "price_change_status": "missing_market",
-                        "provider": "okx_dex",
-                        "price_usd": None,
-                        "snapshot_observed_at_ms": None,
+                        "liquidity_usd": None,
+                        "market_cap_usd": None,
+                        "holders": None,
                     },
                     data_health={
-                        "identity": "EXACT",
-                        "market": "provider_not_configured",
-                        "coverage": "public_stream",
+                        "factor_snapshot": "ready",
+                        "identity": "ready",
+                        "market": "partial",
                     },
                 )
             ]
@@ -231,9 +255,10 @@ def test_asset_flow_keeps_diagnosable_missing_market_status():
 
     row = result["targets"][0]
     assert row["price"]["market_status"] == "missing"
-    assert row["price"]["market_observation_status"] == "provider_not_configured"
-    assert row["price"]["snapshot_observed_at_ms"] is None
-    assert row["data_health"]["market"] == "provider_not_configured"
+    assert row["price"]["liquidity_usd"] is None
+    assert row["price"]["market_cap_usd"] is None
+    assert row["price"]["holders"] is None
+    assert row["data_health"]["market"] == "partial"
 
 
 def test_asset_flow_uses_backend_symbol_instead_of_contract_address_display():
@@ -261,6 +286,7 @@ def test_asset_flow_uses_backend_symbol_instead_of_contract_address_display():
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     assert result["targets"][0]["target"]["symbol"] == "USDUC"
+    assert result["targets"][0]["target"]["chain"] == "solana"
 
 
 def test_asset_flow_does_not_invent_symbol_when_backend_omits_it():
@@ -292,7 +318,7 @@ def test_asset_flow_does_not_invent_symbol_when_backend_omits_it():
     assert result["targets"][0]["target"]["symbol"] is None
 
 
-def test_asset_flow_exposes_market_timing_changes_from_projection():
+def test_asset_flow_exposes_market_timing_inside_factor_snapshot():
     service = AssetFlowService(
         token_radar=FakeTokenRadar(
             rows=[
@@ -302,14 +328,10 @@ def test_asset_flow_exposes_market_timing_changes_from_projection():
                     asset_id="asset:cex:BTC",
                     market={
                         "market_status": "ready",
-                        "market_observation_status": "ready",
-                        "price_change_status": "ready",
-                        "provider": "okx_cex",
-                        "price_usd": 100.0,
-                        "price_change_5m_pct": 0.25,
-                        "price_change_1h_pct": 1.0,
-                        "price_change_24h_pct": 1.5,
-                        "price_at_social_start": 90.0,
+                        "volume_24h_usd": 50_000_000.0,
+                    },
+                    timing={
+                        "social_signal_start_ms": 1_700_000_000_000,
                         "price_change_since_social_pct": 1 / 9,
                         "price_change_before_social_pct": 0.2,
                     },
@@ -320,14 +342,11 @@ def test_asset_flow_exposes_market_timing_changes_from_projection():
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
-    price = result["targets"][0]["price"]
-    assert price["price_change_status"] == "ready"
-    assert price["price_change_5m_pct"] == pytest.approx(0.25)
-    assert price["price_change_1h_pct"] == pytest.approx(1.0)
-    assert price["price_change_24h_pct"] == pytest.approx(1.5)
-    assert price["price_at_social_start"] == 90.0
-    assert price["price_change_since_social_pct"] == pytest.approx(1 / 9)
-    assert price["price_change_before_social_pct"] == pytest.approx(0.2)
+    timing = result["targets"][0]["factor_snapshot"]["families"]["timing"]["facts"]
+    assert timing["price_change_since_social_pct"] == pytest.approx(1 / 9)
+    assert timing["price_change_before_social_pct"] == pytest.approx(0.2)
+    assert timing["social_signal_start_ms"] == 1_700_000_000_000
+    assert result["targets"][0]["price"]["volume_24h_usd"] == 50_000_000.0
 
 
 class FakeTokenRadar:
@@ -352,19 +371,42 @@ def radar_row(
     resolution_status: str = "EXACT",
     venue: dict | None = None,
     market: dict | None = None,
-    score: dict | None = None,
+    attention: dict | None = None,
+    timing: dict | None = None,
+    rank_score: int = 55,
     decision: str = "watch",
     data_health: dict | None = None,
     source_event_ids: list[str] | None = None,
 ):
     resolved_intent_id = intent_id or f"intent:{(display_symbol or symbol or asset_id or 'unknown').lower()}"
+    target_type = "CexToken" if asset_type == "cex_asset" else "Asset" if asset_id else None
+    target_market_type = "cex" if target_type == "CexToken" else "dex"
+    target_chain = (venue or {}).get("chain") if asset_type != "cex_asset" else None
+    target_address = (venue or {}).get("address") if asset_type != "cex_asset" else None
+    subject_symbol = symbol if asset_id else symbol if symbol is not None else display_symbol
+    event_ids = source_event_ids or [f"event:{resolved_intent_id}"]
+    factor_snapshot = factor_snapshot_json(
+        target_type=target_type,
+        target_id=asset_id,
+        symbol=subject_symbol,
+        chain=target_chain,
+        address=target_address,
+        target_market_type=target_market_type,
+        attention=attention,
+        market=market,
+        timing=timing,
+        native_market_id=(venue or {}).get("inst_id") if asset_type == "cex_asset" else None,
+        source_event_ids=event_ids,
+        rank_score=rank_score,
+        decision=decision,
+    )
     return {
         "row_id": f"row:{resolved_intent_id}",
         "lane": lane,
         "rank": 1,
         "intent_id": resolved_intent_id,
         "event_id": f"event:{resolved_intent_id}",
-        "target_type": "CexToken" if asset_type == "cex_asset" else "Asset" if asset_id else None,
+        "target_type": target_type,
         "target_id": asset_id,
         "pricefeed_id": None,
         "intent_json": {
@@ -374,15 +416,7 @@ def radar_row(
             "evidence": [],
         },
         "asset_json": {},
-        "target_json": {
-            "target_type": "CexToken" if asset_type == "cex_asset" else "Asset" if asset_id else None,
-            "target_id": asset_id,
-            "symbol": symbol,
-            "status": "canonical" if identity_status == "EXACT" else None,
-            "native_market_id": (venue or {}).get("inst_id") if asset_type == "cex_asset" else None,
-            "chain_id": (venue or {}).get("chain") if asset_type != "cex_asset" else None,
-            "address": (venue or {}).get("address") if asset_type != "cex_asset" else None,
-        },
+        "target_json": {},
         "primary_venue_json": venue
         if venue is not None
         else {
@@ -393,58 +427,132 @@ def radar_row(
             "address": None,
             "inst_id": f"{symbol or 'BTC'}-USDT",
         },
-        "attention_json": {
-            "mentions_5m": 1,
-            "mentions_1h": 1,
-            "mentions_window": 1,
-            "unique_authors": 1,
-            "watched_mentions": 1,
-            "latest_seen_ms": 1_700_000_000_000,
-        },
+        "factor_snapshot_json": factor_snapshot,
+        "factor_version": "token_factor_snapshot_v1",
+        "attention_json": {},
         "resolution_json": {
             "status": resolution_status,
             "resolution_status": resolution_status,
-            "target_type": "CexToken" if asset_type == "cex_asset" else "Asset" if asset_id else None,
+            "target_type": target_type,
             "target_id": asset_id,
             "reason_codes": [],
             "candidate_ids": [],
             "lookup_keys": [],
         },
-        "price_json": market
-        if market is not None
-        else {
-            "market_status": "pending_refresh",
-            "market_observation_status": "pending_refresh",
-            "price_change_status": "pending_refresh",
-            "provider": None,
-            "price_usd": None,
-        },
-        "score_json": score
-        if score is not None
-        else {
-            "heat": score_block(50),
-            "quality": score_block(70),
-            "propagation": score_block(50),
-            "tradeability": score_block(60),
-            "timing": score_block(50),
-            "opportunity": score_block(55),
-        },
+        "market_json": {},
+        "price_json": {},
+        "score_json": {},
         "decision": decision,
         "data_health_json": data_health
         if data_health is not None
-        else {"identity": identity_status, "market": "pending_refresh", "coverage": "public_stream"},
-        "source_event_ids_json": source_event_ids or [f"event:{resolved_intent_id}"],
+        else {
+            "factor_snapshot": "ready",
+            "identity": "ready" if identity_status == "EXACT" else "partial",
+            "market": "partial",
+        },
+        "source_event_ids_json": event_ids,
         "source_max_received_at_ms": 1_700_000_000_000,
     }
 
 
-def score_block(score: int):
+def factor_snapshot_json(
+    *,
+    target_type,
+    target_id,
+    symbol,
+    chain,
+    address,
+    target_market_type,
+    attention,
+    market,
+    timing,
+    native_market_id,
+    source_event_ids,
+    rank_score,
+    decision,
+):
+    families = {
+        "identity": family(
+            "identity",
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "symbol": symbol,
+                "chain": chain,
+                "address": address,
+            },
+        ),
+        "social_attention": family(
+            "social_attention",
+            {
+                "mentions_5m": 1,
+                "mentions_1h": 1,
+                "mentions_4h": 1,
+                "mentions_24h": 1,
+                "unique_authors": 1,
+                "watched_mentions": 1,
+                **(attention or {}),
+            },
+        ),
+        "social_quality": family("social_quality", {"duplicate_text_share": 0.0, "mentions": 1}),
+        "social_semantics": family("social_semantics", {"direction_counts": {}}),
+        "market_quality": family(
+            "market_quality",
+            {
+                "target_market_type": target_market_type,
+                "market_status": "missing",
+                "holders": None,
+                "liquidity_usd": None,
+                "market_cap_usd": None,
+                "volume_24h_usd": None,
+                "open_interest_usd": None,
+                "native_market_id": native_market_id,
+                **(market or {}),
+            },
+        ),
+        "timing": family(
+            "timing",
+            {
+                "price_change_before_social_pct": None,
+                "price_change_since_social_pct": None,
+                "social_signal_start_ms": 1_700_000_000_000,
+                **(timing or {}),
+            },
+        ),
+    }
     return {
-        "score": score,
-        "score_version": "social_opportunity_v3",
-        "reasons": [],
-        "risks": [],
-        "hard_risks": [],
-        "contributions": [],
-        "risk_caps": [],
+        "schema_version": "token_factor_snapshot_v1",
+        "subject": {
+            "target_type": target_type,
+            "target_id": target_id,
+            "symbol": symbol,
+            "chain": chain,
+            "address": address,
+            "target_market_type": target_market_type,
+        },
+        "families": families,
+        "hard_gates": {
+            "eligible_for_high_alert": decision == "high_alert",
+            "blocked_reasons": [] if decision != "discard" else ["identity_unresolved"] if not target_id else [],
+            "gates": [],
+        },
+        "composite": {
+            "family_scores": {name: item["score"] for name, item in families.items()},
+            "rank_score": rank_score,
+            "recommended_decision": decision,
+        },
+        "provenance": {
+            "source_event_ids": source_event_ids,
+            "computed_at_ms": 1_700_000_060_000,
+        },
+    }
+
+
+def family(name: str, facts: dict):
+    return {
+        "family": name,
+        "score": 80,
+        "data_health": "ready",
+        "facts": facts,
+        "factors": {"fixture": {"score": 80, "data_health": "ready"}},
     }

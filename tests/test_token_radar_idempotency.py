@@ -1,7 +1,7 @@
 """Phase 2.0 Goal G1: same input -> same output for token-radar rebuild.
 
 This test runs rebuild() twice with the same fixed now_ms and frozen source
-rows, then asserts that the resulting score_json blobs are byte-identical
+rows, then asserts that the resulting factor_snapshot_json blobs are byte-identical
 (after stripping wall-clock fields like computed_at_ms).
 
 The live-DB variant freezes `_source_rows` via monkeypatch so that new events
@@ -28,9 +28,9 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
 from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres
 
 
-def _strip_wall_clock(score_json: dict[str, Any]) -> dict[str, Any]:
+def _strip_wall_clock(factor_snapshot_json: dict[str, Any]) -> dict[str, Any]:
     """Remove fields that legitimately differ across runs due to wall time."""
-    cleaned = json.loads(json.dumps(score_json, default=str))
+    cleaned = json.loads(json.dumps(factor_snapshot_json, default=str))
     for key in ("computed_at_ms", "rebuilt_at_ms", "generated_at_ms"):
         cleaned.pop(key, None)
     cohort = cleaned.get("cohort")
@@ -46,7 +46,7 @@ def _live_pg_dsn() -> str | None:
 
 def test_token_radar_rebuild_is_idempotent_against_live_db():
     """Two consecutive rebuild() calls with the same frozen source snapshot and
-    the same now_ms must produce byte-identical score_json for every row (G1).
+    the same now_ms must produce byte-identical factor_snapshot_json for every row (G1).
 
     The source rows are frozen after the first DB fetch so that new live events
     arriving between the two Python-level rebuild() invocations cannot affect
@@ -97,7 +97,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
             )
             rows_first = conn.execute(
                 """
-                SELECT target_id, score_json
+                SELECT target_id, factor_snapshot_json
                 FROM token_radar_rows
                 WHERE "window" = '1h' AND scope = 'all'
                 ORDER BY target_id
@@ -110,7 +110,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
             )
             rows_second = conn.execute(
                 """
-                SELECT target_id, score_json
+                SELECT target_id, factor_snapshot_json
                 FROM token_radar_rows
                 WHERE "window" = '1h' AND scope = 'all'
                 ORDER BY target_id
@@ -131,15 +131,15 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
         if tid1 != tid2:
             diffs.append(f"target_id mismatch: {tid1!r} vs {tid2!r}")
             continue
-        s1 = _strip_wall_clock(dict(r1["score_json"]))
-        s2 = _strip_wall_clock(dict(r2["score_json"]))
+        s1 = _strip_wall_clock(dict(r1["factor_snapshot_json"]))
+        s2 = _strip_wall_clock(dict(r2["factor_snapshot_json"]))
         if s1 != s2:
             # Identify which top-level keys differ for actionable diagnostics.
             differing_keys = sorted(
                 k for k in set(list(s1) + list(s2)) if s1.get(k) != s2.get(k)
             )
             diffs.append(
-                f"score_json diverged for {tid1!r}: differing_keys={differing_keys}"
+                f"factor_snapshot_json diverged for {tid1!r}: differing_keys={differing_keys}"
             )
 
     assert not diffs, "Idempotency violated (G1):\n" + "\n".join(diffs[:10])

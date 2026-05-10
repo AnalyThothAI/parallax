@@ -5,6 +5,8 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_FACTOR_SNAPSHOT_VERSION
+
 
 class TokenRadarRepository:
     def __init__(self, conn: Any):
@@ -43,6 +45,8 @@ class TokenRadarRepository:
             if commit:
                 self.conn.commit()
             return False
+        for row in rows:
+            _validate_factor_contract(row)
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
@@ -56,16 +60,16 @@ class TokenRadarRepository:
                 INSERT INTO token_radar_rows(
                   row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
                   lane, rank, intent_id, event_id, target_type, target_id, pricefeed_id, intent_json,
-                  asset_json, primary_venue_json, target_json, attention_json, resolution_json, market_json,
-                  price_json, score_json, decision, data_health_json,
+                  asset_json, primary_venue_json, target_json, factor_snapshot_json, factor_version,
+                  decision, data_health_json,
                   source_event_ids_json, created_at_ms
                 )
                 VALUES (
                   %(row_id)s, %(projection_version)s, %(window)s, %(scope)s, %(computed_at_ms)s,
                   %(source_max_received_at_ms)s, %(lane)s, %(rank)s, %(intent_id)s, %(event_id)s,
                   %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(intent_json)s, %(asset_json)s,
-                  %(primary_venue_json)s, %(target_json)s, %(attention_json)s, %(resolution_json)s,
-                  %(market_json)s, %(price_json)s, %(score_json)s, %(decision)s, %(data_health_json)s,
+                  %(primary_venue_json)s, %(target_json)s, %(factor_snapshot_json)s, %(factor_version)s,
+                  %(decision)s, %(data_health_json)s,
                   %(source_event_ids_json)s, %(created_at_ms)s
                 )
                 """,
@@ -130,23 +134,44 @@ class TokenRadarRepository:
 
 
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
+    _validate_factor_contract(row)
     out = dict(row)
     for key in (
+        "factor_snapshot_json",
         "intent_json",
         "asset_json",
         "primary_venue_json",
         "target_json",
-        "attention_json",
-        "resolution_json",
-        "market_json",
-        "price_json",
-        "score_json",
         "data_health_json",
         "source_event_ids_json",
     ):
         payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
         out[key] = Jsonb(_json_ready(payload))
     return out
+
+
+def _validate_factor_contract(row: dict[str, Any]) -> None:
+    if "factor_snapshot_json" not in row:
+        raise ValueError("factor_snapshot_json is required for token radar row hard-cut contract")
+    factor_snapshot = row.get("factor_snapshot_json")
+    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
+        raise ValueError("factor_snapshot_json must be non-empty for token radar row hard-cut contract")
+    factor_version = str(row.get("factor_version") or "").strip()
+    if not factor_version:
+        raise ValueError("factor_version is required for token radar row hard-cut contract")
+    schema_version = str(factor_snapshot.get("schema_version") or "").strip()
+    if not schema_version:
+        raise ValueError("factor_snapshot_json.schema_version is required for token radar row hard-cut contract")
+    if schema_version != factor_version:
+        raise ValueError("factor_snapshot_json.schema_version must match factor_version")
+    if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        raise ValueError(
+            f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}"
+        )
+    for key in ("families", "hard_gates", "composite"):
+        payload = factor_snapshot.get(key)
+        if not isinstance(payload, dict) or not payload:
+            raise ValueError(f"factor_snapshot_json.{key} is required for token radar row hard-cut contract")
 
 
 def _json_ready(value: Any) -> Any:

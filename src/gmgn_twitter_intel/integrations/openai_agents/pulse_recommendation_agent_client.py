@@ -24,27 +24,28 @@ from openai import AsyncOpenAI
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     AGENT_NAME,
     BACKEND,
-    PULSE_THESIS_PROMPT_VERSION,
-    PULSE_THESIS_SCHEMA_VERSION,
+    PULSE_RECOMMENDATION_PROMPT_VERSION,
+    PULSE_RECOMMENDATION_SCHEMA_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import (
-    PulseThesisPayload,
-    pulse_thesis_agent_input,
-    pulse_thesis_agent_instructions,
-    validate_pulse_thesis_payload,
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
+    PulseRecommendationPayload,
+    collect_factor_keys,
+    pulse_recommendation_agent_input,
+    pulse_recommendation_agent_instructions,
+    validate_pulse_recommendation_payload,
 )
 
 
 @dataclass(frozen=True)
-class PulseThesisAgentResult:
-    payload: PulseThesisPayload
+class PulseRecommendationAgentResult:
+    payload: PulseRecommendationPayload
     agent_run_audit: dict[str, Any]
 
 
-class PulseThesisOutputSchema(AgentOutputSchemaBase):
+class PulseRecommendationOutputSchema(AgentOutputSchemaBase):
     def __init__(self) -> None:
-        self._schema = AgentOutputSchema(PulseThesisPayload)
+        self._schema = AgentOutputSchema(PulseRecommendationPayload)
 
     def is_plain_text(self) -> bool:
         return self._schema.is_plain_text()
@@ -68,7 +69,7 @@ class PulseThesisOutputSchema(AgentOutputSchemaBase):
             return self._schema.validate_json(normalized)
 
 
-class OpenAIAgentsPulseThesisClient:
+class OpenAIAgentsPulseRecommendationClient:
     provider = "openai"
 
     def __init__(
@@ -109,25 +110,25 @@ class OpenAIAgentsPulseThesisClient:
         return f"artifact:{self.model}"
 
     def request_audit(self, *, context: dict[str, Any], run_id: str, job: dict[str, Any]) -> dict[str, Any]:
-        _, audit, _ = self._request_context(context=context, run_id=run_id, job=job)
+        _, audit, _, _, _ = self._request_context(context=context, run_id=run_id, job=job)
         return audit
 
-    async def write_thesis(
+    async def write_recommendation(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisAgentResult:
-        input_payload, audit, input_source_event_ids = self._request_context(
+    ) -> PulseRecommendationAgentResult:
+        input_payload, audit, input_source_event_ids, available_factor_keys, max_recommendation = self._request_context(
             context=context,
             run_id=run_id,
             job=job,
         )
         agent = Agent(
             name=AGENT_NAME,
-            instructions=pulse_thesis_agent_instructions(),
-            output_type=PulseThesisOutputSchema(),
+            instructions=pulse_recommendation_agent_instructions(),
+            output_type=PulseRecommendationOutputSchema(),
             tools=[],
             model=self._model,
             model_settings=ModelSettings(
@@ -161,13 +162,15 @@ class OpenAIAgentsPulseThesisClient:
                 trace_metadata=audit["trace_metadata"],
             ),
         )
-        payload = validate_pulse_thesis_payload(
+        payload = validate_pulse_recommendation_payload(
             result.final_output,
+            available_factor_keys=set(available_factor_keys),
             input_source_event_ids=set(input_source_event_ids),
+            max_recommendation=max_recommendation,
         )
         output_json = payload.model_dump(mode="json")
         audit = {**audit, "output_hash": _sha256(output_json)}
-        return PulseThesisAgentResult(payload=payload, agent_run_audit=audit)
+        return PulseRecommendationAgentResult(payload=payload, agent_run_audit=audit)
 
     def _request_context(
         self,
@@ -175,18 +178,20 @@ class OpenAIAgentsPulseThesisClient:
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> tuple[str, dict[str, Any], list[str]]:
-        input_payload = pulse_thesis_agent_input(context)
+    ) -> tuple[str, dict[str, Any], list[str], list[str], str | None]:
+        input_payload = pulse_recommendation_agent_input(context)
         input_hash = _sha256(input_payload)
         input_source_event_ids = _input_source_event_ids(context)
+        available_factor_keys = _input_available_factor_keys(context)
+        max_recommendation = _max_recommendation(context)
         trace_metadata = {
             "backend": BACKEND,
             "run_id": str(run_id or ""),
             "job_id": str(job.get("job_id") or ""),
             "job_type": str(job.get("job_type") or ""),
             "attempt_count": int(job.get("attempt_count") or 0),
-            "prompt_version": PULSE_THESIS_PROMPT_VERSION,
-            "schema_version": PULSE_THESIS_SCHEMA_VERSION,
+            "prompt_version": PULSE_RECOMMENDATION_PROMPT_VERSION,
+            "schema_version": PULSE_RECOMMENDATION_SCHEMA_VERSION,
             "model": self.model,
             "artifact_version_hash": self.artifact_version_hash,
             "input_hash": input_hash,
@@ -201,14 +206,16 @@ class OpenAIAgentsPulseThesisClient:
             "sdk_trace_id": _trace_id(run_id),
             "workflow_name": self.workflow_name,
             "agent_name": AGENT_NAME,
-            "prompt_version": PULSE_THESIS_PROMPT_VERSION,
-            "schema_version": PULSE_THESIS_SCHEMA_VERSION,
+            "prompt_version": PULSE_RECOMMENDATION_PROMPT_VERSION,
+            "schema_version": PULSE_RECOMMENDATION_SCHEMA_VERSION,
             "artifact_version_hash": self.artifact_version_hash,
             "trace_metadata": trace_metadata,
             "input_hash": input_hash,
             "input_source_event_ids": input_source_event_ids,
+            "available_factor_keys": available_factor_keys,
+            "max_recommendation": max_recommendation,
         }
-        return input_payload, audit, input_source_event_ids
+        return input_payload, audit, input_source_event_ids, available_factor_keys, max_recommendation
 
     def _build_model(self):
         self._http_client = httpx.AsyncClient(trust_env=False)
@@ -241,6 +248,18 @@ def _input_source_event_ids(context: dict[str, Any]) -> list[str]:
     for segment in _iter_mapping_items(context.get("stage_segments")):
         values.extend(_iter_list(segment.get("representative_event_ids")))
     return _stable_unique_strings(values)
+
+
+def _input_available_factor_keys(context: dict[str, Any]) -> list[str]:
+    return sorted(collect_factor_keys(context.get("factor_snapshot")))
+
+
+def _max_recommendation(context: dict[str, Any]) -> str | None:
+    gate_result = context.get("gate_result")
+    if not isinstance(gate_result, dict):
+        return None
+    value = str(gate_result.get("max_recommendation") or "").strip()
+    return value or None
 
 
 def _strip_single_json_fence(value: str) -> str:

@@ -11,10 +11,12 @@ from ..identity_evidence_policy import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_OKX_DEX_EXACT_ADDRESS,
 )
+from .market_freshness_demand import prioritize_market_refresh_candidates
 
 DEX_PRICE_BATCH_SIZE = 20
 RADAR_PRICE_CANDIDATE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 RADAR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
+RADAR_PRICE_REFRESH_SCAN_MULTIPLIER = 5
 EXACT_IDENTITY_CONFIDENCES = frozenset({CONFIDENCE_MANUAL, CONFIDENCE_PROVIDER_EXACT})
 
 
@@ -96,18 +98,43 @@ def sync_dex_prices(
     limit: int,
     radar_since_ms: int | None = None,
     hot_since_ms: int | None = None,
+    hot_stale_after_ms: int | None = None,
+    warm_stale_after_ms: int | None = None,
     refresh_universe: str = "radar_candidates",
 ) -> dict[str, Any]:
-    rows = registry.chain_assets_needing_radar_price_refresh(
-        stale_before_ms=int(observed_at_ms) - int(stale_after_ms),
-        radar_since_ms=int(radar_since_ms)
-        if radar_since_ms is not None
-        else int(observed_at_ms) - RADAR_PRICE_CANDIDATE_LOOKBACK_MS,
-        hot_since_ms=int(hot_since_ms)
-        if hot_since_ms is not None
-        else int(observed_at_ms) - RADAR_PRICE_HOT_LOOKBACK_MS,
-        limit=max(0, int(limit)),
+    resolved_limit = max(0, int(limit))
+    resolved_radar_since_ms = (
+        int(radar_since_ms) if radar_since_ms is not None else int(observed_at_ms) - RADAR_PRICE_CANDIDATE_LOOKBACK_MS
     )
+    resolved_hot_since_ms = (
+        int(hot_since_ms) if hot_since_ms is not None else int(observed_at_ms) - RADAR_PRICE_HOT_LOOKBACK_MS
+    )
+    resolved_hot_stale_after_ms = max(
+        0,
+        int(hot_stale_after_ms) if hot_stale_after_ms is not None else int(stale_after_ms),
+    )
+    resolved_warm_stale_after_ms = max(
+        0,
+        int(warm_stale_after_ms) if warm_stale_after_ms is not None else int(stale_after_ms),
+    )
+    query_stale_after_ms = min(
+        max(0, int(stale_after_ms)),
+        resolved_hot_stale_after_ms,
+        resolved_warm_stale_after_ms,
+    )
+    candidate_rows = registry.chain_assets_needing_radar_price_refresh(
+        stale_before_ms=int(observed_at_ms) - query_stale_after_ms,
+        radar_since_ms=resolved_radar_since_ms,
+        hot_since_ms=resolved_hot_since_ms,
+        limit=_candidate_scan_limit(resolved_limit),
+    )
+    rows = prioritize_market_refresh_candidates(
+        candidate_rows,
+        now_ms=int(observed_at_ms),
+        hot_since_ms=resolved_hot_since_ms,
+        hot_stale_after_ms=resolved_hot_stale_after_ms,
+        warm_stale_after_ms=resolved_warm_stale_after_ms,
+    )[:resolved_limit]
     pricefeeds_written = 0
     observations_written = 0
     identity_verification_requests = 0
@@ -248,6 +275,10 @@ def sync_dex_prices(
     return {
         "assets_scanned": len(rows),
         "refresh_universe": refresh_universe,
+        "refresh_candidates_selected": len(rows),
+        "refresh_candidates_hot": sum(1 for row in rows if row.get("market_freshness_class") == "hot"),
+        "refresh_candidates_stale": sum(1 for row in rows if row.get("market_freshness_status") == "stale"),
+        "refresh_candidates_missing": sum(1 for row in rows if row.get("market_freshness_status") == "missing"),
         "identity_verification_requests": identity_verification_requests,
         "identity_verification_hits": identity_verification_hits,
         "identity_verification_errors": identity_verification_errors,
@@ -261,6 +292,10 @@ def sync_dex_prices(
 def _payload_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _candidate_scan_limit(limit: int) -> int:
+    return max(0, int(limit)) * RADAR_PRICE_REFRESH_SCAN_MULTIPLIER
 
 
 def _base_quote_from_inst_id(inst_id: str) -> tuple[str | None, str | None]:

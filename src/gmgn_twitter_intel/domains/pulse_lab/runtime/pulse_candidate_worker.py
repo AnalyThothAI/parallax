@@ -16,20 +16,25 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     BACKEND,
     PULSE_GATE_VERSION,
     PULSE_PLAYBOOK_VERSION,
-    PULSE_THESIS_PROMPT_VERSION,
-    PULSE_THESIS_SCHEMA_VERSION,
+    PULSE_RECOMMENDATION_PROMPT_VERSION,
+    PULSE_RECOMMENDATION_SCHEMA_VERSION,
     PULSE_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseThesisProvider
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
-    gate_pulse_candidate,
+    gate_pulse_candidate_from_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, safe_float, safe_int
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    safe_float,
+    safe_int,
+)
 
 SOURCE_TIMELINE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 SOURCE_EVENT_LOOKBACK_MS = 60 * 60 * 1000
@@ -62,9 +67,9 @@ class PulseCandidateContext:
     target_type: str | None
     target_id: str | None
     symbol: str | None
-    radar_score: dict[str, Any]
-    market_context: dict[str, Any]
-    timeline_context: dict[str, Any]
+    factor_snapshot: dict[str, Any]
+    selected_posts: list[dict[str, Any]]
+    gate_result: dict[str, Any] | None
     source_event_ids: list[str]
     evidence_event_ids: list[str]
 
@@ -81,19 +86,17 @@ class PulseCandidateContext:
             "scope": self.scope,
             "trigger_signature": self.trigger_signature,
             "timeline_signature": self.timeline_signature,
-            "radar_score": self.radar_score,
-            "market_context": self.market_context,
-            "timeline_context": self.timeline_context,
+            "factor_snapshot": self.factor_snapshot,
+            "gate_result": self.gate_result or {},
+            "selected_posts": self.selected_posts,
             "source_event_ids": self.source_event_ids,
             "evidence_event_ids": self.evidence_event_ids,
-            **self.timeline_context,
         }
 
 
 @dataclass(frozen=True)
 class PulseTriggerThresholds:
-    asset_heat_min: int = 80
-    asset_propagation_min: int = 70
+    min_rank_score: int = 70
 
 
 class PulseCandidateWorker:
@@ -101,8 +104,8 @@ class PulseCandidateWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        thesis_client: PulseThesisProvider,
-        gate_func: Callable[..., PulseGateResult] = gate_pulse_candidate,
+        recommendation_client: PulseRecommendationProvider,
+        gate_func: Callable[..., PulseGateResult] = gate_pulse_candidate_from_factor_snapshot,
         windows: tuple[str, ...] = DEFAULT_WINDOWS,
         scopes: tuple[str, ...] = DEFAULT_SCOPES,
         poll_interval: float = 60.0,
@@ -112,7 +115,7 @@ class PulseCandidateWorker:
         gate_thresholds: PulseGateThresholds | None = None,
     ) -> None:
         self.repository_session = repository_session
-        self.thesis_client = thesis_client
+        self.recommendation_client = recommendation_client
         self.gate_func = gate_func
         self.windows = tuple(windows)
         self.scopes = tuple(scopes)
@@ -140,11 +143,11 @@ class PulseCandidateWorker:
         self._stopped = True
 
     async def aclose(self) -> None:
-        close = getattr(self.thesis_client, "aclose", None)
+        close = getattr(self.recommendation_client, "aclose", None)
         if close is not None:
             await close()
             return
-        close_sync = getattr(self.thesis_client, "close", None)
+        close_sync = getattr(self.recommendation_client, "close", None)
         if close_sync is not None:
             close_sync()
 
@@ -250,6 +253,9 @@ class PulseCandidateWorker:
     ) -> PulseCandidateContext | None:
         if not _is_asset_trigger(row, thresholds=self.trigger_thresholds):
             return None
+        factor_snapshot = _factor_snapshot(row)
+        if factor_snapshot is None:
+            return None
         target_type = _clean(row.get("target_type"))
         target_id = _clean(row.get("target_id"))
         if not target_type or not target_id:
@@ -262,16 +268,12 @@ class PulseCandidateWorker:
             watched_only=False,
             limit=200,
         )
-        radar_score = _radar_score(row)
-        market_context = _market_context(row)
-        timeline_context = build_pulse_timeline_context(
+        timeline_payload = build_pulse_timeline_context(
             target=target,
             rows=rows,
             window=window,
             scope=scope,
             now_ms=now_ms,
-            radar_score=radar_score,
-            market_overlay=market_context,
         )
         trigger_signature = _asset_trigger_signature(
             row=row,
@@ -288,8 +290,6 @@ class PulseCandidateWorker:
             target_type=target_type,
             target_id=target_id,
         )
-        metrics = _asset_trigger_metrics(row, timeline_context=timeline_context, gate_thresholds=self.gate_thresholds)
-        radar_score[PULSE_TRIGGER_METRICS_KEY] = metrics
         return PulseCandidateContext(
             candidate_id=candidate_id,
             candidate_type="token_target",
@@ -297,14 +297,14 @@ class PulseCandidateWorker:
             window=window,
             scope=scope,
             trigger_signature=trigger_signature,
-            timeline_signature=_timeline_signature(timeline_context),
+            timeline_signature=_timeline_signature(timeline_payload),
             priority=_priority(row),
             target_type=target_type,
             target_id=target_id,
             symbol=_clean(target.get("symbol") or row.get("symbol")),
-            radar_score=radar_score,
-            market_context=market_context,
-            timeline_context=timeline_context,
+            factor_snapshot=factor_snapshot,
+            selected_posts=list(timeline_payload.get("selected_posts") or []),
+            gate_result=None,
             source_event_ids=_source_event_ids(row),
             evidence_event_ids=_source_event_ids(row),
         )
@@ -322,23 +322,15 @@ class PulseCandidateWorker:
             scope=SOURCE_SCOPE,
             source_event_id=source_event_id,
         )
-        metrics = _source_trigger_metrics(event)
-        timeline_context = {
-            "source_event": _jsonable(event),
-            "source_event_ids": [source_event_id],
-            "timeline_signature": timeline_signature,
-            "windows": {},
-            "selected_posts": [
-                {
-                    "event_id": source_event_id,
-                    "author_handle": _clean(event.get("author_handle")),
-                    "text": _source_summary_text(event),
-                    "role": "source_seed",
-                    "received_at_ms": safe_int(event.get("received_at_ms")),
-                }
-            ],
-        }
-        radar_score = {PULSE_TRIGGER_METRICS_KEY: metrics}
+        selected_posts = [
+            {
+                "event_id": source_event_id,
+                "author_handle": _clean(event.get("author_handle")),
+                "text": _source_summary_text(event),
+                "role": "source_seed",
+                "received_at_ms": safe_int(event.get("received_at_ms")),
+            }
+        ]
         return PulseCandidateContext(
             candidate_id=candidate_id,
             candidate_type="source_seed",
@@ -351,9 +343,9 @@ class PulseCandidateWorker:
             target_type=None,
             target_id=None,
             symbol=None,
-            radar_score=radar_score,
-            market_context={},
-            timeline_context=timeline_context,
+            factor_snapshot=_source_seed_factor_snapshot(event),
+            selected_posts=selected_posts,
+            gate_result=None,
             source_event_ids=[source_event_id],
             evidence_event_ids=[source_event_id],
         )
@@ -396,24 +388,31 @@ class PulseCandidateWorker:
             str(job.get("attempt_count") or 0),
             str(now_ms),
         )
+        gate = self.gate_func(
+            factor_snapshot=context.factor_snapshot,
+            thresholds=self.gate_thresholds,
+        )
+        context = _context_with_gate(context, gate)
         agent_context = context.agent_context()
         audit: dict[str, Any] | None = None
         try:
-            audit = self.thesis_client.request_audit(context=agent_context, run_id=run_id, job=job)
+            audit = self.recommendation_client.request_audit(context=agent_context, run_id=run_id, job=job)
             with self.repository_session() as repos, _transaction(repos.conn):
                 repos.pulse.insert_agent_run(
                     run_id=run_id,
                     job_id=str(job["job_id"]),
                     candidate_id=context.candidate_id,
-                    provider=getattr(self.thesis_client, "provider", "openai"),
-                    model=getattr(self.thesis_client, "model", ""),
+                    provider=getattr(self.recommendation_client, "provider", "openai"),
+                    model=getattr(self.recommendation_client, "model", ""),
                     backend=str(audit.get("backend") or BACKEND),
                     sdk_trace_id=audit.get("sdk_trace_id"),
                     workflow_name=str(audit.get("workflow_name") or WORKFLOW_NAME),
                     agent_name=str(audit.get("agent_name") or AGENT_NAME),
-                    artifact_version_hash=str(audit.get("artifact_version_hash") or _artifact_hash(self.thesis_client)),
-                    prompt_version=str(audit.get("prompt_version") or PULSE_THESIS_PROMPT_VERSION),
-                    schema_version=str(audit.get("schema_version") or PULSE_THESIS_SCHEMA_VERSION),
+                    artifact_version_hash=str(
+                        audit.get("artifact_version_hash") or _artifact_hash(self.recommendation_client)
+                    ),
+                    prompt_version=str(audit.get("prompt_version") or PULSE_RECOMMENDATION_PROMPT_VERSION),
+                    schema_version=str(audit.get("schema_version") or PULSE_RECOMMENDATION_SCHEMA_VERSION),
                     input_hash=str(audit.get("input_hash") or _stable_hash(agent_context)),
                     trace_metadata_json=audit.get("trace_metadata") or {},
                     usage_json=audit.get("usage") or {},
@@ -422,30 +421,22 @@ class PulseCandidateWorker:
                     started_at_ms=now_ms,
                     commit=False,
                 )
-            timeout_seconds = max(0.1, float(getattr(self.thesis_client, "timeout_seconds", 30.0) or 30.0))
+            timeout_seconds = max(0.1, float(getattr(self.recommendation_client, "timeout_seconds", 30.0) or 30.0))
             try:
                 result = await asyncio.wait_for(
-                    self.thesis_client.write_thesis(context=agent_context, run_id=run_id, job=job),
+                    self.recommendation_client.write_recommendation(context=agent_context, run_id=run_id, job=job),
                     timeout=timeout_seconds,
                 )
             except TimeoutError as exc:
                 raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
-            thesis = result.payload
+            recommendation = result.payload
             result_audit = result.agent_run_audit or audit or {}
-            gate = self.gate_func(
-                thesis=thesis,
-                radar_score=context.radar_score,
-                market_context=context.market_context,
-                timeline_context=context.timeline_context,
-                historical_credit=None,
-                thresholds=self.gate_thresholds,
-            )
             finished_at_ms = _now_ms()
             with self.repository_session() as repos, _transaction(repos.conn):
                 repos.pulse.finish_agent_run(
                     run_id,
                     "done",
-                    response_json=_payload_dict(thesis),
+                    response_json=_payload_dict(recommendation),
                     output_hash=result_audit.get("output_hash"),
                     usage_json=result_audit.get("usage") or {},
                     finished_at_ms=finished_at_ms,
@@ -462,24 +453,26 @@ class PulseCandidateWorker:
                     scope=context.scope,
                     pulse_status=gate.pulse_status,
                     verdict=gate.verdict,
-                    social_phase=str(getattr(thesis, "social_phase", "unknown") or "unknown"),
-                    narrative_type=str(getattr(thesis, "narrative_type", "unknown") or "unknown"),
+                    social_phase=_social_phase_from_snapshot(context.factor_snapshot),
+                    narrative_type=_narrative_type_from_context(context),
                     candidate_score=gate.candidate_score,
                     score_band=gate.score_band,
                     trigger_signature=context.trigger_signature,
                     timeline_signature=context.timeline_signature,
-                    thesis_json=_payload_dict(thesis),
-                    radar_score_json=context.radar_score,
-                    market_context_json=context.market_context,
+                    factor_snapshot_json=context.factor_snapshot,
+                    gate_json=gate.to_json(),
+                    agent_recommendation_json=_payload_dict(recommendation),
                     gate_reasons_json=gate.gate_reasons,
                     risk_reasons_json=gate.risk_reasons,
-                    evidence_event_ids_json=list(getattr(thesis, "evidence_event_ids", context.evidence_event_ids)),
-                    source_event_ids_json=list(getattr(thesis, "source_event_ids", context.source_event_ids)),
+                    evidence_event_ids_json=list(
+                        getattr(recommendation, "evidence_event_ids", context.evidence_event_ids)
+                    ),
+                    source_event_ids_json=context.source_event_ids,
                     agent_run_id=run_id,
                     pulse_version=PULSE_VERSION,
                     gate_version=PULSE_GATE_VERSION,
-                    prompt_version=PULSE_THESIS_PROMPT_VERSION,
-                    schema_version=PULSE_THESIS_SCHEMA_VERSION,
+                    prompt_version=PULSE_RECOMMENDATION_PROMPT_VERSION,
+                    schema_version=PULSE_RECOMMENDATION_SCHEMA_VERSION,
                     updated_at_ms=finished_at_ms,
                     commit=False,
                 )
@@ -488,7 +481,7 @@ class PulseCandidateWorker:
                         **_playbook_snapshot_payload(
                             context=context,
                             gate=gate,
-                            thesis=thesis,
+                            recommendation=recommendation,
                             now_ms=now_ms,
                         ),
                         commit=False,
@@ -510,16 +503,19 @@ class PulseCandidateWorker:
 
 
 def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds | None = None) -> bool:
+    factor_snapshot = _factor_snapshot(row)
+    if factor_snapshot is None:
+        return False
     if not _clean(row.get("target_type")) or not _clean(row.get("target_id")):
         return False
     resolved_thresholds = thresholds or PulseTriggerThresholds()
-    decision = _decision(row)
-    attention = _mapping(row.get("attention_json"))
+    score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
+    decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
+    watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_attention", "facts", "watched_mentions"))
     return (
-        decision in {"driver", "watch"}
-        or _component_score(row, "heat") >= resolved_thresholds.asset_heat_min
-        or _component_score(row, "propagation") >= resolved_thresholds.asset_propagation_min
-        or safe_int(attention.get("watched_mentions")) > 0
+        decision in {"high_alert", "watch"}
+        or score >= resolved_thresholds.min_rank_score
+        or watched_mentions > 0
     )
 
 
@@ -536,23 +532,12 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     timeline_signature = _clean(context.get("timeline_signature"))
     if not all((candidate_id, candidate_type, subject_key, window, scope, trigger_signature, timeline_signature)):
         return None
-    timeline_context = _mapping(context.get("timeline_context"))
-    if not timeline_context:
-        timeline_context = {
-            key: value
-            for key, value in context.items()
-            if key
-            in {
-                "target",
-                "windows",
-                "stage_segments",
-                "post_clusters",
-                "selected_posts",
-                "market_overlay",
-                "source_event",
-                "timeline_signature",
-            }
-        }
+    factor_snapshot = _mapping(context.get("factor_snapshot"))
+    if not factor_snapshot:
+        return None
+    selected_posts = context.get("selected_posts")
+    if not isinstance(selected_posts, list):
+        selected_posts = []
     return PulseCandidateContext(
         candidate_id=candidate_id,
         candidate_type=candidate_type,
@@ -565,9 +550,9 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
         target_type=_clean(context.get("target_type")),
         target_id=_clean(context.get("target_id")),
         symbol=_clean(context.get("symbol")),
-        radar_score=_mapping(context.get("radar_score")),
-        market_context=_mapping(context.get("market_context")),
-        timeline_context=timeline_context,
+        factor_snapshot=factor_snapshot,
+        selected_posts=[post for post in selected_posts if isinstance(post, dict)],
+        gate_result=_mapping(context.get("gate_result")) or None,
         source_event_ids=_stable_strings(context.get("source_event_ids")),
         evidence_event_ids=_stable_strings(context.get("evidence_event_ids")),
     )
@@ -598,8 +583,8 @@ def _asset_trigger_signature(
     gate_thresholds: PulseGateThresholds | None = None,
 ) -> str:
     resolved_trigger_thresholds = trigger_thresholds or PulseTriggerThresholds()
-    resolved_gate_thresholds = gate_thresholds or PulseGateThresholds()
-    metrics = _asset_trigger_metrics(row, timeline_context={}, gate_thresholds=resolved_gate_thresholds)
+    factor_snapshot = _factor_snapshot(row) or {}
+    metrics = _asset_trigger_metrics(row)
     payload = {
         "pulse_version": PULSE_VERSION,
         "candidate_type": candidate_type,
@@ -607,17 +592,11 @@ def _asset_trigger_signature(
         "target_id": _clean(row.get("target_id")),
         "window": window,
         "scope": scope,
-        "heat_bucket": metrics["heat_bucket"],
-        "propagation_bucket": metrics["propagation_bucket"],
-        "opportunity_decision": _decision(row),
-        "social_phase": metrics["social_phase"],
+        "rank_score_bucket": _score_bucket(metrics["rank_score"]),
+        "recommended_decision": _nested(factor_snapshot, "composite", "recommended_decision"),
+        "blocked_reasons": _stable_strings(_nested(factor_snapshot, "hard_gates", "blocked_reasons")),
         "watched_confirmation": metrics["watched_confirmation"],
-        "chase_risk": metrics["chase_risk"],
-        "trigger_thresholds": {
-            "asset_heat_min": resolved_trigger_thresholds.asset_heat_min,
-            "asset_propagation_min": resolved_trigger_thresholds.asset_propagation_min,
-        },
-        "gate_thresholds": _gate_threshold_payload(resolved_gate_thresholds),
+        "trigger_thresholds": {"min_rank_score": resolved_trigger_thresholds.min_rank_score},
     }
     return _stable_hash(payload)
 
@@ -658,26 +637,24 @@ def _timeline_signature(timeline_context: dict[str, Any]) -> str:
     return _stable_hash(timeline_context)
 
 
-def _asset_trigger_metrics(
-    row: dict[str, Any],
-    *,
-    timeline_context: dict[str, Any],
-    gate_thresholds: PulseGateThresholds | None = None,
-) -> dict[str, Any]:
-    attention = _mapping(row.get("attention_json"))
-    market = _market_context(row)
-    resolved_gate_thresholds = gate_thresholds or PulseGateThresholds()
+def _asset_trigger_metrics(row: dict[str, Any]) -> dict[str, Any]:
+    factor_snapshot = _factor_snapshot(row) or {}
+    blocked_reasons = _stable_strings(_nested(factor_snapshot, "hard_gates", "blocked_reasons"))
+    rank_score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     return {
-        "decision": _decision(row),
-        "heat_bucket": _score_bucket(_component_score(row, "heat")),
-        "propagation_bucket": _score_bucket(_component_score(row, "propagation")),
-        "social_phase": _social_phase(row, timeline_context),
-        "watched_confirmation": safe_int(attention.get("watched_mentions")) > 0,
-        "chase_risk": _chase_risk(row),
-        "independent_author_count": safe_int(attention.get("unique_authors")),
-        "market_status": _clean(market.get("market_status")),
-        "hard_risks": _hard_risks(_radar_score(row), market, timeline_context),
-        "trade_candidate_eligible": _trade_candidate_eligible(row, market, thresholds=resolved_gate_thresholds),
+        "rank_score": rank_score,
+        "recommended_decision": _clean(_nested(factor_snapshot, "composite", "recommended_decision")),
+        "watched_confirmation": safe_int(
+            _nested(factor_snapshot, "families", "social_attention", "facts", "watched_mentions")
+        )
+        > 0,
+        "independent_author_count": safe_int(
+            _nested(factor_snapshot, "families", "social_attention", "facts", "unique_authors")
+        ),
+        "blocked_reasons": blocked_reasons,
+        "hard_risks": blocked_reasons,
+        "trade_candidate_eligible": bool(_nested(factor_snapshot, "hard_gates", "eligible_for_high_alert"))
+        and rank_score >= 72,
     }
 
 
@@ -700,7 +677,7 @@ def _cooldown_active(
     if not existing_candidate:
         return False
     previous_metrics = _previous_trigger_metrics(existing_candidate)
-    current_metrics = _mapping(context.radar_score.get(PULSE_TRIGGER_METRICS_KEY))
+    current_metrics = _context_trigger_metrics(context)
     if _cooldown_bypass(existing_candidate, previous_metrics, current_metrics):
         return False
     cooldown_ms = _cooldown_ms(existing_candidate, current_metrics)
@@ -720,8 +697,6 @@ def _cooldown_bypass(
         return True
     if safe_int(current.get("independent_author_count")) >= safe_int(previous.get("independent_author_count")) + 5:
         return True
-    if not previous.get("chase_risk") and current.get("chase_risk"):
-        return True
     return bool(set(current.get("hard_risks") or []) - set(previous.get("hard_risks") or []))
 
 
@@ -733,8 +708,10 @@ def _cooldown_ms(existing_candidate: dict[str, Any], current_metrics: dict[str, 
 
 
 def _previous_trigger_metrics(existing_candidate: dict[str, Any]) -> dict[str, Any]:
-    radar = _mapping(existing_candidate.get("radar_score_json"))
-    return _mapping(radar.get(PULSE_TRIGGER_METRICS_KEY))
+    snapshot = _mapping(existing_candidate.get("factor_snapshot_json"))
+    if snapshot:
+        return _snapshot_trigger_metrics(snapshot)
+    return _mapping(existing_candidate.get("gate_json"))
 
 
 def _same_signature(row: dict[str, Any] | None, context: PulseCandidateContext) -> bool:
@@ -773,7 +750,7 @@ def _terminal_job_blocks_reenqueue(
     updated_at_ms = safe_int(existing_job.get("updated_at_ms"))
     if not updated_at_ms:
         return False
-    current_metrics = _mapping(context.radar_score.get(PULSE_TRIGGER_METRICS_KEY))
+    current_metrics = _context_trigger_metrics(context)
     cooldown_ms = _COOLDOWN_MS.get(_inferred_status(current_metrics), _COOLDOWN_MS["token_watch"])
     return now_ms < updated_at_ms + cooldown_ms
 
@@ -782,7 +759,7 @@ def _playbook_snapshot_payload(
     *,
     context: PulseCandidateContext,
     gate: PulseGateResult,
-    thesis: PulseThesisPayload,
+    recommendation: PulseRecommendationPayload,
     now_ms: int,
 ) -> dict[str, Any]:
     horizon = context.window
@@ -797,19 +774,26 @@ def _playbook_snapshot_payload(
         "side": _playbook_side(gate.pulse_status),
         "setup": {
             "pulse_status": gate.pulse_status,
+            "recommendation": recommendation.recommendation,
+            "confidence": recommendation.confidence,
             "candidate_score": gate.candidate_score,
             "score_band": gate.score_band,
-            "summary_zh": thesis.summary_zh,
-            "why_now_zh": thesis.why_now_zh,
+            "summary_zh": recommendation.summary_zh,
         },
-        "confirmation": {"triggers_zh": list(thesis.confirmation_triggers_zh)},
-        "invalidation": {"triggers_zh": list(thesis.invalidation_triggers_zh)},
+        "confirmation": {
+            "upgrade_conditions": [item.model_dump(mode="json") for item in recommendation.upgrade_conditions],
+        },
+        "invalidation": {
+            "invalidation_conditions": [
+                item.model_dump(mode="json") for item in recommendation.invalidation_conditions
+            ],
+        },
         "risk": {
-            "top_risks": list(thesis.top_risks),
+            "residual_risks": [item.model_dump(mode="json") for item in recommendation.residual_risks],
             "risk_reasons": gate.risk_reasons,
             "hard_risks": gate.hard_risks,
         },
-        "entry_market": context.market_context,
+        "entry_market": _nested(context.factor_snapshot, "families", "market_quality", "facts") or {},
         "playbook_version": PULSE_PLAYBOOK_VERSION,
         "outcome_status": "pending",
         "created_at_ms": now_ms,
@@ -824,21 +808,6 @@ def _playbook_side(status: str) -> str:
     if status == "blocked_low_information":
         return "FLAT"
     return "OBSERVE_ONLY"
-
-
-def _radar_score(row: dict[str, Any]) -> dict[str, Any]:
-    score = dict(_mapping(row.get("score_json")))
-    score["decision"] = _decision(row)
-    score["attention"] = _mapping(row.get("attention_json"))
-    score["market"] = _market_context(row)
-    score["price"] = _mapping(row.get("price_json"))
-    score["data_health"] = _mapping(row.get("data_health_json"))
-    return _jsonable(score)
-
-
-def _market_context(row: dict[str, Any]) -> dict[str, Any]:
-    market = _mapping(row.get("market_json")) or _mapping(row.get("price_json"))
-    return _jsonable(market)
 
 
 def _target_payload(row: dict[str, Any]) -> dict[str, Any]:
@@ -858,8 +827,12 @@ def _subject_key(target: dict[str, Any], row: dict[str, Any]) -> str:
 
 
 def _priority(row: dict[str, Any]) -> int:
-    decision_priority = {"driver": 30, "watch": 20}.get(_decision(row), 0)
-    return decision_priority + _component_score(row, "heat")
+    factor_snapshot = _factor_snapshot(row) or {}
+    decision_priority = {"high_alert": 30, "watch": 20}.get(
+        _clean(_nested(factor_snapshot, "composite", "recommended_decision")),
+        0,
+    )
+    return decision_priority + safe_int(_nested(factor_snapshot, "composite", "rank_score"))
 
 
 def _source_event_ids(row: dict[str, Any]) -> list[str]:
@@ -911,96 +884,12 @@ def _source_summary_text(event: dict[str, Any]) -> str | None:
     )
 
 
-def _component_score(row: dict[str, Any], key: str) -> int:
-    score = _mapping(row.get("score_json"))
-    value = score.get(key)
-    if isinstance(value, dict):
-        return safe_int(value.get("score"))
-    return safe_int(value)
-
-
-def _decision(row: dict[str, Any]) -> str:
-    score = _mapping(row.get("score_json"))
-    opportunity = _mapping(score.get("opportunity"))
-    return _clean(opportunity.get("decision") or row.get("decision")) or ""
-
-
-def _social_phase(row: dict[str, Any], timeline_context: dict[str, Any]) -> str:
-    windows = _mapping(timeline_context.get("windows"))
-    active = _mapping(windows.get("1h") or windows.get("5m"))
-    if active.get("phase"):
-        return str(active["phase"])
-    propagation = _mapping(_mapping(row.get("score_json")).get("propagation"))
-    return _clean(propagation.get("phase") or row.get("phase")) or "unknown"
-
-
-def _chase_risk(row: dict[str, Any]) -> bool:
-    score = _mapping(row.get("score_json"))
-    timing = _mapping(score.get("timing"))
-    price = _mapping(row.get("price_json"))
-    return bool(timing.get("chase_risk") or row.get("chase_risk") or price.get("chase_risk"))
-
-
-def _hard_risks(*sources: dict[str, Any]) -> list[str]:
-    risks: list[str] = []
-    for source in sources:
-        for value in (source, *_mapping_values(source)):
-            if not isinstance(value, dict):
-                continue
-            for key in ("hard_risks", "risks", "risk_flags"):
-                items = value.get(key)
-                if isinstance(items, list):
-                    risks.extend(str(item) for item in items if item)
-    return _stable_strings(risks)
-
-
-def _trade_candidate_eligible(
-    row: dict[str, Any],
-    market: dict[str, Any],
-    *,
-    thresholds: PulseGateThresholds,
-) -> bool:
-    return (
-        _decision(row) == "driver"
-        and _component_score(row, "heat") >= thresholds.trade_heat_min
-        and _component_score(row, "quality") >= thresholds.trade_quality_min
-        and _component_score(row, "propagation") >= thresholds.trade_propagation_min
-        and _component_score(row, "tradeability") >= thresholds.tradeability_min
-        and _component_score(row, "timing") >= thresholds.timing_min
-        and market.get("market_status") == "fresh"
-        and not _chase_risk(row)
-    )
-
-
-def _gate_threshold_payload(thresholds: PulseGateThresholds) -> dict[str, Any]:
-    return {
-        "trade_heat_min": thresholds.trade_heat_min,
-        "trade_quality_min": thresholds.trade_quality_min,
-        "trade_propagation_min": thresholds.trade_propagation_min,
-        "tradeability_min": thresholds.tradeability_min,
-        "timing_min": thresholds.timing_min,
-        "confidence_min": thresholds.confidence_min,
-        "token_watch_signal_min": thresholds.token_watch_signal_min,
-        "high_conviction_min": thresholds.high_conviction_min,
-    }
-
-
 def _inferred_status(metrics: dict[str, Any]) -> str:
     if metrics.get("trade_candidate_eligible"):
         return "trade_candidate"
     if metrics.get("source_event_id"):
         return "theme_watch"
     return "token_watch"
-
-
-def _latest_source_event_id(row: dict[str, Any]) -> str | None:
-    values = _source_event_ids(row)
-    return values[-1] if values else _clean(row.get("event_id"))
-
-
-def _latest_seen_ms(row: dict[str, Any]) -> int:
-    attention = _mapping(row.get("attention_json"))
-    return safe_int(attention.get("latest_seen_ms") or row.get("source_max_received_at_ms") or row.get("created_at_ms"))
 
 
 def _score_bucket(score: int | float | None) -> str:
@@ -1027,7 +916,104 @@ def _time_bucket_ms(value: int, bucket_ms: int) -> int:
     return int(value) // int(bucket_ms) * int(bucket_ms)
 
 
-def _payload_dict(payload: PulseThesisPayload | dict[str, Any]) -> dict[str, Any]:
+def _context_with_gate(context: PulseCandidateContext, gate: PulseGateResult) -> PulseCandidateContext:
+    return PulseCandidateContext(
+        candidate_id=context.candidate_id,
+        candidate_type=context.candidate_type,
+        subject_key=context.subject_key,
+        window=context.window,
+        scope=context.scope,
+        trigger_signature=context.trigger_signature,
+        timeline_signature=context.timeline_signature,
+        priority=context.priority,
+        target_type=context.target_type,
+        target_id=context.target_id,
+        symbol=context.symbol,
+        factor_snapshot=context.factor_snapshot,
+        selected_posts=context.selected_posts,
+        gate_result=gate.to_json(),
+        source_event_ids=context.source_event_ids,
+        evidence_event_ids=context.evidence_event_ids,
+    )
+
+
+def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
+    snapshot = row.get("factor_snapshot_json")
+    if not isinstance(snapshot, dict) or not snapshot:
+        return None
+    if snapshot.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        return None
+    if not all(isinstance(snapshot.get(key), dict) for key in ("subject", "hard_gates", "composite")):
+        return None
+    return _jsonable(snapshot)
+
+
+def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
+    source_event_id = _clean(event.get("event_id"))
+    return {
+        "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+        "subject": {
+            "target_type": None,
+            "target_id": None,
+            "symbol": None,
+            "source_event_id": source_event_id,
+        },
+        "families": {},
+        "hard_gates": {
+            "eligible_for_high_alert": False,
+            "blocked_reasons": ["missing_token_target"],
+        },
+        "composite": {
+            "rank_score": 0,
+            "recommended_decision": "discard",
+        },
+        "provenance": {"source_event_ids": [source_event_id] if source_event_id else []},
+    }
+
+
+def _snapshot_trigger_metrics(snapshot: dict[str, Any]) -> dict[str, Any]:
+    rank_score = safe_int(_nested(snapshot, "composite", "rank_score"))
+    blocked_reasons = _stable_strings(_nested(snapshot, "hard_gates", "blocked_reasons"))
+    return {
+        "rank_score": rank_score,
+        "recommended_decision": _clean(_nested(snapshot, "composite", "recommended_decision")),
+        "watched_confirmation": safe_int(
+            _nested(snapshot, "families", "social_attention", "facts", "watched_mentions")
+        )
+        > 0,
+        "independent_author_count": safe_int(
+            _nested(snapshot, "families", "social_attention", "facts", "unique_authors")
+        ),
+        "hard_risks": blocked_reasons,
+        "trade_candidate_eligible": bool(_nested(snapshot, "hard_gates", "eligible_for_high_alert"))
+        and rank_score >= 72,
+    }
+
+
+def _context_trigger_metrics(context: PulseCandidateContext) -> dict[str, Any]:
+    return _snapshot_trigger_metrics(context.factor_snapshot)
+
+
+def _social_phase_from_snapshot(factor_snapshot: dict[str, Any]) -> str:
+    return _clean(_nested(factor_snapshot, "families", "social_semantics", "facts", "phase")) or "unknown"
+
+
+def _narrative_type_from_context(context: PulseCandidateContext) -> str:
+    if context.candidate_type == "source_seed":
+        return "product_catalyst"
+    return "direct_token"
+
+
+def _nested(data: dict[str, Any], *keys: str) -> Any:
+    value: Any = data
+    for key in keys:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _payload_dict(payload: PulseRecommendationPayload | dict[str, Any]) -> dict[str, Any]:
     if hasattr(payload, "model_dump"):
         return payload.model_dump(mode="json")
     return dict(payload)
@@ -1052,10 +1038,6 @@ def _artifact_hash(client: Any) -> str:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
-
-
-def _mapping_values(value: dict[str, Any]) -> list[dict[str, Any]]:
-    return [item for item in value.values() if isinstance(item, dict)]
 
 
 def _stable_strings(values: Any) -> list[str]:

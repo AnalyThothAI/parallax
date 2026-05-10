@@ -25,7 +25,16 @@ describe("venue links", () => {
   });
 
   it("opens Signal Pulse DEX targets on GMGN", () => {
-    expect(signalPulseVenueActions(pulse({ targetType: "Asset", targetId: "asset:eip155:8453:erc20:0x920738cbe6ddf7399187ffcf85c4b19154123be4" }))).toEqual([
+    expect(
+      signalPulseVenueActions(
+        pulse({
+          targetType: "Asset",
+          targetId: "asset:eip155:8453:erc20:0x920738cbe6ddf7399187ffcf85c4b19154123be4",
+          chain: "eip155:8453",
+          address: "0x920738cbe6ddf7399187ffcf85c4b19154123be4"
+        })
+      )
+    ).toEqual([
       {
         label: "GMGN",
         url: "https://gmgn.ai/base/token/0x920738cbe6ddf7399187ffcf85c4b19154123be4"
@@ -40,7 +49,7 @@ describe("venue links", () => {
           targetType: "CexToken",
           targetId: "cex_token:SOL",
           symbol: "SOL",
-          marketContext: { pricefeed_id: "pricefeed:cex:okx:spot:SOL-USDT" }
+          facts: { native_market_id: "pricefeed:cex:okx:spot:SOL-USDT" }
         })
       )
     ).toEqual([
@@ -136,7 +145,9 @@ function pulse(options: {
   targetType: "Asset" | "CexToken";
   targetId: string;
   symbol?: string | null;
-  marketContext?: Record<string, unknown>;
+  chain?: string | null;
+  address?: string | null;
+  facts?: Record<string, unknown>;
 }): SignalPulseItem {
   return {
     candidate_id: "pulse-1",
@@ -148,18 +159,39 @@ function pulse(options: {
     window: "1h",
     scope: "all",
     pulse_status: "token_watch",
-    bull_case_zh: [],
-    bear_case_zh: [],
-    confirmation_triggers_zh: [],
-    invalidation_triggers_zh: [],
-    top_risks: [],
-    gate_reasons: [],
-    risk_reasons: [],
     evidence_event_ids: [],
     source_event_ids: [],
-    radar_score_json: {},
-    market_context_json: options.marketContext ?? {},
-    thesis_json: {},
+    factor_snapshot: {
+      schema_version: "token_factor_snapshot_v1",
+      subject: {
+        target_type: options.targetType,
+        target_id: options.targetId,
+        symbol: options.symbol ?? "TOKEN",
+        chain: options.chain ?? null,
+        address: options.address ?? null
+      },
+      families: {
+        market_quality: {
+          score: 50,
+          data_health: "ready",
+          facts: options.facts ?? {},
+          factors: {}
+        }
+      },
+      hard_gates: { eligible_for_high_alert: false, blocked_reasons: [] },
+      composite: { rank_score: 50, recommended_decision: "watch" }
+    },
+    agent_recommendation: {
+      schema_version: "pulse_recommendation_v1",
+      recommendation: "watch",
+      summary_zh: "watch",
+      primary_reasons: [],
+      upgrade_conditions: [],
+      invalidation_conditions: [],
+      residual_risks: []
+    },
+    gate: { pulse_status: "token_watch", candidate_score: 50, score_band: "watch" },
+    fact_card: {},
     created_at_ms: 1,
     updated_at_ms: 1,
     playbooks: []

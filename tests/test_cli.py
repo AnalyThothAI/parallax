@@ -515,6 +515,13 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     monkeypatch.setattr(cli_module, "_run_sync_gmgn_directory", fake_runner)
     monkeypatch.setattr(cli_module, "GmgnDirectoryClient", FakeClient)
     monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    conn = connect_postgres_test(read_only=False)
+    try:
+        migrate(conn)
+    finally:
+        conn.close()
+    monkeypatch.setenv("HOME", str(tmp_path))
 
     stdout = io.StringIO()
     code = cli_module.main(
@@ -538,7 +545,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     assert isinstance(captured["client"], FakeClient)
 
 
-def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch):
+def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch, tmp_path):
     import io
     import json
 
@@ -557,6 +564,13 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
 
     monkeypatch.setattr(cli_module, "_run_sync_gmgn_directory", boom)
     monkeypatch.setattr(cli_module, "GmgnDirectoryClient", FakeClient)
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    conn = connect_postgres_test(read_only=False)
+    try:
+        migrate(conn)
+    finally:
+        conn.close()
+    monkeypatch.setenv("HOME", str(tmp_path))
 
     stdout = io.StringIO()
     code = cli_module.main(["ops", "sync-gmgn-directory"], stdout=stdout)

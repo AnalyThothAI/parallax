@@ -406,12 +406,12 @@ class PulseRepository:
         gate_version: str,
         prompt_version: str,
         schema_version: str,
-        thesis_json: dict[str, Any] | None = None,
+        factor_snapshot_json: dict[str, Any],
+        gate_json: dict[str, Any],
         target_type: str | None = None,
         target_id: str | None = None,
         symbol: str | None = None,
-        radar_score_json: dict[str, Any] | None = None,
-        market_context_json: dict[str, Any] | None = None,
+        agent_recommendation_json: dict[str, Any] | None = None,
         gate_reasons_json: list[Any] | None = None,
         risk_reasons_json: list[Any] | None = None,
         evidence_event_ids_json: list[Any] | None = None,
@@ -429,14 +429,15 @@ class PulseRepository:
               candidate_id, candidate_type, subject_key, target_type, target_id, symbol,
               "window", scope, pulse_status, verdict, social_phase, narrative_type,
               candidate_score, score_band, trigger_signature, timeline_signature,
-              thesis_json, radar_score_json, market_context_json, gate_reasons_json,
-              risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
+              factor_snapshot_json, agent_recommendation_json, gate_json,
+              gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
               agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
               created_at_ms, updated_at_ms
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
@@ -454,9 +455,9 @@ class PulseRepository:
               score_band = excluded.score_band,
               trigger_signature = excluded.trigger_signature,
               timeline_signature = excluded.timeline_signature,
-              thesis_json = excluded.thesis_json,
-              radar_score_json = excluded.radar_score_json,
-              market_context_json = excluded.market_context_json,
+              factor_snapshot_json = excluded.factor_snapshot_json,
+              agent_recommendation_json = excluded.agent_recommendation_json,
+              gate_json = excluded.gate_json,
               gate_reasons_json = excluded.gate_reasons_json,
               risk_reasons_json = excluded.risk_reasons_json,
               evidence_event_ids_json = excluded.evidence_event_ids_json,
@@ -486,9 +487,9 @@ class PulseRepository:
                 score_band,
                 trigger_signature,
                 timeline_signature,
-                _json(thesis_json or {}),
-                _json(radar_score_json or {}),
-                _json(market_context_json or {}),
+                _json(factor_snapshot_json),
+                _json(agent_recommendation_json or {}),
+                _json(gate_json),
                 _json(gate_reasons_json or []),
                 _json(risk_reasons_json or []),
                 _json(evidence_event_ids_json or []),
@@ -601,7 +602,7 @@ class PulseRepository:
               COUNT(*) FILTER (
                 WHERE pulse_status IN {DISPLAY_PULSE_STATUS_SQL}
                   AND verdict IS DISTINCT FROM 'blocked_low_information'
-                  AND market_context_json->>'market_status' = 'fresh'
+                  AND factor_snapshot_json #>> '{{families,market_quality,facts,market_status}}' = 'fresh'
               ) AS market_fresh_count
             FROM pulse_candidates
             AS candidate
