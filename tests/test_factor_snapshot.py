@@ -186,10 +186,51 @@ def test_unresolved_identity_blocks_high_alert() -> None:
     assert "identity_unresolved" in snapshot_for_source_seed["hard_gates"]["blocked_reasons"]
 
 
+def test_dex_asset_missing_market_floors_blocks_high_alert() -> None:
+    snapshot = _strong_dex_snapshot(
+        market={
+            "holders": None,
+            "liquidity_usd": None,
+            "market_cap_usd": None,
+        }
+    )
+
+    assert snapshot["hard_gates"]["eligible_for_high_alert"] is False
+    assert set(snapshot["hard_gates"]["blocked_reasons"]) >= {
+        "holders_below_high_alert_floor",
+        "liquidity_below_high_alert_floor",
+        "market_cap_below_high_alert_floor",
+    }
+    assert snapshot["composite"]["recommended_decision"] != "high_alert"
+    assert snapshot["families"]["market_quality"]["factors"]["holders"]["data_health"] == "missing"
+    assert snapshot["families"]["market_quality"]["factors"]["holders"]["score"] == 0
+
+
+def test_non_finite_float_inputs_are_treated_as_missing() -> None:
+    snapshot = _strong_dex_snapshot(
+        market={
+            "liquidity_usd": float("inf"),
+            "market_cap_usd": float("-inf"),
+        },
+        social_quality={"duplicate_text_share": float("nan")},
+    )
+
+    assert snapshot["families"]["social_quality"]["factors"]["duplicate_text_share"]["raw_value"] is None
+    assert snapshot["families"]["social_quality"]["factors"]["duplicate_text_share"]["data_health"] == "missing"
+    assert snapshot["families"]["market_quality"]["factors"]["liquidity_usd"]["raw_value"] is None
+    assert snapshot["families"]["market_quality"]["factors"]["market_cap_usd"]["raw_value"] is None
+    assert snapshot["hard_gates"]["eligible_for_high_alert"] is False
+    assert set(snapshot["hard_gates"]["blocked_reasons"]) >= {
+        "liquidity_below_high_alert_floor",
+        "market_cap_below_high_alert_floor",
+    }
+
+
 def _strong_dex_snapshot(
     *,
     target: dict[str, object] | None = None,
     market: dict[str, object] | None = None,
+    social_quality: dict[str, object] | None = None,
 ) -> dict[str, object]:
     base_target: dict[str, object] = {
         "target_type": "Asset",
@@ -208,6 +249,14 @@ def _strong_dex_snapshot(
     }
     if market is not None:
         base_market.update(market)
+    base_social_quality: dict[str, object] = {
+        "duplicate_text_share": 0.0,
+        "informative_post_count": 8,
+        "mentions": 12,
+        "independent_authors": 8,
+    }
+    if social_quality is not None:
+        base_social_quality.update(social_quality)
     return build_token_factor_snapshot(
         target=base_target,
         attention={
@@ -217,12 +266,7 @@ def _strong_dex_snapshot(
             "unique_authors": 8,
             "watched_mentions": 2,
         },
-        social_quality={
-            "duplicate_text_share": 0.0,
-            "informative_post_count": 8,
-            "mentions": 12,
-            "independent_authors": 8,
-        },
+        social_quality=base_social_quality,
         social_semantics={
             "direction_counts": {"bullish": 5, "neutral": 2},
             "impact_mean": 0.7,

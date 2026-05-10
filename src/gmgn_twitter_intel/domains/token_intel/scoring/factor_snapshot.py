@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import (
@@ -131,7 +132,7 @@ def _social_quality_family(*, social_quality: dict[str, Any]) -> dict[str, Any]:
                 "social_quality",
                 "duplicate_text_share",
                 raw_value=duplicate_text_share,
-                score=100.0 - safe_float(duplicate_text_share) * 100.0,
+                score=0.0 if duplicate_text_share is None else 100.0 - duplicate_text_share * 100.0,
                 risk_flags=duplicate_risk,
                 hard_gate="block_high_alert" if duplicate_risk else None,
             ),
@@ -325,7 +326,7 @@ def _factor_point(
         "family": family,
         "key": key,
         "raw_value": raw_value,
-        "score": clamp_score(score),
+        "score": clamp_score(_finite_score(score)),
         "confidence": round(max(0.0, min(1.0, float(confidence))), 4),
         "data_health": health,
         "freshness_ms": freshness_ms,
@@ -342,6 +343,16 @@ def _family_data_health(factors: list[dict[str, Any]]) -> str:
     if health_values == {"ready"}:
         return "ready"
     return "partial"
+
+
+def _finite_score(value: Any) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(parsed):
+        return 0.0
+    return parsed
 
 
 def _presence_factor(family: str, key: str, value: Any, *, confidence: float = 0.95) -> dict[str, Any]:
@@ -454,7 +465,7 @@ def _target_market_type(target: dict[str, Any]) -> str:
 
 def _is_below(value: Any, floor_key: str) -> bool:
     if value is None:
-        return False
+        return True
     return safe_float(value) < safe_float(DEX_HIGH_ALERT_FLOORS[floor_key])
 
 
@@ -468,9 +479,12 @@ def _optional_float(value: Any) -> float | None:
     if value is None:
         return None
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
 
 
 def _optional_int(value: Any) -> int | None:
