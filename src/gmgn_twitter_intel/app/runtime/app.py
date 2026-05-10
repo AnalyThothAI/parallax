@@ -328,6 +328,11 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             repository_session=lambda: repository_session(db_pool),
             inst_types=settings.okx_cex_inst_types,
             interval_seconds=settings.okx_cex_sync_interval_seconds,
+            dex_interval_seconds=settings.okx_dex_sync_interval_seconds,
+            dex_stale_after_ms=int(settings.okx_dex_price_warm_stale_seconds * 1000),
+            dex_hot_stale_after_ms=int(settings.okx_dex_price_hot_stale_seconds * 1000),
+            dex_warm_stale_after_ms=int(settings.okx_dex_price_warm_stale_seconds * 1000),
+            dex_refresh_limit=settings.okx_dex_price_refresh_limit,
         )
         runtime.message_market_observation_worker = MessageMarketObservationWorker(
             cex_market=providers.asset_market.message_cex_market,

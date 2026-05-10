@@ -176,6 +176,10 @@ def test_sync_dex_prices_refreshes_active_dex_venues_in_batches():
     assert result == {
         "assets_scanned": 1,
         "refresh_universe": "radar_candidates",
+        "refresh_candidates_selected": 1,
+        "refresh_candidates_hot": 0,
+        "refresh_candidates_stale": 0,
+        "refresh_candidates_missing": 1,
         "identity_verification_requests": 0,
         "identity_verification_hits": 0,
         "identity_verification_errors": 0,
@@ -193,7 +197,7 @@ def test_sync_dex_prices_refreshes_active_dex_venues_in_batches():
             "stale_before_ms": 1_778_084_800_000,
             "radar_since_ms": 1_777_998_700_000,
             "hot_since_ms": 1_778_081_500_000,
-            "limit": 100,
+            "limit": 500,
         }
     ]
     assert registry.global_refresh_calls == []
@@ -215,6 +219,89 @@ def test_sync_dex_prices_refreshes_active_dex_venues_in_batches():
         "liquidity_usd": 9_000.0,
         "holders": 123,
     }
+
+
+def test_sync_dex_prices_prioritizes_hot_stale_radar_candidate():
+    registry = FakeRegistry()
+    price_observations = FakePriceObservations()
+    registry.dex_refresh_rows = [
+        {
+            "asset_id": "warm-old",
+            "chain_id": "eip155:56",
+            "address": "0xwarm",
+            "identity_confidence": "provider_exact",
+            "latest_candidate_received_at_ms": 1_777_990_000_000,
+            "candidate_event_count": 10,
+            "latest_price_observed_at_ms": 1_777_990_000_000,
+        },
+        {
+            "asset_id": "asset:eip155:56:erc20:0x8f32420f2e3728c49399b00dd0a796602d984444",
+            "chain_id": "eip155:56",
+            "address": "0x8f32420f2e3728c49399b00dd0a796602d984444",
+            "identity_confidence": "provider_exact",
+            "latest_candidate_received_at_ms": 1_778_000_050_000,
+            "candidate_event_count": 2,
+            "latest_price_observed_at_ms": 1_777_999_900_000,
+        },
+    ]
+    dex_market = FakeDexMarket()
+
+    result = sync_dex_prices(
+        registry=registry,
+        identity_evidence=FakeIdentityEvidence(),
+        price_observations=price_observations,
+        dex_market=dex_market,
+        observed_at_ms=1_778_000_060_000,
+        stale_after_ms=300_000,
+        hot_stale_after_ms=90_000,
+        warm_stale_after_ms=300_000,
+        limit=1,
+        radar_since_ms=1_777_900_000_000,
+        hot_since_ms=1_778_000_000_000,
+    )
+
+    assert result["price_observations_written"] == 1
+    assert result["refresh_candidates_selected"] == 1
+    assert result["refresh_candidates_hot"] == 1
+    assert result["refresh_candidates_stale"] == 1
+    assert [(item.chain_id, item.address) for item in dex_market.price_requests[0]] == [
+        ("eip155:56", "0x8f32420f2e3728c49399b00dd0a796602d984444")
+    ]
+
+
+def test_asset_market_sync_worker_uses_dex_refresh_knobs():
+    registry = FakeRegistry()
+    price_observations = FakePriceObservations()
+    registry.dex_refresh_rows = [
+        {
+            "asset_id": f"asset:eip155:56:erc20:0x{i:040x}",
+            "chain_id": "eip155:56",
+            "address": f"0x{i:040x}",
+            "symbol": f"T{i}",
+            "identity_confidence": "provider_exact",
+            "latest_candidate_received_at_ms": 1_778_000_050_000,
+            "candidate_event_count": i,
+            "latest_price_observed_at_ms": None,
+        }
+        for i in range(1, 5)
+    ]
+    session = FakeRepositorySession(registry, price_observations)
+    worker = AssetMarketSyncWorker(
+        dex_market=FakeDexMarket(),
+        repository_session=lambda: session,
+        inst_types=(),
+        interval_seconds=300,
+        dex_stale_after_ms=600_000,
+        dex_hot_stale_after_ms=90_000,
+        dex_warm_stale_after_ms=300_000,
+        dex_refresh_limit=3,
+    )
+
+    result = worker.sync_once(now_ms=1_778_000_060_000)
+
+    assert result["refresh_candidates_selected"] == 3
+    assert result["price_observations_written"] == 3
+    assert registry.radar_refresh_calls[0]["stale_before_ms"] == 1_777_999_970_000
 
 
 def test_sync_dex_prices_enriches_address_search_metadata():
@@ -413,12 +500,13 @@ class FakeDexMarket:
         self.price_requests.append(tokens)
         return [
             DexTokenPrice(
-                chain_id="eip155:56",
-                address="0x8f32420f2e3728c49399b00dd0a796602d984444",
+                chain_id=item.chain_id,
+                address=item.address,
                 observed_at_ms=1_778_085_000_000,
                 price_usd=0.00002237,
                 raw={"price": "0.00002237"},
             )
+            for item in tokens
         ]
 
 

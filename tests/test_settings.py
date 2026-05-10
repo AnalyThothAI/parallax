@@ -56,6 +56,10 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
+    assert settings.okx_dex_sync_interval_seconds == 30.0
+    assert settings.okx_dex_price_hot_stale_seconds == 90.0
+    assert settings.okx_dex_price_warm_stale_seconds == 300.0
+    assert settings.okx_dex_price_refresh_limit == 160
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):
@@ -251,6 +255,10 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
                     "cex_inst_types": ["SPOT"],
                     "dex_base_url": "https://web3-okx.example.test/",
                     "dex_chain_indexes": ["501", "1"],
+                    "dex_sync_interval_seconds": 12,
+                    "dex_price_hot_stale_seconds": 45,
+                    "dex_price_warm_stale_seconds": 180,
+                    "dex_price_refresh_limit": 25,
                     "timeout_seconds": 9,
                 }
             },
@@ -270,7 +278,31 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.okx_cex_inst_types == ("SPOT",)
     assert settings.okx_dex_base_url == "https://web3-okx.example.test"
     assert settings.okx_dex_chain_indexes == ("501", "1")
+    assert settings.okx_dex_sync_interval_seconds == 12
+    assert settings.okx_dex_price_hot_stale_seconds == 45
+    assert settings.okx_dex_price_warm_stale_seconds == 180
+    assert settings.okx_dex_price_refresh_limit == 25
     assert settings.okx_timeout_seconds == 9
+
+
+def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {
+                "okx": {
+                    "dex_price_refresh_limit": 160,
+                    "dex_surprise_budget": 10,
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
 
 
 def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path, monkeypatch):
