@@ -1,5 +1,5 @@
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 
 import type {
@@ -64,8 +64,6 @@ type CockpitLayoutProps = {
   onWindowChange: (window: WindowKey) => void;
   decisionCounts: DecisionCounts;
   watchlistRows: WatchlistRow[];
-  activeWatchHandle: string;
-  onFocusWatchHandle: (handle: string) => void;
   // mobile
   mobileTask: MobileTask;
   detailAvailable: boolean;
@@ -115,8 +113,6 @@ export function CockpitLayout(props: CockpitLayoutProps) {
     onWindowChange,
     decisionCounts,
     watchlistRows,
-    activeWatchHandle,
-    onFocusWatchHandle,
     mobileTask,
     detailAvailable,
     onMobileTaskChange,
@@ -126,8 +122,10 @@ export function CockpitLayout(props: CockpitLayoutProps) {
 
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
   const isSignalLab = location.pathname.startsWith(SIGNAL_LAB_PATH);
   const isLive = location.pathname === "/";
+  const activeWatchHandle = isSignalLab ? searchParams.get("handle") ?? "" : "";
 
   return (
     <main className="cockpit-shell" onKeyDown={onHotkey} tabIndex={-1}>
@@ -242,11 +240,10 @@ export function CockpitLayout(props: CockpitLayoutProps) {
           <RailSection label="watchlist" className="watchlist-section">
             <div className="watchlist">
               {watchlistRows.map((row) => (
-                <button
+                <Link
                   className={isSignalLab && activeWatchHandle === row.handle ? "active" : ""}
-                  type="button"
                   key={row.handle}
-                  onClick={() => onFocusWatchHandle(row.handle)}
+                  to={`/signal-lab?handle=${encodeURIComponent(row.handle)}`}
                 >
                   <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
                   <span className="watchlist-copy">
@@ -254,7 +251,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
                     <small>{row.lastSeenAtMs ? `${formatRelativeTime(row.lastSeenAtMs)} ago` : "no recent"}</small>
                   </span>
                   <WatchlistNotificationDot count={row.unreadCount} />
-                </button>
+                </Link>
               ))}
             </div>
           </RailSection>

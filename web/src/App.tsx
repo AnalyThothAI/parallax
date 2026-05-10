@@ -65,8 +65,6 @@ export function App() {
   const token = useTraderStore((state) => state.token);
   const radarSortMode = useTraderStore((state) => state.radarSortMode);
   const detailTab = useTraderStore((state) => state.detailTab);
-  // signalLab* selectors are used only by SignalLabPage in PR2; PR3 will delete the store fields entirely.
-  const signalLabHandle = useTraderStore((state) => state.signalLabHandle);
   const detailWindow = useTraderStore((state) => state.detailWindow);
   const detailMode = useTraderStore((state) => state.detailMode);
   const selectedBucketStartMs = useTraderStore((state) => state.selectedBucketStartMs);
@@ -84,9 +82,6 @@ export function App() {
   const runSearch = useTraderStore((state) => state.runSearch);
   const setRadarSortMode = useTraderStore((state) => state.setRadarSortMode);
   const setDetailTab = useTraderStore((state) => state.setDetailTab);
-  const setSignalLabStatus = useTraderStore((state) => state.setSignalLabStatus);
-  const setSignalLabHandle = useTraderStore((state) => state.setSignalLabHandle);
-  const setSignalLabSearch = useTraderStore((state) => state.setSignalLabSearch);
   const setDetailWindow = useTraderStore((state) => state.setDetailWindow);
   const setDetailMode = useTraderStore((state) => state.setDetailMode);
   const setSelectedBucketStartMs = useTraderStore((state) => state.setSelectedBucketStartMs);
@@ -115,7 +110,6 @@ export function App() {
 
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
   const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true });
-  const activeWatchHandle = normalizedHandle(signalLabHandle);
 
   const statusQuery = useQuery({
     queryKey: ["status"],
@@ -394,21 +388,6 @@ export function App() {
     setMobileTask("detail");
   };
 
-  const focusWatchHandle = (handle: string) => {
-    const normalized = normalizedHandle(handle);
-    if (!normalized) {
-      return;
-    }
-    navigate("/signal-lab");
-    setMobileTask("lab");
-    setSignalLabStatus("all");
-    setSignalLabHandle(`@${normalized}`);
-    setSignalLabSearch("");
-    runSearch(`@${normalized}`);
-    setSelectedSignal(null);
-    setSelectedTapeEventId(null);
-  };
-
   const submitEvidenceSearch = () => {
     const query = search.trim();
     const tokenMatch = tokenForSearchQuery(query, tokenItems);
@@ -417,7 +396,14 @@ export function App() {
       return;
     }
     if (isSignalLabRoute) {
-      setSignalLabSearch(query);
+      const next = new URLSearchParams(location.search);
+      if (query) {
+        next.set("q", query);
+      } else {
+        next.delete("q");
+      }
+      const queryString = next.toString();
+      navigate("/signal-lab" + (queryString ? "?" + queryString : ""));
       setSelectedSignal(null);
       setSelectedTapeEventId(null);
       setMobileTask("lab");
@@ -486,27 +472,30 @@ export function App() {
     markReadMutation.mutate(notification.notification_id);
     setNotificationDrawerOpen(false);
     if (notification.entity_type === "pulse_candidate" || notification.source_table === "pulse_candidates") {
-      navigate("/signal-lab");
-      setMobileTask("lab");
+      let q: string | null = null;
       if (notification.symbol) {
-        setSignalLabSearch(notification.symbol);
+        q = notification.symbol;
       } else if (typeof notification.payload?.candidate_id === "string") {
-        setSignalLabSearch(notification.payload.candidate_id);
+        q = notification.payload.candidate_id;
       } else if (notification.source_id) {
-        setSignalLabSearch(notification.source_id);
+        q = notification.source_id;
       }
+      navigate(buildSignalLabUrl({ q }));
+      setMobileTask("lab");
       return;
     }
     if (notification.entity_type === "social_event" || notification.source_table === "social_event_extractions") {
-      navigate("/signal-lab");
-      setMobileTask("lab");
+      let q: string | null = null;
+      let handle: string | null = null;
       if (notification.symbol) {
-        setSignalLabSearch(notification.symbol);
+        q = notification.symbol;
       } else if (notification.author_handle) {
-        setSignalLabHandle(notification.author_handle);
+        handle = normalizedHandle(notification.author_handle);
       } else if (notification.event_id) {
-        setSignalLabSearch(notification.event_id);
+        q = notification.event_id;
       }
+      navigate(buildSignalLabUrl({ q, handle }));
+      setMobileTask("lab");
       return;
     }
     if (notification.symbol) {
@@ -624,8 +613,6 @@ export function App() {
       onWindowChange={setWindow}
       decisionCounts={decisionCounts}
       watchlistRows={watchlistRows}
-      activeWatchHandle={activeWatchHandle}
-      onFocusWatchHandle={focusWatchHandle}
       mobileTask={mobileTask}
       detailAvailable={Boolean(selectedSignal || selectedToken)}
       onMobileTaskChange={handleMobileTaskChange}
@@ -714,6 +701,18 @@ function signalPulseTotal(summary?: SignalPulseData["summary"]): number {
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
+}
+
+function buildSignalLabUrl({ q, handle }: { q?: string | null; handle?: string | null }): string {
+  const params = new URLSearchParams();
+  if (handle) {
+    params.set("handle", handle);
+  }
+  if (q) {
+    params.set("q", q);
+  }
+  const search = params.toString();
+  return "/signal-lab" + (search ? "?" + search : "");
 }
 
 function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePayload[]; tokenItems: TokenFlowItem[] }): LiveSignalTapeItem[] {

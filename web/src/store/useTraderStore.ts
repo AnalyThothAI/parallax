@@ -2,15 +2,12 @@ import { create } from "zustand";
 import type {
   RadarSortMode,
   ScopeKey,
-  SignalPulseStatusFilter,
   TokenDetailMode,
   TokenDetailTab,
   TokenPostRange,
   TokenPostSortMode,
   WindowKey
 } from "../api/types";
-
-type ActiveView = "live" | "signal_lab";
 
 type TraderState = {
   token: string;
@@ -29,10 +26,6 @@ type TraderState = {
   postSortMode: TokenPostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
-  activeView: ActiveView;
-  signalLabStatus: SignalPulseStatusFilter;
-  signalLabHandle: string;
-  signalLabSearch: string;
   setToken: (token: string) => void;
   setWindow: (window: WindowKey) => void;
   setScope: (scope: ScopeKey) => void;
@@ -50,10 +43,6 @@ type TraderState = {
   setPostSortMode: (mode: TokenPostSortMode) => void;
   setHideDuplicateClusters: (enabled: boolean) => void;
   setWatchedPostsOnly: (enabled: boolean) => void;
-  setActiveView: (view: ActiveView) => void;
-  setSignalLabStatus: (status: SignalPulseStatusFilter) => void;
-  setSignalLabHandle: (handle: string) => void;
-  setSignalLabSearch: (search: string) => void;
 };
 
 export const useTraderStore = create<TraderState>((set, get) => ({
@@ -73,10 +62,6 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   postSortMode: "recent",
   hideDuplicateClusters: false,
   watchedPostsOnly: false,
-  activeView: "live",
-  signalLabStatus: "all",
-  signalLabHandle: "",
-  signalLabSearch: "",
   setToken: (token) => set({ token }),
   setWindow: (window) => set({ window }),
   setScope: (scope) => set({ scope }),
@@ -93,9 +78,5 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setPostRange: (postRange) => set({ postRange }),
   setPostSortMode: (postSortMode) => set({ postSortMode }),
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),
-  setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly }),
-  setActiveView: (activeView) => set({ activeView }),
-  setSignalLabStatus: (signalLabStatus) => set({ signalLabStatus }),
-  setSignalLabHandle: (signalLabHandle) => set({ signalLabHandle }),
-  setSignalLabSearch: (signalLabSearch) => set({ signalLabSearch })
+  setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly })
 }));
