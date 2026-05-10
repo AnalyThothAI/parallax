@@ -1,80 +1,154 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-import type { TokenFlowItem, TokenPostRange, TokenPostSortMode, TokenPostsData, TokenSocialTimelineData, TokenTimelinePost, TokenTimelineStage, WindowKey } from "../api/types";
+
+import { getApi } from "../api/client";
+import type {
+  AssetFlowData,
+  TokenFlowItem,
+  TokenPostRange,
+  TokenPostSortMode,
+  TokenSocialTimelineData,
+  TokenTimelinePost,
+  TokenTimelineStage,
+  WindowKey
+} from "../api/types";
+import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "../api/useTokenTargetQueries";
+import { type TargetRef, targetRefEquals } from "../domain/tokenTarget";
 import { compactNumber, eventText, formatReason, formatRisk, formatScore, formatSignedPercent, formatTokenPriceUsd, formatUsdCompact, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
+import { tokenRadarRowToTokenItem } from "../lib/tokenRadar";
 import { tokenVenueAction } from "../lib/venue";
+import { useTraderStore } from "../store/useTraderStore";
 import { DecisionTag } from "./DecisionTag";
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsPanel } from "./TokenPostsPanel";
 
-type TokenTargetPageProps = {
-  token: TokenFlowItem;
-  timeline: TokenSocialTimelineData | null;
-  posts: TokenPostsData | null;
-  windowKey: WindowKey;
-  postRange: TokenPostRange;
-  postSortMode: TokenPostSortMode;
-  selectedStageId: string | null;
-  isTimelineLoading: boolean;
-  isPostsLoading: boolean;
-  isPostsFetchingNextPage: boolean;
-  onBack: () => void;
-  onWindowChange: (window: WindowKey) => void;
-  onPostRangeChange: (range: TokenPostRange) => void;
-  onPostSortModeChange: (mode: TokenPostSortMode) => void;
-  onStageSelect: (stageId: string | null) => void;
-  onLoadMorePosts: () => void;
-};
+const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken"]);
 
-export function TokenTargetPage({
-  token,
-  timeline,
-  posts,
-  windowKey,
-  postRange,
-  postSortMode,
-  selectedStageId,
-  isTimelineLoading,
-  isPostsLoading,
-  isPostsFetchingNextPage,
-  onBack,
-  onWindowChange,
-  onPostRangeChange,
-  onPostSortModeChange,
-  onStageSelect,
-  onLoadMorePosts
-}: TokenTargetPageProps) {
+export function TokenTargetPage() {
+  const navigate = useNavigate();
+  const params = useParams<{ targetType: string; targetId: string }>();
+  const token = useTraderStore((state) => state.token);
+  const scope = useTraderStore((state) => state.scope);
+
+  const [windowKey, setWindowKey] = useState<WindowKey>("1h");
+  const [postRange, setPostRange] = useState<TokenPostRange>("current_window");
+  const [postSortMode, setPostSortMode] = useState<TokenPostSortMode>("recent");
+  const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [watchedPostsOnly, setWatchedPostsOnly] = useState(false);
   const [hideDuplicateClusters, setHideDuplicateClusters] = useState(false);
+
+  const targetType = params.targetType as TargetRef["target_type"] | undefined;
+  const isValidTargetType = Boolean(targetType && VALID_TARGET_TYPES.has(targetType));
+  const isValidParams = isValidTargetType && Boolean(params.targetId);
+  const target: TargetRef | null = isValidParams && targetType && params.targetId
+    ? { target_type: targetType, target_id: params.targetId }
+    : null;
+
+  const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
+
+  const assetFlowQuery = useQuery({
+    queryKey: ["token-radar-page", windowKey, scope, target?.target_type ?? null, target?.target_id ?? null],
+    queryFn: () =>
+      getApi<AssetFlowData>("/api/token-radar", {
+        token,
+        params: { window: windowKey, limit: 48, scope }
+      }),
+    enabled: Boolean(token && target),
+    refetchInterval: 10_000
+  });
+
+  const timelineQuery = useTokenTargetTimeline({ token, target, window: windowKey, scope });
+  const postsQuery = useTokenTargetPosts({
+    token,
+    target,
+    window: windowKey,
+    scope,
+    range: postRange,
+    sort: tokenPostRequestSort
+  });
+
+  const tokenItem = useMemo(() => {
+    if (!target) return null;
+    const data = assetFlowQuery.data?.data;
+    if (!data) return null;
+    const rows = [...data.targets, ...data.attention];
+    const matchedRow = rows.find((row) => {
+      const rowTarget: TargetRef | null = row.target?.target_type && row.target.target_id
+        ? { target_type: row.target.target_type as TargetRef["target_type"], target_id: row.target.target_id }
+        : null;
+      return rowTarget && targetRefEquals(rowTarget, target);
+    });
+    if (!matchedRow) return null;
+    return tokenRadarRowToTokenItem(matchedRow, windowKey, scope);
+  }, [assetFlowQuery.data?.data, scope, target, windowKey]);
+
+  const timeline = timelineQuery.data?.data ?? null;
+  const posts = mergeTokenPostPages(postsQuery.data?.pages);
+
+  if (!isValidParams) {
+    return (
+      <section className="mobile-task-surface" data-mobile-task-panel="radar">
+        <section className="token-target-page" aria-label="Token audit page (not found)">
+          <header className="token-case-header">
+            <button className="ghost-icon-button" type="button" onClick={() => navigate("/")} aria-label="Back to Live">
+              <ArrowLeft aria-hidden />
+              <span>Live</span>
+            </button>
+          </header>
+          <div className="empty-state">Token 不存在或链接已失效</div>
+        </section>
+      </section>
+    );
+  }
+
+  if (!tokenItem) {
+    return (
+      <section className="mobile-task-surface" data-mobile-task-panel="radar">
+        <section className="token-target-page" aria-label="Token audit page">
+          <header className="token-case-header">
+            <button className="ghost-icon-button" type="button" onClick={() => navigate(-1)} aria-label="Back">
+              <ArrowLeft aria-hidden />
+              <span>Back</span>
+            </button>
+          </header>
+          <div className="empty-state">{assetFlowQuery.isPending ? "loading token audit" : "token audit target missing"}</div>
+        </section>
+      </section>
+    );
+  }
+
   const stages = timeline?.stages ?? [];
   const selectedStageFilter = selectedStageId && stages.some((stage) => stage.stage_id === selectedStageId) ? selectedStageId : null;
-  const venueAction = tokenVenueAction(token);
-  const riskLead = token.opportunity.hard_risks?.[0] ?? token.opportunity.risks[0] ?? token.timing.risks[0];
+  const venueAction = tokenVenueAction(tokenItem);
+  const riskLead = tokenItem.opportunity.hard_risks?.[0] ?? tokenItem.opportunity.risks[0] ?? tokenItem.timing.risks[0];
 
   return (
+    <section className="mobile-task-surface" data-mobile-task-panel="radar">
     <section className="token-target-page" aria-label="Token audit page">
       <header className="token-case-header">
-        <button className="ghost-icon-button" type="button" onClick={onBack} aria-label="Back to Token Radar">
+        <button className="ghost-icon-button" type="button" onClick={() => navigate(-1)} aria-label="Back to Token Radar">
           <ArrowLeft aria-hidden />
           <span>Radar</span>
         </button>
         <div className="token-case-title">
-          <span>{token.identity.target_type ?? "unresolved"} · {token.identity.inst_id ?? token.identity.chain ?? token.identity.identity_key}</span>
-          <h2>{tokenLabel(token)}</h2>
+          <span>{tokenItem.identity.target_type ?? "unresolved"} · {tokenItem.identity.inst_id ?? tokenItem.identity.chain ?? tokenItem.identity.identity_key}</span>
+          <h2>{tokenLabel(tokenItem)}</h2>
         </div>
         <div className="token-case-actions">
-          <DecisionTag decision={token.opportunity.decision} />
-          <strong>{formatScore(token.opportunity.score)}</strong>
+          <DecisionTag decision={tokenItem.opportunity.decision} />
+          <strong>{formatScore(tokenItem.opportunity.score)}</strong>
           <div className="segmented mini range" aria-label="audit page window">
             {OBSERVATION_WINDOWS.map((item) => (
-              <button key={item} className={windowKey === item ? "active" : ""} type="button" onClick={() => onWindowChange(item)}>
+              <button key={item} className={windowKey === item ? "active" : ""} type="button" onClick={() => setWindowKey(item)}>
                 {item}
               </button>
             ))}
           </div>
           {venueAction ? (
-            <a aria-label={`Open ${tokenLabel(token)} on ${venueAction.label}`} href={venueAction.url} rel="noreferrer" target="_blank">
+            <a aria-label={`Open ${tokenLabel(tokenItem)} on ${venueAction.label}`} href={venueAction.url} rel="noreferrer" target="_blank">
               {venueAction.label}
               <ExternalLink aria-hidden />
             </a>
@@ -83,25 +157,25 @@ export function TokenTargetPage({
       </header>
 
       <section className="token-audit-strip" aria-label="token audit facts">
-        <AuditMetric label="identity" value={identityLine(token)} detail={token.identity.identity_status} />
-        <AuditMetric label="social" value={`${compactNumber(timeline?.summary.posts ?? token.evidence_total_count)} posts`} detail={`${compactNumber(timeline?.summary.authors ?? token.propagation.independent_authors)} authors`} />
-        <AuditMetric label="market" value={marketLine(token)} detail={token.market.price_change_status ?? token.market.market_status} />
-        <AuditMetric label="since social" value={formatSignedPercent(token.market.price_change_since_social_pct)} detail={token.market.price_at_social_start ? formatTokenPriceUsd(token.market.price_at_social_start) : "no start price"} />
-        <AuditMetric label="first snapshot" value={formatSignedPercent(token.market.price_change_since_first_snapshot_pct)} detail={token.market.price_at_first_snapshot ? formatTokenPriceUsd(token.market.price_at_first_snapshot) : "no snapshot"} />
-        <AuditMetric label="risk" value={riskLead ? formatRisk(riskLead) : "clear"} detail={token.flow.baseline_status} />
+        <AuditMetric label="identity" value={identityLine(tokenItem)} detail={tokenItem.identity.identity_status} />
+        <AuditMetric label="social" value={`${compactNumber(timeline?.summary.posts ?? tokenItem.evidence_total_count)} posts`} detail={`${compactNumber(timeline?.summary.authors ?? tokenItem.propagation.independent_authors)} authors`} />
+        <AuditMetric label="market" value={marketLine(tokenItem)} detail={tokenItem.market.price_change_status ?? tokenItem.market.market_status} />
+        <AuditMetric label="since social" value={formatSignedPercent(tokenItem.market.price_change_since_social_pct)} detail={tokenItem.market.price_at_social_start ? formatTokenPriceUsd(tokenItem.market.price_at_social_start) : "no start price"} />
+        <AuditMetric label="first snapshot" value={formatSignedPercent(tokenItem.market.price_change_since_first_snapshot_pct)} detail={tokenItem.market.price_at_first_snapshot ? formatTokenPriceUsd(tokenItem.market.price_at_first_snapshot) : "no snapshot"} />
+        <AuditMetric label="risk" value={riskLead ? formatRisk(riskLead) : "clear"} detail={tokenItem.flow.baseline_status} />
       </section>
 
       <section className="case-section stage-tape-section">
         <header>
           <span>stage tape</span>
-          <b>{isTimelineLoading ? "loading" : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}</b>
+          <b>{timelineQuery.isFetching ? "loading" : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}</b>
           {selectedStageFilter ? (
-            <button className="inline-clear-button" type="button" onClick={() => onStageSelect(null)}>
+            <button className="inline-clear-button" type="button" onClick={() => setSelectedStageId(null)}>
               clear filter
             </button>
           ) : null}
         </header>
-        <StageTape stages={stages} selectedStageId={selectedStageFilter} timeline={timeline} onSelect={onStageSelect} />
+        <StageTape stages={stages} selectedStageId={selectedStageFilter} timeline={timeline} onSelect={setSelectedStageId} />
       </section>
 
       <section className="case-section">
@@ -111,17 +185,17 @@ export function TokenTargetPage({
         </header>
         <TokenPostsPanel
           hideDuplicateClusters={hideDuplicateClusters}
-          isFetchingNextPage={isPostsFetchingNextPage}
-          isLoading={isPostsLoading}
+          isFetchingNextPage={postsQuery.isFetchingNextPage}
+          isLoading={postsQuery.isLoading}
           posts={posts}
           postRange={postRange}
           postSortMode={postSortMode}
           selectedStageId={selectedStageFilter}
           watchedPostsOnly={watchedPostsOnly}
           onHideDuplicateClustersChange={setHideDuplicateClusters}
-          onLoadMorePosts={onLoadMorePosts}
-          onPostRangeChange={onPostRangeChange}
-          onPostSortModeChange={onPostSortModeChange}
+          onLoadMorePosts={() => void postsQuery.fetchNextPage()}
+          onPostRangeChange={setPostRange}
+          onPostSortModeChange={setPostSortMode}
           onWatchedPostsOnlyChange={setWatchedPostsOnly}
         />
       </section>
@@ -129,10 +203,11 @@ export function TokenTargetPage({
       <section className="case-section">
         <header>
           <span>score audit</span>
-          <b>{token.opportunity.score_version}</b>
+          <b>{tokenItem.opportunity.score_version}</b>
         </header>
-        <ScoreLedger token={token} />
+        <ScoreLedger token={tokenItem} />
       </section>
+    </section>
     </section>
   );
 }
@@ -201,3 +276,4 @@ function marketLine(token: TokenFlowItem): string {
   }
   return token.market.market_status ?? "-";
 }
+

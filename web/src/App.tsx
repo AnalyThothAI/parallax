@@ -27,6 +27,7 @@ import type { MobileTask } from "./components/MobileTaskNav";
 import { SignalLabInspector } from "./components/SignalLabInspector";
 import { SignalLabPage } from "./components/SignalLabPage";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
+import { TokenTargetPage } from "./components/TokenTargetPage";
 import {
   compactNumber,
   eventText,
@@ -677,6 +678,7 @@ export function App() {
       <Route element={layoutElement}>
         <Route element={livePageElement}>
           <Route index element={liveRadarElement} />
+          <Route path="token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Route>
         <Route
           path="signal-lab"
