@@ -24,6 +24,7 @@ import { LivePage } from "./components/LivePage";
 import { LiveRadar } from "./components/LiveRadar";
 import { type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
 import type { MobileTask } from "./components/MobileTaskNav";
+import { PulseDetailPage } from "./components/PulseDetailPage";
 import { SignalLabInspector } from "./components/SignalLabInspector";
 import { SignalLabPage } from "./components/SignalLabPage";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
@@ -393,12 +394,6 @@ export function App() {
     setMobileTask("detail");
   };
 
-  const clearSignalLabSelection = () => {
-    setSelectedSignal(null);
-    setSelectedTapeEventId(null);
-    setMobileTask("lab");
-  };
-
   const focusWatchHandle = (handle: string) => {
     const normalized = normalizedHandle(handle);
     if (!normalized) {
@@ -682,15 +677,14 @@ export function App() {
           path="signal-lab"
           element={
             <SignalLabPage
-              selectedPulseItemId={selectedPulseItemId}
               selectedAccountEventId={selectedAccountEventId}
               overviewData={signalLabOverviewData}
-              onSelectPulse={selectPulseItem}
               onSelectAccountEvent={selectAccountEvent}
-              onClearSelection={clearSignalLabSelection}
             />
           }
-        />
+        >
+          <Route path="pulse/:candidateId" element={<PulseDetailPage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

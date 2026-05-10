@@ -1,11 +1,14 @@
 import { useEffect, useMemo } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { getApi } from "../api/client";
+import { mergeSignalPulsePages, useSignalPulseList } from "../api/useSignalPulseQueries";
 import type {
   LivePayload,
   RecentData,
   SignalPulseData,
-  SignalPulseItem
+  SignalPulseItem,
+  SignalPulseStatusFilter
 } from "../api/types";
 import { useTraderStore } from "../store/useTraderStore";
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
@@ -14,53 +17,34 @@ const SIGNAL_LAB_SCOPE = "all";
 const SIGNAL_LAB_WINDOW = "1h";
 
 type SignalLabPageProps = {
-  selectedPulseItemId: string | null;
-  selectedAccountEventId: string | null;
+  selectedAccountEventId?: string | null;
   overviewData?: SignalPulseData;
-  onSelectPulse: (item: SignalPulseItem, options?: { openLab?: boolean }) => void;
-  onSelectAccountEvent: (item: LivePayload) => void;
-  onClearSelection: () => void;
+  onSelectAccountEvent?: (item: LivePayload) => void;
 };
 
 export function SignalLabPage({
-  selectedPulseItemId,
-  selectedAccountEventId,
+  selectedAccountEventId = null,
   overviewData,
-  onSelectPulse,
-  onSelectAccountEvent,
-  onClearSelection
+  onSelectAccountEvent
 }: SignalLabPageProps) {
   const token = useTraderStore((state) => state.token);
-  const signalLabStatus = useTraderStore((state) => state.signalLabStatus);
-  const signalLabHandle = useTraderStore((state) => state.signalLabHandle);
-  const signalLabSearch = useTraderStore((state) => state.signalLabSearch);
-  const setSignalLabStatus = useTraderStore((state) => state.setSignalLabStatus);
-  const setSignalLabHandle = useTraderStore((state) => state.setSignalLabHandle);
-  const setSignalLabSearch = useTraderStore((state) => state.setSignalLabSearch);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const activeSignalLabHandle = normalizedHandle(signalLabHandle);
+  const handleParam = searchParams.get("handle") ?? "";
+  const statusParam = (searchParams.get("status") ?? "all") as SignalPulseStatusFilter;
+  const queryParam = searchParams.get("q") ?? "";
 
-  const signalPulseQuery = useInfiniteQuery({
-    queryKey: ["signal-lab-pulse", SIGNAL_LAB_WINDOW, SIGNAL_LAB_SCOPE, signalLabStatus, signalLabHandle, signalLabSearch],
-    queryFn: async ({ pageParam }) => {
-      const response = await getApi<SignalPulseData>("/api/signal-lab/pulse", {
-        token,
-        params: {
-          window: SIGNAL_LAB_WINDOW,
-          scope: SIGNAL_LAB_SCOPE,
-          status: signalLabStatus === "all" ? undefined : signalLabStatus,
-          handle: signalLabHandle || undefined,
-          q: signalLabSearch || undefined,
-          limit: 80,
-          cursor: pageParam || undefined
-        }
-      });
-      return response.data;
-    },
-    initialPageParam: "",
-    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
-    enabled: Boolean(token),
-    refetchInterval: 12_000
+  const activeSignalLabHandle = normalizedHandle(handleParam);
+
+  const signalPulseQuery = useSignalPulseList({
+    token,
+    window: SIGNAL_LAB_WINDOW,
+    scope: SIGNAL_LAB_SCOPE,
+    status: statusParam,
+    handle: handleParam,
+    q: queryParam
   });
 
   const signalLabAccountEventsQuery = useQuery({
@@ -78,50 +62,87 @@ export function SignalLabPage({
     refetchInterval: 15_000
   });
 
-  const signalPulseData = useMemo(() => mergeSignalPulsePages(signalPulseQuery.data?.pages), [signalPulseQuery.data?.pages]);
+  const signalPulseData = useMemo(
+    () => mergeSignalPulsePages(signalPulseQuery.data?.pages),
+    [signalPulseQuery.data?.pages]
+  );
   const workbenchSignalPulseItems = signalPulseData?.items ?? [];
   const signalLabAccountEvents = signalLabAccountEventsQuery.data?.data.items ?? [];
 
-  // Auto-select preferred pulse item when entering Signal Lab and no selection yet.
+  // Pulse selection now lives in the URL path: /signal-lab/pulse/<candidateId>.
+  const selectedPulseItemId = pulseIdFromPathname(location.pathname);
+  const isPulseRoute = Boolean(selectedPulseItemId);
+
+  // When entering /signal-lab with no pulse selected yet, auto-redirect to a preferred
+  // candidate so the inspector pane shows something meaningful.
   useEffect(() => {
-    if (selectedPulseItemId || !workbenchSignalPulseItems.length) {
+    if (isPulseRoute || !workbenchSignalPulseItems.length) {
       return;
     }
     const preferred = preferredPulseItem(workbenchSignalPulseItems);
-    onSelectPulse(preferred);
-  }, [onSelectPulse, selectedPulseItemId, workbenchSignalPulseItems]);
+    navigate(
+      `/signal-lab/pulse/${encodeURIComponent(preferred.candidate_id)}${location.search}`,
+      { replace: true }
+    );
+  }, [isPulseRoute, location.search, navigate, workbenchSignalPulseItems]);
+
+  const updateParam = (key: string, value: string) => {
+    const next = new URLSearchParams(searchParams);
+    const isDefault = key === "status" ? value === "all" : value === "";
+    if (value && !isDefault) {
+      next.set(key, value);
+    } else {
+      next.delete(key);
+    }
+    setSearchParams(next, { replace: false });
+  };
+
+  const handleSelectPulse = (item: SignalPulseItem) => {
+    navigate(`/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}${location.search}`);
+  };
 
   const handleClearFilters = () => {
-    setSignalLabStatus("all");
-    setSignalLabHandle("");
-    setSignalLabSearch("");
-    onClearSelection();
+    setSearchParams(new URLSearchParams(), { replace: false });
+  };
+
+  const handleSelectAccountEvent = (item: LivePayload) => {
+    if (onSelectAccountEvent) {
+      onSelectAccountEvent(item);
+    }
   };
 
   return (
-    <section className="mobile-task-surface signal-lab-task-surface" data-mobile-task-panel="lab">
-      <SignalLabWorkbench
-        data={signalPulseData}
-        accountEvents={signalLabAccountEvents}
-        handleFilter={signalLabHandle}
-        isAccountEventsLoading={signalLabAccountEventsQuery.isPending && !signalLabAccountEvents.length}
-        isLoading={signalPulseQuery.isPending}
-        isFetchingNextPage={signalPulseQuery.isFetchingNextPage}
-        hasNextPage={Boolean(signalPulseQuery.hasNextPage)}
-        overviewData={overviewData}
-        searchFilter={signalLabSearch}
-        selectedAccountEventId={selectedAccountEventId}
-        selectedItemId={selectedPulseItemId}
-        statusFilter={signalLabStatus}
-        windowLabel={SIGNAL_LAB_WINDOW}
-        onClearFilters={handleClearFilters}
-        onHandleChange={setSignalLabHandle}
-        onLoadMore={() => void signalPulseQuery.fetchNextPage()}
-        onSearchChange={setSignalLabSearch}
-        onSelectAccountEvent={onSelectAccountEvent}
-        onSelect={onSelectPulse}
-        onStatusChange={setSignalLabStatus}
-      />
+    <section
+      className={`mobile-task-surface signal-lab-task-surface signal-lab-layout${isPulseRoute ? " signal-lab-layout-with-detail" : ""}`}
+      data-mobile-task-panel="lab"
+    >
+      <div className="signal-lab-list">
+        <SignalLabWorkbench
+          data={signalPulseData}
+          accountEvents={signalLabAccountEvents}
+          handleFilter={handleParam}
+          isAccountEventsLoading={signalLabAccountEventsQuery.isPending && !signalLabAccountEvents.length}
+          isLoading={signalPulseQuery.isPending}
+          isFetchingNextPage={signalPulseQuery.isFetchingNextPage}
+          hasNextPage={Boolean(signalPulseQuery.hasNextPage)}
+          overviewData={overviewData}
+          searchFilter={queryParam}
+          selectedAccountEventId={selectedAccountEventId}
+          selectedItemId={selectedPulseItemId}
+          statusFilter={statusParam}
+          windowLabel={SIGNAL_LAB_WINDOW}
+          onClearFilters={handleClearFilters}
+          onHandleChange={(value) => updateParam("handle", value)}
+          onLoadMore={() => void signalPulseQuery.fetchNextPage()}
+          onSearchChange={(value) => updateParam("q", value)}
+          onSelectAccountEvent={handleSelectAccountEvent}
+          onSelect={handleSelectPulse}
+          onStatusChange={(value) => updateParam("status", value)}
+        />
+      </div>
+      <aside className="signal-lab-inspector-pane">
+        <Outlet />
+      </aside>
     </section>
   );
 }
@@ -130,28 +151,20 @@ function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
 }
 
-function mergeSignalPulsePages(pages?: SignalPulseData[]): SignalPulseData | undefined {
-  if (!pages?.length) {
-    return undefined;
+function pulseIdFromPathname(pathname: string): string | null {
+  const prefix = "/signal-lab/pulse/";
+  if (!pathname.startsWith(prefix)) {
+    return null;
   }
-  const first = pages[0];
-  const last = pages[pages.length - 1];
-  const byCandidate = new Map<string, SignalPulseItem>();
-  for (const page of pages) {
-    for (const item of page.items) {
-      byCandidate.set(item.candidate_id, item);
-    }
+  const tail = pathname.slice(prefix.length);
+  if (!tail) {
+    return null;
   }
-  const items = [...byCandidate.values()];
-  return {
-    ...first,
-    health: last.health,
-    summary: last.summary,
-    returned_count: items.length,
-    has_more: last.has_more,
-    next_cursor: last.next_cursor,
-    items
-  };
+  try {
+    return decodeURIComponent(tail.split("/")[0]);
+  } catch {
+    return tail.split("/")[0];
+  }
 }
 
 function preferredPulseItem(items: SignalPulseItem[]): SignalPulseItem {
