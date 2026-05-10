@@ -3,6 +3,7 @@
 Each test maps to an acceptance criterion in
 docs/superpowers/specs/completed/2026-05-09-harness-engineering-restructure.md.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -76,13 +77,9 @@ def test_rule_uniqueness() -> None:
     governance_paths = {name: DOCS / name for name in EXPECTED_GOVERNANCE}
     for phrase, expected_owner in RULE_PHRASES.items():
         hits = [name for name, path in governance_paths.items() if path.exists() and phrase in _read(path)]
-        assert hits == [expected_owner], (
-            f"phrase {phrase!r} expected only in {expected_owner}, found in {hits}"
-        )
+        assert hits == [expected_owner], f"phrase {phrase!r} expected only in {expected_owner}, found in {hits}"
         for router in ROUTER_FILES:
-            assert phrase not in _read(REPO_ROOT / router), (
-                f"phrase {phrase!r} leaked into {router}"
-            )
+            assert phrase not in _read(REPO_ROOT / router), f"phrase {phrase!r} leaked into {router}"
 
 
 def test_references_papers_present() -> None:

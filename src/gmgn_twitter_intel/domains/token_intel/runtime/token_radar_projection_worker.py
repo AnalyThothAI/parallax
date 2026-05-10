@@ -98,10 +98,7 @@ class TokenRadarProjectionWorker:
 
     def _next_background_window_scope(self) -> tuple[str, str] | None:
         work_items = [
-            (window, scope)
-            for window in self.windows
-            if window not in self.hot_windows
-            for scope in self.scopes
+            (window, scope) for window in self.windows if window not in self.hot_windows for scope in self.scopes
         ]
         if not work_items:
             return None
@@ -115,6 +112,8 @@ def _now_ms() -> int:
 
 
 def _projection_class():
-    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
+        TokenRadarProjection,
+    )
 
     return TokenRadarProjection

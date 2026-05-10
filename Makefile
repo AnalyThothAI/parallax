@@ -26,7 +26,12 @@ lint: ## run ruff
 compile: ## compile Python files
 	@uv run python -m compileall src tests
 
-check: test lint compile ## run all local Python checks
+check: ## gates 1+2: lint + format + typecheck + unit + arch + contract (no external deps; ~10s)
+	@uv run ruff check .
+	@uv run ruff format --check .
+	@cd web && npm run typecheck && npm run lint && npm run format:check
+	@uv run python -m pytest tests/unit tests/architecture tests/contract -m "unit or architecture or contract"; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+	@uv run python -m compileall src tests
 
 test-unit: ## run only tests/unit/
 	@uv run python -m pytest tests/unit -m unit; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
@@ -58,8 +63,8 @@ contract-check: ## verify OpenAPI types are in sync (real impl in P4)
 regen-contract: ## regenerate openapi.json + web/src/api/types.ts (real impl in P4)
 	@echo "[P4] regen-contract not yet wired; place-holder"
 
-install-hooks: ## install pre-commit hooks (real impl in P2)
-	@echo "[P2] install-hooks not yet wired; place-holder"
+install-hooks: ## install pre-commit hooks
+	@uv run pre-commit install
 
 init: ## create ~/.gmgn-twitter-intel/config.yaml
 	@$(GMGN) init

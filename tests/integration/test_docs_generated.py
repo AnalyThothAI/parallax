@@ -1,5 +1,6 @@
 # tests/test_docs_generated.py
 """Verify docs/generated/ files are regeneration-clean."""
+
 from __future__ import annotations
 
 import shutil
@@ -35,13 +36,10 @@ def test_generated_files_have_header_marker() -> None:
     reason="uv or make not available in this environment",
 )
 def test_make_docs_generated_clean_diff() -> None:
-    proc = subprocess.run(
-        ["make", "docs-generated"], cwd=REPO_ROOT, capture_output=True, text=True
-    )
+    proc = subprocess.run(["make", "docs-generated"], cwd=REPO_ROOT, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         pytest.skip(f"make docs-generated failed (likely Postgres unreachable): {proc.stderr}")
     diff = subprocess.run(
-        ["git", "diff", "--exit-code", "docs/generated/"],
-        cwd=REPO_ROOT, capture_output=True, text=True,
+        ["git", "diff", "--exit-code", "docs/generated/"], cwd=REPO_ROOT, capture_output=True, text=True, check=False
     )
     assert diff.returncode == 0, f"make docs-generated produced uncommitted changes:\n{diff.stdout}"

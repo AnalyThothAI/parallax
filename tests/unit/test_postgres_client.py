@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from psycopg import conninfo
 
-import gmgn_twitter_intel.platform.db.postgres_client as postgres_client
+from gmgn_twitter_intel.platform.db import postgres_client
 from gmgn_twitter_intel.platform.db.postgres_client import (
     create_pool,
     local_docker_host_dsn,

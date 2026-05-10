@@ -1,5 +1,6 @@
 # scripts/regen_ws_protocol.py
 """Regenerate docs/generated/ws-protocol.md by introspecting api/ws.py message types."""
+
 from __future__ import annotations
 
 import ast
@@ -23,8 +24,14 @@ def _collect_classes(tree: ast.AST) -> list[tuple[str, str]]:
 def main() -> None:
     tree = ast.parse(WS_FILE.read_text(encoding="utf-8"))
     rows = _collect_classes(tree)
-    body = ["# WebSocket Protocol", "", f"Source: `{WS_FILE.relative_to(ROOT).as_posix()}`", "",
-            "| Message class | Doc |", "|---------------|-----|"]
+    body = [
+        "# WebSocket Protocol",
+        "",
+        f"Source: `{WS_FILE.relative_to(ROOT).as_posix()}`",
+        "",
+        "| Message class | Doc |",
+        "|---------------|-----|",
+    ]
     for name, doc in sorted(rows):
         body.append(f"| `{name}` | {doc} |")
     OUTPUT.write_text(HEADER + "\n".join(body) + "\n", encoding="utf-8")

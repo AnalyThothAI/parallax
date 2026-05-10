@@ -100,20 +100,11 @@ def main(before_path: str, after_path: str) -> int:
         print(f"  {tid[:32]:32}  before={b:6.2f}  after={a:6.2f}  Δ={delta:+6.2f}")
 
     print("\n== Rank correlation (Spearman, common subset) ==")
-    common_with_scores = [
-        (t, _opportunity(before[t]), _opportunity(after[t]))
-        for t in common_ids
-    ]
-    common_with_scores = [
-        (t, b, a) for t, b, a in common_with_scores if b is not None and a is not None
-    ]
+    common_with_scores = [(t, _opportunity(before[t]), _opportunity(after[t])) for t in common_ids]
+    common_with_scores = [(t, b, a) for t, b, a in common_with_scores if b is not None and a is not None]
     if len(common_with_scores) >= 5:
-        before_ranks = {
-            t: r for r, (t, _, _) in enumerate(sorted(common_with_scores, key=lambda x: x[1]))
-        }
-        after_ranks = {
-            t: r for r, (t, _, _) in enumerate(sorted(common_with_scores, key=lambda x: x[2]))
-        }
+        before_ranks = {t: r for r, (t, _, _) in enumerate(sorted(common_with_scores, key=lambda x: x[1]))}
+        after_ranks = {t: r for r, (t, _, _) in enumerate(sorted(common_with_scores, key=lambda x: x[2]))}
         n = len(common_with_scores)
         sum_d2 = sum((before_ranks[t] - after_ranks[t]) ** 2 for t, _, _ in common_with_scores)
         rho = 1 - (6 * sum_d2) / (n * (n * n - 1))

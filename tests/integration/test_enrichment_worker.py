@@ -13,9 +13,9 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     SocialTokenCandidate,
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
+from tests.integration.test_enrichment_repository import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.integration.test_enrichment_repository import make_event
 
 
 class FakeClient:
@@ -49,7 +49,7 @@ class FakeClient:
             raw_response={"ok": True},
         )
 
-    async def enrich_event(self, *, event, entities, run_id, job):  # noqa: ARG002
+    async def enrich_event(self, *, event, entities, run_id, job):
         return self.result
 
 
@@ -58,7 +58,7 @@ class HangingClient:
     model = "fake-model"
     timeout_seconds = 0.01
 
-    def request_audit(self, *, event, entities, run_id, job):  # noqa: ARG002
+    def request_audit(self, *, event, entities, run_id, job):
         return {
             "backend": "openai_agents_sdk",
             "sdk_trace_id": "trace_timeout",
@@ -70,7 +70,7 @@ class HangingClient:
             "trace_metadata": {"event_id": event["event_id"], "run_id": run_id},
         }
 
-    async def enrich_event(self, *, event, entities, run_id, job):  # noqa: ARG002
+    async def enrich_event(self, *, event, entities, run_id, job):
         await asyncio.sleep(60)
 
 
@@ -94,7 +94,7 @@ class ConcurrentProbeWorker(EnrichmentWorker):
         self.max_active = 0
         self.calls = 0
 
-    async def process_one(self, *, now_ms=None):  # noqa: ARG002
+    async def process_one(self, *, now_ms=None):
         self.active += 1
         self.max_active = max(self.max_active, self.active)
         await asyncio.sleep(0.03)

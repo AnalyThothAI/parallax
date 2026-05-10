@@ -1,6 +1,7 @@
 import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
+
 import {
   DetailDrawerCard,
   DetailDrawerField,
@@ -10,7 +11,7 @@ import {
   DetailDrawerMetricGrid,
   DetailDrawerSection,
   DetailDrawerShell,
-  DetailDrawerTagStrip
+  DetailDrawerTagStrip,
 } from "./DetailDrawer";
 
 type SignalLabInspectorProps = {
@@ -38,12 +39,16 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
             <DetailDrawerMetric label="score" value={compactNumber(item.candidate_score)} />
             <DetailDrawerMetric label="status" value={statusLabel(item.pulse_status)} />
             <DetailDrawerMetric label="phase" value={item.social_phase ?? "-"} />
-            <DetailDrawerMetric label="updated" value={`${formatRelativeTime(item.updated_at_ms)} ago`} />
+            <DetailDrawerMetric
+              label="updated"
+              value={`${formatRelativeTime(item.updated_at_ms)} ago`}
+            />
           </DetailDrawerMetricGrid>
         }
         subtitle={
           <>
-            {item.verdict ?? "no verdict"} · {item.narrative_type ?? "narrative unknown"} · {item.window}/{item.scope}
+            {item.verdict ?? "no verdict"} · {item.narrative_type ?? "narrative unknown"} ·{" "}
+            {item.window}/{item.scope}
           </>
         }
         title={item.symbol || item.subject_key || item.candidate_id}
@@ -84,8 +89,14 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
 
         <DetailDrawerCard title="Triggers">
           <DetailDrawerFieldGrid>
-            <DetailDrawerField label="confirmation_triggers_zh" value={<ListValue items={confirmationTriggers} />} />
-            <DetailDrawerField label="invalidation_triggers_zh" value={<ListValue items={invalidationTriggers} />} />
+            <DetailDrawerField
+              label="confirmation_triggers_zh"
+              value={<ListValue items={confirmationTriggers} />}
+            />
+            <DetailDrawerField
+              label="invalidation_triggers_zh"
+              value={<ListValue items={invalidationTriggers} />}
+            />
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
@@ -97,10 +108,19 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           <DetailDrawerFieldGrid>
             <DetailDrawerField label="candidate_id" value={item.candidate_id} />
             <DetailDrawerField label="candidate_type" value={item.candidate_type} />
-            <DetailDrawerField label="target" value={[item.target_type, item.target_id].filter(Boolean).join(" · ")} />
+            <DetailDrawerField
+              label="target"
+              value={[item.target_type, item.target_id].filter(Boolean).join(" · ")}
+            />
             <DetailDrawerField label="agent_run_id" value={item.agent_run_id} />
-            <DetailDrawerField label="source_event_ids" value={<ListValue items={sourceEventIds} />} />
-            <DetailDrawerField label="evidence_event_ids" value={<ListValue items={evidenceEventIds} />} />
+            <DetailDrawerField
+              label="source_event_ids"
+              value={<ListValue items={sourceEventIds} />}
+            />
+            <DetailDrawerField
+              label="evidence_event_ids"
+              value={<ListValue items={evidenceEventIds} />}
+            />
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
@@ -158,7 +178,9 @@ function statusLabel(status: SignalPulseItem["pulse_status"]): string {
 }
 
 function stringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : [];
 }
 
 function jsonValue(value: unknown): unknown {
@@ -166,5 +188,7 @@ function jsonValue(value: unknown): unknown {
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }

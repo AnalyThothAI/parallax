@@ -24,7 +24,7 @@ def test_token_radar_projection_worker_rebuilds_all_windows_and_scopes(monkeypat
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     worker = module.TokenRadarProjectionWorker(
-        repository_session=lambda: FakeSession(),
+        repository_session=FakeSession,
         windows=("5m", "1h", "4h"),
         scopes=("all", "matched"),
         limit=7,

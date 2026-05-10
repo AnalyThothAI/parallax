@@ -368,6 +368,7 @@ class CliTests(unittest.TestCase):
         for command in obsolete_commands:
             self.assertEqual(main(command, stdout=io.StringIO()), 2)
 
+
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "postgres_test_db"

@@ -35,9 +35,7 @@ class TokenRadarRepository:
             (projection_version, window, scope),
         ).fetchone()
         latest_computed_at_ms = (
-            int(latest["computed_at_ms"])
-            if latest and latest["computed_at_ms"] is not None
-            else None
+            int(latest["computed_at_ms"]) if latest and latest["computed_at_ms"] is not None else None
         )
         if latest_computed_at_ms is not None and latest_computed_at_ms > int(computed_at_ms):
             if commit:

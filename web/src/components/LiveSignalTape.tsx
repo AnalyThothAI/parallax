@@ -1,5 +1,12 @@
 import type { LivePayload, TokenFlowItem } from "../api/types";
-import { compactNumber, eventHandle, eventText, formatRelativeTime, formatScore, tokenLabel } from "../lib/format";
+import {
+  compactNumber,
+  eventHandle,
+  eventText,
+  formatRelativeTime,
+  formatScore,
+  tokenLabel,
+} from "../lib/format";
 
 type LiveSignalTapeBase = {
   score?: number | null;
@@ -28,7 +35,7 @@ export function LiveSignalTape({
   socketStatus,
   maxRows = 12,
   mobileTaskPanel,
-  onSelect
+  onSelect,
 }: LiveSignalTapeProps) {
   const visible = items.slice(0, maxRows);
   return (
@@ -41,7 +48,9 @@ export function LiveSignalTape({
       </header>
       <div className="tape-list">
         {isLoading ? <div className="empty-state">读取 replay 中</div> : null}
-        {!isLoading && visible.length === 0 ? <div className="empty-state">等待 replay 或 live event</div> : null}
+        {!isLoading && visible.length === 0 ? (
+          <div className="empty-state">等待 replay 或 live event</div>
+        ) : null}
         {visible.map((item) => {
           const id = tapeItemId(item);
           return (
@@ -57,7 +66,9 @@ export function LiveSignalTape({
                 <p>{tapeBody(item)}</p>
                 <em className="tape-reason">{item.reason}</em>
               </span>
-              <b className="tape-score">{item.score !== null && item.score !== undefined ? formatScore(item.score) : "-"}</b>
+              <b className="tape-score">
+                {item.score !== null && item.score !== undefined ? formatScore(item.score) : "-"}
+              </b>
               <time>{tapeTime(item)}</time>
             </button>
           );
@@ -94,7 +105,9 @@ function tapeKindLabel(item: LiveSignalTapeItem): string {
 
 function tapeTime(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
-    return item.event ? formatRelativeTime(item.event.event.received_at_ms) : formatRelativeTime(item.token.flow.window_end_ms);
+    return item.event
+      ? formatRelativeTime(item.event.event.received_at_ms)
+      : formatRelativeTime(item.token.flow.window_end_ms);
   }
   return formatRelativeTime(item.payload.event.received_at_ms);
 }
@@ -113,6 +126,9 @@ function tapeBody(item: LiveSignalTapeItem): string {
 }
 
 export function tokenTapeReason(token: TokenFlowItem): string {
-  const reason = token.opportunity.reasons[0] ?? token.opportunity.risks[0] ?? token.social_heat.reasons[0];
-  return reason ? reason.replaceAll("_", " ") : `${compactNumber(token.social_heat.mentions)} mentions`;
+  const reason =
+    token.opportunity.reasons[0] ?? token.opportunity.risks[0] ?? token.social_heat.reasons[0];
+  return reason
+    ? reason.replaceAll("_", " ")
+    : `${compactNumber(token.social_heat.mentions)} mentions`;
 }

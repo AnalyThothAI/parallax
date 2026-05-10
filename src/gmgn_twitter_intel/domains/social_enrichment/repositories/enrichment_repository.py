@@ -17,20 +17,66 @@ WATCHED_SOCIAL_EVENT_JOB_TYPE = "watched_social_event_extraction"
 
 # Text-gate constants (kept in sync with services.watched_event_gate)
 _HIGH_SIGNAL_TERMS = {
-    "accumulated", "acquired", "airdrop", "binance", "bought", "burn", "buyback",
-    "cex", "court", "delist", "deploy", "drain", "etf", "exploit", "funding",
-    "hack", "launch", "lawsuit", "listing", "mainnet", "partnership", "raise",
-    "sec", "sold", "treasury", "unlock", "upgrade", "whale",
+    "accumulated",
+    "acquired",
+    "airdrop",
+    "binance",
+    "bought",
+    "burn",
+    "buyback",
+    "cex",
+    "court",
+    "delist",
+    "deploy",
+    "drain",
+    "etf",
+    "exploit",
+    "funding",
+    "hack",
+    "launch",
+    "lawsuit",
+    "listing",
+    "mainnet",
+    "partnership",
+    "raise",
+    "sec",
+    "sold",
+    "treasury",
+    "unlock",
+    "upgrade",
+    "whale",
 }
 _TOPIC_TERMS = {
-    "agent", "ai", "base", "bnb", "bitcoin", "builder", "ecosystem", "ethereum",
-    "grok", "liquidity", "market", "pump", "ready", "rotation", "scaling",
-    "solana", "throughput",
+    "agent",
+    "ai",
+    "base",
+    "bnb",
+    "bitcoin",
+    "builder",
+    "ecosystem",
+    "ethereum",
+    "grok",
+    "liquidity",
+    "market",
+    "pump",
+    "ready",
+    "rotation",
+    "scaling",
+    "solana",
+    "throughput",
 }
 _SERVICE_REPLY_TERMS = (
-    "airdrop list", "already claimed", "api is down", "api returned",
-    "checked your claim", "claim status", "eligibility", "merkle proof",
-    "not eligible", "proof endpoint", "skill installed",
+    "airdrop list",
+    "already claimed",
+    "api is down",
+    "api returned",
+    "checked your claim",
+    "claim status",
+    "eligibility",
+    "merkle proof",
+    "not eligible",
+    "proof endpoint",
+    "skill installed",
 )
 
 
@@ -343,9 +389,7 @@ class EnrichmentRepository:
         return [dict(row) for row in rows]
 
     def job_counts(self) -> dict[str, int]:
-        rows = self.conn.execute(
-            "SELECT status, COUNT(*) AS count FROM enrichment_jobs GROUP BY status"
-        ).fetchall()
+        rows = self.conn.execute("SELECT status, COUNT(*) AS count FROM enrichment_jobs GROUP BY status").fetchall()
         counts = {str(row["status"]): int(row["count"]) for row in rows}
         for status in ("pending", "running", "failed", "dead", "done"):
             counts.setdefault(status, 0)

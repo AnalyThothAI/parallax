@@ -78,7 +78,9 @@ svg {
   top: 0;
   z-index: 20;
   display: grid;
-  grid-template-columns: minmax(160px, 210px) minmax(230px, 0.9fr) minmax(260px, 420px) minmax(210px, auto) 30px 30px;
+  grid-template-columns:
+    minmax(160px, 210px) minmax(230px, 0.9fr) minmax(260px, 420px) minmax(210px, auto)
+    30px 30px;
   gap: 10px;
   align-items: center;
   min-height: 46px;
@@ -2699,7 +2701,9 @@ svg {
 
 .signal-filter-bar {
   display: grid;
-  grid-template-columns: minmax(120px, 0.75fr) minmax(126px, 0.8fr) minmax(190px, 1.4fr) minmax(104px, 0.62fr) 78px;
+  grid-template-columns:
+    minmax(120px, 0.75fr) minmax(126px, 0.8fr) minmax(190px, 1.4fr) minmax(104px, 0.62fr)
+    78px;
   gap: 10px;
   border-bottom: 1px solid var(--line);
   padding: 10px 22px 16px;

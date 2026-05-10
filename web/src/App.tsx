@@ -1,10 +1,15 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { getApi, getBootstrap } from "./api/client";
-import { getNotifications, getNotificationSummary, markAllNotificationsRead, markNotificationRead } from "./api/notifications";
-import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "./api/useTokenTargetQueries";
+import {
+  getNotifications,
+  getNotificationSummary,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from "./api/notifications";
 import type {
   AccountQualityData,
   AssetFlowData,
@@ -15,11 +20,19 @@ import type {
   SignalPulseData,
   SignalPulseItem,
   StatusData,
-  TokenFlowItem
+  TokenFlowItem,
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
+import {
+  mergeTokenPostPages,
+  useTokenTargetPosts,
+  useTokenTargetTimeline,
+} from "./api/useTokenTargetQueries";
 import { CockpitLayout } from "./components/CockpitLayout";
-import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
+import {
+  EvidenceDetailDrawer,
+  type EvidenceDetailDrawerProps,
+} from "./components/EvidenceDetailDrawer";
 import { LivePage } from "./components/LivePage";
 import { LiveRadar } from "./components/LiveRadar";
 import { type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
@@ -29,16 +42,11 @@ import { SignalLabInspector } from "./components/SignalLabInspector";
 import { SignalLabPage } from "./components/SignalLabPage";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
 import { TokenTargetPage } from "./components/TokenTargetPage";
-import {
-  compactNumber,
-  eventText,
-  formatRelativeTime,
-  tokenKey
-} from "./lib/format";
+import { targetRefFromTokenItem } from "./domain/tokenTarget";
+import { compactNumber, eventText, formatRelativeTime, tokenKey } from "./lib/format";
 import { tokenForSearchQuery } from "./lib/searchIntent";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "./lib/tokenRadar";
 import { buildWatchlistRows } from "./lib/watchlist";
-import { targetRefFromTokenItem } from "./domain/tokenTarget";
 import { useTraderStore } from "./store/useTraderStore";
 
 type SelectedSignal =
@@ -99,7 +107,7 @@ export function App() {
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
     queryFn: getBootstrap,
-    staleTime: Infinity
+    staleTime: Infinity,
   });
 
   useEffect(() => {
@@ -115,7 +123,7 @@ export function App() {
     queryKey: ["status"],
     queryFn: () => getApi<StatusData>("/api/status", { token }),
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 
   const recentQuery = useQuery({
@@ -123,10 +131,10 @@ export function App() {
     queryFn: () =>
       getApi<RecentData>("/api/recent", {
         token,
-        params: { limit: 80, scope, handles }
+        params: { limit: 80, scope, handles },
       }),
     enabled: Boolean(token),
-    refetchInterval: 15_000
+    refetchInterval: 15_000,
   });
 
   const assetFlowQuery = useQuery({
@@ -134,10 +142,10 @@ export function App() {
     queryFn: () =>
       getApi<AssetFlowData>("/api/token-radar", {
         token,
-        params: { window: windowKey, limit: 48, scope }
+        params: { window: windowKey, limit: 48, scope },
       }),
     enabled: Boolean(token),
-    refetchInterval: 10_000
+    refetchInterval: 10_000,
   });
 
   const signalPulseOverviewQuery = useQuery({
@@ -148,11 +156,11 @@ export function App() {
         params: {
           window: SIGNAL_LAB_COMPACT_WINDOW,
           scope: SIGNAL_LAB_COMPACT_SCOPE,
-          limit: 1
-        }
+          limit: 1,
+        },
       }),
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 
   const signalLabPulseQuery = useQuery({
@@ -164,11 +172,11 @@ export function App() {
           window: SIGNAL_LAB_COMPACT_WINDOW,
           scope: SIGNAL_LAB_COMPACT_SCOPE,
           limit: 80,
-          sort: "recent"
-        }
+          sort: "recent",
+        },
       }),
     enabled: Boolean(token),
-    refetchInterval: 20_000
+    refetchInterval: 20_000,
   });
 
   const searchQuery = useQuery({
@@ -176,22 +184,31 @@ export function App() {
     queryFn: () =>
       getApi<SearchData>("/api/search", {
         token,
-        params: { q: submittedSearch, limit: 36, scope: "all" }
+        params: { q: submittedSearch, limit: 36, scope: "all" },
       }),
-    enabled: Boolean(token && submittedSearch)
+    enabled: Boolean(token && submittedSearch),
   });
 
   const rawTokenItems = useMemo(
     () => tokenRadarItems(assetFlowQuery.data?.data, windowKey, scope),
-    [assetFlowQuery.data?.data, scope, windowKey]
+    [assetFlowQuery.data?.data, scope, windowKey],
   );
-  const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
-  const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
+  const tokenItems = useMemo(
+    () => sortTokenItems(rawTokenItems, radarSortMode),
+    [rawTokenItems, radarSortMode],
+  );
+  const selectedToken =
+    selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const drawerTargetRef = targetRefFromTokenItem(selectedToken);
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
 
-  const tokenTimelineQuery = useTokenTargetTimeline({ token, target: drawerTargetRef, window: detailWindow, scope });
+  const tokenTimelineQuery = useTokenTargetTimeline({
+    token,
+    target: drawerTargetRef,
+    window: detailWindow,
+    scope,
+  });
   const tokenPostsQuery = useTokenTargetPosts({
     token,
     target: drawerTargetRef,
@@ -202,31 +219,35 @@ export function App() {
   });
 
   const accountQualityHandles = useMemo(
-    () => (tokenTimelineQuery.data?.data.authors ?? []).map((author) => author.handle).filter(Boolean).join(","),
-    [tokenTimelineQuery.data?.data.authors]
+    () =>
+      (tokenTimelineQuery.data?.data.authors ?? [])
+        .map((author) => author.handle)
+        .filter(Boolean)
+        .join(","),
+    [tokenTimelineQuery.data?.data.authors],
   );
   const accountQualityQuery = useQuery({
     queryKey: ["account-quality", accountQualityHandles],
     queryFn: () =>
       getApi<AccountQualityData>("/api/account-quality", {
         token,
-        params: { handles: accountQualityHandles }
+        params: { handles: accountQualityHandles },
       }),
-    enabled: Boolean(token && accountQualityHandles)
+    enabled: Boolean(token && accountQualityHandles),
   });
 
   const notificationSummaryQuery = useQuery({
     queryKey: ["notification-summary"],
     queryFn: () => getNotificationSummary(token),
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: () => getNotifications(token),
     enabled: Boolean(token),
-    refetchInterval: notificationDrawerOpen ? 8_000 : 20_000
+    refetchInterval: notificationDrawerOpen ? 8_000 : 20_000,
   });
 
   const markReadMutation = useMutation({
@@ -234,7 +255,7 @@ export function App() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
   });
 
   const markAllReadMutation = useMutation({
@@ -242,7 +263,7 @@ export function App() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
   });
 
   const liveItems = useMemo(() => {
@@ -251,34 +272,49 @@ export function App() {
     for (const item of [...replayItems, ...socket.events]) {
       byId.set(item.event.event_id, item);
     }
-    return [...byId.values()].sort((a, b) => Number(b.event.received_at_ms ?? 0) - Number(a.event.received_at_ms ?? 0));
+    return [...byId.values()].sort(
+      (a, b) => Number(b.event.received_at_ms ?? 0) - Number(a.event.received_at_ms ?? 0),
+    );
   }, [recentQuery.data?.data.items, socket.events]);
 
   const searchData = searchQuery.data?.data;
-  const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
-  const signalLabOverviewData = signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data;
+  const currentSearchData =
+    searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
+  const signalLabOverviewData =
+    signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data;
   const signalLabPulseData = signalLabPulseQuery.data?.data ?? signalLabOverviewData;
   const signalLabPulseTotal = signalPulseTotal(signalLabOverviewData?.summary);
-  const compactSignalPulseItems = signalLabPulseData?.items ?? [];
+  const compactSignalPulseItems = useMemo(
+    () => signalLabPulseData?.items ?? [],
+    [signalLabPulseData?.items],
+  );
   const liveSignalTapeItems = useMemo(
     () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
-    [liveItems, tokenItems]
+    [liveItems, tokenItems],
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
-  const tokenPostsData = useMemo(() => mergeTokenPostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
+  const tokenPostsData = useMemo(
+    () => mergeTokenPostPages(tokenPostsQuery.data?.pages),
+    [tokenPostsQuery.data?.pages],
+  );
   const selectedPulseItemId = selectedPulseItemIdForSelection(selectedSignal);
-  const selectedPulseItem = selectedSignal?.kind === "pulse" ? latestPulseForSelection(selectedSignal.item, compactSignalPulseItems) : null;
-  const selectedAccountEventId = selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null;
+  const selectedPulseItem =
+    selectedSignal?.kind === "pulse"
+      ? latestPulseForSelection(selectedSignal.item, compactSignalPulseItems)
+      : null;
+  const selectedAccountEventId =
+    selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null;
   const selectedEvidenceDetails = useMemo(
     () =>
       resolveEvidenceDetails(selectedSignal, {
         currentSearchData,
         searchError: searchQuery.error instanceof Error ? searchQuery.error : null,
-        searchFetching: searchQuery.isFetching
+        searchFetching: searchQuery.isFetching,
       }),
-    [currentSearchData, searchQuery.error, searchQuery.isFetching, selectedSignal]
+    [currentSearchData, searchQuery.error, searchQuery.isFetching, selectedSignal],
   );
-  const notificationSummary = notificationSummaryQuery.data?.data ?? statusQuery.data?.data.notifications?.summary ?? null;
+  const notificationSummary =
+    notificationSummaryQuery.data?.data ?? statusQuery.data?.data.notifications?.summary ?? null;
   const notifications = notificationsQuery.data?.data.items ?? [];
   const latestSocketNotificationId = socket.notifications[0]?.notification.notification_id ?? null;
   const watchlistRows = useMemo(
@@ -286,9 +322,14 @@ export function App() {
       buildWatchlistRows({
         handles: statusQuery.data?.data.handles ?? bootstrapQuery.data?.data.handles ?? [],
         accountUnreadCounts: notificationSummary?.account_unread_counts,
-        liveItems
+        liveItems,
       }),
-    [bootstrapQuery.data?.data.handles, liveItems, notificationSummary?.account_unread_counts, statusQuery.data?.data.handles]
+    [
+      bootstrapQuery.data?.data.handles,
+      liveItems,
+      notificationSummary?.account_unread_counts,
+      statusQuery.data?.data.handles,
+    ],
   );
 
   useEffect(() => {
@@ -309,7 +350,17 @@ export function App() {
       setSelectedEventId(null);
       setPostRange("current_window");
     }
-  }, [selectedSignal, setDetailMode, setDetailTab, setDetailWindow, setPostRange, setSelectedBucketStartMs, setSelectedEventId, tokenItems, windowKey]);
+  }, [
+    selectedSignal,
+    setDetailMode,
+    setDetailTab,
+    setDetailWindow,
+    setPostRange,
+    setSelectedBucketStartMs,
+    setSelectedEventId,
+    tokenItems,
+    windowKey,
+  ]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "token") {
@@ -333,13 +384,25 @@ export function App() {
     if (!latest) {
       setSelectedSignal(null);
     }
-  }, [selectedSignal, setDetailMode, setDetailTab, setDetailWindow, setPostRange, setSelectedBucketStartMs, setSelectedEventId, tokenItems, windowKey]);
+  }, [
+    selectedSignal,
+    setDetailMode,
+    setDetailTab,
+    setDetailWindow,
+    setPostRange,
+    setSelectedBucketStartMs,
+    setSelectedEventId,
+    tokenItems,
+    windowKey,
+  ]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "pulse") {
       return;
     }
-    const latest = compactSignalPulseItems.find((item) => item.candidate_id === selectedSignal.item.candidate_id);
+    const latest = compactSignalPulseItems.find(
+      (item) => item.candidate_id === selectedSignal.item.candidate_id,
+    );
     if (latest && latest !== selectedSignal.item) {
       setSelectedSignal({ kind: "pulse", item: latest });
       return;
@@ -369,7 +432,9 @@ export function App() {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailWindow(windowKey);
     setMobileTask("radar");
-    navigate(`/token/${target.target_type}/${encodeURIComponent(target.target_id)}?window=${windowKey}&scope=${scope}`);
+    navigate(
+      `/token/${target.target_type}/${encodeURIComponent(target.target_id)}?window=${windowKey}&scope=${scope}`,
+    );
   };
 
   const selectPulseItem = (item: SignalPulseItem, options: { openLab?: boolean } = {}) => {
@@ -471,7 +536,10 @@ export function App() {
   const openNotification = (notification: NotificationItem) => {
     markReadMutation.mutate(notification.notification_id);
     setNotificationDrawerOpen(false);
-    if (notification.entity_type === "pulse_candidate" || notification.source_table === "pulse_candidates") {
+    if (
+      notification.entity_type === "pulse_candidate" ||
+      notification.source_table === "pulse_candidates"
+    ) {
       let q: string | null = null;
       if (notification.symbol) {
         q = notification.symbol;
@@ -484,7 +552,10 @@ export function App() {
       setMobileTask("lab");
       return;
     }
-    if (notification.entity_type === "social_event" || notification.source_table === "social_event_extractions") {
+    if (
+      notification.entity_type === "social_event" ||
+      notification.source_table === "social_event_extractions"
+    ) {
       let q: string | null = null;
       let handle: string | null = null;
       if (notification.symbol) {
@@ -678,11 +749,17 @@ export function App() {
   );
 }
 
-function latestTokenForSelection(signal: Extract<SelectedSignal, { kind: "token" }>, items: TokenFlowItem[]) {
+function latestTokenForSelection(
+  signal: Extract<SelectedSignal, { kind: "token" }>,
+  items: TokenFlowItem[],
+) {
   return items.find((item) => tokenKey(item) === signal.key) ?? null;
 }
 
-function latestPulseForSelection(selected: SignalPulseItem, items: SignalPulseItem[]): SignalPulseItem {
+function latestPulseForSelection(
+  selected: SignalPulseItem,
+  items: SignalPulseItem[],
+): SignalPulseItem {
   return items.find((item) => item.candidate_id === selected.candidate_id) ?? selected;
 }
 
@@ -714,7 +791,13 @@ function buildSignalLabUrl({ q, handle }: { q?: string | null; handle?: string |
   return "/signal-lab" + (search ? "?" + search : "");
 }
 
-function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePayload[]; tokenItems: TokenFlowItem[] }): LiveSignalTapeItem[] {
+function buildLiveSignalTapeItems({
+  liveItems,
+  tokenItems,
+}: {
+  liveItems: LivePayload[];
+  tokenItems: TokenFlowItem[];
+}): LiveSignalTapeItem[] {
   const byTargetId = new Map<string, TokenFlowItem>();
   const byCa = new Map<string, TokenFlowItem>();
   const byIdentityKey = new Map<string, TokenFlowItem>();
@@ -743,7 +826,7 @@ function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePa
         event: payload,
         score: tokenMatch.opportunity.score,
         reason: tokenTapeReason(tokenMatch),
-        body: eventText(payload.event) || tokenTapeBody(tokenMatch)
+        body: eventText(payload.event) || tokenTapeBody(tokenMatch),
       });
     } else {
       rows.push({
@@ -751,12 +834,19 @@ function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePa
         payload,
         score: payload.alerts.length ? 80 : null,
         reason: payload.alerts.length ? "watched alert" : "public pulse",
-        body: eventText(payload.event)
+        body: eventText(payload.event),
       });
     }
   }
   for (const item of tokenItems.slice(0, 8)) {
-    rows.push({ kind: "token", token: item, event: null, score: item.opportunity.score, reason: tokenTapeReason(item), body: tokenTapeBody(item) });
+    rows.push({
+      kind: "token",
+      token: item,
+      event: null,
+      score: item.opportunity.score,
+      reason: tokenTapeReason(item),
+      body: tokenTapeBody(item),
+    });
   }
   const seen = new Set<string>();
   return rows.filter((item) => {
@@ -772,7 +862,9 @@ function tokenTapeBody(item: TokenFlowItem): string {
     `${compactNumber(item.social_heat.mentions)} 帖`,
     `Heat ${compactNumber(item.social_heat.score)}`,
     `作者 ${compactNumber(item.propagation.independent_authors)}`,
-    item.timing.status === "market_pending" ? "市场观测处理中" : formatRelativeTime(item.flow.window_end_ms)
+    item.timing.status === "market_pending"
+      ? "市场观测处理中"
+      : formatRelativeTime(item.flow.window_end_ms),
   ].join(" · ");
 }
 
@@ -783,7 +875,7 @@ function tokenMatchForPayload(
     byCa: Map<string, TokenFlowItem>;
     byIdentityKey: Map<string, TokenFlowItem>;
     bySymbol: Map<string, TokenFlowItem[]>;
-  }
+  },
 ): TokenFlowItem | undefined {
   for (const resolution of payload.token_resolutions ?? []) {
     if (resolution.target_id && lookup.byTargetId.has(resolution.target_id)) {
@@ -801,7 +893,7 @@ function tokenMatchForPayload(
       return lookup.byIdentityKey.get(intent.intent_id);
     }
     const symbol = intent.display_symbol?.toUpperCase();
-    const symbolMatches = symbol ? lookup.bySymbol.get(symbol) ?? [] : [];
+    const symbolMatches = symbol ? (lookup.bySymbol.get(symbol) ?? []) : [];
     if (symbolMatches.length === 1) {
       return symbolMatches[0];
     }
@@ -819,8 +911,12 @@ function tokenMatchForPayload(
       return lookup.byCa.get(caKey);
     }
   }
-  const symbol = payload.event.cashtags?.[0]?.toUpperCase() ?? payload.entities.find((entity) => entity.entity_type === "symbol")?.normalized_value?.toUpperCase();
-  const symbolMatches = symbol ? lookup.bySymbol.get(symbol) ?? [] : [];
+  const symbol =
+    payload.event.cashtags?.[0]?.toUpperCase() ??
+    payload.entities
+      .find((entity) => entity.entity_type === "symbol")
+      ?.normalized_value?.toUpperCase();
+  const symbolMatches = symbol ? (lookup.bySymbol.get(symbol) ?? []) : [];
   return symbolMatches.length === 1 ? symbolMatches[0] : undefined;
 }
 
@@ -849,7 +945,7 @@ function resolveEvidenceDetails(
     currentSearchData: SearchData | null;
     searchError: Error | null;
     searchFetching: boolean;
-  }
+  },
 ): EvidenceDetailDrawerProps | null {
   if (!signal) {
     return null;
@@ -862,7 +958,7 @@ function resolveEvidenceDetails(
       alerts: signal.item.alerts,
       tokenIntents: signal.item.token_intents ?? [],
       tokenResolutions: signal.item.token_resolutions ?? [],
-      sourceLabel: "live"
+      sourceLabel: "live",
     };
   }
   if (signal.kind === "query") {
@@ -871,7 +967,7 @@ function resolveEvidenceDetails(
       query: signal.query,
       data: data.currentSearchData,
       isFetching: data.searchFetching,
-      error: data.searchError
+      error: data.searchError,
     };
   }
   return null;

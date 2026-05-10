@@ -3,8 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { App } from "./App";
-import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
+import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
 import type {
   ApiResponse,
   AssetFlowData,
@@ -18,16 +19,21 @@ import type {
   TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData,
-  WindowKey
+  WindowKey,
 } from "./api/types";
-import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
+import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import { useTraderStore } from "./store/useTraderStore";
 
-const socketMock: { status: string; events: LivePayload[]; notifications: NotificationLivePayload[]; lastMessageAt: number | null } = {
+const socketMock: {
+  status: string;
+  events: LivePayload[];
+  notifications: NotificationLivePayload[];
+  lastMessageAt: number | null;
+} = {
   status: "connected",
   events: [],
   notifications: [],
-  lastMessageAt: 1_777_770_000_000
+  lastMessageAt: 1_777_770_000_000,
 };
 
 vi.mock("./api/client", async () => {
@@ -36,12 +42,12 @@ vi.mock("./api/client", async () => {
     ...actual,
     getApi: vi.fn(),
     getBootstrap: vi.fn(),
-    postApi: vi.fn()
+    postApi: vi.fn(),
   };
 });
 
 vi.mock("./api/useIntelSocket", () => ({
-  useIntelSocket: () => socketMock
+  useIntelSocket: () => socketMock,
 }));
 
 const mockedGetApi = vi.mocked(getApi);
@@ -64,18 +70,18 @@ const statusData: StatusData = {
     parse_errors: 0,
     last_frame_at_ms: 1_777_770_100_000,
     last_event_at_ms: 1_777_770_100_000,
-    last_matched_event_at_ms: 1_777_770_090_000
+    last_matched_event_at_ms: 1_777_770_090_000,
   },
   enrichment: {
     llm_configured: true,
     worker_running: true,
-    job_counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 }
+    job_counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 },
   },
   token_radar_projection: {
     worker_running: true,
     last_started_at_ms: 1_777_770_100_000,
     last_run_at_ms: 1_777_770_101_000,
-    last_result: { rows_written: 2, source_rows: 2 }
+    last_result: { rows_written: 2, source_rows: 2 },
   },
   asset_market_sync: {
     okx_cex_sync_enabled: true,
@@ -85,8 +91,8 @@ const statusData: StatusData = {
     last_result: { ready: 1 },
     providers: {
       cex: { running: false },
-      dex: { running: false }
-    }
+      dex: { running: false },
+    },
   },
   notifications: {
     enabled: true,
@@ -97,9 +103,9 @@ const statusData: StatusData = {
       high_unread_count: 0,
       critical_unread_count: 0,
       highest_unread_severity: null,
-      account_unread_counts: {}
-    }
-  }
+      account_unread_counts: {},
+    },
+  },
 };
 
 describe("App Token Radar social heat cockpit", () => {
@@ -132,9 +138,11 @@ describe("App Token Radar social heat cockpit", () => {
       postRange: "current_window",
       postSortMode: "recent",
       hideDuplicateClusters: false,
-      watchedPostsOnly: false
+      watchedPostsOnly: false,
     });
-    mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
+    mockedGetBootstrap.mockResolvedValue(
+      ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }),
+    );
     mockApi();
   });
 
@@ -180,7 +188,9 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
     expect(screen.queryByText("检索结果")).not.toBeInTheDocument();
     const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
-    await waitFor(() => expect(within(drawer).getByText("PEPE ignition from search")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(drawer).getByText("PEPE ignition from search")).toBeInTheDocument(),
+    );
     expect(within(drawer).getByText("@searcher")).toBeInTheDocument();
     expect(screen.queryByText("Select Token")).not.toBeInTheDocument();
   });
@@ -218,7 +228,10 @@ describe("App Token Radar social heat cockpit", () => {
       expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     });
     const mobileNav = screen.getByRole("navigation", { name: "mobile cockpit tasks" });
-    expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
@@ -239,7 +252,7 @@ describe("App Token Radar social heat cockpit", () => {
     const link = await screen.findByRole("link", { name: "Open $UPEG on GMGN" });
     expect(link).toHaveAttribute(
       "href",
-      "https://gmgn.ai/eth/token/0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+      "https://gmgn.ai/eth/token/0x6982508145454Ce325dDbE47a25d4ec3d2311933",
     );
     expect(link).toHaveAttribute("target", "_blank");
   });
@@ -250,10 +263,16 @@ describe("App Token Radar social heat cockpit", () => {
     const rowButton = await screen.findByRole("button", { name: "select token $UPEG" });
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
-    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · resolved asset");
-    expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
+    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent(
+      "78 · resolved asset",
+    );
+    expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent(
+      "expansion · 3 author",
+    );
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- missing");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("market pending");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent(
+      "market pending",
+    );
     expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
   });
 
@@ -282,7 +301,7 @@ describe("App Token Radar social heat cockpit", () => {
             inst_id: "BTC-USDT",
             base_symbol: "BTC",
             quote_symbol: "USDT",
-            inst_type: "SPOT"
+            inst_type: "SPOT",
           },
           price: {
             market_status: "fresh",
@@ -299,10 +318,10 @@ describe("App Token Radar social heat cockpit", () => {
             snapshot_observed_at_ms: 1_777_746_270_000,
             price_change_5m_pct: null,
             price_change_1h_pct: null,
-            price_change_24h_pct: null
-          }
-        })
-      ]
+            price_change_24h_pct: null,
+          },
+        }),
+      ],
     });
 
     renderWithQuery(<App />);
@@ -313,11 +332,15 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("fresh");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("neutral");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("fresh");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("历史不足");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("market pending");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent(
+      "历史不足",
+    );
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent(
+      "market pending",
+    );
     expect(await screen.findByRole("link", { name: "Open $BTC on OKX" })).toHaveAttribute(
       "href",
-      "https://www.okx.com/trade-spot/btc-usdt"
+      "https://www.okx.com/trade-spot/btc-usdt",
     );
   });
 
@@ -337,7 +360,7 @@ describe("App Token Radar social heat cockpit", () => {
             inst_id: "TON-USDT",
             base_symbol: "TON",
             quote_symbol: "USDT",
-            inst_type: "SPOT"
+            inst_type: "SPOT",
           },
           price: {
             market_status: "fresh",
@@ -353,8 +376,8 @@ describe("App Token Radar social heat cockpit", () => {
             snapshot_age_ms: 30_000,
             snapshot_observed_at_ms: 1_777_746_270_000,
             price_change_since_social_pct: null,
-            price_change_before_social_pct: null
-          }
+            price_change_before_social_pct: null,
+          },
         }),
         assetFlowRow({
           symbol: "",
@@ -374,10 +397,10 @@ describe("App Token Radar social heat cockpit", () => {
             snapshot_age_ms: 30_000,
             snapshot_observed_at_ms: 1_777_746_270_000,
             price_change_since_social_pct: null,
-            price_change_before_social_pct: null
-          }
-        })
-      ]
+            price_change_before_social_pct: null,
+          },
+        }),
+      ],
     });
 
     renderWithQuery(<App />);
@@ -388,7 +411,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     const microRow = await screen.findByRole("button", { name: /select token 0x111111/ });
     expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$0.00001361");
-    expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$0 fresh");
+    expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent(
+      "$0 fresh",
+    );
   });
 
   it("renders token-radar timing changes from backend market baselines", async () => {
@@ -415,16 +440,18 @@ describe("App Token Radar social heat cockpit", () => {
             price_change_since_social_pct: 0.111111,
             price_before_social_start: 0.017,
             price_change_before_social_pct: 0.058823,
-            price_change_status: "ready"
-          }
-        })
-      ]
+            price_change_status: "ready",
+          },
+        }),
+      ],
     });
 
     renderWithQuery(<App />);
 
     const rowButton = await screen.findByRole("button", { name: "select token $USDUC" });
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("+11% since social");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent(
+      "+11% since social",
+    );
   });
 
   it("uses Signal Lab as the trader-facing product label", async () => {
@@ -441,7 +468,9 @@ describe("App Token Radar social heat cockpit", () => {
     const pulseTitle = await screen.findByText("Signal Lab Pulse");
     const pulse = pulseTitle.closest("section") as HTMLElement;
     expect(await within(pulse).findByText(/ignition · A/)).toBeInTheDocument();
-    expect(within(pulse).getByText("CZ 推动 BNB build 叙事，候选处于点火阶段。")).toBeInTheDocument();
+    expect(
+      within(pulse).getByText("CZ 推动 BNB build 叙事，候选处于点火阶段。"),
+    ).toBeInTheDocument();
     expect(within(pulse).queryByText("extractor configured")).not.toBeInTheDocument();
     expect(within(pulse).queryByLabelText("signal lab pulse stages")).not.toBeInTheDocument();
     expect(screen.getByText("Token")).toBeInTheDocument();
@@ -458,7 +487,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("routes Signal Pulse notifications into Signal Lab instead of token search", async () => {
     mockApi({
       notifications: [signalPulseNotification()],
-      signalPulseWorkbench: signalPulseData()
+      signalPulseWorkbench: signalPulseData(),
     });
 
     renderWithQuery(<App />);
@@ -466,8 +495,12 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(await screen.findByRole("button", { name: "notifications" }));
     fireEvent.click(await screen.findByRole("button", { name: "open $BNB trade candidate" }));
 
-    expect(await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.")).toBeInTheDocument();
-    expect(mockedPostApi).toHaveBeenCalledWith("/api/notifications/notification-1/read", { token: "secret" });
+    expect(
+      await screen.findByText("Review Signal Pulse agent candidates by status, source, and query."),
+    ).toBeInTheDocument();
+    expect(mockedPostApi).toHaveBeenCalledWith("/api/notifications/notification-1/read", {
+      token: "secret",
+    });
   });
 
   it("queries the compact Signal Lab Pulse as a fresh live feed", async () => {
@@ -483,8 +516,8 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.window === "1h" &&
             options?.params?.scope === "all" &&
             options?.params?.limit === 80 &&
-            options?.params?.sort === "recent"
-        )
+            options?.params?.sort === "recent",
+        ),
       ).toBe(true);
     });
   });
@@ -495,10 +528,14 @@ describe("App Token Radar social heat cockpit", () => {
     const rail = container.querySelector(".side-rail") as HTMLElement;
     fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
-    const workbench = await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
+    const workbench = await screen.findByText(
+      "Review Signal Pulse agent candidates by status, source, and query.",
+    );
     expect(workbench).toBeInTheDocument();
     expect(screen.getByText("Signal Pulse")).toBeInTheDocument();
-    const views = within(container.querySelector(".side-rail") as HTMLElement).getByText("views").closest("section") as HTMLElement;
+    const views = within(container.querySelector(".side-rail") as HTMLElement)
+      .getByText("views")
+      .closest("section") as HTMLElement;
     expect(within(views).queryByText("Tokens")).not.toBeInTheDocument();
     expect(within(views).queryByText("Accounts")).not.toBeInTheDocument();
     expect(within(views).queryByText("Jobs/Ops")).not.toBeInTheDocument();
@@ -549,8 +586,8 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.window === "1h" &&
             options?.params?.scope === "all" &&
             options?.params?.handle === "traderpow" &&
-            options?.params?.q === undefined
-        )
+            options?.params?.q === undefined,
+        ),
       ).toBe(true);
     });
   });
@@ -558,7 +595,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("shows watched account events when an account lens has no Signal Pulse candidates", async () => {
     mockApi({
       recentItemsByHandle: { traderpow: [watchedAccountLensEvent("traderpow")] },
-      signalPulseByHandle: { traderpow: emptySignalPulseData("@traderpow") }
+      signalPulseByHandle: { traderpow: emptySignalPulseData("@traderpow") },
     });
     const { container } = renderWithQuery(<App />);
 
@@ -578,12 +615,14 @@ describe("App Token Radar social heat cockpit", () => {
             path === "/api/recent" &&
             options?.params?.scope === "all" &&
             options?.params?.handles === "traderpow" &&
-            options?.params?.limit === 80
-        )
+            options?.params?.limit === 80,
+        ),
       ).toBe(true);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "open watched post Account lens raw post without pulse" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "open watched post Account lens raw post without pulse" }),
+    );
 
     await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
     const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
@@ -622,12 +661,16 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(await screen.findByRole("button", { name: "Timeline" })).toHaveClass("active");
     await waitFor(() => {
-      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(true);
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(
+        true,
+      );
       expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-posts")).toBe(true);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
-    await waitFor(() => expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Score" }));
     await waitFor(() => expect(screen.getAllByText("Opportunity").length).toBeGreaterThan(0));
     expect(screen.getAllByText("Tradeability").length).toBeGreaterThan(0);
@@ -637,8 +680,10 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(drawer).getByRole("button", { name: "Lab" }));
     await waitFor(() =>
       expect(
-        within(drawer).getByText("Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.")
-      ).toBeInTheDocument()
+        within(drawer).getByText(
+          "Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.",
+        ),
+      ).toBeInTheDocument(),
     );
     expect(within(drawer).queryByText("Active Snapshots")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Credit Rows")).not.toBeInTheDocument();
@@ -647,8 +692,13 @@ describe("App Token Radar social heat cockpit", () => {
   it("maps radar evidence count from source event ids instead of empty intent evidence", () => {
     const row = {
       ...assetFlowRow(),
-      intent: { intent_id: "intent-upeg", display_symbol: "UPEG", display_name: null, evidence: [] },
-      source_event_ids: ["event-1", "event-2", "event-3", "event-4"]
+      intent: {
+        intent_id: "intent-upeg",
+        display_symbol: "UPEG",
+        display_name: null,
+        evidence: [],
+      },
+      source_event_ids: ["event-1", "event-2", "event-3", "event-4"],
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
@@ -659,7 +709,12 @@ describe("App Token Radar social heat cockpit", () => {
   it("uses the resolved target symbol for identity when a mention symbol disagrees", () => {
     const row = {
       ...assetFlowRow({ symbol: "SLOP" }),
-      intent: { intent_id: "intent-shit-mention", display_symbol: "SHIT", display_name: null, evidence: [] }
+      intent: {
+        intent_id: "intent-shit-mention",
+        display_symbol: "SHIT",
+        display_name: null,
+        evidence: [],
+      },
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
@@ -674,9 +729,14 @@ describe("App Token Radar social heat cockpit", () => {
       ...assetFlowRow({ symbol: "SATO" }),
       target: {
         ...assetFlowRow({ symbol: "SLOP" }).target,
-        symbol: null
+        symbol: null,
       },
-      intent: { intent_id: "intent-sato-mention", display_symbol: "SATO", display_name: null, evidence: [] }
+      intent: {
+        intent_id: "intent-sato-mention",
+        display_symbol: "SATO",
+        display_name: null,
+        evidence: [],
+      },
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
@@ -694,8 +754,8 @@ describe("App Token Radar social heat cockpit", () => {
         propagation: scoreBlock({ score: 13, reasons: [], risks: [] }),
         tradeability: scoreBlock({ score: 14, reasons: [], risks: [] }),
         timing: scoreBlock({ score: 15, reasons: [], risks: [] }),
-        opportunity: scoreBlock({ score: 16, reasons: [], risks: [] })
-      }
+        opportunity: scoreBlock({ score: 16, reasons: [], risks: [] }),
+      },
     } as unknown as AssetFlowRow;
 
     expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(/score\.heat\.score_version/);
@@ -706,7 +766,9 @@ describe("App Token Radar social heat cockpit", () => {
     const attention = { ...(row.attention as Partial<AssetFlowRow["attention"]>) };
     delete attention.baseline_status;
 
-    expect(() => tokenRadarRowToTokenItem({ ...row, attention } as unknown as AssetFlowRow, "1h", "all")).toThrow(/attention\.baseline_status/);
+    expect(() =>
+      tokenRadarRowToTokenItem({ ...row, attention } as unknown as AssetFlowRow, "1h", "all"),
+    ).toThrow(/attention\.baseline_status/);
   });
 
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
@@ -714,7 +776,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    const detailWindow = await within(drawer).findByLabelText("selected token detail window") as HTMLSelectElement;
+    const detailWindow = (await within(drawer).findByLabelText(
+      "selected token detail window",
+    )) as HTMLSelectElement;
 
     expect(detailWindow).toHaveValue("1h");
     expect(drawer.querySelector(".detail-window-control button")).not.toBeInTheDocument();
@@ -730,7 +794,9 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.change(detailWindow, { target: { value: "4h" } });
 
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-social-timeline");
+      const timelineCall = mockedGetApi.mock.calls.find(
+        ([path]) => path === "/api/target-social-timeline",
+      );
       expect(timelineCall?.[1]?.params).toMatchObject({ window: "4h" });
       expect(timelineCall?.[1]?.params).not.toHaveProperty("bucket");
     });
@@ -741,12 +807,16 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    const bucket = await within(drawer).findByRole("button", { name: /open replay bucket .*2 posts/i });
+    const bucket = await within(drawer).findByRole("button", {
+      name: /open replay bucket .*2 posts/i,
+    });
 
     fireEvent.click(bucket);
 
     await waitFor(() => expect(within(drawer).getByText("Replay Focus")).toBeInTheDocument());
-    expect(within(drawer).getByText("selected bucket · 2 posts · 1 new author")).toBeInTheDocument();
+    expect(
+      within(drawer).getByText("selected bucket · 2 posts · 1 new author"),
+    ).toBeInTheDocument();
     expect(within(drawer).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     expect(within(drawer).getByRole("button", { name: "Back to timeline" })).toBeInTheDocument();
   });
@@ -762,7 +832,9 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(postRange).getByRole("button", { name: "window" })).toHaveClass("active");
     expect(within(postRange).getByRole("button", { name: "ignition" })).toBeInTheDocument();
     expect(within(postRange).getByRole("button", { name: "history" })).toBeInTheDocument();
-    expect(await within(drawer).findByText("3 total · 3 loaded · score window 1h")).toBeInTheDocument();
+    expect(
+      await within(drawer).findByText("3 total · 3 loaded · score window 1h"),
+    ).toBeInTheDocument();
 
     mockedGetApi.mockClear();
     fireEvent.click(within(postRange).getByRole("button", { name: "history" }));
@@ -771,7 +843,9 @@ describe("App Token Radar social heat cockpit", () => {
       const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
       expect(postsCall?.[1]?.params).toMatchObject({ range: "all_history" });
     });
-    expect(await within(drawer).findByText("history does not all participate in current score")).toBeInTheDocument();
+    expect(
+      await within(drawer).findByText("history does not all participate in current score"),
+    ).toBeInTheDocument();
   });
 
   it("requests catalyst post sorting from the server", async () => {
@@ -804,7 +878,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByText("Signal Lab Pulse");
 
-    await waitFor(() => expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/pulse")).toBe(true));
+    await waitFor(() =>
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/pulse")).toBe(true),
+    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/chains")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/social-events")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/attention-seeds")).toBe(false);
@@ -835,8 +911,12 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
     fireEvent.click(await screen.findByRole("button", { name: /Token watch/ }));
-    fireEvent.change(screen.getByLabelText("Signal Lab source filter"), { target: { value: "@cz_binance" } });
-    fireEvent.change(screen.getByLabelText("Signal Lab identity filter"), { target: { value: "BNB" } });
+    fireEvent.change(screen.getByLabelText("Signal Lab source filter"), {
+      target: { value: "@cz_binance" },
+    });
+    fireEvent.change(screen.getByLabelText("Signal Lab identity filter"), {
+      target: { value: "BNB" },
+    });
 
     await waitFor(() => {
       expect(
@@ -848,8 +928,8 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.status === "token_watch" &&
             !("kind" in (options?.params ?? {})) &&
             options?.params?.handle === "@cz_binance" &&
-            options?.params?.q === "BNB"
-        )
+            options?.params?.q === "BNB",
+        ),
       ).toBe(true);
     });
   });
@@ -859,8 +939,8 @@ describe("App Token Radar social heat cockpit", () => {
       ...signalPulseData(),
       summary: {
         ...signalPulseData().summary,
-        trade_candidate: 2
-      }
+        trade_candidate: 2,
+      },
     };
     const secondItem = {
       ...firstPage.items[0],
@@ -868,7 +948,7 @@ describe("App Token Radar social heat cockpit", () => {
       subject_key: "token:SOL",
       symbol: "SOL",
       summary_zh: "SOL pulse loaded from cursor.",
-      why_now_zh: "SOL pulse loaded from cursor."
+      why_now_zh: "SOL pulse loaded from cursor.",
     };
     mockApi({
       signalPulsePages: {
@@ -878,9 +958,9 @@ describe("App Token Radar social heat cockpit", () => {
           items: [firstPage.items[0], secondItem],
           returned_count: 2,
           has_more: false,
-          next_cursor: null
-        }
-      }
+          next_cursor: null,
+        },
+      },
     });
     const { container } = renderWithQuery(<App />);
 
@@ -891,8 +971,8 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => {
       expect(
         mockedGetApi.mock.calls.some(
-          ([path, options]) => path === "/api/signal-lab/pulse" && options?.params?.cursor === "80"
-        )
+          ([path, options]) => path === "/api/signal-lab/pulse" && options?.params?.cursor === "80",
+        ),
       ).toBe(true);
     });
     expect(await screen.findByText("SOL pulse loaded from cursor.")).toBeInTheDocument();
@@ -912,8 +992,8 @@ describe("App Token Radar social heat cockpit", () => {
         token_watch: 0,
         theme_watch: 0,
         risk_rejected_high_info: 0,
-        blocked_low_information: 0
-      }
+        blocked_low_information: 0,
+      },
     };
     mockApi({ signalPulseCompact: signalPulseData(), signalPulseWorkbench: emptyWorkbench });
     const { container } = renderWithQuery(<App />);
@@ -930,7 +1010,9 @@ describe("App Token Radar social heat cockpit", () => {
     const { container } = renderWithQuery(<App />);
 
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
-    const signalChainRow = await within(pulse).findByRole("button", { name: "open Signal Pulse BNB" });
+    const signalChainRow = await within(pulse).findByRole("button", {
+      name: "open Signal Pulse BNB",
+    });
 
     fireEvent.click(signalChainRow);
 
@@ -995,19 +1077,20 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-social-timeline");
+      const timelineCall = mockedGetApi.mock.calls.find(
+        ([path]) => path === "/api/target-social-timeline",
+      );
       const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
       expect(timelineCall?.[1]?.params).toMatchObject({
         target_type: "Asset",
-        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       });
       expect(postsCall?.[1]?.params).toMatchObject({
         target_type: "Asset",
-        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       });
     });
   });
-
 
   it("does not offer an audit page for unresolved token radar rows", async () => {
     mockApi({ assetFlowRows: [unresolvedAssetFlowRow()] });
@@ -1015,7 +1098,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     expect(screen.queryByText("Page")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /open token audit page/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /open token audit page/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("realigns the drawer when the selected token disappears after a window switch", async () => {
@@ -1043,8 +1128,12 @@ describe("App Token Radar social heat cockpit", () => {
 
     await waitFor(() => {
       const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-      expect(within(drawer).getByText((content) => content.includes("0x111111"))).toBeInTheDocument();
-      expect(within(drawer).queryByText((content) => content.includes("0x222222"))).not.toBeInTheDocument();
+      expect(
+        within(drawer).getByText((content) => content.includes("0x111111")),
+      ).toBeInTheDocument();
+      expect(
+        within(drawer).queryByText((content) => content.includes("0x222222")),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -1053,8 +1142,13 @@ describe("App Token Radar social heat cockpit", () => {
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
     expect(mobileNav).toBeInTheDocument();
-    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
-    await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).not.toBeDisabled());
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await waitFor(() =>
+      expect(within(mobileNav).getByRole("button", { name: "Detail" })).not.toBeDisabled(),
+    );
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
   });
 
@@ -1066,7 +1160,12 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(row);
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
-    await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
+    await waitFor(() =>
+      expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      ),
+    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-radar")).toBe(false);
     expect(screen.getByText("selected token")).toBeInTheDocument();
   });
@@ -1077,13 +1176,22 @@ describe("App Token Radar social heat cockpit", () => {
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
-    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Lab" }));
-    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
-    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
@@ -1100,14 +1208,22 @@ describe("App Token Radar social heat cockpit", () => {
     await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
-    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
 
-    const livePulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+    const livePulse = (await screen.findByText("Signal Lab Pulse")).closest(
+      "section",
+    ) as HTMLElement;
     fireEvent.click(within(livePulse).getByRole("button", { name: "Open Lab" }));
     await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
-    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
   });
 
@@ -1137,28 +1253,32 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
 
-    expect(await within(pulse).findByRole("button", { name: "open Signal Pulse BNB" })).toBeInTheDocument();
+    expect(
+      await within(pulse).findByRole("button", { name: "open Signal Pulse BNB" }),
+    ).toBeInTheDocument();
     expect(within(pulse).queryByRole("link", { name: /source post/ })).not.toBeInTheDocument();
   });
 });
 
-function mockApi(options: {
-  missingTokenId?: boolean;
-  duplicateSymbol?: boolean;
-  insufficientTiming?: boolean;
-  windowSwapToken?: boolean;
-  searchResult?: boolean;
-  signalPulse?: SignalPulseData;
-  signalPulseCompact?: SignalPulseData;
-  signalPulseWorkbench?: SignalPulseData;
-  signalPulseByHandle?: Record<string, SignalPulseData>;
-  signalPulsePages?: Record<string, SignalPulseData>;
-  recentItemsByHandle?: Record<string, LivePayload[]>;
-  notifications?: NotificationItem[];
-  assetFlowRows?: AssetFlowRow[];
-  assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
-  projectionVersion?: string;
-} = {}) {
+function mockApi(
+  options: {
+    missingTokenId?: boolean;
+    duplicateSymbol?: boolean;
+    insufficientTiming?: boolean;
+    windowSwapToken?: boolean;
+    searchResult?: boolean;
+    signalPulse?: SignalPulseData;
+    signalPulseCompact?: SignalPulseData;
+    signalPulseWorkbench?: SignalPulseData;
+    signalPulseByHandle?: Record<string, SignalPulseData>;
+    signalPulsePages?: Record<string, SignalPulseData>;
+    recentItemsByHandle?: Record<string, LivePayload[]>;
+    notifications?: NotificationItem[];
+    assetFlowRows?: AssetFlowRow[];
+    assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
+    projectionVersion?: string;
+  } = {},
+) {
   mockedGetApi.mockImplementation(async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
     if (path === "/api/notification-summary") {
@@ -1169,7 +1289,11 @@ function mockApi(options: {
     }
     if (path === "/api/recent") {
       const handle = normalizedHandle(String(requestOptions?.params?.handles ?? ""));
-      return ok({ scope: requestOptions?.params?.scope, events: [], items: options.recentItemsByHandle?.[handle] ?? [liveUpegEvent()] });
+      return ok({
+        scope: requestOptions?.params?.scope,
+        events: [],
+        items: options.recentItemsByHandle?.[handle] ?? [liveUpegEvent()],
+      });
     }
     if (path === "/api/token-radar") {
       if (options.duplicateSymbol) {
@@ -1178,10 +1302,10 @@ function mockApi(options: {
           scope: "all",
           targets: [
             assetFlowRow({ address: "0x1111111111111111111111111111111111111111" }),
-            assetFlowRow({ address: "0x2222222222222222222222222222222222222222" })
+            assetFlowRow({ address: "0x2222222222222222222222222222222222222222" }),
           ],
           attention: [],
-          projection: assetFlowProjection(options.projectionVersion)
+          projection: assetFlowProjection(options.projectionVersion),
         });
       }
       const window = String(requestOptions?.params?.window ?? "1h");
@@ -1190,19 +1314,22 @@ function mockApi(options: {
       return ok<AssetFlowData>({
         window: window as AssetFlowData["window"],
         scope: "all",
-        targets: rowsForWindow ?? options.assetFlowRows ?? [
-          assetFlowRow({
-            address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
-            symbol: swapped ? "ALT" : undefined,
-            insufficientTiming: options.insufficientTiming
-          })
-        ],
+        targets: rowsForWindow ??
+          options.assetFlowRows ?? [
+            assetFlowRow({
+              address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
+              symbol: swapped ? "ALT" : undefined,
+              insufficientTiming: options.insufficientTiming,
+            }),
+          ],
         attention: [],
-        projection: assetFlowProjection(options.projectionVersion)
+        projection: assetFlowProjection(options.projectionVersion),
       });
     }
     if (path === "/api/target-social-timeline") {
-      return ok<TokenSocialTimelineData>(timelineData(targetFixtureOptions(requestOptions?.params?.target_id)));
+      return ok<TokenSocialTimelineData>(
+        timelineData(targetFixtureOptions(requestOptions?.params?.target_id)),
+      );
     }
     if (path === "/api/target-posts") {
       return ok<TokenPostsData>(postsData(targetFixtureOptions(requestOptions?.params?.target_id)));
@@ -1212,12 +1339,25 @@ function mockApi(options: {
         query: { handles: ["traderpow", "alien19710628"] },
         accounts: [
           {
-            profile: { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, follower_max: 168_905, watched_status: "watched" },
-            summary: { status: "insufficient_sample", sample_size: 1, precision_score: null, early_call_score: 100, spam_risk_score: 0, avg_realized_return: null },
+            profile: {
+              handle: "traderpow",
+              first_seen_ms: 1_777_746_010_000,
+              latest_seen_ms: 1_777_746_010_000,
+              follower_max: 168_905,
+              watched_status: "watched",
+            },
+            summary: {
+              status: "insufficient_sample",
+              sample_size: 1,
+              precision_score: null,
+              early_call_score: 100,
+              spam_risk_score: 0,
+              avg_realized_return: null,
+            },
             token_call_stats: [],
-            quality_snapshots: []
-          }
-        ]
+            quality_snapshots: [],
+          },
+        ],
       });
     }
     if (path === "/api/signal-lab/pulse") {
@@ -1232,7 +1372,9 @@ function mockApi(options: {
         return ok(options.signalPulseCompact);
       }
       if (window === "1h" && options.signalPulsePages) {
-        return ok(options.signalPulsePages[cursor] ?? options.signalPulsePages[""] ?? signalPulseData());
+        return ok(
+          options.signalPulsePages[cursor] ?? options.signalPulsePages[""] ?? signalPulseData(),
+        );
       }
       if (window === "1h" && options.signalPulseWorkbench) {
         return ok(options.signalPulseWorkbench);
@@ -1256,7 +1398,8 @@ function mockApi(options: {
       }
       throw new ApiError("not found", 404);
     }
-    if (path === "/api/enrichment-jobs") return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
+    if (path === "/api/enrichment-jobs")
+      return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     if (path === "/api/search") {
       if (options.searchResult) {
         return ok({
@@ -1275,20 +1418,25 @@ function mockApi(options: {
                 cashtags: ["PEPE"],
                 hashtags: ["alpha"],
                 mentions: ["watcher"],
-                is_watched: 0
+                is_watched: 0,
               },
               match_type: "fts",
-              score: -2.1
-            }
-          ]
+              score: -2.1,
+            },
+          ],
         });
       }
       return ok({
-        query: { kind: "symbol", text: String(requestOptions?.params?.q ?? ""), scope: "all", symbol: "PEPE" },
+        query: {
+          kind: "symbol",
+          text: String(requestOptions?.params?.q ?? ""),
+          scope: "all",
+          symbol: "PEPE",
+        },
         total_count: 0,
         returned_count: 0,
         has_more: false,
-        items: []
+        items: [],
       });
     }
     throw new Error(`unexpected path ${path}`);
@@ -1307,13 +1455,15 @@ function plainLiveEvent(): LivePayload {
       cashtags: [],
       hashtags: ["macro"],
       mentions: [],
-      is_watched: 0
+      is_watched: 0,
     },
-    entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 }],
+    entities: [
+      { entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 },
+    ],
     token_intents: [],
     token_resolutions: [],
     alerts: [],
-    harness: null
+    harness: null,
   };
 }
 
@@ -1338,7 +1488,7 @@ function assetFlowRow(
     attention?: Partial<AssetFlowRow["attention"]>;
     score?: Partial<NonNullable<AssetFlowRow["score"]>>;
     insufficientTiming?: boolean;
-  } = {}
+  } = {},
 ): AssetFlowRow {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const symbol = options.symbol ?? "UPEG";
@@ -1360,17 +1510,24 @@ function assetFlowRow(
     snapshot_age_ms: null,
     snapshot_observed_at_ms: null,
     price_change_since_social_pct: null,
-    price_change_before_social_pct: null
+    price_change_before_social_pct: null,
   };
-  const marketFresh = price.market_status === "fresh" || price.market_status === "ready" || price.market_status === "stale";
-  const timingStatus = options.insufficientTiming ? "market_pending" : marketFresh ? "neutral" : "market_pending";
+  const marketFresh =
+    price.market_status === "fresh" ||
+    price.market_status === "ready" ||
+    price.market_status === "stale";
+  const timingStatus = options.insufficientTiming
+    ? "market_pending"
+    : marketFresh
+      ? "neutral"
+      : "market_pending";
   const timingRisks = timingStatus === "market_pending" ? ["market_observation_pending"] : [];
   return {
     intent: {
       intent_id: `intent:${assetId}`,
       display_symbol: symbol,
       display_name: null,
-      evidence: []
+      evidence: [],
     },
     target: isCex
       ? {
@@ -1381,7 +1538,7 @@ function assetFlowRow(
           provider: options.primaryVenue?.exchange ?? "okx",
           native_market_id: options.primaryVenue?.inst_id ?? `${symbol}-USDT`,
           feed_type: options.primaryVenue?.inst_type ?? "cex_spot",
-          quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT"
+          quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT",
         }
       : {
           target_type: "Asset",
@@ -1391,7 +1548,7 @@ function assetFlowRow(
           chain_id: "eip155:1",
           token_standard: "erc20",
           address,
-          pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`
+          pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`,
         },
     attention: {
       mentions_5m: 2,
@@ -1415,7 +1572,7 @@ function assetFlowRow(
       baseline_sample_count: 0,
       baseline_nonzero_sample_count: 0,
       zero_slot_count: 6,
-      ...options.attention
+      ...options.attention,
     },
     price,
     resolution: {
@@ -1425,12 +1582,28 @@ function assetFlowRow(
       target_id: targetId,
       reason_codes: ["CHAIN_ADDRESS_EXACT"],
       candidate_ids: [targetId],
-      lookup_keys: []
+      lookup_keys: [],
     },
     score: {
-      heat: scoreBlock({ score_version: "social_heat_v1", score: 86, status: "rising", reasons: ["rising"], risks: ["public_stream_coverage"] }),
-      quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
-      propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
+      heat: scoreBlock({
+        score_version: "social_heat_v1",
+        score: 86,
+        status: "rising",
+        reasons: ["rising"],
+        risks: ["public_stream_coverage"],
+      }),
+      quality: scoreBlock({
+        score_version: "discussion_quality_v1",
+        score: 78,
+        reasons: ["resolved_asset"],
+        risks: [],
+      }),
+      propagation: scoreBlock({
+        score_version: "propagation_v1",
+        score: 72,
+        reasons: ["independent_expansion"],
+        risks: [],
+      }),
       tradeability: scoreBlock({
         score_version: "tradeability_v2",
         score: marketFresh ? 80 : 60,
@@ -1440,7 +1613,7 @@ function assetFlowRow(
         market_fresh: marketFresh,
         market_cap_present: true,
         liquidity_present: true,
-        pool_present: marketFresh
+        pool_present: marketFresh,
       }),
       timing: scoreBlock({
         score_version: "timing_v4",
@@ -1448,21 +1621,30 @@ function assetFlowRow(
         status: timingStatus,
         chase_risk: false,
         reasons: [],
-        risks: timingRisks
+        risks: timingRisks,
       }),
       opportunity: scoreBlock({
         score_version: "social_opportunity_v3",
         score: 79,
         reasons: ["backend_decision"],
         risks: ["public_stream_coverage"],
-        components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
-      })
-      ,
-      ...options.score
+        components: {
+          heat: 86,
+          quality: 78,
+          propagation: 72,
+          tradeability: marketFresh ? 80 : 60,
+          timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
+        },
+      }),
+      ...options.score,
     },
     decision: "driver",
-    data_health: { identity: "EXACT", market: price.market_observation_status ?? "pending", coverage: "public_stream" },
-    source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3", "event-upeg-4"]
+    data_health: {
+      identity: "EXACT",
+      market: price.market_observation_status ?? "pending",
+      coverage: "public_stream",
+    },
+    source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3", "event-upeg-4"],
   };
 }
 
@@ -1474,7 +1656,7 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
       target_type: null,
       target_id: null,
       symbol: row.target?.symbol ?? "UPEG",
-      status: "unresolved"
+      status: "unresolved",
     },
     resolution: {
       status: "UNRESOLVED",
@@ -1483,9 +1665,9 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
       target_id: null,
       reason_codes: ["NO_DETERMINISTIC_TARGET"],
       candidate_ids: [],
-      lookup_keys: []
+      lookup_keys: [],
     },
-    decision: "investigate"
+    decision: "investigate",
   };
 }
 
@@ -1495,11 +1677,13 @@ function assetFlowProjection(version = "token-radar-fixture-current"): AssetFlow
     version,
     source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
-    computed_at_ms: 1_777_746_300_000
+    computed_at_ms: 1_777_746_300_000,
   };
 }
 
-function tokenFlowItem(options: { address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {
+function tokenFlowItem(
+  options: { address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {},
+): TokenFlowItem {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const assetId = `asset:dex:eth:${address.toLowerCase()}`;
   const symbol = options.symbol ?? "UPEG";
@@ -1515,7 +1699,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       exchange: "gmgn",
       chain: "eth",
       address,
-      symbol
+      symbol,
     },
     market: {
       market_status: "fresh",
@@ -1533,7 +1717,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       price_before_social_start: 0.0009,
       price_change_before_social_pct: 0.111111,
       market_observation_status: "ready",
-      price_change_status: "ready"
+      price_change_status: "ready",
     },
     flow: {
       window: "1h",
@@ -1549,7 +1733,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       new_burst_score: null,
       stream_dominance: 0.25,
       baseline_status: "ready",
-      baseline_sample_count: 20
+      baseline_sample_count: 20,
     },
     social_heat: scoreBlock({
       score_version: "social_heat_v1",
@@ -1570,7 +1754,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       new_burst_score: null,
       stream_share: 0.25,
       watched_share: 0.25,
-      status: "burst"
+      status: "burst",
     }),
     discussion_quality: scoreBlock({
       score_version: "discussion_quality_v1",
@@ -1582,7 +1766,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       avg_attribution_confidence: 1,
       duplicate_text_share: 0,
       informative_post_count: 3,
-      watched_source_count: 1
+      watched_source_count: 1,
     }),
     propagation: scoreBlock({
       score_version: "propagation_v1",
@@ -1597,7 +1781,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       author_entropy: 1,
       reproduction_rate: 1.5,
       phase: "expansion",
-      top_authors: [{ handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 }]
+      top_authors: [{ handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 }],
     }),
     tradeability: scoreBlock({
       score_version: "tradeability_v1",
@@ -1608,7 +1792,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       market_fresh: true,
       market_cap_present: true,
       liquidity_present: true,
-      pool_present: true
+      pool_present: true,
     }),
     timing: options.insufficientTiming
       ? {
@@ -1621,7 +1805,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
           price_change_before_social_pct: null,
           market_observation_status: "pending",
           reasons: [],
-          risks: ["market_observation_pending"]
+          risks: ["market_observation_pending"],
         }
       : {
           score_version: "timing_v4",
@@ -1633,7 +1817,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
           price_change_before_social_pct: 0.111111,
           market_observation_status: "ready",
           reasons: [],
-          risks: []
+          risks: [],
         },
     opportunity: scoreBlock({
       score_version: "social_opportunity_v3",
@@ -1642,7 +1826,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       decision_priority: 3,
       reasons: ["z_score_above_3", "independent_expansion"],
       risks: ["public_stream_coverage"],
-      components: { heat: 86, quality: 78, propagation: 72, tradeability: 80, timing: 50 }
+      components: { heat: 86, quality: 78, propagation: 72, tradeability: 80, timing: 50 },
     }),
     watch: {
       status: "direct_watch",
@@ -1651,11 +1835,17 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       seed_link_count: 0,
       top_seed: null,
       reasons: ["watched_direct_mention"],
-      risks: []
+      risks: [],
     },
     evidence_total_count: 4,
-    posts_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all", range: "current_window" },
-    timeline_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all" }
+    posts_query: {
+      target_type: "Asset",
+      target_id: assetId,
+      window: "1h",
+      scope: "all",
+      range: "current_window",
+    },
+    timeline_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all" },
   };
 }
 
@@ -1667,7 +1857,9 @@ function targetFixtureOptions(targetId: unknown): { symbol?: string; address?: s
   return {};
 }
 
-function timelineData(options: { symbol?: string; address?: string } = {}): TokenSocialTimelineData {
+function timelineData(
+  options: { symbol?: string; address?: string } = {},
+): TokenSocialTimelineData {
   const token = tokenFlowItem(options);
   return {
     query: { ...token.timeline_query, bucket: "5m" },
@@ -1683,11 +1875,31 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
       duplicate_text_share: 0,
       peak_posts_per_bucket: 2,
       peak_new_authors_per_bucket: 1,
-      reproduction_rate: 1.5
+      reproduction_rate: 1.5,
     },
     buckets: [
-      { start_ms: 1_777_746_000_000, end_ms: 1_777_746_300_000, posts: 2, authors: 1, new_authors: 1, watched_posts: 1, duplicate_text_share: 0, price: null, price_change_from_start_pct: null },
-      { start_ms: 1_777_746_300_000, end_ms: 1_777_746_600_000, posts: 1, authors: 1, new_authors: 1, watched_posts: 0, duplicate_text_share: 0, price: null, price_change_from_start_pct: null }
+      {
+        start_ms: 1_777_746_000_000,
+        end_ms: 1_777_746_300_000,
+        posts: 2,
+        authors: 1,
+        new_authors: 1,
+        watched_posts: 1,
+        duplicate_text_share: 0,
+        price: null,
+        price_change_from_start_pct: null,
+      },
+      {
+        start_ms: 1_777_746_300_000,
+        end_ms: 1_777_746_600_000,
+        posts: 1,
+        authors: 1,
+        new_authors: 1,
+        watched_posts: 0,
+        duplicate_text_share: 0,
+        price: null,
+        price_change_from_start_pct: null,
+      },
     ],
     market_overlay: {
       target_type: "Asset",
@@ -1695,7 +1907,7 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
       chain_id: "eip155:1",
       address: token.identity.address,
       symbol: token.identity.symbol,
-      pricefeed_id: "pricefeed:test"
+      pricefeed_id: "pricefeed:test",
     },
     stages: [
       {
@@ -1706,19 +1918,49 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
         duration_ms: 0,
         trigger_reason: "first_token_evidence",
         confidence: 0.61,
-        people: { posts: 1, authors: 1, new_authors: 1, watched_posts: 1, watched_authors: 1, top_author_share: 1 },
+        people: {
+          posts: 1,
+          authors: 1,
+          new_authors: 1,
+          watched_posts: 1,
+          watched_authors: 1,
+          top_author_share: 1,
+        },
         representative_event_ids: [`event-${(options.symbol ?? "UPEG").toLowerCase()}-1`],
-        price: { status: "pending_observation", start_price: null, end_price: null, delta_pct: null, observation_ids: [], max_observation_lag_ms: null },
-        risks: []
-      }
+        price: {
+          status: "pending_observation",
+          start_price: null,
+          end_price: null,
+          delta_pct: null,
+          observation_ids: [],
+          max_observation_lag_ms: null,
+        },
+        risks: [],
+      },
     ],
     authors: [
-      { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, posts: 1, followers: 168_905, role: "watched", quality_score: null },
-      { handle: "alien19710628", first_seen_ms: 1_777_746_060_000, latest_seen_ms: 1_777_746_060_000, posts: 2, followers: 220, role: "amplifier", quality_score: null }
+      {
+        handle: "traderpow",
+        first_seen_ms: 1_777_746_010_000,
+        latest_seen_ms: 1_777_746_010_000,
+        posts: 1,
+        followers: 168_905,
+        role: "watched",
+        quality_score: null,
+      },
+      {
+        handle: "alien19710628",
+        first_seen_ms: 1_777_746_060_000,
+        latest_seen_ms: 1_777_746_060_000,
+        posts: 2,
+        followers: 220,
+        role: "amplifier",
+        quality_score: null,
+      },
     ],
     posts: postsData(options).items.map((item, index) => ({
       ...item,
-      bucket_start_ms: index < 2 ? 1_777_746_000_000 : 1_777_746_300_000
+      bucket_start_ms: index < 2 ? 1_777_746_000_000 : 1_777_746_300_000,
     })),
     cascade: {
       edges: [
@@ -1728,14 +1970,14 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
           parent_tweet_id: "tweet-upeg-1",
           edge_type: "quote",
           parent_author_handle: "traderpow",
-          resolved: true
-        }
+          resolved: true,
+        },
       ],
-      unresolved_parents: []
+      unresolved_parents: [],
     },
     returned_count: 3,
     has_more: false,
-    next_cursor: null
+    next_cursor: null,
   };
 }
 
@@ -1749,10 +1991,28 @@ function postsData(options: { symbol?: string; address?: string } = {}): TokenPo
     has_more: false,
     next_cursor: null,
     items: [
-      post(`event-${symbol.toLowerCase()}-1`, "traderpow", `$${symbol} watched account evidence`, true, 86),
-      post(`event-${symbol.toLowerCase()}-2`, "alien19710628", `$${symbol} public follow-through`, false, 74),
-      post(`event-${symbol.toLowerCase()}-3`, "alien19710628", `$${symbol} another public post`, false, 68)
-    ]
+      post(
+        `event-${symbol.toLowerCase()}-1`,
+        "traderpow",
+        `$${symbol} watched account evidence`,
+        true,
+        86,
+      ),
+      post(
+        `event-${symbol.toLowerCase()}-2`,
+        "alien19710628",
+        `$${symbol} public follow-through`,
+        false,
+        74,
+      ),
+      post(
+        `event-${symbol.toLowerCase()}-3`,
+        "alien19710628",
+        `$${symbol} another public post`,
+        false,
+        68,
+      ),
+    ],
   };
 }
 
@@ -1772,7 +2032,10 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
     is_watched: watched,
     is_first_seen_by_watched_for_token: watched,
     event_type: watched ? "watched_token_call" : "public_followup",
-    reference: eventId === "event-upeg-2" ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" } : null,
+    reference:
+      eventId === "event-upeg-2"
+        ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" }
+        : null,
     stage_id: `${phase}:1777746010000:1`,
     stage_phase: phase,
     author_role: watched ? "watched" : "early_amplifier",
@@ -1783,9 +2046,11 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
       score,
       reasons: ["structured_token_payload"],
       risks: [],
-      contributions: [{ feature: "source_specificity", value: 18, reason: "structured_token_payload" }],
-      risk_caps: []
-    }
+      contributions: [
+        { feature: "source_specificity", value: 18, reason: "structured_token_payload" },
+      ],
+      risk_caps: [],
+    },
   };
 }
 
@@ -1796,7 +2061,7 @@ function signalPulseData(): SignalPulseData {
       scope: "all",
       status: null,
       handle: null,
-      q: null
+      q: null,
     },
     health: {
       pulse_ready: true,
@@ -1805,14 +2070,14 @@ function signalPulseData(): SignalPulseData {
       blocked_low_information_count: 1,
       dead_job_count: 0,
       market_ready_rate: 0.67,
-      settlement_coverage: 0.5
+      settlement_coverage: 0.5,
     },
     summary: {
       trade_candidate: 1,
       token_watch: 1,
       theme_watch: 1,
       risk_rejected_high_info: 0,
-      blocked_low_information: 1
+      blocked_low_information: 1,
     },
     items: [
       {
@@ -1851,12 +2116,12 @@ function signalPulseData(): SignalPulseData {
         schema_version: "signal-pulse-v1",
         created_at_ms: 1_777_746_020_000,
         updated_at_ms: 1_777_746_040_000,
-        playbooks: [{ name: "watch_breakout", state: "armed" }]
-      }
+        playbooks: [{ name: "watch_breakout", state: "armed" }],
+      },
     ],
     returned_count: 1,
     has_more: false,
-    next_cursor: null
+    next_cursor: null,
   };
 }
 
@@ -1866,25 +2131,25 @@ function emptySignalPulseData(handle: string | null = null): SignalPulseData {
     ...data,
     query: {
       ...data.query,
-      handle
+      handle,
     },
     health: {
       ...data.health,
       pulse_ready: false,
       candidate_count: 0,
-      blocked_low_information_count: 0
+      blocked_low_information_count: 0,
     },
     summary: {
       trade_candidate: 0,
       token_watch: 0,
       theme_watch: 0,
       risk_rejected_high_info: 0,
-      blocked_low_information: 0
+      blocked_low_information: 0,
     },
     items: [],
     returned_count: 0,
     has_more: false,
-    next_cursor: null
+    next_cursor: null,
   };
 }
 
@@ -1900,13 +2165,15 @@ function watchedAccountLensEvent(handle: string): LivePayload {
       cashtags: [],
       hashtags: ["macro"],
       mentions: [],
-      is_watched: 1
+      is_watched: 1,
     },
-    entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_070_000 }],
+    entities: [
+      { entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_070_000 },
+    ],
     token_intents: [],
     token_resolutions: [],
     alerts: [],
-    harness: null
+    harness: null,
   };
 }
 
@@ -1936,9 +2203,9 @@ function signalPulseNotification(): NotificationItem {
     payload: {
       candidate_id: "pulse-bnb",
       pulse_status: "trade_candidate",
-      symbol: "BNB"
+      symbol: "BNB",
     },
-    channels: ["in_app", "pushdeer"]
+    channels: ["in_app", "pushdeer"],
   };
 }
 
@@ -1958,9 +2225,11 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
       received_at_ms: 1_777_746_010_000,
       text_clean: "$UPEG watched account evidence",
       cashtags: ["UPEG"],
-      is_watched: 1
+      is_watched: 1,
     },
-    entities: [{ entity_type: "symbol", normalized_value: "UPEG", received_at_ms: 1_777_746_010_000 }],
+    entities: [
+      { entity_type: "symbol", normalized_value: "UPEG", received_at_ms: 1_777_746_010_000 },
+    ],
     token_intents: [
       {
         intent_id: `intent:${assetId}`,
@@ -1969,8 +2238,8 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
         chain_hint: "eth",
         address_hint: address,
         intent_status: "active",
-        intent_confidence: 1
-      }
+        intent_confidence: 1,
+      },
     ],
     token_resolutions: [
       {
@@ -1981,10 +2250,10 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
         target_id: assetId,
         pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`,
         resolution_status: "EXACT",
-        reason_codes_json: ["CHAIN_ADDRESS_EXACT"]
-      }
+        reason_codes_json: ["CHAIN_ADDRESS_EXACT"],
+      },
     ],
-    alerts: []
+    alerts: [],
   };
 }
 
@@ -1992,8 +2261,11 @@ function scoreBlock<T extends Record<string, unknown>>(extra: T) {
   return {
     contributions: [{ feature: "test", value: 10, reason: "test_reason" }],
     risk_caps: [],
-    ...extra
-  } as T & { contributions: Array<{ feature: string; value: number; reason: string }>; risk_caps: [] };
+    ...extra,
+  } as T & {
+    contributions: Array<{ feature: string; value: number; reason: string }>;
+    risk_caps: [];
+  };
 }
 
 function renderWithQuery(children: ReactNode) {
@@ -2001,14 +2273,14 @@ function renderWithQuery(children: ReactNode) {
     defaultOptions: {
       queries: {
         retry: false,
-        gcTime: 0
-      }
-    }
+        gcTime: 0,
+      },
+    },
   });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>{children}</MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 

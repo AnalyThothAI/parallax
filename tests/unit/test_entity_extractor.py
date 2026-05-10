@@ -12,8 +12,7 @@ def test_extract_entities_returns_deterministic_structured_entities():
 
     assert first == second
     assert {
-        (entity.entity_type, entity.normalized_value, entity.chain, entity.token_resolution_status)
-        for entity in first
+        (entity.entity_type, entity.normalized_value, entity.chain, entity.token_resolution_status) for entity in first
     } >= {
         ("ca", "0x6982508145454Ce325dDbE47a25d4ec3d2311933", "base", "resolved_ca"),
         ("symbol", "PEPE", None, "unresolved_symbol"),
@@ -40,11 +39,7 @@ def test_extract_entities_resolves_evm_chain_from_explorer_url():
         "$SPIKE CA: 0xa949101be849184c77e5ac1405aaf3cdf41da1b2"
     )
 
-    chains = {
-        entity.normalized_value: entity.chain
-        for entity in extract_entities(text)
-        if entity.entity_type == "ca"
-    }
+    chains = {entity.normalized_value: entity.chain for entity in extract_entities(text) if entity.entity_type == "ca"}
 
     assert chains == {
         "0x6801Bda730124FA7661a960b9261E9Bb01EF99af": "eth",
@@ -68,14 +63,10 @@ def test_plain_words_do_not_become_entities_without_structural_markers():
 
 def test_nan_cashtag_sentinel_is_not_a_token_symbol():
     entities = extract_entities(
-        "Detect PAID DEXScreener: $MTGA DEDUST TON CA: "
-        "EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL MC: $NaN"
+        "Detect PAID DEXScreener: $MTGA DEDUST TON CA: EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL MC: $NaN"
     )
 
-    assert {
-        (entity.entity_type, entity.normalized_value, entity.chain)
-        for entity in entities
-    } == {
+    assert {(entity.entity_type, entity.normalized_value, entity.chain) for entity in entities} == {
         ("ca", "EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL", "ton"),
         ("symbol", "MTGA", None),
     }

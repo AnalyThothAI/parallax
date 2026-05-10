@@ -7,11 +7,12 @@ import type {
   TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData,
-  WindowKey
+  WindowKey,
 } from "../api/types";
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { tokenVenueAction } from "../lib/venue";
+
 import { AccountLane } from "./AccountLane";
 import {
   DetailDrawerHeader,
@@ -19,12 +20,12 @@ import {
   DetailDrawerMetricGrid,
   DetailDrawerSection,
   DetailDrawerShell,
-  DetailDrawerTagStrip
+  DetailDrawerTagStrip,
 } from "./DetailDrawer";
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsPanel } from "./TokenPostsPanel";
-import { TokenReplayFocus } from "./TokenReplayFocus";
 import { tokenDrawerSummary } from "./TokenRadarRow";
+import { TokenReplayFocus } from "./TokenReplayFocus";
 import { TokenTimeline } from "./TokenTimeline";
 
 const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
@@ -32,7 +33,7 @@ const TABS: Array<{ tab: TokenDetailTab; label: string }> = [
   { tab: "posts", label: "Posts" },
   { tab: "score", label: "Score" },
   { tab: "lab", label: "Lab" },
-  { tab: "accounts", label: "Accounts" }
+  { tab: "accounts", label: "Accounts" },
 ];
 
 type TokenDetailDrawerProps = {
@@ -94,12 +95,18 @@ export function TokenDetailDrawer({
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
-  onLoadMorePosts
+  onLoadMorePosts,
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
       <DetailDrawerShell>
-        <DetailDrawerHeader badge="-" className="select-token-empty" eyebrow="selected token" subtitle="no token selected" title="Select Token" />
+        <DetailDrawerHeader
+          badge="-"
+          className="select-token-empty"
+          eyebrow="selected token"
+          subtitle="no token selected"
+          title="Select Token"
+        />
         <DetailDrawerSection>
           <div className="empty-state">从 Token Radar 或实时信号 Tape 选择一个币</div>
         </DetailDrawerSection>
@@ -115,7 +122,13 @@ export function TokenDetailDrawer({
       <DetailDrawerHeader
         actions={
           venueAction ? (
-            <a aria-label={`Open selected token on ${venueAction.label}`} className="venue-link drawer-venue-link" href={venueAction.url} rel="noreferrer" target="_blank">
+            <a
+              aria-label={`Open selected token on ${venueAction.label}`}
+              className="venue-link drawer-venue-link"
+              href={venueAction.url}
+              rel="noreferrer"
+              target="_blank"
+            >
               {venueAction.label}
             </a>
           ) : null
@@ -132,12 +145,18 @@ export function TokenDetailDrawer({
         }
         subtitle={
           <>
-            {token.identity.chain ?? "unknown"} · {shortAddress(token.identity.address ?? token.identity.identity_key)} · {token.identity.identity_status}
+            {token.identity.chain ?? "unknown"} ·{" "}
+            {shortAddress(token.identity.address ?? token.identity.identity_key)} ·{" "}
+            {token.identity.identity_status}
           </>
         }
         title={tokenLabel(token)}
       >
-        <DetailDrawerTagStrip emptyLabel="no active risk flags" featuredItem={token.opportunity.decision} items={risks.slice(0, 8)} />
+        <DetailDrawerTagStrip
+          emptyLabel="no active risk flags"
+          featuredItem={token.opportunity.decision}
+          items={risks.slice(0, 8)}
+        />
         <label className="detail-window-control">
           <span>detail window</span>
           <select
@@ -156,7 +175,12 @@ export function TokenDetailDrawer({
 
       <nav className="tabs" aria-label="token detail tabs">
         {TABS.map((item) => (
-          <button key={item.tab} className={activeTab === item.tab ? "active" : ""} type="button" onClick={() => onTabChange(item.tab)}>
+          <button
+            key={item.tab}
+            className={activeTab === item.tab ? "active" : ""}
+            type="button"
+            onClick={() => onTabChange(item.tab)}
+          >
             {item.label}
           </button>
         ))}
@@ -214,7 +238,10 @@ export function TokenDetailDrawer({
           {isSignalLabLoading ? (
             <div className="empty-state">loading trading attention</div>
           ) : (
-            <div className="empty-state">Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.</div>
+            <div className="empty-state">
+              Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and
+              risk attention.
+            </div>
           )}
         </DetailDrawerSection>
       ) : null}

@@ -28,9 +28,17 @@ def test_client_parses_page_and_returns_next_token():
         assert request.url.params["limit"] == "50"
         assert request.url.params["handle"] == ""
         assert request.url.params.get_list("user_tags") == [
-            "kol", "trader", "master", "politics", "media",
-            "companies", "founder", "exchange", "celebrity",
-            "binance_square", "other",
+            "kol",
+            "trader",
+            "master",
+            "politics",
+            "media",
+            "companies",
+            "founder",
+            "exchange",
+            "celebrity",
+            "binance_square",
+            "other",
         ]
         assert "page_token" not in request.url.params
         return httpx.Response(200, json=_load("gmgn_directory_page1.json"))
@@ -85,10 +93,12 @@ def test_client_passes_page_token_on_subsequent_request():
 
 
 def test_iter_pages_walks_until_empty_token_and_dedupes_by_handle():
-    responses = iter([
-        _load("gmgn_directory_page1.json"),
-        _load("gmgn_directory_page2.json"),
-    ])
+    responses = iter(
+        [
+            _load("gmgn_directory_page1.json"),
+            _load("gmgn_directory_page2.json"),
+        ]
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=next(responses))
@@ -123,34 +133,70 @@ def test_client_raises_on_non_zero_envelope_code():
 
 
 def test_iter_entries_dedupes_repeated_handles_across_pages():
-    pages = iter([
-        {
-            "code": 0, "reason": "", "message": "",
-            "data": {
-                "users": [
-                    {"handle": "cz", "user_id": "X1", "user_tags": ["kol"],
-                     "platform": 2, "followers": 100, "followed": False},
-                    {"handle": "elonmusk", "user_id": "Y1", "user_tags": ["founder"],
-                     "platform": 2, "followers": 200, "followed": False},
-                ],
-                "page_token": "p2",
+    pages = iter(
+        [
+            {
+                "code": 0,
+                "reason": "",
+                "message": "",
+                "data": {
+                    "users": [
+                        {
+                            "handle": "cz",
+                            "user_id": "X1",
+                            "user_tags": ["kol"],
+                            "platform": 2,
+                            "followers": 100,
+                            "followed": False,
+                        },
+                        {
+                            "handle": "elonmusk",
+                            "user_id": "Y1",
+                            "user_tags": ["founder"],
+                            "platform": 2,
+                            "followers": 200,
+                            "followed": False,
+                        },
+                    ],
+                    "page_token": "p2",
+                },
             },
-        },
-        {
-            "code": 0, "reason": "", "message": "",
-            "data": {
-                "users": [
-                    {"handle": "cz", "user_id": "X2", "user_tags": ["kol"],
-                     "platform": 2, "followers": 99, "followed": False},
-                    {"handle": "", "user_id": "blank", "user_tags": [],
-                     "platform": 2, "followers": 0, "followed": False},
-                    {"handle": "vitalik", "user_id": "V1", "user_tags": ["founder"],
-                     "platform": 2, "followers": 50, "followed": False},
-                ],
-                "page_token": "",
+            {
+                "code": 0,
+                "reason": "",
+                "message": "",
+                "data": {
+                    "users": [
+                        {
+                            "handle": "cz",
+                            "user_id": "X2",
+                            "user_tags": ["kol"],
+                            "platform": 2,
+                            "followers": 99,
+                            "followed": False,
+                        },
+                        {
+                            "handle": "",
+                            "user_id": "blank",
+                            "user_tags": [],
+                            "platform": 2,
+                            "followers": 0,
+                            "followed": False,
+                        },
+                        {
+                            "handle": "vitalik",
+                            "user_id": "V1",
+                            "user_tags": ["founder"],
+                            "platform": 2,
+                            "followers": 50,
+                            "followed": False,
+                        },
+                    ],
+                    "page_token": "",
+                },
             },
-        },
-    ])
+        ]
+    )
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=next(pages))

@@ -1,10 +1,11 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
 import * as client from "../../api/client";
-import { PulseDetailPage } from "../PulseDetailPage";
 import { useTraderStore } from "../../store/useTraderStore";
+import { PulseDetailPage } from "../PulseDetailPage";
 
 beforeEach(() => {
   useTraderStore.setState({ token: "test-token" });
@@ -20,7 +21,7 @@ function renderAt(url: string) {
           <Route path="/signal-lab/pulse/:candidateId" element={<PulseDetailPage />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -28,7 +29,7 @@ describe("PulseDetailPage", () => {
   it("renders inspector when candidate exists", async () => {
     vi.spyOn(client, "getApi").mockResolvedValue({
       ok: true,
-      data: minimalPulseItem()
+      data: minimalPulseItem(),
     } as any);
     renderAt("/signal-lab/pulse/cand-1");
     await waitFor(() => {
@@ -82,6 +83,6 @@ function minimalPulseItem() {
     schema_version: "v1",
     created_at_ms: 1_000,
     updated_at_ms: 2_000,
-    playbooks: []
+    playbooks: [],
   };
 }

@@ -127,10 +127,7 @@ def test_multiple_symbols_before_ca_do_not_guess_alias_when_not_local():
 
 
 def test_multiple_cashtags_and_cas_pair_by_nearest_identity_without_symbol_only_intents():
-    text = (
-        "$ALPHA 0x1111111111111111111111111111111111111111 "
-        "and $BETA 0x2222222222222222222222222222222222222222"
-    )
+    text = "$ALPHA 0x1111111111111111111111111111111111111111 and $BETA 0x2222222222222222222222222222222222222222"
     entities = extract_entities_from_surfaces([TextSurface("primary", text)])
     evidence = build_token_evidence(
         event_id="event-multi",

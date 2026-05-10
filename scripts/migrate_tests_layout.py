@@ -33,9 +33,14 @@ PG_INTEGRATION_PATTERNS = (
     re.compile(r"test_compose_.*\.py$"),
     re.compile(r"test_docs_generated.*\.py$"),
 )
-PG_IMPORT_PATTERNS = (
-    re.compile(r"^\s*(from\s+tests\.postgres_test_utils|from\s+\.postgres_test_utils|import\s+tests\.postgres_test_utils|from\s+postgres_test_utils|import\s+postgres_test_utils)", re.MULTILINE),
+_PG_IMPORT_RE = (
+    r"^\s*(from\s+tests\.postgres_test_utils"
+    r"|from\s+\.postgres_test_utils"
+    r"|import\s+tests\.postgres_test_utils"
+    r"|from\s+postgres_test_utils"
+    r"|import\s+postgres_test_utils)"
 )
+PG_IMPORT_PATTERNS = (re.compile(_PG_IMPORT_RE, re.MULTILINE),)
 
 
 def classify(path: Path) -> str:

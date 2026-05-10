@@ -131,9 +131,7 @@ def _assert_no_offenders(offenders, *, invariant: str, reason: str, fix: str) ->
 
 
 def test_expected_domain_packages_exist() -> None:
-    actual = {
-        path.name for path in (SRC_ROOT / "domains").iterdir() if path.is_dir() and path.name != "__pycache__"
-    }
+    actual = {path.name for path in (SRC_ROOT / "domains").iterdir() if path.is_dir() and path.name != "__pycache__"}
     _assert_no_offenders(
         sorted(actual ^ DOMAINS),
         invariant="expected domain packages",
@@ -185,8 +183,10 @@ def test_platform_does_not_import_domains_or_integrations_or_app() -> None:
     offenders: list[tuple[str, str]] = []
     for path in (SRC_ROOT / "platform").rglob("*.py"):
         for imported in _imports(path):
-            if imported.startswith(("gmgn_twitter_intel.domains.", "gmgn_twitter_intel.integrations.", "gmgn_twitter_intel.app.")):  # noqa: E501
-                offenders.append((path.relative_to(ROOT).as_posix(), imported))
+            if imported.startswith(
+                ("gmgn_twitter_intel.domains.", "gmgn_twitter_intel.integrations.", "gmgn_twitter_intel.app.")
+            ):
+                offenders.append((path.relative_to(ROOT).as_posix(), imported))  # noqa: PERF401 -- nested-loop append; comprehension would harm readability
     _assert_no_offenders(
         offenders,
         invariant="platform does not import app, domains, or integrations",
@@ -226,7 +226,7 @@ def test_repositories_and_queries_do_not_import_services_or_runtime() -> None:
             continue
         for imported in _imports(path):
             if ".services." in imported or ".runtime." in imported or ".read_models." in imported:
-                offenders.append((path.relative_to(ROOT).as_posix(), imported))
+                offenders.append((path.relative_to(ROOT).as_posix(), imported))  # noqa: PERF401 -- nested-loop append; comprehension would harm readability
     _assert_no_offenders(
         offenders,
         invariant="repositories and queries do not import upward layers",
@@ -257,7 +257,7 @@ def test_no_business_modules_import_old_flat_packages() -> None:
             continue
         for imported in _imports(path):
             if imported.startswith(prefixes):
-                offenders.append((path.relative_to(ROOT).as_posix(), imported))
+                offenders.append((path.relative_to(ROOT).as_posix(), imported))  # noqa: PERF401 -- nested-loop append; comprehension would harm readability
     _assert_no_offenders(
         offenders,
         invariant="business modules do not import old flat packages",
@@ -267,18 +267,10 @@ def test_no_business_modules_import_old_flat_packages() -> None:
 
 
 def test_provider_modules_exist_only_for_allowlisted_domains() -> None:
-    provider_domains = {
-        path.parent.name
-        for path in (SRC_ROOT / "domains").glob("*/providers.py")
-        if path.is_file()
-    }
-    offenders = [
-        f"missing providers.py for domains/{domain}"
-        for domain in sorted(PROVIDER_DOMAINS - provider_domains)
-    ]
+    provider_domains = {path.parent.name for path in (SRC_ROOT / "domains").glob("*/providers.py") if path.is_file()}
+    offenders = [f"missing providers.py for domains/{domain}" for domain in sorted(PROVIDER_DOMAINS - provider_domains)]
     offenders.extend(
-        f"unexpected providers.py in domains/{domain}"
-        for domain in sorted(provider_domains - PROVIDER_DOMAINS)
+        f"unexpected providers.py in domains/{domain}" for domain in sorted(provider_domains - PROVIDER_DOMAINS)
     )
     _assert_no_offenders(
         offenders,

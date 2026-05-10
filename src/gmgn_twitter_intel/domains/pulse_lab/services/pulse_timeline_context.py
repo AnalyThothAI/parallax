@@ -38,19 +38,11 @@ def build_pulse_timeline_context(
     ordered = sorted(_scope_rows(rows, scope), key=_row_sort_key)
     resolved_now_ms = _resolve_now_ms(ordered, now_ms)
     active_window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
-    active_rows = [
-        row for row in ordered if int(row.get("received_at_ms") or 0) >= resolved_now_ms - active_window_ms
-    ]
+    active_rows = [row for row in ordered if int(row.get("received_at_ms") or 0) >= resolved_now_ms - active_window_ms]
     all_row_infos = [_row_info(row, target=target) for row in ordered]
-    row_infos = [
-        info for info in all_row_infos if int(info["received_at_ms"]) >= resolved_now_ms - active_window_ms
-    ]
+    row_infos = [info for info in all_row_infos if int(info["received_at_ms"]) >= resolved_now_ms - active_window_ms]
     cluster_infos = _build_clusters(row_infos, target_id=_target_id(target))
-    cluster_by_event_id = {
-        event_id: cluster
-        for cluster in cluster_infos
-        for event_id in cluster["event_ids"]
-    }
+    cluster_by_event_id = {event_id: cluster for cluster in cluster_infos for event_id in cluster["event_ids"]}
     stage_segments, stage_representative_ids = _stage_segments(active_rows)
     selected_posts = _selected_posts(
         row_infos,
@@ -366,12 +358,9 @@ def _text(row: dict[str, Any]) -> str:
 
 
 def _cashtags(row: dict[str, Any], text: str, *, target: dict[str, Any]) -> list[str]:
-    values: list[str] = []
-    for item in row.get("cashtags") or []:
-        values.append(str(item).lstrip("$").upper())
+    values: list[str] = [str(item).lstrip("$").upper() for item in (row.get("cashtags") or [])]
     entities = row.get("entities") if isinstance(row.get("entities"), dict) else {}
-    for item in entities.get("cashtags") or []:
-        values.append(str(item).lstrip("$").upper())
+    values.extend(str(item).lstrip("$").upper() for item in (entities.get("cashtags") or []))
     values.extend(match.group(1).upper() for match in _CASHTAG_RE.finditer(text))
     symbol = str(row.get("symbol") or target.get("symbol") or "").lstrip("$").upper()
     if symbol and re.search(rf"(?<![A-Za-z0-9_]){re.escape(symbol)}(?![A-Za-z0-9_])", text, re.IGNORECASE):
@@ -401,11 +390,7 @@ def _has_direct_target_evidence(info: dict[str, Any]) -> bool:
 
 
 def _price_inflection_info(row_infos: list[dict[str, Any]]) -> dict[str, Any] | None:
-    with_price = [
-        info
-        for info in row_infos
-        if _number(info["row"].get("price_change_since_social_pct")) is not None
-    ]
+    with_price = [info for info in row_infos if _number(info["row"].get("price_change_since_social_pct")) is not None]
     if not with_price:
         return None
     return max(

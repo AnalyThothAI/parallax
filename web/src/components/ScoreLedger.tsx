@@ -16,7 +16,7 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
     { key: "quality", label: "Quality", block: token.discussion_quality },
     { key: "propagation", label: "Propagation", block: token.propagation },
     { key: "tradeability", label: "Tradeability", block: token.tradeability },
-    { key: "timing", label: "Timing", block: token.timing }
+    { key: "timing", label: "Timing", block: token.timing },
   ];
   return (
     <div className="score-ledger">
@@ -27,7 +27,9 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
         </div>
         <div>
           <span>baseline</span>
-          <b>{token.flow.baseline_status} · n{token.flow.baseline_sample_count}</b>
+          <b>
+            {token.flow.baseline_status} · n{token.flow.baseline_sample_count}
+          </b>
         </div>
         <div>
           <span>market</span>
@@ -104,7 +106,7 @@ function PillStrip({
   label,
   items,
   formatter,
-  risk
+  risk,
 }: {
   label: string;
   items: string[];

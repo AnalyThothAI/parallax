@@ -1,4 +1,5 @@
 import { Bell } from "lucide-react";
+
 import type { NotificationSummary } from "../api/types";
 
 type Props = {
@@ -9,7 +10,9 @@ type Props = {
 
 export function NotificationBell({ summary, open, onClick }: Props) {
   const unread = summary?.unread_count ?? 0;
-  const hasHigh = Boolean((summary?.high_unread_count ?? 0) > 0 || (summary?.critical_unread_count ?? 0) > 0);
+  const hasHigh = Boolean(
+    (summary?.high_unread_count ?? 0) > 0 || (summary?.critical_unread_count ?? 0) > 0,
+  );
   return (
     <button
       aria-label="notifications"

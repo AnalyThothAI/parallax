@@ -16,7 +16,7 @@ const TASKS: Array<{
   { task: "radar", label: "Radar", icon: ListChecks },
   { task: "tape", label: "Tape", icon: Activity },
   { task: "lab", label: "Lab", icon: FlaskConical },
-  { task: "detail", label: "Detail", icon: PanelRight }
+  { task: "detail", label: "Detail", icon: PanelRight },
 ];
 
 export function MobileTaskNav({ activeTask, detailAvailable, onTaskChange }: MobileTaskNavProps) {

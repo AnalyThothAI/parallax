@@ -1,10 +1,11 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
 import * as client from "../../api/client";
-import { SignalLabPage } from "../SignalLabPage";
 import { useTraderStore } from "../../store/useTraderStore";
+import { SignalLabPage } from "../SignalLabPage";
 
 beforeEach(() => {
   useTraderStore.setState({ token: "test-token", scope: "all", window: "1h" });
@@ -20,7 +21,7 @@ function renderAt(url: string) {
           <Route path="/signal-lab" element={<SignalLabPage />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -35,16 +36,16 @@ describe("SignalLabPage routing", () => {
         items: [],
         returned_count: 0,
         has_more: false,
-        next_cursor: null
-      }
+        next_cursor: null,
+      },
     } as any);
     renderAt("/signal-lab?handle=toly&status=token_watch");
     await waitFor(() => {
       expect(getApi).toHaveBeenCalledWith(
         "/api/signal-lab/pulse",
         expect.objectContaining({
-          params: expect.objectContaining({ handle: "toly", status: "token_watch" })
-        })
+          params: expect.objectContaining({ handle: "toly", status: "token_watch" }),
+        }),
       );
     });
   });
@@ -59,8 +60,8 @@ describe("SignalLabPage routing", () => {
         items: [],
         returned_count: 0,
         has_more: false,
-        next_cursor: null
-      }
+        next_cursor: null,
+      },
     } as any);
     renderAt("/signal-lab");
     await waitFor(() => expect(getApi).toHaveBeenCalled());

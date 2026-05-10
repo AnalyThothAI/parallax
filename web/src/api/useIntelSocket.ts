@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
-import type { LivePayload, NotificationLivePayload } from "./types";
+
 import { websocketUrl } from "./client";
+import type { LivePayload, NotificationLivePayload } from "./types";
 
 type SocketStatus = "idle" | "connecting" | "authenticating" | "connected" | "closed" | "error";
 
@@ -32,7 +33,7 @@ export function useIntelSocket({ token, handles, replay, notifications = false }
       connectionTimeout: 4_000,
       maxRetries: Infinity,
       maxReconnectionDelay: 8_000,
-      minReconnectionDelay: 800
+      minReconnectionDelay: 800,
     });
     socketRef.current = ws;
     setStatus("connecting");
@@ -52,8 +53,8 @@ export function useIntelSocket({ token, handles, replay, notifications = false }
             type: "subscribe",
             handles: normalizeHandles(handles),
             notifications,
-            replay
-          })
+            replay,
+          }),
         );
         return;
       }
@@ -62,7 +63,9 @@ export function useIntelSocket({ token, handles, replay, notifications = false }
         return;
       }
       if (payload.type === "notification") {
-        setNotificationEvents((current) => [payload as NotificationLivePayload, ...current].slice(0, 50));
+        setNotificationEvents((current) =>
+          [payload as NotificationLivePayload, ...current].slice(0, 50),
+        );
       }
     });
 

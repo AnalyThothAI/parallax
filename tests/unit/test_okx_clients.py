@@ -128,9 +128,7 @@ def test_okx_dex_client_preserves_contract_search_as_lowercase_address():
 
     client = OkxDexClient(base_url="https://web3.okx.com", transport=httpx.MockTransport(handler))
     try:
-        assert (
-            client.search_tokens(query="0X8F32420F2E3728C49399B00DD0A796602D984444", chain_indexes=["56"]) == []
-        )
+        assert client.search_tokens(query="0X8F32420F2E3728C49399B00DD0A796602D984444", chain_indexes=["56"]) == []
     finally:
         client.close()
 

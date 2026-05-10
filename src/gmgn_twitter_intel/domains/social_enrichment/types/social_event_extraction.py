@@ -224,9 +224,7 @@ def social_event_extraction_from_payload(
 ) -> SocialEventExtraction:
     normalized_text = _normalized_text(event_text)
     anchors = _dedupe_anchors(
-        anchor
-        for item in payload.anchor_terms
-        if (anchor := _anchor_term(item, normalized_text)) is not None
+        anchor for item in payload.anchor_terms if (anchor := _anchor_term(item, normalized_text)) is not None
     )
     candidates = _dedupe_candidates(
         candidate

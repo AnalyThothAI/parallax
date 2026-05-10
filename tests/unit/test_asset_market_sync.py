@@ -362,9 +362,7 @@ def test_sync_dex_prices_continues_when_address_search_fails():
     assert result["identity_verification_hits"] == 0
     assert result["identity_verification_errors"] == 1
     assert result["price_requests"] == 1
-    assert result["affected_lookup_keys"] == [
-        "address:eip155:56:0x8f32420f2e3728c49399b00dd0a796602d984444"
-    ]
+    assert result["affected_lookup_keys"] == ["address:eip155:56:0x8f32420f2e3728c49399b00dd0a796602d984444"]
     assert price_observations.observations[-1]["provider"] == "okx_dex_price"
 
 
@@ -443,9 +441,7 @@ class FakeRegistry:
         else:
             address = str(kwargs["address"])
             address = address.lower() if address.lower().startswith("0x") else address
-            pricefeed_id = (
-                f"pricefeed:dex-token:{kwargs['provider']}:{kwargs['chain_id']}:{address}"
-            )
+            pricefeed_id = f"pricefeed:dex-token:{kwargs['provider']}:{kwargs['chain_id']}:{address}"
         self.pricefeeds.append(
             {
                 "feed_type": kwargs["feed_type"],

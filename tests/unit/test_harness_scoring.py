@@ -24,17 +24,19 @@ def test_price_move_penalty_caps_chase_risk():
 
 
 def test_combined_score_and_policy_layers_are_separate():
-    score = combined_score([
-        event_score(
-            0.5,
-            source_weight=1.0,
-            event_type_weight=1.0,
-            horizon_weight=1.0,
-            time_decay=1.0,
-            price_penalty=1.0,
-        ),
-        -0.1,
-    ])
+    score = combined_score(
+        [
+            event_score(
+                0.5,
+                source_weight=1.0,
+                event_type_weight=1.0,
+                horizon_weight=1.0,
+                time_decay=1.0,
+                price_penalty=1.0,
+            ),
+            -0.1,
+        ]
+    )
 
     assert score == 0.4
     assert policy_signal(score, long_threshold=0.55, short_threshold=-0.55) == "NO_TRADE"

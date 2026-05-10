@@ -7,6 +7,7 @@ from typing import Any
 # This string must stay in sync with TOKEN_RADAR_RESOLVER_POLICY_VERSION in token_intel/interfaces.py
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 
+
 class RegistryRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -395,9 +396,12 @@ def _pricefeed_id(
         return f"pricefeed:cex:{provider}:{market_type}:{native_market_id}"
     if chain_id and address:
         return f"pricefeed:dex-token:{provider}:{chain_id}:{address}"
-    return "pricefeed:" + hashlib.sha256(
-        "|".join([feed_type, provider, native_market_id or "", chain_id or "", address or ""]).encode("utf-8")
-    ).hexdigest()
+    return (
+        "pricefeed:"
+        + hashlib.sha256(
+            "|".join([feed_type, provider, native_market_id or "", chain_id or "", address or ""]).encode("utf-8")
+        ).hexdigest()
+    )
 
 
 def _symbol(value: str | None) -> str:

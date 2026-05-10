@@ -6,7 +6,7 @@ import type {
   RiskCap,
   ScoreContribution,
   TimingBlock,
-  TokenFlowItem
+  TokenFlowItem,
 } from "../api/types";
 
 export function sortTokenItems(items: TokenFlowItem[], mode: RadarSortMode): TokenFlowItem[] {
@@ -28,7 +28,7 @@ export function countDecisions(items: TokenFlowItem[]): Record<Decision, number>
       counts[item.opportunity.decision] += 1;
       return counts;
     },
-    { driver: 0, watch: 0, investigate: 0, discard: 0 }
+    { driver: 0, watch: 0, investigate: 0, discard: 0 },
   );
 }
 
@@ -50,20 +50,38 @@ export function tokenRadarItems(
   return assetFlowRows(data).map((row) => tokenRadarRowToTokenItem(row, window, scope));
 }
 
-export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
+export function tokenRadarRowToTokenItem(
+  row: AssetFlowRow,
+  window: TokenFlowItem["flow"]["window"],
+  scope: TokenFlowItem["posts_query"]["scope"],
+): TokenFlowItem {
   const attention = row.attention as unknown as Record<string, unknown>;
   const mentions = requiredNumber(row.attention.mentions_window, "attention.mentions_window");
   const authors = requiredNumber(row.attention.unique_authors, "attention.unique_authors");
   const watched = requiredNumber(row.attention.watched_mentions, "attention.watched_mentions");
   const latestSeenMs = requiredNumber(row.attention.latest_seen_ms, "attention.latest_seen_ms");
-  const previousMentions = requiredNumber(row.attention.previous_mentions, "attention.previous_mentions");
+  const previousMentions = requiredNumber(
+    row.attention.previous_mentions,
+    "attention.previous_mentions",
+  );
   const mentionDelta = requiredNumber(row.attention.mention_delta, "attention.mention_delta");
-  const mentionDeltaPct = requiredNullableNumber(attention, "mention_delta_pct", "attention.mention_delta_pct");
+  const mentionDeltaPct = requiredNullableNumber(
+    attention,
+    "mention_delta_pct",
+    "attention.mention_delta_pct",
+  );
   const zScore = requiredNullableNumber(attention, "z_score", "attention.z_score");
-  const newBurstScore = requiredNullableNumber(attention, "new_burst_score", "attention.new_burst_score");
+  const newBurstScore = requiredNullableNumber(
+    attention,
+    "new_burst_score",
+    "attention.new_burst_score",
+  );
   const streamShare = requiredNumber(row.attention.stream_share, "attention.stream_share");
   const baselineStatus = requiredString(row.attention.baseline_status, "attention.baseline_status");
-  const baselineSampleCount = requiredNumber(row.attention.baseline_sample_count, "attention.baseline_sample_count");
+  const baselineSampleCount = requiredNumber(
+    row.attention.baseline_sample_count,
+    "attention.baseline_sample_count",
+  );
   const mentions5m = requiredNumber(row.attention.mentions_5m, "attention.mentions_5m");
   const mentions1h = requiredNumber(row.attention.mentions_1h, "attention.mentions_1h");
   const mentions4h = requiredNumber(row.attention.mentions_4h, "attention.mentions_4h");
@@ -74,15 +92,26 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
   const target = row.target ?? {};
   const isChainAsset = target.target_type === "Asset";
   const isCexToken = target.target_type === "CexToken";
-  const displaySymbol = isChainAsset || isCexToken
-    ? target.symbol ?? null
-    : row.intent?.display_symbol ?? target.symbol ?? null;
+  const displaySymbol =
+    isChainAsset || isCexToken
+      ? (target.symbol ?? null)
+      : (row.intent?.display_symbol ?? target.symbol ?? null);
   const targetId = target.target_id ?? row.resolution.target_id ?? null;
-  const identityKey = targetId ?? row.intent?.intent_id ?? target.address ?? target.native_market_id ?? displaySymbol ?? "unknown-token-intent";
+  const identityKey =
+    targetId ??
+    row.intent?.intent_id ??
+    target.address ??
+    target.native_market_id ??
+    displaySymbol ??
+    "unknown-token-intent";
   const resolutionReasons = row.resolution.reason_codes ?? row.resolution.reasons ?? [];
-  const candidateCount = row.resolution.candidate_ids?.length ?? row.resolution.candidates?.length ?? 0;
+  const candidateCount =
+    row.resolution.candidate_ids?.length ?? row.resolution.candidates?.length ?? 0;
   const discoveryStatus = discoveryStatusSummary(row.resolution.discovery);
-  const marketObservationStatus = requiredString(price.market_observation_status, "price.market_observation_status");
+  const marketObservationStatus = requiredString(
+    price.market_observation_status,
+    "price.market_observation_status",
+  );
   const marketStatus = requiredString(price.market_status, "price.market_status");
   const marketHasUsableSnapshot = marketStatus === "fresh";
   const priceChangeStatus = requiredString(price.price_change_status, "price.price_change_status");
@@ -95,29 +124,33 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
   const decision = normalizeDecision(row.decision);
   const heatStatus = requiredString(heat.status, "score.heat.status");
   const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
-  const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
+  const chaseRisk = Boolean(
+    timing.chase_risk ??
+    timing.hard_risks?.includes("chase_risk") ??
+    timing.risks.includes("chase_risk"),
+  );
   const marketPrice = price.price_usd ?? price.price_quote ?? null;
-  const chain = isChainAsset ? target.chain_id ?? null : null;
-  const address = isChainAsset ? target.address ?? null : null;
+  const chain = isChainAsset ? (target.chain_id ?? null) : null;
+  const address = isChainAsset ? (target.address ?? null) : null;
   return {
     identity: {
       identity_key: identityKey,
       identity_status: row.resolution.status,
       target_type: target.target_type ?? null,
       target_id: targetId,
-      asset_id: isChainAsset ? targetId ?? undefined : undefined,
+      asset_id: isChainAsset ? (targetId ?? undefined) : undefined,
       asset_type: target.target_type ?? null,
       venue_type: isCexToken ? "cex" : isChainAsset ? "dex" : null,
-      exchange: isCexToken ? target.provider ?? null : null,
-      inst_id: isCexToken ? target.native_market_id ?? null : null,
-      inst_type: isCexToken ? target.feed_type ?? null : null,
+      exchange: isCexToken ? (target.provider ?? null) : null,
+      inst_id: isCexToken ? (target.native_market_id ?? null) : null,
+      inst_type: isCexToken ? (target.feed_type ?? null) : null,
       chain,
       address,
       symbol: displaySymbol,
       resolution_reasons: resolutionReasons,
       lookup_keys: row.resolution.lookup_keys ?? [],
       candidate_count: candidateCount,
-      discovery_status: discoveryStatus
+      discovery_status: discoveryStatus,
     },
     market: {
       market_status: marketStatus,
@@ -140,7 +173,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       first_snapshot_observed_at_ms: price.first_snapshot_observed_at_ms ?? null,
       price_change_since_first_snapshot_pct: price.price_change_since_first_snapshot_pct ?? null,
       market_observation_status: marketObservationStatus,
-      price_change_status: priceChangeStatus
+      price_change_status: priceChangeStatus,
     },
     flow: {
       window,
@@ -159,7 +192,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       new_burst_score: newBurstScore,
       stream_dominance: 0,
       baseline_status: baselineStatus,
-      baseline_sample_count: baselineSampleCount
+      baseline_sample_count: baselineSampleCount,
     },
     social_heat: {
       ...heat,
@@ -177,7 +210,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       new_burst_score: newBurstScore,
       stream_share: streamShare,
       watched_share: mentions ? watched / mentions : 0,
-      status: heatStatus
+      status: heatStatus,
     },
     discussion_quality: {
       ...quality,
@@ -186,7 +219,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       avg_attribution_confidence: row.resolution.confidence ?? 0,
       duplicate_text_share: 0,
       informative_post_count: Math.min(mentions, authors || mentions),
-      watched_source_count: watched
+      watched_source_count: watched,
     },
     propagation: {
       ...propagation,
@@ -198,7 +231,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       author_entropy: authors > 1 ? 1 : 0,
       reproduction_rate: null,
       phase: authors >= 3 ? "expansion" : authors >= 2 ? "ignition" : "seed",
-      top_authors: []
+      top_authors: [],
     },
     tradeability: {
       ...tradeability,
@@ -207,7 +240,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       market_cap_present: Boolean(tradeability.market_cap_present ?? price.market_cap_usd),
       liquidity_present: Boolean(tradeability.liquidity_present ?? price.liquidity_usd),
       pool_present: Boolean(tradeability.pool_present ?? marketHasUsableSnapshot),
-      hard_risks: tradeability.hard_risks ?? tradeability.risks
+      hard_risks: tradeability.hard_risks ?? tradeability.risks,
     },
     timing: {
       score: timing.score,
@@ -221,7 +254,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       reasons: timing.reasons,
       risks: timing.risks,
       contributions: timing.contributions,
-      risk_caps: timing.risk_caps
+      risk_caps: timing.risk_caps,
     },
     opportunity: {
       ...opportunity,
@@ -229,12 +262,27 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
       hard_risks: opportunity.hard_risks ?? opportunity.risks,
       components: {
-        heat: requiredNumber(row.score.opportunity.components.heat, "score.opportunity.components.heat"),
-        quality: requiredNumber(row.score.opportunity.components.quality, "score.opportunity.components.quality"),
-        propagation: requiredNumber(row.score.opportunity.components.propagation, "score.opportunity.components.propagation"),
-        tradeability: requiredNumber(row.score.opportunity.components.tradeability, "score.opportunity.components.tradeability"),
-        timing: requiredNumber(row.score.opportunity.components.timing, "score.opportunity.components.timing")
-      }
+        heat: requiredNumber(
+          row.score.opportunity.components.heat,
+          "score.opportunity.components.heat",
+        ),
+        quality: requiredNumber(
+          row.score.opportunity.components.quality,
+          "score.opportunity.components.quality",
+        ),
+        propagation: requiredNumber(
+          row.score.opportunity.components.propagation,
+          "score.opportunity.components.propagation",
+        ),
+        tradeability: requiredNumber(
+          row.score.opportunity.components.tradeability,
+          "score.opportunity.components.tradeability",
+        ),
+        timing: requiredNumber(
+          row.score.opportunity.components.timing,
+          "score.opportunity.components.timing",
+        ),
+      },
     },
     watch: {
       status: watched ? "direct_watch" : "public_only",
@@ -243,11 +291,17 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       seed_link_count: 0,
       top_seed: null,
       reasons: watched ? ["watched_source_present"] : [],
-      risks: watched ? [] : ["no_watched_confirmation"]
+      risks: watched ? [] : ["no_watched_confirmation"],
     },
     evidence_total_count: sourceEventIds.length,
-    posts_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope, range: "current_window" },
-    timeline_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope }
+    posts_query: {
+      target_type: target.target_type ?? null,
+      target_id: targetId,
+      window,
+      scope,
+      range: "current_window",
+    },
+    timeline_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope },
   };
 }
 
@@ -267,6 +321,7 @@ type RadarScoreInput = {
   chase_risk?: boolean | null;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- internal normalizer returns opaque object; typed at call sites
 function normalizedScoreBlock(block: RadarScoreInput | undefined, component: string): any {
   if (!block || typeof block !== "object") {
     throw new Error(`token_radar_contract:score.${component}`);
@@ -282,7 +337,7 @@ function normalizedScoreBlock(block: RadarScoreInput | undefined, component: str
     contributions: requiredNonEmptyArray(block.contributions, `score.${component}.contributions`),
     risk_caps: requiredArray(block.risk_caps, `score.${component}.risk_caps`),
     status: block.status ?? undefined,
-    chase_risk: block.chase_risk ?? undefined
+    chase_risk: block.chase_risk ?? undefined,
   };
 }
 
@@ -293,7 +348,11 @@ function requiredNumber(value: unknown, field: string): number {
   return value;
 }
 
-function requiredNullableNumber(record: Record<string, unknown>, key: string, field: string): number | null {
+function requiredNullableNumber(
+  record: Record<string, unknown>,
+  key: string,
+  field: string,
+): number | null {
   if (!(key in record)) {
     throw new Error(`token_radar_contract:${field}`);
   }
@@ -338,11 +397,21 @@ function requiredStringArray(value: string[] | undefined, field: string): string
 }
 
 function normalizeDecision(value: string | null | undefined): Decision {
-  return value === "driver" || value === "watch" || value === "investigate" || value === "discard" ? value : "investigate";
+  return value === "driver" || value === "watch" || value === "investigate" || value === "discard"
+    ? value
+    : "investigate";
 }
 
-function normalizeTimingStatus(value: string | null | undefined, resolved: boolean): TimingBlock["status"] {
-  if (value === "neutral" || value === "market_pending" || value === "market_unavailable" || value === "chase_risk") {
+function normalizeTimingStatus(
+  value: string | null | undefined,
+  resolved: boolean,
+): TimingBlock["status"] {
+  if (
+    value === "neutral" ||
+    value === "market_pending" ||
+    value === "market_unavailable" ||
+    value === "chase_risk"
+  ) {
     return value;
   }
   return resolved ? "neutral" : "market_unavailable";
@@ -354,7 +423,10 @@ function discoveryStatusSummary(discovery: AssetFlowRow["resolution"]["discovery
   }
   const statuses = Array.from(new Set(discovery.map((item) => item.status).filter(Boolean)));
   if (statuses.length === 1) {
-    const candidateTotal = discovery.reduce((sum, item) => sum + Number(item.candidate_count ?? 0), 0);
+    const candidateTotal = discovery.reduce(
+      (sum, item) => sum + Number(item.candidate_count ?? 0),
+      0,
+    );
     return candidateTotal > 0 ? `${statuses[0]}:${candidateTotal}` : String(statuses[0]);
   }
   return statuses.join("+");

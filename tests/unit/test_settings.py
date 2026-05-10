@@ -28,7 +28,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     settings = load_settings()
 
     assert settings.handles == ("toly", "cryptodevinl", "heyibinance")
-    assert settings.api_host == "0.0.0.0"
+    assert settings.api_host == "0.0.0.0"  # noqa: S104 -- testing default bind-all-interfaces config value
     assert settings.api_port == 8765
     assert settings.ws_token == "secret"
     assert settings.postgres_dsn == "postgresql://gmgn_app@postgres:5432/gmgn_twitter_intel"

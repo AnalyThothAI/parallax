@@ -1,9 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { NotificationItem, NotificationSummary } from "../api/types";
+
 import { NotificationBell } from "./NotificationBell";
 import { NotificationDrawer } from "./NotificationDrawer";
 import { WatchlistNotificationDot } from "./WatchlistNotificationDot";
-import type { NotificationItem, NotificationSummary } from "../api/types";
 
 afterEach(() => cleanup());
 
@@ -13,7 +15,7 @@ const summary: NotificationSummary = {
   high_unread_count: 1,
   critical_unread_count: 0,
   highest_unread_severity: "high",
-  account_unread_counts: { toly: 2 }
+  account_unread_counts: { toly: 2 },
 };
 
 const notification: NotificationItem = {
@@ -39,7 +41,7 @@ const notification: NotificationItem = {
   updated_at_ms: 1_700_000_000_000,
   read_at_ms: null,
   payload: { social_heat_score: 88 },
-  channels: ["in_app"]
+  channels: ["in_app"],
 };
 
 describe("notification center components", () => {
@@ -70,7 +72,7 @@ describe("notification center components", () => {
         onMarkAllRead={onMarkAllRead}
         onMarkRead={onMarkRead}
         onOpenNotification={onOpenNotification}
-      />
+      />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /open PEPE heat/i }));

@@ -18,7 +18,10 @@ export function targetRefKey(ref: TargetRef): string {
   return `${ref.target_type}:${ref.target_id}`;
 }
 
-export function targetRefEquals(left: TargetRef | null | undefined, right: TargetRef | null | undefined): boolean {
+export function targetRefEquals(
+  left: TargetRef | null | undefined,
+  right: TargetRef | null | undefined,
+): boolean {
   if (!left || !right) {
     return false;
   }

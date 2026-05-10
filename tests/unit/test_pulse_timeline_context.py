@@ -151,9 +151,7 @@ def test_selected_posts_include_multiple_watched_posts_under_budget():
         max_selected_posts=4,
     )
 
-    watched_posts = [
-        post for post in context["selected_posts"] if "watched_author" in post["roles"]
-    ]
+    watched_posts = [post for post in context["selected_posts"] if "watched_author" in post["roles"]]
     assert [post["event_id"] for post in watched_posts] == ["event-2", "event-3"]
 
 
@@ -172,11 +170,7 @@ def test_selected_posts_include_multiple_direct_ticker_evidence_posts_under_budg
         max_selected_posts=4,
     )
 
-    direct_posts = [
-        post
-        for post in context["selected_posts"]
-        if "direct_ca_or_ticker_evidence" in post["roles"]
-    ]
+    direct_posts = [post for post in context["selected_posts"] if "direct_ca_or_ticker_evidence" in post["roles"]]
     assert [post["event_id"] for post in direct_posts] == ["event-2", "event-3"]
 
 

@@ -49,7 +49,7 @@ class HarnessSnapshotBuilder:
         extraction_id = _id("social_event_extraction", event_id)
         anchor_terms = [asdict(anchor) for anchor in extraction.anchor_terms]
         token_candidates = [asdict(candidate) for candidate in extraction.token_candidates]
-        risks = list(dict.fromkeys(extraction.semantic_risks + ["public_stream_coverage"]))
+        risks = list(dict.fromkeys([*extraction.semantic_risks, "public_stream_coverage"]))
         social_event = self.harness.upsert_social_event_extraction(
             extraction_id=extraction_id,
             event_id=event_id,

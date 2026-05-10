@@ -1,4 +1,5 @@
 import { ArrowLeft, ExternalLink } from "lucide-react";
+
 import type { TokenSocialTimelineData, TokenTimelinePost } from "../api/types";
 import { eventText, formatRelativeTime, formatRisk, formatScore } from "../lib/format";
 
@@ -17,7 +18,7 @@ export function TokenReplayFocus({
   selectedBucketStartMs,
   selectedEventId,
   onBack,
-  onSelectedEventChange
+  onSelectedEventChange,
 }: TokenReplayFocusProps) {
   if (isLoading) {
     return <div className="empty-state">加载 replay 中</div>;
@@ -26,21 +27,40 @@ export function TokenReplayFocus({
     return <div className="empty-state">该窗口暂无传播复盘</div>;
   }
 
-  const selectedBucket = timeline.buckets.find((item) => item.start_ms === selectedBucketStartMs) ?? timeline.buckets[0] ?? null;
+  const selectedBucket =
+    timeline.buckets.find((item) => item.start_ms === selectedBucketStartMs) ??
+    timeline.buckets[0] ??
+    null;
   const bucketStartMs = selectedBucket?.start_ms ?? selectedBucketStartMs;
   const bucketPosts = timeline.posts
-    .filter((post) => bucketStartMs === null || bucketStartMs === undefined || post.bucket_start_ms === bucketStartMs)
+    .filter(
+      (post) =>
+        bucketStartMs === null ||
+        bucketStartMs === undefined ||
+        post.bucket_start_ms === bucketStartMs,
+    )
     .sort((a, b) => Number(a.received_at_ms ?? 0) - Number(b.received_at_ms ?? 0));
-  const replayPosts = bucketPosts.length ? bucketPosts : [...timeline.posts].sort((a, b) => Number(a.received_at_ms ?? 0) - Number(b.received_at_ms ?? 0));
-  const selectedPost = replayPosts.find((post) => post.event_id === selectedEventId) ?? replayPosts[0] ?? null;
+  const replayPosts = bucketPosts.length
+    ? bucketPosts
+    : [...timeline.posts].sort(
+        (a, b) => Number(a.received_at_ms ?? 0) - Number(b.received_at_ms ?? 0),
+      );
+  const selectedPost =
+    replayPosts.find((post) => post.event_id === selectedEventId) ?? replayPosts[0] ?? null;
   const cascadeEdges = timeline.cascade.edges.filter(
-    (edge) => edge.event_id === selectedPost?.event_id || edge.parent_event_id === selectedPost?.event_id
+    (edge) =>
+      edge.event_id === selectedPost?.event_id || edge.parent_event_id === selectedPost?.event_id,
   );
 
   return (
     <div className="replay-focus">
       <header className="replay-focus-head">
-        <button className="ghost-icon-button" type="button" onClick={onBack} aria-label="Back to timeline">
+        <button
+          className="ghost-icon-button"
+          type="button"
+          onClick={onBack}
+          aria-label="Back to timeline"
+        >
           <ArrowLeft aria-hidden />
           <span>Back to timeline</span>
         </button>
@@ -79,9 +99,13 @@ export function TokenReplayFocus({
               <p>{postText(selectedPost)}</p>
               <div className="replay-chip-row">
                 {selectedPost.event_type ? <span>{selectedPost.event_type}</span> : null}
-                {selectedPost.is_first_seen_by_watched_for_token ? <span>first watched evidence</span> : null}
+                {selectedPost.is_first_seen_by_watched_for_token ? (
+                  <span>first watched evidence</span>
+                ) : null}
                 {selectedPost.reference?.type ? <span>{selectedPost.reference.type}</span> : null}
-                {selectedPost.reference?.author_handle ? <span>@{selectedPost.reference.author_handle}</span> : null}
+                {selectedPost.reference?.author_handle ? (
+                  <span>@{selectedPost.reference.author_handle}</span>
+                ) : null}
               </div>
               {selectedPost.url ? (
                 <a className="replay-link" href={selectedPost.url} rel="noreferrer" target="_blank">
@@ -106,7 +130,10 @@ export function TokenReplayFocus({
                 <div className="replay-cascade-list">
                   {cascadeEdges.map((edge) => (
                     <span key={`${edge.event_id}-${edge.parent_event_id}-${edge.parent_tweet_id}`}>
-                      {edge.resolved ? "linked" : "unresolved"} · {edge.edge_type ?? "referenced"} · {edge.parent_author_handle ? `@${edge.parent_author_handle}` : edge.parent_tweet_id}
+                      {edge.resolved ? "linked" : "unresolved"} · {edge.edge_type ?? "referenced"} ·{" "}
+                      {edge.parent_author_handle
+                        ? `@${edge.parent_author_handle}`
+                        : edge.parent_tweet_id}
                     </span>
                   ))}
                 </div>
@@ -125,7 +152,7 @@ function ReplayChips({ post }: { post: TokenTimelinePost }) {
   const chips = [
     post.event_type,
     post.is_first_seen_by_watched_for_token ? "first watched" : null,
-    post.reference?.type ? `${post.reference.type}` : null
+    post.reference?.type ? `${post.reference.type}` : null,
   ].filter(Boolean);
   if (!chips.length) {
     return null;
@@ -139,7 +166,10 @@ function ReplayChips({ post }: { post: TokenTimelinePost }) {
   );
 }
 
-function bucketSummary(bucket: TokenSocialTimelineData["buckets"][number] | null, fallbackPosts: number): string {
+function bucketSummary(
+  bucket: TokenSocialTimelineData["buckets"][number] | null,
+  fallbackPosts: number,
+): string {
   const posts = bucket?.posts ?? fallbackPosts;
   const newAuthors = bucket?.new_authors ?? 0;
   return `selected bucket · ${posts} ${plural(posts, "post")} · ${newAuthors} new ${plural(newAuthors, "author")}`;

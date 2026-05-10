@@ -1,4 +1,5 @@
 import type { SignalPulseItem, TokenFlowItem } from "../api/types";
+
 import { gmgnTokenUrl } from "./gmgn";
 
 export type VenueAction = {
@@ -69,7 +70,9 @@ function parseAssetTargetId(targetId?: string | null): { chain: string; address:
   return null;
 }
 
-function parseCexPricefeedId(pricefeedId?: string | null): { exchange: string; instType: string; instId: string } | null {
+function parseCexPricefeedId(
+  pricefeedId?: string | null,
+): { exchange: string; instType: string; instId: string } | null {
   const parts = pricefeedId?.trim().split(":") ?? [];
   if (parts.length < 5 || parts[0] !== "pricefeed" || parts[1] !== "cex") {
     return null;
@@ -77,7 +80,7 @@ function parseCexPricefeedId(pricefeedId?: string | null): { exchange: string; i
   return {
     exchange: parts[2].toLowerCase(),
     instType: parts[3].toUpperCase(),
-    instId: parts.slice(4).join(":")
+    instId: parts.slice(4).join(":"),
   };
 }
 
@@ -104,7 +107,9 @@ function okxUrl(instId: string, instType?: string | null): string {
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function stringValue(value: unknown): string | null {

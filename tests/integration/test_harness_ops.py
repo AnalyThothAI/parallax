@@ -7,9 +7,9 @@ from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import 
     update_harness_weights,
 )
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from tests.integration.test_api_http import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.integration.test_api_http import make_event
 
 ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
 

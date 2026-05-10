@@ -118,10 +118,7 @@ def gate_pulse_candidate(
 
 
 def _component_scores(radar: dict[str, Any]) -> dict[str, int]:
-    return {
-        key: _score_at(radar, key)
-        for key in ("heat", "quality", "propagation", "tradeability", "timing")
-    }
+    return {key: _score_at(radar, key) for key in ("heat", "quality", "propagation", "tradeability", "timing")}
 
 
 def _pulse_status(
@@ -301,13 +298,12 @@ def _risk_reasons(
 
 
 def _hard_risks(radar: dict[str, Any], risk_reasons: list[str]) -> list[str]:
-    risks = []
-    for component in _dict_values(radar):
-        for risk in component.get("hard_risks", []) if isinstance(component, dict) else []:
-            risks.append(_normalize_risk(risk))
-    for risk in risk_reasons:
-        if risk in _HARD_RISK_NAMES:
-            risks.append(_normalize_risk(risk))
+    risks = [
+        _normalize_risk(risk)
+        for component in _dict_values(radar)
+        for risk in (component.get("hard_risks", []) if isinstance(component, dict) else [])
+    ]
+    risks.extend(_normalize_risk(risk) for risk in risk_reasons if risk in _HARD_RISK_NAMES)
     return _dedupe(risks)
 
 
@@ -400,16 +396,10 @@ def _public_only_low_confirmed(risks: list[str], timeline: dict[str, Any]) -> bo
 
 def _duplicate_text_share(timeline: dict[str, Any]) -> float:
     windows = timeline.get("windows") if isinstance(timeline.get("windows"), dict) else {}
-    shares = [
-        safe_float(window.get("duplicate_text_share"))
-        for window in windows.values()
-        if isinstance(window, dict)
-    ]
+    shares = [safe_float(window.get("duplicate_text_share")) for window in windows.values() if isinstance(window, dict)]
     post_clusters = timeline.get("post_clusters") if isinstance(timeline.get("post_clusters"), list) else []
     shares.extend(
-        safe_float(cluster.get("duplicate_text_share"))
-        for cluster in post_clusters
-        if isinstance(cluster, dict)
+        safe_float(cluster.get("duplicate_text_share")) for cluster in post_clusters if isinstance(cluster, dict)
     )
     return max(shares, default=safe_float(timeline.get("duplicate_text_share")))
 

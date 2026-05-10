@@ -114,9 +114,7 @@ class AccountQualityService:
         }
         drawdown = _max_drawdown(rows, start_price=first_price, before_ms=first_mention_ms + 60 * 60_000)
         outcome_status = (
-            "ready"
-            if any(value is not None for value in changes.values())
-            else "insufficient_market_history"
+            "ready" if any(value is not None for value in changes.values()) else "insufficient_market_history"
         )
         return changes | {
             "max_drawdown_1h_pct": drawdown,

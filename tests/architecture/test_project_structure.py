@@ -25,7 +25,7 @@ def test_project_uses_domain_package_src_layout():
     assert (base / "app" / "surfaces" / "api" / "http.py").is_file()
     assert (base / "app" / "surfaces" / "api" / "ws.py").is_file()
     assert (base / "app" / "surfaces" / "cli" / "main.py").is_file()
-    for domain in {
+    for domain in (
         "ingestion",
         "evidence",
         "asset_market",
@@ -35,7 +35,7 @@ def test_project_uses_domain_package_src_layout():
         "notifications",
         "pulse_lab",
         "account_quality",
-    }:
+    ):
         assert (base / "domains" / domain / "__init__.py").is_file()
     assert (base / "integrations" / "gmgn" / "__init__.py").is_file()
     assert (base / "integrations" / "okx" / "__init__.py").is_file()

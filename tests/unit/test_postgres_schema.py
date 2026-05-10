@@ -10,9 +10,7 @@ STALE_RUNNING_MIGRATION = Path(
 PROJECTION_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0004_projection_operations.py"
 )
-ASSET_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py"
-)
+ASSET_MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py")
 TOKEN_RADAR_INTENT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py"
 )
@@ -183,7 +181,7 @@ def test_token_radar_migration_adds_intent_market_and_projection_tables() -> Non
 def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables() -> None:
     text = TOKEN_RADAR_REGISTRY_MIGRATION.read_text()
 
-    for table in {
+    for table in (
         "projects",
         "registry_assets",
         "cex_tokens",
@@ -192,7 +190,7 @@ def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables(
         "price_observations",
         "registry_versions",
         "token_intent_lookup_keys",
-    }:
+    ):
         assert f"CREATE TABLE IF NOT EXISTS {table}" in text
 
     discovery_result_text = Path(
@@ -233,13 +231,13 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
 
     assert 'revision = "20260508_0015"' in text
     assert 'down_revision = "20260508_0014"' in text
-    for table in {
+    for table in (
         "pulse_agent_jobs",
         "pulse_agent_runs",
         "pulse_candidates",
         "pulse_playbook_snapshots",
         "pulse_playbook_outcomes",
-    }:
+    ):
         assert f"CREATE TABLE IF NOT EXISTS {table}" in text
 
     assert "UNIQUE(candidate_id)" in text

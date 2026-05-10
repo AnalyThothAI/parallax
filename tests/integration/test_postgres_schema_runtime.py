@@ -43,7 +43,7 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "token_radar_rows" in names
     assert "asset_signal_snapshots" in names
     assert "asset_signal_outcomes" in names
-    for legacy_table in {
+    for legacy_table in (
         "asset_mentions",
         "asset_attributions",
         "asset_resolution_jobs",
@@ -52,7 +52,7 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
         "token_market_snapshots",
         "token_market_observations",
         "token_signal_snapshots",
-    }:
+    ):
         assert legacy_table not in names
 
 

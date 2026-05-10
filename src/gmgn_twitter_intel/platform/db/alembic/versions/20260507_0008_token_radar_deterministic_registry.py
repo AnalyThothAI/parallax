@@ -177,8 +177,7 @@ def upgrade() -> None:
     )
     op.execute("ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS registry_version TEXT")
     op.execute(
-        "ALTER TABLE token_intent_resolutions "
-        "ADD COLUMN IF NOT EXISTS record_status TEXT NOT NULL DEFAULT 'current'"
+        "ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS record_status TEXT NOT NULL DEFAULT 'current'"
     )
     op.execute("ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT true")
     op.execute("ALTER TABLE token_intent_resolutions ADD COLUMN IF NOT EXISTS superseded_at_ms BIGINT")
@@ -194,8 +193,7 @@ def upgrade() -> None:
     op.execute("ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS target_json JSONB NOT NULL DEFAULT '{}'::jsonb")
     op.execute("ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS price_json JSONB NOT NULL DEFAULT '{}'::jsonb")
     op.execute(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ux_registry_assets_identity "
-        "ON registry_assets(chain_id, lower(address))"
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_registry_assets_identity ON registry_assets(chain_id, lower(address))"
     )
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_cex_tokens_identity ON cex_tokens(base_symbol)")
     op.execute(

@@ -96,8 +96,17 @@ def test_mention_confidence_maps_status_correctly():
 
 def test_kol_mid_low_tier_constants_exhaust_known_tags():
     known = {
-        "kol", "founder", "master", "exchange", "binance_square",
-        "celebrity", "politics", "media", "companies", "trader", "other",
+        "kol",
+        "founder",
+        "master",
+        "exchange",
+        "binance_square",
+        "celebrity",
+        "politics",
+        "media",
+        "companies",
+        "trader",
+        "other",
     }
     assert known == KOL_TIER_TAGS | MID_TIER_TAGS | LOW_TIER_TAGS
     assert set() == KOL_TIER_TAGS & MID_TIER_TAGS

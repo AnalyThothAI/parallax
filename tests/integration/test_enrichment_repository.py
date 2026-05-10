@@ -278,7 +278,7 @@ def test_claim_next_job_reclaims_stale_running_job(tmp_path):
 
 
 def test_claim_next_job_skips_row_locked_by_another_worker(tmp_path):
-    conn, _, enrichment, ingest = open_repositories(tmp_path)
+    conn, _, _enrichment, ingest = open_repositories(tmp_path)
     second_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         ingest.ingest_event(make_event("locked-job"), is_watched=True)

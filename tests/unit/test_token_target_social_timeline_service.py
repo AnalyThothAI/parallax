@@ -128,9 +128,7 @@ class FakeTargets:
         if cursor is not None:
             cursor_ms, cursor_event_id = cursor
             rows = [
-                row
-                for row in rows
-                if (int(row["received_at_ms"]), str(row["event_id"])) < (cursor_ms, cursor_event_id)
+                row for row in rows if (int(row["received_at_ms"]), str(row["event_id"])) < (cursor_ms, cursor_event_id)
             ]
         return rows[:limit]
 

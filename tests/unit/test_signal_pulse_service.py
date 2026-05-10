@@ -369,9 +369,7 @@ def test_candidate_returns_full_item() -> None:
     pulse = FakePulseRepository()
     pulse.candidate_rows = {"cand-1": row}
 
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(
-        candidate_id="cand-1"
-    )
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-1")
 
     assert result is not None
     assert result["candidate_id"] == "cand-1"
@@ -383,9 +381,7 @@ def test_candidate_returns_full_item() -> None:
 def test_candidate_returns_none_when_missing() -> None:
     pulse = FakePulseRepository()
     pulse.candidate_rows = {}
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(
-        candidate_id="ghost"
-    )
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="ghost")
     assert result is None
 
 
@@ -398,7 +394,5 @@ def test_candidate_returns_none_when_blocked() -> None:
     )
     pulse = FakePulseRepository()
     pulse.candidate_rows = {"cand-blocked": row}
-    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(
-        candidate_id="cand-blocked"
-    )
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-blocked")
     assert result is None

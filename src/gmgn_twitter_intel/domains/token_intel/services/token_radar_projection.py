@@ -53,24 +53,22 @@ class TokenRadarProjection:
         source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
         total_window_events = len(
-            {
-                str(row["event_id"])
-                for row in source_rows
-                if int(row.get("received_at_ms") or 0) >= score_since_ms
-            }
+            {str(row["event_id"]) for row in source_rows if int(row.get("received_at_ms") or 0) >= score_since_ms}
         )
         projected = [
             row
             for group in grouped.values()
-            if (row := _project_group(
-                group,
-                now_ms=computed_at_ms,
-                window=window,
-                scope=scope,
-                score_since_ms=score_since_ms,
-                window_ms=window_ms,
-                total_window_events=total_window_events,
-            ))
+            if (
+                row := _project_group(
+                    group,
+                    now_ms=computed_at_ms,
+                    window=window,
+                    scope=scope,
+                    score_since_ms=score_since_ms,
+                    window_ms=window_ms,
+                    total_window_events=total_window_events,
+                )
+            )
         ]
         projected = self._apply_cross_section(projected)
         resolved = [row for row in projected if row["lane"] == "resolved"]
@@ -239,17 +237,15 @@ def _project_group(
     total_window_events: int | None = None,
 ) -> dict[str, Any] | None:
     resolved_window_ms = window_ms or WINDOW_MS.get(window, WINDOW_MS["1h"])
-    resolved_score_since_ms = score_since_ms if score_since_ms is not None else min(
-        int(row.get("received_at_ms") or 0) for row in rows
+    resolved_score_since_ms = (
+        score_since_ms if score_since_ms is not None else min(int(row.get("received_at_ms") or 0) for row in rows)
     )
-    window_rows = [
-        row for row in rows
-        if int(row.get("received_at_ms") or 0) >= resolved_score_since_ms
-    ]
+    window_rows = [row for row in rows if int(row.get("received_at_ms") or 0) >= resolved_score_since_ms]
     if not window_rows:
         return None
     previous_rows = [
-        row for row in rows
+        row
+        for row in rows
         if resolved_score_since_ms - resolved_window_ms <= int(row.get("received_at_ms") or 0) < resolved_score_since_ms
     ]
     latest = max(window_rows, key=lambda row: int(row.get("received_at_ms") or 0))
@@ -276,13 +272,9 @@ def _project_group(
     # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
     # These internal fields use the _cohort_* prefix and are stripped before persistence.
     cohort_high_conf_count = sum(
-        1 for r in window_rows
-        if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
+        1 for r in window_rows if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
     )
-    cohort_kol_count = sum(
-        1 for r in window_rows
-        if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS
-    )
+    cohort_kol_count = sum(1 for r in window_rows if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -360,9 +352,7 @@ def _resolution_discovery(row: dict[str, Any]) -> list[dict[str, Any]]:
         if isinstance(item, dict) and item.get("lookup_key")
     ]
     existing_by_key = {str(item["lookup_key"]): item for item in existing}
-    out: list[dict[str, Any]] = []
-    for key in lookup_keys:
-        out.append(existing_by_key.get(key) or _not_searched_discovery(key))
+    out: list[dict[str, Any]] = [existing_by_key.get(key) or _not_searched_discovery(key) for key in lookup_keys]
     seen = {str(item["lookup_key"]) for item in out}
     out.extend(item for item in existing if str(item["lookup_key"]) not in seen)
     return out

@@ -52,9 +52,7 @@ def _clean_text(text: str | None) -> str | None:
 
 
 def _extract_urls(text: str | None) -> list[str]:
-    urls = []
-    for match in URL_RE.findall(text or ""):
-        urls.append(match.rstrip(".,!?;:)]}"))
+    urls = [match.rstrip(".,!?;:)]}") for match in URL_RE.findall(text or "")]
     return _unique(urls)
 
 

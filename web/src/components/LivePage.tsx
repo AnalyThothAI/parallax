@@ -1,5 +1,7 @@
 import { Outlet } from "react-router-dom";
+
 import type { SignalPulseData, SignalPulseItem } from "../api/types";
+
 import { LiveSignalTape, type LiveSignalTapeItem } from "./LiveSignalTape";
 import { SignalLabPulse } from "./SignalLabPulse";
 
@@ -30,7 +32,7 @@ export function LivePage({
   isSignalLabPulseLoading,
   selectedPulseItemId,
   onOpenLab,
-  onSelectPulse
+  onSelectPulse,
 }: LivePageProps) {
   return (
     <div data-testid="live-page" className="live-page">

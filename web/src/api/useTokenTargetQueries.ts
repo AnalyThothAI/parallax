@@ -1,8 +1,17 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { getApi } from "./client";
-import type { ScopeKey, TokenPostRange, TokenPostServerSort, TokenPostsData, TokenSocialTimelineData, WindowKey } from "./types";
+
 import type { TargetRef } from "../domain/tokenTarget";
 import { targetRefKey } from "../domain/tokenTarget";
+
+import { getApi } from "./client";
+import type {
+  ScopeKey,
+  TokenPostRange,
+  TokenPostServerSort,
+  TokenPostsData,
+  TokenSocialTimelineData,
+  WindowKey,
+} from "./types";
 
 type TimelineArgs = {
   token: string;
@@ -23,15 +32,31 @@ export function useTokenTargetTimeline({ token, target, window, scope }: Timelin
     queryFn: () =>
       getApi<TokenSocialTimelineData>("/api/target-social-timeline", {
         token,
-        params: target ? { ...target, window, scope } : {}
+        params: target ? { ...target, window, scope } : {},
       }),
-    enabled: Boolean(token && target)
+    enabled: Boolean(token && target),
   });
 }
 
-export function useTokenTargetPosts({ token, target, window, scope, range, sort, limit = 24 }: PostsArgs) {
+export function useTokenTargetPosts({
+  token,
+  target,
+  window,
+  scope,
+  range,
+  sort,
+  limit = 24,
+}: PostsArgs) {
   return useInfiniteQuery({
-    queryKey: ["target-posts", target ? targetRefKey(target) : null, window, scope, range, sort, limit],
+    queryKey: [
+      "target-posts",
+      target ? targetRefKey(target) : null,
+      window,
+      scope,
+      range,
+      sort,
+      limit,
+    ],
     queryFn: async ({ pageParam }) => {
       const response = await getApi<TokenPostsData>("/api/target-posts", {
         token,
@@ -43,14 +68,15 @@ export function useTokenTargetPosts({ token, target, window, scope, range, sort,
           range,
           sort,
           limit,
-          cursor: sort === "catalyst" ? undefined : pageParam || undefined
-        }
+          cursor: sort === "catalyst" ? undefined : pageParam || undefined,
+        },
       });
       return response.data;
     },
     initialPageParam: "",
-    getNextPageParam: (lastPage) => lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
-    enabled: Boolean(token && target)
+    getNextPageParam: (lastPage) =>
+      lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
+    enabled: Boolean(token && target),
   });
 }
 
@@ -65,6 +91,6 @@ export function mergeTokenPostPages(pages?: TokenPostsData[]): TokenPostsData | 
     returned_count: pages.reduce((total, page) => total + page.returned_count, 0),
     has_more: last.has_more,
     next_cursor: last.next_cursor,
-    items: pages.flatMap((page) => page.items)
+    items: pages.flatMap((page) => page.items),
   };
 }

@@ -3,9 +3,7 @@ from pathlib import Path
 
 from loguru import logger
 
-LOG_FORMAT = (
-    "<level>{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}</level>"
-)
+LOG_FORMAT = "<level>{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}</level>"
 FILE_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}"
 
 

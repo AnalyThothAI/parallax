@@ -294,6 +294,6 @@ def test_weighted_mentions_keeps_floor_signal_for_non_directory_account():
         window_ms=3_600_000,
         total_window_events=1,
     )
-    # Floor: log1p(5000)/log1p(100000) × 0.5 (no tag) × 1.0 (saturated age) ≈ 0.37
+    # Floor: log1p(5000)/log1p(100000) x 0.5 (no tag) x 1.0 (saturated age) ~= 0.37
     assert features.heat["weighted_mentions"] > 0.0
     assert features.heat["weighted_mentions"] < 0.5

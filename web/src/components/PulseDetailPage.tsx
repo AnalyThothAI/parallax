@@ -1,6 +1,8 @@
 import { useParams } from "react-router-dom";
+
 import { useSignalPulseCandidate } from "../api/useSignalPulseQueries";
 import { useTraderStore } from "../store/useTraderStore";
+
 import { SignalLabInspector } from "./SignalLabInspector";
 
 export function PulseDetailPage() {

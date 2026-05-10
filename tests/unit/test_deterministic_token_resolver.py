@@ -381,7 +381,5 @@ class FakeRegistry:
             row = self.address_assets.get((chain_id, normalized))
             return [row] if row else []
         return [
-            row
-            for (_stored_chain, stored_address), row in self.address_assets.items()
-            if stored_address == normalized
+            row for (_stored_chain, stored_address), row in self.address_assets.items() if stored_address == normalized
         ]

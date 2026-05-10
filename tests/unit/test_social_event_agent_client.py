@@ -10,7 +10,7 @@ class FakeRunner:
         self.output = output
         self.calls = []
 
-    async def run(self, starting_agent, input, *, max_turns, run_config):  # noqa: ANN001
+    async def run(self, starting_agent, input, *, max_turns, run_config):
         self.calls.append(
             {
                 "agent": starting_agent,

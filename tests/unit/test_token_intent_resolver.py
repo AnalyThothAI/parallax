@@ -39,7 +39,7 @@ def test_token_intent_resolver_resolves_base_ca_as_exact_asset():
     )
     evidence = _evidence(f"$VERSA {address} on Base")
     intents = build_token_intents(event_id="event-versa", evidence=evidence, created_at_ms=1)
-    intent = [item for item in intents if item.address_hint][0]
+    intent = next(item for item in intents if item.address_hint)
 
     decision = TokenIntentResolver(registry=registry, resolutions=FakeResolutions()).resolve(
         intent,

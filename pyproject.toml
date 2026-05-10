@@ -26,7 +26,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
-    "ruff>=0.8.0",
+    "ruff>=0.8.6",
+    "pre-commit>=3.7",
 ]
 
 [project.scripts]
@@ -55,4 +56,49 @@ line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "S", "ASYNC", "RUF", "PERF", "PL"]
+# Common pragmatic ignores. Each ignore is a deliberate choice:
+# - PLR0913: too many args is sometimes correct for adapters/factories
+# - PLR2004: magic numbers in tests are normal (also blocked by per-file-ignores)
+# - PLR0911/PLR0912/PLR0915: cyclomatic complexity caps too low for a few orchestration funcs
+# - S608: 43 hits across repos — all use controlled clause building (not user input);
+#         the pattern `f"WHERE {' AND '.join(clauses)}"` where clauses is filled with
+#         hardcoded strings + %s placeholders is a safe dynamic-filter pattern for psycopg.
+# - S105/S106: "possible password" fires on version strings, filename defaults, redaction
+#         strings (TOKEN_RADAR_PROJECTION_VERSION, "password_file", "token_resolution_status");
+#         no actual credentials are hardcoded in the src/ tree.
+# - RUF001: codebase has intentional Chinese fullwidth characters in constant/model strings
+#         (e.g. Chinese punctuation in user-visible prompts); not copy-paste accidents.
+# - PLC0415: 5 deferred imports in src/ are intentional (break circular deps or defer optional
+#         deps: apprise in notification_delivery, psycopg in cli, TokenRadarProjection in two
+#         runtime workers). ruff --fix strips noqa comments on these so they're globally ignored.
+ignore = [
+  "PLR0913",
+  "PLR2004",
+  "PLR0911",
+  "PLR0912",
+  "PLR0915",
+  "S608",
+  "S105",
+  "S106",
+  "RUF001",
+  "PLC0415",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",   # asserts are the test contract
+  "S311",   # pseudo-random in tests is fine
+  "PLR2004",
+  "ASYNC",
+  "PLC0415",  # deferred imports in test helpers/parametrized fixtures are intentional
+  "S603",   # subprocess in integration tests always calls well-known CLI tools
+  "S607",   # subprocess calls in integration tests use well-known CLI tools (make, git, uv)
+]
+"scripts/**" = [
+  "S603",   # subprocess inputs are local CLI args
+  "S607",
+]
+
+[tool.ruff.format]
+# Default settings; line-length inherited from [tool.ruff] = 120

@@ -1,16 +1,18 @@
+import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+
 import { getApi } from "../api/client";
-import { mergeSignalPulsePages, useSignalPulseList } from "../api/useSignalPulseQueries";
 import type {
   LivePayload,
   RecentData,
   SignalPulseData,
   SignalPulseItem,
-  SignalPulseStatusFilter
+  SignalPulseStatusFilter,
 } from "../api/types";
+import { mergeSignalPulsePages, useSignalPulseList } from "../api/useSignalPulseQueries";
 import { useTraderStore } from "../store/useTraderStore";
+
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
 
 const SIGNAL_LAB_SCOPE = "all";
@@ -25,7 +27,7 @@ type SignalLabPageProps = {
 export function SignalLabPage({
   selectedAccountEventId = null,
   overviewData,
-  onSelectAccountEvent
+  onSelectAccountEvent,
 }: SignalLabPageProps) {
   const token = useTraderStore((state) => state.token);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -44,7 +46,7 @@ export function SignalLabPage({
     scope: SIGNAL_LAB_SCOPE,
     status: statusParam,
     handle: handleParam,
-    q: queryParam
+    q: queryParam,
   });
 
   const signalLabAccountEventsQuery = useQuery({
@@ -55,18 +57,21 @@ export function SignalLabPage({
         params: {
           limit: 80,
           scope: SIGNAL_LAB_SCOPE,
-          handles: activeSignalLabHandle
-        }
+          handles: activeSignalLabHandle,
+        },
       }),
     enabled: Boolean(token && activeSignalLabHandle),
-    refetchInterval: 15_000
+    refetchInterval: 15_000,
   });
 
   const signalPulseData = useMemo(
     () => mergeSignalPulsePages(signalPulseQuery.data?.pages),
-    [signalPulseQuery.data?.pages]
+    [signalPulseQuery.data?.pages],
   );
-  const workbenchSignalPulseItems = signalPulseData?.items ?? [];
+  const workbenchSignalPulseItems = useMemo(
+    () => signalPulseData?.items ?? [],
+    [signalPulseData?.items],
+  );
   const signalLabAccountEvents = signalLabAccountEventsQuery.data?.data.items ?? [];
 
   // Pulse selection now lives in the URL path: /signal-lab/pulse/<candidateId>.
@@ -80,10 +85,9 @@ export function SignalLabPage({
       return;
     }
     const preferred = preferredPulseItem(workbenchSignalPulseItems);
-    navigate(
-      `/signal-lab/pulse/${encodeURIComponent(preferred.candidate_id)}${location.search}`,
-      { replace: true }
-    );
+    navigate(`/signal-lab/pulse/${encodeURIComponent(preferred.candidate_id)}${location.search}`, {
+      replace: true,
+    });
   }, [isPulseRoute, location.search, navigate, workbenchSignalPulseItems]);
 
   const updateParam = (key: string, value: string) => {
@@ -121,7 +125,9 @@ export function SignalLabPage({
           data={signalPulseData}
           accountEvents={signalLabAccountEvents}
           handleFilter={handleParam}
-          isAccountEventsLoading={signalLabAccountEventsQuery.isPending && !signalLabAccountEvents.length}
+          isAccountEventsLoading={
+            signalLabAccountEventsQuery.isPending && !signalLabAccountEvents.length
+          }
           isLoading={signalPulseQuery.isPending}
           isFetchingNextPage={signalPulseQuery.isFetchingNextPage}
           hasNextPage={Boolean(signalPulseQuery.hasNextPage)}
@@ -172,7 +178,7 @@ function preferredPulseItem(items: SignalPulseItem[]): SignalPulseItem {
     (a, b) =>
       pulseStatusRank(b) - pulseStatusRank(a) ||
       Number(b.candidate_score ?? 0) - Number(a.candidate_score ?? 0) ||
-      b.updated_at_ms - a.updated_at_ms
+      b.updated_at_ms - a.updated_at_ms,
   )[0];
 }
 

@@ -173,4 +173,4 @@ def _run_id(job: dict[str, Any]) -> str:
             str(_now_ms()),
         ]
     )
-    return "run-" + hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return "run-" + hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()

@@ -989,9 +989,7 @@ def _audit_token_radar_rows(
             violations.append({"row": index, "code": "driver_without_ready_market"})
     social_lag_ms = max(0, int(now_ms) - int(source_max_resolution_ms)) if source_max_resolution_ms else None
     market_lag_ms = (
-        max(0, int(now_ms) - int(source_max_price_observed_at_ms))
-        if source_max_price_observed_at_ms
-        else None
+        max(0, int(now_ms) - int(source_max_price_observed_at_ms)) if source_max_price_observed_at_ms else None
     )
     return {
         "ok": not violations,
@@ -1004,7 +1002,6 @@ def _audit_token_radar_rows(
         "social_lag_ms": social_lag_ms,
         "market_lag_ms": market_lag_ms,
     }
-
 
 
 def _now_ms() -> int:
