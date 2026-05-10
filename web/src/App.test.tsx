@@ -440,7 +440,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const pulseTitle = await screen.findByText("Signal Lab Pulse");
     const pulse = pulseTitle.closest("section") as HTMLElement;
-    expect(await within(pulse).findByText(/ignition · A/)).toBeInTheDocument();
+    expect(await within(pulse).findByText(/mentions 42 · authors 18 · trade_candidate A/)).toBeInTheDocument();
     expect(within(pulse).getByText("CZ 推动 BNB build 叙事，候选处于点火阶段。")).toBeInTheDocument();
     expect(within(pulse).queryByText("extractor configured")).not.toBeInTheDocument();
     expect(within(pulse).queryByLabelText("signal lab pulse stages")).not.toBeInTheDocument();
@@ -451,8 +451,8 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => expect(screen.getByText("selected Signal Pulse")).toBeInTheDocument());
     expect(screen.getByText("Token")).toBeInTheDocument();
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    expect(within(drawer).getByText("Why now")).toBeInTheDocument();
-    expect(within(drawer).getByText("bull_case_zh")).toBeInTheDocument();
+    expect(within(drawer).getByText("Agent Recommendation")).toBeInTheDocument();
+    expect(within(drawer).getByText("Fact Card")).toBeInTheDocument();
   });
 
   it("routes Signal Pulse notifications into Signal Lab instead of token search", async () => {
@@ -868,7 +868,24 @@ describe("App Token Radar social heat cockpit", () => {
       subject_key: "token:SOL",
       symbol: "SOL",
       summary_zh: "SOL pulse loaded from cursor.",
-      why_now_zh: "SOL pulse loaded from cursor."
+      why_now_zh: "SOL pulse loaded from cursor.",
+      factor_snapshot: {
+        ...firstPage.items[0].factor_snapshot,
+        subject: {
+          ...firstPage.items[0].factor_snapshot.subject,
+          target_id: "asset:cex:okx:SOL-USDT",
+          symbol: "SOL"
+        }
+      },
+      agent_recommendation: {
+        ...firstPage.items[0].agent_recommendation,
+        summary_zh: "SOL pulse loaded from cursor."
+      },
+      fact_card: {
+        ...firstPage.items[0].fact_card,
+        mentions_1h: 24,
+        unique_authors: 12
+      }
     };
     mockApi({
       signalPulsePages: {
@@ -938,17 +955,19 @@ describe("App Token Radar social heat cockpit", () => {
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelectorAll(".detail-drawer-card").length).toBeGreaterThanOrEqual(10);
     expect(drawer.querySelector(".detail-drawer-field")).toBeInTheDocument();
-    expect(within(drawer).getByText("Why now")).toBeInTheDocument();
-    expect(within(drawer).getByText("bull_case_zh")).toBeInTheDocument();
-    expect(within(drawer).getByText("bear_case_zh")).toBeInTheDocument();
+    expect(within(drawer).getByText("Agent Recommendation")).toBeInTheDocument();
+    expect(within(drawer).getByText("Fact Card")).toBeInTheDocument();
+    expect(within(drawer).getByText("Hard Gates")).toBeInTheDocument();
+    expect(within(drawer).getByText("Factor Families")).toBeInTheDocument();
+    expect(within(drawer).getByText("Source Events")).toBeInTheDocument();
     expect(within(drawer).getByText("source_event_ids")).toBeInTheDocument();
     expect(within(drawer).getByText("evidence_event_ids")).toBeInTheDocument();
-    expect(within(drawer).getByText("radar_score_json")).toBeInTheDocument();
-    expect(within(drawer).getByText("market_context_json")).toBeInTheDocument();
-    expect(within(drawer).getByText("gate_reasons_json")).toBeInTheDocument();
-    expect(within(drawer).getByText("risk_reasons_json")).toBeInTheDocument();
+    expect(within(drawer).getByText("factor_snapshot")).toBeInTheDocument();
+    expect(within(drawer).getAllByText("gate").length).toBeGreaterThan(0);
     expect(within(drawer).getByText("playbooks")).toBeInTheDocument();
-    expect(within(drawer).getByText("outcome_json")).toBeInTheDocument();
+    expect(within(drawer).queryByText("radar_score_json")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("market_context_json")).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("thesis_json")).not.toBeInTheDocument();
     expect(within(drawer).queryByRole("tab", { name: "Trace" })).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Snapshot Ledger")).not.toBeInTheDocument();
     expect(screen.queryByText("harness-score-v1")).not.toBeInTheDocument();
@@ -1832,18 +1851,71 @@ function signalPulseData(): SignalPulseData {
         score_band: "A",
         summary_zh: "CZ 提到 build on BNB，形成 BNB 生态关注。",
         why_now_zh: "CZ 推动 BNB build 叙事，候选处于点火阶段。",
-        bull_case_zh: ["强账号触发", "BNB 叙事扩散"],
-        bear_case_zh: ["单一账号驱动"],
-        confirmation_triggers_zh: ["更多 watched 账号跟进", "成交量确认"],
-        invalidation_triggers_zh: ["讨论未扩散", "价格追高失败"],
-        top_risks: ["public_stream_coverage"],
-        gate_reasons: [{ code: "market_ready", passed: true }],
-        risk_reasons: [{ code: "source_concentration", severity: "medium" }],
         evidence_event_ids: ["event-cz-bnb"],
         source_event_ids: ["event-cz-bnb", "event-bnb-2"],
-        radar_score_json: { heat: 72, opportunity: 84 },
-        market_context_json: { market_ready: true, outcome: { status: "pending" } },
-        thesis_json: { setup: "watched_account_ignition", outcome: { horizon: "6h" } },
+        factor_snapshot: {
+          schema_version: "token_factor_snapshot_v1",
+          subject: {
+            target_type: "CexToken",
+            target_id: "asset:cex:okx:BNB-USDT",
+            symbol: "BNB"
+          },
+          families: {
+            market_quality: {
+              score: 78,
+              data_health: "ready",
+              facts: {
+                native_market_id: "pricefeed:cex:okx:spot:BNB-USDT",
+                market_cap_usd: 82_000_000_000,
+                liquidity_usd: 18_000_000,
+                holders: 900_000,
+                volume_24h_usd: 2_100_000_000,
+                market_status: "ready"
+              },
+              factors: {}
+            },
+            social_attention: {
+              score: 86,
+              data_health: "ready",
+              facts: { mentions_1h: 42, watched_mentions: 3 },
+              factors: {}
+            },
+            social_quality: {
+              score: 72,
+              data_health: "ready",
+              facts: { independent_authors: 18 },
+              factors: {}
+            }
+          },
+          hard_gates: { eligible_for_high_alert: true, blocked_reasons: [] },
+          composite: { rank_score: 84, recommended_decision: "watch" }
+        },
+        agent_recommendation: {
+          schema_version: "pulse_recommendation_v1",
+          recommendation: "watch",
+          summary_zh: "CZ 推动 BNB build 叙事，候选处于点火阶段。",
+          primary_reasons: [{ factor_key: "social_attention.watched_mentions", explanation_zh: "强账号触发" }],
+          upgrade_conditions: [
+            { factor_key: "market_quality.volume_24h_usd", operator: ">", value: 2_500_000_000, description_zh: "成交量确认" }
+          ],
+          invalidation_conditions: [
+            { factor_key: "social_quality.independent_authors", operator: "<", value: 6, description_zh: "讨论未扩散" }
+          ],
+          residual_risks: [{ factor_key: "social_quality.source_concentration", description_zh: "单一账号驱动" }]
+        },
+        gate: { pulse_status: "trade_candidate", candidate_score: 84, score_band: "A", eligible_for_high_alert: true, blocked_reasons: [] },
+        fact_card: {
+          market_cap_usd: 82_000_000_000,
+          liquidity_usd: 18_000_000,
+          holders: 900_000,
+          volume_24h_usd: 2_100_000_000,
+          market_status: "ready",
+          mentions_1h: 42,
+          unique_authors: 18,
+          watched_mentions: 3,
+          eligible_for_high_alert: true,
+          blocked_reasons: []
+        },
         agent_run_id: "agent-run-bnb",
         pulse_version: "pulse-v10",
         gate_version: "gate-v10",
