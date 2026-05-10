@@ -9,7 +9,7 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
 )
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
-from tests.test_api_http import make_token_event
+from tests.integration.test_api_http import make_token_event
 
 BNB = "0x0000000000000000000000000000000000000b0b"
 

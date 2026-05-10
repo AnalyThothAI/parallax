@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GENERATED = REPO_ROOT / "docs" / "generated"
 EXPECTED = {"README.md", "db-schema.md", "cli-help.md", "score-versions.md", "ws-protocol.md"}
 HEADER_MARKER = "AUTO-GENERATED"

@@ -12,7 +12,7 @@ from gmgn_twitter_intel.integrations.gmgn.directory_client import (
     GmgnDirectoryError,
 )
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures"
+FIXTURE_DIR = Path(__file__).parent.parent / "fixtures"
 
 
 def _load(name: str) -> dict:
