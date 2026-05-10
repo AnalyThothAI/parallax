@@ -7,7 +7,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from .postgres_client import transaction
+from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
 

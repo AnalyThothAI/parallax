@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.api.app import create_app
-from gmgn_twitter_intel.settings import Settings
+from gmgn_twitter_intel.app.runtime.app import create_app
+from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 

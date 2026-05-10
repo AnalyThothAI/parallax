@@ -3,7 +3,7 @@ import asyncio
 from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.pipeline.notification_models import NotificationCandidate
 from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
-from gmgn_twitter_intel.settings import NotificationChannelConfig
+from gmgn_twitter_intel.platform.config.settings import NotificationChannelConfig
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate

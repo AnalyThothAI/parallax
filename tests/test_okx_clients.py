@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import httpx
 
-from gmgn_twitter_intel.market.okx_cex_client import OkxCexClient
-from gmgn_twitter_intel.market.okx_dex_client import OkxDexClient
+from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
+from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
 
 
 def test_okx_cex_client_normalizes_public_instruments():

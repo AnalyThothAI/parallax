@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from ..market.okx_chains import OKX_CHAIN_TO_CHAIN_INDEX
+from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_TO_CHAIN_INDEX
 
 DEX_PRICE_BATCH_SIZE = 20
 RADAR_PRICE_CANDIDATE_LOOKBACK_MS = 24 * 60 * 60 * 1000

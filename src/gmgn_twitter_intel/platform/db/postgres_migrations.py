@@ -8,7 +8,7 @@ from alembic.script import ScriptDirectory
 
 
 def alembic_config() -> Config:
-    root = Path(__file__).resolve().parents[3]
+    root = Path(__file__).resolve().parents[4]
     return Config(str(root / "alembic.ini"))
 
 

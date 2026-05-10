@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import yaml
 
+from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.cli import build_parser, main
 from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
@@ -18,7 +19,6 @@ from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepositor
 from gmgn_twitter_intel.storage.entity_repository import EntityRepository
 from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
-from gmgn_twitter_intel.storage.repository_session import repositories_for_connection
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -435,8 +435,8 @@ def test_init_creates_runtime_config(tmp_path, monkeypatch):
 
 
 def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
-    from gmgn_twitter_intel.cli import _run_sync_gmgn_directory
-    from gmgn_twitter_intel.market.gmgn_directory_client import GmgnDirectoryEntry
+    from gmgn_twitter_intel.app.surfaces.cli.main import _run_sync_gmgn_directory
+    from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryEntry
 
     class FakeClient:
         def __init__(self, entries):
@@ -494,7 +494,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     import io
     import json
 
-    from gmgn_twitter_intel import cli as cli_module
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
 
     captured = {}
 
@@ -542,8 +542,8 @@ def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatc
     import io
     import json
 
-    from gmgn_twitter_intel import cli as cli_module
-    from gmgn_twitter_intel.market.gmgn_directory_client import GmgnDirectoryError
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryError
 
     def boom(*, client, repository, now_ms, max_pages):
         raise GmgnDirectoryError("Cloudflare 403")

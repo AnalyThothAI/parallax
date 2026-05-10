@@ -4,6 +4,7 @@ import asyncio
 from contextlib import contextmanager
 from typing import Any
 
+from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import PulseThesisAgentResult
 from gmgn_twitter_intel.pipeline.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.pipeline.pulse_candidate_worker import (
     PulseCandidateWorker,
@@ -20,7 +21,6 @@ from gmgn_twitter_intel.pipeline.pulse_candidate_worker import (
 )
 from gmgn_twitter_intel.pipeline.pulse_contract import PULSE_THESIS_SCHEMA_VERSION
 from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.pipeline.pulse_thesis_agent_client import PulseThesisAgentResult
 
 NOW_MS = 1_800_000
 

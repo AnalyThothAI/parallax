@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.storage.postgres_audit import HOT_QUERIES, PostgresOperationalAudit, PostgresQueryAudit
-from gmgn_twitter_intel.storage.postgres_migrations import latest_migration_version
+from gmgn_twitter_intel.platform.db.postgres_audit import HOT_QUERIES, PostgresOperationalAudit, PostgresQueryAudit
+from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 
-from gmgn_twitter_intel.market.okx_models import (
+from gmgn_twitter_intel.integrations.okx.models import (
     OkxCexInstrument,
     OkxCexTicker,
     OkxDexTokenCandidate,

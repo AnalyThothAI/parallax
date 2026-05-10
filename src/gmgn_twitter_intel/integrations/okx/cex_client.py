@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from .okx_models import OkxCexInstrument, OkxCexTicker
+from gmgn_twitter_intel.integrations.okx.models import OkxCexInstrument, OkxCexTicker
 
 
 class OkxClientError(RuntimeError):

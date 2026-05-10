@@ -9,7 +9,8 @@ from typing import Any
 
 from loguru import logger
 
-from ..storage.postgres_client import transaction
+from gmgn_twitter_intel.platform.db.postgres_client import transaction
+
 from .harness_snapshot_builder import HarnessSnapshotBuilder
 
 

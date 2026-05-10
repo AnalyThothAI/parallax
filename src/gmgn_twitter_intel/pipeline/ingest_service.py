@@ -6,11 +6,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from gmgn_twitter_intel.platform.db.postgres_client import transaction
+
 from ..models import TwitterEvent
 from ..storage.entity_repository import EntityRepository
 from ..storage.evidence_repository import EvidenceRepository, event_to_row
 from ..storage.intent_resolution_repository import IntentResolutionRepository
-from ..storage.postgres_client import transaction
 from ..storage.price_observation_repository import PriceObservationRepository
 from ..storage.registry_repository import RegistryRepository
 from ..storage.signal_repository import SignalRepository

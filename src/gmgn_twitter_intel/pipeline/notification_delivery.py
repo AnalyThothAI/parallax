@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import httpx
 from loguru import logger
 
-from ..settings import NotificationChannelConfig
+from gmgn_twitter_intel.platform.config.settings import NotificationChannelConfig
 
 
 class AppriseNotificationAdapter:

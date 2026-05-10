@@ -9,11 +9,12 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.platform.db.postgres_client import transaction
+
 from ..models import TwitterEvent
 from ..pipeline.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
 from ..pipeline.tweet_identity import canonical_tweet_url, logical_dedup_key
 from ..pipeline.tweet_text import build_text_projection
-from .postgres_client import transaction
 
 
 class EvidenceRepository:

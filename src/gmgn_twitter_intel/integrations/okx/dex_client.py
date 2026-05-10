@@ -10,8 +10,8 @@ from typing import Any
 
 import httpx
 
-from .okx_cex_client import OkxClientError, _rows_from_response
-from .okx_models import OkxDexTokenCandidate, OkxDexTokenPrice
+from gmgn_twitter_intel.integrations.okx.cex_client import OkxClientError, _rows_from_response
+from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
 
 EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$", re.IGNORECASE)
 

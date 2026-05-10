@@ -21,14 +21,14 @@ from agents import (
 from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI
 
-from .pulse_contract import (
+from gmgn_twitter_intel.pipeline.pulse_contract import (
     AGENT_NAME,
     BACKEND,
     PULSE_THESIS_PROMPT_VERSION,
     PULSE_THESIS_SCHEMA_VERSION,
     WORKFLOW_NAME,
 )
-from .pulse_thesis import (
+from gmgn_twitter_intel.pipeline.pulse_thesis import (
     PulseThesisPayload,
     pulse_thesis_agent_input,
     pulse_thesis_agent_instructions,

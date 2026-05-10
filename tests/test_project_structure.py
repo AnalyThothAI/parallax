@@ -130,7 +130,7 @@ def test_current_token_radar_runtime_does_not_import_old_token_market_paths():
         ROOT / "src/gmgn_twitter_intel/api/http.py",
         ROOT / "src/gmgn_twitter_intel/pipeline/ingest_service.py",
         ROOT / "src/gmgn_twitter_intel/pipeline/token_radar_projection.py",
-        ROOT / "src/gmgn_twitter_intel/storage/repository_session.py",
+        ROOT / "src/gmgn_twitter_intel/app/runtime/repository_session.py",
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
     for item in forbidden:

@@ -11,7 +11,8 @@ from typing import Any
 
 from loguru import logger
 
-from ..market.okx_chains import OKX_CHAIN_INDEX_TO_CHAIN
+from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN
+
 from ..storage.discovery_repository import DISCOVERY_PROVIDER
 from .asset_market_sync import _okx_chain_index, _payload_hash
 from .token_radar_projection import WINDOW_MS

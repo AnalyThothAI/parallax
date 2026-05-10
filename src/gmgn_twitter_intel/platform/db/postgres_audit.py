@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
-from .postgres_migrations import latest_migration_version
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 
 CORE_TABLES = (
     "raw_frames",

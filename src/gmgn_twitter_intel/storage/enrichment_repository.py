@@ -7,9 +7,10 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.platform.db.postgres_client import transaction
+
 from ..pipeline.social_event_extraction import SocialEventExtraction
 from ..pipeline.watched_event_gate import should_enqueue_watched_social_event_text
-from .postgres_client import transaction
 
 RUNNING_TIMEOUT_MS = 300_000
 WATCHED_SOCIAL_EVENT_JOB_TYPE = "watched_social_event_extraction"

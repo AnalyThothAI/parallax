@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
-from .runtime_paths import app_home, app_log_path, config_path
+from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, app_log_path, config_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
 DEFAULT_UPSTREAM_CHANNELS = ("twitter_monitor_basic", "twitter_monitor_token")

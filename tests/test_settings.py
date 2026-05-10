@@ -2,8 +2,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from gmgn_twitter_intel.runtime_paths import app_home, config_path
-from gmgn_twitter_intel.settings import load_settings, write_default_config
+from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
+from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, config_path
 from gmgn_twitter_intel.storage.enrichment_repository import RUNNING_TIMEOUT_MS
 
 
