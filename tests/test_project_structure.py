@@ -69,7 +69,15 @@ def test_legacy_narrative_modules_stay_removed():
 
 
 def test_enrichment_worker_does_not_claim_legacy_job_types():
-    text = (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "enrichment_repository.py").read_text()
+    text = (
+        ROOT
+        / "src"
+        / "gmgn_twitter_intel"
+        / "domains"
+        / "social_enrichment"
+        / "repositories"
+        / "enrichment_repository.py"
+    ).read_text()
 
     assert "legacy_job_type_retired" in text
     assert "job_type = %s" in text

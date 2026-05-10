@@ -4,10 +4,15 @@ import hashlib
 import time
 from typing import Any
 
-from .harness_credit import assign_cluster_credits, update_weight_stat
-from .harness_settlement import abnormal_return, actual_return, normalized_outcome
-from .harness_snapshot_builder import HarnessSnapshotBuilder
-from .social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
+from gmgn_twitter_intel.domains.social_enrichment.interfaces import (
+    AnchorTerm,
+    SocialEventExtraction,
+    SocialTokenCandidate,
+)
+
+from ..scoring.harness_credit import assign_cluster_credits, update_weight_stat
+from ..scoring.harness_settlement import abnormal_return, actual_return, normalized_outcome
+from ..services.harness_snapshot_builder import HarnessSnapshotBuilder
 
 HORIZON_MS = {
     "6h": 6 * 60 * 60 * 1000,
@@ -23,39 +28,23 @@ def materialize_market_ready_seeds(
     assets,
     limit: int = 100,
 ) -> dict[str, int]:
-    rows = harness.conn.execute(
-        """
-        SELECT se.*
-        FROM social_event_extractions se
-        JOIN attention_seeds seed ON seed.extraction_id = se.extraction_id
-        WHERE seed.seed_status = 'market_unavailable'
-          AND NOT EXISTS (
-            SELECT 1
-            FROM harness_snapshots hs
-            WHERE hs.source_event_id = se.event_id
-          )
-        ORDER BY se.received_at_ms ASC
-        LIMIT %s
-        """,
-        (max(0, int(limit)),),
-    ).fetchall()
+    rows = harness.pending_market_unavailable_social_events(limit=limit)
     counts = {"seeds_scanned": len(rows), "snapshots_written": 0, "still_blocked": 0, "errors": 0}
     builder = HarnessSnapshotBuilder(harness, assets=assets)
-    for row in rows:
+    for social_event in rows:
         try:
-            social_event = harness._decode_social_event(dict(row))
             event = evidence.events_by_ids([str(social_event["event_id"])]).get(str(social_event["event_id"]))
             if event is None:
                 counts["errors"] += 1
                 continue
-            before = _snapshot_count_for_event(harness, str(social_event["event_id"]))
+            before = harness.snapshot_count_for_event(str(social_event["event_id"]))
             materialized = builder.materialize(
                 event=event,
                 extraction=_social_event_extraction_from_row(social_event),
                 run_id=social_event.get("run_id"),
                 model_version=str(social_event.get("model_version") or "unknown"),
             )
-            after = _snapshot_count_for_event(harness, str(social_event["event_id"]))
+            after = harness.snapshot_count_for_event(str(social_event["event_id"]))
             written = max(0, after - before)
             counts["snapshots_written"] += written
             if written == 0 and not materialized.get("snapshots"):
@@ -75,18 +64,7 @@ def settle_harness_snapshots(
 ) -> dict[str, int]:
     now = now_ms if now_ms is not None else _now_ms()
     horizon_ms = HORIZON_MS[horizon]
-    rows = harness.conn.execute(
-        """
-        SELECT *
-        FROM harness_snapshots
-        WHERE horizon = %s
-          AND outcome_status = 'pending'
-          AND decision_time_ms + %s <= %s
-        ORDER BY decision_time_ms ASC
-        LIMIT %s
-        """,
-        (horizon, horizon_ms, now, max(0, int(limit))),
-    ).fetchall()
+    rows = harness.due_snapshots(horizon=horizon, due_before_ms=now, limit=limit)
     counts = {
         "snapshots_scanned": len(rows),
         "outcomes_written": 0,
@@ -127,7 +105,7 @@ def settle_harness_snapshots(
             expected = 0.0
             abnormal = abnormal_return(actual, expected)
             realized_vol = max(abs(actual), 0.03)
-            existed = _outcome_exists(harness, str(snapshot["snapshot_id"]))
+            existed = harness.outcome_exists(str(snapshot["snapshot_id"]))
             harness.record_outcome(
                 snapshot_id=snapshot["snapshot_id"],
                 settled_at_ms=now,
@@ -163,23 +141,12 @@ def _market_gap_status(
 
 
 def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dict[str, int]:
-    rows = harness.conn.execute(
-        """
-        SELECT *
-        FROM harness_snapshots
-        WHERE horizon = %s
-          AND outcome_status = 'settled'
-          AND credit_status != 'assigned'
-        ORDER BY decision_time_ms ASC
-        LIMIT %s
-        """,
-        (horizon, max(0, int(limit))),
-    ).fetchall()
+    rows = harness.snapshots_pending_credit(horizon=horizon, limit=limit)
     counts = {"snapshots_scanned": len(rows), "credits_written": 0, "errors": 0}
     for row in rows:
         try:
             snapshot = harness.snapshot_by_id(str(row["snapshot_id"]))
-            outcome = _outcome_for_snapshot(harness, str(row["snapshot_id"]))
+            outcome = harness.outcome_for_snapshot(str(row["snapshot_id"]))
             if snapshot is None or outcome is None:
                 counts["errors"] += 1
                 continue
@@ -189,7 +156,7 @@ def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dic
                 normalized_outcome=float(outcome["normalized_outcome"]),
             ):
                 credit_id = _id("harness_credit", snapshot["snapshot_id"], credit["cluster_id"])
-                if _credit_exists(harness, credit_id):
+                if harness.credit_exists(credit_id):
                     continue
                 credits.append(
                     {
@@ -204,18 +171,14 @@ def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dic
                 harness.record_credits(credits)
                 counts["credits_written"] += len(credits)
             else:
-                harness.conn.execute(
-                    "UPDATE harness_snapshots SET credit_status = 'assigned' WHERE snapshot_id = %s",
-                    (snapshot["snapshot_id"],),
-                )
-                harness.conn.commit()
+                harness.mark_credit_assigned(snapshot_id=snapshot["snapshot_id"])
         except Exception:
             counts["errors"] += 1
     return counts
 
 
 def update_harness_weights(*, harness, limit: int = 1000) -> dict[str, int]:
-    groups = _credit_groups(harness, limit=limit)
+    groups = _credit_groups(harness.credit_weight_groups(limit=limit))
     updated = 0
     for group in groups:
         stat = update_weight_stat(
@@ -270,26 +233,9 @@ def _social_event_extraction_from_row(row: dict[str, Any]) -> SocialEventExtract
     )
 
 
-def _snapshot_count_for_event(harness, event_id: str) -> int:
-    row = harness.conn.execute(
-        "SELECT COUNT(*) AS count FROM harness_snapshots WHERE source_event_id = %s",
-        (event_id,),
-    ).fetchone()
-    return int(row["count"] or 0)
-
-
-def _credit_groups(harness, *, limit: int) -> list[dict[str, Any]]:
-    rows = harness.conn.execute(
-        """
-        SELECT credit_id, asset, event_type, source, horizon, credit
-        FROM harness_credits
-        ORDER BY created_at_ms ASC
-        LIMIT %s
-        """,
-        (max(0, int(limit)),),
-    ).fetchall()
+def _credit_groups(credit_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     grouped: dict[tuple[str, str, str | None, str], list[float]] = {}
-    for row in rows:
+    for row in credit_rows:
         credit = float(row["credit"])
         grouped.setdefault(("event_type", str(row["event_type"]), None, str(row["horizon"])), []).append(credit)
         grouped.setdefault(("source", str(row["source"]), None, str(row["horizon"])), []).append(credit)
@@ -316,21 +262,6 @@ def _credit_groups(harness, *, limit: int) -> list[dict[str, Any]]:
             }
         )
     return result
-
-
-def _outcome_exists(harness, snapshot_id: str) -> bool:
-    row = harness.conn.execute("SELECT 1 FROM harness_outcomes WHERE snapshot_id = %s", (snapshot_id,)).fetchone()
-    return row is not None
-
-
-def _credit_exists(harness, credit_id: str) -> bool:
-    row = harness.conn.execute("SELECT 1 FROM harness_credits WHERE credit_id = %s", (credit_id,)).fetchone()
-    return row is not None
-
-
-def _outcome_for_snapshot(harness, snapshot_id: str) -> dict[str, Any] | None:
-    row = harness.conn.execute("SELECT * FROM harness_outcomes WHERE snapshot_id = %s", (snapshot_id,)).fetchone()
-    return dict(row) if row else None
 
 
 def _float_or_none(value: Any) -> float | None:

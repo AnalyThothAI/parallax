@@ -9,9 +9,8 @@ from typing import Any
 
 from loguru import logger
 
+from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
-
-from .harness_snapshot_builder import HarnessSnapshotBuilder
 
 
 class EnrichmentWorker:

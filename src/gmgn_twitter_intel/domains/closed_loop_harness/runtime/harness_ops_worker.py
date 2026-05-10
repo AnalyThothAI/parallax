@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from .harness_ops import (
+from ..services.harness_ops import (
     attribute_harness_credits,
     materialize_market_ready_seeds,
     settle_harness_snapshots,

@@ -9,7 +9,7 @@ from agents import Agent, RunConfig, Runner, set_tracing_export_api_key
 from agents.models.openai_responses import OpenAIResponsesModel
 from openai import AsyncOpenAI
 
-from gmgn_twitter_intel.pipeline.social_event_extraction import (
+from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
     AGENT_NAME,
     BACKEND,
     PROMPT_VERSION,

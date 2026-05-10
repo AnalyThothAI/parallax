@@ -27,10 +27,14 @@ from gmgn_twitter_intel.domains.asset_market.runtime.message_market_observation_
     MessageMarketObservationWorker,
 )
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import TokenDiscoveryWorker
+from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository, HarnessService
+from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
+from gmgn_twitter_intel.domains.social_enrichment.interfaces import EnrichmentRepository
+from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
@@ -38,8 +42,6 @@ from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
 from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
-from gmgn_twitter_intel.pipeline.enrichment_worker import EnrichmentWorker
-from gmgn_twitter_intel.pipeline.harness_ops_worker import HarnessOpsWorker
 from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.pipeline.notification_rules import NotificationRuleEngine
 from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
@@ -49,9 +51,6 @@ from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
-from gmgn_twitter_intel.retrieval.harness_service import HarnessService
-from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 

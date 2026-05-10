@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from typing import Any
 
@@ -9,11 +10,47 @@ from psycopg.types.json import Jsonb
 
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
-from ..pipeline.social_event_extraction import SocialEventExtraction
-from ..pipeline.watched_event_gate import should_enqueue_watched_social_event_text
+from ..types.social_event_extraction import SocialEventExtraction
 
 RUNNING_TIMEOUT_MS = 300_000
 WATCHED_SOCIAL_EVENT_JOB_TYPE = "watched_social_event_extraction"
+
+# Text-gate constants (kept in sync with services.watched_event_gate)
+_HIGH_SIGNAL_TERMS = {
+    "accumulated", "acquired", "airdrop", "binance", "bought", "burn", "buyback",
+    "cex", "court", "delist", "deploy", "drain", "etf", "exploit", "funding",
+    "hack", "launch", "lawsuit", "listing", "mainnet", "partnership", "raise",
+    "sec", "sold", "treasury", "unlock", "upgrade", "whale",
+}
+_TOPIC_TERMS = {
+    "agent", "ai", "base", "bnb", "bitcoin", "builder", "ecosystem", "ethereum",
+    "grok", "liquidity", "market", "pump", "ready", "rotation", "scaling",
+    "solana", "throughput",
+}
+_SERVICE_REPLY_TERMS = (
+    "airdrop list", "already claimed", "api is down", "api returned",
+    "checked your claim", "claim status", "eligibility", "merkle proof",
+    "not eligible", "proof endpoint", "skill installed",
+)
+
+
+def _should_enqueue_watched_social_event_text(text: str | None) -> bool:
+    if not text:
+        return False
+    normalized = re.sub(r"\s+", " ", text.strip().lower())
+    if _is_low_information_service_reply(normalized):
+        return False
+    return (
+        sum(1 for term in (_HIGH_SIGNAL_TERMS | _TOPIC_TERMS) if re.search(rf"\b{re.escape(term)}\b", normalized)) > 0
+        and len(normalized) >= 24
+    )
+
+
+def _is_low_information_service_reply(normalized: str) -> bool:
+    if not any(term in normalized for term in _SERVICE_REPLY_TERMS):
+        return False
+    has_wallet_or_contract = bool(re.search(r"\b0x[a-f0-9]{8,}\b", normalized))
+    return has_wallet_or_contract or "wallet" in normalized or "claim" in normalized
 
 
 class EnrichmentRepository:
@@ -348,7 +385,7 @@ class EnrichmentRepository:
         enqueued = 0
         with transaction(self.conn):
             for row in rows:
-                if not should_enqueue_watched_social_event_text(str(row["event_text"] or "")):
+                if not _should_enqueue_watched_social_event_text(str(row["event_text"] or "")):
                     continue
                 job_id = self.enqueue_watched_event(
                     event_id=str(row["event_id"]),

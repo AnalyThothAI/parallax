@@ -13,6 +13,12 @@ from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_okx_cex_universe
+from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
+from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
+    attribute_harness_credits,
+    settle_harness_snapshots,
+    update_harness_weights,
+)
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS,
@@ -32,11 +38,6 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
-from gmgn_twitter_intel.pipeline.harness_ops import (
-    attribute_harness_credits,
-    settle_harness_snapshots,
-    update_harness_weights,
-)
 from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
 from gmgn_twitter_intel.platform.db.postgres_audit import (
     PostgresOperationalAudit,
@@ -54,7 +55,6 @@ from gmgn_twitter_intel.platform.logging.setup import setup_logging
 from gmgn_twitter_intel.platform.paths.runtime_paths import config_path
 from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.retrieval.account_quality_service import AccountQualityService
-from gmgn_twitter_intel.retrieval.harness_service import HarnessService
 from gmgn_twitter_intel.storage.account_quality_repository import AccountQualityRepository
 
 

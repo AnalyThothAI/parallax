@@ -74,31 +74,8 @@ class HarnessService:
         return {"items": self.harness.list_weights(horizon=horizon, limit=limit)}
 
     def score_buckets(self, *, horizon: str | None = None) -> dict[str, Any]:
-        clauses: list[str] = []
-        params: list[Any] = []
-        if horizon:
-            clauses.append("hs.horizon = %s")
-            params.append(horizon)
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        rows = self.harness.conn.execute(
-            f"""
-            SELECT hs.combined_score, hs.horizon, ho.normalized_outcome, ho.abnormal_return
-            FROM harness_snapshots hs
-            JOIN harness_outcomes ho ON ho.snapshot_id = hs.snapshot_id
-            {where}
-            ORDER BY hs.decision_time_ms ASC
-            """,
-            params,
-        ).fetchall()
-        pending_rows = self.harness.conn.execute(
-            f"""
-            SELECT combined_score
-            FROM harness_snapshots hs
-            {where}
-            {"AND" if where else "WHERE"} hs.outcome_status = 'pending'
-            """,
-            params,
-        ).fetchall()
+        rows = self.harness.score_bucket_rows(horizon=horizon)
+        pending_rows = self.harness.pending_score_bucket_rows(horizon=horizon)
         buckets = [_empty_bucket(label) for label in ["<= -0.8", "-0.8 to -0.4", "-0.4 to 0.4", "0.4 to 0.8", ">= 0.8"]]
         by_label = {item["bucket"]: item for item in buckets}
         for row in pending_rows:

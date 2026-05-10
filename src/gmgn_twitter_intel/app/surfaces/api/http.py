@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_cursor import TokenTargetCursorError
@@ -22,7 +23,6 @@ from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_time
 )
 from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.retrieval.account_quality_service import AccountQualityService
-from gmgn_twitter_intel.retrieval.harness_service import HarnessService
 from gmgn_twitter_intel.retrieval.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.storage.account_quality_repository import AccountQualityRepository
 

@@ -5,17 +5,18 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-from .harness_scoring import base_event_score, combined_score, event_score, policy_signal, shadow_signal
-from .social_event_extraction import (
+from gmgn_twitter_intel.domains.social_enrichment.interfaces import (
     PROMPT_VERSION as EXTRACTION_PROMPT_VERSION,
 )
-from .social_event_extraction import (
+from gmgn_twitter_intel.domains.social_enrichment.interfaces import (
     SCHEMA_VERSION as EXTRACTION_SCHEMA_VERSION,
 )
-from .social_event_extraction import (
+from gmgn_twitter_intel.domains.social_enrichment.interfaces import (
     SocialEventExtraction,
     SocialTokenCandidate,
 )
+
+from ..scoring.harness_scoring import base_event_score, combined_score, event_score, policy_signal, shadow_signal
 
 SCHEMA_VERSION = EXTRACTION_SCHEMA_VERSION
 CONFIG_VERSION = "social-harness-mvp-v1"

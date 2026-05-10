@@ -1,8 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
+from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import SocialEventPayload
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
-from gmgn_twitter_intel.pipeline.social_event_extraction import SocialEventPayload
 
 
 class FakeRunner:

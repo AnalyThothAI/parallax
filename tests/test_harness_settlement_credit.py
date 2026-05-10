@@ -1,5 +1,8 @@
-from gmgn_twitter_intel.pipeline.harness_credit import assign_cluster_credits, update_weight_stat
-from gmgn_twitter_intel.pipeline.harness_settlement import (
+from gmgn_twitter_intel.domains.closed_loop_harness.scoring.harness_credit import (
+    assign_cluster_credits,
+    update_weight_stat,
+)
+from gmgn_twitter_intel.domains.closed_loop_harness.scoring.harness_settlement import (
     abnormal_return,
     actual_return,
     expected_return,

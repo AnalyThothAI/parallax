@@ -6,6 +6,11 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+_HORIZON_MS = {
+    "6h": 6 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+}
+
 
 class HarnessRepository:
     def __init__(self, conn: Any):
@@ -754,6 +759,144 @@ class HarnessRepository:
             LIMIT %s
             """,
             (*params, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ---------------------------------------------------------------------------
+    # Query methods – own all raw SQL that was previously in harness_ops / harness_service
+    # ---------------------------------------------------------------------------
+
+    def pending_market_unavailable_social_events(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT se.*
+            FROM social_event_extractions se
+            JOIN attention_seeds seed ON seed.extraction_id = se.extraction_id
+            WHERE seed.seed_status = 'market_unavailable'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM harness_snapshots hs
+                WHERE hs.source_event_id = se.event_id
+              )
+            ORDER BY se.received_at_ms ASC
+            LIMIT %s
+            """,
+            (max(0, int(limit)),),
+        ).fetchall()
+        return [self._decode_social_event(dict(row)) for row in rows]
+
+    def snapshot_count_for_event(self, event_id: str) -> int:
+        row = self.conn.execute(
+            "SELECT COUNT(*) AS count FROM harness_snapshots WHERE source_event_id = %s",
+            (event_id,),
+        ).fetchone()
+        return int(row["count"] or 0)
+
+    def due_snapshots(self, *, horizon: str, due_before_ms: int, limit: int) -> list[dict[str, Any]]:
+        horizon_ms = _HORIZON_MS[horizon]
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM harness_snapshots
+            WHERE horizon = %s
+              AND outcome_status = 'pending'
+              AND decision_time_ms + %s <= %s
+            ORDER BY decision_time_ms ASC
+            LIMIT %s
+            """,
+            (horizon, horizon_ms, due_before_ms, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def outcome_exists(self, snapshot_id: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM harness_outcomes WHERE snapshot_id = %s",
+            (snapshot_id,),
+        ).fetchone()
+        return row is not None
+
+    def outcome_for_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM harness_outcomes WHERE snapshot_id = %s",
+            (snapshot_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def snapshots_pending_credit(self, *, horizon: str, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM harness_snapshots
+            WHERE horizon = %s
+              AND outcome_status = 'settled'
+              AND credit_status != 'assigned'
+            ORDER BY decision_time_ms ASC
+            LIMIT %s
+            """,
+            (horizon, max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def credit_exists(self, credit_id: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM harness_credits WHERE credit_id = %s",
+            (credit_id,),
+        ).fetchone()
+        return row is not None
+
+    def mark_credit_assigned(self, *, snapshot_id: str) -> None:
+        self.conn.execute(
+            "UPDATE harness_snapshots SET credit_status = 'assigned' WHERE snapshot_id = %s",
+            (snapshot_id,),
+        )
+        self.conn.commit()
+
+    def credit_weight_groups(self, *, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT credit_id, asset, event_type, source, horizon, credit
+            FROM harness_credits
+            ORDER BY created_at_ms ASC
+            LIMIT %s
+            """,
+            (max(0, int(limit)),),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def score_bucket_rows(self, *, horizon: str | None) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if horizon:
+            clauses.append("hs.horizon = %s")
+            params.append(horizon)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT hs.combined_score, hs.horizon, ho.normalized_outcome, ho.abnormal_return
+            FROM harness_snapshots hs
+            JOIN harness_outcomes ho ON ho.snapshot_id = hs.snapshot_id
+            {where}
+            ORDER BY hs.decision_time_ms ASC
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def pending_score_bucket_rows(self, *, horizon: str | None) -> list[dict[str, Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if horizon:
+            clauses.append("hs.horizon = %s")
+            params.append(horizon)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT combined_score
+            FROM harness_snapshots hs
+            {where}
+            {"AND" if where else "WHERE"} hs.outcome_status = 'pending'
+            """,
+            params,
         ).fetchall()
         return [dict(row) for row in rows]
 
