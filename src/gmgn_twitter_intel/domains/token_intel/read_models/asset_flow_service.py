@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,

@@ -8,9 +8,8 @@ from typing import Any
 
 from loguru import logger
 
-from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_okx_dex_prices
-
-from .token_radar_projection import MARKET_FRESH_MS, TokenRadarProjection
+from gmgn_twitter_intel.domains.asset_market.interfaces import sync_okx_dex_prices
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import MARKET_FRESH_MS, TokenRadarProjection
 
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_SCOPES = ("all", "matched")

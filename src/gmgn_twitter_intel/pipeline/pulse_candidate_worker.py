@@ -11,6 +11,8 @@ from typing import Any
 
 from loguru import logger
 
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import safe_float, safe_int
 from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import PulseThesisClientProtocol
 from gmgn_twitter_intel.pipeline.pulse_candidate_gate import PulseGateResult, PulseGateThresholds, gate_pulse_candidate
 from gmgn_twitter_intel.pipeline.pulse_contract import (
@@ -25,8 +27,6 @@ from gmgn_twitter_intel.pipeline.pulse_contract import (
 )
 from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
 from gmgn_twitter_intel.pipeline.pulse_timeline_context import build_pulse_timeline_context
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.retrieval.scoring_common import safe_float, safe_int
 
 SOURCE_TIMELINE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 SOURCE_EVENT_LOOKBACK_MS = 60 * 60 * 1000

@@ -79,6 +79,9 @@ class TokenIntentRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def delete_by_event_id(self, event_id: str) -> None:
+        self.conn.execute("DELETE FROM token_intents WHERE event_id = %s", (event_id,))
+
     def recent_unresolved(self, *, since_ms: int, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """

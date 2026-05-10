@@ -11,14 +11,14 @@ from typing import Any
 
 from loguru import logger
 
-from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN
-from gmgn_twitter_intel.pipeline.token_radar_projection import WINDOW_MS
-from gmgn_twitter_intel.pipeline.token_resolution_refresh import (
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
+    WINDOW_MS,
     deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
+from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN
 
 from ..repositories.discovery_repository import DISCOVERY_PROVIDER
 from ..services.asset_market_sync import _okx_chain_index, _payload_hash

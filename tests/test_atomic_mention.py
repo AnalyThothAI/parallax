@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.pipeline.atomic_mention import (
+from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import (
     KOL_TIER_TAGS,
     LOW_TIER_TAGS,
     MID_TIER_TAGS,

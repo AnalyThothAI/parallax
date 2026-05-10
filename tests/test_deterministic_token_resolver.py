@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from gmgn_twitter_intel.pipeline.deterministic_token_resolver import (
+from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicTokenResolver,
     MentionKeys,
 )

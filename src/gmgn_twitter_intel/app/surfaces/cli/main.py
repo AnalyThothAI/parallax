@@ -13,6 +13,22 @@ from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_okx_cex_universe
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS,
+    TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+    TOKEN_RADAR_SCORE_COMPONENTS,
+)
+from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
+from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
+from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from gmgn_twitter_intel.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
+from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
+    rebuild_token_radar_windows,
+    reprocess_recent_token_intents,
+)
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
@@ -20,19 +36,6 @@ from gmgn_twitter_intel.pipeline.harness_ops import (
     attribute_harness_credits,
     settle_harness_snapshots,
     update_harness_weights,
-)
-from gmgn_twitter_intel.pipeline.token_intent_rebuild import rebuild_recent_token_intents
-from gmgn_twitter_intel.pipeline.token_radar_contract import (
-    TOKEN_RADAR_PROJECTION_VERSION,
-    TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS,
-    TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS,
-    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
-    TOKEN_RADAR_SCORE_COMPONENTS,
-)
-from gmgn_twitter_intel.pipeline.token_radar_projection import WINDOW_MS, TokenRadarProjection
-from gmgn_twitter_intel.pipeline.token_resolution_refresh import (
-    rebuild_token_radar_windows,
-    reprocess_recent_token_intents,
 )
 from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
 from gmgn_twitter_intel.platform.db.postgres_audit import (
@@ -51,11 +54,8 @@ from gmgn_twitter_intel.platform.logging.setup import setup_logging
 from gmgn_twitter_intel.platform.paths.runtime_paths import config_path
 from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.retrieval.account_quality_service import AccountQualityService
-from gmgn_twitter_intel.retrieval.asset_flow_service import AssetFlowService
-from gmgn_twitter_intel.retrieval.asset_search_service import AssetSearchService
 from gmgn_twitter_intel.retrieval.harness_service import HarnessService
 from gmgn_twitter_intel.storage.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.storage.projection_repository import ProjectionRepository
 
 
 def build_parser() -> argparse.ArgumentParser:

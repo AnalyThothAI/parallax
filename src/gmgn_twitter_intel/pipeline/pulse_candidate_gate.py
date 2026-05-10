@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import clamp_score, safe_float, safe_int
 from gmgn_twitter_intel.pipeline.pulse_contract import ScoreBand
 from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload, validate_pulse_thesis_payload
-from gmgn_twitter_intel.retrieval.scoring_common import clamp_score, safe_float, safe_int
 
 _TRADE_PHASES = {"ignition", "expansion"}
 _HARD_RISK_NAMES = {

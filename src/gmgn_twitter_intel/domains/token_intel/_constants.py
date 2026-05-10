@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+# Pure constants for the token_intel domain.
+# This module intentionally has no intra-domain imports to avoid circular dependencies.
+
 TOKEN_RADAR_PROJECTION_NAME = "token-radar"
 TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v7-candidate-hydration"
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"

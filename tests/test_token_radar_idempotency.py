@@ -24,7 +24,7 @@ from unittest.mock import patch
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres
 
 
@@ -71,7 +71,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
         projector = TokenRadarProjection(repos=repos)
 
         # Pull source rows once — this is the frozen snapshot for both runs.
-        from gmgn_twitter_intel.pipeline.token_radar_projection import (
+        from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
             WINDOW_MS,
             _analysis_since_ms,
         )

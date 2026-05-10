@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.retrieval.social_heat_scoring import social_heat_score
+from gmgn_twitter_intel.domains.token_intel.scoring.social_heat_scoring import social_heat_score
 
 
 def test_social_heat_burst_scores_abnormal_acceleration():

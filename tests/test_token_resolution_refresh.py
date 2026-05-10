@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import gmgn_twitter_intel.pipeline.token_resolution_refresh as token_resolution_refresh_module
-from gmgn_twitter_intel.pipeline.token_resolution_refresh import (
+import gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh as token_resolution_refresh_module
+from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
     refresh_recent_token_state,
     reprocess_recent_token_intents,
 )

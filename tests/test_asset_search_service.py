@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.retrieval.asset_search_service import AssetSearchService
+from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
 
 
 def test_symbol_search_returns_unresolved_mentions():

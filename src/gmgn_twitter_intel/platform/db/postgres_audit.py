@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
+
+# Platform layer cannot import from domains; this constant mirrors TOKEN_RADAR_PROJECTION_VERSION
+TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v7-candidate-hydration"
 
 CORE_TABLES = (
     "raw_frames",

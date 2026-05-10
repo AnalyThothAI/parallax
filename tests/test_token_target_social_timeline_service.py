@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from gmgn_twitter_intel.retrieval.token_target_social_timeline_service import TokenTargetSocialTimelineService
+from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_timeline_service import (
+    TokenTargetSocialTimelineService,
+)
 
 
 def test_token_target_timeline_reads_rows_by_target_identity():

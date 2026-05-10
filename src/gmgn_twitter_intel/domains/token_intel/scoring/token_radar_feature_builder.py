@@ -5,9 +5,9 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
-from ..retrieval.baseline_scoring import token_baseline_v2
-from ..retrieval.post_text_quality import post_quality_score, post_text_features
-from .atomic_mention import mention_confidence_from_status, tweet_quality
+from gmgn_twitter_intel.domains.token_intel.scoring.baseline_scoring import token_baseline_v2
+from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score, post_text_features
+from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import mention_confidence_from_status, tweet_quality
 
 BASELINE_SLOT_COUNT = 6
 _SATURATED_AGE_MS = 180 * 24 * 60 * 60_000

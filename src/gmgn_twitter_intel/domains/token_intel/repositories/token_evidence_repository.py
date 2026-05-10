@@ -46,6 +46,9 @@ class TokenEvidenceRepository:
         row = self.conn.execute("SELECT * FROM token_evidence WHERE evidence_id = %s", (evidence_id,)).fetchone()
         return dict(row) if row else None
 
+    def delete_by_event_id(self, event_id: str) -> None:
+        self.conn.execute("DELETE FROM token_evidence WHERE event_id = %s", (event_id,))
+
     def evidence_for_event(self, event_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """

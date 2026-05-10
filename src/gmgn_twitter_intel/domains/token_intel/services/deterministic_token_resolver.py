@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from .token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 RESOLVER_POLICY_VERSION = TOKEN_RADAR_RESOLVER_POLICY_VERSION
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")

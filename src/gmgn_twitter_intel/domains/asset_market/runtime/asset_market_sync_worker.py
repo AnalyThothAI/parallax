@@ -6,7 +6,7 @@ from typing import Any
 
 from loguru import logger
 
-from gmgn_twitter_intel.pipeline.token_resolution_refresh import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
+from gmgn_twitter_intel.domains.token_intel.interfaces import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
 
 from ..services.asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
 

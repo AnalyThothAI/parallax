@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.pipeline.cross_section_normalizer import NORMALIZER_VERSION
-from gmgn_twitter_intel.pipeline.factor_cohort import COHORT_DEFINITION_VERSION
-from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
+from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import NORMALIZER_VERSION
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import COHORT_DEFINITION_VERSION
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
 
 def _row(

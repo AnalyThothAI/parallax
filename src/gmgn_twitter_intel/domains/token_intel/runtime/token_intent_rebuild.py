@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
-from gmgn_twitter_intel.domains.evidence.types.twitter_event import TokenSnapshot
-
-from .token_evidence_builder import build_token_evidence
-from .token_intent_builder import build_token_intents
-from .token_intent_resolver import TokenIntentResolver
-from .token_radar_projection import WINDOW_MS
-from .token_resolution_refresh import DEFAULT_REPROCESS_WINDOW, rebuild_token_radar_windows
+from gmgn_twitter_intel.domains.evidence.interfaces import TextSurface, TokenSnapshot, extract_entities_from_surfaces
+from gmgn_twitter_intel.domains.token_intel.queries.event_rebuild_query import EventRebuildQuery
+from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
+    DEFAULT_REPROCESS_WINDOW,
+    rebuild_token_radar_windows,
+)
+from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
+from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
+from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
 
 
 def rebuild_recent_token_intents(
@@ -21,22 +23,13 @@ def rebuild_recent_token_intents(
     projection_limit: int = 100,
 ) -> dict[str, Any]:
     since_ms = int(now_ms) - WINDOW_MS.get(window, WINDOW_MS[DEFAULT_REPROCESS_WINDOW])
-    rows = repos.conn.execute(
-        """
-        SELECT event_id, received_at_ms, text, reference_json, event_json
-        FROM events
-        WHERE received_at_ms >= %s
-        ORDER BY received_at_ms DESC, event_id
-        LIMIT %s
-        """,
-        (since_ms, max(0, int(limit))),
-    ).fetchall()
+    rows = EventRebuildQuery(repos.conn).recent_events(since_ms=since_ms, limit=limit)
 
     rebuilt_events = 0
     intents_written = 0
     resolved_intents = 0
     for row in rows:
-        result = rebuild_event_token_intents(repos=repos, event_row=dict(row), commit=False)
+        result = rebuild_event_token_intents(repos=repos, event_row=row, commit=False)
         rebuilt_events += 1
         intents_written += result["intents_written"]
         resolved_intents += result["resolved_intents"]
@@ -56,8 +49,8 @@ def rebuild_recent_token_intents(
 def rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any], commit: bool = True) -> dict[str, int]:
     event_id = str(event_row["event_id"])
     received_at_ms = int(event_row["received_at_ms"])
-    repos.conn.execute("DELETE FROM token_intents WHERE event_id = %s", (event_id,))
-    repos.conn.execute("DELETE FROM token_evidence WHERE event_id = %s", (event_id,))
+    repos.token_intents.delete_by_event_id(event_id)
+    repos.token_evidence.delete_by_event_id(event_id)
 
     evidence_inputs = build_token_evidence(
         event_id=event_id,

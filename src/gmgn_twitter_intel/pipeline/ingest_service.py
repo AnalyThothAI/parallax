@@ -6,22 +6,30 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
+from gmgn_twitter_intel.domains.asset_market.interfaces import PriceObservationRepository, RegistryRepository
+from gmgn_twitter_intel.domains.evidence.interfaces import (
+    TextSurface,
+    TwitterEvent,
+    event_to_row,
+    extract_entities_from_surfaces,
+)
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
-from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository, event_to_row
-from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
-from gmgn_twitter_intel.domains.evidence.types.twitter_event import TwitterEvent
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
+    TokenIntentLookupRepository,
+)
+from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
+from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
+from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
+from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import (
+    TokenIntentResolutionDecision,
+    TokenIntentResolver,
+)
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 
-from ..storage.intent_resolution_repository import IntentResolutionRepository
-from ..storage.signal_repository import SignalRepository
-from ..storage.token_evidence_repository import TokenEvidenceRepository
-from ..storage.token_intent_lookup_repository import TokenIntentLookupRepository
-from ..storage.token_intent_repository import TokenIntentRepository
-from .token_evidence_builder import build_token_evidence
-from .token_intent_builder import build_token_intents
-from .token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver
 from .watched_event_gate import watched_social_event_priority
 
 

@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+
 from ..storage.account_quality_repository import AccountQualityRepository
 
 EARLY_AUTHOR_MS = 5 * 60_000

@@ -7,7 +7,7 @@ from collections import Counter
 from typing import Any
 from urllib.parse import urlparse
 
-from gmgn_twitter_intel.retrieval.token_target_stage_builder import build_token_target_stages
+from gmgn_twitter_intel.domains.token_intel.read_models.token_target_stage_builder import build_token_target_stages
 
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,

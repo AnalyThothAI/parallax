@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.domains.asset_market.repositories.discovery_repository import DiscoveryRepository
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.storage.token_intent_lookup_repository import TokenIntentLookupRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
+    TokenIntentLookupRepository,
+)
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

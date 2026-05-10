@@ -5,7 +5,7 @@ import time
 import uuid
 from typing import Any
 
-from ..pipeline.token_radar_contract import (
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,

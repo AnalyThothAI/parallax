@@ -3,7 +3,9 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+# Inlined to avoid circular import: asset_market.interfaces → token_intel.interfaces → asset_market.interfaces
+# This string must stay in sync with TOKEN_RADAR_RESOLVER_POLICY_VERSION in token_intel/interfaces.py
+TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 
 DEX_SEARCH_SOURCE = "okx_dex_search"
 

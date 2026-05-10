@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
 class TokenTargetRepository:
