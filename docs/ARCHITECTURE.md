@@ -15,6 +15,11 @@ GMGN public stream
   → app/surfaces/api + app/surfaces/cli
 ```
 
+This repository is the system of record for agent work: if a production
+decision changes, update the nearest architecture / contract / reliability
+document in the same change. A fresh agent must not need chat history to know
+where token identity is extracted, resolved, refreshed, scored, and served.
+
 ## Package Roots
 
 | Root | Responsibility |
@@ -39,6 +44,19 @@ Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.t
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal pulse read model, pulse candidate gate / worker, pulse thesis, pulse persistence. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
+
+## Module Architecture Documents
+
+Global architecture stays intentionally small. Important subsystems keep their
+own maps next to the code they describe, and this file links to them.
+
+| Module | File | Covers |
+|--------|------|--------|
+| Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
+
+When a subsystem needs more than a short row here, add
+`src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this
+table. Keep local docs minimal, current, and tied to code changes.
 
 ## Dependency Direction
 
