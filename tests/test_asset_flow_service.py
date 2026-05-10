@@ -286,6 +286,7 @@ def test_asset_flow_uses_backend_symbol_instead_of_contract_address_display():
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     assert result["targets"][0]["target"]["symbol"] == "USDUC"
+    assert result["targets"][0]["target"]["chain"] == "solana"
 
 
 def test_asset_flow_does_not_invent_symbol_when_backend_omits_it():

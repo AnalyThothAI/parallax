@@ -497,6 +497,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
         "target_id": target_id,
         "symbol": _target_symbol(row),
         "name": row.get("asset_name"),
+        "chain": row.get("asset_chain_id"),
         "chain_id": row.get("asset_chain_id"),
         "token_standard": row.get("asset_token_standard"),
         "address": row.get("asset_address"),
@@ -512,7 +513,8 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
 
 def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
-        return _missing_market("no_resolved_target")
+        latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0)) if window_rows else {}
+        return _missing_market("no_resolved_target", native_market_id=latest.get("native_market_id"))
     if not window_rows:
         return _missing_market("pending_refresh")
     latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
@@ -544,6 +546,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             "price_change_status": price_change_status,
             "provider": latest.get("market_provider"),
             "pricefeed_id": latest.get("pricefeed_id"),
+            "native_market_id": latest.get("native_market_id"),
             "price_usd": latest.get("market_price_usd"),
             "price_quote": latest.get("market_price_quote"),
             "quote_symbol": latest.get("market_quote_symbol") or latest.get("pricefeed_quote_symbol"),
@@ -571,18 +574,19 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             else None,
         }
         return _with_readiness(market)
-    missing = _missing_market("pending_refresh")
+    missing = _missing_market("pending_refresh", native_market_id=latest.get("native_market_id"))
     missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
     return _with_readiness(missing)
 
 
-def _missing_market(status: str) -> dict[str, Any]:
+def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, Any]:
     market = {
         "market_status": "missing",
         "market_observation_status": status,
         "price_change_status": status,
         "provider": None,
         "pricefeed_id": None,
+        "native_market_id": native_market_id,
         "price_usd": None,
         "price_quote": None,
         "quote_symbol": None,

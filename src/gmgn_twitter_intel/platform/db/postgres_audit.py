@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
+
+TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v9-factor-snapshot"
 
 CORE_TABLES = (
     "raw_frames",

@@ -82,12 +82,31 @@ def test_project_group_outputs_factor_snapshot_not_score_contract():
 
     assert projected is not None
     assert projected["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v1"
+    assert projected["factor_snapshot_json"]["subject"]["chain"] == "56"
     assert projected["factor_snapshot_json"]["hard_gates"]["eligible_for_high_alert"] is False
     assert projected["factor_version"] == "token_factor_snapshot_v1"
     assert projected["score_json"] == {}
     assert projected["attention_json"] == {}
     assert projected["market_json"] == {}
     assert projected["price_json"] == {}
+
+
+def test_project_group_carries_cex_native_market_id_into_market_quality_snapshot():
+    row = source_row("event-cex", received_at_ms=1_777_800_000_000)
+    row["target_type"] = "CexToken"
+    row["target_id"] = "cex_token:BTC"
+    row["cex_base_symbol"] = "BTC"
+    row["cex_token_status"] = "canonical"
+    row["native_market_id"] = "BTC-USDT"
+    row["market_volume_24h_usd"] = 123_000_000.0
+    row["market_open_interest_usd"] = 45_000_000.0
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
+
+    assert projected is not None
+    facts = projected["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert facts["target_market_type"] == "cex"
+    assert facts["native_market_id"] == "BTC-USDT"
 
 
 def test_analysis_window_loads_baseline_and_attention_history():
