@@ -96,6 +96,7 @@ def _social_attention_family(*, attention: dict[str, Any]) -> dict[str, Any]:
         "mentions_24h": _count_int(attention.get("mentions_24h")),
         "unique_authors": _count_int(attention.get("unique_authors")),
         "watched_mentions": _count_int(attention.get("watched_mentions")),
+        "latest_seen_ms": _optional_int(attention.get("latest_seen_ms")),
     }
     return _family(
         "social_attention",

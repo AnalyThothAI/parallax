@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from gmgn_twitter_intel.platform.db.postgres_audit import HOT_QUERIES, PostgresOperationalAudit, PostgresQueryAudit
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 from tests.postgres_test_utils import connect_postgres_test
@@ -49,3 +50,9 @@ def test_query_audit_target_posts_uses_resolution_targets():
     assert "target_id" in query["sql"]
     assert "first_seen_ms" not in query["sql"]
     assert "confidence" not in query["sql"]
+
+
+def test_query_audit_token_radar_latest_uses_current_projection_version():
+    query = next(item for item in HOT_QUERIES if item["name"] == "token_radar_latest")
+
+    assert query["params"]["token_radar_projection_version"] == TOKEN_RADAR_PROJECTION_VERSION

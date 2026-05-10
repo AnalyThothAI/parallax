@@ -16,6 +16,7 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
     _display_symbol,
     _market,
     _project_group,
+    _rank_key,
 )
 
 
@@ -56,6 +57,13 @@ def test_token_radar_projection_uses_factor_snapshot_contract():
     )
     assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+price_observations"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
+
+
+def test_rank_key_breaks_ties_with_factor_snapshot_latest_seen_ms():
+    older = ranking_row(target_id="older", latest_seen_ms=1_777_800_000_000)
+    newer = ranking_row(target_id="newer", latest_seen_ms=1_777_800_030_000)
+
+    assert [row["target_id"] for row in sorted([older, newer], key=_rank_key)] == ["newer", "older"]
 
 
 def test_project_group_outputs_factor_snapshot_not_score_contract():
@@ -560,6 +568,28 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "market_market_cap_usd": 1_000_000,
         "market_liquidity_usd": 250_000,
         "market_holders": 1_000,
+    }
+
+
+def ranking_row(*, target_id: str, latest_seen_ms: int) -> dict:
+    return {
+        "target_id": target_id,
+        "decision": "watch",
+        "factor_snapshot_json": {
+            "composite": {
+                "recommended_decision": "watch",
+                "rank_score": 42,
+            },
+            "families": {
+                "social_attention": {
+                    "facts": {
+                        "watched_mentions": 1,
+                        "mentions_1h": 5,
+                        "latest_seen_ms": latest_seen_ms,
+                    }
+                }
+            },
+        },
     }
 
 

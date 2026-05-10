@@ -19,6 +19,12 @@ def test_scoring_package_exports_factor_snapshot_contract() -> None:
     assert scoring.build_token_factor_snapshot is build_token_factor_snapshot
 
 
+def test_social_attention_preserves_latest_seen_ms_for_projection_ranking() -> None:
+    snapshot = _strong_dex_snapshot(attention={"latest_seen_ms": 1_778_000_012_345})
+
+    assert snapshot["families"]["social_attention"]["facts"]["latest_seen_ms"] == 1_778_000_012_345
+
+
 def test_dex_asset_below_market_floors_blocks_high_alert() -> None:
     snapshot = build_token_factor_snapshot(
         target={

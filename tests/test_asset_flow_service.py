@@ -212,6 +212,20 @@ def test_asset_flow_ignores_legacy_market_and_price_payloads():
     assert result["targets"][0]["market"]["market_status"] == "missing"
 
 
+def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing():
+    row = radar_row(lane="resolved", symbol="BTC", asset_id="asset:cex:BTC")
+    row.pop("factor_snapshot_json")
+    row["price_json"] = {"market_status": "legacy_price_ready"}
+    row["score_json"] = {"heat": {"score": 99}}
+    service = AssetFlowService(token_radar=FakeTokenRadar(rows=[row]))
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["targets"][0]["price"] == {}
+    assert result["targets"][0]["market"] == {}
+    assert result["targets"][0]["score"] == {}
+
+
 def test_asset_flow_keeps_diagnosable_missing_market_status():
     service = AssetFlowService(
         token_radar=FakeTokenRadar(
