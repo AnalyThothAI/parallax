@@ -15,8 +15,8 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
     api_unauthorized_response,
     create_api_router,
 )
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.platform.config.settings import Settings

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ..pipeline.entity_extractor import normalize_ca
+from gmgn_twitter_intel.domains.evidence.services.entity_extractor import normalize_ca
 
 
 @dataclass(frozen=True, slots=True)

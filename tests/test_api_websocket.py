@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.surfaces.api.ws import ClientSubscription, PublicWebSocketHub
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.platform.config.settings import Settings

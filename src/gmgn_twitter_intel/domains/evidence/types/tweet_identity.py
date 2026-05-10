@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ..models import TwitterEvent
+from gmgn_twitter_intel.domains.evidence.types.twitter_event import TwitterEvent
 
 
 def logical_dedup_key(event: TwitterEvent) -> str:

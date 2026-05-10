@@ -4,7 +4,7 @@ from typing import Any
 
 from eth_utils import is_address, to_checksum_address
 
-from ..models import TokenSnapshot
+from gmgn_twitter_intel.domains.evidence.interfaces import TokenSnapshot
 
 EVM_CHAINS = {"eth", "ethereum", "base", "bsc", "bnb", "arbitrum", "optimism", "polygon", "avalanche"}
 CHAIN_ALIASES = {

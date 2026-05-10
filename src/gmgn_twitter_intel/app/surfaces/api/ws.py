@@ -10,8 +10,8 @@ from typing import Any
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect, WebSocketState
 
-from gmgn_twitter_intel.collector.subscriptions import normalize_handles
-from gmgn_twitter_intel.pipeline.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
+from gmgn_twitter_intel.domains.evidence.services.entity_extractor import EVM_QUERY_CHAINS, normalize_ca
+from gmgn_twitter_intel.domains.ingestion.services.subscriptions import normalize_handles
 
 
 @dataclass(eq=False)

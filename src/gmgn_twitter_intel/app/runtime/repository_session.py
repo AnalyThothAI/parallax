@@ -5,12 +5,12 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from gmgn_twitter_intel.storage.asset_signal_repository import AssetSignalRepository
 from gmgn_twitter_intel.storage.discovery_repository import DiscoveryRepository
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.entity_repository import EntityRepository
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.intent_resolution_repository import IntentResolutionRepository
 from gmgn_twitter_intel.storage.market_repository import MarketRepository

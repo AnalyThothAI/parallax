@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..models import (
+from gmgn_twitter_intel.domains.evidence.interfaces import (
     Author,
     AvatarChange,
     BioChange,
@@ -14,7 +14,7 @@ from ..models import (
     TwitterEvent,
     UnfollowTarget,
 )
-from .gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 
 TWITTER_CHANNELS = {
     "twitter_monitor_basic",

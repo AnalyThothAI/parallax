@@ -1,12 +1,12 @@
 import asyncio
 import time
 
+from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.pipeline.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.entity_repository import EntityRepository
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection

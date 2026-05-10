@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..models import TokenSnapshot
-from .entity_extractor import TextSurface, extract_entities_from_surfaces
+from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
+from gmgn_twitter_intel.domains.evidence.types.twitter_event import TokenSnapshot
+
 from .token_evidence_builder import build_token_evidence
 from .token_intent_builder import build_token_intents
 from .token_intent_resolver import TokenIntentResolver

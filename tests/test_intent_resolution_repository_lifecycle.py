@@ -67,7 +67,7 @@ def test_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
 
 
 def _insert_event_and_intent(conn):
-    from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+    from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 
     EvidenceRepository(conn).insert_event(make_event(), is_watched=True)
     conn.execute(

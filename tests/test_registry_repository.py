@@ -4,8 +4,8 @@ from decimal import Decimal
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.price_observation_repository import PriceObservationRepository
 from gmgn_twitter_intel.storage.registry_repository import RegistryRepository
 from tests.factories import make_event

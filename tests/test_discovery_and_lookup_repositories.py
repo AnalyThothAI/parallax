@@ -261,7 +261,7 @@ def _insert_event_intent_and_evidence(
     symbol: str = "UPEG",
     received_at_ms: int | None = None,
 ):
-    from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
+    from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 
     EvidenceRepository(conn).insert_event(
         make_event(event_id, text=f"${symbol}", received_at_ms=received_at_ms),

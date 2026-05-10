@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from ..models import TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
 
 
 def normalize_handles(handles: Iterable[str] | None) -> set[str]:

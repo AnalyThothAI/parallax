@@ -7,10 +7,10 @@ from typing import Any, Protocol
 
 from loguru import logger
 
-from ..models import TwitterEvent
-from ..pipeline.ingest_service import IngestedEvent
-from .normalizer import normalize_gmgn_payload, parse_gmgn_frame
-from .subscriptions import event_matches_handles, normalize_handles
+from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
+from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from gmgn_twitter_intel.domains.ingestion.services.normalizer import normalize_gmgn_payload, parse_gmgn_frame
+from gmgn_twitter_intel.domains.ingestion.services.subscriptions import event_matches_handles, normalize_handles
 
 
 class IngestStoreProtocol(Protocol):

@@ -4,8 +4,8 @@ import hashlib
 import time
 from typing import Any
 
-from ..models import TwitterEvent
-from ..pipeline.entity_extractor import EVM_QUERY_CHAINS, ExtractedEntity, normalize_ca
+from gmgn_twitter_intel.domains.evidence.types.entity import EVM_QUERY_CHAINS, ExtractedEntity, normalize_ca
+from gmgn_twitter_intel.domains.evidence.types.twitter_event import TwitterEvent
 
 
 class EntityRepository:

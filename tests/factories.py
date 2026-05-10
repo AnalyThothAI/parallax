@@ -3,13 +3,13 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.entity_repository import EntityRepository
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

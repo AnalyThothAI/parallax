@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.models import Author, Content, Reference, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Reference, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository, event_to_row
 from gmgn_twitter_intel.pipeline.token_intent_rebuild import rebuild_recent_token_intents
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository, event_to_row
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

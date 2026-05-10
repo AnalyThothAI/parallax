@@ -6,11 +6,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository, event_to_row
+from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
+from gmgn_twitter_intel.domains.evidence.types.twitter_event import TwitterEvent
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
-from ..models import TwitterEvent
-from ..storage.entity_repository import EntityRepository
-from ..storage.evidence_repository import EvidenceRepository, event_to_row
 from ..storage.intent_resolution_repository import IntentResolutionRepository
 from ..storage.price_observation_repository import PriceObservationRepository
 from ..storage.registry_repository import RegistryRepository
@@ -18,7 +19,6 @@ from ..storage.signal_repository import SignalRepository
 from ..storage.token_evidence_repository import TokenEvidenceRepository
 from ..storage.token_intent_lookup_repository import TokenIntentLookupRepository
 from ..storage.token_intent_repository import TokenIntentRepository
-from .entity_extractor import TextSurface, extract_entities_from_surfaces
 from .token_evidence_builder import build_token_evidence
 from .token_intent_builder import build_token_intents
 from .token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver

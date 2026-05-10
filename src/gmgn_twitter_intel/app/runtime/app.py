@@ -22,7 +22,9 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
     create_api_router,
 )
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
-from gmgn_twitter_intel.collector.service import CollectorService
+from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
@@ -47,8 +49,6 @@ from gmgn_twitter_intel.retrieval.account_alert_service import AccountAlertServi
 from gmgn_twitter_intel.retrieval.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.retrieval.harness_service import HarnessService
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.entity_repository import EntityRepository
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository

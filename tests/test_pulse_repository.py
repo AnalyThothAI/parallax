@@ -5,8 +5,8 @@ import json
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage import pulse_repository
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.pulse_repository import PulseRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test

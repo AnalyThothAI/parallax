@@ -3,8 +3,8 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-from ..models import TokenSnapshot
-from .entity_extractor import ExtractedEntity
+from gmgn_twitter_intel.domains.evidence.services.entity_extractor import ExtractedEntity
+from gmgn_twitter_intel.domains.evidence.types.twitter_event import TokenSnapshot
 
 
 @dataclass(frozen=True, slots=True)

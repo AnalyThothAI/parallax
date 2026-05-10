@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 from eth_utils import is_address, to_checksum_address
 from solders.pubkey import Pubkey
 
-from .tweet_text import CASHTAG_RE, HASHTAG_RE, MENTION_RE, URL_RE
+from gmgn_twitter_intel.domains.evidence.types.tweet_text import CASHTAG_RE, HASHTAG_RE, MENTION_RE, URL_RE
 
 EVM_CA_RE = re.compile(r"\b0x[a-fA-F0-9]{40}\b")
 SOLANA_CA_RE = re.compile(r"(?<![A-Za-z0-9])[1-9A-HJ-NP-Za-km-z]{32,44}(?![A-Za-z0-9])")

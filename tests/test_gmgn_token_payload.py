@@ -1,6 +1,6 @@
 import pytest
 
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 
 
 def test_parse_gmgn_token_payload_normalizes_market_snapshot():

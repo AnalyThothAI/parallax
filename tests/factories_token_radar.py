@@ -4,8 +4,8 @@ import time
 from dataclasses import replace
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from tests.postgres_test_utils import connect_postgres_test

@@ -11,13 +11,13 @@ import yaml
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.cli import build_parser, main
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
 from gmgn_twitter_intel.pipeline.token_radar_projection import TokenRadarProjection
 from gmgn_twitter_intel.storage.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.entity_repository import EntityRepository
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
