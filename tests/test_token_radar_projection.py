@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
@@ -42,11 +43,43 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
     assert len({all_5m["row_id"], matched_5m["row_id"], all_1h["row_id"]}) == 3
 
 
-def test_token_radar_projection_uses_identity_evidence_contract():
+def test_token_radar_projection_uses_factor_snapshot_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
-    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v8-identity-evidence"
+    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v9-factor-snapshot"
+    assert TOKEN_RADAR_FACTOR_FAMILIES == (
+        "identity",
+        "social_attention",
+        "social_quality",
+        "social_semantics",
+        "market_quality",
+        "timing",
+    )
     assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+price_observations"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
+
+
+def test_project_group_outputs_factor_snapshot_not_score_contract():
+    row = source_row("event-bov", received_at_ms=1_777_800_000_000)
+    row["target_type"] = "Asset"
+    row["target_id"] = "asset:bsc:0x1"
+    row["asset_symbol"] = "BOV"
+    row["asset_chain_id"] = "56"
+    row["asset_address"] = "0x1"
+    row["market_status"] = "fresh"
+    row["market_market_cap_usd"] = 12_087.0
+    row["market_liquidity_usd"] = 6_553.0
+    row["market_holders"] = 46
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
+
+    assert projected is not None
+    assert projected["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v1"
+    assert projected["factor_snapshot_json"]["hard_gates"]["eligible_for_high_alert"] is False
+    assert projected["factor_version"] == "token_factor_snapshot_v1"
+    assert projected["score_json"] == {}
+    assert projected["attention_json"] == {}
+    assert projected["market_json"] == {}
+    assert projected["price_json"] == {}
 
 
 def test_analysis_window_loads_baseline_and_attention_history():
@@ -58,7 +91,7 @@ def test_analysis_window_loads_baseline_and_attention_history():
     assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["24h"]) == now_ms - 7 * 24 * 60 * 60 * 1000
 
 
-def test_project_group_persists_baseline_fields_into_attention_and_heat_score():
+def test_project_group_persists_current_runtime_contract_as_factor_snapshot():
     now_ms = 1_777_800_000_000
     window_ms = WINDOW_MS["5m"]
     score_since_ms = now_ms - window_ms
@@ -86,15 +119,14 @@ def test_project_group_persists_baseline_fields_into_attention_and_heat_score():
     )
 
     assert row is not None
-    assert row["attention_json"]["baseline_status"] == "ready"
-    assert row["attention_json"]["baseline_sample_count"] == 6
-    assert row["attention_json"]["baseline_nonzero_sample_count"] == 6
-    assert row["attention_json"]["previous_mentions"] == 1
-    assert row["attention_json"]["mention_delta"] == 3
-    assert row["score_json"]["heat"]["data_health"]["baseline_status"] == "ready"
-    assert row["score_json"]["heat"]["data_health"]["sample_count"] == 6
-    assert row["score_json"]["heat"]["robust_z"] == 3
-    assert row["score_json"]["heat"]["z_score"] == 3
+    snapshot = row["factor_snapshot_json"]
+    assert snapshot["schema_version"] == "token_factor_snapshot_v1"
+    assert snapshot["families"]["social_attention"]["facts"]["mentions_5m"] == 4
+    assert snapshot["families"]["social_attention"]["facts"]["mentions_1h"] == 10
+    assert snapshot["families"]["social_attention"]["facts"]["unique_authors"] == 4
+    assert snapshot["families"]["social_quality"]["facts"]["mentions"] == 4
+    assert row["attention_json"] == {}
+    assert row["score_json"] == {}
 
 
 def test_projection_display_symbol_ignores_address_like_labels():
@@ -275,7 +307,9 @@ def test_short_window_projection_reads_existing_market_state_without_preflight(m
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
 
     assert "market_hydration" not in result
-    assert token_radar.rows[0]["market_json"]["market_status"] == "fresh"
+    market_facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert market_facts["market_status"] == "fresh"
+    assert token_radar.rows[0]["market_json"] == {}
 
 
 def test_projection_marks_market_pending_when_no_external_price_refresh_has_arrived(monkeypatch):
@@ -312,7 +346,9 @@ def test_projection_marks_market_pending_when_no_external_price_refresh_has_arri
 
     assert result["status"] == "ready"
     assert "market_hydration" not in result
-    assert token_radar.rows[0]["market_json"]["market_observation_status"] == "pending_refresh"
+    market_facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert market_facts["market_status"] == "missing"
+    assert token_radar.rows[0]["market_json"] == {}
 
 
 def test_projection_market_uses_latest_market_snapshot_fields():
@@ -435,7 +471,7 @@ def test_source_rows_keeps_price_observation_laterals_index_friendly():
     assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 2, 2, 1)
 
 
-def test_resolved_pending_market_never_projects_as_driver():
+def test_resolved_pending_market_never_projects_as_high_alert():
     rows = [
         {
             "event_id": f"event-{index}",
@@ -459,21 +495,24 @@ def test_resolved_pending_market_never_projects_as_driver():
 
     row = _project_group(rows, now_ms=1_777_800_060_000, window="5m", scope="all")
 
-    assert row["market_json"]["market_observation_status"] == "pending_refresh"
+    snapshot = row["factor_snapshot_json"]
+    market_facts = snapshot["families"]["market_quality"]["facts"]
+    assert market_facts["market_status"] == "missing"
     assert row["decision"] == "discard"
-    assert row["market_json"]["market_readiness"]["status"] == "missing"
-    assert row["market_json"]["event_price_readiness"]["status"] == "missing"
-    assert row["data_health_json"]["market"] == "pending_refresh"
-    assert row["data_health_json"]["market_readiness"]["status"] == "missing"
-    assert row["data_health_json"]["event_price_readiness"]["status"] == "missing"
-    assert set(row["score_json"]) == {"heat", "quality", "propagation", "tradeability", "timing", "opportunity"}
-    assert "price_health" not in row["score_json"]
-    for block in row["score_json"].values():
-        assert block["score_version"]
-        assert block["contributions"]
+    assert snapshot["composite"]["recommended_decision"] == "discard"
+    assert "market_freshness_missing" in snapshot["hard_gates"]["blocked_reasons"]
+    assert row["data_health_json"] == {
+        "factor_snapshot": "ready",
+        "identity": "ready",
+        "market": "partial",
+    }
+    assert row["attention_json"] == {}
+    assert row["market_json"] == {}
+    assert row["price_json"] == {}
+    assert row["score_json"] == {}
 
 
-def test_demoted_search_asset_does_not_project_as_resolved_driver():
+def test_demoted_search_asset_does_not_project_as_resolved_high_alert():
     row = source_row(
         "event-1",
         received_at_ms=1_777_800_000_000,
@@ -483,8 +522,9 @@ def test_demoted_search_asset_does_not_project_as_resolved_driver():
     projected = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
 
     assert projected["lane"] == "attention"
-    assert projected["market_json"]["market_observation_status"] == "no_resolved_target"
-    assert projected["data_health_json"]["identity"] == "EXACT"
+    assert projected["factor_snapshot_json"]["families"]["market_quality"]["facts"]["market_status"] == "missing"
+    assert projected["data_health_json"]["identity"] == "ready"
+    assert projected["market_json"] == {}
 
 
 def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> dict:
@@ -519,6 +559,7 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "first_price_observed_at_ms": received_at_ms,
         "market_market_cap_usd": 1_000_000,
         "market_liquidity_usd": 250_000,
+        "market_holders": 1_000,
     }
 
 

@@ -28,10 +28,8 @@ from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import 
     update_harness_weights,
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
-    TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS,
-    TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS,
-    TOKEN_RADAR_SCORE_COMPONENTS,
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -933,60 +931,64 @@ def _audit_token_radar_rows(
     source_max_price_observed_at_ms: int | None,
 ) -> dict:
     violations: list[dict] = []
-    required = set(TOKEN_RADAR_SCORE_COMPONENTS)
+    required = set(TOKEN_RADAR_FACTOR_FAMILIES)
     if not rows and source_current_window_rows:
         violations.append({"code": "empty_projection_rows"})
     for index, row in enumerate(rows):
         projection_version = row.get("projection_version")
         if projection_version != TOKEN_RADAR_PROJECTION_VERSION:
             violations.append({"row": index, "code": "wrong_projection_version", "value": projection_version})
-        attention = row.get("attention_json") if isinstance(row.get("attention_json"), dict) else {}
-        missing_attention = sorted(set(TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS) - set(attention))
-        if missing_attention:
-            violations.append({"row": index, "code": "missing_attention_fields", "fields": missing_attention})
-        score = row.get("score_json") if isinstance(row.get("score_json"), dict) else {}
-        if "price_health" in score:
-            violations.append({"row": index, "code": "legacy_price_health"})
-        missing = sorted(required - set(score))
+        factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+        if not factor_snapshot:
+            violations.append({"row": index, "code": "missing_factor_snapshot"})
+        elif factor_snapshot.get("schema_version") != "token_factor_snapshot_v1":
+            violations.append(
+                {
+                    "row": index,
+                    "code": "wrong_factor_snapshot_version",
+                    "value": factor_snapshot.get("schema_version"),
+                }
+            )
+        families = factor_snapshot.get("families") if isinstance(factor_snapshot.get("families"), dict) else {}
+        missing = sorted(required - set(families))
         if missing:
-            violations.append({"row": index, "code": "missing_score_components", "components": missing})
-        for component in sorted(required & set(score)):
-            block = score.get(component) if isinstance(score.get(component), dict) else {}
-            if not block.get("score_version"):
-                violations.append({"row": index, "component": component, "code": "missing_score_version"})
-            if not block.get("contributions"):
-                violations.append({"row": index, "component": component, "code": "empty_contributions"})
-            data_health = block.get("data_health") if isinstance(block.get("data_health"), dict) else {}
-            if not data_health:
-                violations.append({"row": index, "component": component, "code": "missing_data_health"})
-            if component == "heat":
-                missing_heat_health = sorted(set(TOKEN_RADAR_REQUIRED_HEAT_HEALTH_FIELDS) - set(data_health))
-                if missing_heat_health:
-                    violations.append(
-                        {
-                            "row": index,
-                            "component": component,
-                            "code": "missing_heat_data_health_fields",
-                            "fields": missing_heat_health,
-                        }
-                    )
-                if (
-                    "baseline_status" in attention
-                    and "baseline_status" in data_health
-                    and attention["baseline_status"] != data_health["baseline_status"]
-                ):
-                    violations.append(
-                        {
-                            "row": index,
-                            "component": component,
-                            "code": "baseline_status_mismatch",
-                            "attention": attention["baseline_status"],
-                            "score": data_health["baseline_status"],
-                        }
-                    )
-        market = row.get("market_json") if isinstance(row.get("market_json"), dict) else {}
-        if row.get("decision") == "driver" and str(market.get("market_observation_status") or "") != "ready":
-            violations.append({"row": index, "code": "driver_without_ready_market"})
+            violations.append({"row": index, "code": "missing_factor_families", "families": missing})
+        for family in sorted(required & set(families)):
+            block = families.get(family) if isinstance(families.get(family), dict) else {}
+            if "score" not in block:
+                violations.append({"row": index, "family": family, "code": "missing_family_score"})
+            if not block.get("data_health"):
+                violations.append({"row": index, "family": family, "code": "missing_family_data_health"})
+            if not isinstance(block.get("facts"), dict):
+                violations.append({"row": index, "family": family, "code": "missing_family_facts"})
+            if not isinstance(block.get("factors"), dict):
+                violations.append({"row": index, "family": family, "code": "missing_family_factors"})
+        composite = factor_snapshot.get("composite") if isinstance(factor_snapshot.get("composite"), dict) else {}
+        if "rank_score" not in composite:
+            violations.append({"row": index, "code": "missing_composite_rank_score"})
+        recommended_decision = composite.get("recommended_decision")
+        if not recommended_decision:
+            violations.append({"row": index, "code": "missing_composite_decision"})
+        elif row.get("decision") and row.get("decision") != recommended_decision:
+            violations.append(
+                {
+                    "row": index,
+                    "code": "decision_mismatch",
+                    "row_decision": row.get("decision"),
+                    "factor_decision": recommended_decision,
+                }
+            )
+        for field in ("attention_json", "market_json", "price_json", "score_json"):
+            payload = row.get(field) if isinstance(row.get(field), dict) else {}
+            if payload:
+                violations.append({"row": index, "code": "legacy_runtime_payload", "field": field})
+        market_family = families.get("market_quality") if isinstance(families.get("market_quality"), dict) else {}
+        market_facts = market_family.get("facts") if isinstance(market_family.get("facts"), dict) else {}
+        if row.get("decision") == "high_alert" and str(market_facts.get("market_status") or "") not in {
+            "fresh",
+            "ready",
+        }:
+            violations.append({"row": index, "code": "high_alert_without_ready_market"})
     social_lag_ms = max(0, int(now_ms) - int(source_max_resolution_ms)) if source_max_resolution_ms else None
     market_lag_ms = (
         max(0, int(now_ms) - int(source_max_price_observed_at_ms))

@@ -52,17 +52,56 @@ class AssetFlowService:
 
 
 def _public_row(row: dict[str, Any]) -> dict[str, Any]:
+    factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+    market = _market_from_snapshot(factor_snapshot)
     return {
         "intent": row.get("intent_json") or {},
-        "target": row.get("target_json") or {},
-        "attention": row.get("attention_json") or {},
+        "target": _target_from_snapshot(factor_snapshot),
+        "attention": _attention_from_snapshot(factor_snapshot),
+        "market": market,
         "resolution": row.get("resolution_json") or {},
-        "price": row.get("price_json") or {},
-        "score": row.get("score_json") or {},
+        "price": market,
+        "score": _composite_from_snapshot(factor_snapshot),
+        "factor_snapshot": factor_snapshot,
         "decision": row.get("decision"),
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
     }
+
+
+def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    return {
+        "target_type": subject.get("target_type"),
+        "target_id": subject.get("target_id"),
+        "symbol": subject.get("symbol"),
+        "chain": subject.get("chain"),
+        "address": subject.get("address"),
+        "target_market_type": subject.get("target_market_type"),
+    }
+
+
+def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    family = _family(snapshot, "social_attention")
+    facts = family.get("facts") if isinstance(family.get("facts"), dict) else {}
+    return dict(facts)
+
+
+def _market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    family = _family(snapshot, "market_quality")
+    facts = family.get("facts") if isinstance(family.get("facts"), dict) else {}
+    return dict(facts)
+
+
+def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    composite = snapshot.get("composite") if isinstance(snapshot.get("composite"), dict) else {}
+    return dict(composite)
+
+
+def _family(snapshot: dict[str, Any], name: str) -> dict[str, Any]:
+    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
+    family = families.get(name) if isinstance(families.get(name), dict) else {}
+    return family
 
 
 def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -77,9 +116,11 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     counts = {"fresh": 0, "stale": 0, "missing": 0, "pending": 0}
     for row in rows:
-        price = row.get("price_json") if isinstance(row.get("price_json"), dict) else {}
-        market_status = str(price.get("market_status") or "")
-        observation_status = str(price.get("market_observation_status") or "")
+        market = _market_from_snapshot(
+            row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+        )
+        market_status = str(market.get("market_status") or "")
+        observation_status = str(market.get("market_observation_status") or "")
         if market_status in {"fresh", "ready"}:
             counts["fresh"] += 1
         elif market_status == "stale" or observation_status == "stale":
