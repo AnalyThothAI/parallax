@@ -43,6 +43,8 @@ class TokenRadarRepository:
             if commit:
                 self.conn.commit()
             return False
+        for row in rows:
+            _validate_factor_contract(row)
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
@@ -130,6 +132,7 @@ class TokenRadarRepository:
 
 
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
+    _validate_factor_contract(row)
     out = dict(row)
     for key in (
         "factor_snapshot_json",
@@ -143,6 +146,16 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
         payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
         out[key] = Jsonb(_json_ready(payload))
     return out
+
+
+def _validate_factor_contract(row: dict[str, Any]) -> None:
+    if "factor_snapshot_json" not in row:
+        raise ValueError("factor_snapshot_json is required for token radar row hard-cut contract")
+    factor_snapshot = row.get("factor_snapshot_json")
+    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
+        raise ValueError("factor_snapshot_json must be non-empty for token radar row hard-cut contract")
+    if not str(row.get("factor_version") or "").strip():
+        raise ValueError("factor_version is required for token radar row hard-cut contract")
 
 
 def _json_ready(value: Any) -> Any:

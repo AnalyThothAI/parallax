@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     _json_payload,
@@ -25,6 +27,7 @@ def test_json_payload_converts_decimal_values_before_jsonb_binding():
             "target_json": {},
             "data_health_json": {},
             "source_event_ids_json": [],
+            "factor_version": "token_factor_snapshot_v1",
         }
     )
 
@@ -125,6 +128,60 @@ def test_replace_rows_insert_uses_factor_snapshot_columns_without_legacy_score_c
     assert "score_json" not in conn.insert_sql
 
 
+def test_replace_rows_requires_factor_snapshot_json_before_insert():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+    del row["factor_snapshot_json"]
+
+    with pytest.raises(ValueError, match="factor_snapshot_json is required"):
+        TokenRadarRepository(conn).replace_rows(
+            projection_version="token-radar-v9-factor-snapshot",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[row],
+            commit=False,
+        )
+
+    assert conn.insert_sql == ""
+
+
+def test_replace_rows_rejects_empty_factor_snapshot_json_before_insert():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+    row["factor_snapshot_json"] = {}
+
+    with pytest.raises(ValueError, match="factor_snapshot_json must be non-empty"):
+        TokenRadarRepository(conn).replace_rows(
+            projection_version="token-radar-v9-factor-snapshot",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[row],
+            commit=False,
+        )
+
+    assert conn.insert_sql == ""
+
+
+def test_replace_rows_requires_factor_version_before_insert():
+    conn = FakeReplaceConn()
+    row = _valid_factor_row()
+    del row["factor_version"]
+
+    with pytest.raises(ValueError, match="factor_version is required"):
+        TokenRadarRepository(conn).replace_rows(
+            projection_version="token-radar-v9-factor-snapshot",
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[row],
+            commit=False,
+        )
+
+    assert conn.insert_sql == ""
+
+
 def test_latest_rows_limits_each_lane_independently():
     conn = FakeConn()
 
@@ -202,3 +259,27 @@ class FakeStaleReplaceConn:
 
     def commit(self):
         raise AssertionError("stale writer should not commit")
+
+
+def _valid_factor_row() -> dict[str, object]:
+    return {
+        "row_id": "row-factor-1",
+        "source_max_received_at_ms": 1_778_000_000_000,
+        "lane": "resolved",
+        "rank": 1,
+        "intent_id": "intent-1",
+        "event_id": "event-1",
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "pricefeed_id": "feed-1",
+        "intent_json": {"display_symbol": "BOV"},
+        "asset_json": {},
+        "primary_venue_json": None,
+        "target_json": {"symbol": "BOV"},
+        "factor_snapshot_json": {"schema_version": "token_factor_snapshot_v1"},
+        "factor_version": "token_factor_snapshot_v1",
+        "decision": "discard",
+        "data_health_json": {"factor_snapshot": "ready"},
+        "source_event_ids_json": ["event-1"],
+        "created_at_ms": 1_778_000_000_000,
+    }
