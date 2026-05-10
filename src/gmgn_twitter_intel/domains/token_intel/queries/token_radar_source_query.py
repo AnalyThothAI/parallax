@@ -237,3 +237,34 @@ class TokenRadarSourceQuery:
             (TOKEN_RADAR_RESOLVER_POLICY_VERSION, now_ms, now_ms, since_ms),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def source_count(self, *, since_ms: int, scope: str) -> int:
+        watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
+        row = self.conn.execute(
+            f"""
+            SELECT COUNT(*) AS value
+            FROM token_intents
+            JOIN token_intent_resolutions
+              ON token_intent_resolutions.intent_id = token_intents.intent_id
+             AND token_intent_resolutions.is_current = true
+             AND token_intent_resolutions.resolver_policy_version = %s
+            JOIN events ON events.event_id = token_intents.event_id
+            WHERE events.received_at_ms >= %s {watched_clause}
+            """,
+            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, since_ms),
+        ).fetchone()
+        return int(row["value"] or 0) if row else 0
+
+    def max_resolution_ms(self) -> int | None:
+        row = self.conn.execute(
+            "SELECT MAX(decision_time_ms) AS value FROM token_intent_resolutions WHERE is_current = true"
+        ).fetchone()
+        value = row["value"] if row else None
+        return int(value) if value is not None else None
+
+    def max_price_observed_at_ms(self) -> int | None:
+        row = self.conn.execute(
+            "SELECT MAX(observed_at_ms) AS value FROM price_observations"
+        ).fetchone()
+        value = row["value"] if row else None
+        return int(value) if value is not None else None

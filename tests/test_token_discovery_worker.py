@@ -8,9 +8,8 @@ from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker impo
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, SignalRepository
 from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate
-from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate

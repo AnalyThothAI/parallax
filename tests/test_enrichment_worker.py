@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     SocialEventExtraction,
     SocialTokenCandidate,
 )
-from gmgn_twitter_intel.storage.signal_repository import SignalRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.test_enrichment_repository import make_event

@@ -10,7 +10,7 @@ from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
-from gmgn_twitter_intel.storage.signal_repository import SignalRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

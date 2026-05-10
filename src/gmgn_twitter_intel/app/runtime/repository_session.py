@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import
 from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories.pulse_repository import PulseRepository
 from gmgn_twitter_intel.domains.social_enrichment.repositories.enrichment_repository import EnrichmentRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.asset_signal_repository import AssetSignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
@@ -27,7 +28,6 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_rep
 from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
-from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 
 
 @dataclass(frozen=True, slots=True)

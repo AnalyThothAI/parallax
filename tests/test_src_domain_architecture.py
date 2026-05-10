@@ -29,9 +29,6 @@ SQL_ALLOWED_PARTS = {
 SHIM_ALLOWED_FILES = {
     SRC_ROOT / "cli.py",
     SRC_ROOT / "__main__.py",
-    SRC_ROOT / "api" / "app.py",
-    SRC_ROOT / "api" / "http.py",
-    SRC_ROOT / "api" / "ws.py",
 }
 
 
@@ -39,7 +36,7 @@ def _python_files() -> list[Path]:
     return [
         path
         for path in SRC_ROOT.rglob("*.py")
-        if "__pycache__" not in path.parts and "storage/alembic/versions" not in path.as_posix()
+        if "__pycache__" not in path.parts and "platform/db/alembic/versions" not in path.as_posix()
     ]
 
 
@@ -96,7 +93,9 @@ def _is_thin_shim(path: Path) -> bool:
 
 
 def test_expected_domain_packages_exist() -> None:
-    assert {path.name for path in (SRC_ROOT / "domains").iterdir() if path.is_dir()} == DOMAINS
+    assert {
+        path.name for path in (SRC_ROOT / "domains").iterdir() if path.is_dir() and path.name != "__pycache__"
+    } == DOMAINS
     for domain in DOMAINS:
         assert (SRC_ROOT / "domains" / domain / "__init__.py").is_file()
 

@@ -45,6 +45,7 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
 from gmgn_twitter_intel.domains.social_enrichment.interfaces import EnrichmentRepository
 from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker import EnrichmentWorker
+from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
@@ -55,7 +56,6 @@ from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client imp
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
-from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 
 
 @dataclass(slots=True)

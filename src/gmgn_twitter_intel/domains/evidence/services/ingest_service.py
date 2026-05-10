@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
 from gmgn_twitter_intel.domains.social_enrichment.interfaces import watched_social_event_priority
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     IntentResolutionRepository,
+    SignalRepository,
     TokenEvidenceRepository,
     TokenIntentLookupRepository,
     TokenIntentRepository,
@@ -27,7 +28,6 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     build_token_intents,
 )
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
-from gmgn_twitter_intel.storage.signal_repository import SignalRepository
 
 
 class IngestService:

@@ -11,6 +11,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
 )
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_stage_builder import build_token_target_stages
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.signal_repository import SignalAlert, SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
     TokenIntentLookupRepository,
@@ -36,6 +37,8 @@ __all__ = [
     "DEFAULT_REPROCESS_LIMIT",
     "DEFAULT_REPROCESS_WINDOW",
     "IntentResolutionRepository",
+    "SignalAlert",
+    "SignalRepository",
     "TOKEN_RADAR_PROJECTION_NAME",
     "TOKEN_RADAR_PROJECTION_VERSION",
     "TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS",
