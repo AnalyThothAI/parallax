@@ -13,7 +13,7 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar):
+    def __init__(self, *, token_radar: Any) -> None:
         self.token_radar = token_radar
 
     def asset_flow(
@@ -77,7 +77,8 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     counts = {"fresh": 0, "stale": 0, "missing": 0, "pending": 0}
     for row in rows:
-        price = row.get("price_json") if isinstance(row.get("price_json"), dict) else {}
+        raw_price = row.get("price_json")
+        price: dict[str, Any] = raw_price if isinstance(raw_price, dict) else {}
         market_status = str(price.get("market_status") or "")
         observation_status = str(price.get("market_observation_status") or "")
         if market_status in {"fresh", "ready"}:

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenPriceRequest
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate, DexTokenPriceRequest
 
 from ..identity_evidence_policy import (
     CONFIDENCE_MANUAL,
@@ -20,9 +21,9 @@ EXACT_IDENTITY_CONFIDENCES = frozenset({CONFIDENCE_MANUAL, CONFIDENCE_PROVIDER_E
 
 def sync_cex_universe(
     *,
-    registry,
-    price_observations,
-    cex_market,
+    registry: Any,
+    price_observations: Any,
+    cex_market: Any,
     inst_types: tuple[str, ...] | list[str],
     observed_at_ms: int,
 ) -> dict[str, Any]:
@@ -87,10 +88,10 @@ def sync_cex_universe(
 
 def sync_dex_prices(
     *,
-    registry,
-    identity_evidence,
-    price_observations,
-    dex_market,
+    registry: Any,
+    identity_evidence: Any,
+    price_observations: Any,
+    dex_market: Any,
     observed_at_ms: int,
     stale_after_ms: int,
     limit: int,
@@ -302,7 +303,7 @@ def _needs_address_search(row: dict[str, Any]) -> bool:
     return str(row.get("identity_confidence") or "").strip().lower() not in EXACT_IDENTITY_CONFIDENCES
 
 
-def _search_exact_token(*, dex_market, chain_id: str, address: str):
+def _search_exact_token(*, dex_market: Any, chain_id: str, address: str) -> tuple[DexTokenCandidate | None, str | None]:
     try:
         candidates = dex_market.search_tokens(query=address, chain_ids=(chain_id,))
     except Exception as exc:
@@ -320,6 +321,6 @@ def _normalize_address(address: Any) -> str:
     return stripped.lower() if stripped.lower().startswith("0x") else stripped
 
 
-def _chunks(items: list[DexTokenPriceRequest], size: int):
+def _chunks(items: list[DexTokenPriceRequest], size: int) -> Iterator[list[DexTokenPriceRequest]]:
     for index in range(0, len(items), max(1, int(size))):
         yield items[index : index + size]

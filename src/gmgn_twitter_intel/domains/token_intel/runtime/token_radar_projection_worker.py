@@ -111,7 +111,7 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _projection_class():
+def _projection_class() -> type[Any]:
     from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
         TokenRadarProjection,
     )

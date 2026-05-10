@@ -315,10 +315,10 @@ def _collected_risks(radar: dict[str, Any], market: dict[str, Any], timeline: di
         for key in ("hard_risks", "risks", "risk_flags"):
             values = source.get(key) or []
             risks.extend(_normalize_risk(item) for item in values)
-    for segment in timeline.get("stage_segments", []) if isinstance(timeline.get("stage_segments"), list) else []:
+    for segment in _list_or_empty(timeline.get("stage_segments")):
         if not isinstance(segment, dict):
             continue
-        summary_facts = segment.get("summary_facts") if isinstance(segment.get("summary_facts"), dict) else {}
+        summary_facts = _dict_or_empty(segment.get("summary_facts"))
         risks.extend(_normalize_risk(item) for item in summary_facts.get("risks", []))
     return risks
 
@@ -326,7 +326,7 @@ def _collected_risks(radar: dict[str, Any], market: dict[str, Any], timeline: di
 def _phase(model: PulseThesisPayload, radar: dict[str, Any], timeline: dict[str, Any]) -> str:
     if model.social_phase != "unknown":
         return model.social_phase
-    windows = timeline.get("windows") if isinstance(timeline.get("windows"), dict) else {}
+    windows = _dict_or_empty(timeline.get("windows"))
     for window in ("5m", "1h", "4h", "24h"):
         value = windows.get(window)
         if isinstance(value, dict) and value.get("phase"):
@@ -363,8 +363,8 @@ def _decision(radar: dict[str, Any]) -> str | None:
 
 
 def _chase_risk(radar: dict[str, Any]) -> bool:
-    timing = radar.get("timing") if isinstance(radar.get("timing"), dict) else {}
-    price = radar.get("price") if isinstance(radar.get("price"), dict) else {}
+    timing = _dict_or_empty(radar.get("timing"))
+    price = _dict_or_empty(radar.get("price"))
     price_lead = max(
         safe_float(timing.get("price_change_before_social_pct")),
         safe_float(price.get("price_change_before_social_pct")),
@@ -395,9 +395,9 @@ def _public_only_low_confirmed(risks: list[str], timeline: dict[str, Any]) -> bo
 
 
 def _duplicate_text_share(timeline: dict[str, Any]) -> float:
-    windows = timeline.get("windows") if isinstance(timeline.get("windows"), dict) else {}
+    windows = _dict_or_empty(timeline.get("windows"))
     shares = [safe_float(window.get("duplicate_text_share")) for window in windows.values() if isinstance(window, dict)]
-    post_clusters = timeline.get("post_clusters") if isinstance(timeline.get("post_clusters"), list) else []
+    post_clusters = _list_or_empty(timeline.get("post_clusters"))
     shares.extend(
         safe_float(cluster.get("duplicate_text_share")) for cluster in post_clusters if isinstance(cluster, dict)
     )
@@ -405,7 +405,7 @@ def _duplicate_text_share(timeline: dict[str, Any]) -> float:
 
 
 def _timeline_count(timeline: dict[str, Any], key: str) -> int:
-    windows = timeline.get("windows") if isinstance(timeline.get("windows"), dict) else {}
+    windows = _dict_or_empty(timeline.get("windows"))
     counts = [safe_int(window.get(key)) for window in windows.values() if isinstance(window, dict)]
     return max(counts, default=safe_int(timeline.get(key)))
 
@@ -419,6 +419,14 @@ def _nested(data: dict[str, Any], outer: str, inner: str) -> Any:
 
 def _dict_values(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [value for value in data.values() if isinstance(value, dict)]
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list_or_empty(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
 
 
 def _normalize_risk(value: Any) -> str:

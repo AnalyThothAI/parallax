@@ -11,15 +11,14 @@ repos:
 
   - repo: local
     hooks:
-      # TODO P3 enable:
-      # - id: mypy-domain-platform-cli
-      #   name: mypy (domains/, platform/, cli.py — strict)
-      #   entry: uv run mypy
-      #   language: system
-      #   types: [python]
-      #   files: ^src/gmgn_twitter_intel/(domains|platform)/.*\.py$|^src/gmgn_twitter_intel/cli\.py$
-      #   pass_filenames: false
-      #   args: ["src/gmgn_twitter_intel"]
+      - id: mypy-domain-platform-cli
+        name: mypy (domains/, platform/, cli.py — strict)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        files: ^src/gmgn_twitter_intel/(domains|platform)/.*\.py$|^src/gmgn_twitter_intel/cli\.py$
+        pass_filenames: false
+        args: ["src/gmgn_twitter_intel"]
 
       - id: eslint-web
         name: eslint (web/src)

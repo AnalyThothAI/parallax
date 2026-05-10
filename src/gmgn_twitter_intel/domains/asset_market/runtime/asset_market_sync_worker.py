@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from typing import Any
 
 from loguru import logger
 
 from gmgn_twitter_intel.domains.token_intel.interfaces import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
 
+from ..providers import CexMarketProvider, DexMarketProvider
 from ..services.asset_market_sync import sync_cex_universe, sync_dex_prices
 
 DEX_PRICE_STALE_MS = 5 * 60 * 1000
@@ -18,9 +21,9 @@ class AssetMarketSyncWorker:
     def __init__(
         self,
         *,
-        repository_session,
-        cex_market=None,
-        dex_market=None,
+        repository_session: Callable[[], AbstractContextManager[Any]],
+        cex_market: CexMarketProvider | None = None,
+        dex_market: DexMarketProvider | None = None,
         inst_types: tuple[str, ...],
         interval_seconds: float = 300.0,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
@@ -32,8 +35,8 @@ class AssetMarketSyncWorker:
         self.interval_seconds = interval_seconds
         self.reprocess_limit = max(1, int(reprocess_limit))
         self._stopped = False
-        self._cex_task: asyncio.Task | None = None
-        self._dex_task: asyncio.Task | None = None
+        self._cex_task: asyncio.Task[None] | None = None
+        self._dex_task: asyncio.Task[None] | None = None
         self.provider_states: dict[str, dict[str, Any]] = {
             "cex": _provider_state(),
             "dex": _provider_state(),
@@ -75,9 +78,11 @@ class AssetMarketSyncWorker:
         if errors:
             result["errors"] = errors
         if ran_cex and not ran_dex and not errors:
-            return result["cex"]
+            cex_result: dict[str, Any] = result["cex"]
+            return cex_result
         if ran_dex and not ran_cex and not errors:
-            return result["dex"]
+            dex_result: dict[str, Any] = result["dex"]
+            return dex_result
         return result
 
     def _sync_dex_once(self, *, now_ms: int) -> dict[str, Any]:
@@ -88,7 +93,7 @@ class AssetMarketSyncWorker:
         with self.repository_session() as repos:
             return self._sync_cex_with_refresh(repos=repos, now_ms=now_ms)
 
-    def _sync_dex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
+    def _sync_dex_with_refresh(self, *, repos: Any, now_ms: int) -> dict[str, Any]:
         result = sync_dex_prices(
             registry=repos.registry,
             identity_evidence=repos.identity_evidence,
@@ -100,7 +105,7 @@ class AssetMarketSyncWorker:
         )
         return self._with_resolution_refresh(result, repos=repos, now_ms=now_ms)
 
-    def _sync_cex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
+    def _sync_cex_with_refresh(self, *, repos: Any, now_ms: int) -> dict[str, Any]:
         result = sync_cex_universe(
             registry=repos.registry,
             price_observations=repos.price_observations,
@@ -110,7 +115,7 @@ class AssetMarketSyncWorker:
         )
         return self._with_resolution_refresh(result, repos=repos, now_ms=now_ms)
 
-    def _with_resolution_refresh(self, result: dict[str, Any], *, repos, now_ms: int) -> dict[str, Any]:
+    def _with_resolution_refresh(self, result: dict[str, Any], *, repos: Any, now_ms: int) -> dict[str, Any]:
         lookup_keys = sorted({str(key) for key in result.get("affected_lookup_keys") or [] if str(key)})
         public_result = {
             **result,
@@ -128,12 +133,19 @@ class AssetMarketSyncWorker:
         )
         return {**public_result, "resolution_refresh": _public_refresh(refresh)}
 
-    def _start_provider_task(self, name: str, task: asyncio.Task | None, func, *, now_ms: int) -> asyncio.Task:
+    def _start_provider_task(
+        self,
+        name: str,
+        task: asyncio.Task[None] | None,
+        func: Callable[..., dict[str, Any]],
+        *,
+        now_ms: int,
+    ) -> asyncio.Task[None]:
         if task is not None and not task.done():
             return task
         return asyncio.create_task(self._run_provider(name, func, now_ms=now_ms))
 
-    async def _run_provider(self, name: str, func, *, now_ms: int) -> None:
+    async def _run_provider(self, name: str, func: Callable[..., dict[str, Any]], *, now_ms: int) -> None:
         state = self.provider_states[name]
         state["running"] = True
         state["last_started_at_ms"] = now_ms

@@ -4,7 +4,7 @@ import json
 import math
 from typing import Any
 
-from .discussion_quality_scoring import post_quality_score
+from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import post_quality_score
 
 CATALYST_OBSERVATION_MS = 30 * 60_000
 CATALYST_BASELINE_MS = 60 * 60_000
@@ -150,7 +150,7 @@ def _avg_followup_quality(followups: list[dict[str, Any]]) -> float:
         / 100
         for row in followups
     ]
-    return sum(scores) / len(scores)
+    return float(sum(scores) / len(scores))
 
 
 def _reference(value: Any) -> dict[str, Any] | None:

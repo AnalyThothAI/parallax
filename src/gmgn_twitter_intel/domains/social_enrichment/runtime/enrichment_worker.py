@@ -18,11 +18,11 @@ class EnrichmentWorker:
         self,
         *,
         client: SocialEventEnrichmentProvider,
-        publisher=None,
+        publisher: Any = None,
         repository_session: Callable[[], AbstractContextManager[Any]],
         poll_interval: float = 2.0,
         concurrency: int = 1,
-    ):
+    ) -> None:
         self.repository_session = repository_session
         self.client = client
         self.publisher = publisher

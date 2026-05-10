@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import time
+from contextlib import AbstractContextManager
 from dataclasses import asdict
 from typing import Any
 
@@ -17,10 +18,10 @@ from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 
 class EvidenceRepository:
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def unit_of_work(self):
+    def unit_of_work(self) -> AbstractContextManager[None]:
         return transaction(self.conn)
 
     def insert_raw_frame(
@@ -45,7 +46,7 @@ class EvidenceRepository:
             (frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, _now_ms()),
         )
         self.conn.commit()
-        return cursor.rowcount == 1
+        return bool(cursor.rowcount == 1)
 
     def insert_event(self, event: TwitterEvent, *, is_watched: bool) -> bool:
         now_ms = _now_ms()
@@ -78,7 +79,7 @@ class EvidenceRepository:
             """,
             row,
         )
-        return cursor.rowcount != 0
+        return bool(cursor.rowcount != 0)
 
     def recent_events(
         self,
@@ -195,7 +196,7 @@ def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[
     reference_text = event.reference.text if event.reference else None
     projection = build_text_projection(event.content.text, reference_text=reference_text)
     matched_handles = [handle.lower() for handle in event.matched_handles]
-    return _sanitize_postgres_value(
+    sanitized: dict[str, Any] = _sanitize_postgres_value(
         {
             "event_id": event.event_id,
             "logical_dedup_key": logical_dedup_key(event),
@@ -234,6 +235,7 @@ def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[
             "updated_at_ms": now_ms,
         }
     )
+    return sanitized
 
 
 def decode_event_row(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:

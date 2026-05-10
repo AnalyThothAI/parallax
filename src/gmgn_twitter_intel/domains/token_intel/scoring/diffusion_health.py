@@ -110,7 +110,7 @@ def _top_authors(
     author_watched_counts: Counter[str],
     author_latest_seen: dict[str, int],
 ) -> list[dict[str, Any]]:
-    authors = [
+    authors: list[dict[str, Any]] = [
         {
             "handle": handle,
             "count": count,

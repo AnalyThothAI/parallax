@@ -27,6 +27,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.social_heat_scoring import s
 from gmgn_twitter_intel.domains.token_intel.scoring.timing_scoring import timing_score
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
+    RadarFeatureSet,
     build_radar_features,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.tradeability_scoring import tradeability_score
@@ -41,8 +42,8 @@ class TokenRadarProjection:
     def __init__(
         self,
         *,
-        repos,
-    ):
+        repos: Any,
+    ) -> None:
         self.repos = repos
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
@@ -569,7 +570,7 @@ def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _score(features) -> dict[str, Any]:
+def _score(features: RadarFeatureSet) -> dict[str, Any]:
     components = {
         "heat": social_heat_score(features.heat),
         "quality": discussion_quality_score(features.quality),
@@ -698,10 +699,13 @@ def _int_or_none(value: Any) -> int | None:
 
 def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
     attention = row["attention_json"]
-    score = row.get("score_json") if isinstance(row.get("score_json"), dict) else {}
+    raw_score = row.get("score_json")
+    score: dict[str, Any] = raw_score if isinstance(raw_score, dict) else {}
     decision_priority = {"driver": 0, "watch": 1, "investigate": 2, "discard": 3}
-    opportunity = score.get("opportunity") if isinstance(score.get("opportunity"), dict) else {}
-    heat = score.get("heat") if isinstance(score.get("heat"), dict) else {}
+    raw_opp = score.get("opportunity")
+    opportunity: dict[str, Any] = raw_opp if isinstance(raw_opp, dict) else {}
+    raw_heat = score.get("heat")
+    heat: dict[str, Any] = raw_heat if isinstance(raw_heat, dict) else {}
     return (
         decision_priority.get(str(row.get("decision") or "discard"), 3),
         -int(opportunity.get("score") or 0),

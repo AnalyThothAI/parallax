@@ -29,6 +29,7 @@ compile: ## compile Python files
 check: ## gates 1+2: lint + format + typecheck + unit + arch + contract (no external deps; ~10s)
 	@uv run ruff check .
 	@uv run ruff format --check .
+	@uv run mypy src
 	@cd web && npm run typecheck && npm run lint && npm run format:check
 	@uv run python -m pytest tests/unit tests/architecture tests/contract -m "unit or architecture or contract"; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
 	@uv run python -m compileall src tests

@@ -23,9 +23,9 @@ BASELINE_VERSION = "benchmark-zero-v1"
 
 def materialize_market_ready_seeds(
     *,
-    harness,
-    evidence,
-    assets,
+    harness: Any,
+    evidence: Any,
+    assets: Any,
     limit: int = 100,
 ) -> dict[str, int]:
     rows = harness.pending_market_unavailable_social_events(limit=limit)
@@ -56,8 +56,8 @@ def materialize_market_ready_seeds(
 
 def settle_harness_snapshots(
     *,
-    harness,
-    assets,
+    harness: Any,
+    assets: Any,
     horizon: str,
     now_ms: int | None = None,
     limit: int = 100,
@@ -101,6 +101,11 @@ def settle_harness_snapshots(
                 else:
                     counts["skipped_insufficient_market_data"] += 1
                 continue
+            # `_market_gap_status` returns non-None when either price is None, so we get here
+            # only with concrete floats. Re-narrow for mypy without relying on `assert`.
+            if entry_price is None or exit_price is None:
+                counts["errors"] += 1
+                continue
             actual = actual_return(entry_price=entry_price, exit_price=exit_price)
             expected = 0.0
             abnormal = abnormal_return(actual, expected)
@@ -140,7 +145,7 @@ def _market_gap_status(
     return None
 
 
-def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dict[str, int]:
+def attribute_harness_credits(*, harness: Any, horizon: str, limit: int = 100) -> dict[str, int]:
     rows = harness.snapshots_pending_credit(horizon=horizon, limit=limit)
     counts = {"snapshots_scanned": len(rows), "credits_written": 0, "errors": 0}
     for row in rows:
@@ -177,7 +182,7 @@ def attribute_harness_credits(*, harness, horizon: str, limit: int = 100) -> dic
     return counts
 
 
-def update_harness_weights(*, harness, limit: int = 1000) -> dict[str, int]:
+def update_harness_weights(*, harness: Any, limit: int = 1000) -> dict[str, int]:
     groups = _credit_groups(harness.credit_weight_groups(limit=limit))
     updated = 0
     for group in groups:
@@ -229,7 +234,7 @@ def _social_event_extraction_from_row(row: dict[str, Any]) -> SocialEventExtract
         ],
         semantic_risks=[str(risk) for risk in row.get("semantic_risks", [])],
         summary_zh=str(row.get("summary_zh") or ""),
-        raw_response=row.get("raw_response") if isinstance(row.get("raw_response"), dict) else {},
+        raw_response=_dict_or_empty(row.get("raw_response")),
     )
 
 
@@ -262,6 +267,10 @@ def _credit_groups(credit_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _float_or_none(value: Any) -> float | None:

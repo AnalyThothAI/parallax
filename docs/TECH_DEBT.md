@@ -27,6 +27,15 @@ Order rows by severity (high first) then by date introduced (oldest first).
 | `MarketRepository` was added to `domains/asset_market/interfaces.py` even though only `app/runtime/repository_session.py` consumes it, and composition root is exempt from cross-domain rules | 2026-05-10 (src-domain-package-restructure, Task 4) | architecture | low | Over-exposure of the public interface surface; shrink the interface during a future cleanup pass | unowned |
 | `domains/evidence/types/entity.py` is a thin re-export shim (`EVM_QUERY_CHAINS`, `ExtractedEntity`, `normalize_ca` from `services/entity_extractor.py`) added so evidence repositories can import these constants without importing from `services/`. Future work could split `entity_extractor.py` so the constants live in `types/` directly and the shim disappears | 2026-05-10 (src-domain-package-restructure, Task 3) | architecture | low | Mild indirection; not a correctness issue | unowned |
 
+## mypy strict overrides（来自 spec 2026-05-10-tests-and-lint-production-grade）
+
+以下包当前以 `disallow_untyped_defs = false` 等放宽设置通过 mypy。每条都需要后续按包消化（一个 sprint 摘掉一两条）。`no_implicit_optional` 与 `warn_unused_ignores` 等基础项仍全局严格。
+
+| 模块 glob | 放宽项 | follow-up |
+|---|---|---|
+| `gmgn_twitter_intel.app.*` | `disallow_untyped_defs/incomplete_defs/untyped_decorators = false`；`disallow_any_generics/disallow_subclassing_any/warn_return_any = false`；`disable_error_code = [arg-type, attr-defined, union-attr, index, operator, assignment, no-untyped-call]` | TODO: 由独立 spec 处理 wiring & runtime 类型注解；目标是按子包逐条移除放宽项 |
+| `gmgn_twitter_intel.integrations.*` | 同上 | TODO: external connector 类型注解；目标是逐 connector（GMGN/OKX/notification providers）补齐 Protocol 与返回类型 |
+
 ## Closed
 
 | Description | Introduced | Resolved | Resolution |

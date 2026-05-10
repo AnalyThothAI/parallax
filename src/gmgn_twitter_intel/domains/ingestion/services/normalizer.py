@@ -77,8 +77,8 @@ def _normalize_twitter_item(channel: str, item: dict[str, Any], received_at_ms: 
     if not event_key:
         return None
 
-    author_data = item.get("u") if isinstance(item.get("u"), dict) else {}
-    content_data = item.get("c") if isinstance(item.get("c"), dict) else {}
+    author_data = _dict_or_empty(item.get("u"))
+    content_data = _dict_or_empty(item.get("c"))
     timestamp = _normalize_timestamp(item.get("ts"))
     handle = _string_or_none(author_data.get("s"))
 
@@ -116,9 +116,9 @@ def _normalize_public_broadcast(channel: str, item: dict[str, Any], received_at_
     if item.get("et") != "twitter_watched":
         return None
 
-    event_data = item.get("ed") if isinstance(item.get("ed"), dict) else {}
-    original = event_data.get("ot") if isinstance(event_data.get("ot"), dict) else {}
-    source = event_data.get("st") if isinstance(event_data.get("st"), dict) else {}
+    event_data = _dict_or_empty(item.get("ed"))
+    original = _dict_or_empty(event_data.get("ot"))
+    source = _dict_or_empty(event_data.get("st"))
     text = _first_text(original, source)
     tweet_id = _first_tweet_id(original, source)
     raw_id = _string_or_none(event_data.get("id"))
@@ -171,8 +171,8 @@ def _reference(item: dict[str, Any], action: str) -> Reference | None:
     if "su" not in item:
         return None
 
-    user = item.get("su") if isinstance(item.get("su"), dict) else {}
-    content = item.get("sc") if isinstance(item.get("sc"), dict) else {}
+    user = _dict_or_empty(item.get("su"))
+    content = _dict_or_empty(item.get("sc"))
     ref_type = {
         "repost": "retweeted",
         "reply": "replied_to",
@@ -193,8 +193,8 @@ def _reference(item: dict[str, Any], action: str) -> Reference | None:
 
 
 def _unfollow_target(item: dict[str, Any]) -> UnfollowTarget | None:
-    follow_data = item.get("f") if isinstance(item.get("f"), dict) else {}
-    target = follow_data.get("f") if isinstance(follow_data.get("f"), dict) else {}
+    follow_data = _dict_or_empty(item.get("f"))
+    target = _dict_or_empty(follow_data.get("f"))
     if not target:
         return None
     return UnfollowTarget(
@@ -207,14 +207,14 @@ def _unfollow_target(item: dict[str, Any]) -> UnfollowTarget | None:
 
 
 def _avatar_change(item: dict[str, Any]) -> AvatarChange | None:
-    photo = item.get("p") if isinstance(item.get("p"), dict) else {}
+    photo = _dict_or_empty(item.get("p"))
     if not photo:
         return None
     return AvatarChange(before=_string_or_none(photo.get("ba")), after=_string_or_none(photo.get("aa")))
 
 
 def _bio_change(item: dict[str, Any]) -> BioChange | None:
-    bio = item.get("p") if isinstance(item.get("p"), dict) else {}
+    bio = _dict_or_empty(item.get("p"))
     if not bio:
         return None
     return BioChange(before=_string_or_none(bio.get("bd")), after=_string_or_none(bio.get("d")))
@@ -250,6 +250,10 @@ def _first_tweet_id(*records: dict[str, Any]) -> str | None:
         if tweet_id:
             return tweet_id
     return None
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _string_or_none(value: Any) -> str | None:

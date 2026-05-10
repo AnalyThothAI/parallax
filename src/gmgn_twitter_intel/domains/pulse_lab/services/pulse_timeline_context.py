@@ -359,7 +359,8 @@ def _text(row: dict[str, Any]) -> str:
 
 def _cashtags(row: dict[str, Any], text: str, *, target: dict[str, Any]) -> list[str]:
     values: list[str] = [str(item).lstrip("$").upper() for item in (row.get("cashtags") or [])]
-    entities = row.get("entities") if isinstance(row.get("entities"), dict) else {}
+    raw_entities = row.get("entities")
+    entities: dict[str, Any] = raw_entities if isinstance(raw_entities, dict) else {}
     values.extend(str(item).lstrip("$").upper() for item in (entities.get("cashtags") or []))
     values.extend(match.group(1).upper() for match in _CASHTAG_RE.finditer(text))
     symbol = str(row.get("symbol") or target.get("symbol") or "").lstrip("$").upper()
@@ -375,7 +376,7 @@ def _primary_url_domain(text: str) -> str:
     url = urls[0]
     if url.startswith("www."):
         url = f"https://{url}"
-    domain = urlparse(url).netloc.lower()
+    domain: str = urlparse(url).netloc.lower()
     return domain[4:] if domain.startswith("www.") else domain
 
 

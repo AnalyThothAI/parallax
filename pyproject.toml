@@ -28,6 +28,7 @@ dev = [
     "pytest>=8.3.0",
     "ruff>=0.8.6",
     "pre-commit>=3.7",
+    "mypy>=1.13",
 ]
 
 [project.scripts]
@@ -102,3 +103,38 @@ ignore = [
 
 [tool.ruff.format]
 # Default settings; line-length inherited from [tool.ruff] = 120
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "gmgn_twitter_intel.app.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+warn_return_any = false
+disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = "gmgn_twitter_intel.integrations.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+warn_return_any = false
+disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*", "loguru.*", "psycopg.*", "apprise.*", "curl_cffi.*", "websockets.*", "openai_agents.*", "solders.*", "eth_hash.*", "eth_utils.*", "testcontainers.*", "yaml"]
+ignore_missing_imports = true

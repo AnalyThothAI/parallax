@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -291,7 +292,7 @@ def _token_candidate(
     )
 
 
-def _dedupe_anchors(items) -> list[AnchorTerm]:
+def _dedupe_anchors(items: Iterable[AnchorTerm]) -> list[AnchorTerm]:
     seen: set[tuple[str, str]] = set()
     deduped: list[AnchorTerm] = []
     for item in items:
@@ -303,7 +304,7 @@ def _dedupe_anchors(items) -> list[AnchorTerm]:
     return deduped[:8]
 
 
-def _dedupe_candidates(items) -> list[SocialTokenCandidate]:
+def _dedupe_candidates(items: Iterable[SocialTokenCandidate]) -> list[SocialTokenCandidate]:
     seen: set[str] = set()
     deduped: list[SocialTokenCandidate] = []
     for item in items:

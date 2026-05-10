@@ -49,7 +49,7 @@ class CollectorService:
         self.publisher = publisher
         self.upstream_client = upstream_client
         self.snapshot_timeout = snapshot_timeout
-        self._pending_snapshots: dict[str, asyncio.Task] = {}
+        self._pending_snapshots: dict[str, asyncio.Task[None]] = {}
         self.status = CollectorStatus(started_at_ms=_now_ms())
 
     async def run(self) -> None:
@@ -65,7 +65,7 @@ class CollectorService:
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def handle_frame(self, frame_data, *, received_at_ms: int | None = None) -> None:
+    async def handle_frame(self, frame_data: Any, *, received_at_ms: int | None = None) -> None:
         received_at_ms = received_at_ms or _now_ms()
         self.status.frames_received += 1
         self.status.last_frame_at_ms = received_at_ms
