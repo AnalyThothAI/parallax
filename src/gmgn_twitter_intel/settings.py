@@ -832,10 +832,12 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
         "watched_account_activity": {
             "enabled": True,
             "channels": ("in_app",),
+            "cooldown_seconds": 300,
         },
         "watched_account_token_alert": {
             "enabled": True,
             "channels": ("in_app",),
+            "cooldown_seconds": 900,
         },
         "hot_quality_token_5m": {
             "enabled": True,

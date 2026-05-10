@@ -9,7 +9,7 @@ def repository(tmp_path) -> NotificationRepository:
     return NotificationRepository(conn)
 
 
-def test_insert_notification_is_idempotent_by_dedup_key(tmp_path):
+def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_new_row(tmp_path):
     repo = repository(tmp_path)
 
     first = repo.insert_notification(
@@ -25,23 +25,23 @@ def test_insert_notification_is_idempotent_by_dedup_key(tmp_path):
         source_table="events",
         source_id="event-1",
         occurrence_at_ms=1_700_000_000_000,
-        payload={"event_id": "event-1"},
+        payload={"event_id": "event-1", "version": 1},
         channels=["in_app"],
     )
     duplicate = repo.insert_notification(
         dedup_key="rule:event-1",
         rule_id="watched_account_activity",
         severity="info",
-        title="duplicate",
-        body="duplicate",
+        title="toly has new activity",
+        body="A watched account posted again.",
         entity_type="account",
         entity_key="account:toly",
         author_handle="toly",
-        event_id="event-1",
+        event_id="event-2",
         source_table="events",
-        source_id="event-1",
-        occurrence_at_ms=1_700_000_000_000,
-        payload={"event_id": "event-1"},
+        source_id="event-2",
+        occurrence_at_ms=1_700_000_060_000,
+        payload={"event_id": "event-2", "version": 2},
         channels=["in_app"],
     )
 
@@ -52,7 +52,10 @@ def test_insert_notification_is_idempotent_by_dedup_key(tmp_path):
     assert len(rows) == 1
     assert rows[0]["notification_id"] == first["notification_id"]
     assert rows[0]["read_at_ms"] is None
-    assert rows[0]["payload_json"] == {"event_id": "event-1"}
+    assert rows[0]["occurrence_count"] == 2
+    assert rows[0]["first_seen_at_ms"] == 1_700_000_000_000
+    assert rows[0]["last_seen_at_ms"] == 1_700_000_060_000
+    assert rows[0]["payload_json"] == {"event_id": "event-2", "version": 2}
 
 
 def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):

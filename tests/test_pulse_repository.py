@@ -44,6 +44,54 @@ def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
     assert claimed["updated_at_ms"] == 1_000
 
 
+def test_enqueue_job_preserves_active_retry_state_on_signature_churn(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        first = repo.enqueue_job(
+            candidate_id="candidate-1",
+            candidate_type="token_target",
+            subject_key="asset-1",
+            target_type="Asset",
+            target_id="asset-1",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-1",
+            timeline_signature="timeline-1",
+            priority=80,
+            status="failed",
+            attempt_count=2,
+            max_attempts=3,
+            next_run_at_ms=1_800_000,
+            now_ms=1_700_000,
+        )
+        second = repo.enqueue_job(
+            candidate_id="candidate-1",
+            candidate_type="token_target",
+            subject_key="asset-1",
+            target_type="Asset",
+            target_id="asset-1",
+            window="1h",
+            scope="all",
+            trigger_signature="trigger-2",
+            timeline_signature="timeline-2",
+            priority=90,
+            status="pending",
+            attempt_count=0,
+            max_attempts=3,
+            next_run_at_ms=1_700_100,
+            now_ms=1_700_100,
+        )
+    finally:
+        conn.close()
+
+    assert first["job_id"] == second["job_id"]
+    assert second["status"] == "failed"
+    assert second["attempt_count"] == 2
+    assert second["trigger_signature"] == "trigger-1"
+
+
 def test_mark_job_failed_retries_then_dead_and_succeeded_sets_done(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

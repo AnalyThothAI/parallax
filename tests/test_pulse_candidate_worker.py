@@ -61,7 +61,31 @@ def test_asset_led_enqueue_signatures_and_same_signature_skip() -> None:
     assert job["timeline_signature"].startswith("sha256:")
 
 
-def test_cooldown_skip_and_heat_bucket_bypass() -> None:
+def test_existing_pending_job_blocks_signature_churn_reenqueue() -> None:
+    repos = FakeRepos()
+    first_row = _radar_row(heat=86, event_id="event-1")
+    repos.token_radar.rows = [first_row]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 10_000)]
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=FakeClient())
+
+    first = worker.scan_triggers_once(now_ms=NOW_MS)
+    repos.token_radar.rows = [_radar_row(heat=87, event_id="event-2")]
+    repos.token_targets.rows = [_timeline_row("event-2", NOW_MS + 10_000)]
+    second = worker.scan_triggers_once(now_ms=NOW_MS + 10_000)
+
+    assert first["asset_enqueued"] == 1
+    assert second["asset_skipped"] == 1
+    assert len(repos.pulse.jobs) == 1
+    assert repos.pulse.jobs[0]["attempt_count"] == 0
+    assert repos.pulse.jobs[0]["trigger_signature"] == _asset_trigger_signature(
+        row=first_row,
+        window="1h",
+        scope="all",
+        candidate_type="token_target",
+    )
+
+
+def test_cooldown_skip_and_watched_confirmation_bypass() -> None:
     repos = FakeRepos()
     base_row = _radar_row(heat=84, event_id="event-1")
     repos.token_radar.rows = [base_row]
@@ -101,7 +125,7 @@ def test_cooldown_skip_and_heat_bucket_bypass() -> None:
     assert skipped["asset_skipped"] == 1
     assert len(repos.pulse.jobs) == 0
 
-    repos.token_radar.rows = [_radar_row(heat=91, event_id="event-2")]
+    repos.token_radar.rows = [_radar_row(heat=84, event_id="event-2", watched_mentions=1)]
     bypassed = worker.scan_triggers_once(now_ms=NOW_MS)
 
     assert bypassed["asset_enqueued"] == 1
@@ -161,12 +185,12 @@ def test_cooldown_bypass_matrix() -> None:
     existing = {"pulse_status": "blocked_low_information"}
 
     assert _cooldown_bypass(existing, previous, {**previous, "trade_candidate_eligible": True})
-    assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "social_phase": "ignition"})
-    assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "heat_bucket": "90-99"})
+    assert not _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "social_phase": "ignition"})
+    assert not _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "heat_bucket": "90-99"})
     assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "watched_confirmation": True})
-    assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "independent_author_count": 4})
+    assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "independent_author_count": 7})
     assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "chase_risk": True})
-    assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "market_status": "fresh"})
+    assert not _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "market_status": "fresh"})
     assert _cooldown_bypass(
         {"pulse_status": "token_watch"},
         previous,
@@ -205,7 +229,11 @@ def test_cooldown_active_uses_bypass_matrix() -> None:
 
     assert _cooldown_active(existing, context, now_ms=NOW_MS)
     fresh_context = _candidate_context({**context.radar_score["pulse_trigger_metrics"], "market_status": "fresh"})
-    assert not _cooldown_active(existing, fresh_context, now_ms=NOW_MS)
+    assert _cooldown_active(existing, fresh_context, now_ms=NOW_MS)
+    confirmed_context = _candidate_context(
+        {**context.radar_score["pulse_trigger_metrics"], "watched_confirmation": True}
+    )
+    assert not _cooldown_active(existing, confirmed_context, now_ms=NOW_MS)
 
 
 def test_claim_run_gate_upserts_candidate_audit_playbook_and_marks_success() -> None:
@@ -268,13 +296,17 @@ def test_reenqueue_changed_signature_creates_distinct_run_ids() -> None:
 
     worker.scan_triggers_once(now_ms=NOW_MS)
     first = worker.process_due_jobs_once(now_ms=NOW_MS + 1_000)
-    repos.token_radar.rows = [_radar_row(heat=96, event_id="event-2")]
+    repos.token_radar.rows = [_radar_row(heat=87, event_id="event-churn")]
+    repos.token_targets.rows = [_timeline_row("event-churn", NOW_MS + 1_500)]
+    skipped = worker.scan_triggers_once(now_ms=NOW_MS + 1_500)
+    repos.token_radar.rows = [_radar_row(heat=96, event_id="event-2", watched_mentions=1)]
     repos.token_targets.rows = [_timeline_row("event-2", NOW_MS + 2_000)]
     worker.scan_triggers_once(now_ms=NOW_MS + 2_000)
     second = worker.process_due_jobs_once(now_ms=NOW_MS + 3_000)
 
     run_ids = [row["run_id"] for row in repos.pulse.agent_runs]
     assert first["processed"] == 1
+    assert skipped["asset_skipped"] == 1
     assert second["processed"] == 1
     assert len(run_ids) == 2
     assert len(set(run_ids)) == 2
@@ -473,10 +505,17 @@ class FakePulse:
         return kwargs
 
     def mark_job_succeeded(self, job_id: str, **_: Any) -> dict[str, Any]:
+        for job in self.jobs:
+            if job["job_id"] == job_id:
+                job["status"] = "done"
         self.successes.append(job_id)
         return {"job_id": job_id, "status": "done"}
 
     def mark_job_failed(self, job: dict[str, Any], error: str, **_: Any) -> dict[str, Any]:
+        for stored_job in self.jobs:
+            if stored_job["job_id"] == job["job_id"]:
+                stored_job["status"] = "failed"
+                stored_job["last_error"] = error
         self.failures.append({"job": job, "error": error})
         return {"job_id": job["job_id"], "status": "failed", "last_error": error}
 

@@ -62,16 +62,51 @@ class PulseRepository:
               target_id = excluded.target_id,
               "window" = excluded."window",
               scope = excluded.scope,
-              trigger_signature = excluded.trigger_signature,
-              timeline_signature = excluded.timeline_signature,
-              context_json = excluded.context_json,
-              priority = excluded.priority,
-              status = excluded.status,
-              attempt_count = excluded.attempt_count,
+              trigger_signature = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.trigger_signature
+                ELSE excluded.trigger_signature
+              END,
+              timeline_signature = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.timeline_signature
+                ELSE excluded.timeline_signature
+              END,
+              context_json = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.context_json
+                ELSE excluded.context_json
+              END,
+              priority = GREATEST(pulse_agent_jobs.priority, excluded.priority),
+              status = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.status
+                ELSE excluded.status
+              END,
+              attempt_count = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.attempt_count
+                ELSE excluded.attempt_count
+              END,
               max_attempts = excluded.max_attempts,
-              next_run_at_ms = excluded.next_run_at_ms,
+              next_run_at_ms = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.next_run_at_ms
+                ELSE excluded.next_run_at_ms
+              END,
               cooldown_until_ms = excluded.cooldown_until_ms,
-              last_error = excluded.last_error,
+              last_error = CASE
+                WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
+                 AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
+                THEN pulse_agent_jobs.last_error
+                ELSE excluded.last_error
+              END,
               updated_at_ms = excluded.updated_at_ms
             RETURNING *
             """,
