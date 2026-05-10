@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
@@ -37,6 +38,7 @@ __all__ = [
     "IntentResolutionRepository",
     "SignalAlert",
     "SignalRepository",
+    "TOKEN_FACTOR_SNAPSHOT_VERSION",
     "TOKEN_RADAR_FACTOR_FAMILIES",
     "TOKEN_RADAR_PROJECTION_NAME",
     "TOKEN_RADAR_PROJECTION_VERSION",

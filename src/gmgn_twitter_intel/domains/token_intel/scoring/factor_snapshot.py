@@ -3,6 +3,10 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
+)
 from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import (
     clamp_score,
     log_points,
@@ -10,15 +14,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import (
     safe_float,
 )
 
-TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v1"
-FACTOR_FAMILIES = (
-    "identity",
-    "social_attention",
-    "social_quality",
-    "social_semantics",
-    "market_quality",
-    "timing",
-)
+FACTOR_FAMILIES = TOKEN_RADAR_FACTOR_FAMILIES
 
 DEX_HIGH_ALERT_FLOORS = {
     "holders": 100,

@@ -202,7 +202,7 @@ def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypa
                 discovery_chain_ids=(),
             ),
             social_enrichment=SimpleNamespace(event_enrichment=None),
-            pulse_lab=SimpleNamespace(thesis_provider=FakePulseProvider(model=settings.pulse_agent_model)),
+            pulse_lab=SimpleNamespace(recommendation_provider=FakePulseProvider(model=settings.pulse_agent_model)),
         ),
     )
 
@@ -210,7 +210,7 @@ def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypa
 
     try:
         assert runtime.pulse_candidate_worker is not None
-        assert runtime.pulse_candidate_worker.thesis_client.model == "gpt-pulse"
+        assert runtime.pulse_candidate_worker.recommendation_client.model == "gpt-pulse"
         assert runtime.pulse_candidate_worker.batch_size == settings.pulse_agent_batch_size
     finally:
         runtime.db_pool.close()

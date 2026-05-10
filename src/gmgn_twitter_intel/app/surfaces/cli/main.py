@@ -28,6 +28,7 @@ from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import 
     update_harness_weights,
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
@@ -40,7 +41,6 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
     rebuild_token_radar_windows,
     reprocess_recent_token_intents,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient

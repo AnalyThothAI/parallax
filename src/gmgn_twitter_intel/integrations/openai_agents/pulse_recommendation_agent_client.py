@@ -38,7 +38,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
 
 
 @dataclass(frozen=True)
-class PulseThesisAgentResult:
+class PulseRecommendationAgentResult:
     payload: PulseRecommendationPayload
     agent_run_audit: dict[str, Any]
 
@@ -69,7 +69,7 @@ class PulseRecommendationOutputSchema(AgentOutputSchemaBase):
             return self._schema.validate_json(normalized)
 
 
-class OpenAIAgentsPulseThesisClient:
+class OpenAIAgentsPulseRecommendationClient:
     provider = "openai"
 
     def __init__(
@@ -113,13 +113,13 @@ class OpenAIAgentsPulseThesisClient:
         _, audit, _, _, _ = self._request_context(context=context, run_id=run_id, job=job)
         return audit
 
-    async def write_thesis(
+    async def write_recommendation(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisAgentResult:
+    ) -> PulseRecommendationAgentResult:
         input_payload, audit, input_source_event_ids, available_factor_keys, max_recommendation = self._request_context(
             context=context,
             run_id=run_id,
@@ -170,7 +170,7 @@ class OpenAIAgentsPulseThesisClient:
         )
         output_json = payload.model_dump(mode="json")
         audit = {**audit, "output_hash": _sha256(output_json)}
-        return PulseThesisAgentResult(payload=payload, agent_run_audit=audit)
+        return PulseRecommendationAgentResult(payload=payload, agent_run_audit=audit)
 
     def _request_context(
         self,

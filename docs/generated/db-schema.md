@@ -84,6 +84,44 @@
 | `confidence` | `DOUBLE PRECISION` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
+## `asset_identity_current`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `asset_id` | `TEXT` | False | `None` |
+| `canonical_symbol` | `TEXT` | True | `None` |
+| `canonical_name` | `TEXT` | True | `None` |
+| `decimals` | `BIGINT` | True | `None` |
+| `identity_confidence` | `TEXT` | False | `None` |
+| `selected_evidence_id` | `TEXT` | True | `None` |
+| `selection_reason_codes_json` | `JSONB` | False | `'[]'::jsonb` |
+| `conflict_count` | `BIGINT` | False | `0` |
+| `verified_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `asset_identity_evidence`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `evidence_id` | `TEXT` | False | `None` |
+| `asset_id` | `TEXT` | False | `None` |
+| `evidence_kind` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `lookup_mode` | `TEXT` | False | `None` |
+| `chain_id` | `TEXT` | False | `None` |
+| `address` | `TEXT` | False | `None` |
+| `symbol` | `TEXT` | True | `None` |
+| `name` | `TEXT` | True | `None` |
+| `decimals` | `BIGINT` | True | `None` |
+| `confidence` | `TEXT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `asset_market_snapshots`
 
 | Column | Type | Nullable | Default |
@@ -692,9 +730,6 @@
 | `score_band` | `TEXT` | False | `None` |
 | `trigger_signature` | `TEXT` | False | `None` |
 | `timeline_signature` | `TEXT` | False | `None` |
-| `thesis_json` | `JSONB` | False | `None` |
-| `radar_score_json` | `JSONB` | False | `'{}'::jsonb` |
-| `market_context_json` | `JSONB` | False | `'{}'::jsonb` |
 | `gate_reasons_json` | `JSONB` | False | `'[]'::jsonb` |
 | `risk_reasons_json` | `JSONB` | False | `'[]'::jsonb` |
 | `evidence_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
@@ -706,6 +741,9 @@
 | `schema_version` | `TEXT` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
+| `agent_recommendation_json` | `JSONB` | False | `'{}'::jsonb` |
+| `gate_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `pulse_playbook_outcomes`
 
@@ -779,12 +817,7 @@
 | `chain_id` | `TEXT` | False | `None` |
 | `token_standard` | `TEXT` | False | `None` |
 | `address` | `TEXT` | False | `None` |
-| `symbol` | `TEXT` | True | `None` |
-| `name` | `TEXT` | True | `None` |
-| `decimals` | `BIGINT` | True | `None` |
 | `status` | `TEXT` | False | `None` |
-| `evidence_level` | `TEXT` | False | `None` |
-| `primary_source` | `TEXT` | False | `None` |
 | `first_seen_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
@@ -1026,6 +1059,8 @@
 | `pricefeed_id` | `TEXT` | True | `None` |
 | `target_json` | `JSONB` | False | `'{}'::jsonb` |
 | `price_json` | `JSONB` | False | `'{}'::jsonb` |
+| `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
+| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v1'::text` |
 
 ## `token_score_evaluations`
 

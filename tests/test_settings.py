@@ -43,16 +43,11 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.pulse_agent_max_attempts == 3
     assert settings.pulse_agent_model is None
     assert settings.pulse_agent_configured is False
-    assert settings.pulse_agent_asset_heat_min == 80
-    assert settings.pulse_agent_asset_propagation_min == 70
-    assert settings.pulse_agent_trade_heat_min == 75
-    assert settings.pulse_agent_trade_quality_min == 62
-    assert settings.pulse_agent_trade_propagation_min == 62
-    assert settings.pulse_agent_tradeability_min == 70
-    assert settings.pulse_agent_timing_min == 50
-    assert settings.pulse_agent_confidence_min == 0.65
-    assert settings.pulse_agent_token_watch_signal_min == 45
-    assert settings.pulse_agent_high_conviction_min == 78
+    assert settings.pulse_agent_trigger_min_rank_score == 70
+    assert settings.pulse_agent_gate_trade_candidate_min == 72
+    assert settings.pulse_agent_gate_token_watch_min == 45
+    assert settings.pulse_agent_gate_high_info_rejection_min == 30
+    assert settings.pulse_agent_gate_high_conviction_min == 78
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
@@ -117,16 +112,11 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 "pulse_agent_batch_size": 999,
                 "pulse_agent_max_attempts": 0,
                 "pulse_agent_model": " ",
-                "pulse_agent_asset_heat_min": 70,
-                "pulse_agent_asset_propagation_min": 60,
-                "pulse_agent_trade_heat_min": 70,
-                "pulse_agent_trade_quality_min": 58,
-                "pulse_agent_trade_propagation_min": 58,
-                "pulse_agent_tradeability_min": 65,
-                "pulse_agent_timing_min": 45,
-                "pulse_agent_confidence_min": 0.6,
-                "pulse_agent_token_watch_signal_min": 40,
-                "pulse_agent_high_conviction_min": 74,
+                "pulse_agent_trigger_min_rank_score": 60,
+                "pulse_agent_gate_trade_candidate_min": 70,
+                "pulse_agent_gate_token_watch_min": 40,
+                "pulse_agent_gate_high_info_rejection_min": 25,
+                "pulse_agent_gate_high_conviction_min": 74,
             },
         },
     )
@@ -155,16 +145,11 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.pulse_agent_max_attempts == 1
     assert settings.pulse_agent_model == "gpt-test"
     assert settings.pulse_agent_configured is True
-    assert settings.pulse_agent_asset_heat_min == 70
-    assert settings.pulse_agent_asset_propagation_min == 60
-    assert settings.pulse_agent_trade_heat_min == 70
-    assert settings.pulse_agent_trade_quality_min == 58
-    assert settings.pulse_agent_trade_propagation_min == 58
-    assert settings.pulse_agent_tradeability_min == 65
-    assert settings.pulse_agent_timing_min == 45
-    assert settings.pulse_agent_confidence_min == 0.6
-    assert settings.pulse_agent_token_watch_signal_min == 40
-    assert settings.pulse_agent_high_conviction_min == 74
+    assert settings.pulse_agent_trigger_min_rank_score == 60
+    assert settings.pulse_agent_gate_trade_candidate_min == 70
+    assert settings.pulse_agent_gate_token_watch_min == 40
+    assert settings.pulse_agent_gate_high_info_rejection_min == 25
+    assert settings.pulse_agent_gate_high_conviction_min == 74
 
 
 def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):

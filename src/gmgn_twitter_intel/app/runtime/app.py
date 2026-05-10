@@ -284,24 +284,19 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
         runtime.pulse_candidate_worker = PulseCandidateWorker(
-            thesis_client=providers.pulse_lab.thesis_provider,
+            recommendation_client=providers.pulse_lab.recommendation_provider,
             repository_session=lambda: repository_session(db_pool),
             poll_interval=settings.pulse_agent_interval_seconds,
             batch_size=settings.pulse_agent_batch_size,
             max_attempts=settings.pulse_agent_max_attempts,
             trigger_thresholds=PulseTriggerThresholds(
-                asset_heat_min=settings.pulse_agent_asset_heat_min,
-                asset_propagation_min=settings.pulse_agent_asset_propagation_min,
+                min_rank_score=settings.pulse_agent_trigger_min_rank_score,
             ),
             gate_thresholds=PulseGateThresholds(
-                trade_heat_min=settings.pulse_agent_trade_heat_min,
-                trade_quality_min=settings.pulse_agent_trade_quality_min,
-                trade_propagation_min=settings.pulse_agent_trade_propagation_min,
-                tradeability_min=settings.pulse_agent_tradeability_min,
-                timing_min=settings.pulse_agent_timing_min,
-                confidence_min=settings.pulse_agent_confidence_min,
-                token_watch_signal_min=settings.pulse_agent_token_watch_signal_min,
-                high_conviction_min=settings.pulse_agent_high_conviction_min,
+                trade_candidate_min=settings.pulse_agent_gate_trade_candidate_min,
+                token_watch_min=settings.pulse_agent_gate_token_watch_min,
+                high_info_rejection_min=settings.pulse_agent_gate_high_info_rejection_min,
+                high_conviction_min=settings.pulse_agent_gate_high_conviction_min,
             ),
         )
     if settings.notifications.enabled:

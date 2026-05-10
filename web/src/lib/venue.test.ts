@@ -184,6 +184,7 @@ function pulse(options: {
     agent_recommendation: {
       schema_version: "pulse_recommendation_v1",
       recommendation: "watch",
+      summary_zh: "watch",
       primary_reasons: [],
       upgrade_conditions: [],
       invalidation_conditions: [],

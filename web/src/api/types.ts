@@ -850,11 +850,13 @@ export type TokenFactorSnapshot = {
 export type PulseAgentRecommendation = {
   schema_version: "pulse_recommendation_v1" | string;
   recommendation: "ignore" | "watch" | "research" | "alert" | "trade_candidate" | string;
-  summary_zh?: string | null;
+  summary_zh: string;
   primary_reasons: Array<{ factor_key: string; explanation_zh: string }>;
   upgrade_conditions: Array<{ factor_key: string; operator: string; value: unknown; description_zh: string }>;
   invalidation_conditions: Array<{ factor_key: string; operator: string; value: unknown; description_zh: string }>;
   residual_risks: Array<{ factor_key: string; description_zh: string }>;
+  evidence_event_ids?: string[];
+  confidence?: number | null;
 };
 
 export type SignalPulseItem = {
@@ -872,8 +874,6 @@ export type SignalPulseItem = {
   narrative_type?: string | null;
   candidate_score?: number | null;
   score_band?: string | null;
-  summary_zh?: string | null;
-  why_now_zh?: string | null;
   evidence_event_ids: string[];
   source_event_ids: string[];
   factor_snapshot: TokenFactorSnapshot;

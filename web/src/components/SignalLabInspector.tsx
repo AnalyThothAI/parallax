@@ -48,7 +48,7 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
       />
       <DetailDrawerSection className="detail-drawer-card-stack">
         <DetailDrawerCard title="Agent Recommendation" tone="accent">
-          <p>{recommendation.summary_zh || item.summary_zh || "No recommendation summary available."}</p>
+          <p>{recommendation.summary_zh || "No recommendation summary available."}</p>
           <DetailDrawerFieldGrid>
             <DetailDrawerField label="recommendation" value={recommendation.recommendation} />
             <DetailDrawerField label="schema_version" value={recommendation.schema_version} />

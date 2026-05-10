@@ -81,16 +81,11 @@ class LlmConfig(BaseModel):
     pulse_agent_batch_size: int = 10
     pulse_agent_max_attempts: int = 3
     pulse_agent_model: str | None = None
-    pulse_agent_asset_heat_min: int = 80
-    pulse_agent_asset_propagation_min: int = 70
-    pulse_agent_trade_heat_min: int = 75
-    pulse_agent_trade_quality_min: int = 62
-    pulse_agent_trade_propagation_min: int = 62
-    pulse_agent_tradeability_min: int = 70
-    pulse_agent_timing_min: int = 50
-    pulse_agent_confidence_min: float = 0.65
-    pulse_agent_token_watch_signal_min: int = 45
-    pulse_agent_high_conviction_min: int = 78
+    pulse_agent_trigger_min_rank_score: int = 70
+    pulse_agent_gate_trade_candidate_min: int = 72
+    pulse_agent_gate_token_watch_min: int = 45
+    pulse_agent_gate_high_info_rejection_min: int = 30
+    pulse_agent_gate_high_conviction_min: int = 78
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -454,44 +449,24 @@ class Settings(BaseModel):
         return bool(self.llm_api_key and self.pulse_agent_model)
 
     @property
-    def pulse_agent_asset_heat_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_asset_heat_min, low=0, high=100)
+    def pulse_agent_trigger_min_rank_score(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_trigger_min_rank_score, low=0, high=100)
 
     @property
-    def pulse_agent_asset_propagation_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_asset_propagation_min, low=0, high=100)
+    def pulse_agent_gate_trade_candidate_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_trade_candidate_min, low=0, high=100)
 
     @property
-    def pulse_agent_trade_heat_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trade_heat_min, low=0, high=100)
+    def pulse_agent_gate_token_watch_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_token_watch_min, low=0, high=100)
 
     @property
-    def pulse_agent_trade_quality_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trade_quality_min, low=0, high=100)
+    def pulse_agent_gate_high_info_rejection_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_high_info_rejection_min, low=0, high=100)
 
     @property
-    def pulse_agent_trade_propagation_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trade_propagation_min, low=0, high=100)
-
-    @property
-    def pulse_agent_tradeability_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_tradeability_min, low=0, high=100)
-
-    @property
-    def pulse_agent_timing_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_timing_min, low=0, high=100)
-
-    @property
-    def pulse_agent_confidence_min(self) -> float:
-        return _clamp_float(self.llm.pulse_agent_confidence_min, low=0.0, high=1.0)
-
-    @property
-    def pulse_agent_token_watch_signal_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_token_watch_signal_min, low=0, high=100)
-
-    @property
-    def pulse_agent_high_conviction_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_high_conviction_min, low=0, high=100)
+    def pulse_agent_gate_high_conviction_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_high_conviction_min, low=0, high=100)
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -728,16 +703,11 @@ llm:
   pulse_agent_batch_size: 10
   pulse_agent_max_attempts: 3
   pulse_agent_model:
-  pulse_agent_asset_heat_min: 80
-  pulse_agent_asset_propagation_min: 70
-  pulse_agent_trade_heat_min: 75
-  pulse_agent_trade_quality_min: 62
-  pulse_agent_trade_propagation_min: 62
-  pulse_agent_tradeability_min: 70
-  pulse_agent_timing_min: 50
-  pulse_agent_confidence_min: 0.65
-  pulse_agent_token_watch_signal_min: 45
-  pulse_agent_high_conviction_min: 78
+  pulse_agent_trigger_min_rank_score: 70
+  pulse_agent_gate_trade_candidate_min: 72
+  pulse_agent_gate_token_watch_min: 45
+  pulse_agent_gate_high_info_rejection_min: 30
+  pulse_agent_gate_high_conviction_min: 78
 
 gmgn:
   api_key:

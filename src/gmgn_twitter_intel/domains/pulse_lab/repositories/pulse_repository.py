@@ -429,14 +429,15 @@ class PulseRepository:
               candidate_id, candidate_type, subject_key, target_type, target_id, symbol,
               "window", scope, pulse_status, verdict, social_phase, narrative_type,
               candidate_score, score_band, trigger_signature, timeline_signature,
-              thesis_json, factor_snapshot_json, agent_recommendation_json, gate_json,
+              factor_snapshot_json, agent_recommendation_json, gate_json,
               gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
               agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
               created_at_ms, updated_at_ms
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
@@ -454,7 +455,6 @@ class PulseRepository:
               score_band = excluded.score_band,
               trigger_signature = excluded.trigger_signature,
               timeline_signature = excluded.timeline_signature,
-              thesis_json = excluded.thesis_json,
               factor_snapshot_json = excluded.factor_snapshot_json,
               agent_recommendation_json = excluded.agent_recommendation_json,
               gate_json = excluded.gate_json,
@@ -487,7 +487,6 @@ class PulseRepository:
                 score_band,
                 trigger_signature,
                 timeline_signature,
-                _json({}),
                 _json(factor_snapshot_json),
                 _json(agent_recommendation_json or {}),
                 _json(gate_json),

@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import ScoreBand
-from gmgn_twitter_intel.domains.token_intel.interfaces import clamp_score, safe_float
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION, clamp_score, safe_float
 
 
 @dataclass(frozen=True)
@@ -190,4 +189,3 @@ def _stable_strings(values: Any) -> list[str]:
 
 def _dedupe(values: Any) -> list[str]:
     return list(dict.fromkeys(str(value) for value in values if value))
-

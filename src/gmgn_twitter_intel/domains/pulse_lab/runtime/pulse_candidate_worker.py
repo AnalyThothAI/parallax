@@ -21,7 +21,7 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseThesisProvider
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
@@ -30,11 +30,11 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
     safe_float,
     safe_int,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 SOURCE_TIMELINE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 SOURCE_EVENT_LOOKBACK_MS = 60 * 60 * 1000
@@ -96,8 +96,7 @@ class PulseCandidateContext:
 
 @dataclass(frozen=True)
 class PulseTriggerThresholds:
-    asset_heat_min: int = 80
-    asset_propagation_min: int = 70
+    min_rank_score: int = 70
 
 
 class PulseCandidateWorker:
@@ -105,7 +104,7 @@ class PulseCandidateWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        thesis_client: PulseThesisProvider,
+        recommendation_client: PulseRecommendationProvider,
         gate_func: Callable[..., PulseGateResult] = gate_pulse_candidate_from_factor_snapshot,
         windows: tuple[str, ...] = DEFAULT_WINDOWS,
         scopes: tuple[str, ...] = DEFAULT_SCOPES,
@@ -116,7 +115,7 @@ class PulseCandidateWorker:
         gate_thresholds: PulseGateThresholds | None = None,
     ) -> None:
         self.repository_session = repository_session
-        self.thesis_client = thesis_client
+        self.recommendation_client = recommendation_client
         self.gate_func = gate_func
         self.windows = tuple(windows)
         self.scopes = tuple(scopes)
@@ -144,11 +143,11 @@ class PulseCandidateWorker:
         self._stopped = True
 
     async def aclose(self) -> None:
-        close = getattr(self.thesis_client, "aclose", None)
+        close = getattr(self.recommendation_client, "aclose", None)
         if close is not None:
             await close()
             return
-        close_sync = getattr(self.thesis_client, "close", None)
+        close_sync = getattr(self.recommendation_client, "close", None)
         if close_sync is not None:
             close_sync()
 
@@ -397,19 +396,21 @@ class PulseCandidateWorker:
         agent_context = context.agent_context()
         audit: dict[str, Any] | None = None
         try:
-            audit = self.thesis_client.request_audit(context=agent_context, run_id=run_id, job=job)
+            audit = self.recommendation_client.request_audit(context=agent_context, run_id=run_id, job=job)
             with self.repository_session() as repos, _transaction(repos.conn):
                 repos.pulse.insert_agent_run(
                     run_id=run_id,
                     job_id=str(job["job_id"]),
                     candidate_id=context.candidate_id,
-                    provider=getattr(self.thesis_client, "provider", "openai"),
-                    model=getattr(self.thesis_client, "model", ""),
+                    provider=getattr(self.recommendation_client, "provider", "openai"),
+                    model=getattr(self.recommendation_client, "model", ""),
                     backend=str(audit.get("backend") or BACKEND),
                     sdk_trace_id=audit.get("sdk_trace_id"),
                     workflow_name=str(audit.get("workflow_name") or WORKFLOW_NAME),
                     agent_name=str(audit.get("agent_name") or AGENT_NAME),
-                    artifact_version_hash=str(audit.get("artifact_version_hash") or _artifact_hash(self.thesis_client)),
+                    artifact_version_hash=str(
+                        audit.get("artifact_version_hash") or _artifact_hash(self.recommendation_client)
+                    ),
                     prompt_version=str(audit.get("prompt_version") or PULSE_RECOMMENDATION_PROMPT_VERSION),
                     schema_version=str(audit.get("schema_version") or PULSE_RECOMMENDATION_SCHEMA_VERSION),
                     input_hash=str(audit.get("input_hash") or _stable_hash(agent_context)),
@@ -420,10 +421,10 @@ class PulseCandidateWorker:
                     started_at_ms=now_ms,
                     commit=False,
                 )
-            timeout_seconds = max(0.1, float(getattr(self.thesis_client, "timeout_seconds", 30.0) or 30.0))
+            timeout_seconds = max(0.1, float(getattr(self.recommendation_client, "timeout_seconds", 30.0) or 30.0))
             try:
                 result = await asyncio.wait_for(
-                    self.thesis_client.write_thesis(context=agent_context, run_id=run_id, job=job),
+                    self.recommendation_client.write_recommendation(context=agent_context, run_id=run_id, job=job),
                     timeout=timeout_seconds,
                 )
             except TimeoutError as exc:
@@ -513,7 +514,7 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_attention", "facts", "watched_mentions"))
     return (
         decision in {"high_alert", "watch"}
-        or score >= min(resolved_thresholds.asset_heat_min, resolved_thresholds.asset_propagation_min)
+        or score >= resolved_thresholds.min_rank_score
         or watched_mentions > 0
     )
 
@@ -595,10 +596,7 @@ def _asset_trigger_signature(
         "recommended_decision": _nested(factor_snapshot, "composite", "recommended_decision"),
         "blocked_reasons": _stable_strings(_nested(factor_snapshot, "hard_gates", "blocked_reasons")),
         "watched_confirmation": metrics["watched_confirmation"],
-        "trigger_thresholds": {
-            "asset_heat_min": resolved_trigger_thresholds.asset_heat_min,
-            "asset_propagation_min": resolved_trigger_thresholds.asset_propagation_min,
-        },
+        "trigger_thresholds": {"min_rank_score": resolved_trigger_thresholds.min_rank_score},
     }
     return _stable_hash(payload)
 
@@ -776,15 +774,22 @@ def _playbook_snapshot_payload(
         "side": _playbook_side(gate.pulse_status),
         "setup": {
             "pulse_status": gate.pulse_status,
+            "recommendation": recommendation.recommendation,
+            "confidence": recommendation.confidence,
             "candidate_score": gate.candidate_score,
             "score_band": gate.score_band,
             "summary_zh": recommendation.summary_zh,
-            "why_now_zh": recommendation.summary_zh,
         },
-        "confirmation": {"triggers_zh": [item.description_zh for item in recommendation.upgrade_conditions]},
-        "invalidation": {"triggers_zh": [item.description_zh for item in recommendation.invalidation_conditions]},
+        "confirmation": {
+            "upgrade_conditions": [item.model_dump(mode="json") for item in recommendation.upgrade_conditions],
+        },
+        "invalidation": {
+            "invalidation_conditions": [
+                item.model_dump(mode="json") for item in recommendation.invalidation_conditions
+            ],
+        },
         "risk": {
-            "top_risks": [item.description_zh for item in recommendation.residual_risks],
+            "residual_risks": [item.model_dump(mode="json") for item in recommendation.residual_risks],
             "risk_reasons": gate.risk_reasons,
             "hard_risks": gate.hard_risks,
         },

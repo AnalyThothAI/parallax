@@ -6,7 +6,7 @@ import time
 from typing import Any
 from urllib.parse import quote
 
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate

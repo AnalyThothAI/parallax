@@ -70,7 +70,7 @@ export function SignalPulseList({ compact, isLoading, items, selectedItemId, onS
               <span className="signal-chain-main">
                 <strong>{itemTitle(item)}</strong>
                 <em>{compact ? compactPulseMeta(item) : fullPulseMeta(item)}</em>
-                <p>{item.agent_recommendation.summary_zh || item.summary_zh || "No recommendation summary."}</p>
+                <p>{item.agent_recommendation.summary_zh || "No recommendation summary."}</p>
                 <span className="signal-chain-chipline">
                   {facts.slice(0, compact ? 4 : 6).map((fact) => (
                     <span key={fact}>{fact}</span>

@@ -7,6 +7,7 @@ TOKEN_RADAR_PROJECTION_NAME = "token-radar"
 TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v9-factor-snapshot"
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+price_observations"
+TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v1"
 TOKEN_RADAR_FACTOR_FAMILIES = (
     "identity",
     "social_attention",

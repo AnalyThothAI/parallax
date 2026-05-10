@@ -867,8 +867,6 @@ describe("App Token Radar social heat cockpit", () => {
       candidate_id: "pulse-sol-product",
       subject_key: "token:SOL",
       symbol: "SOL",
-      summary_zh: "SOL pulse loaded from cursor.",
-      why_now_zh: "SOL pulse loaded from cursor.",
       factor_snapshot: {
         ...firstPage.items[0].factor_snapshot,
         subject: {
@@ -1849,8 +1847,6 @@ function signalPulseData(): SignalPulseData {
         narrative_type: "token",
         candidate_score: 84,
         score_band: "A",
-        summary_zh: "CZ 提到 build on BNB，形成 BNB 生态关注。",
-        why_now_zh: "CZ 推动 BNB build 叙事，候选处于点火阶段。",
         evidence_event_ids: ["event-cz-bnb"],
         source_event_ids: ["event-cz-bnb", "event-bnb-2"],
         factor_snapshot: {

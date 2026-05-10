@@ -29,6 +29,94 @@ from tests.postgres_test_utils import postgres_settings_storage, prepare_postgre
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
 
+def _pulse_factor_snapshot(
+    *,
+    symbol: str = "PEPE",
+    target_id: str = "asset:pepe",
+    score: int = 82,
+    market_status: str = "fresh",
+    blocked_reasons: list[str] | None = None,
+) -> dict[str, object]:
+    blocked = blocked_reasons or []
+    return {
+        "schema_version": "token_factor_snapshot_v1",
+        "subject": {"target_type": "Asset", "target_id": target_id, "symbol": symbol, "chain": "sol"},
+        "families": {
+            "market_quality": {
+                "facts": {
+                    "market_status": market_status,
+                    "market_cap_usd": 1_200_000,
+                    "liquidity_usd": 150_000,
+                    "holders": 1_500,
+                    "volume_24h_usd": 250_000,
+                },
+                "factors": {},
+            },
+            "social_attention": {
+                "facts": {"mentions_1h": 8, "unique_authors": 4, "watched_mentions": 1},
+                "factors": {},
+            },
+            "social_quality": {"facts": {"independent_authors": 4}, "factors": {}},
+        },
+        "hard_gates": {"eligible_for_high_alert": not blocked, "blocked_reasons": blocked},
+        "composite": {"rank_score": score, "recommended_decision": "watch"},
+        "provenance": {"source_event_ids": ["event-api-1"], "computed_at_ms": 2_000},
+    }
+
+
+def _pulse_gate(
+    *,
+    pulse_status: str = "token_watch",
+    score: float = 82.0,
+    blocked_reasons: list[str] | None = None,
+) -> dict[str, object]:
+    blocked = blocked_reasons or []
+    return {
+        "pulse_status": pulse_status,
+        "verdict": pulse_status,
+        "candidate_score": score,
+        "score_band": "watch",
+        "gate_reasons": blocked or ["factor_snapshot_watch_gate_passed"],
+        "risk_reasons": blocked,
+        "hard_risks": blocked,
+        "max_recommendation": "research",
+        "eligible_for_high_alert": not blocked,
+        "blocked_reasons": blocked,
+    }
+
+
+def _pulse_recommendation(summary: str = "PEPE 社交热度显著上升。") -> dict[str, object]:
+    return {
+        "schema_version": "pulse_recommendation_v1",
+        "recommendation": "research",
+        "summary_zh": summary,
+        "primary_reasons": [
+            {"factor_key": "social_attention.unique_authors", "explanation_zh": "独立作者扩散正在增加。"}
+        ],
+        "upgrade_conditions": [
+            {
+                "factor_key": "market_quality.liquidity_usd",
+                "operator": ">=",
+                "value": 250_000,
+                "description_zh": "流动性继续改善。",
+            }
+        ],
+        "invalidation_conditions": [
+            {
+                "factor_key": "social_attention.mentions_1h",
+                "operator": "<",
+                "value": 3,
+                "description_zh": "讨论快速降温。",
+            }
+        ],
+        "residual_risks": [
+            {"factor_key": "market_quality.liquidity_usd", "description_zh": "流动性仍可能快速变化。"}
+        ],
+        "evidence_event_ids": ["event-api-1"],
+        "confidence": 0.72,
+    }
+
+
 def test_api_json_response_encodes_decimal_payloads():
     response = _json({"ok": True, "data": {"price": Decimal("1.23")}})
 
@@ -96,9 +184,9 @@ class FakeSignalPulseRepository:
                     "narrative_type": "direct_token",
                     "candidate_score": 0.84,
                     "score_band": "watch",
-                    "thesis_json": {"summary_zh": "PEPE 社交热度显著上升。"},
-                    "radar_score_json": {"score": 0.84},
-                    "market_context_json": {"market_status": "fresh"},
+                    "factor_snapshot_json": _pulse_factor_snapshot(),
+                    "agent_recommendation_json": _pulse_recommendation(),
+                    "gate_json": _pulse_gate(score=0.84),
                     "gate_reasons_json": ["fresh_attention"],
                     "risk_reasons_json": [],
                     "evidence_event_ids_json": ["event-fake"],
@@ -561,6 +649,11 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert data["health"]["settlement_coverage"] == 0.5
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
+    assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v1"
+    assert "radar_score_json" not in data["items"][0]
+    assert "market_context_json" not in data["items"][0]
+    assert "thesis_json" not in data["items"][0]
     assert "kind" not in data["items"][0]
     assert invalid.status_code == 400
     assert invalid.json() == {"ok": False, "error": "invalid_status", "field": "status"}
@@ -608,21 +701,13 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 score_band="watch",
                 trigger_signature="trigger-api-token",
                 timeline_signature="timeline-api-token",
-                thesis={
-                    "summary_zh": "PEPE 社交热度显著上升。",
-                    "why_now_zh": "多源讨论同步出现。",
-                    "bull_case_zh": ["新增独立作者扩散"],
-                    "bear_case_zh": ["市场确认不足"],
-                    "confirmation_triggers_zh": ["更多独立账号确认"],
-                    "invalidation_triggers_zh": ["讨论迅速降温"],
-                    "top_risks": ["public_stream_coverage"],
-                },
-                radar_score={"score": 0.84},
-                market_context={"market_status": "fresh"},
-                gate_reasons=["fresh_attention"],
-                risk_reasons=["thin_liquidity"],
-                evidence_event_ids=["event-api-1"],
-                source_event_ids=["event-api-1"],
+                factor_snapshot_json=_pulse_factor_snapshot(score=84),
+                gate_json=_pulse_gate(score=84.0),
+                agent_recommendation_json=_pulse_recommendation(),
+                gate_reasons_json=["fresh_attention"],
+                risk_reasons_json=["thin_liquidity"],
+                evidence_event_ids_json=["event-api-1"],
+                source_event_ids_json=["event-api-1"],
                 agent_run_id="run-api-1",
                 pulse_version="pulse-v1",
                 gate_version="gate-v1",
@@ -648,13 +733,22 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 score_band="blocked",
                 trigger_signature="trigger-api-blocked",
                 timeline_signature="timeline-api-blocked",
-                thesis={"summary_zh": "信息不足。"},
-                radar_score={},
-                market_context={"market_status": "fresh"},
-                gate_reasons=["low_information"],
-                risk_reasons=["low_information"],
-                evidence_event_ids=["event-api-2"],
-                source_event_ids=["event-api-2"],
+                factor_snapshot_json=_pulse_factor_snapshot(
+                    symbol="LOW",
+                    target_id="asset:lowinfo",
+                    score=10,
+                    blocked_reasons=["low_information"],
+                ),
+                gate_json=_pulse_gate(
+                    pulse_status="blocked_low_information",
+                    score=10.0,
+                    blocked_reasons=["low_information"],
+                ),
+                agent_recommendation_json=_pulse_recommendation("信息不足。"),
+                gate_reasons_json=["low_information"],
+                risk_reasons_json=["low_information"],
+                evidence_event_ids_json=["event-api-2"],
+                source_event_ids_json=["event-api-2"],
                 pulse_version="pulse-v1",
                 gate_version="gate-v1",
                 prompt_version="prompt-v1",
@@ -679,13 +773,23 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 score_band="blocked",
                 trigger_signature="trigger-api-blocked-2",
                 timeline_signature="timeline-api-blocked-2",
-                thesis={"summary_zh": "信息不足。"},
-                radar_score={},
-                market_context={},
-                gate_reasons=["low_information"],
-                risk_reasons=["low_information"],
-                evidence_event_ids=["event-api-3"],
-                source_event_ids=["event-api-3"],
+                factor_snapshot_json=_pulse_factor_snapshot(
+                    symbol="LOW2",
+                    target_id="asset:lowinfo2",
+                    score=10,
+                    market_status="missing",
+                    blocked_reasons=["low_information"],
+                ),
+                gate_json=_pulse_gate(
+                    pulse_status="blocked_low_information",
+                    score=10.0,
+                    blocked_reasons=["low_information"],
+                ),
+                agent_recommendation_json=_pulse_recommendation("信息不足。"),
+                gate_reasons_json=["low_information"],
+                risk_reasons_json=["low_information"],
+                evidence_event_ids_json=["event-api-3"],
+                source_event_ids_json=["event-api-3"],
                 pulse_version="pulse-v1",
                 gate_version="gate-v1",
                 prompt_version="prompt-v1",
@@ -710,8 +814,11 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     assert data["health"]["market_ready_rate"] == 1.0
     assert data["returned_count"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-api-token"
-    assert data["items"][0]["summary_zh"] == "PEPE 社交热度显著上升。"
-    assert data["items"][0]["radar_score_json"] == {"score": 0.84}
+    assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert data["items"][0]["fact_card"]["market_status"] == "fresh"
+    assert "radar_score_json" not in data["items"][0]
+    assert "market_context_json" not in data["items"][0]
+    assert "thesis_json" not in data["items"][0]
     assert "kind" not in data["items"][0]
 
 
@@ -965,20 +1072,12 @@ def _seed_displayable_candidate(app, *, candidate_id: str) -> None:
             gate_version="gate-v1",
             prompt_version="prompt-v1",
             schema_version="schema-v1",
-            thesis_json={
-                "summary_zh": "test",
-                "why_now_zh": "test",
-                "bull_case_zh": [],
-                "bear_case_zh": [],
-                "confirmation_triggers_zh": [],
-                "invalidation_triggers_zh": [],
-                "top_risks": [],
-            },
+            factor_snapshot_json=_pulse_factor_snapshot(),
+            gate_json=_pulse_gate(score=82.0),
+            agent_recommendation_json=_pulse_recommendation("test"),
             target_type="Asset",
             target_id="asset:pepe",
             symbol="PEPE",
-            radar_score_json={"score": 0.82},
-            market_context_json={"market_status": "fresh"},
             gate_reasons_json=["fresh_attention"],
             risk_reasons_json=[],
             evidence_event_ids_json=["event-1"],

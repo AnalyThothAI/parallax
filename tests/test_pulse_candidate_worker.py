@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_RECOMMENDATION_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseThesisResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationResult
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     _asset_candidate_id,
@@ -19,7 +19,7 @@ def test_missing_factor_snapshot_is_not_enqueued() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=None)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -34,7 +34,7 @@ def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> N
     snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -78,7 +78,7 @@ def test_worker_gates_before_agent_and_agent_cannot_upgrade_gate_status() -> Non
 
     worker = PulseCandidateWorker(
         repository_session=lambda: _session(repos),
-        thesis_client=client,
+        recommendation_client=client,
         gate_func=gate_func,
     )
 
@@ -99,7 +99,7 @@ def test_worker_persists_factor_snapshot_gate_and_recommendation_only() -> None:
     snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
 
     worker.scan_triggers_once(now_ms=NOW_MS)
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -117,7 +117,7 @@ def test_worker_persists_factor_snapshot_gate_and_recommendation_only() -> None:
 def test_source_seed_without_target_is_gated_blocked_after_agent() -> None:
     repos = FakeRepos()
     repos.harness.social_events = [_source_event()]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
 
     scan = worker.scan_triggers_once(now_ms=NOW_MS)
     run = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -269,13 +269,13 @@ class FakeClient:
             "input_hash": "input-hash",
         }
 
-    async def write_thesis(
+    async def write_recommendation(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisResult:
+    ) -> PulseRecommendationResult:
         payload = PulseRecommendationPayload(
             schema_version=PULSE_RECOMMENDATION_SCHEMA_VERSION,
             recommendation=self.recommendation,
@@ -306,7 +306,7 @@ class FakeClient:
             confidence=0.7,
         )
         audit = self.request_audit(context=context, run_id=run_id, job=job)
-        return PulseThesisResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
+        return PulseRecommendationResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
 
 
 def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]:

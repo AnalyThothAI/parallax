@@ -5,7 +5,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
 class TokenRadarRepository:

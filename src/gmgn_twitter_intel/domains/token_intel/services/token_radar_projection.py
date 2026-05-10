@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
@@ -21,7 +22,6 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
     is_active_cohort_member,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
-    TOKEN_FACTOR_SNAPSHOT_VERSION,
     build_token_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (

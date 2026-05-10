@@ -61,8 +61,6 @@ function minimalPulseItem() {
     narrative_type: "direct_token",
     candidate_score: 0.82,
     score_band: "watch",
-    summary_zh: "summary",
-    why_now_zh: "why",
     evidence_event_ids: [],
     source_event_ids: [],
     factor_snapshot: {

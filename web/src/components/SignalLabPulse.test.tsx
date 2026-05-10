@@ -111,8 +111,6 @@ function pulseItem(index: number): SignalPulseItem {
     narrative_type: "token",
     candidate_score: 82,
     score_band: "A",
-    summary_zh: `summary ${index}`,
-    why_now_zh: `why now ${index}`,
     evidence_event_ids: [`evidence-${index}`],
     source_event_ids: [`source-${index}`],
     factor_snapshot: {

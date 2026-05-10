@@ -18,8 +18,8 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
     PulseRecommendationPayload,
     collect_factor_keys,
 )
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import (
-    OpenAIAgentsPulseThesisClient,
+from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_client import (
+    OpenAIAgentsPulseRecommendationClient,
     PulseRecommendationOutputSchema,
 )
 
@@ -123,7 +123,7 @@ def _payload(**overrides: object) -> PulseRecommendationPayload:
 
 def test_openai_agents_pulse_client_uses_recommendation_output_and_trace_metadata() -> None:
     runner = FakeRunner(_payload())
-    client = OpenAIAgentsPulseThesisClient(
+    client = OpenAIAgentsPulseRecommendationClient(
         api_key="sk-test",
         model="gpt-test",
         runner=runner,
@@ -133,7 +133,7 @@ def test_openai_agents_pulse_client_uses_recommendation_output_and_trace_metadat
     )
 
     result = asyncio.run(
-        client.write_thesis(
+        client.write_recommendation(
             context=_context(),
             run_id="run-123",
             job={"job_id": "job-1", "job_type": "pulse_recommendation", "attempt_count": 2},
@@ -224,10 +224,10 @@ def test_pulse_recommendation_output_schema_rejects_prose_wrapped_json_fence() -
 
 def test_openai_agents_pulse_client_uses_subject_key_group_without_candidate_id() -> None:
     runner = FakeRunner(_payload(recommendation="ignore"))
-    client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseRecommendationClient(api_key="sk-test", model="gpt-test", runner=runner)
 
     asyncio.run(
-        client.write_thesis(
+        client.write_recommendation(
             context=_context(candidate_id=None, candidate_type="source_seed", target_type=None, target_id=None),
             run_id="run-123",
             job={},
@@ -243,10 +243,10 @@ def test_openai_agents_pulse_client_validates_event_ids_before_return() -> None:
             evidence_event_ids=["event-outside"],
         )
     )
-    client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseRecommendationClient(api_key="sk-test", model="gpt-test", runner=runner)
 
     with pytest.raises(ValueError, match="evidence_event_ids"):
-        asyncio.run(client.write_thesis(context=_context(), run_id="run-123", job={}))
+        asyncio.run(client.write_recommendation(context=_context(), run_id="run-123", job={}))
 
 
 def test_openai_agents_pulse_client_validates_factor_keys_before_return() -> None:
@@ -260,14 +260,14 @@ def test_openai_agents_pulse_client_validates_factor_keys_before_return() -> Non
             ]
         )
     )
-    client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseRecommendationClient(api_key="sk-test", model="gpt-test", runner=runner)
 
     with pytest.raises(ValueError, match="factor_key"):
-        asyncio.run(client.write_thesis(context=_context(), run_id="run-123", job={}))
+        asyncio.run(client.write_recommendation(context=_context(), run_id="run-123", job={}))
 
 
 def test_openai_agents_pulse_client_collects_factor_keys_from_snapshot() -> None:
-    client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=FakeRunner(_payload()))
+    client = OpenAIAgentsPulseRecommendationClient(api_key="sk-test", model="gpt-test", runner=FakeRunner(_payload()))
 
     audit = client.request_audit(context=_context(), run_id="run-123", job={})
 
@@ -276,14 +276,14 @@ def test_openai_agents_pulse_client_collects_factor_keys_from_snapshot() -> None
 
 def test_openai_agents_pulse_client_validates_max_recommendation_before_return() -> None:
     runner = FakeRunner(_payload(recommendation="alert"))
-    client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
+    client = OpenAIAgentsPulseRecommendationClient(api_key="sk-test", model="gpt-test", runner=runner)
 
     with pytest.raises(ValueError, match="max_recommendation"):
-        asyncio.run(client.write_thesis(context=_context(), run_id="run-123", job={}))
+        asyncio.run(client.write_recommendation(context=_context(), run_id="run-123", job={}))
 
 
 def test_openai_agents_pulse_client_can_build_request_audit_before_model_returns() -> None:
-    client = OpenAIAgentsPulseThesisClient(
+    client = OpenAIAgentsPulseRecommendationClient(
         api_key="sk-test",
         model="gpt-test",
         runner=FakeRunner(_payload()),
@@ -324,11 +324,11 @@ def test_openai_agents_pulse_client_can_build_request_audit_before_model_returns
 def test_openai_agents_pulse_client_sets_configured_trace_export_key(monkeypatch) -> None:
     exported_keys: list[str] = []
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client.set_tracing_export_api_key",
+        "gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_client.set_tracing_export_api_key",
         exported_keys.append,
     )
 
-    client = OpenAIAgentsPulseThesisClient(
+    client = OpenAIAgentsPulseRecommendationClient(
         api_key="sk-configured",
         model="gpt-test",
         runner=FakeRunner(_payload()),
@@ -342,11 +342,11 @@ def test_openai_agents_pulse_client_sets_configured_trace_export_key(monkeypatch
 def test_openai_agents_pulse_client_does_not_export_custom_provider_key(monkeypatch) -> None:
     exported_keys: list[str] = []
     monkeypatch.setattr(
-        "gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client.set_tracing_export_api_key",
+        "gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_client.set_tracing_export_api_key",
         exported_keys.append,
     )
 
-    client = OpenAIAgentsPulseThesisClient(
+    client = OpenAIAgentsPulseRecommendationClient(
         api_key="custom-provider-key",
         model="qwen3.6",
         base_url="https://big9er.com/v1",
