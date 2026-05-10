@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.interfaces import PriceObservationRepository, RegistryRepository
@@ -15,33 +14,20 @@ from gmgn_twitter_intel.domains.evidence.interfaces import (
 )
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
+from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    IntentResolutionRepository,
+    TokenEvidenceRepository,
     TokenIntentLookupRepository,
-)
-from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
-from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
-from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import (
+    TokenIntentRepository,
     TokenIntentResolutionDecision,
     TokenIntentResolver,
+    build_token_evidence,
+    build_token_intents,
 )
+from gmgn_twitter_intel.pipeline.watched_event_gate import watched_social_event_priority
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
 from gmgn_twitter_intel.storage.signal_repository import SignalRepository
-
-from .watched_event_gate import watched_social_event_priority
-
-
-@dataclass(frozen=True, slots=True)
-class IngestedEvent:
-    event: TwitterEvent
-    entities: list[dict[str, Any]]
-    alerts: list[dict[str, Any]]
-    inserted: bool
-    enrichment_job_id: str | None = None
-    token_intents: list[dict[str, Any]] = field(default_factory=list)
-    token_resolutions: list[dict[str, Any]] = field(default_factory=list)
 
 
 class IngestService:
