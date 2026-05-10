@@ -69,7 +69,6 @@ class PulseCandidateContext:
     symbol: str | None
     factor_snapshot: dict[str, Any]
     selected_posts: list[dict[str, Any]]
-    timeline_context: dict[str, Any]
     gate_result: dict[str, Any] | None
     source_event_ids: list[str]
     evidence_event_ids: list[str]
@@ -270,7 +269,7 @@ class PulseCandidateWorker:
             watched_only=False,
             limit=200,
         )
-        timeline_context = build_pulse_timeline_context(
+        timeline_payload = build_pulse_timeline_context(
             target=target,
             rows=rows,
             window=window,
@@ -299,14 +298,13 @@ class PulseCandidateWorker:
             window=window,
             scope=scope,
             trigger_signature=trigger_signature,
-            timeline_signature=_timeline_signature(timeline_context),
+            timeline_signature=_timeline_signature(timeline_payload),
             priority=_priority(row),
             target_type=target_type,
             target_id=target_id,
             symbol=_clean(target.get("symbol") or row.get("symbol")),
             factor_snapshot=factor_snapshot,
-            selected_posts=list(timeline_context.get("selected_posts") or []),
-            timeline_context=timeline_context,
+            selected_posts=list(timeline_payload.get("selected_posts") or []),
             gate_result=None,
             source_event_ids=_source_event_ids(row),
             evidence_event_ids=_source_event_ids(row),
@@ -325,21 +323,15 @@ class PulseCandidateWorker:
             scope=SOURCE_SCOPE,
             source_event_id=source_event_id,
         )
-        timeline_context = {
-            "source_event": _jsonable(event),
-            "source_event_ids": [source_event_id],
-            "timeline_signature": timeline_signature,
-            "windows": {},
-            "selected_posts": [
-                {
-                    "event_id": source_event_id,
-                    "author_handle": _clean(event.get("author_handle")),
-                    "text": _source_summary_text(event),
-                    "role": "source_seed",
-                    "received_at_ms": safe_int(event.get("received_at_ms")),
-                }
-            ],
-        }
+        selected_posts = [
+            {
+                "event_id": source_event_id,
+                "author_handle": _clean(event.get("author_handle")),
+                "text": _source_summary_text(event),
+                "role": "source_seed",
+                "received_at_ms": safe_int(event.get("received_at_ms")),
+            }
+        ]
         return PulseCandidateContext(
             candidate_id=candidate_id,
             candidate_type="source_seed",
@@ -353,8 +345,7 @@ class PulseCandidateWorker:
             target_id=None,
             symbol=None,
             factor_snapshot=_source_seed_factor_snapshot(event),
-            selected_posts=list(timeline_context["selected_posts"]),
-            timeline_context=timeline_context,
+            selected_posts=selected_posts,
             gate_result=None,
             source_event_ids=[source_event_id],
             evidence_event_ids=[source_event_id],
@@ -543,10 +534,9 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     factor_snapshot = _mapping(context.get("factor_snapshot"))
     if not factor_snapshot:
         return None
-    timeline_context = _mapping(context.get("timeline_context"))
     selected_posts = context.get("selected_posts")
     if not isinstance(selected_posts, list):
-        selected_posts = list(timeline_context.get("selected_posts") or [])
+        selected_posts = []
     return PulseCandidateContext(
         candidate_id=candidate_id,
         candidate_type=candidate_type,
@@ -561,7 +551,6 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
         symbol=_clean(context.get("symbol")),
         factor_snapshot=factor_snapshot,
         selected_posts=[post for post in selected_posts if isinstance(post, dict)],
-        timeline_context=timeline_context,
         gate_result=_mapping(context.get("gate_result")) or None,
         source_event_ids=_stable_strings(context.get("source_event_ids")),
         evidence_event_ids=_stable_strings(context.get("evidence_event_ids")),
@@ -890,86 +879,12 @@ def _source_summary_text(event: dict[str, Any]) -> str | None:
     )
 
 
-def _component_score(row: dict[str, Any], key: str) -> int:
-    factor_snapshot = _factor_snapshot(row) or {}
-    family_scores = _mapping(_nested(factor_snapshot, "composite", "family_scores"))
-    aliases = {
-        "heat": "social_attention",
-        "quality": "social_quality",
-        "propagation": "social_semantics",
-        "tradeability": "market_quality",
-        "timing": "timing",
-    }
-    return safe_int(family_scores.get(aliases.get(key, key)))
-
-
-def _decision(row: dict[str, Any]) -> str:
-    factor_snapshot = _factor_snapshot(row) or {}
-    return _clean(_nested(factor_snapshot, "composite", "recommended_decision") or row.get("decision")) or ""
-
-
-def _social_phase(row: dict[str, Any], timeline_context: dict[str, Any]) -> str:
-    windows = _mapping(timeline_context.get("windows"))
-    active = _mapping(windows.get("1h") or windows.get("5m"))
-    if active.get("phase"):
-        return str(active["phase"])
-    return _clean(row.get("phase")) or "unknown"
-
-
-def _chase_risk(row: dict[str, Any]) -> bool:
-    return "price_chase_risk" in _snapshot_risks(_factor_snapshot(row) or {})
-
-
-def _hard_risks(*sources: dict[str, Any]) -> list[str]:
-    risks: list[str] = []
-    for source in sources:
-        for value in (source, *_mapping_values(source)):
-            if not isinstance(value, dict):
-                continue
-            for key in ("hard_risks", "risks", "risk_flags"):
-                items = value.get(key)
-                if isinstance(items, list):
-                    risks.extend(str(item) for item in items if item)
-    return _stable_strings(risks)
-
-
-def _trade_candidate_eligible(
-    row: dict[str, Any],
-    market: dict[str, Any],
-    *,
-    thresholds: PulseGateThresholds,
-) -> bool:
-    factor_snapshot = _factor_snapshot(row) or {}
-    return bool(_nested(factor_snapshot, "hard_gates", "eligible_for_high_alert")) and safe_int(
-        _nested(factor_snapshot, "composite", "rank_score")
-    ) >= thresholds.trade_candidate_min
-
-
-def _gate_threshold_payload(thresholds: PulseGateThresholds) -> dict[str, Any]:
-    return {
-        "trade_candidate_min": thresholds.trade_candidate_min,
-        "token_watch_min": thresholds.token_watch_min,
-        "high_info_rejection_min": thresholds.high_info_rejection_min,
-        "high_conviction_min": thresholds.high_conviction_min,
-    }
-
-
 def _inferred_status(metrics: dict[str, Any]) -> str:
     if metrics.get("trade_candidate_eligible"):
         return "trade_candidate"
     if metrics.get("source_event_id"):
         return "theme_watch"
     return "token_watch"
-
-
-def _latest_source_event_id(row: dict[str, Any]) -> str | None:
-    values = _source_event_ids(row)
-    return values[-1] if values else _clean(row.get("event_id"))
-
-
-def _latest_seen_ms(row: dict[str, Any]) -> int:
-    attention = _mapping(row.get("attention_json"))
-    return safe_int(attention.get("latest_seen_ms") or row.get("source_max_received_at_ms") or row.get("created_at_ms"))
 
 
 def _score_bucket(score: int | float | None) -> str:
@@ -1011,7 +926,6 @@ def _context_with_gate(context: PulseCandidateContext, gate: PulseGateResult) ->
         symbol=context.symbol,
         factor_snapshot=context.factor_snapshot,
         selected_posts=context.selected_posts,
-        timeline_context=context.timeline_context,
         gate_result=gate.to_json(),
         source_event_ids=context.source_event_ids,
         evidence_event_ids=context.evidence_event_ids,
@@ -1075,22 +989,6 @@ def _context_trigger_metrics(context: PulseCandidateContext) -> dict[str, Any]:
     return _snapshot_trigger_metrics(context.factor_snapshot)
 
 
-def _snapshot_risks(snapshot: dict[str, Any]) -> list[str]:
-    risks: list[str] = []
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
-    for family in families.values():
-        if not isinstance(family, dict):
-            continue
-        factors = family.get("factors")
-        if not isinstance(factors, dict):
-            continue
-        for factor in factors.values():
-            if isinstance(factor, dict):
-                risks.extend(_stable_strings(factor.get("risk_flags")))
-    risks.extend(_stable_strings(_nested(snapshot, "hard_gates", "blocked_reasons")))
-    return _stable_strings(risks)
-
-
 def _social_phase_from_snapshot(factor_snapshot: dict[str, Any]) -> str:
     return _clean(_nested(factor_snapshot, "families", "social_semantics", "facts", "phase")) or "unknown"
 
@@ -1135,10 +1033,6 @@ def _artifact_hash(client: Any) -> str:
 
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
-
-
-def _mapping_values(value: dict[str, Any]) -> list[dict[str, Any]]:
-    return [item for item in value.values() if isinstance(item, dict)]
 
 
 def _stable_strings(values: Any) -> list[str]:
