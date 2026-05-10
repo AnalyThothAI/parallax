@@ -1,3 +1,4 @@
+from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.pipeline.harness_ops import (
     attribute_harness_credits,
@@ -5,7 +6,6 @@ from gmgn_twitter_intel.pipeline.harness_ops import (
     settle_harness_snapshots,
     update_harness_weights,
 )
-from gmgn_twitter_intel.storage.asset_repository import AssetRepository
 from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

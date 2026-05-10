@@ -6,8 +6,9 @@ from typing import Any
 
 from loguru import logger
 
-from .asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
-from .token_resolution_refresh import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
+from gmgn_twitter_intel.pipeline.token_resolution_refresh import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
+
+from ..services.asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
 
 DEX_PRICE_STALE_MS = 5 * 60 * 1000
 DEX_PRICE_REFRESH_LIMIT = 80

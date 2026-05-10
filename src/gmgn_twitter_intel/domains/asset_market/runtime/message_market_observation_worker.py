@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from .message_market_observation import observe_message_market
+from ..services.message_market_observation import observe_message_market
 
 
 class MessageMarketObservationWorker:

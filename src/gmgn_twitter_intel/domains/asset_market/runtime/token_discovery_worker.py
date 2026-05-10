@@ -12,16 +12,16 @@ from typing import Any
 from loguru import logger
 
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN
-
-from ..storage.discovery_repository import DISCOVERY_PROVIDER
-from .asset_market_sync import _okx_chain_index, _payload_hash
-from .token_radar_projection import WINDOW_MS
-from .token_resolution_refresh import (
+from gmgn_twitter_intel.pipeline.token_radar_projection import WINDOW_MS
+from gmgn_twitter_intel.pipeline.token_resolution_refresh import (
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
     deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
+
+from ..repositories.discovery_repository import DISCOVERY_PROVIDER
+from ..services.asset_market_sync import _okx_chain_index, _payload_hash
 
 DEFAULT_DISCOVERY_LIMIT = 50
 DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000

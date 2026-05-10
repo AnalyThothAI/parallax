@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.domains.asset_market.services.message_market_observation import observe_message_market
 from gmgn_twitter_intel.integrations.okx.models import OkxCexTicker, OkxDexTokenPrice
-from gmgn_twitter_intel.pipeline.message_market_observation import observe_message_market
 from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 

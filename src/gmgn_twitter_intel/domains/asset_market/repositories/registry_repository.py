@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 DEX_SEARCH_SOURCE = "okx_dex_search"
 

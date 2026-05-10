@@ -11,16 +11,16 @@ import uvicorn
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
+from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_okx_cex_universe
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
-from gmgn_twitter_intel.pipeline.asset_market_sync import sync_okx_cex_universe
 from gmgn_twitter_intel.pipeline.harness_ops import (
     attribute_harness_credits,
     settle_harness_snapshots,
     update_harness_weights,
 )
-from gmgn_twitter_intel.pipeline.token_discovery_worker import run_token_discovery_once
 from gmgn_twitter_intel.pipeline.token_intent_rebuild import rebuild_recent_token_intents
 from gmgn_twitter_intel.pipeline.token_radar_contract import (
     TOKEN_RADAR_PROJECTION_VERSION,

@@ -22,6 +22,11 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
     create_api_router,
 )
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
+from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.message_market_observation_worker import (
+    MessageMarketObservationWorker,
+)
+from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import TokenDiscoveryWorker
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
@@ -30,17 +35,14 @@ from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
 from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
-from gmgn_twitter_intel.pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 from gmgn_twitter_intel.pipeline.enrichment_worker import EnrichmentWorker
 from gmgn_twitter_intel.pipeline.harness_ops_worker import HarnessOpsWorker
 from gmgn_twitter_intel.pipeline.ingest_service import IngestService
-from gmgn_twitter_intel.pipeline.message_market_observation_worker import MessageMarketObservationWorker
 from gmgn_twitter_intel.pipeline.notification_delivery import NotificationDeliveryWorker
 from gmgn_twitter_intel.pipeline.notification_rules import NotificationRuleEngine
 from gmgn_twitter_intel.pipeline.notification_worker import NotificationWorker
 from gmgn_twitter_intel.pipeline.pulse_candidate_gate import PulseGateThresholds
 from gmgn_twitter_intel.pipeline.pulse_candidate_worker import PulseCandidateWorker, PulseTriggerThresholds
-from gmgn_twitter_intel.pipeline.token_discovery_worker import TokenDiscoveryWorker
 from gmgn_twitter_intel.pipeline.token_radar_projection_worker import TokenRadarProjectionWorker
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import create_pool, postgres_health_check, with_password_from_file

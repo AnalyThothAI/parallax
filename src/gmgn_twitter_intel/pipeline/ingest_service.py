@@ -6,6 +6,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository, event_to_row
 from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
@@ -13,8 +15,6 @@ from gmgn_twitter_intel.domains.evidence.types.twitter_event import TwitterEvent
 from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 from ..storage.intent_resolution_repository import IntentResolutionRepository
-from ..storage.price_observation_repository import PriceObservationRepository
-from ..storage.registry_repository import RegistryRepository
 from ..storage.signal_repository import SignalRepository
 from ..storage.token_evidence_repository import TokenEvidenceRepository
 from ..storage.token_intent_lookup_repository import TokenIntentLookupRepository

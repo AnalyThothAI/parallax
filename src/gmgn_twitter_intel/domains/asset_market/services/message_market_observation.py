@@ -4,8 +4,9 @@ import hashlib
 import json
 from typing import Any
 
+from gmgn_twitter_intel.pipeline.deterministic_token_resolver import RESOLVER_POLICY_VERSION
+
 from .asset_market_sync import DEX_PRICE_BATCH_SIZE, _okx_chain_index
-from .deterministic_token_resolver import RESOLVER_POLICY_VERSION
 
 MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
 

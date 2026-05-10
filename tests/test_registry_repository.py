@@ -4,10 +4,10 @@ from decimal import Decimal
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.storage.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.storage.registry_repository import RegistryRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
