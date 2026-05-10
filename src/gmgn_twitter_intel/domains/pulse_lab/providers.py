@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
 
 
 @dataclass(frozen=True, slots=True)
 class PulseThesisResult:
-    payload: PulseThesisPayload
+    payload: PulseRecommendationPayload
     agent_run_audit: dict[str, Any]
 
 
