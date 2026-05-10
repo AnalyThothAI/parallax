@@ -1,46 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent, ReactNode } from "react";
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
+import type { KeyboardEvent } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getApi, getBootstrap } from "./api/client";
 import { getNotifications, getNotificationSummary, markAllNotificationsRead, markNotificationRead } from "./api/notifications";
 import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "./api/useTokenTargetQueries";
 import type {
   AccountQualityData,
   AssetFlowData,
-  AssetFlowRow,
-  Decision,
   LivePayload,
   NotificationItem,
-  RadarSortMode,
-  RiskCap,
   RecentData,
-  ScoreContribution,
   SearchData,
   SignalPulseData,
   SignalPulseItem,
   StatusData,
-  TimingBlock,
-  TokenFlowItem,
-  TokenPostRange,
-  TokenPostSortMode,
-  WindowKey
+  TokenFlowItem
 } from "./api/types";
 import { useIntelSocket } from "./api/useIntelSocket";
+import { CockpitLayout } from "./components/CockpitLayout";
 import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "./components/EvidenceDetailDrawer";
-import { LiveSignalTape, type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
-import { MobileTaskNav, type MobileTask } from "./components/MobileTaskNav";
-import { NotificationBell } from "./components/NotificationBell";
-import { NotificationDrawer } from "./components/NotificationDrawer";
-import { NotificationToastBridge } from "./components/NotificationToastBridge";
+import { LivePage } from "./components/LivePage";
+import { LiveRadar } from "./components/LiveRadar";
+import { type LiveSignalTapeItem, tokenTapeReason } from "./components/LiveSignalTape";
+import type { MobileTask } from "./components/MobileTaskNav";
 import { SignalLabInspector } from "./components/SignalLabInspector";
-import { SignalLabPulse } from "./components/SignalLabPulse";
-import { SignalLabWorkbench } from "./components/SignalLabWorkbench";
-import { RadarControls } from "./components/RadarControls";
+import { SignalLabPage } from "./components/SignalLabPage";
 import { TokenDetailDrawer } from "./components/TokenDetailDrawer";
-import { TokenRadarTable } from "./components/TokenRadarTable";
-import { TokenTargetPage } from "./components/TokenTargetPage";
-import { WatchlistNotificationDot } from "./components/WatchlistNotificationDot";
 import {
   compactNumber,
   eventText,
@@ -48,10 +34,12 @@ import {
   tokenKey
 } from "./lib/format";
 import { tokenForSearchQuery } from "./lib/searchIntent";
+import { countDecisions, sortTokenItems, tokenRadarItems, tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import { buildWatchlistRows } from "./lib/watchlist";
-import type { TargetRef } from "./domain/tokenTarget";
-import { targetRefEquals, targetRefFromTokenItem, targetRefKey } from "./domain/tokenTarget";
+import { targetRefFromTokenItem } from "./domain/tokenTarget";
 import { useTraderStore } from "./store/useTraderStore";
+
+export { tokenRadarRowToTokenItem };
 
 type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }
@@ -60,23 +48,25 @@ type SelectedSignal =
   | { kind: "query"; query: string }
   | null;
 
+const SIGNAL_LAB_COMPACT_WINDOW = "1h";
+const SIGNAL_LAB_COMPACT_SCOPE = "all";
+
 export function App() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isSignalLabRoute = location.pathname.startsWith("/signal-lab");
+
   const windowKey = useTraderStore((state) => state.window);
   const scope = useTraderStore((state) => state.scope);
-  const signalLabScope = "all";
-  const signalLabWindow = "1h";
-  const signalLabCompactWindow = "1h";
   const handles = useTraderStore((state) => state.handles);
   const search = useTraderStore((state) => state.search);
   const submittedSearch = useTraderStore((state) => state.submittedSearch);
   const token = useTraderStore((state) => state.token);
   const radarSortMode = useTraderStore((state) => state.radarSortMode);
   const detailTab = useTraderStore((state) => state.detailTab);
-  const activeView = useTraderStore((state) => state.activeView);
-  const signalLabStatus = useTraderStore((state) => state.signalLabStatus);
+  // signalLab* selectors are used only by SignalLabPage in PR2; PR3 will delete the store fields entirely.
   const signalLabHandle = useTraderStore((state) => state.signalLabHandle);
-  const signalLabSearch = useTraderStore((state) => state.signalLabSearch);
   const detailWindow = useTraderStore((state) => state.detailWindow);
   const detailMode = useTraderStore((state) => state.detailMode);
   const selectedBucketStartMs = useTraderStore((state) => state.selectedBucketStartMs);
@@ -94,7 +84,6 @@ export function App() {
   const runSearch = useTraderStore((state) => state.runSearch);
   const setRadarSortMode = useTraderStore((state) => state.setRadarSortMode);
   const setDetailTab = useTraderStore((state) => state.setDetailTab);
-  const setActiveView = useTraderStore((state) => state.setActiveView);
   const setSignalLabStatus = useTraderStore((state) => state.setSignalLabStatus);
   const setSignalLabHandle = useTraderStore((state) => state.setSignalLabHandle);
   const setSignalLabSearch = useTraderStore((state) => state.setSignalLabSearch);
@@ -107,11 +96,6 @@ export function App() {
   const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
   const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
-  const [pageTargetRef, setPageTargetRef] = useState<TargetRef | null>(null);
-  const [pageWindow, setPageWindow] = useState<WindowKey>(windowKey);
-  const [pagePostRange, setPagePostRange] = useState<TokenPostRange>("current_window");
-  const [pagePostSortMode, setPagePostSortMode] = useState<TokenPostSortMode>("recent");
-  const [pageSelectedStageId, setPageSelectedStageId] = useState<string | null>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const [mobileTask, setMobileTask] = useState<MobileTask>("radar");
   const [notificationDrawerOpen, setNotificationDrawerOpen] = useState(false);
@@ -131,7 +115,7 @@ export function App() {
 
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
   const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true });
-  const activeSignalLabHandle = normalizedHandle(signalLabHandle);
+  const activeWatchHandle = normalizedHandle(signalLabHandle);
 
   const statusQuery = useQuery({
     queryKey: ["status"],
@@ -162,37 +146,14 @@ export function App() {
     refetchInterval: 10_000
   });
 
-  const signalPulseQuery = useInfiniteQuery({
-    queryKey: ["signal-lab-pulse", signalLabWindow, signalLabScope, signalLabStatus, signalLabHandle, signalLabSearch],
-    queryFn: async ({ pageParam }) => {
-      const response = await getApi<SignalPulseData>("/api/signal-lab/pulse", {
-        token,
-        params: {
-          window: signalLabWindow,
-          scope: signalLabScope,
-          status: signalLabStatus === "all" ? undefined : signalLabStatus,
-          handle: signalLabHandle || undefined,
-          q: signalLabSearch || undefined,
-          limit: 80,
-          cursor: pageParam || undefined
-        }
-      });
-      return response.data;
-    },
-    initialPageParam: "",
-    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
-    enabled: Boolean(token),
-    refetchInterval: 12_000
-  });
-
   const signalPulseOverviewQuery = useQuery({
-    queryKey: ["signal-lab-overview", signalLabWindow, signalLabScope],
+    queryKey: ["signal-lab-overview", SIGNAL_LAB_COMPACT_WINDOW, SIGNAL_LAB_COMPACT_SCOPE],
     queryFn: () =>
       getApi<SignalPulseData>("/api/signal-lab/pulse", {
         token,
         params: {
-          window: signalLabWindow,
-          scope: signalLabScope,
+          window: SIGNAL_LAB_COMPACT_WINDOW,
+          scope: SIGNAL_LAB_COMPACT_SCOPE,
           limit: 1
         }
       }),
@@ -200,29 +161,14 @@ export function App() {
     refetchInterval: 12_000
   });
 
-  const signalLabAccountEventsQuery = useQuery({
-    queryKey: ["signal-lab-account-events", signalLabScope, activeSignalLabHandle],
-    queryFn: () =>
-      getApi<RecentData>("/api/recent", {
-        token,
-        params: {
-          limit: 80,
-          scope: signalLabScope,
-          handles: activeSignalLabHandle
-        }
-      }),
-    enabled: Boolean(token && activeView === "signal_lab" && activeSignalLabHandle),
-    refetchInterval: 15_000
-  });
-
   const signalLabPulseQuery = useQuery({
-    queryKey: ["signal-lab-pulse-compact", signalLabScope, signalLabCompactWindow],
+    queryKey: ["signal-lab-pulse-compact", SIGNAL_LAB_COMPACT_SCOPE, SIGNAL_LAB_COMPACT_WINDOW],
     queryFn: () =>
       getApi<SignalPulseData>("/api/signal-lab/pulse", {
         token,
         params: {
-          window: signalLabCompactWindow,
-          scope: signalLabScope,
+          window: SIGNAL_LAB_COMPACT_WINDOW,
+          scope: SIGNAL_LAB_COMPACT_SCOPE,
           limit: 80,
           sort: "recent"
         }
@@ -249,25 +195,7 @@ export function App() {
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const drawerTargetRef = targetRefFromTokenItem(selectedToken);
-  const pageTargetKey = pageTargetRef ? targetRefKey(pageTargetRef) : null;
-  const pageAssetFlowQuery = useQuery({
-    queryKey: ["token-radar-page", pageWindow, scope, pageTargetKey],
-    queryFn: () =>
-      getApi<AssetFlowData>("/api/token-radar", {
-        token,
-        params: { window: pageWindow, limit: 48, scope }
-      }),
-    enabled: Boolean(token && pageTargetRef),
-    refetchInterval: 10_000
-  });
-  const pageRawTokenItems = useMemo(
-    () => tokenRadarItems(pageAssetFlowQuery.data?.data, pageWindow, scope),
-    [pageAssetFlowQuery.data?.data, pageWindow, scope]
-  );
-  const pageTokenItems = useMemo(() => sortTokenItems(pageRawTokenItems, radarSortMode), [pageRawTokenItems, radarSortMode]);
-  const selectedTokenPage = pageTargetRef ? pageTokenItems.find((item) => targetRefEquals(targetRefFromTokenItem(item), pageTargetRef)) ?? null : null;
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
-  const pagePostRequestSort = pagePostSortMode === "catalyst" ? "catalyst" : "recent";
 
   const tokenTimelineQuery = useTokenTargetTimeline({ token, target: drawerTargetRef, window: detailWindow, scope });
   const tokenPostsQuery = useTokenTargetPosts({
@@ -277,15 +205,6 @@ export function App() {
     scope,
     range: postRange,
     sort: tokenPostRequestSort,
-  });
-  const pageTimelineQuery = useTokenTargetTimeline({ token, target: pageTargetRef, window: pageWindow, scope });
-  const pagePostsQuery = useTokenTargetPosts({
-    token,
-    target: pageTargetRef,
-    window: pageWindow,
-    scope,
-    range: pagePostRange,
-    sort: pagePostRequestSort,
   });
 
   const accountQualityHandles = useMemo(
@@ -343,24 +262,19 @@ export function App() {
 
   const searchData = searchQuery.data?.data;
   const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
-  const signalPulseData = useMemo(() => mergeSignalPulsePages(signalPulseQuery.data?.pages), [signalPulseQuery.data?.pages]);
-  const signalLabOverviewData = signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data ?? signalPulseData;
+  const signalLabOverviewData = signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data;
   const signalLabPulseData = signalLabPulseQuery.data?.data ?? signalLabOverviewData;
   const signalLabPulseTotal = signalPulseTotal(signalLabOverviewData?.summary);
-  const workbenchSignalPulseItems = signalPulseData?.items ?? [];
   const compactSignalPulseItems = signalLabPulseData?.items ?? [];
-  const signalLabAccountEvents = signalLabAccountEventsQuery.data?.data.items ?? [];
-  const activeSignalPulseItems = activeView === "signal_lab" ? workbenchSignalPulseItems : compactSignalPulseItems;
-  const activeSignalPulseFetching = activeView === "signal_lab" ? signalPulseQuery.isFetching : signalLabPulseQuery.isFetching;
   const liveSignalTapeItems = useMemo(
     () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
     [liveItems, tokenItems]
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
   const tokenPostsData = useMemo(() => mergeTokenPostPages(tokenPostsQuery.data?.pages), [tokenPostsQuery.data?.pages]);
-  const pagePostsData = useMemo(() => mergeTokenPostPages(pagePostsQuery.data?.pages), [pagePostsQuery.data?.pages]);
   const selectedPulseItemId = selectedPulseItemIdForSelection(selectedSignal);
-  const selectedPulseItem = selectedSignal?.kind === "pulse" ? latestPulseForSelection(selectedSignal.item, activeSignalPulseItems) : null;
+  const selectedPulseItem = selectedSignal?.kind === "pulse" ? latestPulseForSelection(selectedSignal.item, compactSignalPulseItems) : null;
+  const selectedAccountEventId = selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null;
   const selectedEvidenceDetails = useMemo(
     () =>
       resolveEvidenceDetails(selectedSignal, {
@@ -431,24 +345,15 @@ export function App() {
     if (selectedSignal?.kind !== "pulse") {
       return;
     }
-    const latest = activeSignalPulseItems.find((item) => item.candidate_id === selectedSignal.item.candidate_id);
+    const latest = compactSignalPulseItems.find((item) => item.candidate_id === selectedSignal.item.candidate_id);
     if (latest && latest !== selectedSignal.item) {
       setSelectedSignal({ kind: "pulse", item: latest });
       return;
     }
-    if (!latest && !activeSignalPulseFetching) {
+    if (!latest && !signalLabPulseQuery.isFetching) {
       setSelectedSignal(null);
     }
-  }, [activeSignalPulseFetching, activeSignalPulseItems, selectedSignal]);
-
-  useEffect(() => {
-    if (activeView !== "signal_lab" || selectedSignal?.kind === "pulse" || !workbenchSignalPulseItems.length) {
-      return;
-    }
-    const preferred = preferredPulseItem(workbenchSignalPulseItems);
-    setSelectedSignal({ kind: "pulse", item: preferred });
-    setSelectedTapeEventId(preferred.candidate_id);
-  }, [activeView, selectedSignal?.kind, workbenchSignalPulseItems]);
+  }, [compactSignalPulseItems, selectedSignal, signalLabPulseQuery.isFetching]);
 
   const selectToken = (item: TokenFlowItem, tapeId: string | null = null) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
@@ -464,17 +369,13 @@ export function App() {
 
   const openTokenPage = (item: TokenFlowItem) => {
     const target = targetRefFromTokenItem(item);
-    if (!target) {
+    if (!target || !target.target_type || !target.target_id) {
       return;
     }
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
-    setPageTargetRef(target);
-    setPageWindow(windowKey);
-    setPagePostRange("current_window");
-    setPagePostSortMode("recent");
-    setPageSelectedStageId(null);
     setDetailWindow(windowKey);
     setMobileTask("radar");
+    navigate(`/token/${target.target_type}/${encodeURIComponent(target.target_id)}`);
   };
 
   const selectPulseItem = (item: SignalPulseItem, options: { openLab?: boolean } = {}) => {
@@ -482,7 +383,7 @@ export function App() {
     setSelectedTapeEventId(item.candidate_id);
     setMobileTask("detail");
     if (options.openLab) {
-      setActiveView("signal_lab");
+      navigate("/signal-lab");
       setMobileTask("lab");
     }
   };
@@ -493,10 +394,7 @@ export function App() {
     setMobileTask("detail");
   };
 
-  const clearSignalLabFilters = () => {
-    setSignalLabStatus("all");
-    setSignalLabHandle("");
-    setSignalLabSearch("");
+  const clearSignalLabSelection = () => {
     setSelectedSignal(null);
     setSelectedTapeEventId(null);
     setMobileTask("lab");
@@ -507,7 +405,7 @@ export function App() {
     if (!normalized) {
       return;
     }
-    setActiveView("signal_lab");
+    navigate("/signal-lab");
     setMobileTask("lab");
     setSignalLabStatus("all");
     setSignalLabHandle(`@${normalized}`);
@@ -524,7 +422,7 @@ export function App() {
       selectToken(tokenMatch);
       return;
     }
-    if (activeView === "signal_lab") {
+    if (isSignalLabRoute) {
       setSignalLabSearch(query);
       setSelectedSignal(null);
       setSelectedTapeEventId(null);
@@ -554,7 +452,7 @@ export function App() {
   const handleMobileTaskChange = (task: MobileTask) => {
     setMobileTask(task);
     if (task === "radar" || task === "tape") {
-      setActiveView("live");
+      navigate("/");
     }
   };
 
@@ -594,7 +492,7 @@ export function App() {
     markReadMutation.mutate(notification.notification_id);
     setNotificationDrawerOpen(false);
     if (notification.entity_type === "pulse_candidate" || notification.source_table === "pulse_candidates") {
-      setActiveView("signal_lab");
+      navigate("/signal-lab");
       setMobileTask("lab");
       if (notification.symbol) {
         setSignalLabSearch(notification.symbol);
@@ -606,7 +504,7 @@ export function App() {
       return;
     }
     if (notification.entity_type === "social_event" || notification.source_table === "social_event_extractions") {
-      setActiveView("signal_lab");
+      navigate("/signal-lab");
       setMobileTask("lab");
       if (notification.symbol) {
         setSignalLabSearch(notification.symbol);
@@ -619,19 +517,19 @@ export function App() {
     }
     if (notification.symbol) {
       runSearch(`$${notification.symbol}`);
-      setActiveView("live");
+      navigate("/");
       setMobileTask("detail");
       return;
     }
     if (notification.author_handle) {
       runSearch(`@${notification.author_handle}`);
-      setActiveView("live");
+      navigate("/");
       setMobileTask("detail");
       return;
     }
     if (notification.event_id) {
       runSearch(notification.event_id);
-      setActiveView("live");
+      navigate("/");
       setMobileTask("detail");
     }
   };
@@ -653,425 +551,150 @@ export function App() {
     if (event.key === "4") setWindow("24h");
   };
 
-  const viewControls = (
-    <RailSection label="views">
-      <RailButton active={activeView === "live"} label="Live" value={liveItems.length} index="1" onClick={() => setActiveView("live")} />
-      <RailButton
-        active={activeView === "signal_lab"}
-        label="Signal Lab"
-        value={signalLabPulseTotal}
-        index="2"
-        onClick={() => {
-          setActiveView("signal_lab");
-          setMobileTask("lab");
-        }}
-      />
-    </RailSection>
-  );
-
-  const scopeControls = (
-    <RailSection label="scope">
-      <div className="scope-stack">
-        <button className={scope === "matched" ? "active" : ""} onClick={() => setScope("matched")} type="button">
-          watched
-        </button>
-        <button className={scope === "all" ? "active" : ""} onClick={() => setScope("all")} type="button">
-          all stream
-        </button>
-      </div>
-      <label className="handle-filter">
-        <UserRound aria-hidden />
-        <input value={handles} onChange={(event) => setHandles(event.target.value)} placeholder="toly, ansem" />
-      </label>
-    </RailSection>
-  );
-
-  const responsiveControls = (
-    <section className="responsive-control-panel" aria-label="cockpit controls">
-      <RadarControls
-        handles={handles}
-        handlePlaceholder="handles"
-        scope={scope}
-        windowKey={windowKey}
-        onHandlesChange={setHandles}
-        onScopeChange={setScope}
-        onWindowChange={setWindow}
-      />
-    </section>
-  );
-
-  return (
-    <main className="cockpit-shell" onKeyDown={handleHotkey} tabIndex={-1}>
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden />
-          <div className="brand-copy">
-            <h1>intel.cockpit</h1>
-            <p>/ws · localhost:8765</p>
-          </div>
-        </div>
-
-        <StatusPills
-          configReady={Boolean(token)}
-          lastMessageAt={socket.lastMessageAt}
-          socketStatus={socket.status}
-          status={statusQuery.data?.data}
-          statusError={statusQuery.isError}
-          statusLoading={Boolean(token) && statusQuery.isPending}
-        />
-
-        <form
-          className="searchbar"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submitEvidenceSearch();
-          }}
-        >
-          <Search aria-hidden />
-          <input
-            ref={searchInputRef}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="搜索 CA / $TOKEN / @handle / 文本"
-          />
-          <button type="submit">检索</button>
-        </form>
-
-        <div className="top-stats">
-          <span>
-            MATCHED <b>{compactNumber(statusQuery.data?.data.collector.matched_twitter_events)}</b>
-          </span>
-          <span>
-            flow·{windowKey} <b>{compactNumber(tokenItems.length)}</b>
-          </span>
-          <span>
-            trade <b>{compactNumber(signalLabOverviewData?.summary.trade_candidate ?? 0)}</b>
-          </span>
-          <span>
-            token <b>{compactNumber(signalLabOverviewData?.summary.token_watch ?? 0)}</b>
-          </span>
-          <span>
-            theme <b>{compactNumber(signalLabOverviewData?.summary.theme_watch ?? 0)}</b>
-          </span>
-        </div>
-
-        <NotificationBell
-          open={notificationDrawerOpen}
-          summary={notificationSummary}
-          onClick={() => setNotificationDrawerOpen((current) => !current)}
-        />
-
-        <button className="icon-button" type="button" onClick={() => void queryClient.invalidateQueries()} title="刷新" aria-label="刷新">
-          <RefreshCw aria-hidden />
-        </button>
-      </header>
-
-      <div className={`cockpit-grid mobile-task-${mobileTask} ${activeView === "signal_lab" ? "signal-lab-mode" : ""}`}>
-        <aside className="side-rail desktop-side-rail">
-          {viewControls}
-          {scopeControls}
-
-          <RailSection label="decisions">
-            <DecisionCount decision="driver" count={decisionCounts.driver} />
-            <DecisionCount decision="watch" count={decisionCounts.watch} />
-            <DecisionCount decision="investigate" count={decisionCounts.investigate} />
-            <DecisionCount decision="discard" count={decisionCounts.discard} />
-          </RailSection>
-
-          <RailSection label="watchlist" className="watchlist-section">
-            <div className="watchlist">
-              {watchlistRows.map((row) => (
-                <button
-                  className={activeView === "signal_lab" && activeSignalLabHandle === row.handle ? "active" : ""}
-                  type="button"
-                  key={row.handle}
-                  onClick={() => focusWatchHandle(row.handle)}
-                >
-                  <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
-                  <span className="watchlist-copy">
-                    <b>@{row.handle}</b>
-                    <small>{row.lastSeenAtMs ? `${formatRelativeTime(row.lastSeenAtMs)} ago` : "no recent"}</small>
-                  </span>
-                  <WatchlistNotificationDot count={row.unreadCount} />
-                </button>
-              ))}
-            </div>
-          </RailSection>
-
-          <div className="rail-footer">
-            <span>kbd · 1-4 radar · / search</span>
-          </div>
-        </aside>
-
-        {responsiveControls}
-
-        <section className="center-column">
-          {activeView === "signal_lab" ? (
-            <section className="mobile-task-surface signal-lab-task-surface" data-mobile-task-panel="lab">
-              <SignalLabWorkbench
-                data={signalPulseData}
-                accountEvents={signalLabAccountEvents}
-                handleFilter={signalLabHandle}
-                isAccountEventsLoading={signalLabAccountEventsQuery.isPending && !signalLabAccountEvents.length}
-                isLoading={signalPulseQuery.isPending}
-                isFetchingNextPage={signalPulseQuery.isFetchingNextPage}
-                hasNextPage={Boolean(signalPulseQuery.hasNextPage)}
-                overviewData={signalLabOverviewData}
-                searchFilter={signalLabSearch}
-                selectedAccountEventId={selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null}
-                selectedItemId={selectedPulseItemId}
-                statusFilter={signalLabStatus}
-                windowLabel={signalLabWindow}
-                onClearFilters={clearSignalLabFilters}
-                onHandleChange={setSignalLabHandle}
-                onLoadMore={() => void signalPulseQuery.fetchNextPage()}
-                onSearchChange={setSignalLabSearch}
-                onSelectAccountEvent={selectAccountEvent}
-                onSelect={selectPulseItem}
-                onStatusChange={setSignalLabStatus}
-              />
-            </section>
-          ) : (
-            <>
-              <section className="mobile-task-surface" data-mobile-task-panel="radar">
-                {pageTargetRef ? (
-                  selectedTokenPage ? (
-                    <TokenTargetPage
-                      token={selectedTokenPage}
-                      timeline={pageTimelineQuery.data?.data ?? null}
-                      posts={pagePostsData}
-                      windowKey={pageWindow}
-                      postRange={pagePostRange}
-                      postSortMode={pagePostSortMode}
-                      selectedStageId={pageSelectedStageId}
-                      isTimelineLoading={pageTimelineQuery.isFetching}
-                      isPostsLoading={pagePostsQuery.isLoading}
-                      isPostsFetchingNextPage={pagePostsQuery.isFetchingNextPage}
-                      onBack={() => setPageTargetRef(null)}
-                      onWindowChange={setPageWindow}
-                      onPostRangeChange={setPagePostRange}
-                      onPostSortModeChange={setPagePostSortMode}
-                      onStageSelect={setPageSelectedStageId}
-                      onLoadMorePosts={() => void pagePostsQuery.fetchNextPage()}
-                    />
-                  ) : (
-                    <div className="empty-state">{pageAssetFlowQuery.isPending ? "loading token audit" : "token audit target missing"}</div>
-                  )
-                ) : (
-                  <>
-                    <div className="radar-control-row">
-                      <RadarControls scope={scope} windowKey={windowKey} onScopeChange={setScope} onWindowChange={setWindow} />
-                    </div>
-
-                    <TokenRadarTable
-                      error={assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null}
-                      isLoading={assetFlowQuery.isPending}
-                      items={tokenItems}
-                      selectedKey={selectedTokenKey}
-                      sortMode={radarSortMode}
-                      onSelect={selectToken}
-                      onOpenPage={openTokenPage}
-                      onSortModeChange={setRadarSortMode}
-                    />
-                  </>
-                )}
-              </section>
-
-              <div className="bottom-deck">
-                <LiveSignalTape
-                  isLoading={recentQuery.isPending}
-                  items={liveSignalTapeItems}
-                  mobileTaskPanel="tape"
-                  selectedEventId={selectedTapeEventId}
-                  socketStatus={socket.status}
-                  onSelect={handleTapeSelect}
-                />
-
-                <SignalLabPulse
-                  data={signalLabPulseData}
-                  isLoading={signalLabPulseQuery.isPending && !signalLabPulseData}
-                  mobileTaskPanel="lab"
-                  selectedItemId={selectedPulseItemId}
-                  onOpenLab={() => {
-                    setActiveView("signal_lab");
-                    setMobileTask("lab");
-                  }}
-                  onSelect={selectPulseItem}
-                />
-              </div>
-            </>
-          )}
-        </section>
-
-        <section className="detail-task-panel" data-mobile-task-panel="detail">
-          {selectedPulseItem ? (
-            <SignalLabInspector item={selectedPulseItem} />
-          ) : selectedEvidenceDetails ? (
-            <EvidenceDetailDrawer {...selectedEvidenceDetails} />
-          ) : (
-            <TokenDetailDrawer
-              accountQuality={accountQualityQuery.data?.data}
-              activeTab={detailTab}
-              detailMode={detailMode}
-              detailWindow={detailWindow}
-              hideDuplicateClusters={hideDuplicateClusters}
-              isAccountQualityLoading={accountQualityQuery.isFetching}
-              isSignalLabLoading={signalPulseQuery.isFetching}
-              isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
-              isPostsLoading={tokenPostsQuery.isLoading}
-              isTimelineLoading={tokenTimelineQuery.isFetching}
-              postRange={postRange}
-              postSortMode={postSortMode}
-              posts={tokenPostsData}
-              selectedBucketStartMs={selectedBucketStartMs}
-              selectedEventId={selectedEventId}
-              timeline={tokenTimelineQuery.data?.data}
-              token={selectedToken}
-              watchedPostsOnly={watchedPostsOnly}
-              onHideDuplicateClustersChange={setHideDuplicateClusters}
-              onBackToTimeline={handleTimelineBack}
-              onDetailWindowChange={handleDetailWindowChange}
-              onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
-              onPostRangeChange={setPostRange}
-              onPostSortModeChange={setPostSortMode}
-              onSelectedEventChange={setSelectedEventId}
-              onTabChange={handleDetailTabChange}
-              onTimelineBucketSelect={handleTimelineBucketSelect}
-              onWatchedPostsOnlyChange={setWatchedPostsOnly}
-            />
-          )}
-        </section>
-      </div>
-      <MobileTaskNav
-        activeTask={mobileTask}
-        detailAvailable={Boolean(selectedSignal || selectedToken)}
-        onTaskChange={handleMobileTaskChange}
-      />
-      <NotificationDrawer
-        loading={notificationsQuery.isFetching && notifications.length === 0}
-        notifications={notifications}
-        open={notificationDrawerOpen}
-        summary={notificationSummary}
-        onClose={() => setNotificationDrawerOpen(false)}
-        onMarkAllRead={() => markAllReadMutation.mutate()}
-        onMarkRead={(notificationId) => markReadMutation.mutate(notificationId)}
-        onOpenNotification={openNotification}
-      />
-      <NotificationToastBridge
-        notifications={socket.notifications.map((item) => item.notification)}
-        onOpenNotification={openNotification}
-      />
-    </main>
-  );
-}
-
-function RailSection({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <section className={`rail-section ${className}`.trim()}>
-      <h2>{label}</h2>
-      {children}
-    </section>
-  );
-}
-
-function RailButton({ active, label, value, index, onClick }: { active?: boolean; label: string; value: number; index: string; onClick: () => void }) {
-  return (
-    <button className={`rail-button ${active ? "active" : ""}`} type="button" onClick={onClick}>
-      <span>{index}</span>
-      <b>{label}</b>
-      <em>{compactNumber(value)}</em>
-    </button>
-  );
-}
-
-function DecisionCount({ decision, count }: { decision: Decision; count: number }) {
-  return (
-    <span className={`decision-count ${decision}`}>
-      <span className={`decision-tag ${decision}`}>{decision}</span>
-      <b>{compactNumber(count)}</b>
-    </span>
-  );
-}
-
-function StatusPills({
-  socketStatus,
-  configReady,
-  status,
-  statusLoading,
-  statusError,
-  lastMessageAt
-}: {
-  socketStatus: string;
-  configReady: boolean;
-  status?: StatusData;
-  statusLoading: boolean;
-  statusError: boolean;
-  lastMessageAt: number | null;
-}) {
-  const readiness = readinessLabel({ configReady, status, statusLoading, statusError });
-  return (
-    <div className="status-pills">
-      <span className={configReady ? "pill good" : "pill warn"}>
-        <Zap aria-hidden />
-        {configReady ? "token ready" : "token"}
-      </span>
-      <span className={socketStatus === "connected" ? "pill good" : "pill warn"}>
-        <Wifi aria-hidden />
-        {socketStatus}
-      </span>
-      <span className={readiness.ok ? "pill good" : "pill warn"} title={readiness.title}>
-        <Zap aria-hidden />
-        {readiness.label}
-      </span>
-      <span className="pill muted">
-        <Clock3 aria-hidden />
-        {lastMessageAt ? `${formatRelativeTime(lastMessageAt)} ago` : "no msg"}
-      </span>
-    </div>
-  );
-}
-
-function readinessLabel({
-  configReady,
-  status,
-  statusLoading,
-  statusError
-}: {
-  configReady: boolean;
-  status?: StatusData;
-  statusLoading: boolean;
-  statusError: boolean;
-}): { label: string; ok: boolean; title?: string } {
-  if (!configReady) {
-    return { label: "status idle", ok: false };
-  }
-  if (statusLoading && !status) {
-    return { label: "checking", ok: false };
-  }
-  if (statusError) {
-    return { label: "status error", ok: false };
-  }
-  if (status?.ok) {
-    return { label: "ready", ok: true };
-  }
-  return {
-    label: "not ready",
-    ok: false,
-    title: status?.reasons?.join(", ") || undefined
+  const onOpenLab = () => {
+    navigate("/signal-lab");
+    setMobileTask("lab");
   };
-}
 
-function sortTokenItems(items: TokenFlowItem[], mode: RadarSortMode): TokenFlowItem[] {
-  const copy = [...items];
-  return copy.sort((a, b) => sortValue(b, mode) - sortValue(a, mode));
-}
+  const detailPanel = selectedPulseItem ? (
+    <SignalLabInspector item={selectedPulseItem} />
+  ) : selectedEvidenceDetails ? (
+    <EvidenceDetailDrawer {...selectedEvidenceDetails} />
+  ) : (
+    <TokenDetailDrawer
+      accountQuality={accountQualityQuery.data?.data}
+      activeTab={detailTab}
+      detailMode={detailMode}
+      detailWindow={detailWindow}
+      hideDuplicateClusters={hideDuplicateClusters}
+      isAccountQualityLoading={accountQualityQuery.isFetching}
+      isSignalLabLoading={signalLabPulseQuery.isFetching}
+      isPostsFetchingNextPage={tokenPostsQuery.isFetchingNextPage}
+      isPostsLoading={tokenPostsQuery.isLoading}
+      isTimelineLoading={tokenTimelineQuery.isFetching}
+      postRange={postRange}
+      postSortMode={postSortMode}
+      posts={tokenPostsData}
+      selectedBucketStartMs={selectedBucketStartMs}
+      selectedEventId={selectedEventId}
+      timeline={tokenTimelineQuery.data?.data}
+      token={selectedToken}
+      watchedPostsOnly={watchedPostsOnly}
+      onHideDuplicateClustersChange={setHideDuplicateClusters}
+      onBackToTimeline={handleTimelineBack}
+      onDetailWindowChange={handleDetailWindowChange}
+      onLoadMorePosts={() => void tokenPostsQuery.fetchNextPage()}
+      onPostRangeChange={setPostRange}
+      onPostSortModeChange={setPostSortMode}
+      onSelectedEventChange={setSelectedEventId}
+      onTabChange={handleDetailTabChange}
+      onTimelineBucketSelect={handleTimelineBucketSelect}
+      onWatchedPostsOnlyChange={setWatchedPostsOnly}
+    />
+  );
 
-function sortValue(item: TokenFlowItem, mode: RadarSortMode): number {
-  if (mode === "heat") return item.social_heat.score;
-  if (mode === "quality") return item.discussion_quality.score;
-  if (mode === "propagation") return item.propagation.score;
-  if (mode === "timing") return (item.timing.chase_risk ? -1000 : 0) + item.timing.score;
-  return item.opportunity.score;
+  const layoutElement = (
+    <CockpitLayout
+      searchInputRef={searchInputRef}
+      searchValue={search}
+      onSearchChange={setSearch}
+      onSubmitSearch={submitEvidenceSearch}
+      socketStatus={socket.status}
+      lastSocketMessageAt={socket.lastMessageAt}
+      status={statusQuery.data?.data ?? null}
+      statusLoading={Boolean(token) && statusQuery.isPending}
+      statusError={statusQuery.isError}
+      configReady={Boolean(token)}
+      liveItemsCount={liveItems.length}
+      tokenItemsCount={tokenItems.length}
+      windowKey={windowKey}
+      signalLabSummaryTrade={signalLabOverviewData?.summary.trade_candidate ?? 0}
+      signalLabSummaryToken={signalLabOverviewData?.summary.token_watch ?? 0}
+      signalLabSummaryTheme={signalLabOverviewData?.summary.theme_watch ?? 0}
+      signalLabPulseTotal={signalLabPulseTotal}
+      notifications={notifications}
+      notificationSummary={notificationSummary}
+      notificationDrawerOpen={notificationDrawerOpen}
+      onToggleNotificationDrawer={() => setNotificationDrawerOpen((current) => !current)}
+      onCloseNotificationDrawer={() => setNotificationDrawerOpen(false)}
+      notificationsLoading={notificationsQuery.isFetching && notifications.length === 0}
+      onMarkAllRead={() => markAllReadMutation.mutate()}
+      onMarkRead={(notificationId) => markReadMutation.mutate(notificationId)}
+      onOpenNotification={openNotification}
+      socketNotifications={socket.notifications}
+      onRefresh={() => void queryClient.invalidateQueries()}
+      scope={scope}
+      onScopeChange={setScope}
+      handles={handles}
+      onHandlesChange={setHandles}
+      onWindowChange={setWindow}
+      decisionCounts={decisionCounts}
+      watchlistRows={watchlistRows}
+      activeWatchHandle={activeWatchHandle}
+      onFocusWatchHandle={focusWatchHandle}
+      mobileTask={mobileTask}
+      detailAvailable={Boolean(selectedSignal || selectedToken)}
+      onMobileTaskChange={handleMobileTaskChange}
+      detailPanel={detailPanel}
+      onHotkey={handleHotkey}
+    />
+  );
+
+  const livePageElement = (
+    <LivePage
+      liveSignalTapeItems={liveSignalTapeItems}
+      isRecentLoading={recentQuery.isPending}
+      socketStatus={socket.status}
+      selectedTapeEventId={selectedTapeEventId}
+      onTapeSelect={handleTapeSelect}
+      signalLabPulseData={signalLabPulseData ?? null}
+      isSignalLabPulseLoading={signalLabPulseQuery.isPending && !signalLabPulseData}
+      selectedPulseItemId={selectedPulseItemId}
+      onOpenLab={onOpenLab}
+      onSelectPulse={selectPulseItem}
+    />
+  );
+
+  const liveRadarElement = (
+    <LiveRadar
+      tokenItems={tokenItems}
+      isAssetFlowLoading={assetFlowQuery.isPending}
+      assetFlowError={assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null}
+      selectedTokenKey={selectedTokenKey}
+      radarSortMode={radarSortMode}
+      onSelectToken={selectToken}
+      onOpenToken={openTokenPage}
+      onSortModeChange={setRadarSortMode}
+      scope={scope}
+      windowKey={windowKey}
+      onScopeChange={setScope}
+      onWindowChange={setWindow}
+    />
+  );
+
+  return (
+    <Routes>
+      <Route element={layoutElement}>
+        <Route element={livePageElement}>
+          <Route index element={liveRadarElement} />
+        </Route>
+        <Route
+          path="signal-lab"
+          element={
+            <SignalLabPage
+              selectedPulseItemId={selectedPulseItemId}
+              selectedAccountEventId={selectedAccountEventId}
+              overviewData={signalLabOverviewData}
+              onSelectPulse={selectPulseItem}
+              onSelectAccountEvent={selectAccountEvent}
+              onClearSelection={clearSignalLabSelection}
+            />
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  );
 }
 
 function latestTokenForSelection(signal: Extract<SelectedSignal, { kind: "token" }>, items: TokenFlowItem[]) {
@@ -1082,341 +705,6 @@ function latestPulseForSelection(selected: SignalPulseItem, items: SignalPulseIt
   return items.find((item) => item.candidate_id === selected.candidate_id) ?? selected;
 }
 
-function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {
-  return items.reduce<Record<Decision, number>>(
-    (counts, item) => {
-      counts[item.opportunity.decision] += 1;
-      return counts;
-    },
-    { driver: 0, watch: 0, investigate: 0, discard: 0 }
-  );
-}
-
-function assetFlowRows(data?: AssetFlowData | null): AssetFlowRow[] {
-  if (!data) {
-    return [];
-  }
-  return [...data.targets, ...data.attention];
-}
-
-function tokenRadarItems(
-  data: AssetFlowData | null | undefined,
-  window: TokenFlowItem["flow"]["window"],
-  scope: TokenFlowItem["posts_query"]["scope"],
-): TokenFlowItem[] {
-  if (!data) {
-    return [];
-  }
-  return assetFlowRows(data).map((row) => tokenRadarRowToTokenItem(row, window, scope));
-}
-
-export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
-  const attention = row.attention as unknown as Record<string, unknown>;
-  const mentions = requiredNumber(row.attention.mentions_window, "attention.mentions_window");
-  const authors = requiredNumber(row.attention.unique_authors, "attention.unique_authors");
-  const watched = requiredNumber(row.attention.watched_mentions, "attention.watched_mentions");
-  const latestSeenMs = requiredNumber(row.attention.latest_seen_ms, "attention.latest_seen_ms");
-  const previousMentions = requiredNumber(row.attention.previous_mentions, "attention.previous_mentions");
-  const mentionDelta = requiredNumber(row.attention.mention_delta, "attention.mention_delta");
-  const mentionDeltaPct = requiredNullableNumber(attention, "mention_delta_pct", "attention.mention_delta_pct");
-  const zScore = requiredNullableNumber(attention, "z_score", "attention.z_score");
-  const newBurstScore = requiredNullableNumber(attention, "new_burst_score", "attention.new_burst_score");
-  const streamShare = requiredNumber(row.attention.stream_share, "attention.stream_share");
-  const baselineStatus = requiredString(row.attention.baseline_status, "attention.baseline_status");
-  const baselineSampleCount = requiredNumber(row.attention.baseline_sample_count, "attention.baseline_sample_count");
-  const mentions5m = requiredNumber(row.attention.mentions_5m, "attention.mentions_5m");
-  const mentions1h = requiredNumber(row.attention.mentions_1h, "attention.mentions_1h");
-  const mentions4h = requiredNumber(row.attention.mentions_4h, "attention.mentions_4h");
-  const mentions24h = requiredNumber(row.attention.mentions_24h, "attention.mentions_24h");
-  const sourceEventIds = requiredArray(row.source_event_ids, "source_event_ids");
-  const resolved = isResolvedResolutionStatus(row.resolution.status);
-  const price = requiredObject(row.price, "price");
-  const target = row.target ?? {};
-  const isChainAsset = target.target_type === "Asset";
-  const isCexToken = target.target_type === "CexToken";
-  const displaySymbol = row.intent?.display_symbol ?? target.symbol ?? null;
-  const targetId = target.target_id ?? row.resolution.target_id ?? null;
-  const identityKey = targetId ?? row.intent?.intent_id ?? target.address ?? target.native_market_id ?? displaySymbol ?? "unknown-token-intent";
-  const resolutionReasons = row.resolution.reason_codes ?? row.resolution.reasons ?? [];
-  const candidateCount = row.resolution.candidate_ids?.length ?? row.resolution.candidates?.length ?? 0;
-  const discoveryStatus = discoveryStatusSummary(row.resolution.discovery);
-  const marketObservationStatus = requiredString(price.market_observation_status, "price.market_observation_status");
-  const marketStatus = requiredString(price.market_status, "price.market_status");
-  const marketHasUsableSnapshot = marketStatus === "fresh";
-  const priceChangeStatus = requiredString(price.price_change_status, "price.price_change_status");
-  const heat = normalizedScoreBlock(row.score?.heat, "heat");
-  const quality = normalizedScoreBlock(row.score?.quality, "quality");
-  const propagation = normalizedScoreBlock(row.score?.propagation, "propagation");
-  const tradeability = normalizedScoreBlock(row.score?.tradeability, "tradeability");
-  const timing = normalizedScoreBlock(row.score?.timing, "timing");
-  const opportunity = normalizedScoreBlock(row.score?.opportunity, "opportunity");
-  const decision = normalizeDecision(row.decision);
-  const heatStatus = requiredString(heat.status, "score.heat.status");
-  const timingStatus = normalizeTimingStatus(timing.status ?? timing.reasons[0], resolved);
-  const chaseRisk = Boolean(timing.chase_risk ?? timing.hard_risks?.includes("chase_risk") ?? timing.risks.includes("chase_risk"));
-  const marketPrice = price.price_usd ?? price.price_quote ?? null;
-  const chain = isChainAsset ? target.chain_id ?? null : null;
-  const address = isChainAsset ? target.address ?? null : null;
-  return {
-    identity: {
-      identity_key: identityKey,
-      identity_status: row.resolution.status,
-      target_type: target.target_type ?? null,
-      target_id: targetId,
-      asset_id: isChainAsset ? targetId ?? undefined : undefined,
-      asset_type: target.target_type ?? null,
-      venue_type: isCexToken ? "cex" : isChainAsset ? "dex" : null,
-      exchange: isCexToken ? target.provider ?? null : null,
-      inst_id: isCexToken ? target.native_market_id ?? null : null,
-      inst_type: isCexToken ? target.feed_type ?? null : null,
-      chain,
-      address,
-      symbol: displaySymbol,
-      resolution_reasons: resolutionReasons,
-      lookup_keys: row.resolution.lookup_keys ?? [],
-      candidate_count: candidateCount,
-      discovery_status: discoveryStatus
-    },
-    market: {
-      market_status: marketStatus,
-      price: marketPrice,
-      market_cap: price.market_cap_usd ?? null,
-      liquidity: price.liquidity_usd ?? null,
-      pool_status: marketHasUsableSnapshot ? "ready" : "missing",
-      holder_count: price.holders ?? null,
-      volume_24h: price.volume_24h_usd ?? null,
-      snapshot_age_ms: price.snapshot_age_ms ?? null,
-      snapshot_received_at_ms: price.snapshot_observed_at_ms ?? null,
-      social_signal_start_ms: price.social_signal_start_ms ?? latestSeenMs,
-      reference_ms: latestSeenMs,
-      price_at_social_start: price.price_at_social_start ?? null,
-      price_at_reference: price.price_at_reference ?? marketPrice,
-      price_change_since_social_pct: price.price_change_since_social_pct ?? null,
-      price_before_social_start: price.price_before_social_start ?? null,
-      price_change_before_social_pct: price.price_change_before_social_pct ?? null,
-      price_at_first_snapshot: price.price_at_first_snapshot ?? null,
-      first_snapshot_observed_at_ms: price.first_snapshot_observed_at_ms ?? null,
-      price_change_since_first_snapshot_pct: price.price_change_since_first_snapshot_pct ?? null,
-      market_observation_status: marketObservationStatus,
-      price_change_status: priceChangeStatus
-    },
-    flow: {
-      window,
-      window_start_ms: null,
-      window_end_ms: latestSeenMs,
-      mentions,
-      direct_mentions: resolved ? mentions : 0,
-      symbol_mentions: mentions,
-      weighted_mentions: mentions,
-      avg_attribution_confidence: row.resolution.confidence ?? undefined,
-      watched_mentions: watched,
-      previous_mentions: previousMentions,
-      mention_delta: mentionDelta,
-      mention_delta_pct: mentionDeltaPct,
-      z_score: zScore,
-      new_burst_score: newBurstScore,
-      stream_dominance: 0,
-      baseline_status: baselineStatus,
-      baseline_sample_count: baselineSampleCount
-    },
-    social_heat: {
-      ...heat,
-      window,
-      mentions,
-      mentions_5m: mentions5m,
-      mentions_1h: mentions1h,
-      mentions_4h: mentions4h,
-      mentions_24h: mentions24h,
-      weighted_mentions: mentions,
-      previous_mentions: previousMentions,
-      mention_delta: mentionDelta,
-      mention_delta_pct: mentionDeltaPct,
-      z_score: zScore,
-      new_burst_score: newBurstScore,
-      stream_share: streamShare,
-      watched_share: mentions ? watched / mentions : 0,
-      status: heatStatus
-    },
-    discussion_quality: {
-      ...quality,
-      evidence_specificity: 0,
-      avg_post_quality: quality.score,
-      avg_attribution_confidence: row.resolution.confidence ?? 0,
-      duplicate_text_share: 0,
-      informative_post_count: Math.min(mentions, authors || mentions),
-      watched_source_count: watched
-    },
-    propagation: {
-      ...propagation,
-      independent_authors: authors,
-      effective_authors: authors,
-      new_authors: authors,
-      top_author_share: authors ? 1 / authors : 0,
-      duplicate_text_share: 0,
-      author_entropy: authors > 1 ? 1 : 0,
-      reproduction_rate: null,
-      phase: authors >= 3 ? "expansion" : authors >= 2 ? "ignition" : "seed",
-      top_authors: []
-    },
-    tradeability: {
-      ...tradeability,
-      identity_tradeable: Boolean(tradeability.identity_tradeable ?? resolved),
-      market_fresh: Boolean(tradeability.market_fresh ?? marketHasUsableSnapshot),
-      market_cap_present: Boolean(tradeability.market_cap_present ?? price.market_cap_usd),
-      liquidity_present: Boolean(tradeability.liquidity_present ?? price.liquidity_usd),
-      pool_present: Boolean(tradeability.pool_present ?? marketHasUsableSnapshot),
-      hard_risks: tradeability.hard_risks ?? tradeability.risks
-    },
-    timing: {
-      score: timing.score,
-      score_version: timing.score_version,
-      status: timingStatus,
-      social_signal_start_ms: latestSeenMs,
-      price_change_since_social_pct: price.price_change_since_social_pct ?? null,
-      price_change_before_social_pct: price.price_change_before_social_pct ?? null,
-      market_observation_status: marketObservationStatus,
-      chase_risk: chaseRisk,
-      reasons: timing.reasons,
-      risks: timing.risks,
-      contributions: timing.contributions,
-      risk_caps: timing.risk_caps
-    },
-    opportunity: {
-      ...opportunity,
-      decision,
-      decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
-      hard_risks: opportunity.hard_risks ?? opportunity.risks,
-      components: {
-        heat: requiredNumber(row.score.opportunity.components.heat, "score.opportunity.components.heat"),
-        quality: requiredNumber(row.score.opportunity.components.quality, "score.opportunity.components.quality"),
-        propagation: requiredNumber(row.score.opportunity.components.propagation, "score.opportunity.components.propagation"),
-        tradeability: requiredNumber(row.score.opportunity.components.tradeability, "score.opportunity.components.tradeability"),
-        timing: requiredNumber(row.score.opportunity.components.timing, "score.opportunity.components.timing")
-      }
-    },
-    watch: {
-      status: watched ? "direct_watch" : "public_only",
-      direct_mentions: watched,
-      direct_authors: watched ? 1 : 0,
-      seed_link_count: 0,
-      top_seed: null,
-      reasons: watched ? ["watched_source_present"] : [],
-      risks: watched ? [] : ["no_watched_confirmation"]
-    },
-    evidence_total_count: sourceEventIds.length,
-    posts_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope, range: "current_window" },
-    timeline_query: { target_type: target.target_type ?? null, target_id: targetId, window, scope }
-  };
-}
-
-function isResolvedResolutionStatus(status?: string | null): boolean {
-  return status === "EXACT" || status === "UNIQUE_BY_CONTEXT";
-}
-
-type RadarScoreInput = {
-  score?: number | null;
-  score_version?: string | null;
-  reasons?: string[];
-  risks?: string[];
-  hard_risks?: string[];
-  contributions?: ScoreContribution[];
-  risk_caps?: RiskCap[];
-  status?: string | null;
-  chase_risk?: boolean | null;
-};
-
-function normalizedScoreBlock(block: RadarScoreInput | undefined, component: string): any {
-  if (!block || typeof block !== "object") {
-    throw new Error(`token_radar_contract:score.${component}`);
-  }
-  const extra = { ...block };
-  return {
-    ...extra,
-    score: Math.round(requiredNumber(block.score, `score.${component}.score`)),
-    score_version: requiredString(block.score_version, `score.${component}.score_version`),
-    reasons: requiredStringArray(block.reasons, `score.${component}.reasons`),
-    risks: requiredStringArray(block.risks, `score.${component}.risks`),
-    hard_risks: Array.isArray(block.hard_risks) ? block.hard_risks : [],
-    contributions: requiredNonEmptyArray(block.contributions, `score.${component}.contributions`),
-    risk_caps: requiredArray(block.risk_caps, `score.${component}.risk_caps`),
-    status: block.status ?? undefined,
-    chase_risk: block.chase_risk ?? undefined
-  };
-}
-
-function requiredNumber(value: unknown, field: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`token_radar_contract:${field}`);
-  }
-  return value;
-}
-
-function requiredNullableNumber(record: Record<string, unknown>, key: string, field: string): number | null {
-  if (!(key in record)) {
-    throw new Error(`token_radar_contract:${field}`);
-  }
-  const value = record[key];
-  if (value === null) {
-    return null;
-  }
-  return requiredNumber(value, field);
-}
-
-function requiredString(value: unknown, field: string): string {
-  if (typeof value !== "string" || !value) {
-    throw new Error(`token_radar_contract:${field}`);
-  }
-  return value;
-}
-
-function requiredObject<T extends object>(value: T | null | undefined, field: string): T {
-  if (!value || typeof value !== "object") {
-    throw new Error(`token_radar_contract:${field}`);
-  }
-  return value;
-}
-
-function requiredArray<T>(value: T[] | undefined, field: string): T[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`token_radar_contract:${field}`);
-  }
-  return value;
-}
-
-function requiredNonEmptyArray<T>(value: T[] | undefined, field: string): T[] {
-  const items = requiredArray(value, field);
-  if (!items.length) {
-    throw new Error(`token_radar_contract:${field}`);
-  }
-  return items;
-}
-
-function requiredStringArray(value: string[] | undefined, field: string): string[] {
-  return requiredArray(value, field).map((item) => requiredString(item, field));
-}
-
-function normalizeDecision(value: string | null | undefined): Decision {
-  return value === "driver" || value === "watch" || value === "investigate" || value === "discard" ? value : "investigate";
-}
-
-function normalizeTimingStatus(value: string | null | undefined, resolved: boolean): TimingBlock["status"] {
-  if (value === "neutral" || value === "market_pending" || value === "market_unavailable" || value === "chase_risk") {
-    return value;
-  }
-  return resolved ? "neutral" : "market_unavailable";
-}
-
-function discoveryStatusSummary(discovery: AssetFlowRow["resolution"]["discovery"]): string | null {
-  if (!discovery?.length) {
-    return null;
-  }
-  const statuses = Array.from(new Set(discovery.map((item) => item.status).filter(Boolean)));
-  if (statuses.length === 1) {
-    const candidateTotal = discovery.reduce((sum, item) => sum + Number(item.candidate_count ?? 0), 0);
-    return candidateTotal > 0 ? `${statuses[0]}:${candidateTotal}` : String(statuses[0]);
-  }
-  return statuses.join("+");
-}
 
 function signalPulseTotal(summary?: SignalPulseData["summary"]): number {
   if (!summary) {
@@ -1432,30 +720,6 @@ function signalPulseTotal(summary?: SignalPulseData["summary"]): number {
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
-}
-
-function mergeSignalPulsePages(pages?: SignalPulseData[]): SignalPulseData | undefined {
-  if (!pages?.length) {
-    return undefined;
-  }
-  const first = pages[0];
-  const last = pages[pages.length - 1];
-  const byCandidate = new Map<string, SignalPulseItem>();
-  for (const page of pages) {
-    for (const item of page.items) {
-      byCandidate.set(item.candidate_id, item);
-    }
-  }
-  const items = [...byCandidate.values()];
-  return {
-    ...first,
-    health: last.health,
-    summary: last.summary,
-    returned_count: items.length,
-    has_more: last.has_more,
-    next_cursor: last.next_cursor,
-    items
-  };
 }
 
 function buildLiveSignalTapeItems({ liveItems, tokenItems }: { liveItems: LivePayload[]; tokenItems: TokenFlowItem[] }): LiveSignalTapeItem[] {
@@ -1619,20 +883,4 @@ function resolveEvidenceDetails(
     };
   }
   return null;
-}
-
-function preferredPulseItem(items: SignalPulseItem[]): SignalPulseItem {
-  return [...items].sort(
-    (a, b) =>
-      pulseStatusRank(b) - pulseStatusRank(a) ||
-      Number(b.candidate_score ?? 0) - Number(a.candidate_score ?? 0) ||
-      b.updated_at_ms - a.updated_at_ms
-  )[0];
-}
-
-function pulseStatusRank(item: SignalPulseItem): number {
-  if (item.pulse_status === "trade_candidate") return 4;
-  if (item.pulse_status === "token_watch") return 3;
-  if (item.pulse_status === "theme_watch") return 2;
-  return 1;
 }
