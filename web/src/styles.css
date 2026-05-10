@@ -2602,6 +2602,35 @@ svg {
   display: none;
 }
 
+.signal-lab-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  width: 100%;
+}
+
+.signal-lab-layout.signal-lab-layout-with-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+}
+
+.signal-lab-list {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.signal-lab-inspector-pane {
+  display: none;
+  min-width: 0;
+  border-left: 1px solid var(--line);
+  background: rgba(7, 9, 9, 0.88);
+  overflow: auto;
+}
+
+.signal-lab-layout-with-detail .signal-lab-inspector-pane {
+  display: block;
+}
+
 .signal-lab-workbench {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);

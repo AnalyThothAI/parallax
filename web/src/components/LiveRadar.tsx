@@ -1,0 +1,52 @@
+import type { RadarSortMode, ScopeKey, TokenFlowItem, WindowKey } from "../api/types";
+import { RadarControls } from "./RadarControls";
+import { TokenRadarTable } from "./TokenRadarTable";
+
+type LiveRadarProps = {
+  tokenItems: TokenFlowItem[];
+  isAssetFlowLoading: boolean;
+  assetFlowError: Error | null;
+  selectedTokenKey: string | null;
+  radarSortMode: RadarSortMode;
+  onSelectToken: (item: TokenFlowItem) => void;
+  onOpenToken: (item: TokenFlowItem) => void;
+  onSortModeChange: (mode: RadarSortMode) => void;
+  scope: ScopeKey;
+  windowKey: WindowKey;
+  onScopeChange: (scope: ScopeKey) => void;
+  onWindowChange: (window: WindowKey) => void;
+};
+
+export function LiveRadar({
+  tokenItems,
+  isAssetFlowLoading,
+  assetFlowError,
+  selectedTokenKey,
+  radarSortMode,
+  onSelectToken,
+  onOpenToken,
+  onSortModeChange,
+  scope,
+  windowKey,
+  onScopeChange,
+  onWindowChange
+}: LiveRadarProps) {
+  return (
+    <section className="mobile-task-surface" data-mobile-task-panel="radar">
+      <div className="radar-control-row">
+        <RadarControls scope={scope} windowKey={windowKey} onScopeChange={onScopeChange} onWindowChange={onWindowChange} />
+      </div>
+
+      <TokenRadarTable
+        error={assetFlowError}
+        isLoading={isAssetFlowLoading}
+        items={tokenItems}
+        selectedKey={selectedTokenKey}
+        sortMode={radarSortMode}
+        onSelect={onSelectToken}
+        onOpenPage={onOpenToken}
+        onSortModeChange={onSortModeChange}
+      />
+    </section>
+  );
+}

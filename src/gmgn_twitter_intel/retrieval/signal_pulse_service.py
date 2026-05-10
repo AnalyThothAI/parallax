@@ -61,11 +61,19 @@ class SignalPulseService:
             },
             "health": result_health,
             "summary": _summary(aggregate),
-            "items": [_item(row) for row in page_rows],
+            "items": [pulse_item_from_row(row) for row in page_rows],
             "returned_count": len(page_rows),
             "has_more": page.get("next_cursor") is not None,
             "next_cursor": page.get("next_cursor"),
         }
+
+    def candidate(self, *, candidate_id: str) -> dict[str, Any] | None:
+        row = self.pulse_repository.candidate_by_id(candidate_id)
+        if row is None:
+            return None
+        if not _is_displayable(row):
+            return None
+        return pulse_item_from_row(row)
 
     def _settlement_coverage(self) -> float | None:
         if self.harness is None:
@@ -97,7 +105,7 @@ def _is_displayable(row: dict[str, Any]) -> bool:
     return row.get("pulse_status") in DISPLAY_STATUSES and row.get("verdict") != "blocked_low_information"
 
 
-def _item(row: dict[str, Any]) -> dict[str, Any]:
+def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
     thesis = _dict(row.get("thesis_json"))
     return {
         "candidate_id": row.get("candidate_id"),

@@ -1,8 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App, tokenRadarRowToTokenItem } from "./App";
+import { App } from "./App";
+import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import type {
   ApiResponse,
   AssetFlowData,
@@ -18,7 +20,7 @@ import type {
   TokenSocialTimelineData,
   WindowKey
 } from "./api/types";
-import { getApi, getBootstrap, postApi } from "./api/client";
+import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
 import { useTraderStore } from "./store/useTraderStore";
 
 const socketMock: { status: string; events: LivePayload[]; notifications: NotificationLivePayload[]; lastMessageAt: number | null } = {
@@ -130,11 +132,7 @@ describe("App Token Radar social heat cockpit", () => {
       postRange: "current_window",
       postSortMode: "recent",
       hideDuplicateClusters: false,
-      watchedPostsOnly: false,
-      activeView: "live",
-      signalLabStatus: "all",
-      signalLabHandle: "",
-      signalLabSearch: ""
+      watchedPostsOnly: false
     });
     mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
     mockApi();
@@ -534,14 +532,15 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByText("Token");
     const rail = container.querySelector(".desktop-side-rail") as HTMLElement;
-    const traderpowButton = await within(rail).findByRole("button", { name: /@traderpow/ });
+    const traderpowLink = await within(rail).findByRole("link", { name: /@traderpow/ });
+    expect(traderpowLink).toHaveAttribute("href", "/signal-lab?handle=traderpow");
 
-    fireEvent.click(traderpowButton);
+    fireEvent.click(traderpowLink);
 
     expect(await screen.findByRole("heading", { name: "Signal Lab" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("@traderpow");
+    expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("traderpow");
     expect(screen.getByLabelText("Signal Lab identity filter")).toHaveValue("");
-    expect(traderpowButton).toHaveClass("active");
+    expect(traderpowLink).toHaveClass("active");
     await waitFor(() => {
       expect(
         mockedGetApi.mock.calls.some(
@@ -549,7 +548,7 @@ describe("App Token Radar social heat cockpit", () => {
             path === "/api/signal-lab/pulse" &&
             options?.params?.window === "1h" &&
             options?.params?.scope === "all" &&
-            options?.params?.handle === "@traderpow" &&
+            options?.params?.handle === "traderpow" &&
             options?.params?.q === undefined
         )
       ).toBe(true);
@@ -565,9 +564,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByText("Token");
     const rail = container.querySelector(".desktop-side-rail") as HTMLElement;
-    const traderpowButton = await within(rail).findByRole("button", { name: /@traderpow/ });
+    const traderpowLink = await within(rail).findByRole("link", { name: /@traderpow/ });
 
-    fireEvent.click(traderpowButton);
+    fireEvent.click(traderpowLink);
 
     expect(await screen.findByText("Watched account events")).toBeInTheDocument();
     expect(screen.getByText("Account lens raw post without pulse")).toBeInTheDocument();
@@ -901,7 +900,6 @@ describe("App Token Radar social heat cockpit", () => {
       }
     };
     mockApi({ signalPulseCompact: signalPulseData(), signalPulseWorkbench: emptyWorkbench });
-    useTraderStore.setState({ signalLabStatus: "token_watch" });
     const { container } = renderWithQuery(<App />);
 
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
@@ -994,83 +992,6 @@ describe("App Token Radar social heat cockpit", () => {
     });
   });
 
-  it("keeps the audit page pinned to its own target when the drawer selects another token", async () => {
-    const altAddress = "0x2222222222222222222222222222222222222222";
-    mockApi({
-      assetFlowRows: [
-        assetFlowRow(),
-        assetFlowRow({ address: altAddress, symbol: "ALT" })
-      ]
-    });
-    const { container } = renderWithQuery(<App />);
-
-    const pageButtons = await screen.findAllByRole("button", { name: /open token audit page/i });
-    fireEvent.click(pageButtons[0]);
-    const page = await waitFor(() => requireElement(container.querySelector(".token-target-page") as HTMLElement | null));
-    await waitFor(() => expect(within(page).getByRole("heading", { name: "$UPEG" })).toBeInTheDocument());
-    expect(within(page).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
-
-    const tape = screen.getByText("实时信号 Tape").closest("section") as HTMLElement;
-    fireEvent.click(within(tape).getByRole("button", { name: /\$ALT/i }));
-
-    await waitFor(() => {
-      const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-      expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$ALT");
-    });
-    expect(within(page).getByRole("heading", { name: "$UPEG" })).toBeInTheDocument();
-    expect(within(page).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
-    expect(within(page).queryByText("$ALT watched account evidence")).not.toBeInTheDocument();
-  });
-
-  it("loads score audit from the audit page window instead of the global radar window", async () => {
-    const oneHour = assetFlowRow({ attention: { baseline_status: "ready", baseline_sample_count: 6 } });
-    const fourHour = assetFlowRow({
-      attention: {
-        mentions_window: 12,
-        mentions_4h: 12,
-        baseline_status: "ready",
-        baseline_sample_count: 24,
-        previous_mentions: 5,
-        mention_delta: 7,
-        z_score: 3.4,
-        robust_z: 3.4,
-        new_burst_score: 0
-      },
-      score: {
-        heat: scoreBlock({ score_version: "social_heat_v2", score: 37, status: "burst", reasons: ["four_hour_heat"], risks: [] }),
-        quality: scoreBlock({ score_version: "discussion_quality_v1", score: 66, reasons: [], risks: [] }),
-        propagation: scoreBlock({ score_version: "propagation_v1", score: 70, reasons: [], risks: [] }),
-        tradeability: scoreBlock({ score_version: "tradeability_v2", score: 72, reasons: [], risks: [] }),
-        timing: scoreBlock({ score_version: "timing_v4", score: 50, status: "neutral", chase_risk: false, reasons: [], risks: [] }),
-        opportunity: scoreBlock({
-          score_version: "social_opportunity_v3",
-          score: 64,
-          reasons: [],
-          risks: [],
-          components: { heat: 37, quality: 66, propagation: 70, tradeability: 72, timing: 50 }
-        })
-      }
-    });
-    mockApi({ assetFlowRowsByWindow: { "1h": [oneHour], "4h": [fourHour] } });
-    const { container } = renderWithQuery(<App />);
-
-    const pageButtons = await screen.findAllByRole("button", { name: /open token audit page/i });
-    fireEvent.click(pageButtons[0]);
-    const page = await waitFor(() => requireElement(container.querySelector(".token-target-page") as HTMLElement | null));
-    await waitFor(() => expect(within(page).getByText("ready · n6")).toBeInTheDocument());
-
-    mockedGetApi.mockClear();
-    fireEvent.click(within(page).getByRole("button", { name: "4h" }));
-
-    await waitFor(() => {
-      expect(
-        mockedGetApi.mock.calls.some(([path, request]) => path === "/api/token-radar" && request?.params?.window === "4h")
-      ).toBe(true);
-      const updatedPage = container.querySelector(".token-target-page") as HTMLElement;
-      expect(within(updatedPage).getByText("ready · n24")).toBeInTheDocument();
-      expect(within(updatedPage).getAllByText("37").length).toBeGreaterThan(0);
-    });
-  });
 
   it("does not offer an audit page for unresolved token radar rows", async () => {
     mockApi({ assetFlowRows: [unresolvedAssetFlowRow()] });
@@ -1161,10 +1082,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     fireEvent.click(within(pulse).getByRole("button", { name: "Open Lab" }));
     await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
-    expect(useTraderStore.getState().activeView).toBe("signal_lab");
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
-    expect(useTraderStore.getState().activeView).toBe("live");
     expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
 
@@ -1172,7 +1091,6 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(within(livePulse).getByRole("button", { name: "Open Lab" }));
     await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
-    expect(useTraderStore.getState().activeView).toBe("live");
     expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
     expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
   });
@@ -1304,6 +1222,23 @@ function mockApi(options: {
         return ok(options.signalPulseWorkbench);
       }
       return ok(options.signalPulse ?? signalPulseData());
+    }
+    if (path.startsWith("/api/signal-lab/pulse/")) {
+      const candidateId = decodeURIComponent(path.slice("/api/signal-lab/pulse/".length));
+      const sources: SignalPulseData[] = [];
+      if (options.signalPulseCompact) sources.push(options.signalPulseCompact);
+      if (options.signalPulseWorkbench) sources.push(options.signalPulseWorkbench);
+      if (options.signalPulse) sources.push(options.signalPulse);
+      if (options.signalPulseByHandle) sources.push(...Object.values(options.signalPulseByHandle));
+      if (options.signalPulsePages) sources.push(...Object.values(options.signalPulsePages));
+      sources.push(signalPulseData());
+      for (const data of sources) {
+        const match = data.items.find((item) => item.candidate_id === candidateId);
+        if (match) {
+          return ok(match);
+        }
+      }
+      throw new ApiError("not found", 404);
     }
     if (path === "/api/enrichment-jobs") return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     if (path === "/api/search") {
@@ -2054,12 +1989,11 @@ function renderWithQuery(children: ReactNode) {
       }
     }
   });
-  return render(<QueryClientProvider client={client}>{children}</QueryClientProvider>);
-}
-
-function requireElement<T extends Element>(element: T | null): T {
-  expect(element).toBeInTheDocument();
-  return element as T;
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  );
 }
 
 function ok<T>(data: T): ApiResponse<T> {

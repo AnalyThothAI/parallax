@@ -464,6 +464,29 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
+    @router.get("/signal-lab/pulse/{candidate_id}")
+    async def signal_lab_pulse_by_id(
+        request: Request,
+        candidate_id: str,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        normalized = (candidate_id or "").strip()
+        if not normalized:
+            return JSONResponse(
+                {"ok": False, "error": "invalid_candidate_id", "field": "candidate_id"},
+                status_code=400,
+            )
+        with runtime.repositories() as repos:
+            data = SignalPulseService(pulse=repos.pulse, harness=repos.harness).candidate(
+                candidate_id=normalized,
+            )
+        if data is None:
+            return JSONResponse(
+                {"ok": False, "error": "not_found", "field": "candidate_id"},
+                status_code=404,
+            )
+        return _json({"ok": True, "data": data})
+
     @router.get("/harness-weights")
     async def harness_weights(
         request: Request,

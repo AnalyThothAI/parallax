@@ -28,6 +28,7 @@ class FakePulseRepository:
         }
         self.calls: list[dict[str, Any]] = []
         self.summary_calls: list[dict[str, Any]] = []
+        self.candidate_rows: dict[str, dict[str, Any]] = {}
 
     def list_candidates(
         self,
@@ -60,6 +61,9 @@ class FakePulseRepository:
 
     def get_health(self, window: str, scope: str) -> dict[str, Any]:
         return {"window": window, "scope": scope, **self.health}
+
+    def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
+        return self.candidate_rows.get(candidate_id)
 
 
 class FakeHarnessRepository:
@@ -353,3 +357,48 @@ def _candidate_row(
         "created_at_ms": 1_000,
         "updated_at_ms": 2_000,
     }
+
+
+def test_candidate_returns_full_item() -> None:
+    row = _candidate_row(
+        "cand-1",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_context_json={"market_status": "fresh"},
+    )
+    pulse = FakePulseRepository()
+    pulse.candidate_rows = {"cand-1": row}
+
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(
+        candidate_id="cand-1"
+    )
+
+    assert result is not None
+    assert result["candidate_id"] == "cand-1"
+    assert result["pulse_status"] == "token_watch"
+    assert result["thesis_json"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert result["playbooks"] == []
+
+
+def test_candidate_returns_none_when_missing() -> None:
+    pulse = FakePulseRepository()
+    pulse.candidate_rows = {}
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(
+        candidate_id="ghost"
+    )
+    assert result is None
+
+
+def test_candidate_returns_none_when_blocked() -> None:
+    row = _candidate_row(
+        "cand-blocked",
+        pulse_status="blocked_low_information",
+        verdict="blocked_low_information",
+        market_context_json={},
+    )
+    pulse = FakePulseRepository()
+    pulse.candidate_rows = {"cand-blocked": row}
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(
+        candidate_id="cand-blocked"
+    )
+    assert result is None
