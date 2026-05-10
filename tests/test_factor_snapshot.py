@@ -206,21 +206,32 @@ def test_dex_asset_missing_market_floors_blocks_high_alert() -> None:
     assert snapshot["families"]["market_quality"]["factors"]["holders"]["score"] == 0
 
 
-def test_non_finite_float_inputs_are_treated_as_missing() -> None:
+def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
     snapshot = _strong_dex_snapshot(
+        attention={"mentions_1h": float("inf")},
         market={
+            "holders": float("inf"),
             "liquidity_usd": float("inf"),
             "market_cap_usd": float("-inf"),
         },
         social_quality={"duplicate_text_share": float("nan")},
+        social_semantics={"direction_counts": {"bullish": float("inf")}},
+        timing={"social_signal_start_ms": float("inf")},
     )
 
+    assert snapshot["families"]["social_attention"]["facts"]["mentions_1h"] == 0
+    assert snapshot["families"]["social_semantics"]["facts"]["direction_counts"]["bullish"] == 0
     assert snapshot["families"]["social_quality"]["factors"]["duplicate_text_share"]["raw_value"] is None
     assert snapshot["families"]["social_quality"]["factors"]["duplicate_text_share"]["data_health"] == "missing"
+    assert snapshot["families"]["market_quality"]["factors"]["holders"]["raw_value"] is None
+    assert snapshot["families"]["market_quality"]["factors"]["holders"]["data_health"] == "missing"
     assert snapshot["families"]["market_quality"]["factors"]["liquidity_usd"]["raw_value"] is None
     assert snapshot["families"]["market_quality"]["factors"]["market_cap_usd"]["raw_value"] is None
+    assert snapshot["families"]["timing"]["facts"]["social_signal_start_ms"] is None
+    assert snapshot["families"]["timing"]["factors"]["social_signal_start_ms"]["data_health"] == "missing"
     assert snapshot["hard_gates"]["eligible_for_high_alert"] is False
     assert set(snapshot["hard_gates"]["blocked_reasons"]) >= {
+        "holders_below_high_alert_floor",
         "liquidity_below_high_alert_floor",
         "market_cap_below_high_alert_floor",
     }
@@ -229,8 +240,11 @@ def test_non_finite_float_inputs_are_treated_as_missing() -> None:
 def _strong_dex_snapshot(
     *,
     target: dict[str, object] | None = None,
+    attention: dict[str, object] | None = None,
     market: dict[str, object] | None = None,
     social_quality: dict[str, object] | None = None,
+    social_semantics: dict[str, object] | None = None,
+    timing: dict[str, object] | None = None,
 ) -> dict[str, object]:
     base_target: dict[str, object] = {
         "target_type": "Asset",
@@ -241,6 +255,15 @@ def _strong_dex_snapshot(
     }
     if target is not None:
         base_target.update(target)
+    base_attention: dict[str, object] = {
+        "mentions_1h": 12,
+        "mentions_4h": 18,
+        "mentions_24h": 32,
+        "unique_authors": 8,
+        "watched_mentions": 2,
+    }
+    if attention is not None:
+        base_attention.update(attention)
     base_market: dict[str, object] = {
         "market_status": "fresh",
         "market_cap_usd": 500_000.0,
@@ -257,24 +280,27 @@ def _strong_dex_snapshot(
     }
     if social_quality is not None:
         base_social_quality.update(social_quality)
+    base_social_semantics: dict[str, object] = {
+        "direction_counts": {"bullish": 5, "neutral": 2},
+        "impact_mean": 0.7,
+        "novelty_mean": 0.5,
+        "confidence_mean": 0.9,
+    }
+    if social_semantics is not None:
+        base_social_semantics.update(social_semantics)
+    base_timing: dict[str, object] = {
+        "price_change_before_social_pct": 0.01,
+        "price_change_since_social_pct": 0.03,
+    }
+    if timing is not None:
+        base_timing.update(timing)
     return build_token_factor_snapshot(
         target=base_target,
-        attention={
-            "mentions_1h": 12,
-            "mentions_4h": 18,
-            "mentions_24h": 32,
-            "unique_authors": 8,
-            "watched_mentions": 2,
-        },
+        attention=base_attention,
         social_quality=base_social_quality,
-        social_semantics={
-            "direction_counts": {"bullish": 5, "neutral": 2},
-            "impact_mean": 0.7,
-            "novelty_mean": 0.5,
-            "confidence_mean": 0.9,
-        },
+        social_semantics=base_social_semantics,
         market=base_market,
-        timing={"price_change_before_social_pct": 0.01, "price_change_since_social_pct": 0.03},
+        timing=base_timing,
         source_event_ids=["event-strong-1", "event-strong-2"],
         computed_at_ms=1_778_000_000_000,
     )

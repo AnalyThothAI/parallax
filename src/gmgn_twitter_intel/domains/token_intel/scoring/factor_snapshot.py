@@ -8,7 +8,6 @@ from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import (
     log_points,
     ratio_points,
     safe_float,
-    safe_int,
 )
 
 TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v1"
@@ -92,11 +91,11 @@ def _identity_family(*, target: dict[str, Any]) -> dict[str, Any]:
 def _social_attention_family(*, attention: dict[str, Any]) -> dict[str, Any]:
     facts = {
         "mentions_5m": _optional_int(attention.get("mentions_5m")),
-        "mentions_1h": safe_int(attention.get("mentions_1h")),
-        "mentions_4h": safe_int(attention.get("mentions_4h")),
-        "mentions_24h": safe_int(attention.get("mentions_24h")),
-        "unique_authors": safe_int(attention.get("unique_authors")),
-        "watched_mentions": safe_int(attention.get("watched_mentions")),
+        "mentions_1h": _count_int(attention.get("mentions_1h")),
+        "mentions_4h": _count_int(attention.get("mentions_4h")),
+        "mentions_24h": _count_int(attention.get("mentions_24h")),
+        "unique_authors": _count_int(attention.get("unique_authors")),
+        "watched_mentions": _count_int(attention.get("watched_mentions")),
     }
     return _family(
         "social_attention",
@@ -120,9 +119,9 @@ def _social_quality_family(*, social_quality: dict[str, Any]) -> dict[str, Any]:
     )
     facts = {
         "duplicate_text_share": duplicate_text_share,
-        "informative_post_count": safe_int(social_quality.get("informative_post_count")),
-        "mentions": safe_int(social_quality.get("mentions")),
-        "independent_authors": safe_int(social_quality.get("independent_authors")),
+        "informative_post_count": _count_int(social_quality.get("informative_post_count")),
+        "mentions": _count_int(social_quality.get("mentions")),
+        "independent_authors": _count_int(social_quality.get("independent_authors")),
     }
     return _family(
         "social_quality",
@@ -144,12 +143,12 @@ def _social_quality_family(*, social_quality: dict[str, Any]) -> dict[str, Any]:
 
 
 def _social_semantics_family(*, social_semantics: dict[str, Any]) -> dict[str, Any]:
-    direction_counts = social_semantics.get("direction_counts") or {}
+    direction_counts = _count_map(social_semantics.get("direction_counts"))
     impact_mean = _optional_float(social_semantics.get("impact_mean"))
     novelty_mean = _optional_float(social_semantics.get("novelty_mean"))
     confidence_mean = _optional_float(social_semantics.get("confidence_mean"))
     facts = {
-        "direction_counts": dict(direction_counts) if isinstance(direction_counts, dict) else {},
+        "direction_counts": direction_counts,
         "impact_mean": impact_mean,
         "novelty_mean": novelty_mean,
         "confidence_mean": confidence_mean,
@@ -233,10 +232,10 @@ def _hard_gates(*, families: dict[str, dict[str, Any]]) -> dict[str, Any]:
             if _is_below(market_facts.get(key), key):
                 reasons.append(reason)
     independent_sources = max(
-        safe_int(attention_facts.get("unique_authors")),
-        safe_int(quality_facts.get("independent_authors")),
+        _count_int(attention_facts.get("unique_authors")),
+        _count_int(quality_facts.get("independent_authors")),
     )
-    watched_mentions = safe_int(attention_facts.get("watched_mentions"))
+    watched_mentions = _count_int(attention_facts.get("watched_mentions"))
     if independent_sources < DEX_HIGH_ALERT_FLOORS["unique_authors"] and watched_mentions <= 0:
         reasons.append("insufficient_independent_social_sources")
     if _is_at_or_above(quality_facts.get("duplicate_text_share"), "duplicate_text_share"):
@@ -268,7 +267,7 @@ def _market_freshness_block_reason(market_status: Any) -> str | None:
 
 
 def _composite(*, families: dict[str, dict[str, Any]], hard_gates: dict[str, Any]) -> dict[str, Any]:
-    family_scores = {family: safe_int(families[family]["score"]) for family in FACTOR_FAMILIES}
+    family_scores = {family: _count_int(families[family]["score"]) for family in FACTOR_FAMILIES}
     rank_score = round(sum(family_scores.values()) / len(FACTOR_FAMILIES))
     if hard_gates["blocked_reasons"]:
         return {
@@ -299,7 +298,7 @@ def _family(
     factor_map = {str(factor["key"]): factor for factor in factors}
     payload = {
         "family": family,
-        "score": _average_score([safe_int(factor["score"]) for factor in factors]),
+        "score": _average_score([_count_int(factor["score"]) for factor in factors]),
         "data_health": _family_data_health(factors),
         "facts": facts,
         "factors": factor_map,
@@ -348,7 +347,7 @@ def _family_data_health(factors: list[dict[str, Any]]) -> str:
 def _finite_score(value: Any) -> float:
     try:
         parsed = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return 0.0
     if not math.isfinite(parsed):
         return 0.0
@@ -386,9 +385,9 @@ def _ratio_factor(family: str, key: str, value: float | None) -> dict[str, Any]:
 
 
 def _direction_factor(direction_counts: dict[str, Any]) -> dict[str, Any]:
-    total = sum(safe_int(value) for value in direction_counts.values())
-    bullish = safe_int(direction_counts.get("bullish"))
-    neutral = safe_int(direction_counts.get("neutral"))
+    total = sum(_count_int(value) for value in direction_counts.values())
+    bullish = _count_int(direction_counts.get("bullish"))
+    neutral = _count_int(direction_counts.get("neutral"))
     score = 0.0
     if total > 0:
         score = (bullish + neutral * 0.5) / total * 100.0
@@ -480,7 +479,7 @@ def _optional_float(value: Any) -> float | None:
         return None
     try:
         parsed = float(value)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
     if not math.isfinite(parsed):
         return None
@@ -488,12 +487,35 @@ def _optional_float(value: Any) -> float | None:
 
 
 def _optional_int(value: Any) -> int | None:
+    parsed = _finite_number(value)
+    if parsed is None:
+        return None
+    return int(parsed)
+
+
+def _count_int(value: Any, default: int = 0) -> int:
+    parsed = _finite_number(value)
+    if parsed is None:
+        return default
+    return int(parsed)
+
+
+def _count_map(value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): _count_int(item) for key, item in value.items()}
+
+
+def _finite_number(value: Any) -> float | None:
     if value is None:
         return None
     try:
-        return int(value)
-    except (TypeError, ValueError):
+        parsed = float(value)
+    except (TypeError, ValueError, OverflowError):
         return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
 
 
 def _optional_str(value: Any) -> str | None:
