@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
     DEX_HIGH_ALERT_FLOORS,
     FACTOR_FAMILIES,
@@ -252,6 +254,13 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
     }
 
 
+@pytest.mark.parametrize("computed_at_ms", [float("inf"), float("-inf"), float("nan")])
+def test_non_finite_computed_at_ms_normalizes_to_zero(computed_at_ms: float) -> None:
+    snapshot = _strong_dex_snapshot(computed_at_ms=computed_at_ms)
+
+    assert snapshot["provenance"]["computed_at_ms"] == 0
+
+
 def _strong_dex_snapshot(
     *,
     target: dict[str, object] | None = None,
@@ -260,6 +269,7 @@ def _strong_dex_snapshot(
     social_quality: dict[str, object] | None = None,
     social_semantics: dict[str, object] | None = None,
     timing: dict[str, object] | None = None,
+    computed_at_ms: object = 1_778_000_000_000,
 ) -> dict[str, object]:
     base_target: dict[str, object] = {
         "target_type": "Asset",
@@ -317,5 +327,5 @@ def _strong_dex_snapshot(
         market=base_market,
         timing=base_timing,
         source_event_ids=["event-strong-1", "event-strong-2"],
-        computed_at_ms=1_778_000_000_000,
+        computed_at_ms=computed_at_ms,
     )

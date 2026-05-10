@@ -64,7 +64,7 @@ def build_token_factor_snapshot(
         "composite": composite,
         "provenance": {
             "source_event_ids": _dedupe_strings(source_event_ids),
-            "computed_at_ms": int(computed_at_ms),
+            "computed_at_ms": _computed_at_ms(computed_at_ms),
         },
     }
 
@@ -503,6 +503,13 @@ def _count_map(value: Any) -> dict[str, int]:
     if not isinstance(value, dict):
         return {}
     return {str(key): _count_int(item) for key, item in value.items()}
+
+
+def _computed_at_ms(value: Any) -> int:
+    parsed = _finite_number(value)
+    if parsed is None:
+        return 0
+    return int(parsed)
 
 
 def _finite_number(value: Any) -> float | None:
