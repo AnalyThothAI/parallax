@@ -218,10 +218,15 @@ def _timing_family(*, timing: dict[str, Any]) -> dict[str, Any]:
 
 
 def _hard_gates(*, families: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    identity_facts = families["identity"]["facts"]
     market_facts = families["market_quality"]["facts"]
     attention_facts = families["social_attention"]["facts"]
     quality_facts = families["social_quality"]["facts"]
     reasons: list[str] = []
+    if _identity_unresolved(identity_facts):
+        reasons.append("identity_unresolved")
+    if freshness_reason := _market_freshness_block_reason(market_facts.get("market_status")):
+        reasons.append(freshness_reason)
     if families["market_quality"]["target_market_type"] == "dex":
         for key, reason in _DEX_FLOOR_REASONS.items():
             if _is_below(market_facts.get(key), key):
@@ -244,6 +249,21 @@ def _hard_gates(*, families: dict[str, dict[str, Any]]) -> dict[str, Any]:
             for reason in blocked_reasons
         ],
     }
+
+
+def _identity_unresolved(identity_facts: dict[str, Any]) -> bool:
+    target_type = str(identity_facts.get("target_type") or "").lower()
+    target_id = str(identity_facts.get("target_id") or "")
+    return not target_type or not target_id or target_type in {"source_seed", "sourceseed", "unresolved"}
+
+
+def _market_freshness_block_reason(market_status: Any) -> str | None:
+    status = str(market_status or "").lower()
+    if status in {"fresh", "ready"}:
+        return None
+    if status in {"", "missing", "missing_market", "none", "null"}:
+        return "market_freshness_missing"
+    return "market_freshness_stale"
 
 
 def _composite(*, families: dict[str, dict[str, Any]], hard_gates: dict[str, Any]) -> dict[str, Any]:

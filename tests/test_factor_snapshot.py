@@ -155,3 +155,82 @@ def test_duplicate_social_text_blocks_high_alert() -> None:
     )
 
     assert "duplicate_text_share_high" in snapshot["hard_gates"]["blocked_reasons"]
+
+
+def test_strong_dex_asset_with_stale_market_blocks_high_alert() -> None:
+    snapshot = _strong_dex_snapshot(market={"market_status": "stale"})
+
+    assert snapshot["hard_gates"]["eligible_for_high_alert"] is False
+    assert "market_freshness_stale" in snapshot["hard_gates"]["blocked_reasons"]
+
+
+def test_strong_dex_asset_with_missing_market_status_blocks_high_alert() -> None:
+    snapshot = _strong_dex_snapshot(market={"market_status": None})
+
+    assert snapshot["hard_gates"]["eligible_for_high_alert"] is False
+    assert "market_freshness_missing" in snapshot["hard_gates"]["blocked_reasons"]
+
+
+def test_unresolved_identity_blocks_high_alert() -> None:
+    snapshot_without_type = _strong_dex_snapshot(target={"target_type": None})
+    snapshot_without_id = _strong_dex_snapshot(target={"target_id": None})
+    snapshot_for_source_seed = _strong_dex_snapshot(
+        target={"target_type": "source_seed", "target_id": "source_seed:event-1"}
+    )
+
+    assert snapshot_without_type["hard_gates"]["eligible_for_high_alert"] is False
+    assert "identity_unresolved" in snapshot_without_type["hard_gates"]["blocked_reasons"]
+    assert snapshot_without_id["hard_gates"]["eligible_for_high_alert"] is False
+    assert "identity_unresolved" in snapshot_without_id["hard_gates"]["blocked_reasons"]
+    assert snapshot_for_source_seed["hard_gates"]["eligible_for_high_alert"] is False
+    assert "identity_unresolved" in snapshot_for_source_seed["hard_gates"]["blocked_reasons"]
+
+
+def _strong_dex_snapshot(
+    *,
+    target: dict[str, object] | None = None,
+    market: dict[str, object] | None = None,
+) -> dict[str, object]:
+    base_target: dict[str, object] = {
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:STRONG",
+        "symbol": "STRONG",
+        "chain": "solana",
+        "address": "STRONG",
+    }
+    if target is not None:
+        base_target.update(target)
+    base_market: dict[str, object] = {
+        "market_status": "fresh",
+        "market_cap_usd": 500_000.0,
+        "liquidity_usd": 150_000.0,
+        "holders": 1_500,
+    }
+    if market is not None:
+        base_market.update(market)
+    return build_token_factor_snapshot(
+        target=base_target,
+        attention={
+            "mentions_1h": 12,
+            "mentions_4h": 18,
+            "mentions_24h": 32,
+            "unique_authors": 8,
+            "watched_mentions": 2,
+        },
+        social_quality={
+            "duplicate_text_share": 0.0,
+            "informative_post_count": 8,
+            "mentions": 12,
+            "independent_authors": 8,
+        },
+        social_semantics={
+            "direction_counts": {"bullish": 5, "neutral": 2},
+            "impact_mean": 0.7,
+            "novelty_mean": 0.5,
+            "confidence_mean": 0.9,
+        },
+        market=base_market,
+        timing={"price_change_before_social_pct": 0.01, "price_change_since_social_pct": 0.03},
+        source_event_ids=["event-strong-1", "event-strong-2"],
+        computed_at_ms=1_778_000_000_000,
+    )
