@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
+    DEX_HIGH_ALERT_FLOORS,
     FACTOR_FAMILIES,
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     build_token_factor_snapshot,
 )
+
+
+def test_scoring_package_exports_factor_snapshot_contract() -> None:
+    from gmgn_twitter_intel.domains.token_intel import scoring
+
+    assert scoring.TOKEN_FACTOR_SNAPSHOT_VERSION == TOKEN_FACTOR_SNAPSHOT_VERSION
+    assert scoring.FACTOR_FAMILIES == FACTOR_FAMILIES
+    assert scoring.DEX_HIGH_ALERT_FLOORS == DEX_HIGH_ALERT_FLOORS
+    assert scoring.build_token_factor_snapshot is build_token_factor_snapshot
 
 
 def test_dex_asset_below_market_floors_blocks_high_alert() -> None:
