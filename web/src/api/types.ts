@@ -283,40 +283,28 @@ export type TokenRadarDataHealth = {
   [key: string]: unknown;
 };
 
+export type MarketFieldFact = {
+  value?: number | string | null;
+  status: "fresh" | "partial" | "stale" | "missing" | "unsupported" | "rate_limited" | "provider_error" | string;
+  observed_at_ms?: number | null;
+  age_ms?: number | null;
+  provider?: string | null;
+  source_observation_id?: string | null;
+};
+
+export type CurrentMarketSnapshot = {
+  target_type?: string | null;
+  target_id?: string | null;
+  market_status: "fresh" | "partial" | "stale" | "missing" | string;
+  fields: Record<string, MarketFieldFact>;
+};
+
 export type AssetFlowRow = {
   intent?: TokenRadarIntentBlock;
   target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
   source_event_ids?: string[];
-  price?: {
-    market_status: "fresh" | "stale" | "missing" | string;
-    provider?: string | null;
-    price_usd?: number | null;
-    price_quote?: number | null;
-    quote_symbol?: string | null;
-    price_basis?: string | null;
-    market_cap_usd?: number | null;
-    liquidity_usd?: number | null;
-    volume_24h_usd?: number | null;
-    open_interest_usd?: number | null;
-    holders?: number | null;
-    snapshot_age_ms?: number | null;
-    snapshot_observed_at_ms?: number | null;
-    social_signal_start_ms?: number | null;
-    price_change_5m_pct?: number | null;
-    price_change_1h_pct?: number | null;
-    price_change_24h_pct?: number | null;
-    price_at_social_start?: number | null;
-    price_at_reference?: number | null;
-    price_before_social_start?: number | null;
-    price_change_since_social_pct?: number | null;
-    price_change_before_social_pct?: number | null;
-    price_at_first_snapshot?: number | null;
-    first_snapshot_observed_at_ms?: number | null;
-    price_change_since_first_snapshot_pct?: number | null;
-    market_observation_status?: string | null;
-    price_change_status?: string | null;
-  };
+  current_market: CurrentMarketSnapshot;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
@@ -405,13 +393,19 @@ export type TokenIdentityBlock = {
 };
 
 export type TokenMarketBlock = {
-  market_status: "fresh" | "stale" | "missing" | string;
+  market_status: "fresh" | "partial" | "stale" | "missing" | string;
   price?: number | null;
+  price_status?: string | null;
   market_cap?: number | null;
+  market_cap_status?: string | null;
   liquidity?: number | null;
+  liquidity_status?: string | null;
   pool_status?: "ready" | "missing" | string;
   holder_count?: number | null;
+  holder_count_status?: string | null;
   volume_24h?: number | null;
+  volume_24h_status?: string | null;
+  provider?: string | null;
   snapshot_age_ms?: number | null;
   snapshot_received_at_ms?: number | null;
   social_signal_start_ms?: number | null;

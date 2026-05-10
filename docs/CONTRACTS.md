@@ -31,9 +31,28 @@ The only application config source.
 
 `/healthz`, `/readyz`, `/api/*`. Each endpoint owns its own response schema.
 
+Token Radar market contract:
+
+- `/api/token-radar` rows expose `current_market`, a field-aware snapshot from
+  `domains/asset_market`. Frontends must read live price, market cap, liquidity,
+  holders, volume, provider, and freshness from `current_market.fields`.
+- `/api/token-radar` rows do not expose `price` or `market` aliases derived from
+  `factor_snapshot.families.market_quality.facts`.
+- `/api/current-market?target_type=Asset|CexToken&target_id=...` returns one
+  current-market snapshot:
+  `{"target_type": "...", "target_id": "...", "market_status": "...", "fields": {...}}`.
+- `fields.<field>` values include `value`, `status`, optional
+  `observed_at_ms`, optional `age_ms`, optional `provider`, and optional
+  `source_observation_id`. A DEX price-only observation may refresh
+  `price_usd` while `market_cap_usd`, `liquidity_usd`, and `holders` remain
+  stale or missing until a metadata-capable provider refreshes them.
+
 ## CLI
 
 `gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.
+
+`gmgn-twitter-intel current-market --target-type ... --target-id ...` prints the
+same field-aware current-market snapshot used by the HTTP contract.
 
 ## Token Radar Factor Snapshot Discipline
 

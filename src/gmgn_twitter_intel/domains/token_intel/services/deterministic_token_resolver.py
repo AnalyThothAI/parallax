@@ -10,6 +10,7 @@ RESOLVER_POLICY_VERSION = TOKEN_RADAR_RESOLVER_POLICY_VERSION
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
 MIN_DOMINANT_HOLDERS = Decimal("1000")
 MIN_DOMINANT_LIQUIDITY_USD = Decimal("100000")
+RESOLUTION_MARKET_FRESH_MS = 24 * 60 * 60 * 1000
 MAX_AUDIT_CANDIDATE_IDS = 20
 
 
@@ -246,6 +247,7 @@ class DeterministicTokenResolver:
             )
         assets = self.registry.find_assets_by_symbol_with_latest_observation(symbol)
         assets = [row for row in assets if str(row.get("asset_id") or "")]
+        assets = [{**row, "decision_time_ms": decision_time_ms} for row in assets]
         candidate_ids = _candidate_ids(assets)
         if len(assets) == 1:
             return _resolution(
@@ -329,7 +331,27 @@ def _dominance_eligible(row: dict[str, Any]) -> bool:
         for key in ("market_cap_usd", "holders", "liquidity_usd")
         if row.get(key) is not None and _decimal(row.get(key)) > 0
     )
-    return present >= 2
+    if present < 2:
+        return False
+    return _fresh_resolution_market_fields(row) >= 2
+
+
+def _fresh_resolution_market_fields(row: dict[str, Any]) -> int:
+    count = 0
+    for value_key, observed_key in (
+        ("market_cap_usd", "market_cap_observed_at_ms"),
+        ("liquidity_usd", "liquidity_observed_at_ms"),
+        ("holders", "holders_observed_at_ms"),
+    ):
+        if row.get(value_key) is None or row.get(observed_key) is None:
+            continue
+        try:
+            age_ms = max(0, int(row.get("decision_time_ms") or 0) - int(row[observed_key]))
+        except (TypeError, ValueError):
+            continue
+        if age_ms <= RESOLUTION_MARKET_FRESH_MS:
+            count += 1
+    return count
 
 
 def _dominance_score(row: dict[str, Any]) -> Decimal:

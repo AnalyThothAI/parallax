@@ -73,6 +73,9 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
                 "asset_chain_id": "eip155:1",
                 "asset_address": "0xabc",
                 "asset_symbol": "ABC",
+                "asset_market_cap_usd": 22_000.0,
+                "asset_liquidity_usd": 9_000.0,
+                "asset_holders": 123,
             },
             {
                 "event_id": "event-2",
@@ -85,6 +88,9 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
                 "asset_chain_id": "eip155:1",
                 "asset_address": "0xabc",
                 "asset_symbol": "ABC",
+                "asset_market_cap_usd": 23_000.0,
+                "asset_liquidity_usd": 10_000.0,
+                "asset_holders": 124,
             },
         ]
     )
@@ -114,6 +120,17 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
         "resolution-1",
         "resolution-2",
     }
+    dex_quote_observations = [
+        item
+        for item in repos.price_observations.observations
+        if item["provider"] == "okx_dex_price" and item["observation_kind"] == "message_quote"
+    ]
+    assert len(dex_quote_observations) == 2
+    assert all(item["price_usd"] == 1.23 for item in dex_quote_observations)
+    assert [
+        (item.get("market_cap_usd"), item.get("liquidity_usd"), item.get("holders"))
+        for item in dex_quote_observations
+    ] == [(None, None, None), (None, None, None)]
 
 
 class FakeRepos:

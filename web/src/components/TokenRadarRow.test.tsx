@@ -13,7 +13,63 @@ describe("TokenRadarRow", () => {
     expect(screen.getByText("symbol-only · 候选价格过期 · 2 candidates · found:2")).toBeInTheDocument();
     expect(screen.queryByText(/8ff41158.*e70faa/i)).not.toBeInTheDocument();
   });
+
+  it("renders fresh price with stale market cap as partial market freshness", () => {
+    render(<TokenRadarRow item={mixedFreshnessToken()} selected={false} onSelect={vi.fn()} />);
+
+    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
+    expect(market).toHaveTextContent("$51M");
+    expect(market).toHaveTextContent("partial");
+    expect(market).toHaveTextContent("price fresh");
+    expect(market).toHaveTextContent("cap stale");
+    expect(market).not.toHaveTextContent("- fresh");
+  });
 });
+
+function mixedFreshnessToken(): TokenFlowItem {
+  const item = unresolvedSymbolOnly();
+  return {
+    ...item,
+    identity: {
+      ...item.identity,
+      identity_key: "asset:dex:eth:0x1111111111111111111111111111111111111111",
+      identity_status: "EXACT",
+      target_type: "Asset",
+      target_id: "asset:dex:eth:0x1111111111111111111111111111111111111111",
+      asset_id: "asset:dex:eth:0x1111111111111111111111111111111111111111",
+      asset_type: "Asset",
+      venue_type: "dex",
+      exchange: "gmgn",
+      chain: "eth",
+      address: "0x1111111111111111111111111111111111111111",
+      symbol: "TROLL",
+      resolution_reasons: []
+    },
+    market: {
+      market_status: "partial",
+      price: 0.104,
+      price_status: "fresh",
+      market_cap: 51_000_000,
+      market_cap_status: "stale",
+      liquidity: 3_000_000,
+      liquidity_status: "stale",
+      holder_count: 52_000,
+      holder_count_status: "stale",
+      pool_status: "missing",
+      snapshot_age_ms: 30_000,
+      snapshot_received_at_ms: 1_778_426_440_000,
+      provider: "okx_dex_price",
+      price_change_status: "insufficient_history"
+    },
+    timing: {
+      ...item.timing,
+      status: "neutral",
+      risks: [],
+      market_observation_status: "partial"
+    }
+  };
+}
 
 function unresolvedSymbolOnly(): TokenFlowItem {
   return {

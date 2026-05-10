@@ -49,6 +49,7 @@ class TokenRadarProjection:
         score_since_ms = computed_at_ms - window_ms
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
         source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
+        source_rows = self._hydrate_current_market(source_rows, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
         total_window_events = len(
             {
@@ -151,6 +152,23 @@ class TokenRadarProjection:
 
     def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
         return TokenRadarSourceQuery(self.repos.conn).source_rows(since_ms=since_ms, scope=scope, now_ms=now_ms)
+
+    def _hydrate_current_market(self, rows: list[dict[str, Any]], *, now_ms: int) -> list[dict[str, Any]]:
+        subjects = [
+            {"target_type": row.get("target_type"), "target_id": row.get("target_id")}
+            for row in rows
+            if row.get("target_type") and row.get("target_id")
+        ]
+        if not subjects:
+            return rows
+        snapshots = self.repos.current_market.current_for_subjects(subjects, now_ms=now_ms)
+        return [
+            _row_with_current_market(
+                row,
+                snapshots.get((str(row.get("target_type")), str(row.get("target_id")))),
+            )
+            for row in rows
+        ]
 
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -506,6 +524,77 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    if not snapshot:
+        return {
+            **row,
+            "current_market_snapshot": None,
+            **_missing_current_market_fields(),
+        }
+    fields = snapshot.get("fields") if isinstance(snapshot.get("fields"), dict) else {}
+    price = _market_field(fields, "price_usd")
+    price_quote = _market_field(fields, "price_quote")
+    quote_symbol = _market_field(fields, "quote_symbol")
+    price_basis = _market_field(fields, "price_basis")
+    market_cap = _market_field(fields, "market_cap_usd")
+    liquidity = _market_field(fields, "liquidity_usd")
+    volume_24h = _market_field(fields, "volume_24h_usd")
+    open_interest = _market_field(fields, "open_interest_usd")
+    holders = _market_field(fields, "holders")
+    return {
+        **row,
+        "current_market_snapshot": snapshot,
+        "market_provider": price.get("provider"),
+        "market_observed_at_ms": price.get("observed_at_ms"),
+        "market_price_usd": price.get("value"),
+        "market_price_status": price.get("status"),
+        "market_price_quote": price_quote.get("value"),
+        "market_quote_symbol": quote_symbol.get("value"),
+        "market_price_basis": price_basis.get("value"),
+        "market_market_cap_usd": market_cap.get("value"),
+        "market_market_cap_status": market_cap.get("status"),
+        "market_liquidity_usd": liquidity.get("value"),
+        "market_liquidity_status": liquidity.get("status"),
+        "market_volume_24h_usd": volume_24h.get("value"),
+        "market_open_interest_usd": open_interest.get("value"),
+        "market_holders": holders.get("value"),
+        "market_holders_status": holders.get("status"),
+        "market_status_from_current": snapshot.get("market_status"),
+        "market_field_statuses": {
+            key: value.get("status")
+            for key, value in fields.items()
+            if isinstance(value, dict)
+        },
+    }
+
+
+def _market_field(fields: dict[str, Any], key: str) -> dict[str, Any]:
+    value = fields.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _missing_current_market_fields() -> dict[str, Any]:
+    return {
+        "market_provider": None,
+        "market_observed_at_ms": None,
+        "market_price_usd": None,
+        "market_price_status": "missing",
+        "market_price_quote": None,
+        "market_quote_symbol": None,
+        "market_price_basis": None,
+        "market_market_cap_usd": None,
+        "market_market_cap_status": "missing",
+        "market_liquidity_usd": None,
+        "market_liquidity_status": "missing",
+        "market_volume_24h_usd": None,
+        "market_open_interest_usd": None,
+        "market_holders": None,
+        "market_holders_status": "missing",
+        "market_status_from_current": "missing",
+        "market_field_statuses": {},
+    }
+
+
 def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
         latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0)) if window_rows else {}
@@ -518,6 +607,8 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
     if observed_at_ms is not None:
         snapshot_age_ms = max(0, int(now_ms) - observed_at_ms)
         fresh = snapshot_age_ms <= MARKET_FRESH_MS
+        current_status = str(latest.get("market_status_from_current") or "")
+        market_status = current_status or ("fresh" if fresh else "stale")
         reference_value, social_value, social_basis = _comparable_price(
             _price_values(latest, "market"),
             _price_values(social_start, "event"),
@@ -536,7 +627,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         if social_basis == "basis_mismatch":
             price_change_status = "basis_mismatch"
         market = {
-            "market_status": "fresh" if fresh else "stale",
+            "market_status": market_status,
             "market_observation_status": "ready" if fresh else "stale",
             "price_change_status": price_change_status,
             "provider": latest.get("market_provider"),
@@ -551,6 +642,11 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             "volume_24h_usd": latest.get("market_volume_24h_usd"),
             "open_interest_usd": latest.get("market_open_interest_usd"),
             "holders": latest.get("market_holders"),
+            "field_statuses": latest.get("market_field_statuses") or {},
+            "price_status": latest.get("market_price_status"),
+            "market_cap_status": latest.get("market_market_cap_status"),
+            "liquidity_status": latest.get("market_liquidity_status"),
+            "holders_status": latest.get("market_holders_status"),
             "snapshot_age_ms": snapshot_age_ms,
             "snapshot_observed_at_ms": observed_at_ms,
             "social_signal_start_ms": social_start.get("received_at_ms"),
@@ -591,6 +687,11 @@ def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, A
         "volume_24h_usd": None,
         "open_interest_usd": None,
         "holders": None,
+        "field_statuses": {},
+        "price_status": None,
+        "market_cap_status": None,
+        "liquidity_status": None,
+        "holders_status": None,
         "snapshot_age_ms": None,
         "snapshot_observed_at_ms": None,
         "social_signal_start_ms": None,

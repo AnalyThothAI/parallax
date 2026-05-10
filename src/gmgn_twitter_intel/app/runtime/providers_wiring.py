@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.providers import (
@@ -105,6 +106,31 @@ class OkxDexMarketProvider:
         self._client.close()
 
 
+class _SerializedDexMarketProvider:
+    def __init__(self, provider: DexMarketProvider) -> None:
+        self._provider = provider
+        self._lock = Lock()
+        self._closed = False
+
+    def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]) -> list[DexTokenCandidate]:
+        with self._lock:
+            return self._provider.search_tokens(query=query, chain_ids=chain_ids)
+
+    def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]:
+        with self._lock:
+            return self._provider.token_prices(tokens)
+
+    def close(self) -> None:
+        close = getattr(self._provider, "close", None)
+        if not close:
+            return
+        with self._lock:
+            if self._closed:
+                return
+            close()
+            self._closed = True
+
+
 class OpenAIPulseRecommendationProvider:
     def __init__(self, client: OpenAIAgentsPulseRecommendationClient) -> None:
         self._client = client
@@ -192,13 +218,13 @@ def okx_chain_index(chain_id: Any) -> str | None:
 def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
     if not start_collector:
         return AssetMarketProviders()
+    dex_market = _SerializedDexMarketProvider(_okx_dex_market(settings)) if settings.okx_dex_configured else None
     return AssetMarketProviders(
-        projection_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
         sync_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        sync_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
+        sync_dex_market=dex_market,
         message_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        message_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
-        discovery_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
+        message_dex_market=dex_market,
+        discovery_dex_market=dex_market,
         discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
     )
 

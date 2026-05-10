@@ -48,7 +48,7 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
 
 def test_token_radar_projection_uses_factor_snapshot_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
-    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v9-factor-snapshot"
+    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v10-current-market"
     assert TOKEN_RADAR_FACTOR_FAMILIES == (
         "identity",
         "social_attention",
@@ -57,7 +57,7 @@ def test_token_radar_projection_uses_factor_snapshot_contract():
         "market_quality",
         "timing",
     )
-    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+price_observations"
+    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+current_market"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
 
 
@@ -354,8 +354,16 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
 def test_short_window_projection_reads_existing_market_state_without_preflight(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
     now_ms = 1_777_800_060_000
+    current_market = FakeCurrentMarket(
+        {
+            ("Asset", "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"): _current_market_snapshot(
+                now_ms=now_ms,
+                market_status="fresh",
+            )
+        }
+    )
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
 
     def source_rows(self, since_ms, scope, now_ms):
         return [source_row("event-1", received_at_ms=now_ms - 60_000)]
@@ -372,13 +380,67 @@ def test_short_window_projection_reads_existing_market_state_without_preflight(m
     assert "market_hydration" not in result
     market_facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
     assert market_facts["market_status"] == "fresh"
+    assert current_market.calls
     assert token_radar.rows[0]["market_json"] == {}
+
+
+def test_projection_hydrates_market_from_current_market_read_model(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    now_ms = 1_777_800_060_000
+    current_market = FakeCurrentMarket(
+        {
+            ("Asset", "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"): _current_market_snapshot(
+                now_ms=now_ms,
+                market_status="partial",
+                price_status="fresh",
+                market_cap_status="stale",
+                liquidity_status="stale",
+                holders_status="stale",
+            )
+        }
+    )
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
+
+    def source_rows(self, since_ms, scope, now_ms):
+        row = source_row("event-1", received_at_ms=now_ms - 60_000)
+        for key in list(row):
+            if key.startswith("market_"):
+                row.pop(key)
+        return [row]
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(TokenRadarProjection, "_source_rows", source_rows)
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert facts["market_status"] == "partial"
+    assert facts["field_statuses"]["price_usd"] == "fresh"
+    assert facts["field_statuses"]["market_cap_usd"] == "stale"
+    assert current_market.calls == [
+        {
+            "subjects": [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                }
+            ],
+            "now_ms": now_ms,
+        }
+    ]
 
 
 def test_projection_marks_market_pending_when_no_external_price_refresh_has_arrived(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    current_market = FakeCurrentMarket()
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
     now_ms = 1_777_800_060_000
 
     def source_rows(self, since_ms, scope, now_ms):
@@ -411,6 +473,7 @@ def test_projection_marks_market_pending_when_no_external_price_refresh_has_arri
     assert "market_hydration" not in result
     market_facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
     assert market_facts["market_status"] == "missing"
+    assert current_market.calls
     assert token_radar.rows[0]["market_json"] == {}
 
 
@@ -524,14 +587,14 @@ def test_source_rows_keeps_price_observation_laterals_index_friendly():
 
     TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
-    assert "latest_feed_price" in conn.sql
-    assert "latest_subject_price" in conn.sql
+    assert "latest_feed_price" not in conn.sql
+    assert "latest_subject_price" not in conn.sql
     assert "message_event_price" in conn.sql
     assert "event_history_price" in conn.sql
     assert "latest_price" not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
-    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 2, 2, 1)
+    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 1)
 
 
 def test_resolved_pending_market_never_projects_as_high_alert():
@@ -714,3 +777,65 @@ class FakeTokenRadar:
     def replace_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True
+
+
+class FakeCurrentMarket:
+    def __init__(self, snapshots: dict[tuple[str, str], dict[str, object]] | None = None):
+        self.snapshots = snapshots or {}
+        self.calls: list[dict[str, object]] = []
+
+    def current_for_subjects(self, subjects, *, now_ms):
+        self.calls.append({"subjects": list(subjects), "now_ms": now_ms})
+        return {
+            key: snapshot
+            for key, snapshot in self.snapshots.items()
+            if {"target_type": key[0], "target_id": key[1]} in subjects
+        }
+
+
+def _current_market_snapshot(
+    *,
+    now_ms: int,
+    market_status: str,
+    price_status: str = "fresh",
+    market_cap_status: str = "fresh",
+    liquidity_status: str = "fresh",
+    holders_status: str = "fresh",
+) -> dict[str, object]:
+    stale_ms = now_ms - 86_400_000
+    fresh_ms = now_ms - 30_000
+    return {
+        "target_type": "Asset",
+        "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "market_status": market_status,
+        "fields": {
+            "price_usd": {
+                "value": 0.104,
+                "status": price_status,
+                "observed_at_ms": fresh_ms,
+                "age_ms": 30_000,
+                "provider": "okx_dex_price",
+            },
+            "market_cap_usd": {
+                "value": 51_000_000,
+                "status": market_cap_status,
+                "observed_at_ms": stale_ms if market_cap_status == "stale" else fresh_ms,
+                "age_ms": 86_400_000 if market_cap_status == "stale" else 30_000,
+                "provider": "okx_dex_search",
+            },
+            "liquidity_usd": {
+                "value": 3_000_000,
+                "status": liquidity_status,
+                "observed_at_ms": stale_ms if liquidity_status == "stale" else fresh_ms,
+                "age_ms": 86_400_000 if liquidity_status == "stale" else 30_000,
+                "provider": "okx_dex_search",
+            },
+            "holders": {
+                "value": 52_000,
+                "status": holders_status,
+                "observed_at_ms": stale_ms if holders_status == "stale" else fresh_ms,
+                "age_ms": 86_400_000 if holders_status == "stale" else 30_000,
+                "provider": "okx_dex_search",
+            },
+        },
+    }

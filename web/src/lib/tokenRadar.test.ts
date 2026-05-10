@@ -15,6 +15,46 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.opportunity.score).toBe(78);
     expect(item.opportunity.decision).toBe("driver");
     expect(item.evidence_total_count).toBe(2);
+    expect(item.market.price).toBe(35.42);
+    expect(item.market.market_status).toBe("fresh");
+    expect(item.market.snapshot_received_at_ms).toBe(1_778_426_440_000);
+  });
+
+  it("rejects rows missing current_market even when factor snapshot market facts contain price", () => {
+    const row = productionFactorSnapshotRow() as Partial<AssetFlowRow> & Pick<AssetFlowRow, "factor_snapshot">;
+    delete row.current_market;
+    row.factor_snapshot!.families.market_quality.facts = {
+      ...(row.factor_snapshot!.families.market_quality.facts ?? {}),
+      price_usd: 999,
+      market_cap_usd: 999_000_000
+    };
+
+    expect(() => tokenRadarRowToTokenItem(row as AssetFlowRow, "1h", "all")).toThrow(/current_market/);
+  });
+
+  it("does not read live price from factor snapshot market facts", () => {
+    const row = productionFactorSnapshotRow();
+    row.current_market = {
+      target_type: "CexToken",
+      target_id: "cex_token:ZEC",
+      market_status: "partial",
+      fields: {
+        price_usd: { value: 0.104, status: "fresh", observed_at_ms: 1_778_426_440_000, age_ms: 30_000, provider: "okx_cex" },
+        market_cap_usd: { value: 51_000_000, status: "stale", observed_at_ms: 1_778_340_070_000, age_ms: 86_400_000, provider: "okx_cex_metadata" }
+      }
+    };
+    row.factor_snapshot!.families.market_quality.facts = {
+      ...(row.factor_snapshot!.families.market_quality.facts ?? {}),
+      price_usd: 999,
+      market_cap_usd: 999_000_000
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.market.price).toBe(0.104);
+    expect(item.market.market_cap).toBe(51_000_000);
+    expect(item.market.market_status).toBe("partial");
+    expect(item.market.snapshot_age_ms).toBe(30_000);
   });
 });
 
@@ -37,17 +77,17 @@ function productionFactorSnapshotRow(): AssetFlowRow {
       unique_authors: 2,
       watched_mentions: 1
     },
-    market: {
+    current_market: {
+      target_type: "CexToken",
+      target_id: "cex_token:ZEC",
       market_status: "fresh",
-      volume_24h_usd: 10_482_890.08,
-      native_market_id: "ZEC-USDT",
-      target_market_type: "cex"
-    },
-    price: {
-      market_status: "fresh",
-      volume_24h_usd: 10_482_890.08,
-      native_market_id: "ZEC-USDT",
-      target_market_type: "cex"
+      fields: {
+        price_usd: { value: 35.42, status: "fresh", observed_at_ms: 1_778_426_440_000, age_ms: 30_000, provider: "okx_cex" },
+        volume_24h_usd: { value: 10_482_890.08, status: "fresh", observed_at_ms: 1_778_426_440_000, age_ms: 30_000, provider: "okx_cex" },
+        market_cap_usd: { value: null, status: "unsupported", observed_at_ms: null, age_ms: null, provider: "okx_cex" },
+        liquidity_usd: { value: null, status: "unsupported", observed_at_ms: null, age_ms: null, provider: "okx_cex" },
+        holders: { value: null, status: "unsupported", observed_at_ms: null, age_ms: null, provider: "okx_cex" }
+      }
     },
     resolution: {},
     score: {

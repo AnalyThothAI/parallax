@@ -164,6 +164,7 @@ def _social_semantics_family(*, social_semantics: dict[str, Any]) -> dict[str, A
 
 def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
     target_market_type = _target_market_type(target)
+    field_statuses = market.get("field_statuses") if isinstance(market.get("field_statuses"), dict) else {}
     facts = {
         "target_market_type": target_market_type,
         "market_status": _optional_str(market.get("market_status") or market.get("market_observation_status")),
@@ -173,6 +174,12 @@ def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) ->
         "volume_24h_usd": _optional_float(market.get("volume_24h_usd")),
         "open_interest_usd": _optional_float(market.get("open_interest_usd")),
         "native_market_id": _optional_str(market.get("native_market_id")),
+        "field_statuses": {
+            "price_usd": _optional_str(field_statuses.get("price_usd")),
+            "market_cap_usd": _optional_str(field_statuses.get("market_cap_usd") or market.get("market_cap_status")),
+            "liquidity_usd": _optional_str(field_statuses.get("liquidity_usd") or market.get("liquidity_status")),
+            "holders": _optional_str(field_statuses.get("holders") or market.get("holders_status")),
+        },
     }
     if target_market_type == "cex":
         factors = [

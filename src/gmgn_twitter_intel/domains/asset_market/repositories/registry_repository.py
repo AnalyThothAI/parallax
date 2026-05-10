@@ -200,29 +200,69 @@ class RegistryRepository:
               asset_identity_current.decimals,
               asset_identity_current.identity_confidence,
               latest_price.price_usd,
-              latest_price.market_cap_usd,
-              latest_price.liquidity_usd,
+              latest_price.observed_at_ms AS observed_at_ms,
+              latest_price.observed_at_ms AS price_observed_at_ms,
+              latest_price.provider AS price_provider,
+              market_cap.market_cap_usd,
+              market_cap.observed_at_ms AS market_cap_observed_at_ms,
+              market_cap.provider AS market_cap_provider,
+              liquidity.liquidity_usd,
+              liquidity.observed_at_ms AS liquidity_observed_at_ms,
+              liquidity.provider AS liquidity_provider,
               latest_price.volume_24h_usd,
-              latest_price.holders,
-              latest_price.observed_at_ms
+              holders.holders,
+              holders.observed_at_ms AS holders_observed_at_ms,
+              holders.provider AS holders_provider
             FROM registry_assets
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
               WHERE price_observations.subject_type = 'Asset'
                 AND price_observations.subject_id = registry_assets.asset_id
+                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_price')
+                AND price_observations.price_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
             ) latest_price ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.subject_type = 'Asset'
+                AND price_observations.subject_id = registry_assets.asset_id
+                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+                AND price_observations.market_cap_usd IS NOT NULL
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) market_cap ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.subject_type = 'Asset'
+                AND price_observations.subject_id = registry_assets.asset_id
+                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+                AND price_observations.liquidity_usd IS NOT NULL
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) liquidity ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.subject_type = 'Asset'
+                AND price_observations.subject_id = registry_assets.asset_id
+                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+                AND price_observations.holders IS NOT NULL
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) holders ON true
             JOIN asset_identity_current
               ON asset_identity_current.asset_id = registry_assets.asset_id
             WHERE asset_identity_current.canonical_symbol = %s
               AND registry_assets.status IN ('candidate', 'canonical')
-            ORDER BY latest_price.market_cap_usd DESC NULLS LAST, registry_assets.asset_id
+            ORDER BY market_cap.market_cap_usd DESC NULLS LAST, registry_assets.asset_id
             """,
             (_symbol(symbol),),
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [_with_resolution_field_statuses(dict(row)) for row in rows]
 
     def find_cex_pricefeed(self, *, exchange: str, native_market_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -424,3 +464,20 @@ def _address(value: str) -> str:
 
 def _address_lookup(value: str) -> str:
     return value.strip().lower()
+
+
+def _with_resolution_field_statuses(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **row,
+        "market_cap_status": _resolution_field_status(row, "market_cap"),
+        "liquidity_status": _resolution_field_status(row, "liquidity"),
+        "holders_status": _resolution_field_status(row, "holders"),
+    }
+
+
+def _resolution_field_status(row: dict[str, Any], key: str) -> str:
+    observed_at_ms = row.get(f"{key}_observed_at_ms")
+    value = row.get(f"{key}_usd") if key in {"market_cap", "liquidity"} else row.get(key)
+    if value is None or observed_at_ms is None:
+        return "missing"
+    return "fresh"

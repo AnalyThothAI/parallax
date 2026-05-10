@@ -62,7 +62,7 @@ export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRad
 
         <span className="metric market-cell" data-radar-metric="market">
           <b>{marketPrimary(item)}</b>
-          <small className={`direction ${direction}`}>{delta} {item.market.market_status}</small>
+          <small className={`direction ${direction}`}>{marketMeta(item, delta)}</small>
         </span>
 
         <span className="phase timing-cell" data-radar-metric="timing">
@@ -120,6 +120,39 @@ function marketPrimary(item: TokenFlowItem): string {
     return formatTokenPriceUsd(item.market.price);
   }
   return "-";
+}
+
+function marketMeta(item: TokenFlowItem, delta: string): string {
+  const details = marketFreshnessDetails(item);
+  return details.length ? `${delta} ${item.market.market_status} · ${details.join(" · ")}` : `${delta} ${item.market.market_status}`;
+}
+
+function marketFreshnessDetails(item: TokenFlowItem): string[] {
+  const marketStatus = item.market.market_status;
+  const details: string[] = [];
+  if (shouldShowFieldStatus(item.market.price_status, marketStatus)) {
+    details.push(`price ${compactLabel(item.market.price_status)}`);
+  }
+  if (item.market.market_cap !== null && item.market.market_cap !== undefined && shouldShowFieldStatus(item.market.market_cap_status, marketStatus)) {
+    details.push(`cap ${compactLabel(item.market.market_cap_status)}`);
+  }
+  if (item.market.liquidity !== null && item.market.liquidity !== undefined && shouldShowFieldStatus(item.market.liquidity_status, marketStatus)) {
+    details.push(`liq ${compactLabel(item.market.liquidity_status)}`);
+  }
+  return details;
+}
+
+function shouldShowFieldStatus(fieldStatus: string | null | undefined, marketStatus: string): boolean {
+  if (!fieldStatus) {
+    return false;
+  }
+  if (fieldStatus === marketStatus) {
+    return false;
+  }
+  if (marketStatus === "missing" && fieldStatus === "missing") {
+    return false;
+  }
+  return true;
 }
 
 function heatMeta(item: TokenFlowItem): string {

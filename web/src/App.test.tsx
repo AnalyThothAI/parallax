@@ -23,6 +23,32 @@ import type {
 import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
 import { useTraderStore } from "./store/useTraderStore";
 
+const apiMock = vi.hoisted(() => {
+  type RequestOptions = { token?: string; params?: Record<string, string | number | boolean | null | undefined> };
+  type State = {
+    getApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
+    getBootstrapImpl: () => Promise<unknown>;
+    postApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
+    getApi: ReturnType<typeof vi.fn>;
+    getBootstrap: ReturnType<typeof vi.fn>;
+    postApi: ReturnType<typeof vi.fn>;
+  };
+  const state = {} as State;
+  state.getApiImpl = async (path: string) => {
+    throw new Error(`unexpected path ${path}`);
+  };
+  state.getBootstrapImpl = async () => {
+    throw new Error("unexpected bootstrap request");
+  };
+  state.postApiImpl = async (path: string) => {
+    throw new Error(`unexpected post ${path}`);
+  };
+  state.getApi = vi.fn((path: string, options?: RequestOptions) => state.getApiImpl(path, options));
+  state.getBootstrap = vi.fn(() => state.getBootstrapImpl());
+  state.postApi = vi.fn((path: string, options?: RequestOptions) => state.postApiImpl(path, options));
+  return state;
+});
+
 const socketMock: { status: string; events: LivePayload[]; notifications: NotificationLivePayload[]; lastMessageAt: number | null } = {
   status: "connected",
   events: [],
@@ -34,9 +60,9 @@ vi.mock("./api/client", async () => {
   const actual = await vi.importActual<typeof import("./api/client")>("./api/client");
   return {
     ...actual,
-    getApi: vi.fn(),
-    getBootstrap: vi.fn(),
-    postApi: vi.fn()
+    getApi: apiMock.getApi,
+    getBootstrap: apiMock.getBootstrap,
+    postApi: apiMock.postApi
   };
 });
 
@@ -108,10 +134,10 @@ describe("App Token Radar social heat cockpit", () => {
   });
 
   beforeEach(() => {
-    mockedGetApi.mockReset();
-    mockedGetBootstrap.mockReset();
-    mockedPostApi.mockReset();
-    mockedPostApi.mockResolvedValue(ok({ notification_id: "notification-1", updated: true }));
+    mockedGetApi.mockClear();
+    mockedGetBootstrap.mockClear();
+    mockedPostApi.mockClear();
+    apiMock.postApiImpl = async () => ok({ notification_id: "notification-1", updated: true });
     socketMock.status = "connected";
     socketMock.events = [liveUpegEvent()];
     socketMock.notifications = [];
@@ -134,7 +160,7 @@ describe("App Token Radar social heat cockpit", () => {
       hideDuplicateClusters: false,
       watchedPostsOnly: false
     });
-    mockedGetBootstrap.mockResolvedValue(ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 }));
+    apiMock.getBootstrapImpl = async () => ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 });
     mockApi();
   });
 
@@ -1194,7 +1220,7 @@ function mockApi(options: {
   assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
   projectionVersion?: string;
 } = {}) {
-  mockedGetApi.mockImplementation(async (path, requestOptions) => {
+  apiMock.getApiImpl = async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
     if (path === "/api/notification-summary") {
       return ok(statusData.notifications?.summary);
@@ -1327,7 +1353,7 @@ function mockApi(options: {
       });
     }
     throw new Error(`unexpected path ${path}`);
-  });
+  };
 }
 
 function plainLiveEvent(): LivePayload {
@@ -1352,6 +1378,34 @@ function plainLiveEvent(): LivePayload {
   };
 }
 
+type AssetFlowPriceFixture = {
+  market_status: "fresh" | "partial" | "stale" | "missing" | "ready" | string;
+  market_observation_status?: string | null;
+  price_change_status?: string | null;
+  provider?: string | null;
+  price_usd?: number | null;
+  price_quote?: number | null;
+  market_cap_usd?: number | null;
+  liquidity_usd?: number | null;
+  volume_24h_usd?: number | null;
+  open_interest_usd?: number | null;
+  holders?: number | null;
+  snapshot_age_ms?: number | null;
+  snapshot_observed_at_ms?: number | null;
+  social_signal_start_ms?: number | null;
+  price_change_5m_pct?: number | null;
+  price_change_1h_pct?: number | null;
+  price_change_24h_pct?: number | null;
+  price_at_social_start?: number | null;
+  price_at_reference?: number | null;
+  price_before_social_start?: number | null;
+  price_change_since_social_pct?: number | null;
+  price_change_before_social_pct?: number | null;
+  price_at_first_snapshot?: number | null;
+  first_snapshot_observed_at_ms?: number | null;
+  price_change_since_first_snapshot_pct?: number | null;
+};
+
 function assetFlowRow(
   options: {
     address?: string;
@@ -1369,7 +1423,7 @@ function assetFlowRow(
       base_symbol?: string | null;
       quote_symbol?: string | null;
     };
-    price?: AssetFlowRow["price"];
+    price?: AssetFlowPriceFixture;
     attention?: Partial<AssetFlowRow["attention"]>;
     score?: Partial<NonNullable<AssetFlowRow["score"]>>;
     insufficientTiming?: boolean;
@@ -1496,7 +1550,7 @@ function assetFlowRow(
     },
     target,
     attention,
-    price,
+    current_market: currentMarketFromPriceFixture({ target, price }),
     resolution,
     score,
     factor_snapshot: factorSnapshotFromAssetFlowFixture({ attention, price, score, sourceEventIds, target }),
@@ -1514,7 +1568,7 @@ function factorSnapshotFromAssetFlowFixture({
   target
 }: {
   attention: AssetFlowRow["attention"];
-  price: NonNullable<AssetFlowRow["price"]>;
+  price: AssetFlowPriceFixture;
   score: NonNullable<AssetFlowRow["score"]>;
   sourceEventIds: string[];
   target: NonNullable<AssetFlowRow["target"]>;
@@ -1579,17 +1633,9 @@ function factorSnapshotFromAssetFlowFixture({
         facts: {
           market_status: marketStatus,
           market_observation_status: price.market_observation_status ?? marketStatus,
-          price_usd: price.price_usd ?? null,
-          price_quote: price.price_quote ?? null,
-          market_cap_usd: price.market_cap_usd ?? null,
-          liquidity_usd: price.liquidity_usd ?? null,
           volume_24h_usd: price.volume_24h_usd ?? null,
           open_interest_usd: price.open_interest_usd ?? null,
-          holders: price.holders ?? null,
-          snapshot_age_ms: price.snapshot_age_ms ?? null,
-          snapshot_observed_at_ms: price.snapshot_observed_at_ms ?? null,
           native_market_id: target.native_market_id ?? null,
-          provider: target.provider ?? null,
           feed_type: target.feed_type ?? null,
           target_market_type: targetMarketType
         },
@@ -1631,6 +1677,58 @@ function factorSnapshotFromAssetFlowFixture({
       computed_at_ms: attention.latest_seen_ms
     }
   };
+}
+
+function currentMarketFromPriceFixture({
+  target,
+  price
+}: {
+  target: NonNullable<AssetFlowRow["target"]>;
+  price: AssetFlowPriceFixture;
+}): AssetFlowRow["current_market"] {
+  const provider = price.provider ?? target.provider ?? null;
+  const observedAt = price.snapshot_observed_at_ms ?? null;
+  const ageMs = price.snapshot_age_ms ?? null;
+  const targetType = target.target_type ?? null;
+  const targetId = target.target_id ?? null;
+  return {
+    target_type: targetType,
+    target_id: targetId,
+    market_status: price.market_status,
+    fields: {
+      price_usd: fieldFact(price.price_usd ?? null, price.price_usd === null || price.price_usd === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
+      price_quote: fieldFact(price.price_quote ?? null, price.price_quote === null || price.price_quote === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
+      market_cap_usd: fieldFact(price.market_cap_usd ?? null, marketMetadataStatus(targetType, price.market_cap_usd, price.market_status), observedAt, ageMs, provider),
+      liquidity_usd: fieldFact(price.liquidity_usd ?? null, marketMetadataStatus(targetType, price.liquidity_usd, price.market_status), observedAt, ageMs, provider),
+      volume_24h_usd: fieldFact(price.volume_24h_usd ?? null, price.volume_24h_usd === null || price.volume_24h_usd === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
+      open_interest_usd: fieldFact(price.open_interest_usd ?? null, price.open_interest_usd === null || price.open_interest_usd === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
+      holders: fieldFact(price.holders ?? null, marketMetadataStatus(targetType, price.holders, price.market_status), observedAt, ageMs, provider)
+    }
+  };
+}
+
+function fieldFact(
+  value: number | string | null,
+  status: string,
+  observedAt: number | null,
+  ageMs: number | null,
+  provider: string | null
+) {
+  return {
+    value,
+    status,
+    observed_at_ms: observedAt,
+    age_ms: ageMs,
+    provider,
+    source_observation_id: null
+  };
+}
+
+function marketMetadataStatus(targetType: string | null, value: unknown, marketStatus: string): string {
+  if (value !== null && value !== undefined) {
+    return marketStatus;
+  }
+  return targetType === "CexToken" ? "unsupported" : "missing";
 }
 
 function factorPoint(family: string, key: string, rawValue: unknown, score: number) {

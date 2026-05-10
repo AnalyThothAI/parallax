@@ -854,6 +854,28 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
     assert [item["target"]["symbol"] for item in watched_flow.json()["data"]["targets"]] == ["PEPE"]
 
 
+def test_api_current_market_returns_missing_snapshot_for_known_target_shape(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/current-market",
+            params={"target_type": "Asset", "target_id": "asset:missing"},
+            headers={"Authorization": "Bearer secret"},
+        )
+        missing = client.get("/api/current-market", headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "target_type": "Asset",
+        "target_id": "asset:missing",
+        "market_status": "missing",
+        "fields": {},
+    }
+    assert missing.status_code == 400
+    assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
+
+
 def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

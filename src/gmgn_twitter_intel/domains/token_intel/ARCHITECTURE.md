@@ -37,7 +37,7 @@ GMGN frame
 | Asset identity ledger | `../asset_market/identity_evidence_policy.py`, `../asset_market/repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
 | Discovery and reprocess | `../asset_market/runtime/token_discovery_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current`, pricefeed / price observations | Recent NIL / AMBIGUOUS symbol and address lookup keys are discovered through OKX DEX, then affected intents are reprocessed. Symbol search writes bounded candidate evidence; exact address lookup writes exact evidence. Symbol candidates do not overwrite exact identity. |
 | Market observation | `../asset_market/runtime/{asset_market_sync_worker.py,message_market_observation_worker.py}`, `../asset_market/services/{asset_market_sync.py,message_market_observation.py}`, `../asset_market/services/market_freshness_demand.py` | `cex_tokens`, `price_feeds`, `price_observations`, `asset_identity_evidence/current` | CEX universe sync creates canonical CEX tokens and feeds. GMGN payload and message-level CEX / DEX quotes write price observations. OKX DEX price sync prioritizes hot radar assets by missing/stale market facts before warm assets. Price freshness never stands in for identity confidence. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, and market observations, then emits `token_factor_snapshot_v1`. Projection does not call providers or preflight-refresh markets. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, and `asset_identity_current`, then consumes `asset_market` current-market snapshots for scoring context and emits `token_factor_snapshot_v1`. It does not read latest price-observation rows as a live market contract, call providers, or preflight-refresh markets. |
 
 ## Factor Snapshot Contract
 
@@ -54,8 +54,10 @@ contract. It contains:
 - `provenance` — source event ids and computation time.
 
 Token Radar current runtime explanation source is `factor_snapshot_json`.
-Legacy score-centered JSON fields are not runtime fallback sources. Signal Lab
-Pulse recommendations consume factor snapshots and deterministic gates.
+Live/current market display is served from the `asset_market` current-market
+read model, not from factor snapshot market facts. Legacy score-centered JSON
+fields are not runtime fallback sources. Signal Lab Pulse recommendations
+consume factor snapshots and deterministic gates.
 
 ## Identity Boundary
 

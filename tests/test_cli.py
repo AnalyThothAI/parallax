@@ -139,6 +139,7 @@ class CliTests(unittest.TestCase):
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
             ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
+            ["current-market", "--target-type", "Asset", "--target-id", f"asset:eip155:1:erc20:{PEPE}"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -162,6 +163,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[10].ops_command, "audit-token-intent")
         self.assertEqual(parsed[11].ops_command, "rebuild-token-radar")
         self.assertEqual(parsed[12].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[13].command, "current-market")
+        self.assertEqual(parsed[13].target_type, "Asset")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -236,6 +239,10 @@ class CliTests(unittest.TestCase):
                     ["asset-flow", "--window", "5m", "--limit", "5", "--scope", "all"],
                     stdout=stdout,
                 )
+                current_market_code = main(
+                    ["current-market", "--target-type", "Asset", "--target-id", f"asset:eip155:1:erc20:{PEPE}"],
+                    stdout=stdout,
+                )
                 alerts_code = main(["account-alerts", "--window", "24h", "--limit", "5"], stdout=stdout)
                 jobs_code = main(["enrichment-jobs", "--limit", "5"], stdout=stdout)
                 social_events_code = main(["social-events", "--window", "1h", "--limit", "5"], stdout=stdout)
@@ -248,27 +255,30 @@ class CliTests(unittest.TestCase):
                 recent_code,
                 search_code,
                 asset_flow_code,
+                current_market_code,
                 alerts_code,
                 jobs_code,
                 social_events_code,
                 seeds_code,
                 snapshots_code,
             ],
-            [0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0],
         )
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
         self.assertEqual(lines[2]["data"]["targets"][0]["target"]["symbol"], "PEPE")
         self.assertEqual(lines[2]["data"]["targets"][0]["attention"]["mentions_window"], 1)
+        self.assertEqual(lines[3]["data"]["market_status"], "fresh")
+        self.assertEqual(lines[3]["data"]["fields"]["price_usd"]["status"], "fresh")
         self.assertEqual(
-            {item["alert_type"] for item in lines[3]["data"]["items"]},
+            {item["alert_type"] for item in lines[4]["data"]["items"]},
             {"account_token"},
         )
-        self.assertEqual(lines[4]["data"]["counts"]["pending"], 1)
-        self.assertEqual(lines[5]["data"]["items"], [])
+        self.assertEqual(lines[5]["data"]["counts"]["pending"], 1)
         self.assertEqual(lines[6]["data"]["items"], [])
         self.assertEqual(lines[7]["data"]["items"], [])
+        self.assertEqual(lines[8]["data"]["items"], [])
 
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:

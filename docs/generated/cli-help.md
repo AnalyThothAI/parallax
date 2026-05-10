@@ -6,10 +6,10 @@
 
 ```
 usage: gmgn-twitter-intel [-h]
-                          {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops} ...
+                          {serve,init,config,db,recent,search,asset-flow,current-market,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops}
+  {serve,init,config,db,recent,search,asset-flow,current-market,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.gmgn-twitter-intel/config.yaml
     config              print effective runtime configuration
@@ -18,6 +18,7 @@ positional arguments:
     search              search stored tweets by CA, symbol, handle, or text
     asset-flow          rank resolved assets and unresolved attention
                         candidates
+    current-market      print field-aware current market snapshot
     account-alerts      print watched-account token alerts
     account-quality     print account quality profiles
     social-events       print harness social event read model
