@@ -333,6 +333,7 @@ export type AssetFlowRow = {
     candidates?: unknown[];
   };
   score: TokenRadarScoreSet;
+  factor_snapshot?: TokenFactorSnapshot;
   decision: Decision | string;
   data_health?: TokenRadarDataHealth;
 };
@@ -844,6 +845,11 @@ export type TokenFactorSnapshot = {
   composite: {
     rank_score?: number | null;
     recommended_decision?: string | null;
+    family_scores?: Record<string, number | null | undefined>;
+  };
+  provenance?: {
+    source_event_ids?: string[];
+    computed_at_ms?: number | null;
   };
 };
 

@@ -607,7 +607,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
     expect(within(drawer).getByText("market pending")).toBeInTheDocument();
     expect(within(drawer).getByText("driver")).toBeInTheDocument();
-    expect(within(drawer).getByText("public_stream_coverage")).toBeInTheDocument();
+    expect(within(drawer).getAllByText("market_freshness_missing").length).toBeGreaterThan(0);
     expect(drawer.querySelector(".tabs")).toBeInTheDocument();
     expect(drawer.querySelector(".focus-tabs")).not.toBeInTheDocument();
     expect(drawer.querySelector(".decision-controls")).not.toBeInTheDocument();
@@ -670,11 +670,19 @@ describe("App Token Radar social heat cockpit", () => {
   });
 
   it("does not fallback resolved target identity to the mention symbol", () => {
+    const base = assetFlowRow({ symbol: "SLOP" });
     const row = {
-      ...assetFlowRow({ symbol: "SATO" }),
+      ...base,
       target: {
-        ...assetFlowRow({ symbol: "SLOP" }).target,
+        ...base.target,
         symbol: null
+      },
+      factor_snapshot: {
+        ...base.factor_snapshot!,
+        subject: {
+          ...base.factor_snapshot!.subject,
+          symbol: null
+        }
       },
       intent: { intent_id: "intent-sato-mention", display_symbol: "SATO", display_name: null, evidence: [] }
     };
@@ -682,31 +690,41 @@ describe("App Token Radar social heat cockpit", () => {
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
     expect(item.identity.symbol).toBeNull();
-    expect(item.identity.target_id).toBe(row.target?.target_id);
+    expect(item.identity.target_id).toBe(base.factor_snapshot?.subject.target_id);
   });
 
-  it("rejects token radar rows when the backend omits score versions", () => {
-    const row = {
-      ...assetFlowRow(),
-      score: {
-        heat: scoreBlock({ score: 11, reasons: [], risks: [] }),
-        quality: scoreBlock({ score: 12, reasons: [], risks: [] }),
-        propagation: scoreBlock({ score: 13, reasons: [], risks: [] }),
-        tradeability: scoreBlock({ score: 14, reasons: [], risks: [] }),
-        timing: scoreBlock({ score: 15, reasons: [], risks: [] }),
-        opportunity: scoreBlock({ score: 16, reasons: [], risks: [] })
-      }
-    } as unknown as AssetFlowRow;
+  it("rejects token radar rows when the backend omits factor_snapshot", () => {
+    const row = assetFlowRow() as unknown as Record<string, unknown>;
+    delete row.factor_snapshot;
 
-    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(/score\.heat\.score_version/);
+    expect(() => tokenRadarRowToTokenItem(row as unknown as AssetFlowRow, "1h", "all")).toThrow(/factor_snapshot/);
   });
 
-  it("rejects token radar rows when baseline fields are missing", () => {
+  it("rejects token radar rows when the factor snapshot omits the current attention window", () => {
     const row = assetFlowRow();
-    const attention = { ...(row.attention as Partial<AssetFlowRow["attention"]>) };
-    delete attention.baseline_status;
+    const socialAttention = row.factor_snapshot!.families.social_attention;
+    const facts = { ...(socialAttention.facts ?? {}) };
+    delete facts.mentions_1h;
 
-    expect(() => tokenRadarRowToTokenItem({ ...row, attention } as unknown as AssetFlowRow, "1h", "all")).toThrow(/attention\.baseline_status/);
+    expect(() =>
+      tokenRadarRowToTokenItem(
+        {
+          ...row,
+          factor_snapshot: {
+            ...row.factor_snapshot!,
+            families: {
+              ...row.factor_snapshot!.families,
+              social_attention: {
+                ...socialAttention,
+                facts
+              }
+            }
+          }
+        } as unknown as AssetFlowRow,
+        "1h",
+        "all"
+      )
+    ).toThrow(/factor_snapshot\.social_attention\.mentions_1h/);
   });
 
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
@@ -1382,6 +1400,93 @@ function assetFlowRow(
   const marketFresh = price.market_status === "fresh" || price.market_status === "ready" || price.market_status === "stale";
   const timingStatus = options.insufficientTiming ? "market_pending" : marketFresh ? "neutral" : "market_pending";
   const timingRisks = timingStatus === "market_pending" ? ["market_observation_pending"] : [];
+  const target = isCex
+    ? {
+        target_type: "CexToken",
+        target_id: targetId,
+        symbol,
+        status: "canonical",
+        provider: options.primaryVenue?.exchange ?? "okx",
+        native_market_id: options.primaryVenue?.inst_id ?? `${symbol}-USDT`,
+        feed_type: options.primaryVenue?.inst_type ?? "cex_spot",
+        quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT"
+      }
+    : {
+        target_type: "Asset",
+        target_id: targetId,
+        symbol,
+        status: "candidate",
+        chain_id: "eip155:1",
+        token_standard: "erc20",
+        address,
+        pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`
+      };
+  const attention = {
+    mentions_5m: 2,
+    mentions_1h: 4,
+    mentions_4h: 4,
+    mentions_24h: 4,
+    mentions_window: 4,
+    unique_authors: 3,
+    watched_mentions: 1,
+    latest_seen_ms: 1_777_746_300_000,
+    previous_mentions: 0,
+    mention_delta: 4,
+    mention_delta_pct: null,
+    z_score: null,
+    z_ewma: null,
+    robust_z: null,
+    new_burst_score: 80,
+    stream_share: 0,
+    baseline_version: "token_baseline_v2",
+    baseline_status: "insufficient_history",
+    baseline_sample_count: 0,
+    baseline_nonzero_sample_count: 0,
+    zero_slot_count: 6,
+    ...options.attention
+  };
+  const resolution = {
+    status: "EXACT",
+    resolution_status: "EXACT",
+    target_type: targetType,
+    target_id: targetId,
+    reason_codes: ["CHAIN_ADDRESS_EXACT"],
+    candidate_ids: [targetId],
+    lookup_keys: []
+  };
+  const score = {
+    heat: scoreBlock({ score_version: "social_heat_v1", score: 86, status: "rising", reasons: ["rising"], risks: ["public_stream_coverage"] }),
+    quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
+    propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
+    tradeability: scoreBlock({
+      score_version: "tradeability_v2",
+      score: marketFresh ? 80 : 60,
+      reasons: ["resolved_target"],
+      risks: [],
+      identity_tradeable: true,
+      market_fresh: marketFresh,
+      market_cap_present: true,
+      liquidity_present: true,
+      pool_present: marketFresh
+    }),
+    timing: scoreBlock({
+      score_version: "timing_v4",
+      score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
+      status: timingStatus,
+      chase_risk: false,
+      reasons: [],
+      risks: timingRisks
+    }),
+    opportunity: scoreBlock({
+      score_version: "social_opportunity_v3",
+      score: 79,
+      reasons: ["backend_decision"],
+      risks: ["public_stream_coverage"],
+      components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
+    }),
+    ...options.score
+  };
+  const sourceEventIds = ["event-upeg-1", "event-upeg-2", "event-upeg-3", "event-upeg-4"];
   return {
     intent: {
       intent_id: `intent:${assetId}`,
@@ -1389,102 +1494,162 @@ function assetFlowRow(
       display_name: null,
       evidence: []
     },
-    target: isCex
-      ? {
-          target_type: "CexToken",
-          target_id: targetId,
-          symbol,
-          status: "canonical",
-          provider: options.primaryVenue?.exchange ?? "okx",
-          native_market_id: options.primaryVenue?.inst_id ?? `${symbol}-USDT`,
-          feed_type: options.primaryVenue?.inst_type ?? "cex_spot",
-          quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT"
-        }
-      : {
-          target_type: "Asset",
-          target_id: targetId,
-          symbol,
-          status: "candidate",
-          chain_id: "eip155:1",
-          token_standard: "erc20",
-          address,
-          pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`
-        },
-    attention: {
-      mentions_5m: 2,
-      mentions_1h: 4,
-      mentions_4h: 4,
-      mentions_24h: 4,
-      mentions_window: 4,
-      unique_authors: 3,
-      watched_mentions: 1,
-      latest_seen_ms: 1_777_746_300_000,
-      previous_mentions: 0,
-      mention_delta: 4,
-      mention_delta_pct: null,
-      z_score: null,
-      z_ewma: null,
-      robust_z: null,
-      new_burst_score: 80,
-      stream_share: 0,
-      baseline_version: "token_baseline_v2",
-      baseline_status: "insufficient_history",
-      baseline_sample_count: 0,
-      baseline_nonzero_sample_count: 0,
-      zero_slot_count: 6,
-      ...options.attention
-    },
+    target,
+    attention,
     price,
-    resolution: {
-      status: "EXACT",
-      resolution_status: "EXACT",
-      target_type: targetType,
-      target_id: targetId,
-      reason_codes: ["CHAIN_ADDRESS_EXACT"],
-      candidate_ids: [targetId],
-      lookup_keys: []
-    },
-    score: {
-      heat: scoreBlock({ score_version: "social_heat_v1", score: 86, status: "rising", reasons: ["rising"], risks: ["public_stream_coverage"] }),
-      quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
-      propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
-      tradeability: scoreBlock({
-        score_version: "tradeability_v2",
-        score: marketFresh ? 80 : 60,
-        reasons: ["resolved_target"],
-        risks: [],
-        identity_tradeable: true,
-        market_fresh: marketFresh,
-        market_cap_present: true,
-        liquidity_present: true,
-        pool_present: marketFresh
-      }),
-      timing: scoreBlock({
-        score_version: "timing_v4",
-        score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
-        status: timingStatus,
-        chase_risk: false,
-        reasons: [],
-        risks: timingRisks
-      }),
-      opportunity: scoreBlock({
-        score_version: "social_opportunity_v3",
-        score: 79,
-        reasons: ["backend_decision"],
-        risks: ["public_stream_coverage"],
-        components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
-      })
-      ,
-      ...options.score
-    },
+    resolution,
+    score,
+    factor_snapshot: factorSnapshotFromAssetFlowFixture({ attention, price, score, sourceEventIds, target }),
     decision: "driver",
     data_health: { identity: "EXACT", market: price.market_observation_status ?? "pending", coverage: "public_stream" },
-    source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3", "event-upeg-4"]
+    source_event_ids: sourceEventIds
+  };
+}
+
+function factorSnapshotFromAssetFlowFixture({
+  attention,
+  price,
+  score,
+  sourceEventIds,
+  target
+}: {
+  attention: AssetFlowRow["attention"];
+  price: NonNullable<AssetFlowRow["price"]>;
+  score: NonNullable<AssetFlowRow["score"]>;
+  sourceEventIds: string[];
+  target: NonNullable<AssetFlowRow["target"]>;
+}) {
+  const marketStatus = price.market_status ?? "missing";
+  const targetMarketType = target.target_type === "CexToken" ? "cex" : "dex";
+  const blockedReasons = marketStatus === "missing" ? ["market_freshness_missing"] : [];
+  return {
+    schema_version: "token_factor_snapshot_v1",
+    subject: {
+      target_type: target.target_type ?? null,
+      target_id: target.target_id ?? null,
+      symbol: target.symbol ?? null,
+      chain: target.target_type === "Asset" ? target.chain_id ?? null : null,
+      address: target.target_type === "Asset" ? target.address ?? null : null,
+      target_market_type: targetMarketType
+    },
+    families: {
+      social_attention: {
+        score: score.heat.score,
+        facts: {
+          mentions_5m: attention.mentions_5m,
+          mentions_1h: attention.mentions_1h,
+          mentions_4h: attention.mentions_4h,
+          mentions_24h: attention.mentions_24h,
+          unique_authors: attention.unique_authors,
+          watched_mentions: attention.watched_mentions,
+          latest_seen_ms: attention.latest_seen_ms,
+          previous_mentions: attention.previous_mentions,
+          mention_delta: attention.mention_delta,
+          mention_delta_pct: attention.mention_delta_pct,
+          z_score: attention.z_score,
+          new_burst_score: attention.new_burst_score,
+          status: (score.heat as { status?: string }).status,
+          stream_share: attention.stream_share,
+          baseline_status: attention.baseline_status,
+          baseline_sample_count: attention.baseline_sample_count
+        },
+        factors: {
+          mentions_1h: factorPoint("social_attention", "mentions_1h", attention.mentions_1h, 70),
+          unique_authors: factorPoint("social_attention", "unique_authors", attention.unique_authors, 70),
+          watched_mentions: factorPoint("social_attention", "watched_mentions", attention.watched_mentions, 60)
+        },
+        data_health: "ready"
+      },
+      social_quality: {
+        score: score.quality.score,
+        facts: {
+          mentions: attention.mentions_window,
+          independent_authors: attention.unique_authors,
+          duplicate_text_share: 0,
+          informative_post_count: Math.min(attention.mentions_window, attention.unique_authors)
+        },
+        factors: {
+          independent_authors: factorPoint("social_quality", "independent_authors", attention.unique_authors, 70),
+          informative_post_count: factorPoint("social_quality", "informative_post_count", attention.mentions_window, 70)
+        },
+        data_health: "ready"
+      },
+      market_quality: {
+        score: score.tradeability.score,
+        facts: {
+          market_status: marketStatus,
+          market_observation_status: price.market_observation_status ?? marketStatus,
+          price_usd: price.price_usd ?? null,
+          price_quote: price.price_quote ?? null,
+          market_cap_usd: price.market_cap_usd ?? null,
+          liquidity_usd: price.liquidity_usd ?? null,
+          volume_24h_usd: price.volume_24h_usd ?? null,
+          open_interest_usd: price.open_interest_usd ?? null,
+          holders: price.holders ?? null,
+          snapshot_age_ms: price.snapshot_age_ms ?? null,
+          snapshot_observed_at_ms: price.snapshot_observed_at_ms ?? null,
+          native_market_id: target.native_market_id ?? null,
+          provider: target.provider ?? null,
+          feed_type: target.feed_type ?? null,
+          target_market_type: targetMarketType
+        },
+        factors: {
+          market_status: factorPoint("market_quality", "market_status", marketStatus, marketStatus === "missing" ? 0 : 100),
+          liquidity_usd: factorPoint("market_quality", "liquidity_usd", price.liquidity_usd ?? null, price.liquidity_usd ? 100 : 0)
+        },
+        data_health: marketStatus === "missing" ? "partial" : "ready"
+      },
+      timing: {
+        score: score.timing.score,
+        facts: {
+          social_signal_start_ms: price.social_signal_start_ms ?? attention.latest_seen_ms,
+          price_change_since_social_pct: price.price_change_since_social_pct ?? null,
+          price_change_before_social_pct: price.price_change_before_social_pct ?? null
+        },
+        factors: {
+          price_change_since_social_pct: factorPoint("timing", "price_change_since_social_pct", price.price_change_since_social_pct ?? null, score.timing.score)
+        },
+        data_health: price.price_change_since_social_pct === null || price.price_change_since_social_pct === undefined ? "partial" : "ready"
+      }
+    },
+    hard_gates: {
+      eligible_for_high_alert: blockedReasons.length === 0,
+      blocked_reasons: blockedReasons
+    },
+    composite: {
+      rank_score: score.opportunity.score,
+      recommended_decision: score.opportunity.score >= 75 ? "high_alert" : "watch",
+      family_scores: {
+        social_attention: score.heat.score,
+        social_quality: score.quality.score,
+        market_quality: score.tradeability.score,
+        timing: score.timing.score
+      }
+    },
+    provenance: {
+      source_event_ids: sourceEventIds,
+      computed_at_ms: attention.latest_seen_ms
+    }
+  };
+}
+
+function factorPoint(family: string, key: string, rawValue: unknown, score: number) {
+  return {
+    family,
+    key,
+    raw_value: rawValue,
+    score,
+    confidence: 0.95,
+    data_health: rawValue === null || rawValue === undefined ? "missing" : "ready",
+    source_refs: [],
+    risk_flags: [],
+    hard_gate: null
   };
 }
 
 function unresolvedAssetFlowRow(): AssetFlowRow {
   const row = assetFlowRow();
+  const snapshot = row.factor_snapshot!;
   return {
     ...row,
     target: {
@@ -1501,6 +1666,18 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
       reason_codes: ["NO_DETERMINISTIC_TARGET"],
       candidate_ids: [],
       lookup_keys: []
+    },
+    factor_snapshot: {
+      ...snapshot,
+      subject: {
+        ...snapshot.subject,
+        target_type: null,
+        target_id: null
+      },
+      hard_gates: {
+        eligible_for_high_alert: false,
+        blocked_reasons: ["identity_unresolved"]
+      }
     },
     decision: "investigate"
   };
