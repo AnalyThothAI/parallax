@@ -16,14 +16,14 @@ class MessageMarketObservationWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        cex_client=None,
-        dex_client=None,
+        cex_market=None,
+        dex_market=None,
         interval_seconds: float = 5.0,
         limit: int = 100,
     ) -> None:
         self.repository_session = repository_session
-        self.cex_client = cex_client
-        self.dex_client = dex_client
+        self.cex_market = cex_market
+        self.dex_market = dex_market
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.limit = max(1, int(limit))
         self.last_started_at_ms: int | None = None
@@ -48,8 +48,8 @@ class MessageMarketObservationWorker:
         with self.repository_session() as repos:
             result = observe_message_market(
                 repos=repos,
-                cex_client=self.cex_client,
-                dex_client=self.dex_client,
+                cex_market=self.cex_market,
+                dex_market=self.dex_market,
                 now_ms=observed_at_ms,
                 limit=self.limit,
             )
@@ -61,7 +61,7 @@ class MessageMarketObservationWorker:
         self._stopped = True
 
     def close(self) -> None:
-        for client in (self.cex_client, self.dex_client):
-            close = getattr(client, "close", None)
+        for provider in (self.cex_market, self.dex_market):
+            close = getattr(provider, "close", None)
             if close:
                 close()

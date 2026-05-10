@@ -10,14 +10,14 @@ from typing import Any
 from loguru import logger
 
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
+from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 
 
 class EnrichmentWorker:
     def __init__(
         self,
         *,
-        client,
+        client: SocialEventEnrichmentProvider,
         publisher=None,
         repository_session: Callable[[], AbstractContextManager[Any]],
         poll_interval: float = 2.0,
@@ -122,7 +122,7 @@ class EnrichmentWorker:
             return True
 
         try:
-            with self.repository_session() as repos, transaction(repos.conn):
+            with self.repository_session() as repos, repos.unit_of_work():
                 run = repos.enrichment.complete_social_event_job(
                     job=job,
                     run_id=run_id,

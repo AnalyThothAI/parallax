@@ -3,28 +3,23 @@ from __future__ import annotations
 import asyncio
 import time
 
+from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenCandidate, DexTokenPrice
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import (
-    sync_okx_cex_universe,
-    sync_okx_dex_prices,
-)
-from gmgn_twitter_intel.integrations.okx.models import (
-    OkxCexInstrument,
-    OkxCexTicker,
-    OkxDexTokenCandidate,
-    OkxDexTokenPrice,
+    sync_cex_universe,
+    sync_dex_prices,
 )
 
 
-def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
+def test_sync_cex_universe_writes_instruments_and_market_snapshots():
     registry = FakeRegistry()
     price_observations = FakePriceObservations()
-    client = FakeOkxCexClient()
+    cex_market = FakeCexMarket()
 
-    result = sync_okx_cex_universe(
+    result = sync_cex_universe(
         registry=registry,
         price_observations=price_observations,
-        client=client,
+        cex_market=cex_market,
         inst_types=("SPOT",),
         observed_at_ms=1_700_000_000_000,
     )
@@ -36,8 +31,8 @@ def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
         "price_observations_written": 1,
         "affected_lookup_keys": ["cex_token:BTC", "project_symbol:BTC", "symbol:BTC"],
     }
-    assert client.instrument_requests == []
-    assert client.ticker_requests == ["SPOT"]
+    assert cex_market.instrument_requests == []
+    assert cex_market.ticker_requests == ["SPOT"]
     assert registry.cex_tokens == [{"base_symbol": "BTC"}]
     assert registry.pricefeeds == [
         {
@@ -73,10 +68,10 @@ def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():
 def test_asset_market_sync_worker_runs_one_cex_sync_cycle():
     registry = FakeRegistry()
     price_observations = FakePriceObservations()
-    client = FakeOkxCexClient()
+    cex_market = FakeCexMarket()
     session = FakeRepositorySession(registry, price_observations)
     worker = AssetMarketSyncWorker(
-        client=client,
+        cex_market=cex_market,
         repository_session=lambda: session,
         inst_types=("SPOT",),
         interval_seconds=300,
@@ -102,8 +97,8 @@ def test_asset_market_sync_worker_runs_dex_before_cex():
     ]
     session = FakeRepositorySession(registry, FakePriceObservations())
     worker = AssetMarketSyncWorker(
-        client=FakeOkxCexClient(events=events),
-        dex_client=FakeOkxDexPriceClient(events=events),
+        cex_market=FakeCexMarket(events=events),
+        dex_market=FakeDexMarket(events=events),
         repository_session=lambda: session,
         inst_types=("SPOT",),
         interval_seconds=300,
@@ -128,8 +123,8 @@ def test_asset_market_sync_worker_records_cex_while_dex_is_still_running():
         ]
         price_observations = FakePriceObservations()
         worker = AssetMarketSyncWorker(
-            client=FakeOkxCexClient(events=events),
-            dex_client=FakeOkxDexPriceClient(events=events, delay_seconds=0.2),
+            cex_market=FakeCexMarket(events=events),
+            dex_market=FakeDexMarket(events=events, delay_seconds=0.2),
             repository_session=lambda: FakeRepositorySession(registry, price_observations),
             inst_types=("SPOT",),
             interval_seconds=1,
@@ -149,7 +144,7 @@ def test_asset_market_sync_worker_records_cex_while_dex_is_still_running():
     asyncio.run(scenario())
 
 
-def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
+def test_sync_dex_prices_refreshes_active_dex_venues_in_batches():
     registry = FakeRegistry()
     price_observations = FakePriceObservations()
     registry.dex_refresh_rows = [
@@ -164,12 +159,12 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
             "holders": 123,
         }
     ]
-    client = FakeOkxDexPriceClient()
+    dex_market = FakeDexMarket()
 
-    result = sync_okx_dex_prices(
+    result = sync_dex_prices(
         registry=registry,
         price_observations=price_observations,
-        client=client,
+        dex_market=dex_market,
         observed_at_ms=1_778_085_100_000,
         stale_after_ms=300_000,
         limit=100,
@@ -199,8 +194,8 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
         }
     ]
     assert registry.global_refresh_calls == []
-    assert client.price_requests == [
-        [{"chainIndex": "56", "tokenContractAddress": "0x8f32420f2e3728c49399b00dd0a796602d984444"}]
+    assert [(item.chain_id, item.address) for item in dex_market.price_requests[0]] == [
+        ("eip155:56", "0x8f32420f2e3728c49399b00dd0a796602d984444")
     ]
     assert price_observations.observations[-1] == {
         "provider": "okx_dex_price",
@@ -219,7 +214,7 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
     }
 
 
-def test_sync_okx_dex_prices_enriches_address_search_metadata():
+def test_sync_dex_prices_enriches_address_search_metadata():
     registry = FakeRegistry()
     price_observations = FakePriceObservations()
     address = "0x44b28991b167582f18ba0259e0173176ca125505"
@@ -234,11 +229,10 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
             "holders": None,
         }
     ]
-    client = FakeOkxDexPriceClient(
+    dex_market = FakeDexMarket(
         search_candidates=[
-            OkxDexTokenCandidate(
-                chain_index="1",
-                chain=None,
+            DexTokenCandidate(
+                chain_id="eip155:1",
                 address=address,
                 symbol="UPEG",
                 name="Unipeg",
@@ -252,10 +246,10 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
         ]
     )
 
-    result = sync_okx_dex_prices(
+    result = sync_dex_prices(
         registry=registry,
         price_observations=price_observations,
-        client=client,
+        dex_market=dex_market,
         observed_at_ms=1_778_085_100_000,
         stale_after_ms=300_000,
         limit=100,
@@ -280,7 +274,7 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
     assert price_observations.observations[0]["holders"] == 4_885
 
 
-def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
+def test_sync_dex_prices_rechecks_tweet_source_address_metadata():
     registry = FakeRegistry()
     price_observations = FakePriceObservations()
     address = "0x999b49c0d1612e619a4a4f6280733184da025108"
@@ -296,11 +290,10 @@ def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
             "holders": 500,
         }
     ]
-    client = FakeOkxDexPriceClient(
+    dex_market = FakeDexMarket(
         search_candidates=[
-            OkxDexTokenCandidate(
-                chain_index="1",
-                chain=None,
+            DexTokenCandidate(
+                chain_id="eip155:1",
                 address=address,
                 symbol="SLOP",
                 name="SLOP",
@@ -314,10 +307,10 @@ def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
         ]
     )
 
-    result = sync_okx_dex_prices(
+    result = sync_dex_prices(
         registry=registry,
         price_observations=price_observations,
-        client=client,
+        dex_market=dex_market,
         observed_at_ms=1_778_085_100_000,
         stale_after_ms=300_000,
         limit=100,
@@ -338,7 +331,7 @@ def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
     ]
 
 
-def test_sync_okx_dex_prices_continues_when_address_search_fails():
+def test_sync_dex_prices_continues_when_address_search_fails():
     registry = FakeRegistry()
     price_observations = FakePriceObservations()
     registry.dex_refresh_rows = [
@@ -352,12 +345,12 @@ def test_sync_okx_dex_prices_continues_when_address_search_fails():
             "holders": None,
         }
     ]
-    client = FakeOkxDexPriceClient(search_error=RuntimeError("rate limited"))
+    dex_market = FakeDexMarket(search_error=RuntimeError("rate limited"))
 
-    result = sync_okx_dex_prices(
+    result = sync_dex_prices(
         registry=registry,
         price_observations=price_observations,
-        client=client,
+        dex_market=dex_market,
         observed_at_ms=1_778_085_100_000,
         stale_after_ms=300_000,
         limit=100,
@@ -373,31 +366,18 @@ def test_sync_okx_dex_prices_continues_when_address_search_fails():
     assert price_observations.observations[-1]["provider"] == "okx_dex_price"
 
 
-class FakeOkxCexClient:
+class FakeCexMarket:
     def __init__(self, *, events=None):
         self.events = events
         self.instrument_requests = []
         self.ticker_requests = []
-
-    def instruments(self, *, inst_type):
-        self.instrument_requests.append(inst_type)
-        return [
-            OkxCexInstrument(
-                inst_id="BTC-USDT",
-                inst_type=inst_type,
-                base_symbol="BTC",
-                quote_symbol="USDT",
-                state="live",
-                raw={"instId": "BTC-USDT"},
-            )
-        ]
 
     def tickers(self, *, inst_type):
         self.ticker_requests.append(inst_type)
         if self.events is not None:
             self.events.append(f"cex_tickers:{inst_type}")
         return [
-            OkxCexTicker(
+            CexTicker(
                 inst_id="BTC-USDT",
                 inst_type=inst_type,
                 last_price=69000.0,
@@ -408,7 +388,7 @@ class FakeOkxCexClient:
         ]
 
 
-class FakeOkxDexPriceClient:
+class FakeDexMarket:
     def __init__(self, *, events=None, delay_seconds=0, search_candidates=None, search_error=None):
         self.events = events
         self.delay_seconds = delay_seconds
@@ -417,10 +397,10 @@ class FakeOkxDexPriceClient:
         self.search_candidates = search_candidates or []
         self.search_error = search_error
 
-    def search_tokens(self, *, query, chain_indexes):
+    def search_tokens(self, *, query, chain_ids):
         if self.search_error is not None:
             raise self.search_error
-        self.search_requests.append({"query": query, "chain_indexes": tuple(chain_indexes)})
+        self.search_requests.append({"query": query, "chain_ids": tuple(chain_ids)})
         return list(self.search_candidates)
 
     def token_prices(self, tokens):
@@ -430,8 +410,8 @@ class FakeOkxDexPriceClient:
             time.sleep(self.delay_seconds)
         self.price_requests.append(tokens)
         return [
-            OkxDexTokenPrice(
-                chain_index="56",
+            DexTokenPrice(
+                chain_id="eip155:56",
                 address="0x8f32420f2e3728c49399b00dd0a796602d984444",
                 observed_at_ms=1_778_085_000_000,
                 price_usd=0.00002237,

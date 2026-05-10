@@ -20,6 +20,9 @@ class EvidenceRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
+    def unit_of_work(self):
+        return transaction(self.conn)
+
     def insert_raw_frame(
         self,
         *,

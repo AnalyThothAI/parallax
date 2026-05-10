@@ -8,7 +8,7 @@ from loguru import logger
 
 from gmgn_twitter_intel.domains.token_intel.interfaces import DEFAULT_REPROCESS_LIMIT, refresh_recent_token_state
 
-from ..services.asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
+from ..services.asset_market_sync import sync_cex_universe, sync_dex_prices
 
 DEX_PRICE_STALE_MS = 5 * 60 * 1000
 DEX_PRICE_REFRESH_LIMIT = 80
@@ -19,14 +19,14 @@ class AssetMarketSyncWorker:
         self,
         *,
         repository_session,
-        client=None,
-        dex_client=None,
+        cex_market=None,
+        dex_market=None,
         inst_types: tuple[str, ...],
         interval_seconds: float = 300.0,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
     ) -> None:
-        self.client = client
-        self.dex_client = dex_client
+        self.cex_market = cex_market
+        self.dex_market = dex_market
         self.repository_session = repository_session
         self.inst_types = tuple(str(item).strip().upper() for item in inst_types if str(item).strip())
         self.interval_seconds = interval_seconds
@@ -46,26 +46,26 @@ class AssetMarketSyncWorker:
     async def run(self) -> None:
         while not self._stopped:
             now_ms = _now_ms()
-            if self.dex_client is not None:
+            if self.dex_market is not None:
                 self._dex_task = self._start_provider_task("dex", self._dex_task, self._sync_dex_once, now_ms=now_ms)
-            if self.client is not None and self.inst_types:
+            if self.cex_market is not None and self.inst_types:
                 self._cex_task = self._start_provider_task("cex", self._cex_task, self._sync_cex_once, now_ms=now_ms)
             await asyncio.sleep(max(1.0, float(self.interval_seconds)))
 
     def sync_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         observed_at_ms = int(now_ms or _now_ms())
         result: dict[str, Any] = {}
-        ran_cex = self.client is not None and bool(self.inst_types)
-        ran_dex = self.dex_client is not None
+        ran_cex = self.cex_market is not None and bool(self.inst_types)
+        ran_dex = self.dex_market is not None
         errors: dict[str, str] = {}
-        if self.dex_client is not None:
+        if self.dex_market is not None:
             try:
                 with self.repository_session() as repos:
                     result["dex"] = self._sync_dex_with_refresh(repos=repos, now_ms=observed_at_ms)
             except Exception as exc:
                 errors["dex"] = str(exc)
                 logger.exception(f"OKX DEX market price sync failed: {exc}")
-        if self.client is not None and self.inst_types:
+        if self.cex_market is not None and self.inst_types:
             try:
                 with self.repository_session() as repos:
                     result["cex"] = self._sync_cex_with_refresh(repos=repos, now_ms=observed_at_ms)
@@ -89,10 +89,10 @@ class AssetMarketSyncWorker:
             return self._sync_cex_with_refresh(repos=repos, now_ms=now_ms)
 
     def _sync_dex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
-        result = sync_okx_dex_prices(
+        result = sync_dex_prices(
             registry=repos.registry,
             price_observations=repos.price_observations,
-            client=self.dex_client,
+            dex_market=self.dex_market,
             observed_at_ms=now_ms,
             stale_after_ms=DEX_PRICE_STALE_MS,
             limit=DEX_PRICE_REFRESH_LIMIT,
@@ -100,10 +100,10 @@ class AssetMarketSyncWorker:
         return self._with_resolution_refresh(result, repos=repos, now_ms=now_ms)
 
     def _sync_cex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
-        result = sync_okx_cex_universe(
+        result = sync_cex_universe(
             registry=repos.registry,
             price_observations=repos.price_observations,
-            client=self.client,
+            cex_market=self.cex_market,
             inst_types=self.inst_types,
             observed_at_ms=now_ms,
         )
@@ -173,8 +173,8 @@ class AssetMarketSyncWorker:
         self._stopped = True
 
     def close(self) -> None:
-        for client in (self.client, self.dex_client):
-            close = getattr(client, "close", None)
+        for provider in (self.cex_market, self.dex_market):
+            close = getattr(provider, "close", None)
             if close:
                 close()
 

@@ -166,9 +166,13 @@ def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypa
         def close(self):
             return None
 
-    class FakePulseClient:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
+    class FakePulseProvider:
+        provider = "fake"
+        timeout_seconds = 1.0
+        artifact_version_hash = "artifact:gpt-pulse"
+
+        def __init__(self, *, model):
+            self.model = model
 
     settings = Settings(
         ws_token="secret",
@@ -183,13 +187,30 @@ def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypa
     settings.set_config_dir(tmp_path / "app-home")
     monkeypatch.setattr(app_module, "create_pool", lambda *_, **__: FakePool())
     monkeypatch.setattr(app_module, "postgres_health_check", lambda *_, **__: {"ok": True})
-    monkeypatch.setattr(app_module, "OpenAIAgentsPulseThesisClient", FakePulseClient)
+    monkeypatch.setattr(
+        app_module,
+        "wire_providers",
+        lambda settings, *, start_collector: SimpleNamespace(
+            ingestion=SimpleNamespace(upstream_client_factory=None),
+            asset_market=SimpleNamespace(
+                projection_dex_market=None,
+                sync_cex_market=None,
+                sync_dex_market=None,
+                message_cex_market=None,
+                message_dex_market=None,
+                discovery_dex_market=None,
+                discovery_chain_ids=(),
+            ),
+            social_enrichment=SimpleNamespace(event_enrichment=None),
+            pulse_lab=SimpleNamespace(thesis_provider=FakePulseProvider(model=settings.pulse_agent_model)),
+        ),
+    )
 
     runtime = _build_runtime(settings, start_collector=False)
 
     try:
         assert runtime.pulse_candidate_worker is not None
-        assert runtime.pulse_candidate_worker.thesis_client.kwargs["model"] == "gpt-pulse"
+        assert runtime.pulse_candidate_worker.thesis_client.model == "gpt-pulse"
         assert runtime.pulse_candidate_worker.batch_size == settings.pulse_agent_batch_size
     finally:
         runtime.db_pool.close()

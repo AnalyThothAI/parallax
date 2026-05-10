@@ -4,11 +4,12 @@ import hashlib
 import json
 from typing import Any
 
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenPriceRequest
 from gmgn_twitter_intel.domains.asset_market.queries.pending_market_observation_query import (
     PendingMarketObservationQuery,
 )
 
-from .asset_market_sync import DEX_PRICE_BATCH_SIZE, _okx_chain_index
+from .asset_market_sync import DEX_PRICE_BATCH_SIZE
 
 MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
 
@@ -16,8 +17,8 @@ MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
 def observe_message_market(
     *,
     repos,
-    cex_client=None,
-    dex_client=None,
+    cex_market=None,
+    dex_market=None,
     now_ms: int,
     limit: int = 100,
 ) -> dict[str, Any]:
@@ -31,8 +32,8 @@ def observe_message_market(
         "skipped_missing_provider": 0,
         "skipped_missing_market": 0,
     }
-    cex_quotes = _fetch_cex_quotes(rows, cex_client=cex_client, result=result)
-    dex_quotes = _fetch_dex_quotes(rows, dex_client=dex_client, result=result)
+    cex_quotes = _fetch_cex_quotes(rows, cex_market=cex_market, result=result)
+    dex_quotes = _fetch_dex_quotes(rows, dex_market=dex_market, result=result)
     for row in rows:
         target_type = str(row.get("target_type") or "")
         if target_type == "CexToken":
@@ -64,9 +65,9 @@ def _select_pending_rows(conn, *, now_ms: int, limit: int) -> list[dict[str, Any
     return PendingMarketObservationQuery(conn).pending_rows(now_ms=now_ms, limit=limit)
 
 
-def _fetch_cex_quotes(rows: list[dict[str, Any]], *, cex_client, result: dict[str, Any]) -> dict[str, Any]:
+def _fetch_cex_quotes(rows: list[dict[str, Any]], *, cex_market, result: dict[str, Any]) -> dict[str, Any]:
     quotes: dict[str, Any] = {}
-    if cex_client is None:
+    if cex_market is None:
         if any(row.get("target_type") == "CexToken" for row in rows):
             result["skipped_missing_provider"] += 1
         return quotes
@@ -82,37 +83,37 @@ def _fetch_cex_quotes(rows: list[dict[str, Any]], *, cex_client, result: dict[st
         request_by_feed.setdefault(pricefeed_id, native_market_id)
     for pricefeed_id, inst_id in request_by_feed.items():
         result["cex_ticker_requests"] += 1
-        quotes[pricefeed_id] = cex_client.ticker(inst_id=inst_id)
+        quotes[pricefeed_id] = cex_market.ticker(inst_id=inst_id)
     return quotes
 
 
-def _fetch_dex_quotes(rows: list[dict[str, Any]], *, dex_client, result: dict[str, Any]) -> dict[tuple[str, str], Any]:
+def _fetch_dex_quotes(rows: list[dict[str, Any]], *, dex_market, result: dict[str, Any]) -> dict[tuple[str, str], Any]:
     quotes: dict[tuple[str, str], Any] = {}
-    if dex_client is None:
+    if dex_market is None:
         if any(row.get("target_type") == "Asset" for row in rows):
             result["skipped_missing_provider"] += 1
         return quotes
-    request_items: dict[tuple[str, str], dict[str, str]] = {}
+    request_items: dict[tuple[str, str], DexTokenPriceRequest] = {}
     for row in rows:
         if row.get("target_type") != "Asset":
             continue
-        chain_index = _okx_chain_index(row.get("asset_chain_id"))
+        chain_id = str(row.get("asset_chain_id") or "").strip()
         address = str(row.get("asset_address") or "").strip()
-        if not chain_index or not address:
+        if not chain_id or not address:
             result["skipped_missing_pricefeed"] += 1
             continue
         normalized = _normalize_address(address)
         request_items.setdefault(
-            (chain_index, normalized),
-            {"chainIndex": chain_index, "tokenContractAddress": normalized},
+            (chain_id, normalized),
+            DexTokenPriceRequest(chain_id=chain_id, address=normalized),
         )
     items = list(request_items.values())
     for chunk in _chunks(items, DEX_PRICE_BATCH_SIZE):
         if not chunk:
             continue
         result["dex_price_requests"] += 1
-        for price in dex_client.token_prices(chunk):
-            quotes[(str(price.chain_index), _normalize_address(price.address))] = price
+        for price in dex_market.token_prices(chunk):
+            quotes[(str(price.chain_id), _normalize_address(price.address))] = price
     return quotes
 
 
@@ -188,7 +189,7 @@ def _write_dex_observation(*, repos, row: dict[str, Any], price, now_ms: int, re
 
 
 def _dex_key(row: dict[str, Any]) -> tuple[str, str]:
-    return (_okx_chain_index(row.get("asset_chain_id")) or "", _normalize_address(str(row.get("asset_address") or "")))
+    return (str(row.get("asset_chain_id") or ""), _normalize_address(str(row.get("asset_address") or "")))
 
 
 def _normalize_address(address: str) -> str:
@@ -205,6 +206,6 @@ def _payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _chunks(items: list[dict[str, str]], size: int):
+def _chunks(items: list[DexTokenPriceRequest], size: int):
     for index in range(0, len(items), max(1, int(size))):
         yield items[index : index + size]

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import (
     TokenDiscoveryWorker,
     _process_address_lookup,
@@ -9,7 +10,6 @@ from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import E
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, SignalRepository
-from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -21,17 +21,16 @@ def _evm_address(index: int) -> str:
 
 def _dex_candidate(
     *,
-    chain_index: str,
+    chain_id: str,
     address: str,
     symbol: str = "HANTA",
     market_cap_usd: float | None = None,
     liquidity_usd: float | None = None,
     holders: int | None = None,
     price_usd: float | None = 1.0,
-) -> OkxDexTokenCandidate:
-    return OkxDexTokenCandidate(
-        chain_index=chain_index,
-        chain="Solana" if chain_index == "501" else "BNB Chain",
+) -> DexTokenCandidate:
+    return DexTokenCandidate(
+        chain_id=chain_id,
         address=address,
         symbol=symbol,
         name=symbol,
@@ -40,7 +39,7 @@ def _dex_candidate(
         liquidity_usd=liquidity_usd,
         holders=holders,
         community_recognized=None,
-        raw={"chainIndex": chain_index, "tokenContractAddress": address, "tokenSymbol": symbol},
+        raw={"chain_id": chain_id, "tokenContractAddress": address, "tokenSymbol": symbol},
     )
 
 
@@ -68,11 +67,10 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
 
         worker = TokenDiscoveryWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_client=FakeDexClient(
+            dex_market=FakeDexMarket(
                 candidates=[
-                    OkxDexTokenCandidate(
-                        chain_index="1",
-                        chain=None,
+                    DexTokenCandidate(
+                        chain_id="eip155:1",
                         address=address,
                         symbol="UPEG",
                         name="Unipeg",
@@ -85,7 +83,7 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
                     )
                 ]
             ),
-            chain_indexes=("1",),
+            chain_ids=("eip155:1",),
             interval_seconds=60,
         )
 
@@ -130,11 +128,10 @@ def test_token_discovery_worker_skips_symbol_lookup_after_retained_candidate_res
         )
         worker = TokenDiscoveryWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_client=FakeDexClient(
+            dex_market=FakeDexMarket(
                 candidates=[
-                    OkxDexTokenCandidate(
-                        chain_index="1",
-                        chain=None,
+                    DexTokenCandidate(
+                        chain_id="eip155:1",
                         address=address,
                         symbol="UPEG",
                         name="Unipeg",
@@ -147,7 +144,7 @@ def test_token_discovery_worker_skips_symbol_lookup_after_retained_candidate_res
                     )
                 ]
             ),
-            chain_indexes=("1",),
+            chain_ids=("eip155:1",),
             interval_seconds=60,
         )
 
@@ -200,73 +197,73 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
         )
         worker = TokenDiscoveryWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_client=FakeDexClient(
+            dex_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(
-                        chain_index="501",
+                        chain_id="solana",
                         address="SoLow111111111111111111111111111111111111",
                         market_cap_usd=1,
                         liquidity_usd=1,
                         holders=1,
                     ),
                     _dex_candidate(
-                        chain_index="501",
+                        chain_id="solana",
                         address="SoTop111111111111111111111111111111111111",
                         market_cap_usd=1_000_000,
                         liquidity_usd=50_000,
                         holders=5_000,
                     ),
                     _dex_candidate(
-                        chain_index="501",
+                        chain_id="solana",
                         address="SoTop222222222222222222222222222222222222",
                         market_cap_usd=900_000,
                         liquidity_usd=60_000,
                         holders=4_000,
                     ),
                     _dex_candidate(
-                        chain_index="501",
+                        chain_id="solana",
                         address="SoTop333333333333333333333333333333333333",
                         market_cap_usd=800_000,
                         liquidity_usd=70_000,
                         holders=3_000,
                     ),
                     _dex_candidate(
-                        chain_index="501",
+                        chain_id="solana",
                         address="SoLow222222222222222222222222222222222222",
                         market_cap_usd=2,
                         liquidity_usd=2,
                         holders=2,
                     ),
                     _dex_candidate(
-                        chain_index="501",
+                        chain_id="solana",
                         address="SoLow333333333333333333333333333333333333",
                         market_cap_usd=3,
                         liquidity_usd=3,
                         holders=3,
                     ),
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(1),
                         market_cap_usd=10,
                         liquidity_usd=10,
                         holders=10,
                     ),
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(2),
                         market_cap_usd=700_000,
                         liquidity_usd=20_000,
                         holders=2_000,
                     ),
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(3),
                         market_cap_usd=600_000,
                         liquidity_usd=30_000,
                         holders=1_500,
                     ),
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(4),
                         market_cap_usd=500_000,
                         liquidity_usd=40_000,
@@ -274,7 +271,7 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
                     ),
                 ]
             ),
-            chain_indexes=("501", "56"),
+            chain_ids=("solana", "eip155:56"),
             interval_seconds=60,
         )
 
@@ -332,24 +329,24 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
         )
         worker = TokenDiscoveryWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_client=FakeDexClient(
+            dex_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(1),
                         market_cap_usd=1_000_000,
                         liquidity_usd=10_000,
                         holders=1_000,
                     ),
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(2),
                         market_cap_usd=900_000,
                         liquidity_usd=10_000,
                         holders=900,
                     ),
                     _dex_candidate(
-                        chain_index="56",
+                        chain_id="eip155:56",
                         address=_evm_address(3),
                         market_cap_usd=800_000,
                         liquidity_usd=10_000,
@@ -357,7 +354,7 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
                     ),
                 ]
             ),
-            chain_indexes=("56",),
+            chain_ids=("eip155:56",),
             interval_seconds=60,
         )
 
@@ -377,14 +374,14 @@ def test_address_discovery_remains_uncapped(tmp_path):
         result = _process_address_lookup(
             repos=repositories_for_connection(conn),
             lookup_key=f"address:eip155:56:{address}",
-            dex_client=FakeDexClient(
+            dex_market=FakeDexMarket(
                 candidates=[
-                    _dex_candidate(chain_index="56", address=_evm_address(1), market_cap_usd=1, liquidity_usd=1),
-                    _dex_candidate(chain_index="56", address=address, market_cap_usd=2, liquidity_usd=2),
-                    _dex_candidate(chain_index="56", address=_evm_address(3), market_cap_usd=3, liquidity_usd=3),
+                    _dex_candidate(chain_id="eip155:56", address=_evm_address(1), market_cap_usd=1, liquidity_usd=1),
+                    _dex_candidate(chain_id="eip155:56", address=address, market_cap_usd=2, liquidity_usd=2),
+                    _dex_candidate(chain_id="eip155:56", address=_evm_address(3), market_cap_usd=3, liquidity_usd=3),
                 ]
             ),
-            chain_indexes=("56",),
+            chain_ids=("eip155:56",),
             now_ms=1_000,
         )
         row = conn.execute("SELECT address, status FROM registry_assets WHERE upper(symbol) = 'HANTA'").fetchone()
@@ -396,13 +393,13 @@ def test_address_discovery_remains_uncapped(tmp_path):
     assert row["status"] == "candidate"
 
 
-class FakeDexClient:
+class FakeDexMarket:
     def __init__(self, *, candidates):
         self.candidates = candidates
         self.search_requests = []
 
-    def search_tokens(self, *, query, chain_indexes):
-        self.search_requests.append({"query": query, "chain_indexes": tuple(chain_indexes)})
+    def search_tokens(self, *, query, chain_ids):
+        self.search_requests.append({"query": query, "chain_ids": tuple(chain_ids)})
         return list(self.candidates)
 
 

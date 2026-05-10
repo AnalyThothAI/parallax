@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from gmgn_twitter_intel.domains.asset_market.interfaces import sync_okx_dex_prices
+from gmgn_twitter_intel.domains.asset_market.interfaces import sync_dex_prices
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import MARKET_FRESH_MS, TokenRadarProjection
 
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
@@ -27,7 +27,7 @@ class TokenRadarProjectionWorker:
         hot_windows: tuple[str, ...] = DEFAULT_HOT_WINDOWS,
         limit: int = 100,
         interval_seconds: float = 10.0,
-        dex_client=None,
+        dex_market=None,
         preflight_hydration_limit: int = PREFLIGHT_HYDRATION_LIMIT,
     ) -> None:
         self.repository_session = repository_session
@@ -36,7 +36,7 @@ class TokenRadarProjectionWorker:
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
         self.limit = max(1, int(limit))
         self.interval_seconds = max(1.0, float(interval_seconds))
-        self.dex_client = dex_client
+        self.dex_market = dex_market
         self.preflight_hydration_limit = max(0, int(preflight_hydration_limit))
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
@@ -71,7 +71,7 @@ class TokenRadarProjectionWorker:
             with self.repository_session() as repos:
                 projection = TokenRadarProjection(
                     repos=repos,
-                    market_hydrator=self._hydrate_market if self.dex_client is not None else None,
+                    market_hydrator=self._hydrate_market if self.dex_market is not None else None,
                     preflight_hydration_limit=self.preflight_hydration_limit,
                 )
                 work_items, primary_item = self._next_work_items()
@@ -96,10 +96,10 @@ class TokenRadarProjectionWorker:
         return result
 
     def _hydrate_market(self, *, repos, window, scope, now_ms, score_since_ms, stale_before_ms, limit):
-        return sync_okx_dex_prices(
+        return sync_dex_prices(
             registry=repos.registry,
             price_observations=repos.price_observations,
-            client=self.dex_client,
+            dex_market=self.dex_market,
             observed_at_ms=now_ms,
             stale_after_ms=MARKET_FRESH_MS,
             limit=limit,
@@ -109,7 +109,7 @@ class TokenRadarProjectionWorker:
         )
 
     def close(self) -> None:
-        close = getattr(self.dex_client, "close", None)
+        close = getattr(self.dex_market, "close", None)
         if close:
             close()
 

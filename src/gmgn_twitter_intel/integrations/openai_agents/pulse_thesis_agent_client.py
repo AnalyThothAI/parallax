@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 import httpx
 from agents import (
@@ -34,22 +34,6 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import (
     pulse_thesis_agent_instructions,
     validate_pulse_thesis_payload,
 )
-
-
-class PulseThesisClientProtocol(Protocol):
-    provider: str
-    model: str
-    timeout_seconds: float
-
-    def request_audit(self, *, context: dict[str, Any], run_id: str, job: dict[str, Any]) -> dict[str, Any]: ...
-
-    async def write_thesis(
-        self,
-        *,
-        context: dict[str, Any],
-        run_id: str,
-        job: dict[str, Any],
-    ) -> PulseThesisAgentResult: ...
 
 
 @dataclass(frozen=True)

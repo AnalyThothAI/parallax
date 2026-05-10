@@ -3,28 +3,17 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import asdict, dataclass
-from typing import Any, Protocol
+from typing import Any
 
 from loguru import logger
 
-from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
-from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from gmgn_twitter_intel.domains.ingestion.providers import (
+    EventPublisherProtocol,
+    IngestStoreProtocol,
+    UpstreamClientProtocol,
+)
 from gmgn_twitter_intel.domains.ingestion.services.normalizer import normalize_gmgn_payload, parse_gmgn_frame
 from gmgn_twitter_intel.domains.ingestion.services.subscriptions import event_matches_handles, normalize_handles
-
-
-class IngestStoreProtocol(Protocol):
-    def insert_raw_frame(self, **kwargs) -> bool: ...
-
-    def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent: ...
-
-
-class EventPublisherProtocol(Protocol):
-    async def publish(self, payload: dict[str, Any]) -> None: ...
-
-
-class UpstreamClientProtocol(Protocol):
-    async def run(self) -> None: ...
 
 
 @dataclass(slots=True)

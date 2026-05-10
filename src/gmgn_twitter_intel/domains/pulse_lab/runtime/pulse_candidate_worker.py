@@ -21,6 +21,7 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_VERSION,
     WORKFLOW_NAME,
 )
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseThesisProvider
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
@@ -29,7 +30,6 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, safe_float, safe_int
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import PulseThesisClientProtocol
 
 SOURCE_TIMELINE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 SOURCE_EVENT_LOOKBACK_MS = 60 * 60 * 1000
@@ -101,7 +101,7 @@ class PulseCandidateWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        thesis_client: PulseThesisClientProtocol,
+        thesis_client: PulseThesisProvider,
         gate_func: Callable[..., PulseGateResult] = gate_pulse_candidate,
         windows: tuple[str, ...] = DEFAULT_WINDOWS,
         scopes: tuple[str, ...] = DEFAULT_SCOPES,

@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
+from gmgn_twitter_intel.app.runtime.providers_wiring import WiredProviders, wire_providers
 from gmgn_twitter_intel.app.runtime.repository_session import PooledRepository, repository_session
 from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
@@ -48,11 +49,6 @@ from gmgn_twitter_intel.domains.social_enrichment.runtime.enrichment_worker impo
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
-from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
-from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
-from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
-from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
@@ -61,6 +57,7 @@ from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_
 @dataclass(slots=True)
 class CliRuntime:
     settings: Settings
+    providers: WiredProviders
     db_pool: object
     evidence: object
     entities: object
@@ -232,6 +229,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     if not startup_db.get("ok"):
         db_pool.close()
         raise RuntimeError(f"postgres health check failed: {startup_db}")
+    providers = wire_providers(settings, start_collector=start_collector)
     evidence = PooledRepository(db_pool, EvidenceRepository)
     entities = PooledRepository(db_pool, EntityRepository)
     signals = PooledRepository(db_pool, SignalRepository)
@@ -258,6 +256,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     )
     runtime = CliRuntime(
         settings=settings,
+        providers=providers,
         db_pool=db_pool,
         evidence=evidence,
         entities=entities,
@@ -279,33 +278,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     runtime.harness_ops_worker = HarnessOpsWorker(
         repository_session=lambda: repository_session(db_pool),
     )
-    okx_dex_projection_client = (
-        OkxDexClient(
-            base_url=settings.okx_dex_base_url,
-            api_key=settings.okx_dex_api_key,
-            secret_key=settings.okx_dex_secret_key,
-            passphrase=settings.okx_dex_passphrase,
-            timeout_seconds=settings.okx_timeout_seconds,
-        )
-        if start_collector and settings.okx_dex_configured
-        else None
-    )
     runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
         repository_session=lambda: repository_session(db_pool),
-        dex_client=okx_dex_projection_client,
+        dex_market=providers.asset_market.projection_dex_market,
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
-        pulse_client = OpenAIAgentsPulseThesisClient(
-            api_key=settings.llm_api_key or "",
-            model=settings.pulse_agent_model or "",
-            base_url=settings.llm_base_url,
-            timeout_seconds=settings.llm_timeout_seconds,
-            trace_enabled=settings.llm_trace_enabled,
-            trace_api_key=settings.llm_trace_api_key,
-            trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
-        )
         runtime.pulse_candidate_worker = PulseCandidateWorker(
-            thesis_client=pulse_client,
+            thesis_client=providers.pulse_lab.thesis_provider,
             repository_session=lambda: repository_session(db_pool),
             poll_interval=settings.pulse_agent_interval_seconds,
             batch_size=settings.pulse_agent_batch_size,
@@ -343,99 +322,36 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
     if start_collector and (settings.okx_cex_sync_enabled or settings.okx_dex_configured):
-        okx_cex_client = (
-            OkxCexClient(
-                base_url=settings.okx_cex_base_url,
-                timeout_seconds=settings.okx_timeout_seconds,
-            )
-            if settings.okx_cex_sync_enabled
-            else None
-        )
-        okx_dex_price_client = (
-            OkxDexClient(
-                base_url=settings.okx_dex_base_url,
-                api_key=settings.okx_dex_api_key,
-                secret_key=settings.okx_dex_secret_key,
-                passphrase=settings.okx_dex_passphrase,
-                timeout_seconds=settings.okx_timeout_seconds,
-            )
-            if settings.okx_dex_configured
-            else None
-        )
         runtime.asset_market_sync_worker = AssetMarketSyncWorker(
-            client=okx_cex_client,
-            dex_client=okx_dex_price_client,
+            cex_market=providers.asset_market.sync_cex_market,
+            dex_market=providers.asset_market.sync_dex_market,
             repository_session=lambda: repository_session(db_pool),
             inst_types=settings.okx_cex_inst_types,
             interval_seconds=settings.okx_cex_sync_interval_seconds,
         )
-        message_cex_client = (
-            OkxCexClient(
-                base_url=settings.okx_cex_base_url,
-                timeout_seconds=settings.okx_timeout_seconds,
-            )
-            if settings.okx_cex_sync_enabled
-            else None
-        )
-        message_dex_client = (
-            OkxDexClient(
-                base_url=settings.okx_dex_base_url,
-                api_key=settings.okx_dex_api_key,
-                secret_key=settings.okx_dex_secret_key,
-                passphrase=settings.okx_dex_passphrase,
-                timeout_seconds=settings.okx_timeout_seconds,
-            )
-            if settings.okx_dex_configured
-            else None
-        )
         runtime.message_market_observation_worker = MessageMarketObservationWorker(
-            cex_client=message_cex_client,
-            dex_client=message_dex_client,
+            cex_market=providers.asset_market.message_cex_market,
+            dex_market=providers.asset_market.message_dex_market,
             repository_session=lambda: repository_session(db_pool),
         )
     if start_collector and settings.okx_dex_configured:
-        okx_dex_discovery_client = OkxDexClient(
-            base_url=settings.okx_dex_base_url,
-            api_key=settings.okx_dex_api_key,
-            secret_key=settings.okx_dex_secret_key,
-            passphrase=settings.okx_dex_passphrase,
-            timeout_seconds=settings.okx_timeout_seconds,
-        )
         runtime.token_discovery_worker = TokenDiscoveryWorker(
-            dex_client=okx_dex_discovery_client,
+            dex_market=providers.asset_market.discovery_dex_market,
             repository_session=lambda: repository_session(db_pool),
-            chain_indexes=settings.okx_dex_chain_indexes,
+            chain_ids=providers.asset_market.discovery_chain_ids,
             interval_seconds=30.0,
         )
     if settings.llm_configured:
-        client = OpenAIAgentsSocialEventClient(
-            api_key=settings.llm_api_key or "",
-            model=settings.llm_model or "",
-            base_url=settings.llm_base_url,
-            timeout_seconds=settings.llm_timeout_seconds,
-            trace_enabled=settings.llm_trace_enabled,
-            trace_api_key=settings.llm_trace_api_key,
-            trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
-        )
         runtime.enrichment_worker = EnrichmentWorker(
-            client=client,
+            client=providers.social_enrichment.event_enrichment,
             publisher=hub,
             repository_session=lambda: repository_session(db_pool),
             poll_interval=settings.enrichment_poll_interval,
             concurrency=settings.enrichment_concurrency,
         )
     if start_collector:
-        upstream = DirectGmgnWebSocketClient(
-            app_version=settings.upstream_app_version,
-            channels=list(settings.upstream_channels),
-            chains=list(settings.upstream_chains),
-            proxy=settings.upstream_proxy,
-            reconnect_delay=settings.upstream_reconnect_delay,
-            heartbeat_interval=settings.upstream_heartbeat_interval,
-            idle_timeout=settings.upstream_idle_timeout,
-            on_frame=collector.handle_frame,
-        )
-        collector.upstream_client = upstream
+        factory = providers.ingestion.upstream_client_factory
+        collector.upstream_client = factory(collector.handle_frame) if factory is not None else None
     return runtime
 
 

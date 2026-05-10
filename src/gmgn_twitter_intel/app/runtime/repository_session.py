@@ -28,6 +28,7 @@ from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_rep
 from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
+from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +53,9 @@ class RepositorySession:
     harness: HarnessRepository
     notifications: NotificationRepository
     pulse: PulseRepository
+
+    def unit_of_work(self):
+        return transaction(self.conn)
 
 
 def repositories_for_connection(conn: Any) -> RepositorySession:

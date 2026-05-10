@@ -10,12 +10,17 @@ from typing import TextIO
 import uvicorn
 
 from gmgn_twitter_intel.app.runtime.app import create_app
+from gmgn_twitter_intel.app.runtime.providers_wiring import (
+    OkxCexMarketProvider,
+    OkxDexMarketProvider,
+    okx_chain_indexes_to_chain_ids,
+)
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
-from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_okx_cex_universe
+from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_universe
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
     attribute_harness_credits,
@@ -668,10 +673,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 timeout_seconds=settings.okx_timeout_seconds,
             )
             try:
-                data = sync_okx_cex_universe(
+                data = sync_cex_universe(
                     registry=repos.registry,
                     price_observations=repos.price_observations,
-                    client=client,
+                    cex_market=OkxCexMarketProvider(client),
                     inst_types=inst_types,
                     observed_at_ms=_now_ms(),
                 )
@@ -708,8 +713,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             try:
                 data = run_token_discovery_once(
                     repos=repos,
-                    dex_client=client,
-                    chain_indexes=settings.okx_dex_chain_indexes,
+                    dex_market=OkxDexMarketProvider(client),
+                    chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
                     now_ms=_now_ms(),
                     lookup_limit=args.limit,
                     reprocess_limit=args.reprocess_limit,

@@ -69,11 +69,14 @@ types/config → repositories/queries → services/scoring → read_models/runti
 | Layer | May import from |
 |-------|-----------------|
 | `domains/<d>/types`, `domains/<d>/config` | stdlib, third-party, same-domain `types`. |
+| `domains/<d>/providers.py` | stdlib, third-party typing primitives, and same-domain or interface value types. Pure provider contracts only; no `integrations/*`, `platform/db`, or `platform/paths`. |
 | `domains/<d>/repositories`, `domains/<d>/queries` | own domain's `types`, `platform/db`, stdlib, third-party. **Never** imports `services/`, `runtime/`, `read_models/`. Owns SQL. |
-| `domains/<d>/services`, `domains/<d>/scoring` | own domain's `types`, `repositories`, `queries`, plus other domains' `interfaces.py` only. |
+| `domains/<d>/services`, `domains/<d>/scoring` | own domain's `types`, `providers.py`, `repositories`, `queries`, plus other domains' `interfaces.py` only. **No `integrations/*`, `platform/db`, or `platform/paths`.** |
 | `domains/<d>/read_models` | own domain's `types`, `repositories`, `queries`, plus other domains' `interfaces.py`. **No raw SQL** — query modules live in `repositories/` or `queries/`. |
-| `domains/<d>/runtime` | own domain's `services`, `repositories`, `queries`, `scoring`, plus other domains' `interfaces.py`. |
-| `app/runtime` | composition root: may import any domain runtime, repository, or interface to wire the process. |
+| `domains/<d>/runtime` | own domain's `services`, `providers.py`, `repositories`, `queries`, `scoring`, plus other domains' `interfaces.py`. **No `integrations/*`, `platform/db`, or `platform/paths`.** |
+| `app/runtime/providers_wiring.py` | Service-process composition module. The only service-runtime file that joins concrete `integrations/*` clients with domain Provider contracts. It may translate supplier shapes such as OKX chain indexes into domain values. |
+| `app/runtime/app.py` | Runtime orchestration: builds repositories, workers, surfaces, readiness, and lifecycle. Imports `wire_providers(...)` / `WiredProviders`; does not import concrete integrations or domain provider modules directly. |
+| `app/runtime` | composition root: may import any domain runtime, repository, or interface to wire the process, subject to the dedicated Provider wiring rule above. |
 | `app/surfaces/api`, `app/surfaces/cli` | domain `interfaces.py` and read services. **No domain SQL, scoring, settlement, token resolution, or notification rules** — surfaces translate public inputs into domain calls. |
 | `platform/*` | stdlib, third-party. **Never** imports `domains/`, `integrations/`, or `app/`. |
 | `integrations/*` | stdlib, third-party, `platform/*`. They wrap external APIs; they do not import `domains/` or `app/`. |
@@ -81,6 +84,12 @@ types/config → repositories/queries → services/scoring → read_models/runti
 Cross-domain imports MUST go through the target domain's `interfaces.py` (or `_constants.py` for leaf data). `tests/test_src_domain_architecture.py::test_cross_domain_imports_use_interfaces` enforces this.
 
 Raw SQL (`conn.execute(...)`) lives ONLY in `repositories/`, `queries/`, `platform/db/`, or `app/runtime/` health checks. `tests/test_src_domain_architecture.py::test_raw_sql_is_owned_by_repositories_queries_or_app_runtime` enforces this.
+
+Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
+
+Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, and `pulse_lab`. Do not add empty provider files.
+
+CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.
 
 ## Generated and reference material
 

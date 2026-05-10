@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_THESIS_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseThesisResult
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     PulseTriggerThresholds,
@@ -20,7 +21,6 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import PulseThesisAgentResult
 
 NOW_MS = 1_800_000
 
@@ -638,7 +638,7 @@ class FakeClient:
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisAgentResult:
+    ) -> PulseThesisResult:
         if self.error is not None:
             raise self.error
         payload = PulseThesisPayload(
@@ -663,7 +663,7 @@ class FakeClient:
             confidence=0.7,
         )
         audit = self.request_audit(context=context, run_id=run_id, job=job)
-        return PulseThesisAgentResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
+        return PulseThesisResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
 
 
 class SlowThenSuccessClient(FakeClient):
@@ -679,7 +679,7 @@ class SlowThenSuccessClient(FakeClient):
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisAgentResult:
+    ) -> PulseThesisResult:
         self.calls += 1
         if self.calls == 1:
             await asyncio.sleep(5)

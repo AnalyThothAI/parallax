@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Protocol
+from typing import Any
 
 import httpx
 from agents import Agent, RunConfig, Runner, set_tracing_export_api_key
@@ -21,14 +21,6 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     social_event_agent_instructions,
     social_event_extraction_from_payload,
 )
-
-
-class EnrichmentClientProtocol(Protocol):
-    provider: str
-    model: str
-    timeout_seconds: float
-
-    async def enrich_event(self, *, event: dict, entities: list[dict], run_id: str, job: dict): ...
 
 
 class OpenAIAgentsSocialEventClient:

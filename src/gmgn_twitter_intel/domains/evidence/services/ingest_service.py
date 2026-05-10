@@ -27,7 +27,6 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     build_token_evidence,
     build_token_intents,
 )
-from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 
 class IngestService:
@@ -55,7 +54,7 @@ class IngestService:
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
         extracted = extract_entities_from_surfaces(_event_surfaces(event))
-        with transaction(self.evidence.conn):
+        with self.evidence.unit_of_work():
             row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
             inserted = self.evidence.insert_event_without_commit(row)
             if not inserted:

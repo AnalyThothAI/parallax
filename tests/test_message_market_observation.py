@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenPrice
 from gmgn_twitter_intel.domains.asset_market.services.message_market_observation import observe_message_market
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.integrations.okx.models import OkxCexTicker, OkxDexTokenPrice
 
 
 def test_message_market_observation_writes_cex_message_quote():
@@ -23,9 +23,9 @@ def test_message_market_observation_writes_cex_message_quote():
     )
     result = observe_message_market(
         repos=repos,
-        cex_client=FakeCexClient(
+        cex_market=FakeCexMarket(
             {
-                "BTC-USDT": OkxCexTicker(
+                "BTC-USDT": CexTicker(
                     inst_id="BTC-USDT",
                     inst_type="SPOT",
                     last_price=70_000.0,
@@ -35,7 +35,7 @@ def test_message_market_observation_writes_cex_message_quote():
                 )
             }
         ),
-        dex_client=None,
+        dex_market=None,
         now_ms=1_700_000_001_000,
         limit=10,
     )
@@ -90,11 +90,11 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
     )
     result = observe_message_market(
         repos=repos,
-        cex_client=None,
-        dex_client=FakeDexClient(
+        cex_market=None,
+        dex_market=FakeDexMarket(
             [
-                OkxDexTokenPrice(
-                    chain_index="1",
+                DexTokenPrice(
+                    chain_id="eip155:1",
                     address="0xabc",
                     observed_at_ms=1_700_000_001_000,
                     price_usd=1.23,
@@ -158,7 +158,7 @@ class FakeRegistry:
         return {"pricefeed_id": kwargs.get("pricefeed_id") or "pricefeed:dex:ABC"}
 
 
-class FakeCexClient:
+class FakeCexMarket:
     def __init__(self, tickers):
         self.tickers = tickers
         self.calls = []
@@ -168,7 +168,7 @@ class FakeCexClient:
         return self.tickers.get(inst_id)
 
 
-class FakeDexClient:
+class FakeDexMarket:
     def __init__(self, prices):
         self.prices = prices
         self.calls = []

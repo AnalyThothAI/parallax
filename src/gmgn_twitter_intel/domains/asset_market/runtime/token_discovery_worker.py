@@ -18,11 +18,10 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
-from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN
 
 from ..repositories.discovery_repository import DISCOVERY_PROVIDER
 from ..repositories.registry_repository import DEX_ADDRESS_SEARCH_SOURCE, DEX_SEARCH_SOURCE
-from ..services.asset_market_sync import _okx_chain_index, _payload_hash
+from ..services.asset_market_sync import _payload_hash
 
 DEFAULT_DISCOVERY_LIMIT = 50
 DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000
@@ -38,15 +37,15 @@ class TokenDiscoveryWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        dex_client=None,
-        chain_indexes: tuple[str, ...] | list[str] = ("501", "1", "56", "8453", "607"),
+        dex_market=None,
+        chain_ids: tuple[str, ...] | list[str] = ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton"),
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
     ) -> None:
         self.repository_session = repository_session
-        self.dex_client = dex_client
-        self.chain_indexes = tuple(str(item).strip() for item in chain_indexes if str(item).strip())
+        self.dex_market = dex_market
+        self.chain_ids = tuple(str(item).strip() for item in chain_ids if str(item).strip())
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.lookup_limit = max(1, int(lookup_limit))
         self.reprocess_limit = max(1, int(reprocess_limit))
@@ -73,8 +72,8 @@ class TokenDiscoveryWorker:
             with self.repository_session() as repos:
                 result = run_token_discovery_once(
                     repos=repos,
-                    dex_client=self.dex_client,
-                    chain_indexes=self.chain_indexes,
+                    dex_market=self.dex_market,
+                    chain_ids=self.chain_ids,
                     now_ms=observed_at_ms,
                     lookup_limit=self.lookup_limit,
                     reprocess_limit=self.reprocess_limit,
@@ -90,7 +89,7 @@ class TokenDiscoveryWorker:
         self._stopped = True
 
     def close(self) -> None:
-        close = getattr(self.dex_client, "close", None)
+        close = getattr(self.dex_market, "close", None)
         if close:
             close()
 
@@ -98,8 +97,8 @@ class TokenDiscoveryWorker:
 def run_token_discovery_once(
     *,
     repos,
-    dex_client,
-    chain_indexes: tuple[str, ...] | list[str],
+    dex_market,
+    chain_ids: tuple[str, ...] | list[str],
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
@@ -125,8 +124,8 @@ def run_token_discovery_once(
                 repos=repos,
                 lookup_key=lookup_key,
                 lookup_type=lookup_type,
-                dex_client=dex_client,
-                chain_indexes=tuple(chain_indexes),
+                dex_market=dex_market,
+                chain_ids=tuple(chain_ids),
                 now_ms=now_ms,
             )
             _merge_lookup_result(result, lookup_result)
@@ -181,24 +180,24 @@ def _process_lookup(
     repos,
     lookup_key: str,
     lookup_type: str,
-    dex_client,
-    chain_indexes: tuple[str, ...],
+    dex_market,
+    chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
     if lookup_type == "dex_symbol_lookup":
         return _process_dex_symbol_lookup(
             repos=repos,
             lookup_key=lookup_key,
-            dex_client=dex_client,
-            chain_indexes=chain_indexes,
+            dex_market=dex_market,
+            chain_ids=chain_ids,
             now_ms=now_ms,
         )
     if lookup_type == "address_lookup":
         return _process_address_lookup(
             repos=repos,
             lookup_key=lookup_key,
-            dex_client=dex_client,
-            chain_indexes=chain_indexes,
+            dex_market=dex_market,
+            chain_ids=chain_ids,
             now_ms=now_ms,
         )
     return _lookup_result()
@@ -208,16 +207,16 @@ def _process_dex_symbol_lookup(
     *,
     repos,
     lookup_key: str,
-    dex_client,
-    chain_indexes: tuple[str, ...],
+    dex_market,
+    chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
-    if dex_client is None:
+    if dex_market is None:
         raise RuntimeError("dex discovery client is not configured")
     symbol = _normalize_symbol(lookup_key.removeprefix("symbol:"))
     if not symbol:
         return _lookup_result()
-    candidates = dex_client.search_tokens(query=symbol, chain_indexes=chain_indexes)
+    candidates = dex_market.search_tokens(query=symbol, chain_ids=chain_ids)
     result = _lookup_result(search_requests=1)
     matched_candidates = [
         candidate for candidate in candidates if _normalize_symbol(getattr(candidate, "symbol", None)) == symbol
@@ -260,26 +259,26 @@ def _process_address_lookup(
     *,
     repos,
     lookup_key: str,
-    dex_client,
-    chain_indexes: tuple[str, ...],
+    dex_market,
+    chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
-    if dex_client is None:
+    if dex_market is None:
         raise RuntimeError("dex discovery client is not configured")
     parsed = _parse_address_lookup_key(lookup_key)
     address = parsed["address"]
     if not address:
         return _lookup_result()
     chain_id = _chain_id(parsed["chain_id"])
-    requested_chains = (_okx_chain_index(chain_id),) if chain_id else chain_indexes
+    requested_chains = (chain_id,) if chain_id else chain_ids
     requested_chains = tuple(chain for chain in requested_chains if chain)
     if not requested_chains:
         return _lookup_result()
-    candidates = dex_client.search_tokens(query=address, chain_indexes=requested_chains)
+    candidates = dex_market.search_tokens(query=address, chain_ids=requested_chains)
     result = _lookup_result(search_requests=1)
     for candidate in candidates:
         candidate_address = _normalize_address(getattr(candidate, "address", None))
-        candidate_chain = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
+        candidate_chain = _chain_id(getattr(candidate, "chain_id", None))
         if candidate_address != address:
             continue
         if chain_id and candidate_chain != chain_id:
@@ -305,7 +304,7 @@ def _process_address_lookup(
 
 
 def _write_dex_candidate(*, repos, candidate, now_ms: int, source: str) -> str | None:
-    chain_id = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
+    chain_id = _chain_id(getattr(candidate, "chain_id", None))
     address = _normalize_address(getattr(candidate, "address", None))
     symbol = _normalize_symbol(getattr(candidate, "symbol", None))
     if not chain_id or not address or not symbol:
@@ -408,7 +407,7 @@ def _lookup_result(
 def _retained_symbol_candidates(candidates: list[Any], *, per_chain_limit: int) -> list[Any]:
     by_chain: dict[str, dict[str, Any]] = {}
     for candidate in candidates:
-        chain_id = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
+        chain_id = _chain_id(getattr(candidate, "chain_id", None))
         address = _normalize_address(getattr(candidate, "address", None))
         if not chain_id or not address:
             continue
@@ -476,11 +475,6 @@ def _refresh_ms(*, lookup_key: str, status: str) -> int:
 def _result_hash(candidate_ids: list[str]) -> str:
     payload = json.dumps(sorted(set(candidate_ids)), separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _chain_id_from_okx_index(value: Any) -> str | None:
-    chain = OKX_CHAIN_INDEX_TO_CHAIN.get(str(value or "").strip())
-    return _chain_id(chain)
 
 
 def _chain_id(value: Any) -> str | None:

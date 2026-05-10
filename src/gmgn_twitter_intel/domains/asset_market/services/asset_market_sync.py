@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any
 
-from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_TO_CHAIN_INDEX
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenPriceRequest
 
 from ..repositories.registry_repository import DEX_ADDRESS_SEARCH_SOURCE
 
@@ -14,11 +14,11 @@ RADAR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
 ADDRESS_VERIFIED_SOURCES = frozenset({"gmgn_openapi", "gmgn_payload", "gmgn_token_payload", DEX_ADDRESS_SEARCH_SOURCE})
 
 
-def sync_okx_cex_universe(
+def sync_cex_universe(
     *,
     registry,
     price_observations,
-    client,
+    cex_market,
     inst_types: tuple[str, ...] | list[str],
     observed_at_ms: int,
 ) -> dict[str, Any]:
@@ -28,7 +28,7 @@ def sync_okx_cex_universe(
     observations_written = 0
     affected_lookup_keys: set[str] = set()
     for inst_type in normalized_inst_types:
-        for ticker in client.tickers(inst_type=inst_type):
+        for ticker in cex_market.tickers(inst_type=inst_type):
             base_symbol, quote_symbol = _base_quote_from_inst_id(ticker.inst_id)
             if not base_symbol or not quote_symbol:
                 continue
@@ -81,11 +81,11 @@ def sync_okx_cex_universe(
     }
 
 
-def sync_okx_dex_prices(
+def sync_dex_prices(
     *,
     registry,
     price_observations,
-    client,
+    dex_market,
     observed_at_ms: int,
     stale_after_ms: int,
     limit: int,
@@ -110,12 +110,12 @@ def sync_okx_dex_prices(
     address_search_errors = 0
     affected_lookup_keys: set[str] = set()
     for index, row in enumerate(rows):
-        chain_index = _okx_chain_index(row.get("chain_id"))
+        chain_id = str(row.get("chain_id") or "").strip()
         address = str(row.get("address") or "").strip()
-        if not chain_index or not address or not _needs_address_search(row):
+        if not chain_id or not address or not _needs_address_search(row):
             continue
         address_search_requests += 1
-        candidate, search_error = _search_exact_token(client=client, chain_index=chain_index, address=address)
+        candidate, search_error = _search_exact_token(dex_market=dex_market, chain_id=chain_id, address=address)
         if search_error:
             address_search_errors += 1
         if candidate is None:
@@ -168,27 +168,23 @@ def sync_okx_dex_prices(
         )
         observations_written += 1
     asset_by_key: dict[tuple[str, str], dict[str, Any]] = {}
-    request_items: list[dict[str, str]] = []
+    request_items: list[DexTokenPriceRequest] = []
     for row in rows:
-        chain_index = _okx_chain_index(row.get("chain_id"))
+        chain_id = str(row.get("chain_id") or "").strip()
         address = str(row.get("address") or "").strip()
-        if not chain_index or not address:
+        if not chain_id or not address:
             continue
-        request_item = {
-            "chainIndex": chain_index,
-            "tokenContractAddress": address.lower() if address.lower().startswith("0x") else address,
-        }
+        request_item = DexTokenPriceRequest(chain_id=chain_id, address=_normalize_address(address))
         request_items.append(request_item)
-        asset_by_key[(chain_index, request_item["tokenContractAddress"])] = row
+        asset_by_key[(chain_id, request_item.address)] = row
 
     price_requests = 0
     for chunk in _chunks(request_items, DEX_PRICE_BATCH_SIZE):
         if not chunk:
             continue
         price_requests += 1
-        for price in client.token_prices(chunk):
-            price_address = price.address.lower() if price.address.lower().startswith("0x") else price.address
-            key = (price.chain_index, price_address)
+        for price in dex_market.token_prices(chunk):
+            key = (str(price.chain_id), _normalize_address(price.address))
             asset = asset_by_key.get(key)
             if not asset:
                 continue
@@ -277,36 +273,30 @@ def _asset_lookup_keys(row: dict[str, Any]) -> set[str]:
     return keys
 
 
-def _okx_chain_index(chain_id: Any) -> str | None:
-    normalized = str(chain_id or "").strip().lower()
-    if normalized.startswith("eip155:"):
-        return normalized.split(":", 1)[1]
-    return OKX_CHAIN_TO_CHAIN_INDEX.get(normalized)
-
-
 def _needs_address_search(row: dict[str, Any]) -> bool:
     if any(row.get(key) is None for key in ("symbol", "market_cap_usd", "liquidity_usd", "holders")):
         return True
     return str(row.get("primary_source") or "").strip().lower() not in ADDRESS_VERIFIED_SOURCES
 
 
-def _search_exact_token(*, client, chain_index: str, address: str):
+def _search_exact_token(*, dex_market, chain_id: str, address: str):
     try:
-        candidates = client.search_tokens(query=address, chain_indexes=(chain_index,))
+        candidates = dex_market.search_tokens(query=address, chain_ids=(chain_id,))
     except Exception as exc:
         return None, str(exc)
-    normalized_address = address.lower() if address.lower().startswith("0x") else address
+    normalized_address = _normalize_address(address)
     for candidate in candidates:
-        candidate_address = (
-            candidate.address.lower()
-            if candidate.address.lower().startswith("0x")
-            else candidate.address
-        )
-        if str(candidate.chain_index) == str(chain_index) and candidate_address == normalized_address:
+        candidate_address = _normalize_address(candidate.address)
+        if str(candidate.chain_id) == str(chain_id) and candidate_address == normalized_address:
             return candidate, None
     return None, None
 
 
-def _chunks(items: list[dict[str, str]], size: int):
+def _normalize_address(address: Any) -> str:
+    stripped = str(address or "").strip()
+    return stripped.lower() if stripped.lower().startswith("0x") else stripped
+
+
+def _chunks(items: list[DexTokenPriceRequest], size: int):
     for index in range(0, len(items), max(1, int(size))):
         yield items[index : index + size]
