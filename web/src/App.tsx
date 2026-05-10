@@ -35,12 +35,10 @@ import {
   tokenKey
 } from "./lib/format";
 import { tokenForSearchQuery } from "./lib/searchIntent";
-import { countDecisions, sortTokenItems, tokenRadarItems, tokenRadarRowToTokenItem } from "./lib/tokenRadar";
+import { countDecisions, sortTokenItems, tokenRadarItems } from "./lib/tokenRadar";
 import { buildWatchlistRows } from "./lib/watchlist";
 import { targetRefFromTokenItem } from "./domain/tokenTarget";
 import { useTraderStore } from "./store/useTraderStore";
-
-export { tokenRadarRowToTokenItem };
 
 type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }

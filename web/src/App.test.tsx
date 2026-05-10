@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { App, tokenRadarRowToTokenItem } from "./App";
+import { App } from "./App";
+import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import type {
   ApiResponse,
   AssetFlowData,
