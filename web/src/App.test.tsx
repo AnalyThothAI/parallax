@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App, tokenRadarRowToTokenItem } from "./App";
 import type {
@@ -2041,7 +2042,11 @@ function renderWithQuery(children: ReactNode) {
       }
     }
   });
-  return render(<QueryClientProvider client={client}>{children}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>
+  );
 }
 
 function requireElement<T extends Element>(element: T | null): T {
