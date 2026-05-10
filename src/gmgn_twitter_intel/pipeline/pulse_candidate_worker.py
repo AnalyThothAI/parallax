@@ -44,13 +44,6 @@ _COOLDOWN_MS = {
     "risk_rejected_high_info": 30 * 60 * 1000,
     "blocked_low_information": 120 * 60 * 1000,
 }
-_STATUS_RANK = {
-    "blocked_low_information": 0,
-    "risk_rejected_high_info": 1,
-    "theme_watch": 2,
-    "token_watch": 3,
-    "trade_candidate": 4,
-}
 
 
 @dataclass(frozen=True)
@@ -366,6 +359,8 @@ class PulseCandidateWorker:
         existing_job = _call_optional(repos.pulse, "job_for_candidate", context.candidate_id)
         existing_candidate = _call_optional(repos.pulse, "candidate_by_id", context.candidate_id)
         if _active_job_blocks_reenqueue(existing_job):
+            return False
+        if existing_candidate is None and _terminal_job_blocks_reenqueue(existing_job, context, now_ms=now_ms):
             return False
         if _same_signature(existing_job, context) or _same_signature(existing_candidate, context):
             return False
@@ -716,9 +711,6 @@ def _cooldown_bypass(
     current: dict[str, Any],
 ) -> bool:
     previous_status = _clean(existing_candidate.get("pulse_status") or existing_candidate.get("verdict"))
-    current_status = _inferred_status(current)
-    if _STATUS_RANK.get(current_status, 0) > _STATUS_RANK.get(previous_status, 0):
-        return True
     if current.get("trade_candidate_eligible") and previous_status != "trade_candidate":
         return True
     if not previous.get("watched_confirmation") and current.get("watched_confirmation"):
@@ -762,6 +754,25 @@ def _active_job_blocks_reenqueue(existing_job: dict[str, Any] | None) -> bool:
         max_attempts = safe_int(existing_job.get("max_attempts")) or 3
         return attempt_count < max_attempts
     return False
+
+
+def _terminal_job_blocks_reenqueue(
+    existing_job: dict[str, Any] | None,
+    context: PulseCandidateContext,
+    *,
+    now_ms: int,
+) -> bool:
+    if not existing_job:
+        return False
+    status = _clean(existing_job.get("status"))
+    if status not in {"done", "dead"}:
+        return False
+    updated_at_ms = safe_int(existing_job.get("updated_at_ms"))
+    if not updated_at_ms:
+        return False
+    current_metrics = _mapping(context.radar_score.get(PULSE_TRIGGER_METRICS_KEY))
+    cooldown_ms = _COOLDOWN_MS.get(_inferred_status(current_metrics), _COOLDOWN_MS["token_watch"])
+    return now_ms < updated_at_ms + cooldown_ms
 
 
 def _playbook_snapshot_payload(

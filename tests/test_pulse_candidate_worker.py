@@ -185,6 +185,8 @@ def test_cooldown_bypass_matrix() -> None:
     existing = {"pulse_status": "blocked_low_information"}
 
     assert _cooldown_bypass(existing, previous, {**previous, "trade_candidate_eligible": True})
+    assert not _cooldown_bypass({"pulse_status": "risk_rejected_high_info"}, previous, dict(previous))
+    assert not _cooldown_bypass({"pulse_status": "blocked_low_information"}, previous, dict(previous))
     assert not _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "social_phase": "ignition"})
     assert not _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "heat_bucket": "90-99"})
     assert _cooldown_bypass({"pulse_status": "token_watch"}, previous, {**previous, "watched_confirmation": True})
@@ -234,6 +236,93 @@ def test_cooldown_active_uses_bypass_matrix() -> None:
         {**context.radar_score["pulse_trigger_metrics"], "watched_confirmation": True}
     )
     assert not _cooldown_active(existing, confirmed_context, now_ms=NOW_MS)
+
+
+def test_cooldown_does_not_bypass_for_inferred_token_watch_status_rank() -> None:
+    context = _candidate_context(
+        {
+            "heat_bucket": "80-89",
+            "propagation_bucket": "70-79",
+            "social_phase": "ignition",
+            "watched_confirmation": False,
+            "independent_author_count": 2,
+            "chase_risk": False,
+            "market_status": "fresh",
+            "hard_risks": ["market_stale"],
+            "trade_candidate_eligible": False,
+        }
+    )
+    existing = {
+        "pulse_status": "risk_rejected_high_info",
+        "updated_at_ms": NOW_MS - 60_000,
+        "radar_score_json": {
+            "pulse_trigger_metrics": {
+                "heat_bucket": "80-89",
+                "propagation_bucket": "70-79",
+                "social_phase": "ignition",
+                "watched_confirmation": False,
+                "independent_author_count": 2,
+                "chase_risk": False,
+                "market_status": "fresh",
+                "hard_risks": ["market_stale"],
+                "trade_candidate_eligible": False,
+            }
+        },
+    }
+
+    assert _cooldown_active(existing, context, now_ms=NOW_MS)
+
+
+def test_recent_dead_job_blocks_reenqueue_without_candidate() -> None:
+    repos = FakeRepos()
+    stale_row = _radar_row(heat=86, event_id="event-old")
+    fresh_row = _radar_row(heat=87, event_id="event-new")
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse.jobs.append(
+        {
+            "job_id": "job-dead",
+            "candidate_id": candidate_id,
+            "candidate_type": "token_target",
+            "subject_key": "TEST",
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "trigger_signature": _asset_trigger_signature(
+                row=stale_row,
+                window="1h",
+                scope="all",
+                candidate_type="token_target",
+            ),
+            "timeline_signature": "sha256:old",
+            "context_json": {},
+            "priority": 86,
+            "status": "dead",
+            "attempt_count": 3,
+            "max_attempts": 3,
+            "updated_at_ms": NOW_MS - 60_000,
+        }
+    )
+    repos.token_radar.rows = [fresh_row]
+    repos.token_targets.rows = [_timeline_row("event-new", NOW_MS - 1_000)]
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), thesis_client=FakeClient())
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_skipped"] == 1
+    assert len(repos.pulse.jobs) == 1
+    assert repos.pulse.jobs[0]["trigger_signature"] == _asset_trigger_signature(
+        row=stale_row,
+        window="1h",
+        scope="all",
+        candidate_type="token_target",
+    )
 
 
 def test_claim_run_gate_upserts_candidate_audit_playbook_and_marks_success() -> None:

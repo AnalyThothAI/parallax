@@ -55,7 +55,158 @@ def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_ne
     assert rows[0]["occurrence_count"] == 2
     assert rows[0]["first_seen_at_ms"] == 1_700_000_000_000
     assert rows[0]["last_seen_at_ms"] == 1_700_000_060_000
-    assert rows[0]["payload_json"] == {"event_id": "event-2", "version": 2}
+    assert rows[0]["payload_json"]["event_id"] == "event-2"
+    assert rows[0]["payload_json"]["version"] == 2
+    assert rows[0]["payload_json"]["_aggregation_source_refs"] == ["events:event-1", "events:event-2"]
+
+
+def test_insert_notification_does_not_recount_same_source_conflicts(tmp_path):
+    repo = repository(tmp_path)
+
+    first = repo.insert_notification(
+        dedup_key="activity:toly:post:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="A watched account posted.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={"event_id": "event-1", "version": 1},
+        channels=["in_app"],
+    )
+    duplicate_poll = repo.insert_notification(
+        dedup_key="activity:toly:post:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="A watched account posted again.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
+        occurrence_at_ms=1_700_000_120_000,
+        payload={"event_id": "event-1", "version": 2},
+        channels=["in_app"],
+    )
+
+    rows = repo.list_notifications(limit=10)
+
+    assert first is not None
+    assert duplicate_poll is None
+    assert len(rows) == 1
+    assert rows[0]["occurrence_count"] == 1
+    assert rows[0]["last_seen_at_ms"] == 1_700_000_000_000
+    assert rows[0]["payload_json"]["version"] == 1
+
+
+def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path):
+    repo = repository(tmp_path)
+
+    repo.insert_notification(
+        dedup_key="activity:toly:post:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="First post.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={"event_id": "event-1", "version": 1},
+        channels=["in_app"],
+    )
+    repo.insert_notification(
+        dedup_key="activity:toly:post:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="Second post.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-2",
+        source_table="events",
+        source_id="event-2",
+        occurrence_at_ms=1_700_000_060_000,
+        payload={"event_id": "event-2", "version": 2},
+        channels=["in_app"],
+    )
+    repo.insert_notification(
+        dedup_key="activity:toly:post:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="First post reappeared in the next scan.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
+        occurrence_at_ms=1_700_000_120_000,
+        payload={"event_id": "event-1", "version": 3},
+        channels=["in_app"],
+    )
+
+    rows = repo.list_notifications(limit=10)
+
+    assert len(rows) == 1
+    assert rows[0]["occurrence_count"] == 2
+    assert rows[0]["last_seen_at_ms"] == 1_700_000_060_000
+    assert rows[0]["payload_json"]["event_id"] == "event-2"
+
+
+def test_insert_notification_suppresses_same_pulse_source_status_with_different_key(tmp_path):
+    repo = repository(tmp_path)
+
+    old_key = repo.insert_notification(
+        dedup_key="signal_pulse_candidate:pulse-1:sha256:old-signature",
+        rule_id="signal_pulse_candidate",
+        severity="high",
+        title="$SLOP token watch",
+        body="Signal Pulse",
+        entity_type="pulse_candidate",
+        entity_key="pulse_candidate:pulse-1",
+        symbol="SLOP",
+        source_table="pulse_candidates",
+        source_id="pulse-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={"candidate_id": "pulse-1", "pulse_status": "token_watch", "symbol": "SLOP"},
+        channels=["in_app", "pushdeer"],
+    )
+    same_source_status = repo.insert_notification(
+        dedup_key="signal_pulse_candidate:pulse-1:token_watch:944444",
+        rule_id="signal_pulse_candidate",
+        severity="high",
+        title="$SLOP token watch",
+        body="Signal Pulse",
+        entity_type="pulse_candidate",
+        entity_key="pulse_candidate:pulse-1",
+        symbol="SLOP",
+        source_table="pulse_candidates",
+        source_id="pulse-1",
+        occurrence_at_ms=1_700_000_060_000,
+        payload={"candidate_id": "pulse-1", "pulse_status": "token_watch", "symbol": "SLOP"},
+        channels=["in_app", "pushdeer"],
+    )
+
+    rows = repo.list_notifications(limit=10, rule_id="signal_pulse_candidate")
+
+    assert old_key is not None
+    assert same_source_status is None
+    assert len(rows) == 1
+    assert rows[0]["dedup_key"] == "signal_pulse_candidate:pulse-1:sha256:old-signature"
+    assert rows[0]["occurrence_count"] == 1
 
 
 def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
