@@ -1070,3 +1070,58 @@ PR3 合并后，把以下 artefact 写入 `docs/superpowers/plans/active/2026-05
 - 任何已知 follow-up（如代码分割、`<TokenTargetPage>` 内部 useState 抽 hook 等）追加到 `docs/TECH_DEBT.md`。
 
 完成 verification 后把 spec 与本 plan 从 `active/` 移到 `completed/`（与 verification artefact 同 PR）。
+
+---
+
+## Verification（2026-05-10 本地合并前完成）
+
+**实现 commit 序列**（本地合并前 `worktree-feat+deep-link-routing` 上的 10 个 commit）：
+
+```
+fc69e30 feat(web): URL is single source of truth for navigation state
+7af7607 feat(web): /signal-lab filters in URL query params + nested pulse route
+45e2156 feat(web): /signal-lab/pulse/:candidateId deep-link page
+630c4af feat(web): add useSignalPulseList and useSignalPulseCandidate hooks
+d644c20 refactor(web): drop tokenRadarRowToTokenItem re-export shim
+f1b3864 feat(web): route /token/:targetType/:targetId to TokenTargetPage
+e3e8078 refactor(web): extract CockpitLayout, LivePage, SignalLabPage page components
+3d09cfc chore(web): add react-router-dom + BrowserRouter shell
+ab7eac3 feat(api): GET /api/signal-lab/pulse/{candidate_id} for deep-link
+77422bc feat(retrieval): add SignalPulseService.candidate single-item lookup
+```
+
+**自动化 gate**（worktree 内末次运行）：
+
+- `uv run ruff check .` — All checks passed
+- `uv run pytest` — 397 passed, 140 skipped（基线一致，无新 regression）
+- `uv run python -m compileall src tests` — 通过
+- `cd web && npm run test` — 15 test files / 82 tests 全过
+- `cd web && npm run build` — `tsc --noEmit && vite build` 成功（gzip 119.90 kB）
+
+**Acceptance criteria**（spec §Acceptance）：
+
+- AC1（点击 → URL）：`web/src/components/__tests__/TokenTargetPage.routing.test.tsx` 经 `MemoryRouter` 校验 URL 与 API 参数同步。
+- AC2（深链刷新一致）：`<TokenTargetPage>` 通过 `useParams + useTokenTargetTimeline + useTokenTargetPosts` 自取数据；`enabled: Boolean(token && target)` 保证 bootstrap 完成后查询发出。
+- AC3（pulse 不存在 → in-page 404）：后端 `tests/test_api_http.py::test_api_signal_pulse_by_id_returns_404_when_missing` + 前端 `PulseDetailPage.routing.test.tsx` 第 2 用例覆盖。
+- AC4（query 同步）：`SignalLabPage.routing.test.tsx` 验证 `?handle=&status=` 进入 list endpoint 参数；空筛选不写入 URL。
+- AC5（后退键）：filter 写入 `setSearchParams(replace: false)`、auto-redirect 到第一 candidate 用 `replace: true`，避免后退按钮抖动。
+- AC6（FRONTEND.md UI gate）：审计 `useIntelSocket` 持续在 `App.tsx` 顶层不会随路由切换 unmount；score breakdown 仍随 `<ScoreLedger>` 渲染。**浏览器手动 smoke 留待主 checkout 合入后由用户跑** —— 本 PR 内部已通过自动化测试覆盖关键路径。
+- AC7（store 字段删除）：
+
+  ```
+  grep -rn 'activeView\|signalLabHandle\|signalLabStatus\|signalLabSearch\|focusWatchHandle\|pageTargetRef' web/src/
+  (no output)
+  grep -rn '^export {' web/src/App.tsx
+  (no output)
+  ```
+
+  7 个 grep 全 0 命中——`activeView`/`signalLabHandle`/`signalLabStatus`/`signalLabSearch`/`focusWatchHandle`/`pageTargetRef`/`^export {` 全部物理删除，无残留 compat shim。中途发现并修掉 PR2 引入的 `tokenRadarRowToTokenItem` 转发 export（commit `d644c20`）。
+
+**独立审计**：fresh-context reviewer 跑完审计返回 `VERDICT: APPROVED`。补充非阻塞 follow-up：`<TokenTargetPage>` 的 `windowKey` 是 component-local `useState`，结构上由路由切换的卸载/重挂载隔离，无显式测试断言但风险低；可作为后续 hook 抽取的优化项。
+
+**Follow-ups**（非本期目标）：
+
+- 路由级代码分割（`React.lazy` 三个 page component）。
+- `<TokenTargetPage>` 多个 `useState` 抽出 `useTokenTargetPageState` hook。
+- `<SignalLabPage>` auto-redirect 到首 candidate 的策略在更大数据量下复评（当前在空列表时不触发，行为安全）。
+- 移动端 `mobileTask` 与路由长期统一（本期非目标）。
