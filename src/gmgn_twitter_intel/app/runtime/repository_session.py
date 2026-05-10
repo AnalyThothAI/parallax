@@ -8,6 +8,7 @@ from typing import Any
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
     AssetRepository,
     DiscoveryRepository,
+    IdentityEvidenceRepository,
     MarketRepository,
     PriceObservationRepository,
     RegistryRepository,
@@ -42,6 +43,7 @@ class RepositorySession:
     token_intents: TokenIntentRepository
     intent_resolutions: IntentResolutionRepository
     registry: RegistryRepository
+    identity_evidence: IdentityEvidenceRepository
     discovery: DiscoveryRepository
     price_observations: PriceObservationRepository
     token_intent_lookup: TokenIntentLookupRepository
@@ -69,6 +71,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         token_intents=TokenIntentRepository(conn),
         intent_resolutions=IntentResolutionRepository(conn),
         registry=RegistryRepository(conn),
+        identity_evidence=IdentityEvidenceRepository(conn),
         discovery=DiscoveryRepository(conn),
         price_observations=PriceObservationRepository(conn),
         token_intent_lookup=TokenIntentLookupRepository(conn),

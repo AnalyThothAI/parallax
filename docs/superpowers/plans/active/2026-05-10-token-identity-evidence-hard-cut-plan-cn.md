@@ -1,14 +1,39 @@
 # Token Identity Evidence Hard Cut Implementation Plan
 
-**Status**: Active  
+**Status**: Implemented in `codex/token-identity-freshness-hard-cut`; verification passed
 **Date**: 2026-05-10  
 **Owning spec**: `docs/superpowers/specs/active/2026-05-10-token-identity-evidence-hard-cut-spec-cn.md`  
-**Branch**: `main` or short-lived `codex/token-identity-evidence-hard-cut` before merging to `main`  
+**Branch**: `codex/token-identity-freshness-hard-cut`
 **Core rule**: hard cut only. No dual write, no runtime compatibility shim, no frontend correction map.
 
 ## Intent
 
 Replace token identity selection based on `registry_assets.symbol/name/primary_source` with an explicit identity evidence ledger plus one deterministic current-identity policy. The implementation must make every Token Radar row explainable from stored evidence and must delete the runtime source-precedence model that caused SHIT/SLOP/SATO identity drift.
+
+## Implementation Note
+
+Implemented against the current domain layout, not the older `storage/` / `pipeline/` paths used in early planning text.
+
+- Policy: `src/gmgn_twitter_intel/domains/asset_market/identity_evidence_policy.py`
+- Repository: `src/gmgn_twitter_intel/domains/asset_market/repositories/identity_evidence_repository.py`
+- Migration: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py`
+- Verification artifact: `docs/superpowers/plans/active/2026-05-10-token-identity-evidence-hard-cut-verification.md`
+
+Final verification:
+
+- `uv run pytest -q` -> 416 passed, 141 skipped.
+- `uv run ruff check src tests` -> passed.
+- `npm test -- --run` -> 15 files passed, 86 tests passed.
+- `npm run build` -> passed.
+- Runtime deletion grep for old source precedence, old registry identity reads, and projection preflight hydration -> no hits outside historical migrations.
+- Real local production DB SHIT/SLOP/SATO samples were rerun in a transaction dry-run of migration `20260510_0021`: schema/backfill, `TokenRadarSourceQuery`, sample projection grouping, `token_radar_rows` repository write/read, public read-model output, and price freshness checks all executed against real data, then rolled back without mutating the DB.
+
+Task status summary:
+
+- Tasks 3-9 are implemented on the current code layout.
+- Task 10's required frontend hard-cut behavior is implemented: resolved targets no longer fall back to mention symbols.
+- The early plan's speculative batch helpers (`recompute_current_identity_many`, `current_identities`, `assets_needing_identity_verification`) were not added because runtime call sites did not need them; the landed implementation keeps the repository API smaller and verifies the production path directly.
+- Local production DB sample queries were rerun safely in this worktree; see the verification artifact for exact mismatch samples, projected rows, price freshness, and rollback confirmation.
 
 ## Scope
 
@@ -742,20 +767,20 @@ Required sections:
 
 ## Acceptance Checklist
 
-- [ ] `asset_identity_evidence` exists and stores identity claims.
-- [ ] `asset_identity_current` exists and stores selected current identity.
-- [ ] `IdentityEvidencePolicy` is the only canonical identity selector.
-- [ ] `registry_assets` no longer owns canonical `symbol/name/primary_source`.
-- [ ] Tweet mentions cannot directly set canonical target symbol.
-- [ ] Symbol search cannot overwrite exact evidence.
-- [ ] Exact address evidence corrects tweet alias pollution.
-- [ ] Market sync identity verification uses confidence, not field completeness.
-- [ ] Projection target symbol/name comes from current identity.
-- [ ] API exposes compact identity reason metadata.
-- [ ] Frontend renders identity from target/current identity and keeps mention separate.
-- [ ] SHIT/SLOP/SATO golden corpus passes.
-- [ ] Old runtime source-precedence paths are deleted.
-- [ ] Full backend and frontend verification passes.
+- [x] `asset_identity_evidence` exists and stores identity claims.
+- [x] `asset_identity_current` exists and stores selected current identity.
+- [x] `IdentityEvidencePolicy` is the only canonical identity selector.
+- [x] `registry_assets` no longer owns canonical `symbol/name/primary_source`.
+- [x] Tweet mentions cannot directly set canonical target symbol.
+- [x] Symbol search cannot overwrite exact evidence.
+- [x] Exact address evidence corrects tweet alias pollution.
+- [x] Market sync identity verification uses confidence, not field completeness.
+- [x] Projection target symbol/name comes from current identity.
+- [x] API exposes compact identity reason metadata.
+- [x] Frontend renders identity from target/current identity and keeps mention separate.
+- [x] SHIT/SLOP/SATO golden corpus passes through backend test coverage.
+- [x] Old runtime source-precedence paths are deleted.
+- [x] Full backend and frontend verification passes.
 
 ## Done Means
 

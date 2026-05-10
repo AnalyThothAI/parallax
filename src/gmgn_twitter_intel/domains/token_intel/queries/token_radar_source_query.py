@@ -42,8 +42,11 @@ class TokenRadarSourceQuery:
               registry_assets.chain_id AS asset_chain_id,
               registry_assets.token_standard AS asset_token_standard,
               registry_assets.address AS asset_address,
-              registry_assets.symbol AS asset_symbol,
-              registry_assets.name AS asset_name,
+              asset_identity_current.canonical_symbol AS asset_symbol,
+              asset_identity_current.canonical_name AS asset_name,
+              asset_identity_current.identity_confidence AS asset_identity_confidence,
+              asset_identity_current.selection_reason_codes_json AS asset_identity_reason_codes,
+              asset_identity_current.conflict_count AS asset_identity_conflict_count,
               registry_assets.status AS asset_registry_status,
               cex_tokens.base_symbol AS cex_base_symbol,
               cex_tokens.status AS cex_token_status,
@@ -105,6 +108,9 @@ class TokenRadarSourceQuery:
             LEFT JOIN registry_assets
               ON token_intent_resolutions.target_type = 'Asset'
              AND registry_assets.asset_id = token_intent_resolutions.target_id
+            LEFT JOIN asset_identity_current
+              ON token_intent_resolutions.target_type = 'Asset'
+             AND asset_identity_current.asset_id = token_intent_resolutions.target_id
             LEFT JOIN cex_tokens
               ON token_intent_resolutions.target_type = 'CexToken'
              AND cex_tokens.cex_token_id = token_intent_resolutions.target_id

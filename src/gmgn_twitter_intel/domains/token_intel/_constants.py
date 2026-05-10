@@ -4,9 +4,9 @@ from __future__ import annotations
 # This module intentionally has no intra-domain imports to avoid circular dependencies.
 
 TOKEN_RADAR_PROJECTION_NAME = "token-radar"
-TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v7-candidate-hydration"
+TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v8-identity-evidence"
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
-TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+candidate_market_hydration+price_observations"
+TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+price_observations"
 TOKEN_RADAR_SCORE_COMPONENTS = (
     "heat",
     "quality",
@@ -15,6 +15,12 @@ TOKEN_RADAR_SCORE_COMPONENTS = (
     "timing",
     "opportunity",
 )
+WINDOW_MS = {
+    "5m": 5 * 60 * 1000,
+    "1h": 60 * 60 * 1000,
+    "4h": 4 * 60 * 60 * 1000,
+    "24h": 24 * 60 * 60 * 1000,
+}
 TOKEN_RADAR_REQUIRED_ATTENTION_FIELDS = (
     "mentions_5m",
     "mentions_1h",

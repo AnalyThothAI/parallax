@@ -19,8 +19,13 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     reprocess_recent_token_intents,
 )
 
+from ..identity_evidence_policy import (
+    CONFIDENCE_PROVIDER_CANDIDATE,
+    CONFIDENCE_PROVIDER_EXACT,
+    EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+    EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+)
 from ..repositories.discovery_repository import DISCOVERY_PROVIDER
-from ..repositories.registry_repository import DEX_ADDRESS_SEARCH_SOURCE, DEX_SEARCH_SOURCE
 from ..services.asset_market_sync import _payload_hash
 
 DEFAULT_DISCOVERY_LIMIT = 50
@@ -233,7 +238,9 @@ def _process_dex_symbol_lookup(
             repos=repos,
             candidate=candidate,
             now_ms=now_ms,
-            source=DEX_SEARCH_SOURCE,
+            evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+            confidence=CONFIDENCE_PROVIDER_CANDIDATE,
+            lookup_mode="symbol_search",
         )
         if not asset_id:
             continue
@@ -243,13 +250,6 @@ def _process_dex_symbol_lookup(
         result["assets_written"] += 1
         result["pricefeeds_written"] += 1
         result["price_observations_written"] += 1
-    if retained_asset_ids:
-        result["search_assets_demoted"] = repos.registry.demote_unretained_symbol_assets(
-            symbol=symbol,
-            retained_asset_ids=retained_asset_ids,
-            now_ms=now_ms,
-            commit=False,
-        )
     if result["search_hits"]:
         result["affected_lookup_keys"].extend([f"symbol:{symbol}", f"project_symbol:{symbol}", f"cex_token:{symbol}"])
     return result
@@ -287,7 +287,9 @@ def _process_address_lookup(
             repos=repos,
             candidate=candidate,
             now_ms=now_ms,
-            source=DEX_ADDRESS_SEARCH_SOURCE,
+            evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+            confidence=CONFIDENCE_PROVIDER_EXACT,
+            lookup_mode="exact_address",
         )
         if not asset_id:
             continue
@@ -303,7 +305,15 @@ def _process_address_lookup(
     return result
 
 
-def _write_dex_candidate(*, repos, candidate, now_ms: int, source: str) -> str | None:
+def _write_dex_candidate(
+    *,
+    repos,
+    candidate,
+    now_ms: int,
+    evidence_kind: str,
+    confidence: str,
+    lookup_mode: str,
+) -> str | None:
     chain_id = _chain_id(getattr(candidate, "chain_id", None))
     address = _normalize_address(getattr(candidate, "address", None))
     symbol = _normalize_symbol(getattr(candidate, "symbol", None))
@@ -312,13 +322,25 @@ def _write_dex_candidate(*, repos, candidate, now_ms: int, source: str) -> str |
     asset = repos.registry.upsert_chain_asset(
         chain_id=chain_id,
         address=address,
-        symbol=symbol,
-        name=getattr(candidate, "name", None),
-        decimals=None,
-        source=source,
         observed_at_ms=now_ms,
         commit=False,
     )
+    repos.identity_evidence.upsert_identity_evidence(
+        asset_id=str(asset["asset_id"]),
+        evidence_kind=evidence_kind,
+        provider="okx",
+        lookup_mode=lookup_mode,
+        chain_id=str(asset["chain_id"]),
+        address=str(asset["address"]),
+        symbol=symbol,
+        name=getattr(candidate, "name", None),
+        decimals=None,
+        confidence=confidence,
+        raw_payload={**getattr(candidate, "raw", {}), "payload_hash": _payload_hash(getattr(candidate, "raw", {}))},
+        observed_at_ms=now_ms,
+        commit=False,
+    )
+    repos.identity_evidence.recompute_current_identity(str(asset["asset_id"]), now_ms=now_ms, commit=False)
     pricefeed = repos.registry.upsert_pricefeed(
         feed_type="dex_token",
         provider="okx_dex_search",
@@ -354,7 +376,6 @@ def _merge_lookup_result(result: dict[str, Any], lookup_result: dict[str, Any]) 
         "search_hits",
         "search_candidates_seen",
         "search_candidates_rejected",
-        "search_assets_demoted",
         "assets_written",
         "pricefeeds_written",
         "price_observations_written",
@@ -373,7 +394,6 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "search_hits": 0,
         "search_candidates_seen": 0,
         "search_candidates_rejected": 0,
-        "search_assets_demoted": 0,
         "assets_written": 0,
         "pricefeeds_written": 0,
         "price_observations_written": 0,
@@ -395,7 +415,6 @@ def _lookup_result(
         "search_hits": int(search_hits),
         "search_candidates_seen": 0,
         "search_candidates_rejected": 0,
-        "search_assets_demoted": 0,
         "assets_written": 0,
         "pricefeeds_written": 0,
         "price_observations_written": 0,

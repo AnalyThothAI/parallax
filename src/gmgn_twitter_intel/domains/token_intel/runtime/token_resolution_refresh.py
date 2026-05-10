@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.domains.token_intel._constants import WINDOW_MS
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import DEFAULT_SCOPES, DEFAULT_WINDOWS
 from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 
 DEFAULT_REPROCESS_LIMIT = 500
 DEFAULT_REPROCESS_WINDOW = "24h"
@@ -100,6 +100,8 @@ def rebuild_token_radar_windows(
     scopes: tuple[str, ...] = DEFAULT_SCOPES,
     limit: int = 100,
 ) -> dict[str, Any]:
+    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+
     projection = TokenRadarProjection(repos=repos)
     result: dict[str, Any] = {"rows_written": 0, "source_rows": 0, "windows": {}}
     for window in windows:

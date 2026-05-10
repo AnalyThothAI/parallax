@@ -5,7 +5,15 @@ import json
 import time
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.interfaces import PriceObservationRepository, RegistryRepository
+from gmgn_twitter_intel.domains.asset_market.interfaces import (
+    CONFIDENCE_MENTION_ONLY,
+    CONFIDENCE_PROVIDER_EXACT,
+    EVIDENCE_GMGN_PAYLOAD_EXACT,
+    EVIDENCE_TWEET_CONTRACT_MENTION,
+    IdentityEvidenceRepository,
+    PriceObservationRepository,
+    RegistryRepository,
+)
 from gmgn_twitter_intel.domains.evidence.interfaces import (
     TextSurface,
     TwitterEvent,
@@ -38,6 +46,7 @@ class IngestService:
         signals: SignalRepository,
         enrichment,
         registry: RegistryRepository | None = None,
+        identity_evidence: IdentityEvidenceRepository | None = None,
         price_observations: PriceObservationRepository | None = None,
         token_intent_lookup: TokenIntentLookupRepository | None = None,
     ):
@@ -46,6 +55,7 @@ class IngestService:
         self.signals = signals
         self.enrichment = enrichment
         self.registry = registry or RegistryRepository(evidence.conn)
+        self.identity_evidence = identity_evidence or IdentityEvidenceRepository(evidence.conn)
         self.price_observations = price_observations or PriceObservationRepository(evidence.conn)
         self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
 
@@ -147,16 +157,34 @@ class IngestService:
             return None
         if not snapshot.address or not snapshot.chain:
             return None
-        return self.registry.upsert_chain_asset(
+        asset = self.registry.upsert_chain_asset(
             chain_id=snapshot.chain,
             address=snapshot.address,
-            symbol=snapshot.symbol,
-            name=None,
-            decimals=None,
-            source="gmgn_payload",
             observed_at_ms=event.received_at_ms,
             commit=False,
         )
+        self.identity_evidence.upsert_identity_evidence(
+            asset_id=str(asset["asset_id"]),
+            evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
+            provider="gmgn",
+            lookup_mode="provider_payload",
+            chain_id=str(asset["chain_id"]),
+            address=str(asset["address"]),
+            symbol=snapshot.symbol,
+            name=None,
+            decimals=None,
+            confidence=CONFIDENCE_PROVIDER_EXACT,
+            source_event_id=event.event_id,
+            raw_payload={**snapshot.raw, "payload_hash": _payload_hash(snapshot.raw)},
+            observed_at_ms=event.received_at_ms,
+            commit=False,
+        )
+        self.identity_evidence.recompute_current_identity(
+            str(asset["asset_id"]),
+            now_ms=event.received_at_ms,
+            commit=False,
+        )
+        return asset
 
     def _upsert_chain_intent_registry(self, event: TwitterEvent, intents: list[Any]) -> None:
         for intent in intents:
@@ -164,14 +192,31 @@ class IngestService:
             address_hint = getattr(intent, "address_hint", None)
             if not chain_hint or not address_hint:
                 continue
-            self.registry.upsert_chain_asset(
+            asset = self.registry.upsert_chain_asset(
                 chain_id=str(chain_hint),
                 address=str(address_hint),
+                observed_at_ms=event.received_at_ms,
+                commit=False,
+            )
+            self.identity_evidence.upsert_identity_evidence(
+                asset_id=str(asset["asset_id"]),
+                evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
+                provider="twitter",
+                lookup_mode="tweet_mention",
+                chain_id=str(asset["chain_id"]),
+                address=str(asset["address"]),
                 symbol=getattr(intent, "display_symbol", None),
                 name=None,
                 decimals=None,
-                source="tweet_ca",
+                confidence=CONFIDENCE_MENTION_ONLY,
+                source_event_id=event.event_id,
+                source_intent_id=getattr(intent, "intent_id", None),
                 observed_at_ms=event.received_at_ms,
+                commit=False,
+            )
+            self.identity_evidence.recompute_current_identity(
+                str(asset["asset_id"]),
+                now_ms=event.received_at_ms,
                 commit=False,
             )
 
@@ -200,7 +245,7 @@ class IngestService:
                 chain_id=str(asset["chain_id"]),
                 address=str(asset["address"]),
                 base_asset_id=str(asset["asset_id"]),
-                base_symbol=str(asset["symbol"]) if asset.get("symbol") else snapshot.symbol,
+                base_symbol=snapshot.symbol,
                 commit=False,
             )
             self.price_observations.insert_observation(

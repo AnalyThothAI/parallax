@@ -6,12 +6,16 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenPriceRequest
 
-from ..repositories.registry_repository import DEX_ADDRESS_SEARCH_SOURCE
+from ..identity_evidence_policy import (
+    CONFIDENCE_MANUAL,
+    CONFIDENCE_PROVIDER_EXACT,
+    EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+)
 
 DEX_PRICE_BATCH_SIZE = 20
 RADAR_PRICE_CANDIDATE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 RADAR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
-ADDRESS_VERIFIED_SOURCES = frozenset({"gmgn_openapi", "gmgn_payload", "gmgn_token_payload", DEX_ADDRESS_SEARCH_SOURCE})
+EXACT_IDENTITY_CONFIDENCES = frozenset({CONFIDENCE_MANUAL, CONFIDENCE_PROVIDER_EXACT})
 
 
 def sync_cex_universe(
@@ -84,6 +88,7 @@ def sync_cex_universe(
 def sync_dex_prices(
     *,
     registry,
+    identity_evidence,
     price_observations,
     dex_market,
     observed_at_ms: int,
@@ -105,35 +110,55 @@ def sync_dex_prices(
     )
     pricefeeds_written = 0
     observations_written = 0
-    address_search_requests = 0
-    address_search_hits = 0
-    address_search_errors = 0
+    identity_verification_requests = 0
+    identity_verification_hits = 0
+    identity_verification_errors = 0
     affected_lookup_keys: set[str] = set()
     for index, row in enumerate(rows):
         chain_id = str(row.get("chain_id") or "").strip()
         address = str(row.get("address") or "").strip()
         if not chain_id or not address or not _needs_address_search(row):
             continue
-        address_search_requests += 1
+        identity_verification_requests += 1
         candidate, search_error = _search_exact_token(dex_market=dex_market, chain_id=chain_id, address=address)
         if search_error:
-            address_search_errors += 1
+            identity_verification_errors += 1
         if candidate is None:
             continue
-        address_search_hits += 1
+        identity_verification_hits += 1
         asset = registry.upsert_chain_asset(
             chain_id=str(row["chain_id"]),
             address=address,
+            observed_at_ms=observed_at_ms,
+            commit=False,
+        )
+        identity_evidence.upsert_identity_evidence(
+            asset_id=str(asset["asset_id"]),
+            evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+            provider="okx",
+            lookup_mode="exact_address",
+            chain_id=str(asset["chain_id"]),
+            address=str(asset["address"]),
             symbol=candidate.symbol,
             name=candidate.name,
             decimals=None,
-            source=DEX_ADDRESS_SEARCH_SOURCE,
+            confidence=CONFIDENCE_PROVIDER_EXACT,
+            raw_payload={**candidate.raw, "payload_hash": _payload_hash(candidate.raw)},
             observed_at_ms=observed_at_ms,
+            commit=False,
+        )
+        current_identity = identity_evidence.recompute_current_identity(
+            str(asset["asset_id"]),
+            now_ms=observed_at_ms,
             commit=False,
         )
         rows[index] = {
             **row,
             **asset,
+            "symbol": current_identity.get("canonical_symbol") or candidate.symbol,
+            "name": current_identity.get("canonical_name") or candidate.name,
+            "decimals": current_identity.get("decimals"),
+            "identity_confidence": current_identity.get("identity_confidence"),
             "market_cap_usd": candidate.market_cap_usd,
             "liquidity_usd": candidate.liquidity_usd,
             "holders": candidate.holders,
@@ -223,9 +248,9 @@ def sync_dex_prices(
     return {
         "assets_scanned": len(rows),
         "refresh_universe": refresh_universe,
-        "address_search_requests": address_search_requests,
-        "address_search_hits": address_search_hits,
-        "address_search_errors": address_search_errors,
+        "identity_verification_requests": identity_verification_requests,
+        "identity_verification_hits": identity_verification_hits,
+        "identity_verification_errors": identity_verification_errors,
         "price_requests": price_requests,
         "pricefeeds_written": pricefeeds_written,
         "price_observations_written": observations_written,
@@ -274,9 +299,7 @@ def _asset_lookup_keys(row: dict[str, Any]) -> set[str]:
 
 
 def _needs_address_search(row: dict[str, Any]) -> bool:
-    if any(row.get(key) is None for key in ("symbol", "market_cap_usd", "liquidity_usd", "holders")):
-        return True
-    return str(row.get("primary_source") or "").strip().lower() not in ADDRESS_VERIFIED_SOURCES
+    return str(row.get("identity_confidence") or "").strip().lower() not in EXACT_IDENTITY_CONFIDENCES
 
 
 def _search_exact_token(*, dex_market, chain_id: str, address: str):

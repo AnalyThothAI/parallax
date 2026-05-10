@@ -208,6 +208,7 @@ class _PooledIngestStore:
                 signals=repos.signals,
                 enrichment=repos.enrichment,
                 registry=repos.registry,
+                identity_evidence=repos.identity_evidence,
                 price_observations=repos.price_observations,
                 token_intent_lookup=repos.token_intent_lookup,
             )
@@ -280,7 +281,6 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     )
     runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
         repository_session=lambda: repository_session(db_pool),
-        dex_market=providers.asset_market.projection_dex_market,
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
         runtime.pulse_candidate_worker = PulseCandidateWorker(

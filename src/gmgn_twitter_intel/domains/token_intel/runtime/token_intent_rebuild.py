@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.domains.asset_market.interfaces import (
+    CONFIDENCE_MENTION_ONLY,
+    EVIDENCE_TWEET_CONTRACT_MENTION,
+)
 from gmgn_twitter_intel.domains.evidence.interfaces import TextSurface, TokenSnapshot, extract_entities_from_surfaces
 from gmgn_twitter_intel.domains.token_intel.queries.event_rebuild_query import EventRebuildQuery
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
@@ -137,16 +141,28 @@ def _upsert_chain_intent_registry(*, repos: Any, intents: list[Any], observed_at
     for intent in intents:
         if not intent.chain_hint or not intent.address_hint:
             continue
-        repos.registry.upsert_chain_asset(
+        asset = repos.registry.upsert_chain_asset(
             chain_id=str(intent.chain_hint),
             address=str(intent.address_hint),
-            symbol=intent.display_symbol,
-            name=None,
-            decimals=None,
-            source="tweet_ca",
             observed_at_ms=observed_at_ms,
             commit=False,
         )
+        repos.identity_evidence.upsert_identity_evidence(
+            asset_id=str(asset["asset_id"]),
+            evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
+            provider="twitter",
+            lookup_mode="tweet_mention",
+            chain_id=str(asset["chain_id"]),
+            address=str(asset["address"]),
+            symbol=intent.display_symbol,
+            name=None,
+            decimals=None,
+            confidence=CONFIDENCE_MENTION_ONLY,
+            source_intent_id=intent.intent_id,
+            observed_at_ms=observed_at_ms,
+            commit=False,
+        )
+        repos.identity_evidence.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms, commit=False)
 
 
 def _float_or_none(value: Any) -> float | None:

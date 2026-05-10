@@ -4,10 +4,18 @@ from decimal import Decimal
 
 from psycopg.types.json import Jsonb
 
+from gmgn_twitter_intel.domains.asset_market.identity_evidence_policy import (
+    CONFIDENCE_MENTION_ONLY,
+    CONFIDENCE_PROVIDER_CANDIDATE,
+    CONFIDENCE_PROVIDER_EXACT,
+    EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+    EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+    EVIDENCE_TWEET_CONTRACT_MENTION,
+)
+from gmgn_twitter_intel.domains.asset_market.repositories.identity_evidence_repository import IdentityEvidenceRepository
 from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
 from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import (
     RegistryRepository,
-    _source_precedence,
 )
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
@@ -75,11 +83,39 @@ def _insert_current_resolution(
     )
 
 
+def _write_identity(
+    identity: IdentityEvidenceRepository,
+    asset: dict,
+    *,
+    symbol: str,
+    name: str | None = None,
+    evidence_kind: str = EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+    confidence: str = CONFIDENCE_PROVIDER_EXACT,
+    observed_at_ms: int = 1_778_145_000_000,
+) -> None:
+    identity.upsert_identity_evidence(
+        asset_id=str(asset["asset_id"]),
+        evidence_kind=evidence_kind,
+        provider="test",
+        lookup_mode="test",
+        chain_id=str(asset["chain_id"]),
+        address=str(asset["address"]),
+        symbol=symbol,
+        name=name,
+        decimals=18,
+        confidence=confidence,
+        observed_at_ms=observed_at_ms,
+        commit=False,
+    )
+    identity.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms, commit=False)
+
+
 def test_registry_repository_writes_cex_token_asset_pricefeed_and_observation(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         registry = RegistryRepository(conn)
+        identity = IdentityEvidenceRepository(conn)
         observations = PriceObservationRepository(conn)
 
         cex_token = registry.upsert_cex_token(
@@ -91,12 +127,9 @@ def test_registry_repository_writes_cex_token_asset_pricefeed_and_observation(tm
         asset = registry.upsert_chain_asset(
             chain_id="eip155:1",
             address="0x6982508145454ce325ddbe47a25d4ec3d2311933",
-            symbol="PEPE",
-            name="Pepe",
-            decimals=18,
-            source="okx_dex",
             observed_at_ms=1_778_145_000_000,
         )
+        _write_identity(identity, asset, symbol="PEPE", name="Pepe")
         pricefeed = registry.upsert_pricefeed(
             feed_type="cex_spot",
             provider="okx",
@@ -167,10 +200,6 @@ def test_okx_search_reactivates_demoted_search_asset(tmp_path):
         asset = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(1),
-            symbol="HANTA",
-            name="Hanta",
-            decimals=18,
-            source="okx_dex_search",
             observed_at_ms=1_778_145_000_000,
         )
         conn.execute("UPDATE registry_assets SET status = 'demoted_search' WHERE asset_id = %s", (asset["asset_id"],))
@@ -178,10 +207,6 @@ def test_okx_search_reactivates_demoted_search_asset(tmp_path):
         reactivated = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(1),
-            symbol="HANTA",
-            name="Hanta",
-            decimals=18,
-            source="okx_dex_search",
             observed_at_ms=1_778_145_060_000,
         )
     finally:
@@ -190,235 +215,43 @@ def test_okx_search_reactivates_demoted_search_asset(tmp_path):
     assert reactivated["status"] == "candidate"
 
 
-def test_low_confidence_search_source_does_not_downgrade_explicit_source(tmp_path):
+def test_identity_current_selects_exact_provider_over_tweet_alias_without_registry_identity_columns(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         registry = RegistryRepository(conn)
-        explicit = registry.upsert_chain_asset(
-            chain_id="eip155:56",
-            address=_evm_address(2),
-            symbol="HANTA",
-            name="Hanta",
-            decimals=18,
-            source="tweet_ca",
-            observed_at_ms=1_778_145_000_000,
-        )
-        searched = registry.upsert_chain_asset(
-            chain_id="eip155:56",
-            address=_evm_address(2),
-            symbol="HANTA",
-            name="Search Hanta",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_060_000,
-        )
-    finally:
-        conn.close()
-
-    assert explicit["primary_source"] == "tweet_ca"
-    assert searched["primary_source"] == "tweet_ca"
-    assert searched["name"] == "Search Hanta"
-
-
-def test_gmgn_payload_source_outweighs_tweet_alias_source():
-    assert _source_precedence("gmgn_payload") > _source_precedence("tweet_ca")
-
-
-def test_exact_dex_address_source_outweighs_tweet_alias_source():
-    assert _source_precedence("okx_dex_address_search") > _source_precedence("tweet_ca")
-    assert _source_precedence("okx_dex_address_search") < _source_precedence("gmgn_payload")
-
-
-def test_tweet_ca_does_not_overwrite_gmgn_payload_symbol(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        registry = RegistryRepository(conn)
-        payload_asset = registry.upsert_chain_asset(
-            chain_id="eip155:1",
-            address=_evm_address(42),
-            symbol="SLOP",
-            name=None,
-            decimals=18,
-            source="gmgn_payload",
-            observed_at_ms=1_778_145_000_000,
-        )
-        alias_asset = registry.upsert_chain_asset(
-            chain_id="eip155:1",
-            address=_evm_address(42),
-            symbol="SHIT",
-            name=None,
-            decimals=18,
-            source="tweet_ca",
-            observed_at_ms=1_778_145_060_000,
-        )
-    finally:
-        conn.close()
-
-    assert payload_asset["symbol"] == "SLOP"
-    assert alias_asset["symbol"] == "SLOP"
-    assert alias_asset["primary_source"] == "gmgn_payload"
-
-
-def test_exact_dex_address_search_corrects_tweet_alias_symbol(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        registry = RegistryRepository(conn)
-        alias_asset = registry.upsert_chain_asset(
+        identity = IdentityEvidenceRepository(conn)
+        asset = registry.upsert_chain_asset(
             chain_id="eip155:1",
             address=_evm_address(43),
+            observed_at_ms=1_778_145_000_000,
+        )
+        _write_identity(
+            identity,
+            asset,
             symbol="SATO",
-            name=None,
-            decimals=18,
-            source="tweet_ca",
+            evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
+            confidence=CONFIDENCE_MENTION_ONLY,
             observed_at_ms=1_778_145_000_000,
         )
-        searched_asset = registry.upsert_chain_asset(
-            chain_id="eip155:1",
-            address=_evm_address(43),
+        _write_identity(
+            identity,
+            asset,
             symbol="SLOP",
             name="SLOP",
-            decimals=18,
-            source="okx_dex_address_search",
+            evidence_kind=EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+            confidence=CONFIDENCE_PROVIDER_EXACT,
             observed_at_ms=1_778_145_060_000,
         )
+        selected = identity.current_identity(str(asset["asset_id"]))
+        rows = registry.find_assets_by_symbol_with_latest_observation("SLOP")
     finally:
         conn.close()
 
-    assert alias_asset["symbol"] == "SATO"
-    assert searched_asset["symbol"] == "SLOP"
-    assert searched_asset["name"] == "SLOP"
-    assert searched_asset["primary_source"] == "okx_dex_address_search"
-
-
-def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_audit(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        registry = RegistryRepository(conn)
-        retained = registry.upsert_chain_asset(
-            chain_id="eip155:56",
-            address=_evm_address(1),
-            symbol="HANTA",
-            name="Retained",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
-        )
-        protected_target = registry.upsert_chain_asset(
-            chain_id="eip155:56",
-            address=_evm_address(2),
-            symbol="HANTA",
-            name="Protected target",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
-        )
-        protected_candidate = registry.upsert_chain_asset(
-            chain_id="eip155:56",
-            address=_evm_address(3),
-            symbol="HANTA",
-            name="Protected candidate",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
-        )
-        unretained = registry.upsert_chain_asset(
-            chain_id="eip155:56",
-            address=_evm_address(4),
-            symbol="HANTA",
-            name="Unretained",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
-        )
-        _insert_current_resolution(
-            conn,
-            event_id="evt-protected-target",
-            intent_id="intent-protected-target",
-            target_id=protected_target["asset_id"],
-            reason_codes=["CHAIN_ADDRESS_EXACT"],
-        )
-        _insert_current_resolution(
-            conn,
-            event_id="evt-protected-candidate",
-            intent_id="intent-protected-candidate",
-            target_id=None,
-            candidate_ids=[protected_candidate["asset_id"]],
-        )
-
-        demoted = registry.demote_unretained_symbol_assets(
-            symbol="HANTA",
-            retained_asset_ids=[retained["asset_id"]],
-            now_ms=1_778_145_100_000,
-        )
-        rows = conn.execute(
-            """
-            SELECT asset_id, status
-            FROM registry_assets
-            WHERE upper(symbol) = 'HANTA'
-            ORDER BY asset_id
-            """
-        ).fetchall()
-    finally:
-        conn.close()
-
-    statuses = {row["asset_id"]: row["status"] for row in rows}
-    assert demoted == 2
-    assert statuses[retained["asset_id"]] == "candidate"
-    assert statuses[protected_target["asset_id"]] == "candidate"
-    assert statuses[protected_candidate["asset_id"]] == "demoted_search"
-    assert statuses[unretained["asset_id"]] == "demoted_search"
-
-
-def test_demote_symbol_search_tail_assets_preserves_address_exact_targets(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        registry = RegistryRepository(conn)
-        assets = [
-            registry.upsert_chain_asset(
-                chain_id="eip155:56",
-                address=_evm_address(index),
-                symbol="HANTA",
-                name=f"Hanta {index}",
-                decimals=18,
-                source="okx_dex_search",
-                observed_at_ms=1_778_145_000_000 + index,
-            )
-            for index in range(1, 6)
-        ]
-        _insert_current_resolution(
-            conn,
-            event_id="evt-protected-address",
-            intent_id="intent-protected-address",
-            target_id=assets[4]["asset_id"],
-            reason_codes=["CHAIN_ADDRESS_EXACT"],
-        )
-
-        demoted = registry.demote_symbol_search_tail_assets(
-            now_ms=1_778_145_100_000,
-        )
-        rows = conn.execute(
-            """
-            SELECT asset_id, status
-            FROM registry_assets
-            WHERE upper(symbol) = 'HANTA'
-            ORDER BY updated_at_ms DESC, asset_id
-            """
-        ).fetchall()
-    finally:
-        conn.close()
-
-    statuses = {row["asset_id"]: row["status"] for row in rows}
-    assert demoted == 1
-    assert statuses[assets[4]["asset_id"]] == "candidate"
-    assert statuses[assets[3]["asset_id"]] == "candidate"
-    assert statuses[assets[2]["asset_id"]] == "candidate"
-    assert statuses[assets[1]["asset_id"]] == "candidate"
-    assert statuses[assets[0]["asset_id"]] == "demoted_search"
+    assert selected["canonical_symbol"] == "SLOP"
+    assert selected["identity_confidence"] == "provider_exact"
+    assert rows[0]["asset_id"] == asset["asset_id"]
+    assert rows[0]["symbol"] == "SLOP"
 
 
 def test_symbol_lookup_and_price_refresh_ignore_demoted_search_assets(tmp_path):
@@ -426,23 +259,32 @@ def test_symbol_lookup_and_price_refresh_ignore_demoted_search_assets(tmp_path):
     try:
         migrate(conn)
         registry = RegistryRepository(conn)
+        identity = IdentityEvidenceRepository(conn)
         active = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(5),
+            observed_at_ms=1_778_145_000_000,
+        )
+        _write_identity(
+            identity,
+            active,
             symbol="HANTA",
             name="Active",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
+            evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+            confidence=CONFIDENCE_PROVIDER_CANDIDATE,
         )
         demoted = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(6),
+            observed_at_ms=1_778_145_000_000,
+        )
+        _write_identity(
+            identity,
+            demoted,
             symbol="HANTA",
             name="Demoted",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
+            evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+            confidence=CONFIDENCE_PROVIDER_CANDIDATE,
         )
         conn.execute("UPDATE registry_assets SET status = 'demoted_search' WHERE asset_id = %s", (demoted["asset_id"],))
 
@@ -462,32 +304,45 @@ def test_radar_price_refresh_selects_current_candidates_not_cold_registry_assets
     try:
         migrate(conn)
         registry = RegistryRepository(conn)
+        identity = IdentityEvidenceRepository(conn)
         hot_asset = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(7),
-            symbol="HANTA",
-            name="Hot",
-            decimals=18,
-            source="tweet_ca",
             observed_at_ms=1_778_145_000_000,
         )
-        registry.upsert_chain_asset(
+        _write_identity(
+            identity,
+            hot_asset,
+            symbol="HANTA",
+            name="Hot",
+            evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
+            confidence=CONFIDENCE_MENTION_ONLY,
+        )
+        cold_asset = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(8),
+            observed_at_ms=1_778_145_000_000,
+        )
+        _write_identity(
+            identity,
+            cold_asset,
             symbol="HANTA",
             name="Cold",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
+            evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+            confidence=CONFIDENCE_PROVIDER_CANDIDATE,
         )
         demoted = registry.upsert_chain_asset(
             chain_id="eip155:56",
             address=_evm_address(9),
+            observed_at_ms=1_778_145_000_000,
+        )
+        _write_identity(
+            identity,
+            demoted,
             symbol="HANTA",
             name="Demoted",
-            decimals=18,
-            source="okx_dex_search",
-            observed_at_ms=1_778_145_000_000,
+            evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+            confidence=CONFIDENCE_PROVIDER_CANDIDATE,
         )
         conn.execute("UPDATE registry_assets SET status = 'demoted_search' WHERE asset_id = %s", (demoted["asset_id"],))
         _insert_current_resolution(
