@@ -365,6 +365,8 @@ class PulseCandidateWorker:
     def _enqueue_if_due(self, repos: Any, context: PulseCandidateContext, *, now_ms: int) -> bool:
         existing_job = _call_optional(repos.pulse, "job_for_candidate", context.candidate_id)
         existing_candidate = _call_optional(repos.pulse, "candidate_by_id", context.candidate_id)
+        if _active_job_blocks_reenqueue(existing_job):
+            return False
         if _same_signature(existing_job, context) or _same_signature(existing_candidate, context):
             return False
         if _cooldown_active(existing_candidate, context, now_ms=now_ms):
@@ -607,9 +609,8 @@ def _asset_trigger_signature(
         "target_id": _clean(row.get("target_id")),
         "window": window,
         "scope": scope,
-        "latest_source_event_id": _latest_source_event_id(row),
-        "bucketed_latest_seen": _time_bucket_ms(_latest_seen_ms(row), 5 * 60 * 1000),
         "heat_bucket": metrics["heat_bucket"],
+        "propagation_bucket": metrics["propagation_bucket"],
         "opportunity_decision": _decision(row),
         "social_phase": metrics["social_phase"],
         "watched_confirmation": metrics["watched_confirmation"],
@@ -718,18 +719,13 @@ def _cooldown_bypass(
     current_status = _inferred_status(current)
     if _STATUS_RANK.get(current_status, 0) > _STATUS_RANK.get(previous_status, 0):
         return True
-    if previous.get("social_phase") != current.get("social_phase"):
-        return True
-    if previous.get("heat_bucket") != current.get("heat_bucket"):
+    if current.get("trade_candidate_eligible") and previous_status != "trade_candidate":
         return True
     if not previous.get("watched_confirmation") and current.get("watched_confirmation"):
         return True
-    if safe_int(current.get("independent_author_count")) >= safe_int(previous.get("independent_author_count")) + 2:
+    if safe_int(current.get("independent_author_count")) >= safe_int(previous.get("independent_author_count")) + 5:
         return True
     if not previous.get("chase_risk") and current.get("chase_risk"):
-        return True
-    stale_market_statuses = {"pending", "stale", "missing", None, ""}
-    if previous.get("market_status") in stale_market_statuses and current.get("market_status") == "fresh":
         return True
     return bool(set(current.get("hard_risks") or []) - set(previous.get("hard_risks") or []))
 
@@ -753,6 +749,19 @@ def _same_signature(row: dict[str, Any] | None, context: PulseCandidateContext) 
         row.get("trigger_signature") == context.trigger_signature
         and row.get("timeline_signature") == context.timeline_signature
     )
+
+
+def _active_job_blocks_reenqueue(existing_job: dict[str, Any] | None) -> bool:
+    if not existing_job:
+        return False
+    status = _clean(existing_job.get("status"))
+    if status in {"pending", "running"}:
+        return True
+    if status == "failed":
+        attempt_count = safe_int(existing_job.get("attempt_count"))
+        max_attempts = safe_int(existing_job.get("max_attempts")) or 3
+        return attempt_count < max_attempts
+    return False
 
 
 def _playbook_snapshot_payload(

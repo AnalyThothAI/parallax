@@ -78,10 +78,50 @@ class NotificationRepository:
                 now_ms,
             ),
         )
+        if cursor.rowcount == 0:
+            self.conn.execute(
+                """
+                UPDATE notifications
+                SET severity = %s,
+                    title = %s,
+                    body = %s,
+                    author_handle = %s,
+                    symbol = %s,
+                    chain = %s,
+                    address = %s,
+                    event_id = %s,
+                    source_table = %s,
+                    source_id = %s,
+                    occurrence_count = occurrence_count + 1,
+                    last_seen_at_ms = GREATEST(last_seen_at_ms, %s),
+                    payload_json = %s,
+                    channels_json = %s,
+                    updated_at_ms = %s
+                WHERE dedup_key = %s
+                """,
+                (
+                    normalized_severity,
+                    title,
+                    body,
+                    _normalize_handle(author_handle),
+                    _normalize_symbol(symbol),
+                    _normalize_chain(chain),
+                    _normalize_address(address),
+                    event_id,
+                    source_table,
+                    source_id,
+                    int(occurrence_at_ms),
+                    _json(payload or {}),
+                    _json(list(normalized_channels)),
+                    now_ms,
+                    dedup_key,
+                ),
+            )
+            if commit:
+                self.conn.commit()
+            return None
         if commit:
             self.conn.commit()
-        if cursor.rowcount == 0:
-            return None
         return self.notification_by_id(notification_id, subscriber_key=None)
 
     def notification_by_id(

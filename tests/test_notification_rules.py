@@ -128,7 +128,8 @@ def test_watched_account_activity_candidate_uses_committed_event_identity():
     ).evaluate(now_ms=NOW_MS)
 
     candidate = next(item for item in candidates if item.rule_id == "watched_account_activity")
-    assert candidate.dedup_key == "watched_account_activity:event:event-1"
+    bucket = (NOW_MS - 10_000) // 300_000
+    assert candidate.dedup_key == f"watched_account_activity:account:toly:tweet:{bucket}"
     assert candidate.severity == "info"
     assert candidate.entity_type == "account"
     assert candidate.entity_key == "account:toly"
@@ -136,6 +137,57 @@ def test_watched_account_activity_candidate_uses_committed_event_identity():
     assert candidate.source_table == "events"
     assert candidate.source_id == "event-1"
     assert candidate.payload["event_id"] == "event-1"
+
+
+def test_watched_account_activity_uses_account_action_bucket_when_cooldown_configured():
+    notifications = NotificationsConfig(
+        rules={"watched_account_activity": {"enabled": True, "channels": ["in_app"], "cooldown_seconds": 300}}
+    )
+    events = [
+        {"event_id": "event-1", "author_handle": "toly", "action": "post", "received_at_ms": NOW_MS, "text": "one"},
+        {
+            "event_id": "event-2",
+            "author_handle": "toly",
+            "action": "post",
+            "received_at_ms": NOW_MS + 60_000,
+            "text": "two",
+        },
+    ]
+
+    candidates = [
+        item
+        for item in engine(events=events, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "watched_account_activity"
+    ]
+
+    assert len(candidates) == 2
+    assert candidates[0].dedup_key == candidates[1].dedup_key
+    assert candidates[0].dedup_key == f"watched_account_activity:account:toly:post:{NOW_MS // 300_000}"
+
+
+def test_watched_account_activity_does_not_fall_back_to_event_key_when_cooldown_zero():
+    notifications = NotificationsConfig(
+        rules={"watched_account_activity": {"enabled": True, "channels": ["in_app"], "cooldown_seconds": 0}}
+    )
+
+    candidate = next(
+        item
+        for item in engine(
+            events=[
+                {
+                    "event_id": "event-1",
+                    "author_handle": "toly",
+                    "action": "post",
+                    "received_at_ms": NOW_MS,
+                    "text": "one",
+                }
+            ],
+            notifications=notifications,
+        ).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "watched_account_activity"
+    )
+
+    assert candidate.dedup_key == f"watched_account_activity:account:toly:post:{NOW_MS // 1000}"
 
 
 def test_account_token_alert_candidate_preserves_first_seen_flags():
@@ -156,11 +208,84 @@ def test_account_token_alert_candidate_preserves_first_seen_flags():
     ).evaluate(now_ms=NOW_MS)
 
     candidate = next(item for item in candidates if item.rule_id == "watched_account_token_alert")
-    assert candidate.dedup_key == "watched_account_token_alert:alert:alert-1"
+    bucket = (NOW_MS - 10_000) // 900_000
+    assert candidate.dedup_key == f"watched_account_token_alert:symbol:PEPE:author:toly:{bucket}"
     assert candidate.severity == "warning"
     assert candidate.entity_type == "token"
     assert candidate.symbol == "PEPE"
     assert candidate.payload["is_first_seen_global"] is True
+
+
+def test_watched_account_token_alert_uses_asset_author_bucket_when_cooldown_configured():
+    notifications = NotificationsConfig(
+        rules={
+            "watched_account_token_alert": {
+                "enabled": True,
+                "channels": ["in_app", "pushdeer"],
+                "cooldown_seconds": 900,
+            }
+        }
+    )
+    alerts = [
+        {
+            "alert_id": "alert-1",
+            "received_at_ms": NOW_MS,
+            "author_handle": "toly",
+            "normalized_value": "TROLL",
+            "entity_key": "asset:solana:token:troll",
+            "is_first_seen_global": True,
+            "is_first_seen_by_author": True,
+        },
+        {
+            "alert_id": "alert-2",
+            "received_at_ms": NOW_MS + 120_000,
+            "author_handle": "toly",
+            "normalized_value": "TROLL",
+            "entity_key": "asset:solana:token:troll",
+            "is_first_seen_global": False,
+            "is_first_seen_by_author": False,
+        },
+    ]
+
+    candidates = [
+        item
+        for item in engine(alerts=alerts, notifications=notifications).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "watched_account_token_alert"
+    ]
+
+    assert len(candidates) == 2
+    assert candidates[0].dedup_key == candidates[1].dedup_key
+    assert (
+        candidates[0].dedup_key
+        == f"watched_account_token_alert:asset:solana:token:troll:author:toly:{NOW_MS // 900_000}"
+    )
+
+
+def test_watched_account_token_alert_does_not_fall_back_to_alert_key_when_cooldown_zero():
+    notifications = NotificationsConfig(
+        rules={"watched_account_token_alert": {"enabled": True, "channels": ["in_app"], "cooldown_seconds": 0}}
+    )
+
+    candidate = next(
+        item
+        for item in engine(
+            alerts=[
+                {
+                    "alert_id": "alert-1",
+                    "received_at_ms": NOW_MS,
+                    "author_handle": "toly",
+                    "normalized_value": "TROLL",
+                    "entity_key": "asset:solana:token:troll",
+                    "is_first_seen_global": True,
+                    "is_first_seen_by_author": True,
+                }
+            ],
+            notifications=notifications,
+        ).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "watched_account_token_alert"
+    )
+
+    assert candidate.dedup_key == f"watched_account_token_alert:asset:solana:token:troll:author:toly:{NOW_MS // 1000}"
 
 
 def test_hot_quality_token_candidate_uses_asset_flow_contract():
@@ -349,21 +474,25 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert "kind" not in candidates[0].payload
 
 
-def test_signal_pulse_dedup_key_uses_candidate_signature_and_status_cooldown_bucket():
-    watch_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS)
-    next_bucket_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS + 30 * 60_000)
-    trade_row = pulse_candidate("trade", status="trade_candidate", updated_at_ms=NOW_MS)
+def test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature():
+    watch_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS, evidence_ids=["event-1"])
+    changed_signature_row = pulse_candidate(
+        "watch",
+        status="token_watch",
+        updated_at_ms=NOW_MS + 60_000,
+        evidence_ids=["event-1", "event-2"],
+        confirmations=["new independent confirmation"],
+    )
+    trade_row = pulse_candidate("watch", status="trade_candidate", updated_at_ms=NOW_MS)
 
     watch = _only_pulse_notification(watch_row)
-    next_bucket = _only_pulse_notification(next_bucket_row)
+    changed_signature = _only_pulse_notification(changed_signature_row)
     trade = _only_pulse_notification(trade_row)
 
-    assert watch.dedup_key.startswith("signal_pulse_candidate:watch:sha256:")
-    assert watch.payload["notification_signature"].startswith("sha256:")
-    assert watch.dedup_key.endswith(f":{NOW_MS // (30 * 60_000)}")
-    assert next_bucket.dedup_key.endswith(f":{(NOW_MS + 30 * 60_000) // (30 * 60_000)}")
-    assert trade.dedup_key.endswith(f":{NOW_MS // (15 * 60_000)}")
-    assert watch.dedup_key != next_bucket.dedup_key
+    assert watch.payload["notification_signature"] != changed_signature.payload["notification_signature"]
+    assert watch.dedup_key == changed_signature.dedup_key
+    assert watch.dedup_key == f"signal_pulse_candidate:watch:token_watch:{NOW_MS // (30 * 60_000)}"
+    assert trade.dedup_key == f"signal_pulse_candidate:watch:trade_candidate:{NOW_MS // (15 * 60_000)}"
 
 
 def test_signal_pulse_signature_changes_on_meaningful_state_changes():

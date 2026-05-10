@@ -86,9 +86,16 @@ class NotificationRuleEngine:
             action = str(event.get("action") or "activity")
             title = f"@{author_handle} new {action}" if author_handle else f"Watched account {action}"
             body = _compact_text(event.get("text_clean") or event.get("text") or action)
+            dedup_key = _activity_dedup_key(
+                rule_id,
+                author_handle=author_handle,
+                action=action,
+                occurrence_at_ms=received_at_ms,
+                cooldown_seconds=rule.cooldown_seconds,
+            )
             candidates.append(
                 NotificationCandidate(
-                    dedup_key=f"{rule_id}:event:{event_id}",
+                    dedup_key=dedup_key,
                     rule_id=rule_id,
                     severity="info",
                     title=title,
@@ -133,15 +140,23 @@ class NotificationRuleEngine:
             severity = "warning" if first_global or first_author else "info"
             title = f"@{author_handle} mentioned ${symbol}" if author_handle and symbol else "Watched token alert"
             body = "First-seen watched-account token mention" if first_global else "Watched-account token mention"
+            entity_key = str(alert.get("entity_key") or (f"symbol:{symbol}" if symbol else ""))
+            dedup_key = _alert_dedup_key(
+                rule_id,
+                entity_key=entity_key,
+                author_handle=author_handle,
+                occurrence_at_ms=received_at_ms,
+                cooldown_seconds=rule.cooldown_seconds,
+            )
             candidates.append(
                 NotificationCandidate(
-                    dedup_key=f"{rule_id}:alert:{alert_id}",
+                    dedup_key=dedup_key,
                     rule_id=rule_id,
                     severity=severity,
                     title=title,
                     body=body,
                     entity_type="token",
-                    entity_key=str(alert.get("entity_key") or f"symbol:{symbol}" if symbol else ""),
+                    entity_key=entity_key,
                     author_handle=author_handle,
                     symbol=symbol,
                     chain=_chain(alert.get("chain")),
@@ -393,7 +408,7 @@ class NotificationRuleEngine:
             title_subject = f"${symbol}" if symbol else subject
             candidates.append(
                 NotificationCandidate(
-                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{candidate_id}:{signature}:{bucket}",
+                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{candidate_id}:{status}:{bucket}",
                     rule_id=SIGNAL_PULSE_RULE_ID,
                     severity=severity,
                     title=f"{title_subject} {status.replace('_', ' ')}",
@@ -425,6 +440,36 @@ def _score_value(item: dict[str, Any], key: str) -> int:
 
 def _score_version(block: Any) -> str | None:
     return str(block.get("score_version")) if isinstance(block, dict) and block.get("score_version") else None
+
+
+def _cooldown_bucket(occurrence_at_ms: int, cooldown_seconds: int) -> int:
+    return occurrence_at_ms // (max(1, int(cooldown_seconds)) * 1000)
+
+
+def _activity_dedup_key(
+    rule_id: str,
+    *,
+    author_handle: str,
+    action: str,
+    occurrence_at_ms: int,
+    cooldown_seconds: int,
+) -> str:
+    author = author_handle or "unknown"
+    normalized_action = action or "activity"
+    return f"{rule_id}:account:{author}:{normalized_action}:{_cooldown_bucket(occurrence_at_ms, cooldown_seconds)}"
+
+
+def _alert_dedup_key(
+    rule_id: str,
+    *,
+    entity_key: str,
+    author_handle: str,
+    occurrence_at_ms: int,
+    cooldown_seconds: int,
+) -> str:
+    identity = entity_key or "unknown"
+    author = author_handle or "unknown"
+    return f"{rule_id}:{identity}:author:{author}:{_cooldown_bucket(occurrence_at_ms, cooldown_seconds)}"
 
 
 def _pulse_notification_signature(row: dict[str, Any]) -> str:

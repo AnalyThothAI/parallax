@@ -318,7 +318,12 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.enabled is True
     assert settings.notifications.poll_interval_seconds == 3
     assert settings.notifications.token_flow_limit == 40
-    assert settings.notifications.rules["watched_account_activity"].channels == ("in_app",)
+    activity_rule = settings.notifications.rules["watched_account_activity"]
+    assert activity_rule.channels == ("in_app",)
+    assert activity_rule.cooldown_seconds == 300
+    alert_rule = settings.notifications.rules["watched_account_token_alert"]
+    assert alert_rule.channels == ("in_app",)
+    assert alert_rule.cooldown_seconds == 900
     assert settings.notifications.rules["hot_quality_token_5m"].social_heat_min == 82
     assert settings.notifications.rules["hot_quality_token_5m"].discussion_quality_min == 72
     assert settings.notifications.rules["hot_quality_token_5m"].cooldown_seconds == 600
