@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
+
 SUMMARY_STATUSES = (
     "trade_candidate",
     "token_watch",
@@ -102,15 +104,22 @@ def _summary(aggregate: dict[str, Any]) -> dict[str, int]:
 
 
 def _is_displayable(row: dict[str, Any]) -> bool:
-    return row.get("pulse_status") in DISPLAY_STATUSES and row.get("verdict") != "blocked_low_information"
+    return (
+        row.get("pulse_status") in DISPLAY_STATUSES
+        and row.get("verdict") != "blocked_low_information"
+        and _valid_factor_snapshot(row.get("factor_snapshot_json"))
+    )
 
 
 def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
-    thesis = _dict(row.get("thesis_json"))
+    factor_snapshot = _dict(row.get("factor_snapshot_json"))
+    gate = _dict(row.get("gate_json"))
+    agent_recommendation = _dict(row.get("agent_recommendation_json"))
     return {
         "candidate_id": row.get("candidate_id"),
         "candidate_type": row.get("candidate_type"),
         "subject_key": row.get("subject_key"),
+        "subject": _dict(factor_snapshot.get("subject")),
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
         "symbol": row.get("symbol"),
@@ -122,20 +131,26 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "narrative_type": row.get("narrative_type"),
         "candidate_score": row.get("candidate_score"),
         "score_band": row.get("score_band"),
-        "summary_zh": _text(thesis.get("summary_zh")),
-        "why_now_zh": _text(thesis.get("why_now_zh")),
-        "bull_case_zh": _list(thesis.get("bull_case_zh")),
-        "bear_case_zh": _list(thesis.get("bear_case_zh")),
-        "confirmation_triggers_zh": _list(thesis.get("confirmation_triggers_zh")),
-        "invalidation_triggers_zh": _list(thesis.get("invalidation_triggers_zh")),
-        "top_risks": _list(thesis.get("top_risks")),
         "gate_reasons": _list(row.get("gate_reasons_json")),
         "risk_reasons": _list(row.get("risk_reasons_json")),
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
-        "radar_score_json": _dict(row.get("radar_score_json")),
-        "market_context_json": _dict(row.get("market_context_json")),
-        "thesis_json": thesis,
+        "factor_snapshot": factor_snapshot,
+        "agent_recommendation": agent_recommendation,
+        "gate": gate,
+        "fact_card": {
+            "market_cap_usd": _factor_raw(factor_snapshot, "market_quality", "market_cap_usd"),
+            "liquidity_usd": _factor_raw(factor_snapshot, "market_quality", "liquidity_usd"),
+            "holders": _factor_raw(factor_snapshot, "market_quality", "holders"),
+            "volume_24h_usd": _factor_raw(factor_snapshot, "market_quality", "volume_24h_usd"),
+            "market_status": _factor_raw(factor_snapshot, "market_quality", "market_status"),
+            "mentions_1h": _factor_raw(factor_snapshot, "social_attention", "mentions_1h"),
+            "unique_authors": _factor_raw(factor_snapshot, "social_quality", "independent_authors")
+            or _factor_raw(factor_snapshot, "social_attention", "unique_authors"),
+            "watched_mentions": _factor_raw(factor_snapshot, "social_attention", "watched_mentions"),
+            "eligible_for_high_alert": gate.get("eligible_for_high_alert"),
+            "blocked_reasons": _list(gate.get("blocked_reasons")),
+        },
         "agent_run_id": row.get("agent_run_id"),
         "pulse_version": row.get("pulse_version"),
         "gate_version": row.get("gate_version"),
@@ -151,9 +166,23 @@ def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _valid_factor_snapshot(value: Any) -> bool:
+    snapshot = _dict(value)
+    return (
+        bool(snapshot)
+        and snapshot.get("schema_version") == TOKEN_FACTOR_SNAPSHOT_VERSION
+        and isinstance(snapshot.get("subject"), dict)
+        and isinstance(snapshot.get("families"), dict)
+        and isinstance(snapshot.get("hard_gates"), dict)
+    )
+
+
+def _factor_raw(snapshot: dict[str, Any], family: str, key: str) -> Any:
+    families = _dict(snapshot.get("families"))
+    family_payload = _dict(families.get(family))
+    facts = _dict(family_payload.get("facts"))
+    return facts.get(key)
+
+
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
-
-
-def _text(value: Any) -> str:
-    return value if isinstance(value, str) else ""

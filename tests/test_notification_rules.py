@@ -471,6 +471,11 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert all(item.source_id != "blocked" for item in candidates)
     assert pulse.calls[0]["displayable_only"] is True
     assert candidates[0].payload["candidate_id"] == "trade"
+    assert "agent_recommendation" in candidates[0].payload
+    assert "gate" in candidates[0].payload
+    assert "factor_snapshot" in candidates[0].payload
+    assert "top_risks" not in candidates[0].payload
+    assert "confirmation_triggers_zh" not in candidates[0].payload
     assert "kind" not in candidates[0].payload
 
 
@@ -481,7 +486,6 @@ def test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature():
         status="token_watch",
         updated_at_ms=NOW_MS + 60_000,
         evidence_ids=["event-1", "event-2"],
-        confirmations=["new independent confirmation"],
     )
     trade_row = pulse_candidate("watch", status="trade_candidate", updated_at_ms=NOW_MS)
 
@@ -503,11 +507,11 @@ def test_signal_pulse_signature_changes_on_meaningful_state_changes():
         "high_conviction": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
             "notification_signature"
         ],
-        "risk_breakout": _only_pulse_notification(
-            pulse_candidate("watch", status="risk_rejected_high_info", risks=["chase_risk"])
+        "gate": _only_pulse_notification(
+            pulse_candidate("watch", gate={"gate_reasons": ["manual_gate_override"]})
         ).payload["notification_signature"],
-        "confirmation": _only_pulse_notification(
-            pulse_candidate("watch", confirmations=["新增独立作者确认", "价格未先于社交拉升"])
+        "recommendation": _only_pulse_notification(
+            pulse_candidate("watch", recommendation_summary="新增独立作者确认")
         ).payload["notification_signature"],
         "new_source": _only_pulse_notification(
             pulse_candidate("watch", evidence_ids=["event-1", "event-9"], source_ids=["event-1", "event-9"])
@@ -608,6 +612,66 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
     ]
 
 
+def test_signal_pulse_low_liquidity_factor_snapshot_cannot_emit_high_notification():
+    row = pulse_candidate(
+        "pulse-low-liq",
+        status="token_watch",
+        symbol="BOV",
+        eligible_for_high_alert=False,
+        blocked_reasons=["liquidity_below_high_alert_floor"],
+        market_facts={"liquidity_usd": 6553, "holders": 46, "market_cap_usd": 12087, "market_status": "fresh"},
+        social_facts={"mentions_1h": 3, "unique_authors": 2, "watched_mentions": 0},
+    )
+
+    candidates = [
+        item
+        for item in engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert candidates == []
+
+
+def test_signal_pulse_eligible_token_watch_can_emit_high_notification():
+    row = pulse_candidate(
+        "pulse-watch",
+        status="token_watch",
+        symbol="BOV",
+        eligible_for_high_alert=True,
+        market_facts={"liquidity_usd": 55_000, "holders": 600, "market_cap_usd": 250_000, "market_status": "fresh"},
+        social_facts={"mentions_1h": 6, "unique_authors": 4, "watched_mentions": 1},
+        recommendation_summary="链上质量达标，可以高优先级观察。",
+    )
+
+    candidate = _only_pulse_notification(row)
+
+    assert candidate.severity == "high"
+    assert candidate.symbol == "BOV"
+    assert "- **Status:** token watch" in candidate.body
+    assert "- **Gate:** clear" in candidate.body
+    assert "- **Market:** mcap $250.0k · liq $55.0k · holders 600 · fresh" in candidate.body
+    assert "- **Social:** 6 mentions · 4 authors · watched 1" in candidate.body
+    assert "链上质量达标" in candidate.body
+
+
+def test_signal_pulse_notification_requires_non_empty_factor_snapshot():
+    row = pulse_candidate("pulse-legacy", status="token_watch")
+    row["factor_snapshot_json"] = {}
+    row["thesis_json"] = {
+        "summary_zh": "旧 thesis 不应触发通知",
+        "confirmation_triggers_zh": ["旧确认"],
+        "top_risks": ["旧风险"],
+    }
+
+    candidates = [
+        item
+        for item in engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert candidates == []
+
+
 def test_signal_pulse_notifications_follow_candidate_pages():
     pulse = FakePulse(
         [
@@ -645,10 +709,49 @@ def pulse_candidate(
     radar_score: dict | None = None,
     risks: list[str] | None = None,
     confirmations: list[str] | None = None,
+    eligible_for_high_alert: bool = True,
+    blocked_reasons: list[str] | None = None,
+    market_facts: dict | None = None,
+    social_facts: dict | None = None,
+    gate: dict | None = None,
+    recommendation_summary: str = "社交与链上事实支持继续观察。",
     evidence_ids: list[str] | None = None,
     source_ids: list[str] | None = None,
     updated_at_ms: int = NOW_MS,
 ) -> dict:
+    resolved_blocked_reasons = (
+        blocked_reasons if blocked_reasons is not None else (risks if status == "risk_rejected_high_info" else [])
+    )
+    resolved_gate = {
+        "pulse_status": status,
+        "verdict": status,
+        "candidate_score": candidate_score,
+        "score_band": score_band,
+        "gate_reasons": resolved_blocked_reasons or ["factor_snapshot_watch_gate_passed"],
+        "risk_reasons": resolved_blocked_reasons,
+        "hard_risks": resolved_blocked_reasons,
+        "max_recommendation": "trade_candidate"
+        if status == "trade_candidate"
+        else "watch"
+        if status == "token_watch"
+        else "research"
+        if status == "risk_rejected_high_info"
+        else "ignore",
+        "eligible_for_high_alert": eligible_for_high_alert and not resolved_blocked_reasons,
+        "blocked_reasons": resolved_blocked_reasons,
+    }
+    if gate:
+        resolved_gate.update(gate)
+    factor_snapshot = _factor_snapshot(
+        symbol=symbol,
+        target_type="Asset" if symbol else None,
+        target_id=f"asset:{candidate_id}" if symbol else None,
+        eligible_for_high_alert=eligible_for_high_alert,
+        blocked_reasons=resolved_blocked_reasons,
+        market_facts=market_facts,
+        social_facts=social_facts,
+        rank_score=candidate_score,
+    )
     return {
         "candidate_id": candidate_id,
         "candidate_type": "token_target",
@@ -665,6 +768,13 @@ def pulse_candidate(
         "candidate_score": candidate_score,
         "score_band": score_band,
         "radar_score_json": radar_score or {"heat": {"score": 82}},
+        "factor_snapshot_json": factor_snapshot,
+        "gate_json": resolved_gate,
+        "agent_recommendation_json": {
+            "schema_version": "pulse_recommendation_v1",
+            "recommendation": "watch",
+            "summary_zh": recommendation_summary,
+        },
         "thesis_json": {
             "summary_zh": "社交热度正在上升。",
             "why_now_zh": "多源讨论在当前窗口同步出现。",
@@ -679,4 +789,39 @@ def pulse_candidate(
         "pulse_version": "signal-pulse-v2-agent-thesis",
         "created_at_ms": updated_at_ms - 60_000,
         "updated_at_ms": updated_at_ms,
+    }
+
+
+def _factor_snapshot(
+    *,
+    symbol: str | None,
+    target_type: str | None,
+    target_id: str | None,
+    eligible_for_high_alert: bool,
+    blocked_reasons: list[str],
+    market_facts: dict | None,
+    social_facts: dict | None,
+    rank_score: float,
+) -> dict:
+    resolved_market_facts = {
+        "market_cap_usd": 120_000,
+        "liquidity_usd": 55_000,
+        "holders": 800,
+        "market_status": "fresh",
+        **(market_facts or {}),
+    }
+    resolved_social_facts = {"mentions_1h": 9, "unique_authors": 4, "watched_mentions": 1, **(social_facts or {})}
+    return {
+        "schema_version": "token_factor_snapshot_v1",
+        "subject": {"symbol": symbol, "target_type": target_type, "target_id": target_id},
+        "families": {
+            "market_quality": {"facts": resolved_market_facts},
+            "social_attention": {"facts": resolved_social_facts},
+            "social_quality": {"facts": {"independent_authors": resolved_social_facts.get("unique_authors")}},
+        },
+        "hard_gates": {
+            "eligible_for_high_alert": eligible_for_high_alert and not blocked_reasons,
+            "blocked_reasons": blocked_reasons,
+        },
+        "composite": {"rank_score": rank_score},
     }
