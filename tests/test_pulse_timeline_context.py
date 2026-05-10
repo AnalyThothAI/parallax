@@ -39,8 +39,6 @@ def test_build_context_has_all_windows_and_budget_limits():
         "stage_segments",
         "post_clusters",
         "selected_posts",
-        "market_overlay",
-        "radar_score",
         "timeline_signature",
     }
     assert set(context["windows"]) == {"5m", "1h", "4h", "24h"}
