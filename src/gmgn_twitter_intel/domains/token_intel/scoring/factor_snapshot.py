@@ -177,7 +177,6 @@ def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) ->
         "open_interest_usd": _optional_float(market.get("open_interest_usd")),
         "native_market_id": _optional_str(market.get("native_market_id")),
     }
-    facts.update({key: value for key, value in market.items() if key not in facts})
     if target_market_type == "cex":
         factors = [
             _market_status_factor(facts["market_status"]),
@@ -521,7 +520,7 @@ def _finite_number(value: Any) -> float | None:
 def _optional_str(value: Any) -> str | None:
     if value is None:
         return None
-    text = str(value)
+    text = str(value).strip()
     if not text:
         return None
     return text

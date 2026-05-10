@@ -186,6 +186,15 @@ def test_unresolved_identity_blocks_high_alert() -> None:
     assert "identity_unresolved" in snapshot_for_source_seed["hard_gates"]["blocked_reasons"]
 
 
+def test_whitespace_identity_blocks_high_alert() -> None:
+    snapshot = _strong_dex_snapshot(target={"target_type": "   ", "target_id": "\t\n"})
+
+    assert snapshot["subject"]["target_type"] is None
+    assert snapshot["subject"]["target_id"] is None
+    assert snapshot["hard_gates"]["eligible_for_high_alert"] is False
+    assert "identity_unresolved" in snapshot["hard_gates"]["blocked_reasons"]
+
+
 def test_dex_asset_missing_market_floors_blocks_high_alert() -> None:
     snapshot = _strong_dex_snapshot(
         market={
@@ -204,6 +213,12 @@ def test_dex_asset_missing_market_floors_blocks_high_alert() -> None:
     assert snapshot["composite"]["recommended_decision"] != "high_alert"
     assert snapshot["families"]["market_quality"]["factors"]["holders"]["data_health"] == "missing"
     assert snapshot["families"]["market_quality"]["factors"]["holders"]["score"] == 0
+
+
+def test_market_quality_facts_do_not_include_unknown_market_keys() -> None:
+    snapshot = _strong_dex_snapshot(market={"unexpected_provider_blob": {"raw": "payload"}})
+
+    assert "unexpected_provider_blob" not in snapshot["families"]["market_quality"]["facts"]
 
 
 def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
