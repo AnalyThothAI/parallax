@@ -5,10 +5,12 @@ import json
 from typing import Any
 
 from ..market.okx_chains import OKX_CHAIN_TO_CHAIN_INDEX
+from ..storage.registry_repository import DEX_ADDRESS_SEARCH_SOURCE
 
 DEX_PRICE_BATCH_SIZE = 20
 RADAR_PRICE_CANDIDATE_LOOKBACK_MS = 24 * 60 * 60 * 1000
 RADAR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
+ADDRESS_VERIFIED_SOURCES = frozenset({"gmgn_openapi", "gmgn_payload", "gmgn_token_payload", DEX_ADDRESS_SEARCH_SOURCE})
 
 
 def sync_okx_cex_universe(
@@ -124,7 +126,7 @@ def sync_okx_dex_prices(
             symbol=candidate.symbol,
             name=candidate.name,
             decimals=None,
-            source="okx_dex_search",
+            source=DEX_ADDRESS_SEARCH_SOURCE,
             observed_at_ms=observed_at_ms,
             commit=False,
         )
@@ -282,10 +284,9 @@ def _okx_chain_index(chain_id: Any) -> str | None:
 
 
 def _needs_address_search(row: dict[str, Any]) -> bool:
-    return any(
-        row.get(key) is None
-        for key in ("symbol", "market_cap_usd", "liquidity_usd", "holders")
-    )
+    if any(row.get(key) is None for key in ("symbol", "market_cap_usd", "liquidity_usd", "holders")):
+        return True
+    return str(row.get("primary_source") or "").strip().lower() not in ADDRESS_VERIFIED_SOURCES
 
 
 def _search_exact_token(*, client, chain_index: str, address: str):

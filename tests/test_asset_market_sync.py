@@ -155,6 +155,7 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
             "chain_id": "eip155:56",
             "address": "0x8F32420F2E3728C49399b00DD0A796602d984444",
             "symbol": "TEST",
+            "primary_source": "okx_dex_address_search",
             "market_cap_usd": 22_000.0,
             "liquidity_usd": 9_000.0,
             "holders": 123,
@@ -269,11 +270,69 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
         "address": address,
         "symbol": "UPEG",
         "name": "Unipeg",
-        "source": "okx_dex_search",
+        "source": "okx_dex_address_search",
     }
     assert price_observations.observations[0]["market_cap_usd"] == 10_557_123.48
     assert price_observations.observations[0]["liquidity_usd"] == 921_926.63
     assert price_observations.observations[0]["holders"] == 4_885
+
+
+def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
+    registry = FakeRegistry()
+    price_observations = FakePriceObservations()
+    address = "0x999b49c0d1612e619a4a4f6280733184da025108"
+    registry.dex_refresh_rows = [
+        {
+            "asset_id": f"asset:eip155:1:erc20:{address}",
+            "chain_id": "eip155:1",
+            "address": address,
+            "symbol": "SATO",
+            "primary_source": "tweet_ca",
+            "market_cap_usd": 28_000_000.0,
+            "liquidity_usd": 1_000_000.0,
+            "holders": 500,
+        }
+    ]
+    client = FakeOkxDexPriceClient(
+        search_candidates=[
+            OkxDexTokenCandidate(
+                chain_index="1",
+                chain=None,
+                address=address,
+                symbol="SLOP",
+                name="SLOP",
+                price_usd=3.45,
+                market_cap_usd=2_864_323.71,
+                liquidity_usd=728_561.21,
+                holders=1_234,
+                community_recognized=False,
+                raw={"tokenSymbol": "SLOP"},
+            )
+        ]
+    )
+
+    result = sync_okx_dex_prices(
+        registry=registry,
+        price_observations=price_observations,
+        client=client,
+        observed_at_ms=1_778_085_100_000,
+        stale_after_ms=300_000,
+        limit=100,
+    )
+
+    assert result["address_search_requests"] == 1
+    assert registry.chain_assets[-1] == {
+        "chain_id": "eip155:1",
+        "address": address,
+        "symbol": "SLOP",
+        "name": "SLOP",
+        "source": "okx_dex_address_search",
+    }
+    assert result["affected_lookup_keys"] == [
+        f"address:eip155:1:{address}",
+        "project_symbol:SLOP",
+        "symbol:SLOP",
+    ]
 
 
 def test_sync_okx_dex_prices_continues_when_address_search_fails():

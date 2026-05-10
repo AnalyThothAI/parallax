@@ -74,5 +74,6 @@ describe("watchlist sidebar", () => {
 
     const link = await waitFor(() => screen.getByRole("link", { name: /toly/i }));
     expect(link.getAttribute("href")).toBe("/signal-lab?handle=toly");
+    expect(link).toHaveClass("watchlist-row");
   });
 });

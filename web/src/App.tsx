@@ -369,7 +369,7 @@ export function App() {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailWindow(windowKey);
     setMobileTask("radar");
-    navigate(`/token/${target.target_type}/${encodeURIComponent(target.target_id)}`);
+    navigate(`/token/${target.target_type}/${encodeURIComponent(target.target_id)}?window=${windowKey}&scope=${scope}`);
   };
 
   const selectPulseItem = (item: SignalPulseItem, options: { openLab?: boolean } = {}) => {

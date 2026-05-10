@@ -241,7 +241,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
             <div className="watchlist">
               {watchlistRows.map((row) => (
                 <Link
-                  className={isSignalLab && activeWatchHandle === row.handle ? "active" : ""}
+                  className={`watchlist-row ${isSignalLab && activeWatchHandle === row.handle ? "active" : ""}`.trim()}
                   key={row.handle}
                   to={`/signal-lab?handle=${encodeURIComponent(row.handle)}`}
                 >
@@ -400,4 +400,3 @@ function readinessLabel({
     title: status?.reasons?.join(", ") || undefined
   };
 }
-

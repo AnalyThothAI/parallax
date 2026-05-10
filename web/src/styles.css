@@ -525,12 +525,13 @@ svg {
   align-content: start;
 }
 
-.watchlist button {
+.watchlist button,
+.watchlist-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 7px;
-  min-height: 28px;
+  min-height: 36px;
   min-width: 0;
   border: 0;
   border-radius: 4px;
@@ -538,17 +539,22 @@ svg {
   background: transparent;
   padding: 4px 3px;
   text-align: left;
+  text-decoration: none;
 }
 
 .watchlist button:hover,
 .watchlist button:focus-visible,
-.watchlist button.active {
+.watchlist button.active,
+.watchlist-row:hover,
+.watchlist-row:focus-visible,
+.watchlist-row.active {
   color: var(--text);
   background: rgba(255, 255, 255, 0.035);
   outline: 0;
 }
 
-.watchlist button.active {
+.watchlist button.active,
+.watchlist-row.active {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
@@ -567,12 +573,14 @@ svg {
 
 .watchlist b {
   font-weight: 500;
+  line-height: 1.1;
 }
 
 .watchlist small {
   color: var(--faint);
   font-family: var(--mono);
   font-size: 9px;
+  line-height: 1.15;
 }
 
 .watchlist-avatar {

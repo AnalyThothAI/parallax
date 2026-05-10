@@ -222,6 +222,11 @@ def test_gmgn_payload_source_outweighs_tweet_alias_source():
     assert _source_precedence("gmgn_payload") > _source_precedence("tweet_ca")
 
 
+def test_exact_dex_address_source_outweighs_tweet_alias_source():
+    assert _source_precedence("okx_dex_address_search") > _source_precedence("tweet_ca")
+    assert _source_precedence("okx_dex_address_search") < _source_precedence("gmgn_payload")
+
+
 def test_tweet_ca_does_not_overwrite_gmgn_payload_symbol(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -251,6 +256,38 @@ def test_tweet_ca_does_not_overwrite_gmgn_payload_symbol(tmp_path):
     assert payload_asset["symbol"] == "SLOP"
     assert alias_asset["symbol"] == "SLOP"
     assert alias_asset["primary_source"] == "gmgn_payload"
+
+
+def test_exact_dex_address_search_corrects_tweet_alias_symbol(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        alias_asset = registry.upsert_chain_asset(
+            chain_id="eip155:1",
+            address=_evm_address(43),
+            symbol="SATO",
+            name=None,
+            decimals=18,
+            source="tweet_ca",
+            observed_at_ms=1_778_145_000_000,
+        )
+        searched_asset = registry.upsert_chain_asset(
+            chain_id="eip155:1",
+            address=_evm_address(43),
+            symbol="SLOP",
+            name="SLOP",
+            decimals=18,
+            source="okx_dex_address_search",
+            observed_at_ms=1_778_145_060_000,
+        )
+    finally:
+        conn.close()
+
+    assert alias_asset["symbol"] == "SATO"
+    assert searched_asset["symbol"] == "SLOP"
+    assert searched_asset["name"] == "SLOP"
+    assert searched_asset["primary_source"] == "okx_dex_address_search"
 
 
 def test_demote_unretained_symbol_assets_keeps_current_targets_not_candidate_audit(tmp_path):

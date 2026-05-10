@@ -1,6 +1,7 @@
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.api.app import create_app
+from gmgn_twitter_intel.api.app import _mount_frontend, create_app
 from gmgn_twitter_intel.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
@@ -24,15 +25,46 @@ def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
     with TestClient(app) as client:
         home = client.get("/")
         app_route = client.get("/app")
+        token_route = client.get("/token/CexToken/cex_token%3AZEC")
+        signal_lab_route = client.get("/signal-lab")
         asset = client.get("/assets/app.js")
         favicon = client.get("/favicon.svg")
         health = client.get("/healthz")
+        missing_api = client.get("/api/not-a-route")
 
     assert home.status_code == 200
     assert "text/html" in home.headers["content-type"]
     assert app_route.status_code == 200
+    assert token_route.status_code == 200
+    assert "text/html" in token_route.headers["content-type"]
+    assert signal_lab_route.status_code == 200
+    assert "text/html" in signal_lab_route.headers["content-type"]
     assert asset.status_code == 200
     assert "window.__cockpit" in asset.text
     assert favicon.status_code == 200
     assert favicon.headers["content-type"].startswith("image/svg+xml")
     assert health.text == "ok\n"
+    assert missing_api.status_code == 404
+
+
+def test_frontend_dist_serves_browser_routes_for_spa(tmp_path):
+    dist = tmp_path / "dist"
+    assets = dist / "assets"
+    assets.mkdir(parents=True)
+    (dist / "index.html").write_text("<!doctype html><html><body>cockpit</body></html>", encoding="utf-8")
+    (assets / "app.js").write_text("window.__cockpit = true;", encoding="utf-8")
+
+    app = FastAPI()
+    _mount_frontend(app, frontend_dist=dist)
+
+    with TestClient(app) as client:
+        token_route = client.get("/token/CexToken/cex_token%3AZEC")
+        signal_lab_route = client.get("/signal-lab")
+        missing_api = client.get("/api/not-a-route")
+
+    assert token_route.status_code == 200
+    assert "text/html" in token_route.headers["content-type"]
+    assert "cockpit" in token_route.text
+    assert signal_lab_route.status_code == 200
+    assert "text/html" in signal_lab_route.headers["content-type"]
+    assert missing_api.status_code == 404

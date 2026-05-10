@@ -6,9 +6,11 @@ from typing import Any
 from ..pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 DEX_SEARCH_SOURCE = "okx_dex_search"
+DEX_ADDRESS_SEARCH_SOURCE = "okx_dex_address_search"
 
 _SOURCE_PRECEDENCE = {
     DEX_SEARCH_SOURCE: 10,
+    DEX_ADDRESS_SEARCH_SOURCE: 84,
     "okx_dex": 20,
     "gmgn_token_payload": 85,
     "gmgn_payload": 85,

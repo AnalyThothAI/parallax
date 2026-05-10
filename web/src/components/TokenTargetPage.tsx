@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
@@ -30,10 +30,12 @@ const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken
 export function TokenTargetPage() {
   const navigate = useNavigate();
   const params = useParams<{ targetType: string; targetId: string }>();
+  const [searchParams] = useSearchParams();
   const token = useTraderStore((state) => state.token);
-  const scope = useTraderStore((state) => state.scope);
+  const storeScope = useTraderStore((state) => state.scope);
+  const scope = parseScopeKey(searchParams.get("scope")) ?? storeScope;
 
-  const [windowKey, setWindowKey] = useState<WindowKey>("1h");
+  const [windowKey, setWindowKey] = useState<WindowKey>(() => parseWindowKey(searchParams.get("window")) ?? "1h");
   const [postRange, setPostRange] = useState<TokenPostRange>("current_window");
   const [postSortMode, setPostSortMode] = useState<TokenPostSortMode>("recent");
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
@@ -81,7 +83,7 @@ export function TokenTargetPage() {
         : null;
       return rowTarget && targetRefEquals(rowTarget, target);
     });
-    if (!matchedRow) return null;
+    if (!matchedRow) return fallbackTokenItemFromTarget(target, windowKey, scope);
     return tokenRadarRowToTokenItem(matchedRow, windowKey, scope);
   }, [assetFlowQuery.data?.data, scope, target, windowKey]);
 
@@ -257,6 +259,213 @@ function representativePosts(stage: TokenTimelineStage, timeline: TokenSocialTim
   return stagePosts.filter((post) => post.stage_id === stage.stage_id || representativeIds.has(post.event_id)).slice(0, 3);
 }
 
+function parseWindowKey(value: string | null): WindowKey | null {
+  return OBSERVATION_WINDOWS.includes(value as WindowKey) ? (value as WindowKey) : null;
+}
+
+function parseScopeKey(value: string | null): TokenFlowItem["posts_query"]["scope"] | null {
+  return value === "all" || value === "matched" ? value : null;
+}
+
+function fallbackTokenItemFromTarget(target: TargetRef, window: WindowKey, scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
+  const symbol = symbolFromTarget(target);
+  const assetParts = target.target_type === "Asset" ? parseAssetTargetId(target.target_id) : null;
+  const isCex = target.target_type === "CexToken";
+  const heatScore = routeOnlyScoreBlock("heat");
+  const qualityScore = routeOnlyScoreBlock("quality");
+  const propagationScore = routeOnlyScoreBlock("propagation");
+  const tradeabilityScore = routeOnlyScoreBlock("tradeability");
+  const opportunityScore = routeOnlyScoreBlock("opportunity");
+
+  return {
+    identity: {
+      identity_key: target.target_id,
+      identity_status: "route_only",
+      target_type: target.target_type,
+      target_id: target.target_id,
+      asset_id: isCex ? undefined : target.target_id,
+      asset_type: target.target_type,
+      venue_type: isCex ? "cex" : "dex",
+      exchange: null,
+      inst_id: isCex && symbol ? `${symbol}-USDT` : null,
+      inst_type: isCex ? "SPOT" : null,
+      chain: assetParts?.chain ?? null,
+      address: assetParts?.address ?? null,
+      symbol,
+      resolution_reasons: ["route_target"],
+      lookup_keys: [target.target_id],
+      candidate_count: 0,
+      discovery_status: "route_only"
+    },
+    market: {
+      market_status: "missing",
+      price: null,
+      market_cap: null,
+      liquidity: null,
+      pool_status: "missing",
+      holder_count: null,
+      volume_24h: null,
+      snapshot_age_ms: null,
+      snapshot_received_at_ms: null,
+      social_signal_start_ms: null,
+      reference_ms: null,
+      price_at_social_start: null,
+      price_at_reference: null,
+      price_change_since_social_pct: null,
+      price_before_social_start: null,
+      price_change_before_social_pct: null,
+      price_at_first_snapshot: null,
+      first_snapshot_observed_at_ms: null,
+      price_change_since_first_snapshot_pct: null,
+      market_observation_status: "route_only",
+      price_change_status: "missing_market"
+    },
+    flow: {
+      window,
+      window_start_ms: null,
+      window_end_ms: null,
+      mentions: 0,
+      direct_mentions: 0,
+      symbol_mentions: 0,
+      weighted_mentions: 0,
+      avg_attribution_confidence: 0,
+      watched_mentions: 0,
+      previous_mentions: 0,
+      mention_delta: 0,
+      mention_delta_pct: null,
+      z_score: null,
+      new_burst_score: null,
+      stream_dominance: 0,
+      baseline_status: "route_only",
+      baseline_sample_count: 0
+    },
+    social_heat: {
+      ...heatScore,
+      window,
+      mentions: 0,
+      mentions_5m: 0,
+      mentions_1h: 0,
+      mentions_4h: 0,
+      mentions_24h: 0,
+      weighted_mentions: 0,
+      previous_mentions: 0,
+      mention_delta: 0,
+      mention_delta_pct: null,
+      z_score: null,
+      new_burst_score: null,
+      stream_share: 0,
+      watched_share: 0,
+      status: "route_only"
+    },
+    discussion_quality: {
+      ...qualityScore,
+      evidence_specificity: 0,
+      avg_post_quality: 0,
+      avg_attribution_confidence: 0,
+      duplicate_text_share: 0,
+      informative_post_count: 0,
+      watched_source_count: 0
+    },
+    propagation: {
+      ...propagationScore,
+      independent_authors: 0,
+      effective_authors: 0,
+      new_authors: 0,
+      top_author_share: 0,
+      duplicate_text_share: 0,
+      author_entropy: 0,
+      reproduction_rate: null,
+      phase: "seed",
+      top_authors: []
+    },
+    tradeability: {
+      ...tradeabilityScore,
+      identity_tradeable: false,
+      market_fresh: false,
+      market_cap_present: false,
+      liquidity_present: false,
+      pool_present: false,
+      hard_risks: ["missing_current_window_radar_row"]
+    },
+    timing: {
+      score: 0,
+      score_version: "route-only",
+      status: "market_unavailable",
+      social_signal_start_ms: null,
+      price_change_since_social_pct: null,
+      price_change_before_social_pct: null,
+      market_observation_status: "route_only",
+      chase_risk: false,
+      reasons: ["route_target"],
+      risks: ["missing_current_window_radar_row"],
+      contributions: [{ feature: "timing", value: 0, reason: "route_target" }],
+      risk_caps: []
+    },
+    opportunity: {
+      ...opportunityScore,
+      decision: "investigate",
+      decision_priority: 1,
+      hard_risks: ["missing_current_window_radar_row"],
+      components: {
+        heat: 0,
+        quality: 0,
+        propagation: 0,
+        tradeability: 0,
+        timing: 0
+      }
+    },
+    watch: {
+      status: "public_only",
+      direct_mentions: 0,
+      direct_authors: 0,
+      seed_link_count: 0,
+      top_seed: null,
+      reasons: [],
+      risks: ["missing_current_window_radar_row"]
+    },
+    evidence_total_count: 0,
+    posts_query: { target_type: target.target_type, target_id: target.target_id, window, scope, range: "current_window" },
+    timeline_query: { target_type: target.target_type, target_id: target.target_id, window, scope }
+  };
+}
+
+function routeOnlyScoreBlock(component: string) {
+  return {
+    score: 0,
+    score_version: "route-only",
+    reasons: ["route_target"],
+    risks: ["missing_current_window_radar_row"],
+    contributions: [{ feature: component, value: 0, reason: "route_target" }],
+    risk_caps: []
+  };
+}
+
+function symbolFromTarget(target: TargetRef): string | null {
+  if (target.target_type !== "CexToken") {
+    return null;
+  }
+  const raw = target.target_id.startsWith("cex_token:") ? target.target_id.slice("cex_token:".length) : target.target_id;
+  const symbol = raw.split(":").pop()?.replace(/-USDT$/i, "").trim().toUpperCase();
+  return symbol || null;
+}
+
+function parseAssetTargetId(targetId: string): { chain: string | null; address: string | null } | null {
+  const parts = targetId.trim().split(":");
+  if (parts[0] !== "asset" || parts.length < 3) {
+    return null;
+  }
+  if (parts[1] === "solana") {
+    return { chain: "solana", address: parts.at(-1) ?? null };
+  }
+  if (parts[1] === "eip155" && parts[2]) {
+    return { chain: `eip155:${parts[2]}`, address: parts.at(-1) ?? null };
+  }
+  if (parts[1] === "dex" && parts[2]) {
+    return { chain: parts[2], address: parts.at(-1) ?? null };
+  }
+  return { chain: null, address: parts.at(-1) ?? null };
+}
+
 function identityLine(token: TokenFlowItem): string {
   if (token.identity.venue_type === "cex") {
     return [token.identity.exchange?.toUpperCase(), token.identity.inst_id].filter(Boolean).join(" · ") || "CEX";
@@ -276,4 +485,3 @@ function marketLine(token: TokenFlowItem): string {
   }
   return token.market.market_status ?? "-";
 }
-

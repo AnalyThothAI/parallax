@@ -13,6 +13,7 @@ from loguru import logger
 
 from ..market.okx_chains import OKX_CHAIN_INDEX_TO_CHAIN
 from ..storage.discovery_repository import DISCOVERY_PROVIDER
+from ..storage.registry_repository import DEX_ADDRESS_SEARCH_SOURCE, DEX_SEARCH_SOURCE
 from .asset_market_sync import _okx_chain_index, _payload_hash
 from .token_radar_projection import WINDOW_MS
 from .token_resolution_refresh import (
@@ -228,7 +229,12 @@ def _process_dex_symbol_lookup(
     result["search_candidates_rejected"] = max(0, len(matched_candidates) - len(retained_candidates))
     retained_asset_ids: list[str] = []
     for candidate in retained_candidates:
-        asset_id = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
+        asset_id = _write_dex_candidate(
+            repos=repos,
+            candidate=candidate,
+            now_ms=now_ms,
+            source=DEX_SEARCH_SOURCE,
+        )
         if not asset_id:
             continue
         retained_asset_ids.append(asset_id)
@@ -277,7 +283,12 @@ def _process_address_lookup(
             continue
         if chain_id and candidate_chain != chain_id:
             continue
-        asset_id = _write_dex_candidate(repos=repos, candidate=candidate, now_ms=now_ms)
+        asset_id = _write_dex_candidate(
+            repos=repos,
+            candidate=candidate,
+            now_ms=now_ms,
+            source=DEX_ADDRESS_SEARCH_SOURCE,
+        )
         if not asset_id:
             continue
         result["candidate_ids"].append(asset_id)
@@ -292,7 +303,7 @@ def _process_address_lookup(
     return result
 
 
-def _write_dex_candidate(*, repos, candidate, now_ms: int) -> str | None:
+def _write_dex_candidate(*, repos, candidate, now_ms: int, source: str) -> str | None:
     chain_id = _chain_id_from_okx_index(getattr(candidate, "chain_index", None))
     address = _normalize_address(getattr(candidate, "address", None))
     symbol = _normalize_symbol(getattr(candidate, "symbol", None))
@@ -304,7 +315,7 @@ def _write_dex_candidate(*, repos, candidate, now_ms: int) -> str | None:
         symbol=symbol,
         name=getattr(candidate, "name", None),
         decimals=None,
-        source="okx_dex_search",
+        source=source,
         observed_at_ms=now_ms,
         commit=False,
     )
