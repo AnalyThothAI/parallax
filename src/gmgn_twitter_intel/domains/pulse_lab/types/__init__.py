@@ -1,17 +1,19 @@
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
-    PulseRecommendationCondition,
+    PulseCondition,
+    PulseReason,
     PulseRecommendationPayload,
-    PulseRecommendationReason,
-    PulseRecommendationResidualRisk,
+    PulseResidualRisk,
     Recommendation,
+    collect_factor_keys,
     validate_pulse_recommendation_payload,
 )
 
 __all__ = [
-    "PulseRecommendationCondition",
+    "PulseCondition",
     "PulseRecommendationPayload",
-    "PulseRecommendationReason",
-    "PulseRecommendationResidualRisk",
+    "PulseReason",
+    "PulseResidualRisk",
     "Recommendation",
+    "collect_factor_keys",
     "validate_pulse_recommendation_payload",
 ]

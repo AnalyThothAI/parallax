@@ -30,6 +30,7 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
 )
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
     PulseRecommendationPayload,
+    collect_factor_keys,
     pulse_recommendation_agent_input,
     pulse_recommendation_agent_instructions,
     validate_pulse_recommendation_payload,
@@ -250,7 +251,7 @@ def _input_source_event_ids(context: dict[str, Any]) -> list[str]:
 
 
 def _input_available_factor_keys(context: dict[str, Any]) -> list[str]:
-    return _stable_unique_strings(_iter_list(context.get("available_factor_keys")))
+    return sorted(collect_factor_keys(context.get("factor_snapshot")))
 
 
 def _max_recommendation(context: dict[str, Any]) -> str | None:

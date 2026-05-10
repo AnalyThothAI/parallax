@@ -14,7 +14,10 @@ from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     PULSE_RECOMMENDATION_SCHEMA_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
+    PulseRecommendationPayload,
+    collect_factor_keys,
+)
 from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import (
     OpenAIAgentsPulseThesisClient,
     PulseRecommendationOutputSchema,
@@ -45,12 +48,20 @@ def _context(**overrides: object) -> dict[str, object]:
         "subject_key": "target:CexToken:cex-token:PEPE",
         "target_type": "CexToken",
         "target_id": "cex-token:PEPE",
-        "factor_snapshot": {"schema_version": "token_factor_snapshot_v1"},
-        "gate_result": {"pulse_status": "token_watch", "max_recommendation": "watch"},
+        "factor_snapshot": {
+            "schema_version": "token_factor_snapshot_v1",
+            "families": {
+                "market_quality": {
+                    "facts": {"liquidity_usd": 12000},
+                    "factors": {"holder_count": {"value": 500}},
+                },
+                "social_attention": {"facts": {"author_breadth": 4}},
+                "timeline_quality": {"factors": {"duplicate_share": {"value": 0.12}}},
+            },
+        },
+        "gate_result": {"pulse_status": "token_watch", "max_recommendation": "research"},
         "available_factor_keys": [
-            "social_attention.author_breadth",
-            "market_quality.liquidity",
-            "timeline_quality.duplicate_share",
+            "manual.key_should_not_be_used",
         ],
         "source_event_ids": ["event-top", ""],
         "evidence_event_ids": ["event-evidence"],
@@ -73,34 +84,37 @@ def _context(**overrides: object) -> dict[str, object]:
 def _payload(**overrides: object) -> PulseRecommendationPayload:
     payload: dict[str, object] = {
         "schema_version": PULSE_RECOMMENDATION_SCHEMA_VERSION,
-        "candidate_type": "token_target",
-        "subject_key": "target:CexToken:cex-token:PEPE",
-        "target_type": "CexToken",
-        "target_id": "cex-token:PEPE",
-        "symbol": "PEPE",
-        "recommendation": "watch",
+        "recommendation": "research",
         "summary_zh": "PEPE 社交扩散有效，但行情和重复文本风险仍需确认。",
-        "reasons": [
+        "primary_reasons": [
             {
                 "factor_key": "social_attention.author_breadth",
-                "text_zh": "独立作者扩散正在增加。",
-                "evidence_event_ids": ["event-post-1", "event-cluster-2"],
+                "explanation_zh": "独立作者扩散正在增加。",
             }
         ],
-        "conditions": [
+        "upgrade_conditions": [
             {
-                "factor_key": "market_quality.liquidity",
-                "text_zh": "继续观察流动性是否保持新鲜。",
-                "evidence_event_ids": ["event-post-2"],
+                "factor_key": "market_quality.liquidity_usd",
+                "operator": ">=",
+                "value": 25000,
+                "description_zh": "继续观察流动性是否恢复到观察地板。",
+            }
+        ],
+        "invalidation_conditions": [
+            {
+                "factor_key": "timeline_quality.duplicate_share",
+                "operator": ">=",
+                "value": 0.5,
+                "description_zh": "重复文本继续升高会削弱信号。",
             }
         ],
         "residual_risks": [
             {
                 "factor_key": "timeline_quality.duplicate_share",
-                "text_zh": "重复文本可能放大噪声。",
-                "evidence_event_ids": ["event-evidence"],
+                "description_zh": "重复文本可能放大噪声。",
             }
         ],
+        "evidence_event_ids": ["event-post-1", "event-cluster-2", "event-evidence"],
         "confidence": 0.71,
     }
     payload.update(overrides)
@@ -142,20 +156,28 @@ def test_openai_agents_pulse_client_uses_recommendation_output_and_trace_metadat
     assert decoded_input["task"] == "write_pulse_recommendation_v1"
     assert set(decoded_input) == {
         "task",
-        "input_contract",
         "factor_snapshot",
         "gate_result",
         "available_factor_keys",
         "selected_posts",
     }
+    assert decoded_input["available_factor_keys"] == [
+        "market_quality.holder_count",
+        "market_quality.liquidity_usd",
+        "social_attention.author_breadth",
+        "timeline_quality.duplicate_share",
+    ]
     assert run_config.workflow_name == WORKFLOW_NAME
     assert run_config.group_id == "candidate-1"
     assert run_config.trace_id.startswith("trace_")
     assert run_config.trace_include_sensitive_data is False
     assert run_config.tracing_disabled is False
     assert "Do not invent facts" in agent.instructions
-    assert "Every reason, condition, and residual risk must cite one available factor_key" in agent.instructions
-    assert "recommendation must not exceed gate_result.max_recommendation" in agent.instructions
+    assert (
+        "Every primary reason, upgrade condition, invalidation condition, and residual risk must cite a factor_key "
+        "present in available_factor_keys"
+    ) in agent.instructions
+    assert "Recommendation cannot upgrade beyond gate_result.max_recommendation" in agent.instructions
     assert run_config.trace_metadata == {
         "backend": BACKEND,
         "run_id": "run-123",
@@ -173,7 +195,7 @@ def test_openai_agents_pulse_client_uses_recommendation_output_and_trace_metadat
         "target_type": "CexToken",
         "target_id": "cex-token:PEPE",
     }
-    assert result.payload.recommendation == "watch"
+    assert result.payload.recommendation == "research"
     assert result.agent_run_audit["workflow_name"] == WORKFLOW_NAME
     assert result.agent_run_audit["agent_name"] == AGENT_NAME
     assert result.agent_run_audit["prompt_version"] == PULSE_RECOMMENDATION_PROMPT_VERSION
@@ -189,8 +211,7 @@ def test_pulse_recommendation_output_schema_accepts_single_json_fence() -> None:
     parsed = schema.validate_json(f"```json\n{payload_json}\n```")
 
     assert isinstance(parsed, PulseRecommendationPayload)
-    assert parsed.symbol == "PEPE"
-    assert parsed.recommendation == "watch"
+    assert parsed.recommendation == "research"
 
 
 def test_pulse_recommendation_output_schema_rejects_prose_wrapped_json_fence() -> None:
@@ -202,9 +223,7 @@ def test_pulse_recommendation_output_schema_rejects_prose_wrapped_json_fence() -
 
 
 def test_openai_agents_pulse_client_uses_subject_key_group_without_candidate_id() -> None:
-    runner = FakeRunner(
-        _payload(candidate_type="source_seed", target_type=None, target_id=None, recommendation="ignore")
-    )
+    runner = FakeRunner(_payload(recommendation="ignore"))
     client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
 
     asyncio.run(
@@ -221,13 +240,7 @@ def test_openai_agents_pulse_client_uses_subject_key_group_without_candidate_id(
 def test_openai_agents_pulse_client_validates_event_ids_before_return() -> None:
     runner = FakeRunner(
         _payload(
-            reasons=[
-                {
-                    "factor_key": "social_attention.author_breadth",
-                    "text_zh": "外部事件不应通过。",
-                    "evidence_event_ids": ["event-outside"],
-                }
-            ]
+            evidence_event_ids=["event-outside"],
         )
     )
     client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
@@ -239,11 +252,10 @@ def test_openai_agents_pulse_client_validates_event_ids_before_return() -> None:
 def test_openai_agents_pulse_client_validates_factor_keys_before_return() -> None:
     runner = FakeRunner(
         _payload(
-            reasons=[
+            primary_reasons=[
                 {
                     "factor_key": "unknown.factor",
-                    "text_zh": "未知因子不应通过。",
-                    "evidence_event_ids": ["event-post-1"],
+                    "explanation_zh": "未知因子不应通过。",
                 }
             ]
         )
@@ -254,8 +266,16 @@ def test_openai_agents_pulse_client_validates_factor_keys_before_return() -> Non
         asyncio.run(client.write_thesis(context=_context(), run_id="run-123", job={}))
 
 
+def test_openai_agents_pulse_client_collects_factor_keys_from_snapshot() -> None:
+    client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=FakeRunner(_payload()))
+
+    audit = client.request_audit(context=_context(), run_id="run-123", job={})
+
+    assert audit["available_factor_keys"] == sorted(collect_factor_keys(_context()["factor_snapshot"]))
+
+
 def test_openai_agents_pulse_client_validates_max_recommendation_before_return() -> None:
-    runner = FakeRunner(_payload(recommendation="trade_candidate"))
+    runner = FakeRunner(_payload(recommendation="alert"))
     client = OpenAIAgentsPulseThesisClient(api_key="sk-test", model="gpt-test", runner=runner)
 
     with pytest.raises(ValueError, match="max_recommendation"):
@@ -292,11 +312,12 @@ def test_openai_agents_pulse_client_can_build_request_audit_before_model_returns
         "event-stage-1",
     ]
     assert audit["available_factor_keys"] == [
+        "market_quality.holder_count",
+        "market_quality.liquidity_usd",
         "social_attention.author_breadth",
-        "market_quality.liquidity",
         "timeline_quality.duplicate_share",
     ]
-    assert audit["max_recommendation"] == "watch"
+    assert audit["max_recommendation"] == "research"
     assert audit["trace_metadata"]["attempt_count"] == 4
 
 
