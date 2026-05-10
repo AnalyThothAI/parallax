@@ -6,6 +6,7 @@ import time
 from typing import Any
 from urllib.parse import quote
 
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
@@ -395,7 +396,7 @@ class NotificationRuleEngine:
             if status not in statuses:
                 continue
             factor_snapshot = _dict(row.get("factor_snapshot_json"))
-            if not factor_snapshot:
+            if not _valid_factor_snapshot(factor_snapshot):
                 continue
             gate = _dict(row.get("gate_json"))
             severity = _signal_pulse_severity(row, factor_snapshot=factor_snapshot, gate=gate)
@@ -608,6 +609,18 @@ def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
     families = _dict(snapshot.get("families"))
     payload = _dict(families.get(family))
     return _dict(payload.get("facts"))
+
+
+def _valid_factor_snapshot(value: Any) -> bool:
+    snapshot = _dict(value)
+    return (
+        bool(snapshot)
+        and snapshot.get("schema_version") == TOKEN_FACTOR_SNAPSHOT_VERSION
+        and isinstance(snapshot.get("subject"), dict)
+        and isinstance(snapshot.get("families"), dict)
+        and isinstance(snapshot.get("hard_gates"), dict)
+        and isinstance(snapshot.get("composite"), dict)
+    )
 
 
 def _human_reasons(reasons: list[Any]) -> str:

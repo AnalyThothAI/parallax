@@ -672,6 +672,29 @@ def test_signal_pulse_notification_requires_non_empty_factor_snapshot():
     assert candidates == []
 
 
+def test_signal_pulse_notification_rejects_malformed_factor_snapshot_contract():
+    row = pulse_candidate(
+        "pulse-malformed",
+        status="token_watch",
+        eligible_for_high_alert=True,
+        gate={"eligible_for_high_alert": True, "max_recommendation": "watch", "blocked_reasons": []},
+    )
+    row["factor_snapshot_json"] = {
+        "schema_version": "token_factor_snapshot_legacy",
+        "subject": {"target_type": "Asset", "target_id": "asset:malformed", "symbol": "BAD"},
+        "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
+        "composite": {"rank_score": 82},
+    }
+
+    candidates = [
+        item
+        for item in engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert candidates == []
+
+
 def test_signal_pulse_notifications_follow_candidate_pages():
     pulse = FakePulse(
         [
