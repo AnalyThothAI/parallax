@@ -669,6 +669,22 @@ describe("App Token Radar social heat cockpit", () => {
     expect(item.posts_query.target_id).toBe(row.target?.target_id);
   });
 
+  it("does not fallback resolved target identity to the mention symbol", () => {
+    const row = {
+      ...assetFlowRow({ symbol: "SATO" }),
+      target: {
+        ...assetFlowRow({ symbol: "SLOP" }).target,
+        symbol: null
+      },
+      intent: { intent_id: "intent-sato-mention", display_symbol: "SATO", display_name: null, evidence: [] }
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.identity.symbol).toBeNull();
+    expect(item.identity.target_id).toBe(row.target?.target_id);
+  });
+
   it("rejects token radar rows when the backend omits score versions", () => {
     const row = {
       ...assetFlowRow(),

@@ -7,20 +7,6 @@ from typing import Any
 # This string must stay in sync with TOKEN_RADAR_RESOLVER_POLICY_VERSION in token_intel/interfaces.py
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 
-DEX_SEARCH_SOURCE = "okx_dex_search"
-DEX_ADDRESS_SEARCH_SOURCE = "okx_dex_address_search"
-
-_SOURCE_PRECEDENCE = {
-    DEX_SEARCH_SOURCE: 10,
-    DEX_ADDRESS_SEARCH_SOURCE: 84,
-    "okx_dex": 20,
-    "gmgn_token_payload": 85,
-    "gmgn_payload": 85,
-    "tweet_ca": 80,
-    "gmgn_openapi": 90,
-}
-
-
 class RegistryRepository:
     def __init__(self, conn: Any):
         self.conn = conn
@@ -61,43 +47,24 @@ class RegistryRepository:
         *,
         chain_id: str,
         address: str,
-        symbol: str | None,
-        name: str | None,
-        decimals: int | None,
-        source: str,
         observed_at_ms: int,
         project_id: str | None = None,
         token_standard: str | None = None,
+        status: str = "candidate",
         commit: bool = True,
     ) -> dict[str, Any]:
         normalized_chain = _chain(chain_id)
         normalized_address = _address(address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = f"asset:{normalized_chain}:{standard}:{normalized_address}"
-        source_rank = _source_precedence(source)
-        existing_source_rank_sql = _source_precedence_sql("registry_assets.primary_source")
         self.conn.execute(
-            f"""
+            """
             INSERT INTO registry_assets(
-              asset_id, project_id, chain_id, token_standard, address, symbol, name, decimals,
-              status, evidence_level, primary_source, first_seen_at_ms, updated_at_ms
+              asset_id, project_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'candidate', 'price_observation', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(asset_id) DO UPDATE SET
               project_id = COALESCE(excluded.project_id, registry_assets.project_id),
-              symbol = CASE
-                WHEN excluded.symbol IS NULL THEN registry_assets.symbol
-                WHEN registry_assets.symbol IS NULL THEN excluded.symbol
-                WHEN %s >= {existing_source_rank_sql} THEN excluded.symbol
-                ELSE registry_assets.symbol
-              END,
-              name = COALESCE(excluded.name, registry_assets.name),
-              decimals = COALESCE(excluded.decimals, registry_assets.decimals),
-              evidence_level = excluded.evidence_level,
-              primary_source = CASE
-                WHEN %s >= {existing_source_rank_sql} THEN excluded.primary_source
-                ELSE registry_assets.primary_source
-              END,
               status = CASE
                 WHEN registry_assets.status = 'demoted_search' THEN 'candidate'
                 ELSE registry_assets.status
@@ -110,14 +77,9 @@ class RegistryRepository:
                 normalized_chain,
                 standard,
                 normalized_address,
-                _symbol(symbol) if symbol else None,
-                name,
-                decimals,
-                source,
+                status,
                 int(observed_at_ms),
                 int(observed_at_ms),
-                source_rank,
-                source_rank,
             ),
         )
         if commit:
@@ -233,6 +195,10 @@ class RegistryRepository:
             """
             SELECT
               registry_assets.*,
+              asset_identity_current.canonical_symbol AS symbol,
+              asset_identity_current.canonical_name AS name,
+              asset_identity_current.decimals,
+              asset_identity_current.identity_confidence,
               latest_price.price_usd,
               latest_price.market_cap_usd,
               latest_price.liquidity_usd,
@@ -248,7 +214,9 @@ class RegistryRepository:
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
             ) latest_price ON true
-            WHERE registry_assets.symbol = %s
+            JOIN asset_identity_current
+              ON asset_identity_current.asset_id = registry_assets.asset_id
+            WHERE asset_identity_current.canonical_symbol = %s
               AND registry_assets.status IN ('candidate', 'canonical')
             ORDER BY latest_price.market_cap_usd DESC NULLS LAST, registry_assets.asset_id
             """,
@@ -303,6 +271,10 @@ class RegistryRepository:
             """
             SELECT
               registry_assets.*,
+              asset_identity_current.canonical_symbol AS symbol,
+              asset_identity_current.canonical_name AS name,
+              asset_identity_current.decimals,
+              asset_identity_current.identity_confidence,
               latest_price.observed_at_ms AS latest_price_observed_at_ms,
               latest_price.market_cap_usd,
               latest_price.liquidity_usd,
@@ -318,6 +290,8 @@ class RegistryRepository:
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
             ) latest_price ON true
+            LEFT JOIN asset_identity_current
+              ON asset_identity_current.asset_id = registry_assets.asset_id
             WHERE registry_assets.status IN ('candidate', 'canonical')
               AND (
                 latest_price.observed_at_ms IS NULL
@@ -356,6 +330,10 @@ class RegistryRepository:
             )
             SELECT
               registry_assets.*,
+              asset_identity_current.canonical_symbol AS symbol,
+              asset_identity_current.canonical_name AS name,
+              asset_identity_current.decimals,
+              asset_identity_current.identity_confidence,
               latest_price.observed_at_ms AS latest_price_observed_at_ms,
               latest_price.market_cap_usd,
               latest_price.liquidity_usd,
@@ -366,6 +344,8 @@ class RegistryRepository:
               candidate_mentions.candidate_event_count
             FROM candidate_mentions
             JOIN registry_assets ON registry_assets.asset_id = candidate_mentions.asset_id
+            LEFT JOIN asset_identity_current
+              ON asset_identity_current.asset_id = registry_assets.asset_id
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -396,136 +376,6 @@ class RegistryRepository:
             ),
         ).fetchall()
         return [dict(row) for row in rows]
-
-    def demote_unretained_symbol_assets(
-        self,
-        *,
-        symbol: str,
-        retained_asset_ids: list[str],
-        now_ms: int,
-        commit: bool = True,
-    ) -> int:
-        normalized_symbol = _symbol(symbol)
-        retained = sorted({str(asset_id) for asset_id in retained_asset_ids if str(asset_id or "").strip()})
-        if not normalized_symbol:
-            return 0
-        row = self.conn.execute(
-            """
-            WITH retained_assets(asset_id) AS (
-              SELECT unnest(%s::text[])
-            ),
-            protected_assets(asset_id) AS (
-              SELECT target_id
-              FROM token_intent_resolutions
-              WHERE is_current = true
-                AND record_status = 'current'
-                AND target_type = 'Asset'
-                AND target_id IS NOT NULL
-                AND (
-                  reason_codes_json ? 'CHAIN_ADDRESS_EXACT'
-                  OR reason_codes_json ? 'ADDRESS_UNIQUE_ACROSS_TRACKED_CHAINS'
-                )
-            ),
-            demoted AS (
-              UPDATE registry_assets
-              SET status = 'demoted_search',
-                  updated_at_ms = %s
-              WHERE symbol = %s
-                AND primary_source = %s
-                AND status = 'candidate'
-                AND NOT EXISTS (
-                  SELECT 1
-                  FROM retained_assets
-                  WHERE retained_assets.asset_id = registry_assets.asset_id
-                )
-                AND NOT EXISTS (
-                  SELECT 1
-                  FROM protected_assets
-                  WHERE protected_assets.asset_id = registry_assets.asset_id
-                )
-              RETURNING asset_id
-            )
-            SELECT count(*) AS demoted_count
-            FROM demoted
-            """,
-            (retained, int(now_ms), normalized_symbol, DEX_SEARCH_SOURCE),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return int(row["demoted_count"] if row else 0)
-
-    def demote_symbol_search_tail_assets(self, *, now_ms: int, commit: bool = True) -> int:
-        row = self.conn.execute(
-            """
-            WITH latest_price AS (
-              SELECT DISTINCT ON (subject_id)
-                subject_id,
-                price_usd,
-                market_cap_usd,
-                liquidity_usd,
-                holders,
-                observed_at_ms
-              FROM price_observations
-              WHERE subject_type = 'Asset'
-              ORDER BY subject_id, observed_at_ms DESC, observation_id DESC
-            ),
-            protected_address_targets(asset_id) AS (
-              SELECT target_id
-              FROM token_intent_resolutions
-              WHERE is_current = true
-                AND record_status = 'current'
-                AND target_type = 'Asset'
-                AND target_id IS NOT NULL
-                AND (
-                  reason_codes_json ? 'CHAIN_ADDRESS_EXACT'
-                  OR reason_codes_json ? 'ADDRESS_UNIQUE_ACROSS_TRACKED_CHAINS'
-                )
-            ),
-            ranked_search_assets AS (
-              SELECT
-                registry_assets.asset_id,
-                ROW_NUMBER() OVER (
-                  PARTITION BY registry_assets.symbol, registry_assets.chain_id
-                  ORDER BY
-                    (
-                      0.5 * log(GREATEST(COALESCE(latest_price.market_cap_usd, 0)::double precision, 0.0) + 1.0)
-                      + 0.3 * log(GREATEST(COALESCE(latest_price.liquidity_usd, 0)::double precision, 0.0) + 1.0)
-                      + 0.2 * log(GREATEST(COALESCE(latest_price.holders, 0)::double precision, 0.0) + 1.0)
-                    ) DESC,
-                    (latest_price.price_usd IS NOT NULL) DESC,
-                    registry_assets.updated_at_ms DESC,
-                    registry_assets.asset_id ASC
-                ) AS chain_symbol_rank
-              FROM registry_assets
-              LEFT JOIN latest_price ON latest_price.subject_id = registry_assets.asset_id
-              WHERE registry_assets.primary_source = %s
-                AND registry_assets.status = 'candidate'
-                AND registry_assets.symbol IS NOT NULL
-                AND NOT EXISTS (
-                  SELECT 1
-                  FROM protected_address_targets
-                  WHERE protected_address_targets.asset_id = registry_assets.asset_id
-                )
-            ),
-            demoted AS (
-              UPDATE registry_assets
-              SET status = 'demoted_search',
-                  updated_at_ms = %s
-              WHERE registry_assets.asset_id IN (
-                SELECT asset_id
-                FROM ranked_search_assets
-                WHERE chain_symbol_rank > 3
-              )
-              RETURNING asset_id
-            )
-            SELECT count(*) AS demoted_count
-            FROM demoted
-            """,
-            (DEX_SEARCH_SOURCE, int(now_ms)),
-        ).fetchone()
-        if commit:
-            self.conn.commit()
-        return int(row["demoted_count"] if row else 0)
 
     def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
         row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()
@@ -574,12 +424,3 @@ def _address(value: str) -> str:
 
 def _address_lookup(value: str) -> str:
     return value.strip().lower()
-
-
-def _source_precedence(source: str | None) -> int:
-    return _SOURCE_PRECEDENCE.get(str(source or "").strip().lower(), 50)
-
-
-def _source_precedence_sql(expression: str) -> str:
-    cases = "\n".join(f"WHEN '{source}' THEN {rank}" for source, rank in _SOURCE_PRECEDENCE.items())
-    return f"(CASE {expression} {cases} ELSE 50 END)"

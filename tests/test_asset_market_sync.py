@@ -98,6 +98,7 @@ def test_asset_market_sync_worker_runs_dex_before_cex():
             "asset_id": "asset:eip155:56:erc20:0x8f32420f2e3728c49399b00dd0a796602d984444",
             "chain_id": "eip155:56",
             "address": "0x8F32420F2E3728C49399b00DD0A796602d984444",
+            "identity_confidence": "provider_exact",
         }
     ]
     session = FakeRepositorySession(registry, FakePriceObservations())
@@ -124,6 +125,7 @@ def test_asset_market_sync_worker_records_cex_while_dex_is_still_running():
                 "asset_id": "asset:eip155:56:erc20:0x8f32420f2e3728c49399b00dd0a796602d984444",
                 "chain_id": "eip155:56",
                 "address": "0x8F32420F2E3728C49399b00DD0A796602d984444",
+                "identity_confidence": "provider_exact",
             }
         ]
         price_observations = FakePriceObservations()
@@ -158,7 +160,7 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
             "chain_id": "eip155:56",
             "address": "0x8F32420F2E3728C49399b00DD0A796602d984444",
             "symbol": "TEST",
-            "primary_source": "okx_dex_address_search",
+            "identity_confidence": "provider_exact",
             "market_cap_usd": 22_000.0,
             "liquidity_usd": 9_000.0,
             "holders": 123,
@@ -168,6 +170,7 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
 
     result = sync_okx_dex_prices(
         registry=registry,
+        identity_evidence=FakeIdentityEvidence(),
         price_observations=price_observations,
         client=client,
         observed_at_ms=1_778_085_100_000,
@@ -178,9 +181,9 @@ def test_sync_okx_dex_prices_refreshes_active_dex_venues_in_batches():
     assert result == {
         "assets_scanned": 1,
         "refresh_universe": "radar_candidates",
-        "address_search_requests": 0,
-        "address_search_hits": 0,
-        "address_search_errors": 0,
+        "identity_verification_requests": 0,
+        "identity_verification_hits": 0,
+        "identity_verification_errors": 0,
         "price_requests": 1,
         "pricefeeds_written": 1,
         "price_observations_written": 1,
@@ -229,6 +232,7 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
             "chain_id": "eip155:1",
             "address": address,
             "symbol": None,
+            "identity_confidence": "unknown",
             "market_cap_usd": None,
             "liquidity_usd": None,
             "holders": None,
@@ -254,6 +258,7 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
 
     result = sync_okx_dex_prices(
         registry=registry,
+        identity_evidence=FakeIdentityEvidence(),
         price_observations=price_observations,
         client=client,
         observed_at_ms=1_778_085_100_000,
@@ -261,8 +266,8 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
         limit=100,
     )
 
-    assert result["address_search_requests"] == 1
-    assert result["address_search_errors"] == 0
+    assert result["identity_verification_requests"] == 1
+    assert result["identity_verification_errors"] == 0
     assert result["affected_lookup_keys"] == [
         f"address:eip155:1:{address}",
         "project_symbol:UPEG",
@@ -271,9 +276,6 @@ def test_sync_okx_dex_prices_enriches_address_search_metadata():
     assert registry.chain_assets[-1] == {
         "chain_id": "eip155:1",
         "address": address,
-        "symbol": "UPEG",
-        "name": "Unipeg",
-        "source": "okx_dex_address_search",
     }
     assert price_observations.observations[0]["market_cap_usd"] == 10_557_123.48
     assert price_observations.observations[0]["liquidity_usd"] == 921_926.63
@@ -290,7 +292,7 @@ def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
             "chain_id": "eip155:1",
             "address": address,
             "symbol": "SATO",
-            "primary_source": "tweet_ca",
+            "identity_confidence": "mention_only",
             "market_cap_usd": 28_000_000.0,
             "liquidity_usd": 1_000_000.0,
             "holders": 500,
@@ -316,6 +318,7 @@ def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
 
     result = sync_okx_dex_prices(
         registry=registry,
+        identity_evidence=FakeIdentityEvidence(),
         price_observations=price_observations,
         client=client,
         observed_at_ms=1_778_085_100_000,
@@ -323,13 +326,10 @@ def test_sync_okx_dex_prices_rechecks_tweet_source_address_metadata():
         limit=100,
     )
 
-    assert result["address_search_requests"] == 1
+    assert result["identity_verification_requests"] == 1
     assert registry.chain_assets[-1] == {
         "chain_id": "eip155:1",
         "address": address,
-        "symbol": "SLOP",
-        "name": "SLOP",
-        "source": "okx_dex_address_search",
     }
     assert result["affected_lookup_keys"] == [
         f"address:eip155:1:{address}",
@@ -347,6 +347,7 @@ def test_sync_okx_dex_prices_continues_when_address_search_fails():
             "chain_id": "eip155:56",
             "address": "0x8F32420F2E3728C49399b00DD0A796602d984444",
             "symbol": None,
+            "identity_confidence": "unknown",
             "market_cap_usd": None,
             "liquidity_usd": None,
             "holders": None,
@@ -356,6 +357,7 @@ def test_sync_okx_dex_prices_continues_when_address_search_fails():
 
     result = sync_okx_dex_prices(
         registry=registry,
+        identity_evidence=FakeIdentityEvidence(),
         price_observations=price_observations,
         client=client,
         observed_at_ms=1_778_085_100_000,
@@ -363,9 +365,9 @@ def test_sync_okx_dex_prices_continues_when_address_search_fails():
         limit=100,
     )
 
-    assert result["address_search_requests"] == 1
-    assert result["address_search_hits"] == 0
-    assert result["address_search_errors"] == 1
+    assert result["identity_verification_requests"] == 1
+    assert result["identity_verification_hits"] == 0
+    assert result["identity_verification_errors"] == 1
     assert result["price_requests"] == 1
     assert result["affected_lookup_keys"] == [
         "address:eip155:56:0x8f32420f2e3728c49399b00dd0a796602d984444"
@@ -483,17 +485,12 @@ class FakeRegistry:
             {
                 "chain_id": kwargs["chain_id"],
                 "address": kwargs["address"],
-                "symbol": kwargs.get("symbol"),
-                "name": kwargs.get("name"),
-                "source": kwargs["source"],
             }
         )
         return {
             "asset_id": f"asset:{kwargs['chain_id']}:erc20:{kwargs['address']}",
             "chain_id": kwargs["chain_id"],
             "address": kwargs["address"],
-            "symbol": kwargs.get("symbol"),
-            "name": kwargs.get("name"),
         }
 
     def chain_assets_needing_price_refresh(self, *, stale_before_ms, limit):
@@ -544,6 +541,29 @@ class FakePriceObservations:
         return kwargs
 
 
+class FakeIdentityEvidence:
+    def __init__(self):
+        self.evidence = []
+
+    def upsert_identity_evidence(self, **kwargs):
+        self.evidence.append(kwargs)
+        return kwargs
+
+    def recompute_current_identity(self, asset_id, *, now_ms, commit=False):
+        selected = next(
+            (item for item in reversed(self.evidence) if item["asset_id"] == asset_id),
+            {},
+        )
+        return {
+            "asset_id": asset_id,
+            "canonical_symbol": selected.get("symbol"),
+            "canonical_name": selected.get("name"),
+            "decimals": selected.get("decimals"),
+            "identity_confidence": selected.get("confidence", "unknown"),
+            "updated_at_ms": now_ms,
+        }
+
+
 class FakeConn:
     def commit(self):
         return None
@@ -552,6 +572,7 @@ class FakeConn:
 class FakeRepositorySession:
     def __init__(self, registry, price_observations):
         self.registry = registry
+        self.identity_evidence = FakeIdentityEvidence()
         self.price_observations = price_observations
         self.token_intent_lookup = FakeTokenIntentLookup()
         self.token_intents = FakeTokenIntents()

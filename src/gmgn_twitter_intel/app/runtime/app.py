@@ -211,6 +211,7 @@ class _PooledIngestStore:
                 signals=repos.signals,
                 enrichment=repos.enrichment,
                 registry=repos.registry,
+                identity_evidence=repos.identity_evidence,
                 price_observations=repos.price_observations,
                 token_intent_lookup=repos.token_intent_lookup,
             )
@@ -279,20 +280,8 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     runtime.harness_ops_worker = HarnessOpsWorker(
         repository_session=lambda: repository_session(db_pool),
     )
-    okx_dex_projection_client = (
-        OkxDexClient(
-            base_url=settings.okx_dex_base_url,
-            api_key=settings.okx_dex_api_key,
-            secret_key=settings.okx_dex_secret_key,
-            passphrase=settings.okx_dex_passphrase,
-            timeout_seconds=settings.okx_timeout_seconds,
-        )
-        if start_collector and settings.okx_dex_configured
-        else None
-    )
     runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
         repository_session=lambda: repository_session(db_pool),
-        dex_client=okx_dex_projection_client,
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
         pulse_client = OpenAIAgentsPulseThesisClient(

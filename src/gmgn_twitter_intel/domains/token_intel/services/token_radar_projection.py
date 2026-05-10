@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Callable
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
+    WINDOW_MS,
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
@@ -32,17 +32,9 @@ from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder 
 from gmgn_twitter_intel.domains.token_intel.scoring.tradeability_scoring import tradeability_score
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
 
-WINDOW_MS = {
-    "5m": 5 * 60 * 1000,
-    "1h": 60 * 60 * 1000,
-    "4h": 4 * 60 * 60 * 1000,
-    "24h": 24 * 60 * 60 * 1000,
-}
 MARKET_FRESH_MS = 5 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
-PREFLIGHT_HYDRATION_WINDOWS = {"5m", "1h"}
-DEFAULT_PREFLIGHT_HYDRATION_LIMIT = 40
 
 
 class TokenRadarProjection:
@@ -50,26 +42,13 @@ class TokenRadarProjection:
         self,
         *,
         repos,
-        market_hydrator: Callable[..., dict[str, Any]] | None = None,
-        preflight_hydration_limit: int = DEFAULT_PREFLIGHT_HYDRATION_LIMIT,
-        preflight_windows: set[str] | tuple[str, ...] = tuple(PREFLIGHT_HYDRATION_WINDOWS),
     ):
         self.repos = repos
-        self.market_hydrator = market_hydrator
-        self.preflight_hydration_limit = max(0, int(preflight_hydration_limit))
-        self.preflight_windows = {str(window) for window in preflight_windows}
-        self._preflight_cache: dict[tuple[str, int], dict[str, Any]] = {}
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
         computed_at_ms = int(now_ms or time.time() * 1000)
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
-        market_hydration = self._preflight_market_hydration(
-            window=window,
-            scope=scope,
-            now_ms=computed_at_ms,
-            score_since_ms=score_since_ms,
-        )
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
         source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
@@ -145,7 +124,6 @@ class TokenRadarProjection:
                 "source_rows": len(source_rows),
                 "computed_at_ms": computed_at_ms,
                 "status": "stale_skipped",
-                "market_hydration": market_hydration,
             }
         projection_repo.advance_offset(
             projection_name=TOKEN_RADAR_PROJECTION_NAME,
@@ -171,39 +149,7 @@ class TokenRadarProjection:
             "source_rows": len(source_rows),
             "computed_at_ms": computed_at_ms,
             "status": "ready",
-            "market_hydration": market_hydration,
         }
-
-    def _preflight_market_hydration(
-        self,
-        *,
-        window: str,
-        scope: str,
-        now_ms: int,
-        score_since_ms: int,
-    ) -> dict[str, Any]:
-        if window not in self.preflight_windows:
-            return _hydration_status("not_required")
-        if self.market_hydrator is None or self.preflight_hydration_limit <= 0:
-            return _hydration_status("not_configured")
-        cache_key = (window, int(now_ms))
-        if cache_key in self._preflight_cache:
-            return self._preflight_cache[cache_key]
-        try:
-            raw_result = self.market_hydrator(
-                repos=self.repos,
-                window=window,
-                scope=scope,
-                now_ms=now_ms,
-                score_since_ms=score_since_ms,
-                stale_before_ms=now_ms - MARKET_FRESH_MS,
-                limit=self.preflight_hydration_limit,
-            )
-            result = _hydration_result(raw_result)
-        except Exception as exc:
-            result = _hydration_status("error", error=str(exc))
-        self._preflight_cache[cache_key] = result
-        return result
 
     def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
         return TokenRadarSourceQuery(self.repos.conn).source_rows(since_ms=since_ms, scope=scope, now_ms=now_ms)
@@ -280,35 +226,6 @@ class TokenRadarProjection:
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     return score_since_ms - BASELINE_SLOT_COUNT * window_ms
-
-
-def _hydration_result(raw_result: dict[str, Any] | None) -> dict[str, Any]:
-    result = dict(raw_result or {})
-    assets_scanned = int(result.get("assets_scanned") or 0)
-    observations_written = int(result.get("price_observations_written") or 0)
-    address_errors = int(result.get("address_search_errors") or 0)
-    status = "ready"
-    if assets_scanned and observations_written < assets_scanned:
-        status = "partial"
-    if address_errors:
-        status = "partial"
-    return {
-        **result,
-        "status": status,
-        "assets_scanned": assets_scanned,
-        "price_observations_written": observations_written,
-    }
-
-
-def _hydration_status(status: str, *, error: str | None = None) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "status": status,
-        "assets_scanned": 0,
-        "price_observations_written": 0,
-    }
-    if error:
-        result["error"] = error
-    return result
 
 
 def _project_group(
@@ -527,6 +444,11 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
         "address": row.get("asset_address"),
         "status": row.get("asset_registry_status"),
         "pricefeed_id": row.get("pricefeed_id"),
+        "identity": {
+            "confidence": row.get("asset_identity_confidence"),
+            "reason_codes": row.get("asset_identity_reason_codes") or [],
+            "conflict_count": row.get("asset_identity_conflict_count") or 0,
+        },
     }
 
 
@@ -735,11 +657,7 @@ def _display_symbol(row: dict[str, Any]) -> str | None:
 
 def _target_symbol(row: dict[str, Any]) -> str | None:
     if row.get("target_type") == "Asset":
-        return _first_real_symbol(
-            row.get("asset_symbol"),
-            row.get("pricefeed_base_symbol"),
-            row.get("display_symbol"),
-        )
+        return _first_real_symbol(row.get("asset_symbol"))
     if row.get("target_type") == "CexToken":
         return _first_real_symbol(
             row.get("cex_base_symbol"),

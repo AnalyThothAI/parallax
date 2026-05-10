@@ -37,7 +37,7 @@ Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.t
 |--------|------|
 | `domains/ingestion/` | GMGN public-stream frame handling, snapshot gate, handle filtering, raw public-stream normalisation, collector status. |
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
-| `domains/asset_market/` | Asset registry, chain/address identity, price observations, discovery, market hydration, asset-market sync, message-market observation. |
+| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, price observations, discovery, asset-market sync, message-market observation. |
 | `domains/token_intel/` | Token evidence, token intents, intent resolution, token-target views, token-radar features, scoring (heat / quality / propagation / tradeability / timing / opportunity), projection, audit queries, signal alerts. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |

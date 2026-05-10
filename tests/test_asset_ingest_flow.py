@@ -20,6 +20,7 @@ def open_ingest(tmp_path):
         signals=repos.signals,
         enrichment=repos.enrichment,
         registry=repos.registry,
+        identity_evidence=repos.identity_evidence,
         price_observations=repos.price_observations,
         token_intent_lookup=repos.token_intent_lookup,
     )
@@ -93,6 +94,7 @@ def test_ingest_chain_ca_from_gmgn_url_writes_exact_registry_asset(tmp_path):
         )
         resolution = result.token_resolutions[0]
         asset = repos.registry.find_assets_by_address(chain_id="eth", address=address)[0]
+        identity_evidence = repos.identity_evidence.list_identity_evidence(asset["asset_id"])
     finally:
         conn.close()
 
@@ -100,7 +102,8 @@ def test_ingest_chain_ca_from_gmgn_url_writes_exact_registry_asset(tmp_path):
     assert resolution["target_type"] == "Asset"
     assert resolution["target_id"] == f"asset:eip155:1:erc20:{address}"
     assert asset["asset_id"] == resolution["target_id"]
-    assert asset["primary_source"] == "tweet_ca"
+    assert identity_evidence[0]["evidence_kind"] == "tweet_contract_mention"
+    assert identity_evidence[0]["confidence"] == "mention_only"
 
 
 def test_ingest_unknown_chain_ca_is_retained_as_unresolved_asset(tmp_path):

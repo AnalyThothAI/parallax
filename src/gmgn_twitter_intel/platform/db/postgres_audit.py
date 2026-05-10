@@ -5,7 +5,7 @@ from typing import Any
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 
 # Platform layer cannot import from domains; this constant mirrors TOKEN_RADAR_PROJECTION_VERSION
-TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v7-candidate-hydration"
+TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v8-identity-evidence"
 
 CORE_TABLES = (
     "raw_frames",

@@ -75,7 +75,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
   const isChainAsset = target.target_type === "Asset";
   const isCexToken = target.target_type === "CexToken";
   const displaySymbol = isChainAsset || isCexToken
-    ? target.symbol ?? row.intent?.display_symbol ?? null
+    ? target.symbol ?? null
     : row.intent?.display_symbol ?? target.symbol ?? null;
   const targetId = target.target_id ?? row.resolution.target_id ?? null;
   const identityKey = targetId ?? row.intent?.intent_id ?? target.address ?? target.native_market_id ?? displaySymbol ?? "unknown-token-intent";

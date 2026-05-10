@@ -15,16 +15,14 @@ def test_token_radar_projection_worker_rebuilds_all_windows_and_scopes(monkeypat
     calls: list[dict[str, object]] = []
 
     class FakeProjection:
-        def __init__(self, *, repos, market_hydrator=None, preflight_hydration_limit=40):
+        def __init__(self, *, repos):
             self.repos = repos
-            self.market_hydrator = market_hydrator
-            self.preflight_hydration_limit = preflight_hydration_limit
 
         def rebuild(self, *, window, scope, now_ms=None, limit=100):
             calls.append({"window": window, "scope": scope, "now_ms": now_ms, "limit": limit})
             return {"rows_written": 2, "source_rows": 3, "computed_at_ms": now_ms}
 
-    monkeypatch.setattr(module, "TokenRadarProjection", FakeProjection)
+    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     worker = module.TokenRadarProjectionWorker(
         repository_session=lambda: FakeSession(),
         windows=("5m", "1h", "4h"),

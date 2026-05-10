@@ -28,7 +28,8 @@ class PendingMarketObservationQuery:
               events.received_at_ms AS event_received_at_ms,
               registry_assets.chain_id AS asset_chain_id,
               registry_assets.address AS asset_address,
-              registry_assets.symbol AS asset_symbol,
+              asset_identity_current.canonical_symbol AS asset_symbol,
+              asset_identity_current.identity_confidence AS asset_identity_confidence,
               latest_subject_price.market_cap_usd AS asset_market_cap_usd,
               latest_subject_price.liquidity_usd AS asset_liquidity_usd,
               latest_subject_price.holders AS asset_holders,
@@ -43,6 +44,9 @@ class PendingMarketObservationQuery:
             LEFT JOIN registry_assets
               ON tir.target_type = 'Asset'
              AND registry_assets.asset_id = tir.target_id
+            LEFT JOIN asset_identity_current
+              ON tir.target_type = 'Asset'
+             AND asset_identity_current.asset_id = tir.target_id
             LEFT JOIN cex_tokens
               ON tir.target_type = 'CexToken'
              AND cex_tokens.cex_token_id = tir.target_id

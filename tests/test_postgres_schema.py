@@ -49,6 +49,9 @@ TOKEN_SYMBOL_SEARCH_TARGET_DEMOTION_MIGRATION = Path(
 TOKEN_SYMBOL_SEARCH_TAIL_SWEEP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0020_sweep_symbol_search_tail_assets.py"
 )
+ASSET_IDENTITY_EVIDENCE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -318,3 +321,22 @@ def test_token_symbol_search_tail_sweep_migration_preserves_address_exact_target
     assert "ADDRESS_UNIQUE_ACROSS_TRACKED_CHAINS" in text
     assert "chain_symbol_rank > 3" in text
     assert "CREATE TABLE" not in text
+
+
+def test_asset_identity_evidence_hard_cut_migration_adds_identity_tables() -> None:
+    text = ASSET_IDENTITY_EVIDENCE_MIGRATION.read_text()
+
+    assert 'revision = "20260510_0021"' in text
+    assert 'down_revision = "20260509_0020"' in text
+    assert "CREATE TABLE IF NOT EXISTS asset_identity_evidence" in text
+    assert "CREATE TABLE IF NOT EXISTS asset_identity_current" in text
+    assert "evidence_kind TEXT NOT NULL" in text
+    assert "lookup_mode TEXT NOT NULL" in text
+    assert "identity_confidence TEXT NOT NULL" in text
+    assert "selected_evidence_id TEXT" in text
+    assert "selection_reason_codes_json JSONB NOT NULL" in text
+    assert "idx_asset_identity_evidence_asset" in text
+    assert "idx_asset_identity_evidence_provider_lookup" in text
+    assert "idx_asset_identity_current_symbol" in text
+    assert "ALTER TABLE registry_assets DROP COLUMN IF EXISTS symbol" in text
+    assert "ALTER TABLE registry_assets DROP COLUMN IF EXISTS primary_source" in text

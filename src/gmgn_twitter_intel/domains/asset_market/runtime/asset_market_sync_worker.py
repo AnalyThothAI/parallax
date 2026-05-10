@@ -91,6 +91,7 @@ class AssetMarketSyncWorker:
     def _sync_dex_with_refresh(self, *, repos, now_ms: int) -> dict[str, Any]:
         result = sync_okx_dex_prices(
             registry=repos.registry,
+            identity_evidence=repos.identity_evidence,
             price_observations=repos.price_observations,
             client=self.dex_client,
             observed_at_ms=now_ms,

@@ -59,8 +59,9 @@ class TokenTargetRepository:
               registry_assets.chain_id,
               registry_assets.token_standard,
               registry_assets.address,
-              registry_assets.symbol AS asset_symbol,
-              registry_assets.name AS asset_name,
+              asset_identity_current.canonical_symbol AS asset_symbol,
+              asset_identity_current.canonical_name AS asset_name,
+              asset_identity_current.identity_confidence AS asset_identity_confidence,
               cex_tokens.base_symbol AS cex_base_symbol,
               COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) AS pricefeed_id,
               price_feeds.provider,
@@ -81,6 +82,9 @@ class TokenTargetRepository:
             LEFT JOIN registry_assets
               ON tir.target_type = 'Asset'
              AND registry_assets.asset_id = tir.target_id
+            LEFT JOIN asset_identity_current
+              ON tir.target_type = 'Asset'
+             AND asset_identity_current.asset_id = tir.target_id
             LEFT JOIN cex_tokens
               ON tir.target_type = 'CexToken'
              AND cex_tokens.cex_token_id = tir.target_id
