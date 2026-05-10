@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.retrieval.signal_pulse_service import SignalPulseService
+from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 
 
 class FakePulseRepository:

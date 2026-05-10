@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.entity_extractor import TextSurface, extract_entities_from_surfaces
-from gmgn_twitter_intel.pipeline.token_evidence_builder import build_token_evidence
+from gmgn_twitter_intel.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
+from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from tests.factories_token_radar import VERSA_BASE_CA, make_gmgn_payload_event
 
 

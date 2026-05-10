@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.retrieval.opportunity_scoring import opportunity_score
+from gmgn_twitter_intel.domains.token_intel.scoring.opportunity_scoring import opportunity_score
 
 
 def _component(

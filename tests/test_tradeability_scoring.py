@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.retrieval.tradeability_scoring import tradeability_score
+from gmgn_twitter_intel.domains.token_intel.scoring.tradeability_scoring import tradeability_score
 
 
 def test_tradeability_scores_resolved_fresh_market_with_mcap():

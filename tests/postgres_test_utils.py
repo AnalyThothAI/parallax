@@ -9,9 +9,9 @@ import pytest
 from psycopg import OperationalError, pq
 from psycopg.rows import RowMaker
 
-from gmgn_twitter_intel.storage.postgres_client import connect_postgres
-from gmgn_twitter_intel.storage.postgres_migrations import upgrade_head
-from gmgn_twitter_intel.storage.repository_session import RepositorySession, repositories_for_connection
+from gmgn_twitter_intel.app.runtime.repository_session import RepositorySession, repositories_for_connection
+from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres
+from gmgn_twitter_intel.platform.db.postgres_migrations import upgrade_head
 
 DEFAULT_TEST_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/gmgn_twitter_intel_test"
 

@@ -3,14 +3,17 @@ from __future__ import annotations
 import asyncio
 import time
 
-from gmgn_twitter_intel.market.okx_models import (
+from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
+from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import (
+    sync_okx_cex_universe,
+    sync_okx_dex_prices,
+)
+from gmgn_twitter_intel.integrations.okx.models import (
     OkxCexInstrument,
     OkxCexTicker,
     OkxDexTokenCandidate,
     OkxDexTokenPrice,
 )
-from gmgn_twitter_intel.pipeline.asset_market_sync import sync_okx_cex_universe, sync_okx_dex_prices
-from gmgn_twitter_intel.pipeline.asset_market_sync_worker import AssetMarketSyncWorker
 
 
 def test_sync_okx_cex_universe_writes_instruments_and_market_snapshots():

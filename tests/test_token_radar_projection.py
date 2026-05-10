@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-import gmgn_twitter_intel.pipeline.token_radar_projection as token_radar_projection_module
-from gmgn_twitter_intel.pipeline.token_radar_contract import (
+import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
 )
-from gmgn_twitter_intel.pipeline.token_radar_projection import (
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
     PROJECTION_VERSION,
     WINDOW_MS,
     TokenRadarProjection,

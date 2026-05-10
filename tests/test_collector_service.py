@@ -2,8 +2,8 @@ import asyncio
 import json
 import unittest
 
-from gmgn_twitter_intel.collector.service import CollectorService
-from gmgn_twitter_intel.pipeline.ingest_service import IngestedEvent
+from gmgn_twitter_intel.domains.ingestion.interfaces import IngestedEvent
+from gmgn_twitter_intel.domains.ingestion.runtime.collector_service import CollectorService
 
 
 class MemoryStore:

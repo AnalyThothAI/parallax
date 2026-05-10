@@ -4,8 +4,8 @@ import asyncio
 from contextlib import contextmanager
 from typing import Any
 
-from gmgn_twitter_intel.pipeline.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.pipeline.pulse_candidate_worker import (
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_THESIS_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     PulseTriggerThresholds,
     _asset_candidate_id,
@@ -18,9 +18,9 @@ from gmgn_twitter_intel.pipeline.pulse_candidate_worker import (
     _source_trigger_metrics,
     _source_trigger_signature,
 )
-from gmgn_twitter_intel.pipeline.pulse_contract import PULSE_THESIS_SCHEMA_VERSION
-from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.pipeline.pulse_thesis_agent_client import PulseThesisAgentResult
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
+from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import PulseThesisAgentResult
 
 NOW_MS = 1_800_000
 

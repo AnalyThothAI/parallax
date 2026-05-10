@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.cli import _audit_token_radar_rows
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 
 
 def test_audit_token_radar_rows_rejects_legacy_price_health():

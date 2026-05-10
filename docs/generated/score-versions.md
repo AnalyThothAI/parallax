@@ -4,10 +4,10 @@
 
 | Version | File | Line | Context |
 |---------|------|------|---------|
-| `discussion_quality_v3` | `src/gmgn_twitter_intel/retrieval/discussion_quality_scoring.py` | 85 | `score_version="discussion_quality_v3",` |
-| `post_quality_v1` | `src/gmgn_twitter_intel/retrieval/post_text_quality.py` | 86 | `score_version="post_quality_v1",` |
-| `propagation_v2` | `src/gmgn_twitter_intel/retrieval/propagation_scoring.py` | 90 | `score_version="propagation_v2",` |
-| `social_heat_v3` | `src/gmgn_twitter_intel/retrieval/social_heat_scoring.py` | 106 | `score_version="social_heat_v3",` |
-| `social_opportunity_v4` | `src/gmgn_twitter_intel/retrieval/opportunity_scoring.py` | 54 | `score_version="social_opportunity_v4",` |
-| `timing_v5` | `src/gmgn_twitter_intel/retrieval/timing_scoring.py` | 49 | `score_version="timing_v5",` |
-| `tradeability_v2` | `src/gmgn_twitter_intel/retrieval/tradeability_scoring.py` | 123 | `score_version="tradeability_v2",` |
+| `discussion_quality_v3` | `src/gmgn_twitter_intel/domains/token_intel/scoring/discussion_quality_scoring.py` | 85 | `score_version="discussion_quality_v3",` |
+| `post_quality_v1` | `src/gmgn_twitter_intel/domains/token_intel/scoring/post_text_quality.py` | 86 | `score_version="post_quality_v1",` |
+| `propagation_v2` | `src/gmgn_twitter_intel/domains/token_intel/scoring/propagation_scoring.py` | 90 | `score_version="propagation_v2",` |
+| `social_heat_v3` | `src/gmgn_twitter_intel/domains/token_intel/scoring/social_heat_scoring.py` | 106 | `score_version="social_heat_v3",` |
+| `social_opportunity_v4` | `src/gmgn_twitter_intel/domains/token_intel/scoring/opportunity_scoring.py` | 54 | `score_version="social_opportunity_v4",` |
+| `timing_v5` | `src/gmgn_twitter_intel/domains/token_intel/scoring/timing_scoring.py` | 49 | `score_version="timing_v5",` |
+| `tradeability_v2` | `src/gmgn_twitter_intel/domains/token_intel/scoring/tradeability_scoring.py` | 123 | `score_version="tradeability_v2",` |

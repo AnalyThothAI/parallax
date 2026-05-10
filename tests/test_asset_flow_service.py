@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_PROJECTION_VERSION
-from gmgn_twitter_intel.retrieval.asset_flow_service import AssetFlowService
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
 def test_asset_flow_has_resolved_and_attention_lanes_from_token_radar_rows():

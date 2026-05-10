@@ -1,8 +1,8 @@
 import asyncio
 from types import SimpleNamespace
 
-from gmgn_twitter_intel.pipeline.social_event_agent_client import OpenAIAgentsSocialEventClient
-from gmgn_twitter_intel.pipeline.social_event_extraction import SocialEventPayload
+from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import SocialEventPayload
+from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 
 
 class FakeRunner:
@@ -104,7 +104,7 @@ def test_openai_agents_client_uses_typed_agent_output_and_trace_metadata():
 def test_openai_agents_client_sets_configured_trace_export_key(monkeypatch):
     exported_keys = []
     monkeypatch.setattr(
-        "gmgn_twitter_intel.pipeline.social_event_agent_client.set_tracing_export_api_key",
+        "gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client.set_tracing_export_api_key",
         exported_keys.append,
     )
 
@@ -139,7 +139,7 @@ def test_openai_agents_client_sets_configured_trace_export_key(monkeypatch):
 def test_openai_agents_client_does_not_export_custom_provider_key(monkeypatch):
     exported_keys = []
     monkeypatch.setattr(
-        "gmgn_twitter_intel.pipeline.social_event_agent_client.set_tracing_export_api_key",
+        "gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client.set_tracing_export_api_key",
         exported_keys.append,
     )
 

@@ -1,6 +1,6 @@
 import pytest
 
-from gmgn_twitter_intel.retrieval.timeline_features import bucket_width_ms, build_timeline_features
+from gmgn_twitter_intel.domains.token_intel.scoring.timeline_features import bucket_width_ms, build_timeline_features
 
 
 def event(event_id, *, received_at_ms, handle, text="same text", watched=False):

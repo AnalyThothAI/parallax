@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-import gmgn_twitter_intel.api.app as app_module
-from gmgn_twitter_intel.api.app import _build_runtime, _readiness_payload, create_app
-from gmgn_twitter_intel.settings import CollectorConfig, Settings
-from gmgn_twitter_intel.storage.postgres_client import postgres_health_check
-from gmgn_twitter_intel.storage.postgres_migrations import latest_migration_version
+import gmgn_twitter_intel.app.runtime.app as app_module
+from gmgn_twitter_intel.app.runtime.app import _build_runtime, _readiness_payload, create_app
+from gmgn_twitter_intel.platform.config.settings import CollectorConfig, Settings
+from gmgn_twitter_intel.platform.db.postgres_client import postgres_health_check
+from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 

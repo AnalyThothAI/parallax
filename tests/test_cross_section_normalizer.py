@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.cross_section_normalizer import (
+from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
     NORMALIZER_VERSION,
     rank_within_cohort,
 )

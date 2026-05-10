@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.retrieval.propagation_scoring import propagation_score
+from gmgn_twitter_intel.domains.token_intel.scoring.propagation_scoring import propagation_score
 
 
 def test_propagation_expansion_for_independent_author_growth():

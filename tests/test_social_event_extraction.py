@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.pipeline.social_event_extraction import (
+from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
     SocialEventPayload,
     social_event_agent_input,
     social_event_agent_instructions,

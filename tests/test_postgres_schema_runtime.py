@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.storage.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.storage.postgres_migrations import latest_migration_version
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate

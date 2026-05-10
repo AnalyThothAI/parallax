@@ -2,52 +2,52 @@ from __future__ import annotations
 
 from pathlib import Path
 
-MIGRATION = Path("src/gmgn_twitter_intel/storage/alembic/versions/20260506_0001_initial_postgresql.py")
-QUEUE_MIGRATION = Path("src/gmgn_twitter_intel/storage/alembic/versions/20260506_0002_postgres_queue_claims.py")
+MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py")
+QUEUE_MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0002_postgres_queue_claims.py")
 STALE_RUNNING_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0003_enrichment_stale_running_claims.py"
 )
 PROJECTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0004_projection_operations.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0004_projection_operations.py"
 )
 ASSET_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260506_0005_asset_identity_resolution.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0005_asset_identity_resolution.py"
 )
 TOKEN_RADAR_INTENT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0007_token_radar_v3_intents.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0007_token_radar_v3_intents.py"
 )
 TOKEN_RADAR_REGISTRY_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0008_token_radar_deterministic_registry.py"
 )
 AGENTS_SDK_AUDIT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
 EVENT_PRICE_OBSERVATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0011_event_price_observations.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_observations.py"
 )
 TOKEN_RADAR_PRUNE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"
 )
 TOKEN_RESOLUTION_RETIRE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0013_retire_legacy_token_resolutions.py"
 )
 TOKEN_RADAR_V6_PRUNE_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0014_prune_token_radar_v6_projection.py"
 )
 SIGNAL_PULSE_AGENT_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0015_signal_pulse_agent_hard_cut.py"
 )
 TOKEN_SEARCH_DEMOTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0017_demote_search_only_registry_assets.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0017_demote_search_only_registry_assets.py"
 )
 TOKEN_SEARCH_AUDIT_TAIL_DEMOTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0018_demote_search_tail_candidate_audit_refs.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0018_demote_search_tail_candidate_audit_refs.py"
 )
 TOKEN_SYMBOL_SEARCH_TARGET_DEMOTION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0019_demote_symbol_search_tail_targets.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0019_demote_symbol_search_tail_targets.py"
 )
 TOKEN_SYMBOL_SEARCH_TAIL_SWEEP_MIGRATION = Path(
-    "src/gmgn_twitter_intel/storage/alembic/versions/20260509_0020_sweep_symbol_search_tail_assets.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260509_0020_sweep_symbol_search_tail_assets.py"
 )
 
 
@@ -193,7 +193,7 @@ def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables(
         assert f"CREATE TABLE IF NOT EXISTS {table}" in text
 
     discovery_result_text = Path(
-        "src/gmgn_twitter_intel/storage/alembic/versions/20260507_0009_token_discovery_results.py"
+        "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0009_token_discovery_results.py"
     ).read_text()
     assert "CREATE TABLE IF NOT EXISTS token_discovery_results" in discovery_result_text
     assert "DROP TABLE IF EXISTS discovery_tasks" in discovery_result_text

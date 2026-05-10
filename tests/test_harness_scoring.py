@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.pipeline.harness_scoring import (
+from gmgn_twitter_intel.domains.closed_loop_harness.scoring.harness_scoring import (
     base_event_score,
     combined_score,
     event_score,

@@ -6,15 +6,15 @@ from types import SimpleNamespace
 import pytest
 from agents import ModelBehaviorError
 
-from gmgn_twitter_intel.pipeline.pulse_contract import (
+from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     AGENT_NAME,
     BACKEND,
     PULSE_THESIS_PROMPT_VERSION,
     PULSE_THESIS_SCHEMA_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.pipeline.pulse_thesis import PulseThesisPayload
-from gmgn_twitter_intel.pipeline.pulse_thesis_agent_client import (
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
+from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import (
     OpenAIAgentsPulseThesisClient,
     PulseThesisOutputSchema,
 )
@@ -228,7 +228,7 @@ def test_openai_agents_pulse_client_can_build_request_audit_before_model_returns
 def test_openai_agents_pulse_client_sets_configured_trace_export_key(monkeypatch) -> None:
     exported_keys: list[str] = []
     monkeypatch.setattr(
-        "gmgn_twitter_intel.pipeline.pulse_thesis_agent_client.set_tracing_export_api_key",
+        "gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client.set_tracing_export_api_key",
         exported_keys.append,
     )
 
@@ -246,7 +246,7 @@ def test_openai_agents_pulse_client_sets_configured_trace_export_key(monkeypatch
 def test_openai_agents_pulse_client_does_not_export_custom_provider_key(monkeypatch) -> None:
     exported_keys: list[str] = []
     monkeypatch.setattr(
-        "gmgn_twitter_intel.pipeline.pulse_thesis_agent_client.set_tracing_export_api_key",
+        "gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client.set_tracing_export_api_key",
         exported_keys.append,
     )
 

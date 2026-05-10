@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline.factor_cohort import (
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
     COHORT_DEFINITION_VERSION,
     STABLECOIN_SYMBOLS,
     is_active_cohort_member,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from gmgn_twitter_intel.pipeline.pulse_timeline_context import build_pulse_timeline_context
+from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
 
 TARGET = {
     "target_type": "CexToken",

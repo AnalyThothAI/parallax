@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.pipeline import token_radar_projection_worker as module
+from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projection_worker as module
 
 
 class FakeSession:

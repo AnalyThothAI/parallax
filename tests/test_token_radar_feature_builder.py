@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
 
 def test_radar_feature_builder_counts_windows_and_stream_share():
@@ -148,7 +148,7 @@ def row(
 
 
 def test_weighted_mentions_uses_quality_when_account_profiles_present():
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
     base_row = {
@@ -184,7 +184,7 @@ def test_weighted_mentions_uses_quality_when_account_profiles_present():
 
 
 def test_weighted_mentions_lower_for_no_tag_account():
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
 
@@ -228,7 +228,7 @@ def test_weighted_mentions_lower_for_no_tag_account():
 
 
 def test_quality_features_consume_llm_hints_when_present():
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
     row_data = {
@@ -265,7 +265,7 @@ def test_quality_features_consume_llm_hints_when_present():
 def test_weighted_mentions_keeps_floor_signal_for_non_directory_account():
     """Account not in account_profiles (NULL first_seen_ms) should still
     contribute to weighted_mentions via the floor signal — NOT zero."""
-    from gmgn_twitter_intel.pipeline.token_radar_feature_builder import build_radar_features
+    from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
     row = {

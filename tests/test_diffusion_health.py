@@ -3,7 +3,7 @@ import importlib
 
 def _diffusion_module():
     try:
-        return importlib.import_module("gmgn_twitter_intel.retrieval.diffusion_health")
+        return importlib.import_module("gmgn_twitter_intel.domains.token_intel.scoring.diffusion_health")
     except ModuleNotFoundError as exc:
         raise AssertionError("diffusion_health module is missing") from exc
 

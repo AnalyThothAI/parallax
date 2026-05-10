@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.storage.harness_repository import HarnessRepository
+from gmgn_twitter_intel.domains.closed_loop_harness.repositories.harness_repository import HarnessRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

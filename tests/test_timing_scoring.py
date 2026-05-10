@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.retrieval.timing_scoring import timing_score
+from gmgn_twitter_intel.domains.token_intel.scoring.timing_scoring import timing_score
 
 
 def test_timing_ready_market_is_neutral_not_alpha_boost():

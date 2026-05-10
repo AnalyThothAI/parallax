@@ -1,4 +1,7 @@
-from gmgn_twitter_intel.retrieval.discussion_quality_scoring import discussion_quality_score, post_quality_score
+from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import (
+    discussion_quality_score,
+    post_quality_score,
+)
 
 
 def test_discussion_quality_rewards_direct_ca_and_original_context():

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import hashlib
 
-from gmgn_twitter_intel.pipeline.token_radar_contract import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from gmgn_twitter_intel.storage.price_observation_repository import PriceObservationRepository
+from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

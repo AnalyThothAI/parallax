@@ -6,8 +6,8 @@ from decimal import Decimal
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from gmgn_twitter_intel.api.app import create_app
-from gmgn_twitter_intel.api.http import (
+from gmgn_twitter_intel.app.runtime.app import create_app
+from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
     ApiUnauthorized,
     _json,
@@ -15,11 +15,15 @@ from gmgn_twitter_intel.api.http import (
     api_unauthorized_response,
     create_api_router,
 )
-from gmgn_twitter_intel.collector.gmgn_token_payload import parse_gmgn_token_payload
-from gmgn_twitter_intel.models import Author, Content, Source, TwitterEvent
-from gmgn_twitter_intel.pipeline.harness_snapshot_builder import HarnessSnapshotBuilder
-from gmgn_twitter_intel.pipeline.social_event_extraction import AnchorTerm, SocialEventExtraction, SocialTokenCandidate
-from gmgn_twitter_intel.settings import Settings
+from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
+from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
+from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction import (
+    AnchorTerm,
+    SocialEventExtraction,
+    SocialTokenCandidate,
+)
+from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"

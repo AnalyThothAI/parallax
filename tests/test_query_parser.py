@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.retrieval.query_parser import parse_query
+from gmgn_twitter_intel.domains.token_intel.services.query_parser import parse_query
 
 
 def test_parse_query_accepts_chain_prefixed_evm_ca():

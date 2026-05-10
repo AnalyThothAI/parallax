@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import httpx
 
-from gmgn_twitter_intel.market.gmgn_openapi_client import GmgnOpenApiClient
+from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
 
 
 def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():

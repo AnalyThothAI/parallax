@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from gmgn_twitter_intel.storage.token_radar_repository import TokenRadarRepository, _json_payload
+from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
+    TokenRadarRepository,
+    _json_payload,
+)
 
 
 def test_json_payload_converts_decimal_values_before_jsonb_binding():

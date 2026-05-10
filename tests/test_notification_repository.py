@@ -1,4 +1,4 @@
-from gmgn_twitter_intel.storage.notification_repository import NotificationRepository
+from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import NotificationRepository
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

@@ -15,46 +15,32 @@ def test_project_metadata_uses_gmgn_twitter_intel_name():
     }
 
 
-def test_project_uses_standard_uv_src_layout():
+def test_project_uses_domain_package_src_layout():
+    base = ROOT / "src" / "gmgn_twitter_intel"
     assert (ROOT / "pyproject.toml").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "__init__.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "api" / "app.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "collector" / "service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "tweet_text.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "entity_extractor.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "ingest_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_evidence_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_intent_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_intent_resolver.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_resolution_refresh.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_radar_projection.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_radar_projection_worker.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "social_event_extraction.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_scoring.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_snapshot_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_settlement.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_credit.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_ops.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "enrichment_worker.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_search_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_flow_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_target_posts_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_target_social_timeline_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "account_alert_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "harness_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_client.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_migrations.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "evidence_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "entity_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "asset_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "signal_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "enrichment_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "harness_repository.py").is_file()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / ("lance" + "db_client.py")).exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / ("embed" + "ding.py")).exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_client.py").exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_schema.py").exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "store" / "sqlite.py").exists()
+    assert (base / "__init__.py").is_file()
+    assert (base / "__main__.py").is_file()
+    assert (base / "cli.py").is_file()
+    assert (base / "app" / "runtime" / "app.py").is_file()
+    assert (base / "app" / "surfaces" / "api" / "http.py").is_file()
+    assert (base / "app" / "surfaces" / "api" / "ws.py").is_file()
+    assert (base / "app" / "surfaces" / "cli" / "main.py").is_file()
+    for domain in {
+        "ingestion",
+        "evidence",
+        "asset_market",
+        "token_intel",
+        "social_enrichment",
+        "closed_loop_harness",
+        "notifications",
+        "pulse_lab",
+        "account_quality",
+    }:
+        assert (base / "domains" / domain / "__init__.py").is_file()
+    assert (base / "integrations" / "gmgn" / "__init__.py").is_file()
+    assert (base / "integrations" / "okx" / "__init__.py").is_file()
+    assert (base / "integrations" / "openai_agents" / "__init__.py").is_file()
+    assert (base / "platform" / "db" / "postgres_client.py").is_file()
     assert (ROOT / "Makefile").is_file()
     assert (ROOT / "Dockerfile").is_file()
     assert (ROOT / "compose.yaml").is_file()
@@ -83,7 +69,15 @@ def test_legacy_narrative_modules_stay_removed():
 
 
 def test_enrichment_worker_does_not_claim_legacy_job_types():
-    text = (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "enrichment_repository.py").read_text()
+    text = (
+        ROOT
+        / "src"
+        / "gmgn_twitter_intel"
+        / "domains"
+        / "social_enrichment"
+        / "repositories"
+        / "enrichment_repository.py"
+    ).read_text()
 
     assert "legacy_job_type_retired" in text
     assert "job_type = %s" in text
@@ -113,7 +107,10 @@ def test_trading_attention_service_has_been_hard_deleted():
 
 
 def test_pulse_agent_repository_has_no_dual_name_compatibility_arguments():
-    text = (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "pulse_repository.py").read_text(encoding="utf-8")
+    pulse_repo_path = (
+        ROOT / "src" / "gmgn_twitter_intel" / "domains" / "pulse_lab" / "repositories" / "pulse_repository.py"
+    )
+    text = pulse_repo_path.read_text(encoding="utf-8")
     forbidden = {
         "context: dict[str, Any]",
         "request: dict[str, Any]",
@@ -140,11 +137,11 @@ def test_current_token_radar_runtime_does_not_import_old_token_market_paths():
         "token_signal_snapshots",
     }
     runtime_files = [
-        ROOT / "src/gmgn_twitter_intel/api/app.py",
-        ROOT / "src/gmgn_twitter_intel/api/http.py",
-        ROOT / "src/gmgn_twitter_intel/pipeline/ingest_service.py",
-        ROOT / "src/gmgn_twitter_intel/pipeline/token_radar_projection.py",
-        ROOT / "src/gmgn_twitter_intel/storage/repository_session.py",
+        ROOT / "src/gmgn_twitter_intel/app/runtime/app.py",
+        ROOT / "src/gmgn_twitter_intel/app/surfaces/api/http.py",
+        ROOT / "src/gmgn_twitter_intel/domains/evidence/services/ingest_service.py",
+        ROOT / "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py",
+        ROOT / "src/gmgn_twitter_intel/app/runtime/repository_session.py",
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
     for item in forbidden:
@@ -161,7 +158,7 @@ def test_runtime_source_does_not_reference_removed_token_radar_versions():
     runtime_files = [
         path
         for path in (ROOT / "src" / "gmgn_twitter_intel").rglob("*.py")
-        if "storage/alembic/versions" not in path.as_posix()
+        if "platform/db/alembic/versions" not in path.as_posix()
     ]
     text = "\n".join(path.read_text(encoding="utf-8") for path in runtime_files)
     for item in forbidden:
