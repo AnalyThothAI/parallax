@@ -41,6 +41,14 @@ packages = ["src/gmgn_twitter_intel"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "unit: pure logic, no external dependencies (lives in tests/unit/)",
+  "integration: requires real Postgres (lives in tests/integration/)",
+  "e2e: cross-process; needs testcontainers + uvicorn subprocess (lives in tests/e2e/)",
+  "architecture: AST/grep enforcement of repo invariants (lives in tests/architecture/)",
+  "contract: front-back schema/contract drift checks (lives in tests/contract/)",
+]
 
 [tool.ruff]
 line-length = 120

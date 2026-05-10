@@ -1,6 +1,6 @@
 GMGN := uv run gmgn-twitter-intel
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-architecture test-contract check-all coverage contract-check regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -27,6 +27,39 @@ compile: ## compile Python files
 	@uv run python -m compileall src tests
 
 check: test lint compile ## run all local Python checks
+
+test-unit: ## run only tests/unit/
+	@uv run python -m pytest tests/unit -m unit; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
+test-integration: ## run only tests/integration/ (real Postgres required; auto testcontainers in P5)
+	@uv run python -m pytest tests/integration -m integration; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
+test-e2e: ## run only tests/e2e/ (testcontainers + uvicorn subprocess; populated in P5)
+	@uv run python -m pytest tests/e2e -m e2e; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
+test-architecture: ## run only tests/architecture/ (AST/grep checks)
+	@uv run python -m pytest tests/architecture -m architecture; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
+test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
+	@uv run python -m pytest tests/contract -m contract; ec=$$?; [ $$ec -eq 5 ] && exit 0 || exit $$ec
+
+check-all: ## the only command that may produce verification-artefact evidence (gates 1+2+3)
+	@$(MAKE) check
+	@$(MAKE) test-integration
+	@$(MAKE) test-e2e
+	@$(MAKE) coverage
+
+coverage: ## run coverage report (real config in P6)
+	@echo "[P6] coverage gate not yet wired; place-holder"
+
+contract-check: ## verify OpenAPI types are in sync (real impl in P4)
+	@echo "[P4] contract-check not yet wired; place-holder"
+
+regen-contract: ## regenerate openapi.json + web/src/api/types.ts (real impl in P4)
+	@echo "[P4] regen-contract not yet wired; place-holder"
+
+install-hooks: ## install pre-commit hooks (real impl in P2)
+	@echo "[P2] install-hooks not yet wired; place-holder"
 
 init: ## create ~/.gmgn-twitter-intel/config.yaml
 	@$(GMGN) init
