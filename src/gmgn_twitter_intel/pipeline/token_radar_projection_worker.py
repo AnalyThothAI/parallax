@@ -13,6 +13,7 @@ from .token_radar_projection import MARKET_FRESH_MS, TokenRadarProjection
 
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_SCOPES = ("all", "matched")
+DEFAULT_HOT_WINDOWS = ("5m",)
 PREFLIGHT_HYDRATION_LIMIT = 40
 
 
@@ -23,6 +24,7 @@ class TokenRadarProjectionWorker:
         repository_session: Callable[[], AbstractContextManager[Any]],
         windows: tuple[str, ...] = DEFAULT_WINDOWS,
         scopes: tuple[str, ...] = DEFAULT_SCOPES,
+        hot_windows: tuple[str, ...] = DEFAULT_HOT_WINDOWS,
         limit: int = 100,
         interval_seconds: float = 10.0,
         dex_client=None,
@@ -31,6 +33,7 @@ class TokenRadarProjectionWorker:
         self.repository_session = repository_session
         self.windows = tuple(windows)
         self.scopes = tuple(scopes)
+        self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
         self.limit = max(1, int(limit))
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.dex_client = dex_client
@@ -71,19 +74,20 @@ class TokenRadarProjectionWorker:
                     market_hydrator=self._hydrate_market if self.dex_client is not None else None,
                     preflight_hydration_limit=self.preflight_hydration_limit,
                 )
-                window, scope = self._next_window_scope()
-                key = f"{window}:{scope}"
-                window_result = projection.rebuild(
-                    window=window,
-                    scope=scope,
-                    now_ms=computed_at_ms,
-                    limit=self.limit,
-                )
-                result["window"] = window
-                result["scope"] = scope
-                result["windows"][key] = window_result
-                result["rows_written"] = int(window_result.get("rows_written") or 0)
-                result["source_rows"] = int(window_result.get("source_rows") or 0)
+                work_items, primary_item = self._next_work_items()
+                for window, scope in work_items:
+                    key = f"{window}:{scope}"
+                    window_result = projection.rebuild(
+                        window=window,
+                        scope=scope,
+                        now_ms=computed_at_ms,
+                        limit=self.limit,
+                    )
+                    result["windows"][key] = window_result
+                    result["rows_written"] += int(window_result.get("rows_written") or 0)
+                    result["source_rows"] += int(window_result.get("source_rows") or 0)
+                result["window"] = primary_item[0]
+                result["scope"] = primary_item[1]
         except Exception as exc:
             self.last_error = str(exc)
             raise
@@ -109,10 +113,25 @@ class TokenRadarProjectionWorker:
         if close:
             close()
 
-    def _next_window_scope(self) -> tuple[str, str]:
-        work_items = [(window, scope) for window in self.windows for scope in self.scopes]
+    def _next_work_items(self) -> tuple[list[tuple[str, str]], tuple[str, str]]:
+        hot_items = [(window, scope) for window in self.hot_windows for scope in self.scopes]
+        background_item = self._next_background_window_scope()
+        work_items = list(hot_items)
+        if background_item is not None and background_item not in work_items:
+            work_items.append(background_item)
         if not work_items:
             raise RuntimeError("token radar projection worker has no windows or scopes configured")
+        return work_items, background_item or work_items[-1]
+
+    def _next_background_window_scope(self) -> tuple[str, str] | None:
+        work_items = [
+            (window, scope)
+            for window in self.windows
+            if window not in self.hot_windows
+            for scope in self.scopes
+        ]
+        if not work_items:
+            return None
         item = work_items[self._cursor % len(work_items)]
         self._cursor += 1
         return item

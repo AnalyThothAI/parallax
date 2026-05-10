@@ -27,26 +27,38 @@ def test_token_radar_projection_worker_rebuilds_all_windows_and_scopes(monkeypat
     monkeypatch.setattr(module, "TokenRadarProjection", FakeProjection)
     worker = module.TokenRadarProjectionWorker(
         repository_session=lambda: FakeSession(),
-        windows=("5m", "1h"),
+        windows=("5m", "1h", "4h"),
         scopes=("all", "matched"),
         limit=7,
     )
 
     first = worker.rebuild_once(now_ms=1_777_800_000_000)
     second = worker.rebuild_once(now_ms=1_777_800_010_000)
+    third = worker.rebuild_once(now_ms=1_777_800_020_000)
 
     assert calls == [
         {"window": "5m", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "5m", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "1h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
+        {"window": "5m", "scope": "all", "now_ms": 1_777_800_010_000, "limit": 7},
         {"window": "5m", "scope": "matched", "now_ms": 1_777_800_010_000, "limit": 7},
+        {"window": "1h", "scope": "matched", "now_ms": 1_777_800_010_000, "limit": 7},
+        {"window": "5m", "scope": "all", "now_ms": 1_777_800_020_000, "limit": 7},
+        {"window": "5m", "scope": "matched", "now_ms": 1_777_800_020_000, "limit": 7},
+        {"window": "4h", "scope": "all", "now_ms": 1_777_800_020_000, "limit": 7},
     ]
-    assert first["rows_written"] == 2
-    assert first["source_rows"] == 3
-    assert first["window"] == "5m"
+    assert first["rows_written"] == 6
+    assert first["source_rows"] == 9
+    assert first["window"] == "1h"
     assert first["scope"] == "all"
-    assert second["window"] == "5m"
+    assert second["window"] == "1h"
     assert second["scope"] == "matched"
+    assert third["window"] == "4h"
+    assert third["scope"] == "all"
     assert first["windows"]["5m:all"]["rows_written"] == 2
-    assert worker.last_started_at_ms == 1_777_800_010_000
+    assert first["windows"]["5m:matched"]["rows_written"] == 2
+    assert first["windows"]["1h:all"]["rows_written"] == 2
+    assert worker.last_started_at_ms == 1_777_800_020_000
     assert worker.last_run_at_ms is not None
-    assert worker.last_result == second
+    assert worker.last_result == third
     assert worker.last_error is None
