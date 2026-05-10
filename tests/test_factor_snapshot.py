@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
+    FACTOR_FAMILIES,
     build_token_factor_snapshot,
 )
 
@@ -58,6 +59,10 @@ def test_dex_asset_below_market_floors_blocks_high_alert() -> None:
     }
     assert snapshot["families"]["market_quality"]["factors"]["holders"]["raw_value"] == 46
     assert snapshot["provenance"]["source_event_ids"] == ["event-1", "event-2", "event-3"]
+    for family in FACTOR_FAMILIES:
+        assert snapshot["families"][family]["data_health"] in {"ready", "partial", "missing"}
+    assert isinstance(snapshot["families"]["identity"]["data_health"], str)
+    assert isinstance(snapshot["families"]["market_quality"]["data_health"], str)
 
 
 def test_cex_token_does_not_apply_dex_holder_liquidity_floors() -> None:

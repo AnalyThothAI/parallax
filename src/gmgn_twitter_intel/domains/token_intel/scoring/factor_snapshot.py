@@ -279,6 +279,7 @@ def _family(
     payload = {
         "family": family,
         "score": _average_score([safe_int(factor["score"]) for factor in factors]),
+        "data_health": _family_data_health(factors),
         "facts": facts,
         "factors": factor_map,
     }
@@ -312,6 +313,15 @@ def _factor_point(
         "risk_flags": _dedupe_strings(risk_flags or []),
         "hard_gate": hard_gate,
     }
+
+
+def _family_data_health(factors: list[dict[str, Any]]) -> str:
+    health_values = {str(factor.get("data_health") or "missing") for factor in factors}
+    if not health_values or health_values == {"missing"}:
+        return "missing"
+    if health_values == {"ready"}:
+        return "ready"
+    return "partial"
 
 
 def _presence_factor(family: str, key: str, value: Any, *, confidence: float = 0.95) -> dict[str, Any]:
