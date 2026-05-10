@@ -15,46 +15,32 @@ def test_project_metadata_uses_gmgn_twitter_intel_name():
     }
 
 
-def test_project_uses_standard_uv_src_layout():
+def test_project_uses_domain_package_src_layout():
+    base = ROOT / "src" / "gmgn_twitter_intel"
     assert (ROOT / "pyproject.toml").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "__init__.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "api" / "app.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "collector" / "service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "tweet_text.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "entity_extractor.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "ingest_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_evidence_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_intent_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_intent_resolver.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_resolution_refresh.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_radar_projection.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "token_radar_projection_worker.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "social_event_extraction.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_scoring.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_snapshot_builder.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_settlement.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_credit.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "harness_ops.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / "enrichment_worker.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_search_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "asset_flow_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_target_posts_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "token_target_social_timeline_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "account_alert_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "retrieval" / "harness_service.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_client.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "postgres_migrations.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "evidence_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "entity_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "asset_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "signal_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "enrichment_repository.py").is_file()
-    assert (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "harness_repository.py").is_file()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / ("lance" + "db_client.py")).exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "pipeline" / ("embed" + "ding.py")).exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_client.py").exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "storage" / "sqlite_schema.py").exists()
-    assert not (ROOT / "src" / "gmgn_twitter_intel" / "store" / "sqlite.py").exists()
+    assert (base / "__init__.py").is_file()
+    assert (base / "__main__.py").is_file()
+    assert (base / "cli.py").is_file()
+    assert (base / "app" / "runtime" / "app.py").is_file()
+    assert (base / "app" / "surfaces" / "api" / "http.py").is_file()
+    assert (base / "app" / "surfaces" / "api" / "ws.py").is_file()
+    assert (base / "app" / "surfaces" / "cli" / "main.py").is_file()
+    for domain in {
+        "ingestion",
+        "evidence",
+        "asset_market",
+        "token_intel",
+        "social_enrichment",
+        "closed_loop_harness",
+        "notifications",
+        "pulse_lab",
+        "account_quality",
+    }:
+        assert (base / "domains" / domain / "__init__.py").is_file()
+    assert (base / "integrations" / "gmgn" / "__init__.py").is_file()
+    assert (base / "integrations" / "okx" / "__init__.py").is_file()
+    assert (base / "integrations" / "openai_agents" / "__init__.py").is_file()
+    assert (base / "platform" / "db" / "postgres_client.py").is_file()
     assert (ROOT / "Makefile").is_file()
     assert (ROOT / "Dockerfile").is_file()
     assert (ROOT / "compose.yaml").is_file()
