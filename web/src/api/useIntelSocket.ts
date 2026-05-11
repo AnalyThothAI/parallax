@@ -1,12 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
-<<<<<<< HEAD
-
-=======
 import type { LivePayload, MarketUpdatePayload, NotificationLivePayload } from "./types";
->>>>>>> origin/main
 import { websocketUrl } from "./client";
-import type { LivePayload, NotificationLivePayload } from "./types";
 
 type SocketStatus = "idle" | "connecting" | "authenticating" | "connected" | "closed" | "error";
 
@@ -42,7 +37,7 @@ export function useIntelSocket({ token, handles, replay, notifications = false, 
       connectionTimeout: 4_000,
       maxRetries: Infinity,
       maxReconnectionDelay: 8_000,
-      minReconnectionDelay: 800,
+      minReconnectionDelay: 800
     });
     socketRef.current = ws;
     setStatus("connecting");
@@ -62,14 +57,9 @@ export function useIntelSocket({ token, handles, replay, notifications = false, 
             type: "subscribe",
             handles: normalizeHandles(handles),
             notifications,
-<<<<<<< HEAD
-            replay,
-          }),
-=======
             market_targets: normalizedMarketTargets,
             replay
           })
->>>>>>> origin/main
         );
         return;
       }
@@ -78,17 +68,11 @@ export function useIntelSocket({ token, handles, replay, notifications = false, 
         return;
       }
       if (payload.type === "notification") {
-<<<<<<< HEAD
-        setNotificationEvents((current) =>
-          [payload as NotificationLivePayload, ...current].slice(0, 50),
-        );
-=======
         setNotificationEvents((current) => [payload as NotificationLivePayload, ...current].slice(0, 50));
         return;
       }
       if (payload.type === "market_update") {
         setMarketUpdates((current) => [payload as MarketUpdatePayload, ...current].slice(0, 100));
->>>>>>> origin/main
       }
     });
 

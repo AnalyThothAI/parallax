@@ -7,7 +7,6 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 import yaml
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
@@ -226,10 +225,6 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["notifications"]["channels"]["pushdeer"]["url_configured"])
         self.assertEqual(payload["data"]["notifications"]["channels"]["pushdeer"]["provider"], "apprise")
 
-    @pytest.mark.skip(
-        reason="Decimal not JSON-serializable in CLI runtime output path; route changed since hard-cut. "
-        "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-    )
     def test_recent_search_asset_flow_harness_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
@@ -383,7 +378,6 @@ class CliTests(unittest.TestCase):
         for command in obsolete_commands:
             self.assertEqual(main(command, stdout=io.StringIO()), 2)
 
-
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".gmgn-twitter-intel"
     db_path = app_home / "postgres_test_db"
@@ -506,11 +500,6 @@ def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
     }
 
 
-@pytest.mark.skip(
-    reason="Loads ~/.gmgn-twitter-intel/config.yaml which contains legacy pulse_agent_trigger_*/"
-    "pulse_agent_gate_* keys rejected by current LlmConfig(extra='forbid'). Plan §Pre-flight Tier D. "
-    "Tracked in docs/TECH_DEBT.md → 'CLI ops sync directory tests pinned to legacy config.yaml schema'."
-)
 def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path):
     import io
     import json
@@ -566,16 +555,7 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     assert isinstance(captured["client"], FakeClient)
 
 
-<<<<<<< HEAD:tests/integration/test_cli.py
-@pytest.mark.skip(
-    reason="Loads ~/.gmgn-twitter-intel/config.yaml without HOME isolation; user-side legacy keys "
-    "fail LlmConfig(extra='forbid'). Plan §Pre-flight Tier D. "
-    "Tracked in docs/TECH_DEBT.md → 'CLI ops sync directory tests pinned to legacy config.yaml schema'."
-)
-def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch):
-=======
 def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch, tmp_path):
->>>>>>> origin/main:tests/test_cli.py
     import io
     import json
 

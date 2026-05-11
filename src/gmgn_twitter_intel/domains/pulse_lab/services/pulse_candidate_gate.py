@@ -77,10 +77,6 @@ def gate_pulse_candidate_from_factor_snapshot(
     )
 
 
-<<<<<<< HEAD
-def _component_scores(radar: dict[str, Any]) -> dict[str, int]:
-    return {key: _score_at(radar, key) for key in ("heat", "quality", "propagation", "tradeability", "timing")}
-=======
 def _valid_snapshot(factor_snapshot: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(factor_snapshot, dict) or not factor_snapshot:
         raise ValueError("factor_snapshot must be a non-empty dict")
@@ -100,7 +96,6 @@ def _blocked_reasons(snapshot: dict[str, Any], hard_gate_reasons: list[str]) -> 
     if not target_type or not target_id or target_type in {"source_seed", "SourceSeed", "unresolved"}:
         reasons.append("missing_token_target")
     return _dedupe(reasons)
->>>>>>> origin/main
 
 
 def _pulse_status(
@@ -151,20 +146,10 @@ def _positive_reason(pulse_status: str) -> str:
     return "factor_snapshot_low_information"
 
 
-<<<<<<< HEAD
-def _hard_risks(radar: dict[str, Any], risk_reasons: list[str]) -> list[str]:
-    risks = [
-        _normalize_risk(risk)
-        for component in _dict_values(radar)
-        for risk in (component.get("hard_risks", []) if isinstance(component, dict) else [])
-    ]
-    risks.extend(_normalize_risk(risk) for risk in risk_reasons if risk in _HARD_RISK_NAMES)
-=======
 def _factor_risks(snapshot: dict[str, Any]) -> list[str]:
     risks: list[str] = []
     for factor in _factor_values(snapshot):
         risks.extend(_stable_strings(factor.get("risk_flags")))
->>>>>>> origin/main
     return _dedupe(risks)
 
 
@@ -183,109 +168,10 @@ def _factor_values(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     for family_payload in families.values():
         if not isinstance(family_payload, dict):
             continue
-<<<<<<< HEAD
-        for key in ("hard_risks", "risks", "risk_flags"):
-            values = source.get(key) or []
-            risks.extend(_normalize_risk(item) for item in values)
-    for segment in _list_or_empty(timeline.get("stage_segments")):
-        if not isinstance(segment, dict):
-            continue
-        summary_facts = _dict_or_empty(segment.get("summary_facts"))
-        risks.extend(_normalize_risk(item) for item in summary_facts.get("risks", []))
-    return risks
-
-
-def _phase(model: PulseThesisPayload, radar: dict[str, Any], timeline: dict[str, Any]) -> str:
-    if model.social_phase != "unknown":
-        return model.social_phase
-    windows = _dict_or_empty(timeline.get("windows"))
-    for window in ("5m", "1h", "4h", "24h"):
-        value = windows.get(window)
-        if isinstance(value, dict) and value.get("phase"):
-            return str(value["phase"])
-    propagation = radar.get("propagation")
-    return str(propagation.get("phase") if isinstance(propagation, dict) else radar.get("phase") or "unknown")
-
-
-def _market_status(radar: dict[str, Any], market: dict[str, Any]) -> str | None:
-    candidates = (
-        market.get("market_status"),
-        _nested(radar, "price", "market_status"),
-        _nested(radar, "tradeability", "market_status"),
-        radar.get("market_status"),
-    )
-    for value in candidates:
-        if value:
-            return str(value)
-    market_fresh = _nested(radar, "tradeability", "market_fresh")
-    if market_fresh is not None:
-        return "fresh" if bool(market_fresh) else "stale"
-    return None
-
-
-def _score_at(radar: dict[str, Any], key: str) -> int:
-    value = radar.get(key)
-    if isinstance(value, dict):
-        return clamp_score(safe_int(value.get("score")))
-    return clamp_score(safe_int(value))
-
-
-def _decision(radar: dict[str, Any]) -> str | None:
-    return str(_nested(radar, "opportunity", "decision") or radar.get("decision") or "").strip() or None
-
-
-def _chase_risk(radar: dict[str, Any]) -> bool:
-    timing = _dict_or_empty(radar.get("timing"))
-    price = _dict_or_empty(radar.get("price"))
-    price_lead = max(
-        safe_float(timing.get("price_change_before_social_pct")),
-        safe_float(price.get("price_change_before_social_pct")),
-        safe_float(radar.get("price_change_before_social_pct")),
-    )
-    return bool(timing.get("chase_risk") or radar.get("chase_risk") or price_lead >= 0.15)
-
-
-def _strong_information(scores: dict[str, int], confidence: float, thresholds: PulseGateThresholds) -> bool:
-    return (
-        scores["heat"] >= thresholds.trade_heat_min
-        or scores["quality"] >= thresholds.trade_quality_min
-        or scores["propagation"] >= thresholds.trade_propagation_min
-        or confidence >= thresholds.confidence_min
-    )
-
-
-def _is_low_information(risk_reasons: list[str], timeline: dict[str, Any]) -> bool:
-    return bool(set(risk_reasons) & _LOW_INFO_RISKS) or _duplicate_text_share(timeline) >= 0.5
-
-
-def _public_only_low_confirmed(risks: list[str], timeline: dict[str, Any]) -> bool:
-    if "public_only_unconfirmed" not in risks and "public_stream_coverage" not in risks:
-        return False
-    if not timeline:
-        return False
-    return _timeline_count(timeline, "authors") <= 2 and _timeline_count(timeline, "mentions") <= 3
-
-
-def _duplicate_text_share(timeline: dict[str, Any]) -> float:
-    windows = _dict_or_empty(timeline.get("windows"))
-    shares = [safe_float(window.get("duplicate_text_share")) for window in windows.values() if isinstance(window, dict)]
-    post_clusters = _list_or_empty(timeline.get("post_clusters"))
-    shares.extend(
-        safe_float(cluster.get("duplicate_text_share")) for cluster in post_clusters if isinstance(cluster, dict)
-    )
-    return max(shares, default=safe_float(timeline.get("duplicate_text_share")))
-
-
-def _timeline_count(timeline: dict[str, Any], key: str) -> int:
-    windows = _dict_or_empty(timeline.get("windows"))
-    counts = [safe_int(window.get(key)) for window in windows.values() if isinstance(window, dict)]
-    return max(counts, default=safe_int(timeline.get(key)))
-=======
         factor_map = family_payload.get("factors")
         if isinstance(factor_map, dict):
             factors.extend(value for value in factor_map.values() if isinstance(value, dict))
     return factors
->>>>>>> origin/main
 
 
 def _nested(data: dict[str, Any], outer: str, inner: str) -> Any:
@@ -295,40 +181,10 @@ def _nested(data: dict[str, Any], outer: str, inner: str) -> Any:
     return None
 
 
-<<<<<<< HEAD
-def _dict_values(data: dict[str, Any]) -> list[dict[str, Any]]:
-    return [value for value in data.values() if isinstance(value, dict)]
-
-
-def _dict_or_empty(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _list_or_empty(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def _normalize_risk(value: Any) -> str:
-    risk = str(value).strip().lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "duplicate_text": "duplicate_text_cluster",
-        "repeated_text": "repeated_text_cluster",
-        "price_chase_risk": "chase_risk",
-        "missing_market": "market_missing",
-        "stale_market": "market_stale",
-        "market_unavailable": "market_missing",
-        "market_cap_missing": "missing_market_cap",
-        "unresolved_token_identity": "identity_ambiguous",
-        "identity_unresolved": "identity_ambiguous",
-        "missing_liquidity": "liquidity_missing",
-    }
-    return aliases.get(risk, risk)
-=======
 def _stable_strings(values: Any) -> list[str]:
     if not isinstance(values, list | tuple | set):
         return []
     return [str(value).strip() for value in values if str(value or "").strip()]
->>>>>>> origin/main
 
 
 def _dedupe(values: Any) -> list[str]:

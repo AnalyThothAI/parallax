@@ -26,7 +26,6 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
-    RadarFeatureSet,
     build_radar_features,
 )
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
@@ -41,8 +40,8 @@ class TokenRadarProjection:
     def __init__(
         self,
         *,
-        repos: Any,
-    ) -> None:
+        repos,
+    ):
         self.repos = repos
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
@@ -50,60 +49,7 @@ class TokenRadarProjection:
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
-<<<<<<< HEAD
-        source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
-        grouped = self._group_rows(source_rows)
-        total_window_events = len(
-            {str(row["event_id"]) for row in source_rows if int(row.get("received_at_ms") or 0) >= score_since_ms}
-        )
-        projected = [
-            row
-            for group in grouped.values()
-            if (
-                row := _project_group(
-                    group,
-                    now_ms=computed_at_ms,
-                    window=window,
-                    scope=scope,
-                    score_since_ms=score_since_ms,
-                    window_ms=window_ms,
-                    total_window_events=total_window_events,
-                )
-            )
-        ]
-        projected = self._apply_cross_section(projected)
-        resolved = [row for row in projected if row["lane"] == "resolved"]
-        attention = [row for row in projected if row["lane"] == "attention"]
-        resolved.sort(key=_rank_key)
-        attention.sort(key=_rank_key)
-        rows = []
-        for lane_rows in (resolved, attention):
-            for rank, row in enumerate(lane_rows[:limit], start=1):
-                rows.append({**row, "rank": rank})
-        source_max_received_at_ms = max(
-            (int(row.get("source_max_received_at_ms") or 0) for row in rows),
-            default=0,
-        )
-        projection_repo = ProjectionRepository(self.repos.conn)
-        projection_repo.mark_stale_running_runs(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=PROJECTION_VERSION,
-            stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
-            finished_at_ms=computed_at_ms,
-            commit=False,
-        )
-        run = projection_repo.start_run(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=PROJECTION_VERSION,
-            mode="rebuild",
-            source_start_ms=analysis_since_ms,
-            source_end_ms=computed_at_ms,
-            commit=False,
-        )
-        rows_replaced = self.repos.token_radar.replace_rows(
-=======
         self.repos.token_radar.mark_coverage(
->>>>>>> origin/main
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
@@ -392,15 +338,17 @@ def _project_group(
     total_window_events: int | None = None,
 ) -> dict[str, Any] | None:
     resolved_window_ms = window_ms or WINDOW_MS.get(window, WINDOW_MS["1h"])
-    resolved_score_since_ms = (
-        score_since_ms if score_since_ms is not None else min(int(row.get("received_at_ms") or 0) for row in rows)
+    resolved_score_since_ms = score_since_ms if score_since_ms is not None else min(
+        int(row.get("received_at_ms") or 0) for row in rows
     )
-    window_rows = [row for row in rows if int(row.get("received_at_ms") or 0) >= resolved_score_since_ms]
+    window_rows = [
+        row for row in rows
+        if int(row.get("received_at_ms") or 0) >= resolved_score_since_ms
+    ]
     if not window_rows:
         return None
     previous_rows = [
-        row
-        for row in rows
+        row for row in rows
         if resolved_score_since_ms - resolved_window_ms <= int(row.get("received_at_ms") or 0) < resolved_score_since_ms
     ]
     latest = max(window_rows, key=lambda row: int(row.get("received_at_ms") or 0))
@@ -436,9 +384,13 @@ def _project_group(
     # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
     # These internal fields use the _cohort_* prefix and are stripped before persistence.
     cohort_high_conf_count = sum(
-        1 for r in window_rows if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
+        1 for r in window_rows
+        if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
     )
-    cohort_kol_count = sum(1 for r in window_rows if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS)
+    cohort_kol_count = sum(
+        1 for r in window_rows
+        if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS
+    )
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -560,7 +512,9 @@ def _resolution_discovery(row: dict[str, Any]) -> list[dict[str, Any]]:
         if isinstance(item, dict) and item.get("lookup_key")
     ]
     existing_by_key = {str(item["lookup_key"]): item for item in existing}
-    out: list[dict[str, Any]] = [existing_by_key.get(key) or _not_searched_discovery(key) for key in lookup_keys]
+    out: list[dict[str, Any]] = []
+    for key in lookup_keys:
+        out.append(existing_by_key.get(key) or _not_searched_discovery(key))
     seen = {str(item["lookup_key"]) for item in out}
     out.extend(item for item in existing if str(item["lookup_key"]) not in seen)
     return out
@@ -864,20 +818,6 @@ def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-<<<<<<< HEAD
-def _score(features: RadarFeatureSet) -> dict[str, Any]:
-    components = {
-        "heat": social_heat_score(features.heat),
-        "quality": discussion_quality_score(features.quality),
-        "propagation": propagation_score(features.propagation),
-        "tradeability": tradeability_score(features.tradeability),
-        "timing": timing_score(features.timing),
-    }
-    return {**components, "opportunity": opportunity_score(components)}
-
-
-=======
->>>>>>> origin/main
 def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
     return {
         "market_status": market.get("market_status"),
@@ -994,17 +934,6 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
-<<<<<<< HEAD
-def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
-    attention = row["attention_json"]
-    raw_score = row.get("score_json")
-    score: dict[str, Any] = raw_score if isinstance(raw_score, dict) else {}
-    decision_priority = {"driver": 0, "watch": 1, "investigate": 2, "discard": 3}
-    raw_opp = score.get("opportunity")
-    opportunity: dict[str, Any] = raw_opp if isinstance(raw_opp, dict) else {}
-    raw_heat = score.get("heat")
-    heat: dict[str, Any] = raw_heat if isinstance(raw_heat, dict) else {}
-=======
 def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
     snapshot = _factor_snapshot_for_ranking(row)
     if snapshot is None:
@@ -1016,7 +945,6 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
     decision = composite.get("recommended_decision") or "discard"
     rank_score = _float_or_none(composite.get("rank_score")) or 0.0
->>>>>>> origin/main
     return (
         decision_priority.get(str(decision), 2),
         -rank_score,

@@ -530,15 +530,7 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     scope = _clean(context.get("scope"))
     trigger_signature = _clean(context.get("trigger_signature"))
     timeline_signature = _clean(context.get("timeline_signature"))
-    if (
-        candidate_id is None
-        or candidate_type is None
-        or subject_key is None
-        or window is None
-        or scope is None
-        or trigger_signature is None
-        or timeline_signature is None
-    ):
+    if not all((candidate_id, candidate_type, subject_key, window, scope, trigger_signature, timeline_signature)):
         return None
     factor_snapshot = _mapping(context.get("factor_snapshot"))
     if not factor_snapshot:
@@ -712,8 +704,6 @@ def _cooldown_ms(existing_candidate: dict[str, Any], current_metrics: dict[str, 
     status = _clean(existing_candidate.get("pulse_status") or existing_candidate.get("verdict"))
     if current_metrics.get("trade_candidate_eligible"):
         return _COOLDOWN_MS["trade_candidate"]
-    if status is None:
-        return _COOLDOWN_MS["token_watch"]
     return _COOLDOWN_MS.get(status, _COOLDOWN_MS["token_watch"])
 
 
@@ -820,24 +810,6 @@ def _playbook_side(status: str) -> str:
     return "OBSERVE_ONLY"
 
 
-<<<<<<< HEAD
-def _radar_score(row: dict[str, Any]) -> dict[str, Any]:
-    score = dict(_mapping(row.get("score_json")))
-    score["decision"] = _decision(row)
-    score["attention"] = _mapping(row.get("attention_json"))
-    score["market"] = _market_context(row)
-    score["price"] = _mapping(row.get("price_json"))
-    score["data_health"] = _mapping(row.get("data_health_json"))
-    return _jsonable_dict(score)
-
-
-def _market_context(row: dict[str, Any]) -> dict[str, Any]:
-    market = _mapping(row.get("market_json")) or _mapping(row.get("price_json"))
-    return _jsonable_dict(market)
-
-
-=======
->>>>>>> origin/main
 def _target_payload(row: dict[str, Any]) -> dict[str, Any]:
     target = _mapping(row.get("target_json")) or _mapping(row.get("asset_json"))
     return {
@@ -1054,10 +1026,9 @@ def _call_optional(target: Any, method: str, *args: Any) -> Any:
     return func(*args)
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
+def _transaction(conn: Any):
     if hasattr(conn, "transaction"):
-        result: AbstractContextManager[Any] = conn.transaction()
-        return result
+        return conn.transaction()
     return nullcontext()
 
 
@@ -1086,10 +1057,6 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, list | tuple):
         return [_jsonable(item) for item in value]
     return value
-
-
-def _jsonable_dict(value: dict[str, Any]) -> dict[str, Any]:
-    return {str(key): _jsonable(item) for key, item in value.items()}
 
 
 def _clean(value: Any) -> str | None:

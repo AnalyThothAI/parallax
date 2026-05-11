@@ -52,11 +52,7 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     worker = module.TokenRadarProjectionWorker(
-<<<<<<< HEAD:tests/unit/test_token_radar_projection_worker.py
-        repository_session=FakeSession,
-=======
         repository_session=lambda: FakeSession(coverage),
->>>>>>> origin/main:tests/test_token_radar_projection_worker.py
         windows=("5m", "1h", "4h"),
         scopes=("all", "matched"),
         limit=7,

@@ -1,8 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 import type { SignalPulseItem } from "../api/types";
-
 import { SignalLabPulse } from "./SignalLabPulse";
 
 afterEach(() => cleanup());
@@ -30,7 +28,7 @@ describe("SignalLabPulse", () => {
             blocked_low_information_count: 0,
             dead_job_count: 0,
             market_ready_rate: 1,
-            settlement_coverage: 1,
+            settlement_coverage: 1
           },
           items,
           summary: {
@@ -38,15 +36,15 @@ describe("SignalLabPulse", () => {
             token_watch: 0,
             theme_watch: 0,
             risk_rejected_high_info: 0,
-            blocked_low_information: 0,
+            blocked_low_information: 0
           },
           returned_count: 7,
           has_more: false,
-          next_cursor: null,
+          next_cursor: null
         }}
         onOpenLab={vi.fn()}
         onSelect={vi.fn()}
-      />,
+      />
     );
 
     expect(screen.getByRole("button", { name: /TOKEN6/ })).toBeInTheDocument();
@@ -59,7 +57,7 @@ describe("SignalLabPulse", () => {
     expect(screen.getAllByText(/authors 3/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Open TOKEN6 on OKX" })).toHaveAttribute(
       "href",
-      "https://www.okx.com/trade-spot/token6-usdt",
+      "https://www.okx.com/trade-spot/token6-usdt"
     );
     expect(screen.queryByText(["Direct", "token"].join(" "))).not.toBeInTheDocument();
     expect(screen.queryByText(["Topic", "heat"].join(" "))).not.toBeInTheDocument();
@@ -67,18 +65,7 @@ describe("SignalLabPulse", () => {
     expect(screen.queryByText(["NO", "TRADE"].join("_"))).not.toBeInTheDocument();
   });
 
-<<<<<<< HEAD
-  it("keeps sparse pulse rows renderable while backend jobs are catching up", () => {
-    const sparse = {
-      ...pulseItem(0),
-      top_risks: undefined,
-      confirmation_triggers_zh: undefined,
-      invalidation_triggers_zh: undefined,
-    } as unknown as SignalPulseItem;
-
-=======
   it("renders rows from the factor snapshot contract without legacy fields", () => {
->>>>>>> origin/main
     render(
       <SignalLabPulse
         data={{
@@ -90,7 +77,7 @@ describe("SignalLabPulse", () => {
             blocked_low_information_count: 0,
             dead_job_count: 0,
             market_ready_rate: 1,
-            settlement_coverage: null,
+            settlement_coverage: null
           },
           items: [pulseItem(0)],
           summary: {
@@ -98,15 +85,15 @@ describe("SignalLabPulse", () => {
             token_watch: 0,
             theme_watch: 0,
             risk_rejected_high_info: 0,
-            blocked_low_information: 0,
+            blocked_low_information: 0
           },
           returned_count: 1,
           has_more: false,
-          next_cursor: null,
+          next_cursor: null
         }}
         onOpenLab={vi.fn()}
         onSelect={vi.fn()}
-      />,
+      />
     );
 
     expect(screen.getByRole("button", { name: "open Signal Pulse TOKEN0" })).toBeInTheDocument();
@@ -199,6 +186,6 @@ function pulseItem(index: number): SignalPulseItem {
     schema_version: "signal-pulse-v1",
     created_at_ms: 1_700_000_000_000 + index,
     updated_at_ms: 1_700_000_000_000 + index,
-    playbooks: [],
+    playbooks: []
   };
 }

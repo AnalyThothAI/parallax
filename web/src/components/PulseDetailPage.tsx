@@ -1,12 +1,7 @@
 import { useParams } from "react-router-dom";
-
 import { useSignalPulseCandidate } from "../api/useSignalPulseQueries";
 import { useTraderStore } from "../store/useTraderStore";
-<<<<<<< HEAD
-
-=======
 import { PanelSkeleton, RouteStatePanel } from "../shared/ui/RemoteState";
->>>>>>> origin/main
 import { SignalLabInspector } from "./SignalLabInspector";
 
 export function PulseDetailPage() {

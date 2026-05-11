@@ -1,5 +1,4 @@
 import { FlaskConical } from "lucide-react";
-
 import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
@@ -14,14 +13,7 @@ type SignalLabPulseProps = {
   onSelect: (item: SignalPulseItem) => void;
 };
 
-export function SignalLabPulse({
-  data,
-  isLoading,
-  selectedItemId,
-  mobileTaskPanel,
-  onOpenLab,
-  onSelect,
-}: SignalLabPulseProps) {
+export function SignalLabPulse({ data, isLoading, selectedItemId, mobileTaskPanel, onOpenLab, onSelect }: SignalLabPulseProps) {
   const items = Array.isArray(data?.items) ? data.items : [];
   const summary = data?.summary;
   return (
@@ -41,13 +33,7 @@ export function SignalLabPulse({
         <SummaryPill label="theme" value={summary?.theme_watch ?? 0} />
         <SummaryPill label="rejected" value={summary?.risk_rejected_high_info ?? 0} />
       </div>
-      <SignalPulseList
-        compact
-        isLoading={isLoading}
-        items={items}
-        selectedItemId={selectedItemId}
-        onSelect={onSelect}
-      />
+      <SignalPulseList compact isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
     </section>
   );
 }
@@ -60,13 +46,7 @@ type SignalPulseListProps = {
   onSelect: (item: SignalPulseItem) => void;
 };
 
-export function SignalPulseList({
-  compact,
-  isLoading,
-  items,
-  selectedItemId,
-  onSelect,
-}: SignalPulseListProps) {
+export function SignalPulseList({ compact, isLoading, items, selectedItemId, onSelect }: SignalPulseListProps) {
   if (isLoading) {
     return <SkeletonRows compact={compact} count={compact ? 5 : 6} label="loading signal pulse" />;
   }
@@ -80,19 +60,14 @@ export function SignalPulseList({
         const facts = pulseFactChips(item);
         const venueActions = signalPulseVenueActions(item);
         return (
-          <article
-            className={`signal-chain-row ${selectedItemId === item.candidate_id ? "selected" : ""}`}
-            key={rowKey}
-          >
+          <article className={`signal-chain-row ${selectedItemId === item.candidate_id ? "selected" : ""}`} key={rowKey}>
             <button
               aria-label={`open Signal Pulse ${itemTitle(item)}`}
               className="signal-chain-select"
               type="button"
               onClick={() => onSelect(item)}
             >
-              <span className={`signal-stage-badge ${item.pulse_status}`}>
-                {statusLabel(item.pulse_status)}
-              </span>
+              <span className={`signal-stage-badge ${item.pulse_status}`}>{statusLabel(item.pulse_status)}</span>
               <span className="signal-chain-main">
                 <strong>{itemTitle(item)}</strong>
                 <em>{compact ? compactPulseMeta(item) : fullPulseMeta(item)}</em>
@@ -104,15 +79,8 @@ export function SignalPulseList({
                 </span>
               </span>
               <span className="signal-chain-score">
-<<<<<<< HEAD
-                <b>{item.score_band ?? compactNumber(item.candidate_score)}</b>
-                <small>
-                  {item.social_phase ?? item.narrative_type ?? item.verdict ?? "phase unknown"}
-                </small>
-=======
                 <b>{scoreBand(item) ?? compactNumber(gateScore(item))}</b>
                 <small>{gateStatus(item) ?? item.agent_recommendation.recommendation ?? "gate unknown"}</small>
->>>>>>> origin/main
               </span>
               <span className="signal-chain-time">{formatRelativeTime(item.updated_at_ms)}</span>
             </button>
@@ -154,28 +122,13 @@ function itemKey(item: SignalPulseItem, index: number): string {
 }
 
 function fullPulseMeta(item: SignalPulseItem): string {
-<<<<<<< HEAD
-  return [
-    item.verdict,
-    item.social_phase,
-    item.score_band,
-    `updated ${formatRelativeTime(item.updated_at_ms)} ago`,
-  ]
-=======
   return [marketFactMeta(item), socialFactMeta(item), gateMeta(item), `updated ${formatRelativeTime(item.updated_at_ms)} ago`]
->>>>>>> origin/main
     .filter(Boolean)
     .join(" · ");
 }
 
 function compactPulseMeta(item: SignalPulseItem): string {
-<<<<<<< HEAD
-  return [item.social_phase, item.score_band, `${formatRelativeTime(item.updated_at_ms)} ago`]
-    .filter(Boolean)
-    .join(" · ");
-=======
   return [socialFactMeta(item), gateMeta(item), `${formatRelativeTime(item.updated_at_ms)} ago`].filter(Boolean).join(" · ");
->>>>>>> origin/main
 }
 
 function statusLabel(status: SignalPulseStatus): string {
@@ -185,12 +138,6 @@ function statusLabel(status: SignalPulseStatus): string {
   return "rejected";
 }
 
-<<<<<<< HEAD
-function stringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
-    : [];
-=======
 function pulseFactChips(item: SignalPulseItem): string[] {
   return [
     usdFact("cap", item.fact_card.market_cap_usd),
@@ -254,5 +201,4 @@ function numberValue(value: unknown): number | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
->>>>>>> origin/main
 }

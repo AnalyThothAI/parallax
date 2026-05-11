@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 
 import { getApi } from "../api/client";
 import type {
@@ -12,31 +12,15 @@ import type {
   TokenSocialTimelineData,
   TokenTimelinePost,
   TokenTimelineStage,
-  WindowKey,
+  WindowKey
 } from "../api/types";
-import {
-  mergeTokenPostPages,
-  useTokenTargetPosts,
-  useTokenTargetTimeline,
-} from "../api/useTokenTargetQueries";
+import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "../api/useTokenTargetQueries";
 import { type TargetRef, targetRefEquals } from "../domain/tokenTarget";
-import {
-  compactNumber,
-  eventText,
-  formatReason,
-  formatRisk,
-  formatScore,
-  formatSignedPercent,
-  formatTokenPriceUsd,
-  formatUsdCompact,
-  shortAddress,
-  tokenLabel,
-} from "../lib/format";
+import { compactNumber, eventText, formatReason, formatRisk, formatScore, formatSignedPercent, formatTokenPriceUsd, formatUsdCompact, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "../lib/tokenRadar";
 import { tokenVenueAction } from "../lib/venue";
 import { useTraderStore } from "../store/useTraderStore";
-
 import { DecisionTag } from "./DecisionTag";
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsPanel } from "./TokenPostsPanel";
@@ -51,9 +35,7 @@ export function TokenTargetPage() {
   const storeScope = useTraderStore((state) => state.scope);
   const scope = parseScopeKey(searchParams.get("scope")) ?? storeScope;
 
-  const [windowKey, setWindowKey] = useState<WindowKey>(
-    () => parseWindowKey(searchParams.get("window")) ?? "1h",
-  );
+  const [windowKey, setWindowKey] = useState<WindowKey>(() => parseWindowKey(searchParams.get("window")) ?? "1h");
   const [postRange, setPostRange] = useState<TokenPostRange>("current_window");
   const [postSortMode, setPostSortMode] = useState<TokenPostSortMode>("recent");
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
@@ -63,31 +45,21 @@ export function TokenTargetPage() {
   const targetType = params.targetType as TargetRef["target_type"] | undefined;
   const isValidTargetType = Boolean(targetType && VALID_TARGET_TYPES.has(targetType));
   const isValidParams = isValidTargetType && Boolean(params.targetId);
-  const target = useMemo<TargetRef | null>(
-    () =>
-      isValidParams && targetType && params.targetId
-        ? { target_type: targetType, target_id: params.targetId }
-        : null,
-    [isValidParams, targetType, params.targetId],
-  );
+  const target: TargetRef | null = isValidParams && targetType && params.targetId
+    ? { target_type: targetType, target_id: params.targetId }
+    : null;
 
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
 
   const assetFlowQuery = useQuery({
-    queryKey: [
-      "token-radar-page",
-      windowKey,
-      scope,
-      target?.target_type ?? null,
-      target?.target_id ?? null,
-    ],
+    queryKey: ["token-radar-page", windowKey, scope, target?.target_type ?? null, target?.target_id ?? null],
     queryFn: () =>
       getApi<AssetFlowData>("/api/token-radar", {
         token,
-        params: { window: windowKey, limit: 48, scope },
+        params: { window: windowKey, limit: 48, scope }
       }),
     enabled: Boolean(token && target),
-    refetchInterval: 10_000,
+    refetchInterval: 10_000
   });
 
   const timelineQuery = useTokenTargetTimeline({ token, target, window: windowKey, scope });
@@ -97,7 +69,7 @@ export function TokenTargetPage() {
     window: windowKey,
     scope,
     range: postRange,
-    sort: tokenPostRequestSort,
+    sort: tokenPostRequestSort
   });
 
   const tokenItem = useMemo(() => {
@@ -106,13 +78,9 @@ export function TokenTargetPage() {
     if (!data) return null;
     const rows = [...data.targets, ...data.attention];
     const matchedRow = rows.find((row) => {
-      const rowTarget: TargetRef | null =
-        row.target?.target_type && row.target.target_id
-          ? {
-              target_type: row.target.target_type as TargetRef["target_type"],
-              target_id: row.target.target_id,
-            }
-          : null;
+      const rowTarget: TargetRef | null = row.target?.target_type && row.target.target_id
+        ? { target_type: row.target.target_type as TargetRef["target_type"], target_id: row.target.target_id }
+        : null;
       return rowTarget && targetRefEquals(rowTarget, target);
     });
     if (!matchedRow) return null;
@@ -127,12 +95,7 @@ export function TokenTargetPage() {
       <section className="mobile-task-surface" data-mobile-task-panel="radar">
         <section className="token-target-page" aria-label="Token audit page (not found)">
           <header className="token-case-header">
-            <button
-              className="ghost-icon-button"
-              type="button"
-              onClick={() => navigate("/")}
-              aria-label="Back to Live"
-            >
+            <button className="ghost-icon-button" type="button" onClick={() => navigate("/")} aria-label="Back to Live">
               <ArrowLeft aria-hidden />
               <span>Live</span>
             </button>
@@ -217,196 +180,110 @@ export function TokenTargetPage() {
       <section className="mobile-task-surface" data-mobile-task-panel="radar">
         <section className="token-target-page" aria-label="Token audit page">
           <header className="token-case-header">
-            <button
-              className="ghost-icon-button"
-              type="button"
-              onClick={() => navigate(-1)}
-              aria-label="Back"
-            >
+            <button className="ghost-icon-button" type="button" onClick={() => navigate(-1)} aria-label="Back">
               <ArrowLeft aria-hidden />
               <span>Back</span>
             </button>
           </header>
-          <div className="empty-state">
-            {assetFlowQuery.isPending ? "loading token audit" : "token audit target missing"}
-          </div>
+          <div className="empty-state">{assetFlowQuery.isPending ? "loading token audit" : "token audit target missing"}</div>
         </section>
       </section>
     );
   }
 
   const stages = timeline?.stages ?? [];
-  const selectedStageFilter =
-    selectedStageId && stages.some((stage) => stage.stage_id === selectedStageId)
-      ? selectedStageId
-      : null;
+  const selectedStageFilter = selectedStageId && stages.some((stage) => stage.stage_id === selectedStageId) ? selectedStageId : null;
   const venueAction = tokenVenueAction(tokenItem);
-  const riskLead =
-    tokenItem.opportunity.hard_risks?.[0] ??
-    tokenItem.opportunity.risks[0] ??
-    tokenItem.timing.risks[0];
+  const riskLead = tokenItem.opportunity.hard_risks?.[0] ?? tokenItem.opportunity.risks[0] ?? tokenItem.timing.risks[0];
 
   return (
     <section className="mobile-task-surface" data-mobile-task-panel="radar">
-      <section className="token-target-page" aria-label="Token audit page">
-        <header className="token-case-header">
-          <button
-            className="ghost-icon-button"
-            type="button"
-            onClick={() => navigate(-1)}
-            aria-label="Back to Token Radar"
-          >
-            <ArrowLeft aria-hidden />
-            <span>Radar</span>
-          </button>
-          <div className="token-case-title">
-            <span>
-              {tokenItem.identity.target_type ?? "unresolved"} ·{" "}
-              {tokenItem.identity.inst_id ??
-                tokenItem.identity.chain ??
-                tokenItem.identity.identity_key}
-            </span>
-            <h2>{tokenLabel(tokenItem)}</h2>
-          </div>
-          <div className="token-case-actions">
-            <DecisionTag decision={tokenItem.opportunity.decision} />
-            <strong>{formatScore(tokenItem.opportunity.score)}</strong>
-            <div className="segmented mini range" aria-label="audit page window">
-              {OBSERVATION_WINDOWS.map((item) => (
-                <button
-                  key={item}
-                  className={windowKey === item ? "active" : ""}
-                  type="button"
-                  onClick={() => setWindowKey(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {venueAction ? (
-              <a
-                aria-label={`Open ${tokenLabel(tokenItem)} on ${venueAction.label}`}
-                href={venueAction.url}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {venueAction.label}
-                <ExternalLink aria-hidden />
-              </a>
-            ) : null}
-          </div>
-        </header>
-
-        <section className="token-audit-strip" aria-label="token audit facts">
-          <AuditMetric
-            label="identity"
-            value={identityLine(tokenItem)}
-            detail={tokenItem.identity.identity_status}
-          />
-          <AuditMetric
-            label="social"
-            value={`${compactNumber(timeline?.summary.posts ?? tokenItem.evidence_total_count)} posts`}
-            detail={`${compactNumber(timeline?.summary.authors ?? tokenItem.propagation.independent_authors)} authors`}
-          />
-          <AuditMetric
-            label="market"
-            value={marketLine(tokenItem)}
-            detail={tokenItem.market.price_change_status ?? tokenItem.market.market_status}
-          />
-          <AuditMetric
-            label="since social"
-            value={formatSignedPercent(tokenItem.market.price_change_since_social_pct)}
-            detail={
-              tokenItem.market.price_at_social_start
-                ? formatTokenPriceUsd(tokenItem.market.price_at_social_start)
-                : "no start price"
-            }
-          />
-          <AuditMetric
-            label="first snapshot"
-            value={formatSignedPercent(tokenItem.market.price_change_since_first_snapshot_pct)}
-            detail={
-              tokenItem.market.price_at_first_snapshot
-                ? formatTokenPriceUsd(tokenItem.market.price_at_first_snapshot)
-                : "no snapshot"
-            }
-          />
-          <AuditMetric
-            label="risk"
-            value={riskLead ? formatRisk(riskLead) : "clear"}
-            detail={tokenItem.flow.baseline_status}
-          />
-        </section>
-
-        <section className="case-section stage-tape-section">
-          <header>
-            <span>stage tape</span>
-            <b>
-              {timelineQuery.isFetching
-                ? "loading"
-                : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}
-            </b>
-            {selectedStageFilter ? (
-              <button
-                className="inline-clear-button"
-                type="button"
-                onClick={() => setSelectedStageId(null)}
-              >
-                clear filter
+    <section className="token-target-page" aria-label="Token audit page">
+      <header className="token-case-header">
+        <button className="ghost-icon-button" type="button" onClick={() => navigate(-1)} aria-label="Back to Token Radar">
+          <ArrowLeft aria-hidden />
+          <span>Radar</span>
+        </button>
+        <div className="token-case-title">
+          <span>{tokenItem.identity.target_type ?? "unresolved"} · {tokenItem.identity.inst_id ?? tokenItem.identity.chain ?? tokenItem.identity.identity_key}</span>
+          <h2>{tokenLabel(tokenItem)}</h2>
+        </div>
+        <div className="token-case-actions">
+          <DecisionTag decision={tokenItem.opportunity.decision} />
+          <strong>{formatScore(tokenItem.opportunity.score)}</strong>
+          <div className="segmented mini range" aria-label="audit page window">
+            {OBSERVATION_WINDOWS.map((item) => (
+              <button key={item} className={windowKey === item ? "active" : ""} type="button" onClick={() => setWindowKey(item)}>
+                {item}
               </button>
-            ) : null}
-          </header>
-          <StageTape
-            stages={stages}
-            selectedStageId={selectedStageFilter}
-            timeline={timeline}
-            onSelect={setSelectedStageId}
-          />
-        </section>
+            ))}
+          </div>
+          {venueAction ? (
+            <a aria-label={`Open ${tokenLabel(tokenItem)} on ${venueAction.label}`} href={venueAction.url} rel="noreferrer" target="_blank">
+              {venueAction.label}
+              <ExternalLink aria-hidden />
+            </a>
+          ) : null}
+        </div>
+      </header>
 
-        <section className="case-section">
-          <header>
-            <span>message evidence</span>
-            <b>{selectedStageFilter ? "stage filtered" : "all loaded posts"}</b>
-          </header>
-          <TokenPostsPanel
-            hideDuplicateClusters={hideDuplicateClusters}
-            isFetchingNextPage={postsQuery.isFetchingNextPage}
-            isLoading={postsQuery.isLoading}
-            posts={posts}
-            postRange={postRange}
-            postSortMode={postSortMode}
-            selectedStageId={selectedStageFilter}
-            watchedPostsOnly={watchedPostsOnly}
-            onHideDuplicateClustersChange={setHideDuplicateClusters}
-            onLoadMorePosts={() => void postsQuery.fetchNextPage()}
-            onPostRangeChange={setPostRange}
-            onPostSortModeChange={setPostSortMode}
-            onWatchedPostsOnlyChange={setWatchedPostsOnly}
-          />
-        </section>
-
-        <section className="case-section">
-          <header>
-            <span>score audit</span>
-            <b>{tokenItem.opportunity.score_version}</b>
-          </header>
-          <ScoreLedger token={tokenItem} />
-        </section>
+      <section className="token-audit-strip" aria-label="token audit facts">
+        <AuditMetric label="identity" value={identityLine(tokenItem)} detail={tokenItem.identity.identity_status} />
+        <AuditMetric label="social" value={`${compactNumber(timeline?.summary.posts ?? tokenItem.evidence_total_count)} posts`} detail={`${compactNumber(timeline?.summary.authors ?? tokenItem.propagation.independent_authors)} authors`} />
+        <AuditMetric label="market" value={marketLine(tokenItem)} detail={tokenItem.market.price_change_status ?? tokenItem.market.market_status} />
+        <AuditMetric label="since social" value={formatSignedPercent(tokenItem.market.price_change_since_social_pct)} detail={tokenItem.market.price_at_social_start ? formatTokenPriceUsd(tokenItem.market.price_at_social_start) : "no start price"} />
+        <AuditMetric label="first snapshot" value={formatSignedPercent(tokenItem.market.price_change_since_first_snapshot_pct)} detail={tokenItem.market.price_at_first_snapshot ? formatTokenPriceUsd(tokenItem.market.price_at_first_snapshot) : "no snapshot"} />
+        <AuditMetric label="risk" value={riskLead ? formatRisk(riskLead) : "clear"} detail={tokenItem.flow.baseline_status} />
       </section>
+
+      <section className="case-section stage-tape-section">
+        <header>
+          <span>stage tape</span>
+          <b>{timelineQuery.isFetching ? "loading" : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}</b>
+          {selectedStageFilter ? (
+            <button className="inline-clear-button" type="button" onClick={() => setSelectedStageId(null)}>
+              clear filter
+            </button>
+          ) : null}
+        </header>
+        <StageTape stages={stages} selectedStageId={selectedStageFilter} timeline={timeline} onSelect={setSelectedStageId} />
+      </section>
+
+      <section className="case-section">
+        <header>
+          <span>message evidence</span>
+          <b>{selectedStageFilter ? "stage filtered" : "all loaded posts"}</b>
+        </header>
+        <TokenPostsPanel
+          hideDuplicateClusters={hideDuplicateClusters}
+          isFetchingNextPage={postsQuery.isFetchingNextPage}
+          isLoading={postsQuery.isLoading}
+          posts={posts}
+          postRange={postRange}
+          postSortMode={postSortMode}
+          selectedStageId={selectedStageFilter}
+          watchedPostsOnly={watchedPostsOnly}
+          onHideDuplicateClustersChange={setHideDuplicateClusters}
+          onLoadMorePosts={() => void postsQuery.fetchNextPage()}
+          onPostRangeChange={setPostRange}
+          onPostSortModeChange={setPostSortMode}
+          onWatchedPostsOnlyChange={setWatchedPostsOnly}
+        />
+      </section>
+
+      <section className="case-section">
+        <header>
+          <span>score audit</span>
+          <b>{tokenItem.opportunity.score_version}</b>
+        </header>
+        <ScoreLedger token={tokenItem} />
+      </section>
+    </section>
     </section>
   );
 }
 
-function AuditMetric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail?: string | null;
-}) {
+function AuditMetric({ label, value, detail }: { label: string; value: string; detail?: string | null }) {
   return (
     <div>
       <span>{label}</span>
@@ -416,17 +293,7 @@ function AuditMetric({
   );
 }
 
-function StageTape({
-  stages,
-  selectedStageId,
-  timeline,
-  onSelect,
-}: {
-  stages: TokenTimelineStage[];
-  selectedStageId: string | null;
-  timeline: TokenSocialTimelineData | null;
-  onSelect: (stageId: string | null) => void;
-}) {
+function StageTape({ stages, selectedStageId, timeline, onSelect }: { stages: TokenTimelineStage[]; selectedStageId: string | null; timeline: TokenSocialTimelineData | null; onSelect: (stageId: string | null) => void }) {
   if (!stages.length) {
     return <div className="empty-state">暂无阶段证据</div>;
   }
@@ -444,19 +311,10 @@ function StageTape({
             aria-label={`select stage ${stage.phase}`}
           >
             <span className="stage-phase">{stage.phase}</span>
-            <span>
-              {compactNumber(stage.people.posts)}p · {compactNumber(stage.people.authors)}a · top{" "}
-              {Math.round(stage.people.top_author_share * 100)}%
-            </span>
-            <span className={(stage.price.delta_pct ?? 0) >= 0 ? "up" : "down"}>
-              {stage.price.status} {formatSignedPercent(stage.price.delta_pct)}
-            </span>
+            <span>{compactNumber(stage.people.posts)}p · {compactNumber(stage.people.authors)}a · top {Math.round(stage.people.top_author_share * 100)}%</span>
+            <span className={(stage.price.delta_pct ?? 0) >= 0 ? "up" : "down"}>{stage.price.status} {formatSignedPercent(stage.price.delta_pct)}</span>
             <span>{formatReason(stage.trigger_reason)}</span>
-            <p>
-              {lead
-                ? `@${lead.handle ?? "unknown"} · ${eventText({ event_id: lead.event_id, text_clean: lead.text })}`
-                : "no representative post"}
-            </p>
+            <p>{lead ? `@${lead.handle ?? "unknown"} · ${eventText({ event_id: lead.event_id, text_clean: lead.text })}` : "no representative post"}</p>
           </button>
         );
       })}
@@ -464,15 +322,10 @@ function StageTape({
   );
 }
 
-function representativePosts(
-  stage: TokenTimelineStage,
-  timeline: TokenSocialTimelineData | null,
-): TokenTimelinePost[] {
+function representativePosts(stage: TokenTimelineStage, timeline: TokenSocialTimelineData | null): TokenTimelinePost[] {
   const stagePosts = timeline?.posts ?? [];
   const representativeIds = new Set(stage.representative_event_ids);
-  return stagePosts
-    .filter((post) => post.stage_id === stage.stage_id || representativeIds.has(post.event_id))
-    .slice(0, 3);
+  return stagePosts.filter((post) => post.stage_id === stage.stage_id || representativeIds.has(post.event_id)).slice(0, 3);
 }
 
 function parseWindowKey(value: string | null): WindowKey | null {
@@ -483,221 +336,19 @@ function parseScopeKey(value: string | null): TokenFlowItem["posts_query"]["scop
   return value === "all" || value === "matched" ? value : null;
 }
 
-<<<<<<< HEAD
-function fallbackTokenItemFromTarget(
-  target: TargetRef,
-  window: WindowKey,
-  scope: TokenFlowItem["posts_query"]["scope"],
-): TokenFlowItem {
-  const symbol = symbolFromTarget(target);
-  const assetParts = target.target_type === "Asset" ? parseAssetTargetId(target.target_id) : null;
-  const isCex = target.target_type === "CexToken";
-  const heatScore = routeOnlyScoreBlock("heat");
-  const qualityScore = routeOnlyScoreBlock("quality");
-  const propagationScore = routeOnlyScoreBlock("propagation");
-  const tradeabilityScore = routeOnlyScoreBlock("tradeability");
-  const opportunityScore = routeOnlyScoreBlock("opportunity");
-
-  return {
-    identity: {
-      identity_key: target.target_id,
-      identity_status: "route_only",
-      target_type: target.target_type,
-      target_id: target.target_id,
-      asset_id: isCex ? undefined : target.target_id,
-      asset_type: target.target_type,
-      venue_type: isCex ? "cex" : "dex",
-      exchange: null,
-      inst_id: isCex && symbol ? `${symbol}-USDT` : null,
-      inst_type: isCex ? "SPOT" : null,
-      chain: assetParts?.chain ?? null,
-      address: assetParts?.address ?? null,
-      symbol,
-      resolution_reasons: ["route_target"],
-      lookup_keys: [target.target_id],
-      candidate_count: 0,
-      discovery_status: "route_only",
-    },
-    market: {
-      market_status: "missing",
-      price: null,
-      market_cap: null,
-      liquidity: null,
-      pool_status: "missing",
-      holder_count: null,
-      volume_24h: null,
-      snapshot_age_ms: null,
-      snapshot_received_at_ms: null,
-      social_signal_start_ms: null,
-      reference_ms: null,
-      price_at_social_start: null,
-      price_at_reference: null,
-      price_change_since_social_pct: null,
-      price_before_social_start: null,
-      price_change_before_social_pct: null,
-      price_at_first_snapshot: null,
-      first_snapshot_observed_at_ms: null,
-      price_change_since_first_snapshot_pct: null,
-      market_observation_status: "route_only",
-      price_change_status: "missing_market",
-    },
-    flow: {
-      window,
-      window_start_ms: null,
-      window_end_ms: null,
-      mentions: 0,
-      direct_mentions: 0,
-      symbol_mentions: 0,
-      weighted_mentions: 0,
-      avg_attribution_confidence: 0,
-      watched_mentions: 0,
-      previous_mentions: 0,
-      mention_delta: 0,
-      mention_delta_pct: null,
-      z_score: null,
-      new_burst_score: null,
-      stream_dominance: 0,
-      baseline_status: "route_only",
-      baseline_sample_count: 0,
-    },
-    social_heat: {
-      ...heatScore,
-      window,
-      mentions: 0,
-      mentions_5m: 0,
-      mentions_1h: 0,
-      mentions_4h: 0,
-      mentions_24h: 0,
-      weighted_mentions: 0,
-      previous_mentions: 0,
-      mention_delta: 0,
-      mention_delta_pct: null,
-      z_score: null,
-      new_burst_score: null,
-      stream_share: 0,
-      watched_share: 0,
-      status: "route_only",
-    },
-    discussion_quality: {
-      ...qualityScore,
-      evidence_specificity: 0,
-      avg_post_quality: 0,
-      avg_attribution_confidence: 0,
-      duplicate_text_share: 0,
-      informative_post_count: 0,
-      watched_source_count: 0,
-    },
-    propagation: {
-      ...propagationScore,
-      independent_authors: 0,
-      effective_authors: 0,
-      new_authors: 0,
-      top_author_share: 0,
-      duplicate_text_share: 0,
-      author_entropy: 0,
-      reproduction_rate: null,
-      phase: "seed",
-      top_authors: [],
-    },
-    tradeability: {
-      ...tradeabilityScore,
-      identity_tradeable: false,
-      market_fresh: false,
-      market_cap_present: false,
-      liquidity_present: false,
-      pool_present: false,
-      hard_risks: ["missing_current_window_radar_row"],
-    },
-    timing: {
-      score: 0,
-      score_version: "route-only",
-      status: "market_unavailable",
-      social_signal_start_ms: null,
-      price_change_since_social_pct: null,
-      price_change_before_social_pct: null,
-      market_observation_status: "route_only",
-      chase_risk: false,
-      reasons: ["route_target"],
-      risks: ["missing_current_window_radar_row"],
-      contributions: [{ feature: "timing", value: 0, reason: "route_target" }],
-      risk_caps: [],
-    },
-    opportunity: {
-      ...opportunityScore,
-      decision: "investigate",
-      decision_priority: 1,
-      hard_risks: ["missing_current_window_radar_row"],
-      components: {
-        heat: 0,
-        quality: 0,
-        propagation: 0,
-        tradeability: 0,
-        timing: 0,
-      },
-    },
-    watch: {
-      status: "public_only",
-      direct_mentions: 0,
-      direct_authors: 0,
-      seed_link_count: 0,
-      top_seed: null,
-      reasons: [],
-      risks: ["missing_current_window_radar_row"],
-    },
-    evidence_total_count: 0,
-    posts_query: {
-      target_type: target.target_type,
-      target_id: target.target_id,
-      window,
-      scope,
-      range: "current_window",
-    },
-    timeline_query: { target_type: target.target_type, target_id: target.target_id, window, scope },
-  };
-}
-
-function routeOnlyScoreBlock(component: string) {
-  return {
-    score: 0,
-    score_version: "route-only",
-    reasons: ["route_target"],
-    risks: ["missing_current_window_radar_row"],
-    contributions: [{ feature: component, value: 0, reason: "route_target" }],
-    risk_caps: [],
-  };
-}
-
-=======
->>>>>>> origin/main
 function symbolFromTarget(target: TargetRef): string | null {
   if (target.target_type !== "CexToken") {
     return null;
   }
-  const raw = target.target_id.startsWith("cex_token:")
-    ? target.target_id.slice("cex_token:".length)
-    : target.target_id;
-  const symbol = raw
-    .split(":")
-    .pop()
-    ?.replace(/-USDT$/i, "")
-    .trim()
-    .toUpperCase();
+  const raw = target.target_id.startsWith("cex_token:") ? target.target_id.slice("cex_token:".length) : target.target_id;
+  const symbol = raw.split(":").pop()?.replace(/-USDT$/i, "").trim().toUpperCase();
   return symbol || null;
 }
 
-<<<<<<< HEAD
-function parseAssetTargetId(
-  targetId: string,
-): { chain: string | null; address: string | null } | null {
-  const parts = targetId.trim().split(":");
-  if (parts[0] !== "asset" || parts.length < 3) {
-    return null;
-=======
 function targetDisplayLabel(target: TargetRef): string {
   if (target.target_type === "CexToken") {
     const symbol = symbolFromTarget(target);
     return symbol ? `$${symbol}` : target.target_id;
->>>>>>> origin/main
   }
   const address = target.target_id.split(":").at(-1);
   return address ? shortAddress(address) : target.target_id;
@@ -705,11 +356,7 @@ function targetDisplayLabel(target: TargetRef): string {
 
 function identityLine(token: TokenFlowItem): string {
   if (token.identity.venue_type === "cex") {
-    return (
-      [token.identity.exchange?.toUpperCase(), token.identity.inst_id]
-        .filter(Boolean)
-        .join(" · ") || "CEX"
-    );
+    return [token.identity.exchange?.toUpperCase(), token.identity.inst_id].filter(Boolean).join(" · ") || "CEX";
   }
   if (token.identity.address) {
     return `${token.identity.chain ?? "chain?"} · ${shortAddress(token.identity.address)}`;

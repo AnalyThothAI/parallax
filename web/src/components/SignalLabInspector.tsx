@@ -1,7 +1,6 @@
 import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
-
 import {
   DetailDrawerCard,
   DetailDrawerField,
@@ -11,7 +10,7 @@ import {
   DetailDrawerMetricGrid,
   DetailDrawerSection,
   DetailDrawerShell,
-  DetailDrawerTagStrip,
+  DetailDrawerTagStrip
 } from "./DetailDrawer";
 
 type SignalLabInspectorProps = {
@@ -36,26 +35,13 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           <DetailDrawerMetricGrid>
             <DetailDrawerMetric label="score" value={compactNumber(numberValue(item.gate.candidate_score) ?? item.candidate_score)} />
             <DetailDrawerMetric label="status" value={statusLabel(item.pulse_status)} />
-<<<<<<< HEAD
-            <DetailDrawerMetric label="phase" value={item.social_phase ?? "-"} />
-            <DetailDrawerMetric
-              label="updated"
-              value={`${formatRelativeTime(item.updated_at_ms)} ago`}
-            />
-=======
             <DetailDrawerMetric label="gate" value={stringValue(item.gate.pulse_status) ?? "-"} />
             <DetailDrawerMetric label="updated" value={`${formatRelativeTime(item.updated_at_ms)} ago`} />
->>>>>>> origin/main
           </DetailDrawerMetricGrid>
         }
         subtitle={
           <>
-<<<<<<< HEAD
-            {item.verdict ?? "no verdict"} · {item.narrative_type ?? "narrative unknown"} ·{" "}
-            {item.window}/{item.scope}
-=======
             {recommendation.recommendation} · {item.factor_snapshot.composite.recommended_decision ?? "decision unknown"} · {item.window}/{item.scope}
->>>>>>> origin/main
           </>
         }
         title={item.factor_snapshot.subject.symbol || item.symbol || item.subject_key || item.candidate_id}
@@ -110,22 +96,12 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
         <DetailDrawerCard title="Hard Gates">
           <DetailDrawerFieldGrid>
             <DetailDrawerField
-<<<<<<< HEAD
-              label="confirmation_triggers_zh"
-              value={<ListValue items={confirmationTriggers} />}
-            />
-            <DetailDrawerField
-              label="invalidation_triggers_zh"
-              value={<ListValue items={invalidationTriggers} />}
-            />
-=======
               label="eligible_for_high_alert"
               value={String(Boolean(item.factor_snapshot.hard_gates.eligible_for_high_alert))}
             />
             <DetailDrawerField label="gate_status" value={stringValue(item.gate.pulse_status) ?? "-"} />
             <DetailDrawerField label="candidate_score" value={compactNumber(numberValue(item.gate.candidate_score) ?? item.candidate_score)} />
             <DetailDrawerField label="score_band" value={stringValue(item.gate.score_band) ?? item.score_band ?? "-"} />
->>>>>>> origin/main
           </DetailDrawerFieldGrid>
           <DetailDrawerTagStrip emptyLabel="No blocked reasons." items={blockedReasons} />
         </DetailDrawerCard>
@@ -155,19 +131,10 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           <DetailDrawerFieldGrid>
             <DetailDrawerField label="candidate_id" value={item.candidate_id} />
             <DetailDrawerField label="candidate_type" value={item.candidate_type} />
-            <DetailDrawerField
-              label="target"
-              value={[item.target_type, item.target_id].filter(Boolean).join(" · ")}
-            />
+            <DetailDrawerField label="target" value={[item.target_type, item.target_id].filter(Boolean).join(" · ")} />
             <DetailDrawerField label="agent_run_id" value={item.agent_run_id} />
-            <DetailDrawerField
-              label="source_event_ids"
-              value={<ListValue items={sourceEventIds} />}
-            />
-            <DetailDrawerField
-              label="evidence_event_ids"
-              value={<ListValue items={evidenceEventIds} />}
-            />
+            <DetailDrawerField label="source_event_ids" value={<ListValue items={sourceEventIds} />} />
+            <DetailDrawerField label="evidence_event_ids" value={<ListValue items={evidenceEventIds} />} />
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
@@ -213,21 +180,13 @@ function statusLabel(status: SignalPulseItem["pulse_status"]): string {
 }
 
 function stringList(value: unknown): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
-    : [];
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
 }
 
 function jsonValue(value: unknown): unknown {
   return value ?? {};
 }
 
-<<<<<<< HEAD
-function jsonObject(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-=======
 function ReasonList({ items }: { items: SignalPulseItem["agent_recommendation"]["primary_reasons"] }) {
   return <ListValue items={items.map((item) => `${item.factor_key}: ${item.explanation_zh}`)} />;
 }
@@ -255,5 +214,4 @@ function numberValue(value: unknown): number | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
->>>>>>> origin/main
 }

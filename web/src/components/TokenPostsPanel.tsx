@@ -1,26 +1,7 @@
 import { ExternalLink } from "lucide-react";
-<<<<<<< HEAD
-
-import type {
-  TokenPostItem,
-  TokenPostRange,
-  TokenPostSortMode,
-  TokenPostsData,
-} from "../api/types";
-import {
-  compactNumber,
-  eventText,
-  formatReason,
-  formatRelativeTime,
-  formatRisk,
-  formatScore,
-  formatSignedPercent,
-} from "../lib/format";
-=======
 import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData } from "../api/types";
 import { compactNumber, eventText, formatReason, formatRelativeTime, formatRisk, formatScore, formatSignedPercent } from "../lib/format";
 import { SkeletonRows } from "../shared/ui/RemoteState";
->>>>>>> origin/main
 
 type TokenPostsPanelProps = {
   posts?: TokenPostsData | null;
@@ -51,7 +32,7 @@ export function TokenPostsPanel({
   onPostSortModeChange,
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
-  onLoadMorePosts,
+  onLoadMorePosts
 }: TokenPostsPanelProps) {
   const allItems = posts?.items ?? [];
   const items = sortPosts(
@@ -62,64 +43,35 @@ export function TokenPostsPanel({
       if (watchedPostsOnly && !item.is_watched) {
         return false;
       }
-      if (
-        hideDuplicateClusters &&
-        item.post_quality.risks.some(
-          (risk) => risk.includes("duplicate") || risk.includes("repeated"),
-        )
-      ) {
+      if (hideDuplicateClusters && item.post_quality.risks.some((risk) => risk.includes("duplicate") || risk.includes("repeated"))) {
         return false;
       }
       return true;
     }),
-    postSortMode,
+    postSortMode
   );
   return (
     <div className="token-posts-panel">
       <header className="posts-toolbar">
         <div className="segmented mini range" aria-label="token post range">
-          <button
-            className={postRange === "current_window" ? "active" : ""}
-            type="button"
-            onClick={() => onPostRangeChange("current_window")}
-          >
+          <button className={postRange === "current_window" ? "active" : ""} type="button" onClick={() => onPostRangeChange("current_window")}>
             window
           </button>
-          <button
-            className={postRange === "since_ignition" ? "active" : ""}
-            type="button"
-            onClick={() => onPostRangeChange("since_ignition")}
-          >
+          <button className={postRange === "since_ignition" ? "active" : ""} type="button" onClick={() => onPostRangeChange("since_ignition")}>
             ignition
           </button>
-          <button
-            className={postRange === "all_history" ? "active" : ""}
-            type="button"
-            onClick={() => onPostRangeChange("all_history")}
-          >
+          <button className={postRange === "all_history" ? "active" : ""} type="button" onClick={() => onPostRangeChange("all_history")}>
             history
           </button>
         </div>
         <div className="segmented mini post-sort" aria-label="token post sort">
-          <button
-            className={postSortMode === "recent" ? "active" : ""}
-            type="button"
-            onClick={() => onPostSortModeChange("recent")}
-          >
+          <button className={postSortMode === "recent" ? "active" : ""} type="button" onClick={() => onPostSortModeChange("recent")}>
             recent
           </button>
-          <button
-            className={postSortMode === "catalyst" ? "active" : ""}
-            type="button"
-            onClick={() => onPostSortModeChange("catalyst")}
-          >
+          <button className={postSortMode === "catalyst" ? "active" : ""} type="button" onClick={() => onPostSortModeChange("catalyst")}>
             catalyst
           </button>
-          <button
-            className={postSortMode === "quality" ? "active" : ""}
-            type="button"
-            onClick={() => onPostSortModeChange("quality")}
-          >
+          <button className={postSortMode === "quality" ? "active" : ""} type="button" onClick={() => onPostSortModeChange("quality")}>
             quality
           </button>
         </div>
@@ -142,36 +94,20 @@ export function TokenPostsPanel({
       </header>
 
       <div className="posts-count-line">
-        {posts
-          ? `${posts.total_count} total · ${posts.returned_count} loaded · score window ${posts.score_window.window}`
-          : "0 total · 0 loaded"}
+        {posts ? `${posts.total_count} total · ${posts.returned_count} loaded · score window ${posts.score_window.window}` : "0 total · 0 loaded"}
       </div>
       {selectedStageId ? <div className="filter-note">stage filter · {selectedStageId}</div> : null}
-      {postRange === "all_history" ? (
-        <div className="filter-note">history does not all participate in current score</div>
-      ) : null}
+      {postRange === "all_history" ? <div className="filter-note">history does not all participate in current score</div> : null}
       {hideDuplicateClusters ? <div className="filter-note">已隐藏重复文本簇</div> : null}
-<<<<<<< HEAD
-      {isLoading ? <div className="empty-state">加载 token posts 中</div> : null}
-      {!isLoading && items.length === 0 ? (
-        <div className="empty-state">该窗口暂无 token-attributed posts</div>
-      ) : null}
-=======
       {isLoading ? <SkeletonRows count={4} label="loading token posts" /> : null}
       {!isLoading && items.length === 0 ? <div className="empty-state">该窗口暂无 token-attributed posts</div> : null}
->>>>>>> origin/main
       <div className="post-list">
         {items.map((item) => (
           <PostCard key={item.event_id} item={item} />
         ))}
       </div>
       {posts?.has_more ? (
-        <button
-          className="load-more-posts"
-          type="button"
-          onClick={onLoadMorePosts}
-          disabled={isFetchingNextPage}
-        >
+        <button className="load-more-posts" type="button" onClick={onLoadMorePosts} disabled={isFetchingNextPage}>
           {isFetchingNextPage ? "加载中" : "加载更多"}
         </button>
       ) : null}
@@ -190,18 +126,9 @@ function PostCard({ item }: { item: TokenPostItem }) {
         {item.stage_phase ? <i>{item.stage_phase}</i> : null}
         {item.author_role ? <i>{item.author_role}</i> : null}
         {item.is_stage_representative ? <i className="catalyst-chip">representative</i> : null}
-        {item.catalyst_score !== null && item.catalyst_score !== undefined ? (
-          <i className="catalyst-chip">cat {formatScore(item.catalyst_score)}</i>
-        ) : null}
-        {item.price ? (
-          <i>
-            {item.price.status === "ready" && item.price.price_usd
-              ? `$${compactNumber(item.price.price_usd)}`
-              : item.price.status}
-          </i>
-        ) : null}
-        {item.price_delta_from_previous_post_pct !== null &&
-        item.price_delta_from_previous_post_pct !== undefined ? (
+        {item.catalyst_score !== null && item.catalyst_score !== undefined ? <i className="catalyst-chip">cat {formatScore(item.catalyst_score)}</i> : null}
+        {item.price ? <i>{item.price.status === "ready" && item.price.price_usd ? `$${compactNumber(item.price.price_usd)}` : item.price.status}</i> : null}
+        {item.price_delta_from_previous_post_pct !== null && item.price_delta_from_previous_post_pct !== undefined ? (
           <i>{formatSignedPercent(item.price_delta_from_previous_post_pct)} prev</i>
         ) : null}
         {item.post_quality.risks.slice(0, 2).map((risk) => (

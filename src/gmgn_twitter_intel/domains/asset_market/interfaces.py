@@ -26,17 +26,15 @@ from .repositories.registry_repository import RegistryRepository
 from .services.asset_market_sync import sync_dex_prices
 
 __all__ = [
+    "AssetRepository",
     "CONFIDENCE_MANUAL",
     "CONFIDENCE_MENTION_ONLY",
     "CONFIDENCE_PROVIDER_CANDIDATE",
     "CONFIDENCE_PROVIDER_EXACT",
     "CONFIDENCE_UNKNOWN",
-<<<<<<< HEAD
-=======
     "CurrentMarketRepository",
     "CurrentMarketService",
     "DiscoveryRepository",
->>>>>>> origin/main
     "EVIDENCE_GMGN_OPENAPI_EXACT",
     "EVIDENCE_GMGN_PAYLOAD_EXACT",
     "EVIDENCE_MANUAL_IDENTITY_REPAIR",
@@ -44,8 +42,6 @@ __all__ = [
     "EVIDENCE_OKX_DEX_EXACT_ADDRESS",
     "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
     "EVIDENCE_TWEET_CONTRACT_MENTION",
-    "AssetRepository",
-    "DiscoveryRepository",
     "IdentityEvidenceRepository",
     "MarketRepository",
     "PriceObservationRepository",
