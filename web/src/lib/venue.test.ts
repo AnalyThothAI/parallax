@@ -67,7 +67,7 @@ describe("venue links", () => {
           targetType: "CexToken",
           targetId: "cex_token:SOL",
           symbol: "SOL",
-          facts: { native_market_id: "pricefeed:cex:okx:spot:SOL-USDT" },
+          pricefeedId: "pricefeed:cex:okx:spot:SOL-USDT",
         }),
       ),
     ).toEqual([
@@ -146,7 +146,7 @@ function token(options: {
       decision: "watch",
       decision_priority: 2,
       hard_risks: [],
-      components: { heat: 0, quality: 0, propagation: 0, tradeability: 0, timing: 0 },
+      components: { heat: 0, quality: 0, propagation: 0, timing: 0 },
     },
     watch: { status: "public_only", direct_mentions: 0, direct_authors: 0 },
     evidence_total_count: 0,
@@ -172,7 +172,7 @@ function pulse(options: {
   symbol?: string | null;
   chain?: string | null;
   address?: string | null;
-  facts?: Record<string, unknown>;
+  pricefeedId?: string | null;
 }): SignalPulseItem {
   return {
     candidate_id: "pulse-1",
@@ -187,24 +187,74 @@ function pulse(options: {
     evidence_event_ids: [],
     source_event_ids: [],
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v1",
+      schema_version: "token_factor_snapshot_v2_alpha_gated",
       subject: {
         target_type: options.targetType,
         target_id: options.targetId,
         symbol: options.symbol ?? "TOKEN",
         chain: options.chain ?? null,
         address: options.address ?? null,
+        pricefeed_id: options.pricefeedId ?? null,
       },
+      gates: {
+        eligible_for_high_alert: false,
+        max_decision: "watch",
+        blocked_reasons: [],
+        risk_reasons: [],
+      },
+      data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
       families: {
-        market_quality: {
+        attention_heat: {
+          raw_score: 50,
           score: 50,
+          weight: 0.35,
           data_health: "ready",
-          facts: options.facts ?? {},
+          facts: {},
+          factors: {},
+        },
+        diffusion_quality: {
+          raw_score: 50,
+          score: 50,
+          weight: 0.3,
+          data_health: "ready",
+          facts: {},
+          factors: {},
+        },
+        semantic_quality: {
+          raw_score: 50,
+          score: 50,
+          weight: 0.25,
+          data_health: "ready",
+          facts: {},
+          factors: {},
+        },
+        timing_response: {
+          raw_score: 50,
+          score: 50,
+          weight: 0.1,
+          data_health: "ready",
+          facts: {},
           factors: {},
         },
       },
-      hard_gates: { eligible_for_high_alert: false, blocked_reasons: [] },
-      composite: { rank_score: 50, recommended_decision: "watch" },
+      normalization: {
+        status: "ready",
+        cohort: {},
+        factor_ranks: {},
+        alpha_rank: 1,
+        cohort_size: 1,
+      },
+      composite: {
+        rank_score: 50,
+        recommended_decision: "watch",
+        family_scores: {
+          attention_heat: 50,
+          diffusion_quality: 50,
+          semantic_quality: 50,
+          timing_response: 50,
+        },
+      },
+      provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },
     },
     agent_recommendation: {
       schema_version: "pulse_recommendation_v1",

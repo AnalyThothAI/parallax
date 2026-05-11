@@ -32,6 +32,43 @@ def test_radar_feature_builder_counts_windows_and_stream_share():
     assert features.propagation["independent_authors"] == 1
 
 
+def test_radar_feature_builder_uses_single_diffusion_health_source():
+    now_ms = 1_700_000_000_000
+    rows = [
+        row("event-1", received_at_ms=now_ms - 60_000, author="alpha", text="$DOG breakout now"),
+        row("event-2", received_at_ms=now_ms - 50_000, author="bravo", text="$DOG breakout now https://x.test/a"),
+        row(
+            "event-3",
+            received_at_ms=now_ms - 40_000,
+            author="charlie",
+            text="$DOG breakout now 0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416",
+        ),
+        row("event-4", received_at_ms=now_ms - 30_000, author="delta", text="$DOG independent take"),
+    ]
+
+    features = build_radar_features(
+        window_rows=rows,
+        context_rows=rows,
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=5 * 60_000,
+        total_window_events=4,
+    )
+
+    assert features.quality["diffusion_status"] == "repeated"
+    assert features.quality["diffusion_score"] < 100
+    assert "repeated_text_cluster" in features.quality["diffusion_risks"]
+    assert features.propagation["effective_authors"] == 2
+    assert features.propagation["top_author_share"] == 0.25
+    assert features.propagation["duplicate_text_share"] == 0.75
+    assert {author["handle"] for author in features.propagation["top_authors"][:4]} == {
+        "alpha",
+        "bravo",
+        "charlie",
+        "delta",
+    }
+
+
 def test_radar_feature_builder_materializes_baseline_contract():
     now_ms = 1_700_000_000_000
     window_ms = 5 * 60_000

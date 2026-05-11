@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
-    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
@@ -15,7 +15,8 @@ from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query imp
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
     NORMALIZER_VERSION,
-    rank_within_cohort,
+    rank_factors_within_cohort,
+    weighted_rank_score,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
     COHORT_DEFINITION_VERSION,
@@ -24,6 +25,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
     build_token_factor_snapshot,
 )
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot_v2
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
     build_radar_features,
@@ -49,11 +51,11 @@ class TokenRadarProjection:
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
-        self.repos.token_radar.mark_refresh_status(
+        self.repos.token_radar.mark_coverage(
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
-            refresh_status="running",
+            status="running",
             reason="projection_window_running",
             source_rows=0,
             row_count=0,
@@ -165,16 +167,18 @@ class TokenRadarProjection:
                 dirty_ranges_written=0,
                 commit=False,
             )
-            self.repos.token_radar.publish_rows(
+            self.repos.token_radar.mark_coverage(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
+                status="ready",
+                reason=None,
                 source_rows=len(source_rows),
                 row_count=len(rows),
                 computed_at_ms=computed_at_ms,
-                source_max_received_at_ms=source_max_received_at_ms,
                 started_at_ms=computed_at_ms,
                 finished_at_ms=_now_ms(),
+                error=None,
                 commit=True,
             )
             return {
@@ -184,11 +188,11 @@ class TokenRadarProjection:
                 "status": "ready",
             }
         except Exception as exc:
-            self.repos.token_radar.mark_refresh_status(
+            self.repos.token_radar.mark_coverage(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
-                refresh_status="failed",
+                status="failed",
                 reason="projection_window_failed",
                 source_rows=0,
                 row_count=0,
@@ -254,7 +258,8 @@ class TokenRadarProjection:
 
     @staticmethod
     def _apply_cross_section(projected: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        scores: dict[str, float | None] = {}
+        factor_scores: dict[str, dict[str, float | None]] = {}
+        factor_weights: dict[str, dict[str, float]] = {}
         cohort: set[str] = set()
         cohort_metadata: dict[str, dict[str, Any]] = {}
 
@@ -263,19 +268,24 @@ class TokenRadarProjection:
             target_id = str(row.get("target_id") or "")
             if not target_id:
                 continue
-            composite = factor_snapshot["composite"]
-            rank_score = composite.get("rank_score")
-            scores[target_id] = float(rank_score) if rank_score is not None else None
+            families = factor_snapshot["families"]
+            factor_scores[target_id] = {
+                family: _family_raw_score(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
+            factor_weights[target_id] = {
+                family: _family_weight(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
 
             high_conf = _count_high_conf(row)
             kol_count = _count_kol_authors(row)
-            first_seen_global = bool(row.get("first_seen_global_24h", False))
+            first_seen_global = _cohort_first_seen_global(row)
             symbol = (
                 (row.get("target_json") or {}).get("symbol")
                 or (row.get("intent_json") or {}).get("display_symbol")
                 or ""
             ).upper()
             if is_active_cohort_member(
+                target_id=target_id,
                 symbol=symbol,
                 high_confidence_mention_count=high_conf,
                 kol_mention_count=kol_count,
@@ -289,13 +299,31 @@ class TokenRadarProjection:
                 "symbol": symbol,
             }
 
-        ranks = rank_within_cohort(scores=scores, cohort=cohort)
+        factor_ranks_by_id = rank_factors_within_cohort(factor_scores=factor_scores, cohort=cohort)
 
         for row in projected:
             target_id = str(row.get("target_id") or "")
             factor_snapshot = _factor_snapshot_or_raise(row)
+            families = factor_snapshot["families"]
+            factor_ranks = factor_ranks_by_id.get(target_id) or {family: None for family in TOKEN_RADAR_FACTOR_FAMILIES}
+            weights = factor_weights.get(target_id) or {
+                family: _family_weight(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
+            alpha_rank = weighted_rank_score(factor_ranks, weights)
+            normalization_status = "ranked" if alpha_rank is not None else "insufficient_cohort"
+            for family in TOKEN_RADAR_FACTOR_FAMILIES:
+                rank = factor_ranks.get(family)
+                if rank is not None and isinstance(families.get(family), dict):
+                    families[family]["score"] = round(float(rank) * 100.0)
+            rank_score = (
+                round(float(alpha_rank) * 100.0) if alpha_rank is not None else _raw_composite_score(factor_snapshot)
+            )
+            decision = _decision_from_score_and_gates(rank_score, factor_snapshot["gates"])
+            family_scores = {
+                family: _family_display_score(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
+            }
             factor_snapshot["normalization"] = {
-                "cross_section_rank": ranks.get(target_id),
+                "status": normalization_status,
                 "cohort": {
                     "in_cohort": target_id in cohort,
                     "size": len(cohort),
@@ -303,10 +331,17 @@ class TokenRadarProjection:
                     "normalizer_version": NORMALIZER_VERSION,
                     **(cohort_metadata.get(target_id, {})),
                 },
+                "factor_ranks": factor_ranks,
+                "alpha_rank": alpha_rank,
             }
+            factor_snapshot["composite"]["family_scores"] = family_scores
+            factor_snapshot["composite"]["rank_score"] = rank_score
+            factor_snapshot["composite"]["recommended_decision"] = decision
             row["factor_snapshot_json"] = factor_snapshot
-            row.pop("_cohort_high_conf_count", None)
-            row.pop("_cohort_kol_count", None)
+            row["decision"] = decision
+            for key in list(row):
+                if str(key).startswith("_cohort_"):
+                    row.pop(key, None)
 
         return projected
 
@@ -379,6 +414,7 @@ def _project_group(
         1 for r in window_rows if (r.get("resolution_status") or "") in HIGH_CONF_RESOLUTION_STATUSES
     )
     cohort_kol_count = sum(1 for r in window_rows if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS)
+    cohort_first_seen_global_24h = any(row.get("first_seen_global_24h") is True for row in window_rows)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -423,14 +459,17 @@ def _project_group(
         "decision": decision,
         "data_health_json": {
             "factor_snapshot": "ready",
-            "identity": factor_snapshot["families"]["identity"]["data_health"],
-            "market": factor_snapshot["families"]["market_quality"]["data_health"],
+            "identity": factor_snapshot["data_health"]["identity"],
+            "market": factor_snapshot["data_health"]["market"],
+            "social": factor_snapshot["data_health"]["social"],
+            "alpha": factor_snapshot["data_health"]["alpha"],
         },
         "source_event_ids_json": event_ids,
         "created_at_ms": now_ms,
         # Internal cohort fields — NOT persisted (stripped in _apply_cross_section).
         "_cohort_high_conf_count": cohort_high_conf_count,
         "_cohort_kol_count": cohort_kol_count,
+        "_cohort_first_seen_global_24h": cohort_first_seen_global_24h,
     }
 
 
@@ -598,8 +637,7 @@ def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | Non
             "current_market_snapshot": None,
             **_missing_current_market_fields(),
         }
-    raw_fields = snapshot.get("fields")
-    fields: dict[str, Any] = raw_fields if isinstance(raw_fields, dict) else {}
+    fields = _dict(snapshot.get("fields"))
     price = _market_field(fields, "price_usd")
     price_quote = _market_field(fields, "price_quote")
     quote_symbol = _market_field(fields, "quote_symbol")
@@ -628,9 +666,7 @@ def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | Non
         "market_holders": holders.get("value"),
         "market_holders_status": holders.get("status"),
         "market_status_from_current": snapshot.get("market_status"),
-        "market_field_statuses": {
-            str(key): value.get("status") for key, value in fields.items() if isinstance(value, dict)
-        },
+        "market_field_statuses": {key: value.get("status") for key, value in fields.items() if isinstance(value, dict)},
     }
 
 
@@ -923,14 +959,12 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
     snapshot = _factor_snapshot_for_ranking(row)
     if snapshot is None:
         return (3, 0.0, 0, 0, 0)
-    raw_composite = snapshot.get("composite")
-    composite: dict[str, Any] = raw_composite if isinstance(raw_composite, dict) else {}
-    raw_families = snapshot.get("families")
-    families: dict[str, Any] = raw_families if isinstance(raw_families, dict) else {}
-    raw_social_attention = families.get("social_attention")
-    social_attention: dict[str, Any] = raw_social_attention if isinstance(raw_social_attention, dict) else {}
-    raw_attention = social_attention.get("facts")
-    attention: dict[str, Any] = raw_attention if isinstance(raw_attention, dict) else {}
+    composite = _dict(snapshot.get("composite"))
+    families = _dict(snapshot.get("families"))
+    attention_heat = _dict(families.get("attention_heat"))
+    diffusion_quality = _dict(families.get("diffusion_quality"))
+    attention = _dict(attention_heat.get("facts"))
+    diffusion = _dict(diffusion_quality.get("facts"))
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
     decision = composite.get("recommended_decision") or "discard"
     rank_score = _float_or_none(composite.get("rank_score")) or 0.0
@@ -938,7 +972,7 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         decision_priority.get(str(decision), 2),
         -rank_score,
         -int(attention.get("watched_mentions") or 0),
-        -int(attention.get("mentions_1h") or 0),
+        -int(attention.get("mentions_1h") or diffusion.get("mentions") or 0),
         -int(attention.get("latest_seen_ms") or 0),
     )
 
@@ -952,18 +986,54 @@ def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
 
 def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = row.get("factor_snapshot_json")
-    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
-        raise ValueError("factor_snapshot_json must be non-empty for token radar projection")
-    schema_version = str(factor_snapshot.get("schema_version") or "").strip()
-    if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
-        raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
-    families = factor_snapshot.get("families")
-    if not isinstance(families, dict):
-        raise ValueError("factor_snapshot_json.families is required for token radar projection")
-    composite = factor_snapshot.get("composite")
-    if not isinstance(composite, dict):
-        raise ValueError("factor_snapshot_json.composite is required for token radar projection")
-    return factor_snapshot
+    return require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
+
+
+def _family_raw_score(family: Any) -> float | None:
+    if not isinstance(family, dict):
+        return None
+    raw_score = _float_or_none(family.get("raw_score"))
+    if raw_score is not None:
+        return raw_score
+    return _float_or_none(family.get("score"))
+
+
+def _family_weight(family: Any) -> float:
+    if not isinstance(family, dict):
+        return 0.0
+    return _float_or_none(family.get("weight")) or 0.0
+
+
+def _family_display_score(family: Any) -> int:
+    if not isinstance(family, dict):
+        return 0
+    score = _float_or_none(family.get("score")) or 0.0
+    return round(max(0.0, min(100.0, score)))
+
+
+def _raw_composite_score(factor_snapshot: dict[str, Any]) -> int:
+    composite = _dict(factor_snapshot.get("composite"))
+    score = _float_or_none(composite.get("rank_score"))
+    if score is None:
+        score = _float_or_none(composite.get("raw_alpha_score"))
+    return round(max(0.0, min(100.0, score or 0.0)))
+
+
+def _decision_from_score_and_gates(score: int, gates: dict[str, Any]) -> str:
+    max_decision = str(gates.get("max_decision") or "discard")
+    if max_decision == "discard":
+        return "discard"
+    if score >= 70 and max_decision == "high_alert":
+        return "high_alert"
+    if score >= 35 and max_decision in {"watch", "high_alert"}:
+        return "watch"
+    return "discard"
 
 
 def _stable_id(*parts: str) -> str:
@@ -976,3 +1046,9 @@ def _count_high_conf(row: dict[str, Any]) -> int:
 
 def _count_kol_authors(row: dict[str, Any]) -> int:
     return int(row.get("_cohort_kol_count") or 0)
+
+
+def _cohort_first_seen_global(row: dict[str, Any]) -> bool:
+    if row.get("_cohort_first_seen_global_24h") is True:
+        return True
+    return row.get("first_seen_global_24h") is True

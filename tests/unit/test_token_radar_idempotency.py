@@ -24,7 +24,10 @@ from unittest.mock import patch
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
+    PROJECTION_VERSION,
+    TokenRadarProjection,
+)
 from gmgn_twitter_intel.platform.db.postgres_client import connect_postgres
 
 
@@ -83,7 +86,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
         )
 
         if not frozen_rows:
-            pytest.skip("No source rows in the live DB window — nothing to score")
+            pytest.skip("No source rows — nothing to score")
 
         # Both rebuilds use the same frozen source list.
         def _frozen_source_rows(self, *, since_ms, scope, now_ms):
@@ -91,25 +94,33 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
 
         with patch.object(TokenRadarProjection, "_source_rows", _frozen_source_rows):
             # First rebuild.
-            projector.rebuild(window="1h", scope="all", now_ms=fixed_now_ms, limit=10)
+            first_result = projector.rebuild(window="1h", scope="all", now_ms=fixed_now_ms, limit=10)
             rows_first = conn.execute(
                 """
                 SELECT target_id, factor_snapshot_json
                 FROM token_radar_rows
-                WHERE "window" = '1h' AND scope = 'all'
+                WHERE projection_version = %s
+                  AND "window" = '1h'
+                  AND scope = 'all'
+                  AND computed_at_ms = %s
                 ORDER BY target_id
-                """
+                """,
+                (PROJECTION_VERSION, int(first_result["computed_at_ms"])),
             ).fetchall()
 
             # Second rebuild — same now_ms and same frozen source rows.
-            projector.rebuild(window="1h", scope="all", now_ms=fixed_now_ms, limit=10)
+            second_result = projector.rebuild(window="1h", scope="all", now_ms=fixed_now_ms, limit=10)
             rows_second = conn.execute(
                 """
                 SELECT target_id, factor_snapshot_json
                 FROM token_radar_rows
-                WHERE "window" = '1h' AND scope = 'all'
+                WHERE projection_version = %s
+                  AND "window" = '1h'
+                  AND scope = 'all'
+                  AND computed_at_ms = %s
                 ORDER BY target_id
-                """
+                """,
+                (PROJECTION_VERSION, int(second_result["computed_at_ms"])),
             ).fetchall()
     finally:
         conn.close()

@@ -255,36 +255,6 @@ export type TokenRadarIntentBlock = {
   evidence?: unknown[];
 };
 
-export type TokenRadarScoreBlock = {
-  score: number;
-  score_version: string;
-  reasons: string[];
-  risks: string[];
-  hard_risks?: string[];
-  contributions: ScoreContribution[];
-  risk_caps: RiskCap[];
-};
-
-export type TokenRadarScoreSet = {
-  heat: TokenRadarScoreBlock;
-  quality: TokenRadarScoreBlock;
-  propagation: TokenRadarScoreBlock;
-  tradeability: TokenRadarScoreBlock;
-  timing: TokenRadarScoreBlock & {
-    status?: string | null;
-    chase_risk?: boolean | null;
-  };
-  opportunity: TokenRadarScoreBlock & {
-    components: {
-      heat: number;
-      quality: number;
-      propagation: number;
-      tradeability: number;
-      timing: number;
-    };
-  };
-};
-
 export type TokenRadarDataHealth = {
   identity?: string | null;
   market?: string | null;
@@ -329,9 +299,7 @@ export type AssetFlowRow = {
     risks?: string[];
     candidates?: unknown[];
   };
-  score: TokenRadarScoreSet;
-  factor_snapshot?: TokenFactorSnapshot;
-  decision: Decision | string;
+  factor_snapshot: TokenFactorSnapshot;
   data_health?: TokenRadarDataHealth;
 };
 
@@ -526,7 +494,6 @@ export type OpportunityBlock = ScoreBlock & {
     heat: number;
     quality: number;
     propagation: number;
-    tradeability: number;
     timing: number;
   };
 };
@@ -572,6 +539,9 @@ export type TokenFlowItem = {
   timing: TimingBlock;
   opportunity: OpportunityBlock;
   watch: WatchBlock;
+  factor_data_health?: TokenFactorSnapshot["data_health"];
+  factor_gates?: TokenFactorSnapshot["gates"];
+  factor_normalization?: TokenFactorSnapshot["normalization"];
   evidence_total_count: number;
   posts_query: TokenPostsQuery;
   timeline_query: TokenSocialTimelineParams;
@@ -824,39 +794,61 @@ export type FactorPoint = {
   freshness_ms?: number | null;
   source_refs?: string[];
   risk_flags?: string[];
-  hard_gate?: string | null;
+};
+
+export type TokenFactorFamilyKey = "attention_heat" | "diffusion_quality" | "semantic_quality" | "timing_response";
+
+export type TokenFactorFamily = {
+  raw_score: number;
+  score: number;
+  weight: number;
+  facts: Record<string, unknown>;
+  factors: Record<string, FactorPoint>;
+  data_health: string;
 };
 
 export type TokenFactorSnapshot = {
-  schema_version: "token_factor_snapshot_v1" | string;
+  schema_version: "token_factor_snapshot_v2_alpha_gated";
   subject: {
     target_type?: string | null;
     target_id?: string | null;
     symbol?: string | null;
+    target_market_type?: string | null;
     chain?: string | null;
     address?: string | null;
+    pricefeed_id?: string | null;
   };
-  families: Record<
-    string,
-    {
-      score?: number | null;
-      facts?: Record<string, unknown>;
-      factors?: Record<string, FactorPoint>;
-      data_health?: string | null;
-    }
-  >;
-  hard_gates: {
+  gates: {
     eligible_for_high_alert: boolean;
+    max_decision?: string | null;
     blocked_reasons: string[];
+    risk_reasons?: string[];
+  };
+  data_health: {
+    identity: string;
+    market: string;
+    social: string;
+    alpha: string;
+    [key: string]: unknown;
+  };
+  families: Record<TokenFactorFamilyKey, TokenFactorFamily>;
+  normalization: {
+    status?: string | null;
+    cohort?: Record<string, unknown>;
+    factor_ranks?: Record<string, unknown>;
+    alpha_rank?: number | null;
+    cohort_size?: number | null;
+    [key: string]: unknown;
   };
   composite: {
+    raw_alpha_score?: number | null;
     rank_score?: number | null;
-    recommended_decision?: string | null;
+    recommended_decision: string;
     family_scores?: Record<string, number | null | undefined>;
   };
-  provenance?: {
-    source_event_ids?: string[];
-    computed_at_ms?: number | null;
+  provenance: {
+    source_event_ids: string[];
+    computed_at_ms: number;
   };
 };
 

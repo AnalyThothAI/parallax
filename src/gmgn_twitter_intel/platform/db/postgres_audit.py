@@ -5,6 +5,7 @@ from typing import Any
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
 
 TOKEN_RADAR_PROJECTION_VERSION_PARAM = "token_radar_projection_version"
+TOKEN_FACTOR_VERSION_PARAM = "token_factor_version"
 
 CORE_TABLES = (
     "raw_frames",
@@ -27,6 +28,7 @@ CORE_TABLES = (
     "social_event_extractions",
     "harness_snapshots",
     "notifications",
+    "token_score_evaluations",
 )
 
 PROJECTION_TABLES = (
@@ -146,6 +148,26 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         """,
         "params": (),
     },
+    {
+        "name": "token_factor_settlement_rows",
+        "sql": """
+            SELECT row_id
+            FROM token_radar_rows
+            WHERE factor_version = %(token_factor_version)s
+              AND "window" = %(window)s
+              AND scope = %(scope)s
+              AND computed_at_ms + %(horizon_ms)s <= %(generated_at_ms)s
+            ORDER BY computed_at_ms DESC, rank ASC, lane ASC, row_id ASC
+            LIMIT 50
+        """,
+        "params": {
+            TOKEN_FACTOR_VERSION_PARAM: None,
+            "window": "1h",
+            "scope": "all",
+            "horizon_ms": 60 * 60 * 1000,
+            "generated_at_ms": 4_102_444_800_000,
+        },
+    },
 )
 
 
@@ -210,9 +232,16 @@ class PostgresOperationalAudit:
 
 
 class PostgresQueryAudit:
-    def __init__(self, conn: Any, *, token_radar_projection_version: str | None = None):
+    def __init__(
+        self,
+        conn: Any,
+        *,
+        token_radar_projection_version: str | None = None,
+        token_factor_version: str | None = None,
+    ):
         self.conn = conn
         self.token_radar_projection_version = token_radar_projection_version
+        self.token_factor_version = token_factor_version
 
     def run(self, *, analyze: bool = False) -> dict[str, Any]:
         queries = [self._explain(item, analyze=analyze) for item in HOT_QUERIES]
@@ -242,12 +271,14 @@ class PostgresQueryAudit:
             }
 
     def _params(self, params: Any) -> Any:
-        if not isinstance(params, dict) or TOKEN_RADAR_PROJECTION_VERSION_PARAM not in params:
+        if not isinstance(params, dict):
             return params
-        return {
-            **params,
-            TOKEN_RADAR_PROJECTION_VERSION_PARAM: self.token_radar_projection_version,
-        }
+        bound = dict(params)
+        if TOKEN_RADAR_PROJECTION_VERSION_PARAM in bound:
+            bound[TOKEN_RADAR_PROJECTION_VERSION_PARAM] = self.token_radar_projection_version
+        if TOKEN_FACTOR_VERSION_PARAM in bound:
+            bound[TOKEN_FACTOR_VERSION_PARAM] = self.token_factor_version
+        return bound
 
 
 class ProjectionValidationAudit:

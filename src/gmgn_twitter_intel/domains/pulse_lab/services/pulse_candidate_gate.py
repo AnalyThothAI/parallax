@@ -4,7 +4,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import ScoreBand
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION, clamp_score, safe_float
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    clamp_score,
+    require_token_factor_snapshot_v2,
+    safe_float,
+)
 
 
 @dataclass(frozen=True)
@@ -51,11 +55,10 @@ def gate_pulse_candidate_from_factor_snapshot(
     snapshot = _valid_snapshot(factor_snapshot)
     resolved_thresholds = thresholds or PulseGateThresholds()
     score = float(clamp_score(safe_float(_nested(snapshot, "composite", "rank_score"))))
-    hard_gate_reasons = _stable_strings(_nested(snapshot, "hard_gates", "blocked_reasons"))
-    blocked_reasons = _blocked_reasons(snapshot, hard_gate_reasons)
+    blocked_reasons = _stable_strings(_nested(snapshot, "gates", "blocked_reasons"))
     risk_reasons = _dedupe([*blocked_reasons, *_factor_risks(snapshot)])
-    hard_risks = _dedupe([*blocked_reasons, *_factor_hard_risks(snapshot)])
-    eligible_for_high_alert = bool(_nested(snapshot, "hard_gates", "eligible_for_high_alert")) and not blocked_reasons
+    hard_risks = list(blocked_reasons)
+    eligible_for_high_alert = bool(_nested(snapshot, "gates", "eligible_for_high_alert")) and not blocked_reasons
     pulse_status = _pulse_status(
         score=score,
         eligible_for_high_alert=eligible_for_high_alert,
@@ -78,25 +81,7 @@ def gate_pulse_candidate_from_factor_snapshot(
 
 
 def _valid_snapshot(factor_snapshot: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
-        raise ValueError("factor_snapshot must be a non-empty dict")
-    if factor_snapshot.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
-        raise ValueError(f"factor_snapshot.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
-    for key in ("subject", "hard_gates", "composite"):
-        if not isinstance(factor_snapshot.get(key), dict):
-            raise ValueError(f"factor_snapshot.{key} is required")
-    return factor_snapshot
-
-
-def _blocked_reasons(snapshot: dict[str, Any], hard_gate_reasons: list[str]) -> list[str]:
-    reasons = list(hard_gate_reasons)
-    raw_subject = snapshot.get("subject")
-    subject: dict[str, Any] = raw_subject if isinstance(raw_subject, dict) else {}
-    target_type = str(subject.get("target_type") or "").strip()
-    target_id = str(subject.get("target_id") or "").strip()
-    if not target_type or not target_id or target_type in {"source_seed", "SourceSeed", "unresolved"}:
-        reasons.append("missing_token_target")
-    return _dedupe(reasons)
+    return require_token_factor_snapshot_v2(factor_snapshot)
 
 
 def _pulse_status(
@@ -149,23 +134,14 @@ def _positive_reason(pulse_status: str) -> str:
 
 def _factor_risks(snapshot: dict[str, Any]) -> list[str]:
     risks: list[str] = []
+    risks.extend(_stable_strings(_nested(snapshot, "gates", "risk_reasons")))
     for factor in _factor_values(snapshot):
         risks.extend(_stable_strings(factor.get("risk_flags")))
     return _dedupe(risks)
 
 
-def _factor_hard_risks(snapshot: dict[str, Any]) -> list[str]:
-    risks: list[str] = []
-    for factor in _factor_values(snapshot):
-        hard_gate = str(factor.get("hard_gate") or "").strip()
-        if hard_gate:
-            risks.extend(_stable_strings(factor.get("risk_flags")))
-    return _dedupe(risks)
-
-
 def _factor_values(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-    raw_families = snapshot.get("families")
-    families: dict[str, Any] = raw_families if isinstance(raw_families, dict) else {}
+    families = _mapping(snapshot.get("families"))
     factors: list[dict[str, Any]] = []
     for family_payload in families.values():
         if not isinstance(family_payload, dict):
@@ -181,6 +157,12 @@ def _nested(data: dict[str, Any], outer: str, inner: str) -> Any:
     if isinstance(value, dict):
         return value.get(inner)
     return None
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
 
 
 def _stable_strings(values: Any) -> list[str]:

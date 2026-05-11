@@ -4,32 +4,48 @@
 
 **Goal:** Replace the current presence-heavy token factor snapshot with an evaluable, cross-section-aware factor contract where identity, market freshness, duplicate risk, and data availability are gates or data-health facts rather than fake alpha.
 
-**Architecture:** Keep the existing token radar projection path and PostgreSQL store. Rewrite only the factor contract, projection normalization, retention, diagnostics, evaluation, and consumers that read the snapshot. Do not add providers, queues, LLM calls, new scoring tables, or backward-compatible runtime branches for `token_factor_snapshot_v1`.
+**Architecture:** Keep the existing Token Radar projection, Signal Labs pulse, PostgreSQL, CLI, and React app surfaces. Hard-cut the runtime contract from `token_factor_snapshot_v1` to one current v2 shape, then update every producer, reader, audit, and frontend adapter that consumes it. No new providers, queues, LLM labels, training loop, or recreated legacy signal snapshot tables.
 
-**Tech Stack:** Python 3, psycopg/PostgreSQL, Alembic, pytest, argparse CLI, existing React/TypeScript frontend.
+**Tech Stack:** Python 3.13, psycopg/PostgreSQL, Alembic, argparse CLI, pytest with `tests/unit` / `tests/integration` / `tests/architecture` / `tests/contract` markers, React/TypeScript/Vitest under `web/`.
 
 ---
+
+## Current Main Resync
+
+This plan was refreshed against local `main` on 2026-05-11 after the tests-and-lint/frontend refactor landed. Important deltas from the earlier plan:
+
+- Local `main` is ahead of `origin/main` by three commits and is the base for this work.
+- Coding happens in `.worktrees/token-factor-engineering-hard-cut` on branch `codex/token-factor-engineering-hard-cut`.
+- Backend tests are now split. Most old `tests/test_*.py` paths moved to `tests/unit/` or `tests/integration/`. The root exceptions still present are `tests/test_factor_snapshot.py` and `tests/test_no_factor_snapshot_fallback.py`.
+- Frontend commands must run from `web/`: `cd web && npm run test`, `cd web && npm run typecheck`, `cd web && npm run build`, `cd web && npm run lint`.
+- Completion evidence is `make check-all`; it wraps lint, typecheck, unit/architecture/contract, integration/e2e, and coverage.
+- `web/src/lib/tokenRadar.ts` is the frontend Token Radar adapter and is more important than `ScoreLedger.tsx` for the v2 hard cut.
+- `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py` currently fabricates `current_market` from factor snapshot `market_quality`; v2 must instead use the existing current-market read model data.
+- `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py` has SQL JSON paths into `families.market_quality`; it must be updated too.
+- During merge to current `main`, Alembic `20260511_0025` is owned by token-radar production read models, so the factor diagnostics migration is `20260511_0026` with `down_revision = "20260511_0025"`.
 
 ## Source Spec
 
 - Spec: `docs/superpowers/specs/active/2026-05-11-token-factor-engineering-hard-cut-cn.md`
-- Implementation branch: `codex/token-factor-engineering-hard-cut`
-- Implementation worktree: `.worktrees/token-factor-engineering-hard-cut`
+- Branch: `codex/token-factor-engineering-hard-cut`
+- Worktree: `.worktrees/token-factor-engineering-hard-cut`
 
 ## Scope
 
 In:
-- New current factor version only.
-- Existing data only: `events`, `account_profiles`, `social_event_extractions`, `price_observations`, `token_radar_rows`, `token_score_evaluations`.
-- Keep Token Radar, Signal Labs pulse, notifications, API, CLI, and frontend aligned with the new snapshot shape.
-- Retain historical `token_radar_rows` snapshots for forward-return settlement.
-- Persist bucket evaluation summaries into existing `token_score_evaluations`.
+- New current factor snapshot version only: `token_factor_snapshot_v2_alpha_gated`.
+- Existing data only: `events`, `account_profiles`, `social_event_extractions`, `price_observations`, `token_radar_rows`, `token_score_evaluations`, and current-market read models already backed by `price_observations`.
+- Token Radar projection and `/api/token-radar` latest runtime rows.
+- Signal Labs pulse candidates, recommendation context, notification severity/body, and pulse repository health SQL.
+- Frontend Token Radar and Signal Lab adapters and tests.
+- Historical `token_radar_rows` retention for forward-return settlement.
+- Bucket summaries and diagnostics in existing `token_score_evaluations`.
 
 Out:
-- No new external market/social providers.
-- No new LLM labels or model training.
-- No recreated `token_signal_snapshots` / `token_signal_outcomes`.
-- No runtime fallback for old `families.identity`, `families.market_quality`, or `hard_gates`.
+- New market/social providers.
+- New LLM calls or model training.
+- Recreating `token_signal_snapshots` or `token_signal_outcomes`.
+- Runtime fallback that accepts v1 `hard_gates`, `families.identity`, `families.market_quality`, `families.social_attention`, `families.social_quality`, or `families.timing`.
 
 ## Target Snapshot Contract
 
@@ -43,6 +59,8 @@ Runtime rows must persist this shape under `token_radar_rows.factor_snapshot_jso
     "target_id": "asset:...",
     "symbol": "BUTTCOIN",
     "target_market_type": "dex",
+    "chain": "solana",
+    "address": "...",
     "pricefeed_id": "..."
   },
   "gates": {
@@ -59,16 +77,16 @@ Runtime rows must persist this shape under `token_radar_rows.factor_snapshot_jso
   },
   "families": {
     "attention_heat": {
-      "raw_score": 0,
-      "score": 0,
+      "raw_score": 42,
+      "score": 73,
       "weight": 0.35,
       "data_health": "ready",
       "facts": {},
       "factors": {}
     },
     "diffusion_quality": {
-      "raw_score": 0,
-      "score": 0,
+      "raw_score": 31,
+      "score": 58,
       "weight": 0.30,
       "data_health": "ready",
       "facts": {},
@@ -78,7 +96,7 @@ Runtime rows must persist this shape under `token_radar_rows.factor_snapshot_jso
       "raw_score": 0,
       "score": 0,
       "weight": 0.25,
-      "data_health": "partial",
+      "data_health": "missing",
       "facts": {},
       "factors": {}
     },
@@ -87,7 +105,9 @@ Runtime rows must persist this shape under `token_radar_rows.factor_snapshot_jso
       "score": 0,
       "weight": 0.10,
       "data_health": "partial",
-      "facts": {},
+      "facts": {
+        "social_signal_start_ms": 1778490000000
+      },
       "factors": {}
     }
   },
@@ -119,102 +139,150 @@ Runtime rows must persist this shape under `token_radar_rows.factor_snapshot_jso
     "recommended_decision": "watch"
   },
   "provenance": {
-    "source_event_ids": [],
+    "source_event_ids": ["event-1"],
     "computed_at_ms": 1778490000000
   }
 }
 ```
 
-## Scoring Rules
+## Factor Rules
 
-- Identity facts are never alpha. Missing target identity gates high alert and caps the decision surface.
-- Market freshness, DEX holder/liquidity/market-cap floors, and CEX native market identity are never alpha. They are gates and data-health facts.
-- `social_signal_start_ms` is provenance only. Its presence must never produce points.
-- Duplicate text and top-author concentration are negative risk controls. A clean duplicate score may remove a penalty but must not create a standalone 100-point alpha family.
-- Raw alpha is social-first and sparse: `attention_heat`, `diffusion_quality`, `semantic_quality`, `timing_response`.
-- Final `rank_score` is cross-sectional when the active cohort is usable; otherwise it falls back to raw alpha with `normalization.status = "insufficient_cohort"`.
-- High alert requires both alpha and gates. A high raw score with blocked gates becomes `watch` or `discard`, never `high_alert`.
+- Identity facts never score. Missing identity gates high alert and caps the decision surface.
+- Market freshness, DEX holder/liquidity/market-cap floors, and CEX native market identity never score. They are gates and data-health facts.
+- `social_signal_start_ms` is provenance/timing context only. Its presence must never create points.
+- Duplicate text and top-author concentration are negative risk controls. A clean duplicate score may avoid a penalty, but must not create a standalone 100-point alpha family.
+- Alpha families are social-first and sparse: `attention_heat`, `diffusion_quality`, `semantic_quality`, `timing_response`.
+- Final `rank_score` uses cross-sectional factor ranks when the cohort is usable; otherwise it falls back to raw alpha with `normalization.status = "insufficient_cohort"`.
+- High alert requires both alpha and gates. A high alpha score with blocked gates becomes `watch` or `discard`, never `high_alert`.
 
-## File Structure
+## Exact Files
 
-Modify:
-- `src/gmgn_twitter_intel/domains/token_intel/_constants.py`: bump projection/factor/normalizer/cohort-facing constants and alpha family tuple.
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`: rewrite current snapshot builder and gate/composite semantics.
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`: wire `diffusion_health`, expose weighted/social facts needed by v2.
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`: add factor-level percentile ranks and Spearman helpers.
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`: update active cohort definition version and keep the cohort simple.
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`: build raw snapshots first, apply factor-level normalization second, and persist new decision fields.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`: retain historical runs and validate the new factor contract.
-- `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`: add first-at-or-after lookup for settlement.
-- `src/gmgn_twitter_intel/app/runtime/repository_session.py`: expose the factor evaluation repository if a new focused repository is created.
-- `src/gmgn_twitter_intel/app/surfaces/cli/main.py`: add factor diagnostics and settlement commands; update `audit-token-radar`.
-- `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`: read `gates`, `data_health`, and new `composite`.
-- `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`: emit trigger metadata from v2 paths only.
-- `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`: expose v2 score ledger and fact cards.
-- `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`: prevent high-alert notification copy from treating gates as alpha.
-- `src/gmgn_twitter_intel/platform/db/postgres_audit.py`: update schema audit expectations for retained token radar rows and v2 snapshots.
-- `docs/CONTRACTS.md`, `docs/ARCHITECTURE.md`, `docs/TECH_DEBT.md`, `docs/generated/cli-help.md`: document the new hard-cut contract and commands.
-- Frontend files that render score ledgers or pulse detail pages, likely `web/src/api/types.ts`, `web/src/components/SignalLabPulse.tsx`, `web/src/components/PulseDetailPage.tsx`, `web/src/components/SignalLabInspector.tsx`, and `web/src/components/ScoreLedger.tsx`.
+Producer and scoring:
+- Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py` only for narrow input normalization if needed.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`.
 
-Create:
-- `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`: distribution, saturation, uniqueness, and family-health report logic.
-- `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`: settlement and bucket evaluation orchestration.
-- `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`: SQL for historical radar rows and evaluation upserts.
-- `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0025_token_factor_eval_diagnostics.py`: add diagnostics columns/indexes to existing evaluation table.
-- `tests/test_token_factor_evaluation.py`: settlement, bucket, and IC coverage.
-- `tests/test_factor_diagnostics.py`: saturation and distribution diagnostics.
+Read models and repositories:
+- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`.
+- Modify `src/gmgn_twitter_intel/app/runtime/app.py`.
+- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
+- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
+- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
+- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`.
+- Create `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`.
+- Create `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
+- Create `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`.
+- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py`.
 
-## Task 0: Worktree, Baseline, And Safety Check
+Pulse and notifications:
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`.
+- Modify `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py` only if factor-key collection assumes v1 names.
+- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py` only if prompt/audit labels assume v1 names.
 
-**Files:**
-- Read: `AGENTS.md`
-- Read: `CLAUDE.md`
-- Read: `docs/WORKFLOW.md`
+Frontend:
+- Modify `web/src/api/types.ts`.
+- Modify `web/src/lib/tokenRadar.ts`.
+- Modify `web/src/lib/tokenRadar.test.ts`.
+- Modify `web/src/lib/venue.ts`.
+- Modify `web/src/lib/venue.test.ts`.
+- Modify `web/src/components/SignalLabPulse.tsx`.
+- Modify `web/src/components/SignalLabPulse.test.tsx`.
+- Modify `web/src/components/SignalLabInspector.tsx`.
+- Modify `web/src/components/SignalLabInspector.test.tsx`.
+- Modify `web/src/components/TokenRadarRow.test.tsx`.
+- Modify `web/src/components/__tests__/PulseDetailPage.routing.test.tsx`.
+- Modify `web/src/App.test.tsx`.
+- Create `web/src/components/ScoreLedger.test.tsx` if ledger-specific gate/alpha rendering is not covered elsewhere.
 
-- [ ] **Step 0.1: Create the isolated implementation worktree**
+Tests:
+- Modify `tests/test_factor_snapshot.py`.
+- Modify `tests/test_no_factor_snapshot_fallback.py`.
+- Modify `tests/unit/test_cross_section_normalizer.py`.
+- Modify `tests/unit/test_factor_cohort.py`.
+- Modify `tests/unit/test_token_radar_feature_builder.py`.
+- Modify `tests/unit/test_diffusion_health.py`.
+- Modify `tests/unit/test_token_radar_projection.py`.
+- Modify `tests/unit/test_token_radar_apply_cross_section.py`.
+- Modify `tests/unit/test_token_radar_repository.py`.
+- Modify `tests/unit/test_token_radar_audit_cli.py`.
+- Modify `tests/unit/test_pulse_candidate_gate.py`.
+- Modify `tests/unit/test_pulse_candidate_worker.py`.
+- Modify `tests/unit/test_signal_pulse_service.py`.
+- Modify `tests/unit/test_notification_rules.py`.
+- Modify `tests/unit/test_postgres_schema.py`.
+- Modify `tests/integration/test_api_http.py`.
+- Modify `tests/integration/test_cli.py`.
+- Modify `tests/integration/test_postgres_schema_runtime.py`.
+- Modify `tests/integration/test_postgres_audit.py`.
+- Modify `tests/integration/test_pulse_repository.py`.
+- Create `tests/unit/test_factor_diagnostics.py`.
+- Create `tests/unit/test_token_factor_evaluation.py`.
+- Create `tests/integration/test_token_factor_evaluation_repository.py` if unit fakes cannot cover SQL upsert behavior.
+
+Docs/generated:
+- Modify `docs/CONTRACTS.md`.
+- Modify `docs/ARCHITECTURE.md`.
+- Modify `docs/TECH_DEBT.md`.
+- Regenerate `docs/generated/cli-help.md` with `make docs-cli-help`.
+- Regenerate OpenAPI and TS bindings with `make regen-contract` if HTTP schema changes.
+
+## Task 0: Worktree And Baseline
+
+**Files:** read-only check of repo policy and worktree state.
+
+- [x] **Step 0.1: Create worktree**
 
 Run:
 
 ```bash
-git worktree add .worktrees/token-factor-engineering-hard-cut -b codex/token-factor-engineering-hard-cut
-cd .worktrees/token-factor-engineering-hard-cut
+git worktree add .worktrees/token-factor-engineering-hard-cut -b codex/token-factor-engineering-hard-cut main
 ```
 
-Expected: new branch `codex/token-factor-engineering-hard-cut` is checked out in `.worktrees/token-factor-engineering-hard-cut`.
+Expected: branch `codex/token-factor-engineering-hard-cut` exists at `.worktrees/token-factor-engineering-hard-cut`.
 
-- [ ] **Step 0.2: Confirm unrelated work is not part of the branch**
+- [x] **Step 0.2: Confirm clean branch**
 
 Run:
 
 ```bash
-git status --short
+git status --short --branch
+git branch --show-current
 ```
 
-Expected: clean worktree before edits.
+Expected: `## codex/token-factor-engineering-hard-cut`; no source changes before implementation.
 
-- [ ] **Step 0.3: Capture baseline test state**
+- [ ] **Step 0.3: Capture current baseline**
 
 Run:
 
 ```bash
 uv run ruff check .
-uv run pytest tests/test_factor_snapshot.py tests/test_token_radar_projection.py tests/test_token_radar_repository.py tests/test_pulse_candidate_gate.py -q
+uv run python -m pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_repository.py tests/unit/test_pulse_candidate_gate.py -q
+cd web && npm run typecheck && npm run test -- --run
 ```
 
-Expected: record pass/fail state in the implementation notes before changing code.
+Expected: record pass/fail state before changing code. If baseline fails for unrelated reasons, write the failure in the verification notes and keep implementation tests focused.
 
-## Task 1: Lock The V2 Contract In Tests First
+## Task 1: Contract Tests And V2 Snapshot Builder
 
 **Files:**
-- Modify: `tests/test_factor_snapshot.py`
-- Modify: `tests/test_no_factor_snapshot_fallback.py`
-- Modify: `tests/test_token_radar_audit_cli.py`
-- Modify: `tests/test_cross_section_normalizer.py`
-- Create: `tests/test_factor_diagnostics.py`
+- Modify `src/gmgn_twitter_intel/domains/token_intel/_constants.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`.
+- Modify `tests/test_factor_snapshot.py`.
+- Modify `tests/test_no_factor_snapshot_fallback.py`.
 
-- [ ] **Step 1.1: Add a factor snapshot test that proves presence facts do not score**
+- [x] **Step 1.1: Add failing snapshot contract tests**
 
-Add assertions covering this behavior:
+In `tests/test_factor_snapshot.py`, assert:
 
 ```python
 snapshot = build_token_factor_snapshot(
@@ -227,25 +295,34 @@ snapshot = build_token_factor_snapshot(
         "pricefeed_id": "pricefeed:buttcoin",
     },
     attention={"mentions_window": 5, "weighted_mentions": 5.0, "unique_authors": 4, "robust_z": 0.5},
-    social_quality={"duplicate_text_share": 0.0, "independent_authors": 4, "effective_authors": 4, "top_author_share": 0.25},
+    social_quality={
+        "duplicate_text_share": 0.0,
+        "independent_authors": 4,
+        "effective_authors": 4,
+        "top_author_share": 0.25,
+    },
     social_semantics={},
     market={"market_status": "fresh", "holders": 500, "liquidity_usd": 100000, "market_cap_usd": 500000},
     timing={"social_signal_start_ms": 1778490000000},
     source_event_ids=["e1", "e2"],
     computed_at_ms=1778490000000,
 )
+assert snapshot["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+assert set(snapshot["families"]) == {"attention_heat", "diffusion_quality", "semantic_quality", "timing_response"}
 assert "identity" not in snapshot["families"]
 assert "market_quality" not in snapshot["families"]
 assert "timing" not in snapshot["families"]
 assert "hard_gates" not in snapshot
 assert snapshot["subject"]["target_id"] == "asset:buttcoin"
+assert snapshot["data_health"]["identity"] == "ready"
+assert snapshot["data_health"]["market"] == "ready"
 assert snapshot["gates"]["eligible_for_high_alert"] is True
 assert "social_signal_start_ms" not in snapshot["families"]["timing_response"]["factors"]
 ```
 
-- [ ] **Step 1.2: Add a duplicate-risk test that penalizes but never rewards clean duplicates**
+- [x] **Step 1.2: Add duplicate-risk regression**
 
-Add assertions:
+Assert clean duplication is not a fake 100-point alpha source:
 
 ```python
 clean = _snapshot_with_social_quality(duplicate_text_share=0.0, independent_authors=4, effective_authors=4)
@@ -256,59 +333,31 @@ assert "repeated_text_cluster" in repeated["gates"]["risk_reasons"]
 assert "duplicate_text_share_high" in repeated["gates"]["blocked_reasons"]
 ```
 
-- [ ] **Step 1.3: Add a no-fallback test for v1 paths**
+- [x] **Step 1.3: Add producer no-fallback scan**
 
-Add assertions that source no longer reads runtime keys:
+In `tests/test_no_factor_snapshot_fallback.py`, add a focused producer scan for the files owned by Tasks 1 and 2. The full runtime/frontend scan belongs to Task 7 after all consumers are converted.
 
 ```python
 source_files = [
     "src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py",
+    "src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py",
+    "src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py",
     "src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py",
-    "src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py",
 ]
-for path in source_files:
-    text = Path(path).read_text()
-    assert "token_factor_snapshot_v1" not in text
-    assert "[\"hard_gates\"]" not in text
-    assert ".get(\"hard_gates\"" not in text
 ```
 
-- [ ] **Step 1.4: Add cross-section tests for factor ranks and tie handling**
-
-Add assertions:
+Forbidden strings for these producer files:
 
 ```python
-ranks = rank_factors_within_cohort(
-    factor_scores={
-        "a": {"attention_heat": 10, "diffusion_quality": 20},
-        "b": {"attention_heat": 40, "diffusion_quality": 20},
-        "c": {"attention_heat": 90, "diffusion_quality": None},
-    },
-    cohort={"a", "b", "c"},
-)
-assert ranks["a"]["attention_heat"] < ranks["b"]["attention_heat"] < ranks["c"]["attention_heat"]
-assert ranks["a"]["diffusion_quality"] == ranks["b"]["diffusion_quality"]
-assert ranks["c"]["diffusion_quality"] is None
+"token_factor_snapshot_v1"
+"hard_gates"
+"families\", \"identity\""
+"families\", \"market_quality\""
 ```
 
-- [ ] **Step 1.5: Run the new tests and verify they fail for the current implementation**
+Do not scan Pulse, notification, or frontend files in this step; they intentionally still fail until Tasks 5 and 6.
 
-Run:
-
-```bash
-uv run pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py tests/test_cross_section_normalizer.py tests/test_factor_diagnostics.py -q
-```
-
-Expected: failures mention old `hard_gates`, old family names, or missing diagnostic/rank functions.
-
-## Task 2: Rewrite Constants And Snapshot Builder
-
-**Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/_constants.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_snapshot.py`
-- Modify: `tests/test_factor_snapshot.py`
-
-- [ ] **Step 2.1: Bump versions and family constants**
+- [x] **Step 1.4: Implement constants and v2 builder**
 
 Set:
 
@@ -323,9 +372,7 @@ TOKEN_RADAR_FACTOR_FAMILIES = (
 )
 ```
 
-- [ ] **Step 2.2: Replace old family builders with v2 alpha families**
-
-In `factor_snapshot.py`, keep `DEX_HIGH_ALERT_FLOORS` but move it into gate logic. Implement four family builders:
+In `factor_snapshot.py`, implement:
 
 ```python
 FAMILY_WEIGHTS = {
@@ -336,15 +383,7 @@ FAMILY_WEIGHTS = {
 }
 ```
 
-Use these rules:
-- `attention_heat`: score weighted mentions, unique authors, robust z/new burst, and stream share.
-- `diffusion_quality`: score effective authors and penalize top-author concentration and duplicate share.
-- `semantic_quality`: score direction/impact/novelty/confidence only when semantic facts are present.
-- `timing_response`: score price-change context only when price-change fields are present; store `social_signal_start_ms` only under facts.
-
-- [ ] **Step 2.3: Implement v2 gates**
-
-Gate reasons:
+Required gate reasons:
 
 ```python
 identity_unresolved
@@ -359,114 +398,59 @@ alpha_data_missing
 ```
 
 Decision caps:
-- Any identity or market freshness block: `max_decision = "discard"`.
-- DEX floor or duplicate/social-source block: `max_decision = "watch"`.
-- No block: `max_decision = "high_alert"`.
-
-- [ ] **Step 2.4: Implement v2 composite before normalization**
-
-Before cross-section normalization:
-
-```python
-raw_alpha_score = weighted_average(ready_or_partial_family_scores)
-rank_score = raw_alpha_score
-recommended_decision = capped_decision(raw_alpha_score, gates)
-```
+- identity or freshness block: `max_decision = "discard"`;
+- DEX floor, duplicate, or social-source block: `max_decision = "watch"`;
+- no block: `max_decision = "high_alert"`.
 
 Thresholds:
-- `high_alert`: raw/ranked score `>= 70` and `gates.max_decision == "high_alert"`.
-- `watch`: score `>= 35` and `gates.max_decision in {"watch", "high_alert"}`.
-- `discard`: all other cases.
+- `high_alert`: score `>= 70` and `gates.max_decision == "high_alert"`;
+- `watch`: score `>= 35` and cap allows watch;
+- `discard`: otherwise.
 
-- [ ] **Step 2.5: Run snapshot tests**
-
-Run:
-
-```bash
-uv run pytest tests/test_factor_snapshot.py -q
-```
-
-Expected: v2 snapshot tests pass; old v1 expectations are removed rather than dual-supported.
-
-## Task 3: Wire Real Diffusion Health Into Existing Feature Building
-
-**Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py` only if the existing function needs a narrow input compatibility fix.
-- Modify: `tests/test_token_radar_feature_builder.py`
-- Modify: `tests/test_diffusion_health.py`
-
-- [ ] **Step 3.1: Add failing feature-builder assertions**
-
-Assert that `build_radar_features(...).quality` or `.propagation` includes:
-
-```python
-{
-    "diffusion_status": "healthy",
-    "effective_authors": 3,
-    "top_author_share": 0.5,
-    "duplicate_text_share": 0.0,
-    "diffusion_risks": [],
-}
-```
-
-Also assert repeated text creates:
-
-```python
-assert "repeated_text_cluster" in features.quality["diffusion_risks"]
-assert features.quality["effective_authors"] < features.quality["independent_authors"]
-```
-
-- [ ] **Step 3.2: Call `diffusion_health` from the feature builder**
-
-Use existing row fields:
-- `author_handle`
-- `text_clean` or `text`
-- `author_followers`
-- `received_at_ms`
-- `is_watched`
-
-Merge results into existing quality/propagation dictionaries with explicit names:
-
-```python
-quality["diffusion_status"] = health["status"]
-quality["diffusion_score"] = health["score"]
-quality["diffusion_risks"] = health["risks"]
-propagation["effective_authors"] = health["effective_authors"]
-propagation["top_author_share"] = health["top_author_share"]
-propagation["duplicate_text_share"] = health["duplicate_text_share"]
-propagation["top_authors"] = health["top_authors"][:3]
-```
-
-- [ ] **Step 3.3: Keep duplicate facts single-source**
-
-Ensure `factor_snapshot.py` reads duplicate/top-author/effective-author values from the merged diffusion output, not from a second ad hoc duplicate computation.
-
-- [ ] **Step 3.4: Run feature tests**
+- [x] **Step 1.5: Run contract tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_token_radar_feature_builder.py tests/test_diffusion_health.py -q
+uv run python -m pytest tests/test_factor_snapshot.py tests/test_no_factor_snapshot_fallback.py -q
 ```
 
-Expected: diffusion behavior is deterministic and repeated text lowers diffusion health.
+Expected: v2 snapshot tests pass; no producer-owned v1 fallback remains in files touched so far.
 
-## Task 4: Add Factor-Level Cross-Section Normalization
+## Task 2: Diffusion, Cohort, Normalization, And Projection
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`
-- Modify: `tests/test_cross_section_normalizer.py`
-- Modify: `tests/test_factor_cohort.py`
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/token_radar_feature_builder.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/diffusion_health.py` only if needed.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/cross_section_normalizer.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_cohort.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`.
+- Modify `tests/unit/test_token_radar_feature_builder.py`.
+- Modify `tests/unit/test_diffusion_health.py`.
+- Modify `tests/unit/test_cross_section_normalizer.py`.
+- Modify `tests/unit/test_factor_cohort.py`.
+- Modify `tests/unit/test_token_radar_projection.py`.
+- Modify `tests/unit/test_token_radar_apply_cross_section.py`.
 
-- [ ] **Step 4.1: Add rank helpers**
+- [x] **Step 2.1: Wire diffusion health once**
 
-Implement:
+Call `diffusion_health` from the feature builder. Store:
+- `diffusion_status`, `diffusion_score`, `diffusion_risks` in `features.quality`.
+- `effective_authors`, `top_author_share`, `duplicate_text_share`, `top_authors` in `features.propagation`.
+
+Do not recompute duplicate share separately for v2 factor scoring.
+
+- [x] **Step 2.2: Add factor-rank normalizer**
+
+In `cross_section_normalizer.py`, set:
 
 ```python
 NORMALIZER_VERSION = "cross_section_v2_factor_ranks"
+```
 
+Add:
+
+```python
 def rank_factors_within_cohort(
     *,
     factor_scores: dict[str, dict[str, float | None]],
@@ -483,125 +467,85 @@ def weighted_rank_score(
 ```
 
 Rules:
-- Rank each factor independently.
-- Ignore `None` values per factor.
-- Ties receive average percentile rank.
-- If no ranked factors exist, return `None`.
-- Weighted rank is renormalized over available factors.
+- rank each factor independently;
+- ignore `None` values for that factor;
+- ties use average percentile rank;
+- weighted rank renormalizes over available factors;
+- no ranked factors returns `None`.
 
-- [ ] **Step 4.2: Update cohort definition**
+- [x] **Step 2.3: Update cohort signature**
 
-Set `COHORT_DEFINITION_VERSION = "factor_cohort_v2"`.
+Set:
 
-Keep cohort membership simple:
-- target has `target_id`;
-- not a major stablecoin symbol;
-- at least two high-confidence mentions, or at least one KOL/watched mention, or first-seen global in 24h.
+```python
+COHORT_DEFINITION_VERSION = "factor_cohort_v2"
+```
 
-- [ ] **Step 4.3: Run normalization tests**
+Change `is_active_cohort_member` to accept `target_id: str | None`. Require a non-empty `target_id`, exclude major stablecoin symbols, and include if any of these is true:
+- at least two high-confidence mentions;
+- at least one KOL/watched mention;
+- first seen globally in 24h.
+
+Update `TokenRadarProjection._apply_cross_section` call sites to pass `target_id`.
+
+- [x] **Step 2.4: Apply cross-section in projection**
+
+`_project_group` emits raw snapshots. `_apply_cross_section` must:
+- collect `raw_score` for each family;
+- compute factor ranks;
+- compute weighted `alpha_rank`;
+- update each family `score`;
+- update `normalization`;
+- update `composite.family_scores`;
+- update `composite.rank_score`;
+- recompute `composite.recommended_decision`;
+- synchronize `row["decision"]` with the final normalized composite.
+
+- [x] **Step 2.5: Remove v1 tie-breaks and validation**
+
+Update:
+- `_rank_key` to use `families.attention_heat.facts` and `families.diffusion_quality.facts`, not `families.social_attention`.
+- `_factor_snapshot_or_raise` to require `subject`, `families`, `gates`, `data_health`, `normalization`, and `composite`.
+- `_factor_snapshot_or_raise` to reject `hard_gates`.
+- `data_health_json` to read `factor_snapshot["data_health"]`.
+
+- [x] **Step 2.6: Run producer tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_cross_section_normalizer.py tests/test_factor_cohort.py -q
+uv run python -m pytest tests/unit/test_token_radar_feature_builder.py tests/unit/test_diffusion_health.py tests/unit/test_cross_section_normalizer.py tests/unit/test_factor_cohort.py tests/unit/test_token_radar_projection.py tests/unit/test_token_radar_apply_cross_section.py -q
 ```
 
-Expected: factor ranks, ties, missing factors, and cohort exclusion behavior pass.
+Expected: projection persists v2 snapshots, writes final normalized decisions, and no longer ranks using presence-only families.
 
-## Task 5: Apply Normalization In Token Radar Projection
+## Task 3: Radar Repository Retention, Current Market Read Model, And Evaluation
 
 **Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py`
-- Modify: `tests/test_token_radar_projection.py`
-- Modify: `tests/test_token_radar_apply_cross_section.py`
+- Modify `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/asset_flow_service.py`.
+- Modify `src/gmgn_twitter_intel/app/runtime/app.py`.
+- Modify `src/gmgn_twitter_intel/app/surfaces/api/http.py`.
+- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
+- Modify `src/gmgn_twitter_intel/app/runtime/repository_session.py`.
+- Modify `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`.
+- Create `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`.
+- Create `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`.
+- Modify `tests/unit/test_token_radar_repository.py`.
+- Modify `tests/unit/test_asset_flow_service.py`.
+- Modify `tests/unit/test_token_factor_evaluation.py` or create it.
+- Modify/create `tests/integration/test_token_factor_evaluation_repository.py` for SQL upsert if needed.
 
-- [ ] **Step 5.1: Make `_project_group` emit raw v2 snapshots**
+- [x] **Step 3.1: Retain historical radar runs**
 
-Keep `_project_group` responsible for:
-- grouping facts;
-- building raw v2 snapshot;
-- setting the provisional row decision from raw composite;
-- writing `data_health_json` from `factor_snapshot_json["data_health"]`.
-
-Remove old data-health paths:
-
-```python
-"identity": factor_snapshot["families"]["identity"]["data_health"]
-"market": factor_snapshot["families"]["market_quality"]["data_health"]
-```
-
-Replace with:
-
-```python
-"identity": factor_snapshot["data_health"]["identity"]
-"market": factor_snapshot["data_health"]["market"]
-"social": factor_snapshot["data_health"]["social"]
-"alpha": factor_snapshot["data_health"]["alpha"]
-```
-
-- [ ] **Step 5.2: Make `_apply_cross_section` normalize families before sorting**
-
-Collect per-target family scores:
-
-```python
-factor_scores[target_id] = {
-    family: snapshot["families"][family]["raw_score"]
-    for family in TOKEN_RADAR_FACTOR_FAMILIES
-}
-```
-
-Apply `rank_factors_within_cohort` and `weighted_rank_score`. Then update each snapshot:
-- `normalization.factor_ranks`
-- `normalization.alpha_rank`
-- normalized `families[family]["score"]`
-- `composite.family_scores`
-- `composite.rank_score`
-- `composite.recommended_decision`
-
-- [ ] **Step 5.3: Keep sorting aligned with normalized decisions**
-
-Sort key must use:
-
-```python
-factor_snapshot_json["composite"]["rank_score"]
-```
-
-Use final `decision` from the normalized composite after `_apply_cross_section`, not the provisional decision from `_project_group`.
-
-- [ ] **Step 5.4: Add projection regression tests**
-
-Add tests proving:
-- two tokens with identical identity and market freshness do not both get 100 from presence facts;
-- a token with stronger diffusion ranks above a single-author token;
-- blocked gates cap decision to `watch` or `discard` even when rank score is high.
-
-- [ ] **Step 5.5: Run projection tests**
-
-Run:
-
-```bash
-uv run pytest tests/test_token_radar_projection.py tests/test_token_radar_apply_cross_section.py -q
-```
-
-Expected: projection persists v2 snapshots and ranking uses normalized alpha.
-
-## Task 6: Retain Historical Radar Rows For Evaluation
-
-**Files:**
-- Modify: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_radar_repository.py`
-- Modify: `tests/test_token_radar_repository.py`
-- Modify: `src/gmgn_twitter_intel/platform/db/postgres_audit.py`
-
-- [ ] **Step 6.1: Change `replace_rows` from full-window delete to run-idempotent delete**
-
-Replace the broad delete:
+In `TokenRadarRepository.replace_rows`, replace broad delete:
 
 ```sql
 DELETE FROM token_radar_rows
 WHERE projection_version = %s AND "window" = %s AND scope = %s
 ```
 
-with:
+with run-idempotent delete:
 
 ```sql
 DELETE FROM token_radar_rows
@@ -611,58 +555,44 @@ WHERE projection_version = %s
   AND computed_at_ms = %s
 ```
 
-Reason: `latest_rows` already selects `MAX(computed_at_ms)`, so old rows can remain without changing read-model behavior.
+Keep the existing stale-write guard that rejects writes older than latest `computed_at_ms`.
 
-- [ ] **Step 6.2: Update stale-run protection**
-
-Keep the existing check that rejects writes older than the current max `computed_at_ms`. It prevents out-of-order historical writes from becoming latest.
-
-- [ ] **Step 6.3: Update factor contract validation**
+- [x] **Step 3.2: Validate v2 contract in repository**
 
 Require:
 
 ```python
-for key in ("families", "gates", "data_health", "composite", "normalization"):
-    payload = factor_snapshot.get(key)
-    if not isinstance(payload, dict) or not payload:
-        raise ValueError(...)
+for key in ("subject", "families", "gates", "data_health", "normalization", "composite"):
+    ...
 ```
 
 Reject:
 - mismatched `schema_version`;
-- old `hard_gates`;
-- missing v2 family keys.
+- missing `TOKEN_RADAR_FACTOR_FAMILIES`;
+- `hard_gates` key.
 
-- [ ] **Step 6.4: Add retention tests**
+- [x] **Step 3.3: Stop deriving API current_market from factor snapshot**
 
-Add tests:
-- inserting `computed_at_ms=1000` then `computed_at_ms=2000` leaves both runs in the table;
-- `latest_rows` returns only the `2000` run;
-- inserting `computed_at_ms=1500` after `2000` returns `False`;
-- inserting the same `computed_at_ms=2000` replaces only that run.
+Update `AssetFlowService` to accept `current_market` repository:
 
-- [ ] **Step 6.5: Run repository tests**
-
-Run:
-
-```bash
-uv run pytest tests/test_token_radar_repository.py -q
+```python
+class AssetFlowService:
+    def __init__(self, *, token_radar, current_market):
+        self.token_radar = token_radar
+        self.current_market = current_market
 ```
 
-Expected: historical rows are retained and latest reads stay stable.
+When building asset-flow rows:
+- collect `(target_type, target_id)` from radar rows;
+- call `current_market.current_for_subjects(subjects, now_ms=now_ms)`;
+- pass the returned current-market snapshot into `_public_row`;
+- remove `_current_market_from_snapshot` dependency on `families.market_quality`.
 
-## Task 7: Add Evaluation Settlement On Existing Tables
+Update `http.py`, `app.py`, and CLI `asset-flow` construction to pass `repos.current_market`.
 
-**Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/repositories/token_factor_evaluation_repository.py`
-- Create: `src/gmgn_twitter_intel/domains/token_intel/services/token_factor_evaluation.py`
-- Modify: `src/gmgn_twitter_intel/domains/asset_market/repositories/price_observation_repository.py`
-- Modify: `src/gmgn_twitter_intel/app/runtime/repository_session.py`
-- Create: `tests/test_token_factor_evaluation.py`
+- [x] **Step 3.4: Add price exit lookup for settlement**
 
-- [ ] **Step 7.1: Add price exit lookup**
-
-Add:
+In `PriceObservationRepository`, add:
 
 ```python
 def first_for_subject_at_or_after(
@@ -676,7 +606,10 @@ def first_for_subject_at_or_after(
         """
         SELECT *
         FROM price_observations
-        WHERE subject_type = %s AND subject_id = %s AND observed_at_ms >= %s
+        WHERE subject_type = %s
+          AND subject_id = %s
+          AND observed_at_ms >= %s
+          AND price_usd IS NOT NULL
         ORDER BY observed_at_ms ASC, observation_id ASC
         LIMIT 1
         """,
@@ -685,18 +618,16 @@ def first_for_subject_at_or_after(
     return dict(row) if row else None
 ```
 
-- [ ] **Step 7.2: Create focused evaluation repository**
+Also update `latest_for_subject_at_or_before` settlement use to filter `price_usd IS NOT NULL` in the evaluation repository/service, not necessarily globally for every caller.
 
-Responsibilities:
-- `historical_radar_rows(factor_version, window, scope, horizon_ms, generated_at_ms, limit)`
-- `upsert_score_evaluation(summary)`
-- `latest_score_evaluations(horizon, window, scope, score_version)`
+- [x] **Step 3.5: Add evaluation repository and service**
 
-Use `score_version = TOKEN_FACTOR_SNAPSHOT_VERSION`.
+Create a focused repository with:
+- `historical_radar_rows(factor_version, window, scope, horizon_ms, generated_at_ms, limit)`.
+- `upsert_score_evaluation(summary)`.
+- `latest_score_evaluations(horizon, window, scope, score_version)`.
 
-- [ ] **Step 7.3: Implement settlement service**
-
-Add:
+Create service:
 
 ```python
 def settle_token_factor_scores(
@@ -723,130 +654,90 @@ HORIZON_MS = {
 ```
 
 Settlement rules:
-- entry price: latest `price_observations` at or before `computed_at_ms`, with non-null `price_usd`;
-- exit price: first `price_observations` at or after `computed_at_ms + horizon_ms`, with non-null `price_usd`;
+- entry price: latest non-null `price_usd` at or before `computed_at_ms`;
+- exit price: first non-null `price_usd` at or after `computed_at_ms + horizon_ms`;
 - unsettled if entry or exit is missing;
 - actual return: `(exit_price - entry_price) / entry_price`;
-- bucket by final `composite.rank_score`: `0-19`, `20-39`, `40-59`, `60-79`, `80-100`;
+- buckets: `0-19`, `20-39`, `40-59`, `60-79`, `80-100`;
 - directional hit: return `> 0`;
-- Spearman IC: correlation of `rank_score` versus actual return across settled rows;
-- ICIR: daily IC mean divided by daily IC standard deviation when at least two daily IC values exist, otherwise `null`.
+- Spearman IC: correlation of `rank_score` versus actual return when at least three settled rows exist;
+- ICIR: daily IC mean divided by daily IC standard deviation when at least two daily IC values exist, otherwise `None`.
 
-- [ ] **Step 7.4: Add tests**
-
-Test cases:
-- unsettled rows increase `snapshot_count` but not `settled_count`;
-- bucket summaries upsert into `token_score_evaluations`;
-- Spearman IC is positive when higher scores have higher returns;
-- IC is `None` when fewer than three settled rows exist.
-
-- [ ] **Step 7.5: Run evaluation tests**
+- [x] **Step 3.6: Run repository/read-model/evaluation tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_token_factor_evaluation.py -q
+uv run python -m pytest tests/unit/test_token_radar_repository.py tests/unit/test_asset_flow_service.py tests/unit/test_token_factor_evaluation.py -q
 ```
 
-Expected: bucket rows and IC diagnostics are deterministic.
-
-## Task 8: Add Minimal Migration For Diagnostics Columns And Indexes
-
-**Files:**
-- Create: `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0025_token_factor_eval_diagnostics.py`
-- Modify: `tests/test_migrations.py` or the existing migration test file if present.
-
-- [ ] **Step 8.1: Add migration**
-
-Migration body:
-
-```python
-from __future__ import annotations
-
-from alembic import op
-
-revision = "20260511_0025"
-down_revision = "20260511_0024"
-branch_labels = None
-depends_on = None
-
-
-def upgrade() -> None:
-    op.execute(
-        """
-        ALTER TABLE token_score_evaluations
-          ADD COLUMN IF NOT EXISTS sample_start_ms BIGINT,
-          ADD COLUMN IF NOT EXISTS sample_end_ms BIGINT,
-          ADD COLUMN IF NOT EXISTS spearman_ic DOUBLE PRECISION,
-          ADD COLUMN IF NOT EXISTS icir DOUBLE PRECISION,
-          ADD COLUMN IF NOT EXISTS score_stddev DOUBLE PRECISION NOT NULL DEFAULT 0,
-          ADD COLUMN IF NOT EXISTS diagnostics_json JSONB NOT NULL DEFAULT '{}'::jsonb
-        """
-    )
-    op.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_token_score_evaluations_generated
-          ON token_score_evaluations(horizon, "window", scope, score_version, generated_at_ms DESC)
-        """
-    )
-    op.execute(
-        """
-        CREATE INDEX IF NOT EXISTS idx_token_radar_rows_settlement
-          ON token_radar_rows(factor_version, "window", scope, computed_at_ms, target_type, target_id)
-        """
-    )
-
-
-def downgrade() -> None:
-    op.execute("DROP INDEX IF EXISTS idx_token_radar_rows_settlement")
-    op.execute("DROP INDEX IF EXISTS idx_token_score_evaluations_generated")
-    op.execute("ALTER TABLE token_score_evaluations DROP COLUMN IF EXISTS diagnostics_json")
-    op.execute("ALTER TABLE token_score_evaluations DROP COLUMN IF EXISTS score_stddev")
-    op.execute("ALTER TABLE token_score_evaluations DROP COLUMN IF EXISTS icir")
-    op.execute("ALTER TABLE token_score_evaluations DROP COLUMN IF EXISTS spearman_ic")
-    op.execute("ALTER TABLE token_score_evaluations DROP COLUMN IF EXISTS sample_end_ms")
-    op.execute("ALTER TABLE token_score_evaluations DROP COLUMN IF EXISTS sample_start_ms")
-```
-
-- [ ] **Step 8.2: Run migration checks**
-
-Run:
+If SQL behavior is covered:
 
 ```bash
-uv run gmgn-twitter-intel db migrate
-uv run gmgn-twitter-intel db health
+uv run python -m pytest tests/integration/test_token_factor_evaluation_repository.py -q
 ```
 
-Expected: database migrates to `20260511_0025` and health reports ready.
+Expected: historical rows are retained, latest rows remain latest-only, current-market response comes from the market read model, and settlement buckets are deterministic.
 
-## Task 9: Add Factor Diagnostics CLI And Tighten Radar Audit
+## Task 4: Migration, Diagnostics, And CLI
 
 **Files:**
-- Create: `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/cli/main.py`
-- Modify: `tests/test_cli.py`
-- Modify: `tests/test_token_radar_audit_cli.py`
-- Create: `tests/test_factor_diagnostics.py`
+- Create `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py`.
+- Create `src/gmgn_twitter_intel/domains/token_intel/scoring/factor_diagnostics.py`.
+- Modify `src/gmgn_twitter_intel/app/surfaces/cli/main.py`.
+- Modify `src/gmgn_twitter_intel/platform/db/postgres_audit.py`.
+- Modify `tests/unit/test_factor_diagnostics.py`.
+- Modify `tests/unit/test_token_radar_audit_cli.py`.
+- Modify `tests/unit/test_postgres_schema.py`.
+- Modify `tests/integration/test_cli.py`.
+- Modify `tests/integration/test_postgres_schema_runtime.py`.
+- Modify `tests/integration/test_postgres_audit.py`.
 
-- [ ] **Step 9.1: Implement diagnostics**
+- [x] **Step 4.1: Add migration**
 
-Add:
+Use:
 
 ```python
-def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    ...
+revision = "20260511_0026"
+down_revision = "20260511_0025"
 ```
 
-Output fields:
-- `row_count`
-- `rank_score_unique_count`
-- `rank_score_stddev`
-- `rank_score_saturation_100_share`
-- `family_saturation_100_share`
-- `gate_block_counts`
-- `data_health_counts`
-- `ok`
-- `violations`
+Upgrade:
+
+```sql
+ALTER TABLE token_score_evaluations
+  ADD COLUMN IF NOT EXISTS sample_start_ms BIGINT,
+  ADD COLUMN IF NOT EXISTS sample_end_ms BIGINT,
+  ADD COLUMN IF NOT EXISTS spearman_ic DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS icir DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS score_stddev DOUBLE PRECISION,
+  ADD COLUMN IF NOT EXISTS diagnostics_json JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE INDEX IF NOT EXISTS idx_token_score_evaluations_generated
+  ON token_score_evaluations(horizon, "window", scope, score_version, generated_at_ms DESC);
+
+CREATE INDEX IF NOT EXISTS idx_token_radar_rows_settlement
+  ON token_radar_rows(factor_version, "window", scope, computed_at_ms, target_type, target_id);
+
+CREATE INDEX IF NOT EXISTS idx_price_observations_subject_price_after
+  ON price_observations(subject_type, subject_id, observed_at_ms ASC, observation_id ASC)
+  WHERE price_usd IS NOT NULL;
+```
+
+Downgrade drops those indexes and columns in reverse order.
+
+- [x] **Step 4.2: Add factor distribution diagnostics**
+
+Create `factor_distribution_report(rows)` returning:
+- `row_count`;
+- `rank_score_unique_count`;
+- `rank_score_stddev`;
+- `rank_score_saturation_100_share`;
+- `family_saturation_100_share`;
+- `gate_block_counts`;
+- `data_health_counts`;
+- `ok`;
+- `violations`.
 
 Violation rules:
 - `row_count > 20` and `rank_score_unique_count <= 3`;
@@ -854,7 +745,7 @@ Violation rules:
 - old family keys appear;
 - `hard_gates` appears.
 
-- [ ] **Step 9.2: Add CLI commands**
+- [x] **Step 4.3: Add CLI commands**
 
 Under `ops` add:
 
@@ -863,178 +754,274 @@ gmgn-twitter-intel ops factor-diagnostics --window 1h --scope all --limit 200
 gmgn-twitter-intel ops settle-token-factors --window 1h --scope all --horizon 1h --limit 1000
 ```
 
-Parser args:
-- `factor-diagnostics`: `--window`, `--scope`, `--limit`
-- `settle-token-factors`: `--window`, `--scope`, `--horizon`, `--limit`, hidden `--now-ms`
+Arguments:
+- `factor-diagnostics`: `--window`, `--scope`, `--limit`.
+- `settle-token-factors`: `--window`, `--scope`, `--horizon`, `--limit`, hidden `--now-ms`.
 
-- [ ] **Step 9.3: Update `audit-token-radar`**
+- [x] **Step 4.4: Update audit-token-radar**
 
-Audit must now require:
+Audit now requires:
 - `schema_version == TOKEN_FACTOR_SNAPSHOT_VERSION`;
-- `families` exactly contain `TOKEN_RADAR_FACTOR_FAMILIES`;
-- `gates`, `data_health`, `normalization`, and `composite` exist;
-- no old runtime payloads;
-- high alert only when `gates.eligible_for_high_alert` is true.
+- families exactly contain `TOKEN_RADAR_FACTOR_FAMILIES`;
+- `gates`, `data_health`, `normalization`, `composite` exist;
+- `hard_gates` absent;
+- high alert only when `gates.eligible_for_high_alert` is true;
+- no old runtime payload resurrection.
 
-- [ ] **Step 9.4: Run CLI tests**
-
-Run:
-
-```bash
-uv run pytest tests/test_cli.py tests/test_token_radar_audit_cli.py tests/test_factor_diagnostics.py -q
-```
-
-Expected: help includes new commands, audit rejects old shape, diagnostics detect saturation.
-
-## Task 10: Update Pulse, Notifications, API, And Frontend Consumers
-
-**Files:**
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`
-- Modify: `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`
-- Modify: `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`
-- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py` only if response shaping assumes old paths.
-- Modify: `web/src/api/types.ts`
-- Modify: `web/src/components/SignalLabPulse.tsx`
-- Modify: `web/src/components/PulseDetailPage.tsx`
-- Modify: `web/src/components/SignalLabInspector.tsx`
-- Modify: `web/src/components/ScoreLedger.tsx`
-- Modify: relevant frontend tests under `web/src`.
-
-- [ ] **Step 10.1: Hard-cut backend readers to v2 keys**
-
-Replace old reads:
-
-```python
-snapshot["hard_gates"]
-snapshot["families"]["identity"]
-snapshot["families"]["market_quality"]
-snapshot["families"]["timing"]
-```
-
-with:
-
-```python
-snapshot["gates"]
-snapshot["data_health"]["identity"]
-snapshot["data_health"]["market"]
-snapshot["families"]["attention_heat"]
-snapshot["families"]["diffusion_quality"]
-snapshot["normalization"]
-snapshot["composite"]
-```
-
-- [ ] **Step 10.2: Update pulse gate semantics**
-
-Pulse candidate high-alert eligibility:
-- requires `snapshot["gates"]["eligible_for_high_alert"]`;
-- uses `snapshot["composite"]["rank_score"]`;
-- includes `blocked_reasons` in the rejection explanation;
-- never treats market cap, holders, native market id, symbol, or social signal start as positive reasons.
-
-- [ ] **Step 10.3: Update notifications**
-
-Notification body should mention:
-- `rank_score`;
-- strongest alpha families by normalized score;
-- gate blocks if downgraded;
-- data-health warnings if market or semantic data is missing.
-
-- [ ] **Step 10.4: Update frontend type and ledger rendering**
-
-TypeScript snapshot model must expose:
-- `gates`
-- `data_health`
-- `families`
-- `normalization`
-- `composite`
-
-Score ledger should render:
-- Alpha family rows only.
-- Gate block panel separately from score rows.
-- Cross-section rank and cohort size near rank score.
-
-- [ ] **Step 10.5: Run backend and frontend consumer tests**
+- [x] **Step 4.5: Run diagnostics and CLI tests**
 
 Run:
 
 ```bash
-uv run pytest tests/test_pulse_candidate_gate.py tests/test_pulse_candidate_worker.py tests/test_signal_pulse_service.py tests/test_notification_rules.py -q
-npm test -- --run
+uv run python -m pytest tests/unit/test_factor_diagnostics.py tests/unit/test_token_radar_audit_cli.py tests/unit/test_postgres_schema.py -q
+uv run python -m pytest tests/integration/test_cli.py tests/integration/test_postgres_schema_runtime.py tests/integration/test_postgres_audit.py -q
 ```
 
-Expected: backend consumers no longer rely on old snapshot keys and frontend renders v2 score ledger.
+Expected: CLI help includes new commands, audit rejects v1 shape, migration schema includes diagnostics columns and settlement indexes.
 
-## Task 11: Documentation And Generated Surfaces
+## Task 5: Pulse, Notifications, And Agent Context Hard Cut
 
 **Files:**
-- Modify: `docs/CONTRACTS.md`
-- Modify: `docs/ARCHITECTURE.md`
-- Modify: `docs/TECH_DEBT.md`
-- Modify: `docs/generated/cli-help.md`
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/services/pulse_candidate_gate.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/runtime/pulse_candidate_worker.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/read_models/signal_pulse_service.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/repositories/pulse_repository.py`.
+- Modify `src/gmgn_twitter_intel/domains/notifications/services/notification_rules.py`.
+- Modify `src/gmgn_twitter_intel/domains/pulse_lab/types/pulse_recommendation.py` if needed.
+- Modify `src/gmgn_twitter_intel/integrations/openai_agents/pulse_recommendation_agent_client.py` if prompt/audit names are v1-specific.
+- Modify `tests/unit/test_pulse_candidate_gate.py`.
+- Modify `tests/unit/test_pulse_candidate_worker.py`.
+- Modify `tests/unit/test_signal_pulse_service.py`.
+- Modify `tests/unit/test_notification_rules.py`.
+- Modify `tests/integration/test_pulse_repository.py`.
+- Modify `tests/integration/test_api_http.py`.
 
-- [ ] **Step 11.1: Document factor engineering contract**
+- [x] **Step 5.1: Gate service hard cut**
 
-In `docs/CONTRACTS.md`, document:
-- v2 snapshot shape;
+`gate_pulse_candidate_from_factor_snapshot` and `_valid_snapshot` must require:
+- `subject`;
+- `gates`;
+- `data_health`;
+- `families`;
+- `composite`.
+
+They must reject `hard_gates`.
+
+High alert eligibility:
+
+```python
+eligible = bool(snapshot["gates"]["eligible_for_high_alert"])
+score = int(snapshot["composite"]["rank_score"] or 0)
+```
+
+Market/identity reasons appear as gate/data-health explanation, not alpha reasons.
+
+- [x] **Step 5.2: Worker trigger metrics v2 paths**
+
+`pulse_candidate_worker.py` trigger metrics read only:
+- `composite.rank_score`;
+- `composite.recommended_decision`;
+- `gates.blocked_reasons`;
+- `gates.eligible_for_high_alert`;
+- `families.attention_heat.facts`;
+- `families.diffusion_quality.facts`;
+- `families.semantic_quality.facts`;
+- `families.timing_response.facts`.
+
+Update `_source_seed_factor_snapshot` to produce v2 shape with `identity_unresolved` gate instead of v1 `hard_gates`.
+
+- [x] **Step 5.3: Signal pulse read model v2 fact card**
+
+`signal_pulse_service.py` fact card should expose:
+- rank score and recommended decision;
+- gate block reasons;
+- data health;
+- alpha family scores;
+- market facts from `subject`, `data_health`, or current row fields, not `families.market_quality`.
+
+`_valid_factor_snapshot` requires v2 keys and rejects v1.
+
+- [x] **Step 5.4: Pulse repository SQL v2 JSON paths**
+
+Replace direct SQL checks on:
+
+```sql
+factor_snapshot_json #>> '{families,market_quality,facts,market_status}'
+```
+
+with v2 data-health/gate paths such as:
+
+```sql
+factor_snapshot_json #>> '{data_health,market}'
+factor_snapshot_json #>> '{gates,eligible_for_high_alert}'
+```
+
+Choose the path that matches the summary field semantics. For market-ready rate, use `data_health.market IN ('ready', 'partial')` only if partial is intentionally counted; otherwise use `= 'ready'`.
+
+- [x] **Step 5.5: Notifications v2 severity/body**
+
+Notification severity uses `gates + composite`, not market/identity alpha:
+- `_signal_pulse_severity`;
+- `_valid_factor_snapshot`;
+- `_market_fact_line`;
+- `_social_fact_line`;
+- payload fingerprints and body fields.
+
+Copy should mention strongest alpha families and gate blocks separately.
+
+- [x] **Step 5.6: Run backend consumer tests**
+
+Run:
+
+```bash
+uv run python -m pytest tests/unit/test_pulse_candidate_gate.py tests/unit/test_pulse_candidate_worker.py tests/unit/test_signal_pulse_service.py tests/unit/test_notification_rules.py tests/integration/test_pulse_repository.py tests/integration/test_api_http.py -q
+```
+
+Expected: Signal Labs and notifications accept v2 only and do not treat market/identity gates as alpha.
+
+## Task 6: Frontend V2 Adapter And Components
+
+**Files:**
+- Modify `web/src/api/types.ts`.
+- Modify `web/src/lib/tokenRadar.ts`.
+- Modify `web/src/lib/tokenRadar.test.ts`.
+- Modify `web/src/lib/venue.ts`.
+- Modify `web/src/lib/venue.test.ts`.
+- Modify `web/src/components/SignalLabPulse.tsx`.
+- Modify `web/src/components/SignalLabPulse.test.tsx`.
+- Modify `web/src/components/SignalLabInspector.tsx`.
+- Modify `web/src/components/SignalLabInspector.test.tsx`.
+- Modify `web/src/components/TokenRadarRow.test.tsx`.
+- Modify `web/src/components/__tests__/PulseDetailPage.routing.test.tsx`.
+- Modify `web/src/App.test.tsx`.
+- Create `web/src/components/ScoreLedger.test.tsx` if coverage is otherwise missing.
+
+- [x] **Step 6.1: Type hard cut**
+
+Update `TokenFactorSnapshot` in `web/src/api/types.ts`:
+- `schema_version: "token_factor_snapshot_v2_alpha_gated" | string`;
+- `gates` replaces `hard_gates`;
+- `data_health` required;
+- families are v2 alpha families;
+- `normalization` present.
+
+Do not keep `hard_gates` as an optional field.
+
+- [x] **Step 6.2: Adapter hard cut**
+
+`requiredFactorSnapshot` in `web/src/lib/tokenRadar.ts` accepts only v2.
+
+Map current UI concepts:
+- `social_heat` from `families.attention_heat`;
+- `propagation` from `families.diffusion_quality`;
+- `discussion_quality` from `families.semantic_quality` plus diffusion facts where existing UI needs author/duplicate fields;
+- `timing` from `families.timing_response`;
+- `tradeability` from `gates` and `data_health.market`, not a scoring family;
+- `opportunity.hard_risks` from `gates.blocked_reasons`;
+- `opportunity.components` from `composite.family_scores`.
+
+Keep price/market display from `row.current_market.fields`; do not read price from factor families.
+
+- [x] **Step 6.3: Component labels**
+
+`ScoreLedger` and Signal Lab inspectors should show:
+- alpha family rows only;
+- gate block panel separately;
+- cross-section rank/cohort size;
+- data-health warnings.
+
+They must not render identity or market as alpha cards.
+
+- [x] **Step 6.4: Update frontend fixtures**
+
+Replace v1 fixtures in:
+- `web/src/lib/tokenRadar.test.ts`;
+- `web/src/lib/venue.test.ts`;
+- `web/src/components/SignalLabPulse.test.tsx`;
+- `web/src/components/SignalLabInspector.test.tsx`;
+- `web/src/components/TokenRadarRow.test.tsx`;
+- `web/src/components/__tests__/PulseDetailPage.routing.test.tsx`;
+- `web/src/App.test.tsx`.
+
+Add one explicit test that v1 throws a contract error.
+
+- [x] **Step 6.5: Run frontend checks**
+
+Run:
+
+```bash
+cd web && npm run typecheck && npm run lint && npm run test -- --run && npm run build
+```
+
+Expected: frontend accepts v2 snapshots only and current market remains independent of factor families.
+
+## Task 7: Docs, Generated Contracts, And Verification
+
+**Files:**
+- Modify `docs/CONTRACTS.md`.
+- Modify `docs/ARCHITECTURE.md`.
+- Modify `src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`.
+- Modify `docs/TECH_DEBT.md`.
+- Regenerate `docs/generated/cli-help.md`.
+- Regenerate `docs/generated/openapi.json` and `web/src/api/openapi.ts` if API schema changes.
+
+- [x] **Step 7.1: Document v2 contract**
+
+Document:
 - gate/data-health/alpha split;
-- no compatibility for old runtime shape;
-- evaluation command outputs.
+- no v1 runtime compatibility;
+- `current_market` comes from market read model, not factor snapshot;
+- diagnostic/settlement commands;
+- retained historical `token_radar_rows`.
 
-- [ ] **Step 11.2: Document data flow**
-
-In `docs/ARCHITECTURE.md`, update Token Radar flow:
-
-```text
-source rows -> raw factor snapshot -> cross-section normalization -> retained radar row -> pulse/notification/API -> settlement diagnostics
-```
-
-- [ ] **Step 11.3: Update tech debt**
-
-Remove or close any entry claiming token factor snapshot is unevaluable or placeholder-heavy. Add a remaining debt item only if it is real after implementation, such as longer-horizon evaluation sample size.
-
-- [ ] **Step 11.4: Regenerate CLI help**
+- [x] **Step 7.2: Regenerate generated docs**
 
 Run:
 
 ```bash
-uv run gmgn-twitter-intel --help > /tmp/gmgn-cli-help.txt
-uv run gmgn-twitter-intel ops --help > /tmp/gmgn-ops-help.txt
+make docs-cli-help
+make regen-contract
 ```
 
-Then update `docs/generated/cli-help.md` using the existing generated-doc format in that file.
+Run `make docs-generated` only if db schema or score-version generated docs are expected to change and the local database is available.
 
-## Task 12: End-To-End Verification
-
-**Files:**
-- No new source files beyond previous tasks.
-
-- [ ] **Step 12.1: Run full Python verification**
+- [x] **Step 7.3: Final hard-cut scan**
 
 Run:
 
 ```bash
-uv run ruff check .
-uv run python -m compileall src tests
-uv run pytest
+rg -n "token_factor_snapshot_v1|hard_gates|families\\]\\[\\\"identity\\\"|families\\]\\[\\\"market_quality\\\"|families\\]\\[\\\"social_attention\\\"|social_signal_start_ms.*score" src tests web
 ```
 
-Expected: all pass.
+Expected: no runtime v1 compatibility paths remain. Mentions in migration history, docs, and explicit negative tests are acceptable.
 
-- [ ] **Step 12.2: Run frontend verification**
+- [ ] **Step 7.4: Full completion gate**
 
 Run:
 
 ```bash
-npm test -- --run
-npm run build
+make check-all
 ```
 
-Expected: all pass.
+Expected: exit 0 before claiming completion.
 
-- [ ] **Step 12.3: Run local operational smoke**
+Current status after the 2026-05-11 resync and Godel review fixes:
+- `make check` passes: ruff, ruff format, mypy, frontend typecheck/lint/format, unit, architecture, contract, and compileall; latest run was `459 passed, 6 skipped`.
+- `make test-integration` has no business-code failures: `168 passed, 14 skipped`; the only failure is `tests/integration/test_docs_generated.py::test_make_docs_generated_clean_diff`.
+- `make test-e2e` passes: `4 passed`.
+- `make coverage` reaches the configured threshold: `696 passed, 19 skipped`, total coverage `82.74%`; the only failure is again `test_make_docs_generated_clean_diff`.
+- Subagent Godel re-review after the P1/P2 fixes is `APPROVED`.
 
-Run:
+`test_make_docs_generated_clean_diff` reruns `make docs-generated` and then
+requires `git diff docs/generated/` to be empty. The generated files are updated
+in the worktree, but they are intentionally not staged here because staging was
+not requested. `make check-all` will remain blocked by this git-index cleanliness
+rule until the generated docs are staged or committed with the rest of the
+change.
+
+- [ ] **Step 7.5: Operational smoke**
+
+Run when a local DB/config is available:
 
 ```bash
 uv run gmgn-twitter-intel db health
@@ -1042,46 +1029,38 @@ uv run gmgn-twitter-intel ops rebuild-token-radar --window 1h --scope all --limi
 uv run gmgn-twitter-intel ops audit-token-radar --window 1h --scope all --limit 100
 uv run gmgn-twitter-intel ops factor-diagnostics --window 1h --scope all --limit 200
 uv run gmgn-twitter-intel ops settle-token-factors --window 1h --scope all --horizon 1h --limit 1000
-```
-
-Expected:
-- health ready;
-- rebuild writes rows under `token-radar-v11-factor-alpha-gated`;
-- audit passes;
-- diagnostics no longer show all dominant families at 100;
-- settlement writes or reports coverage honestly if insufficient forward price data exists.
-
-- [ ] **Step 12.4: Inspect real 1h output**
-
-Run:
-
-```bash
 uv run gmgn-twitter-intel asset-flow --window 1h --scope all --limit 20
 ```
 
 Expected:
-- rank score has visible dispersion;
-- factor ledger separates gates from alpha;
-- a token like BUTTCOIN can be explained by actual social diffusion/heat rather than symbol, market id, or signal-start presence.
+- latest rows use `token-radar-v11-factor-alpha-gated`;
+- audit passes;
+- diagnostics show score dispersion rather than presence-based saturation;
+- settlement writes or reports insufficient forward-price coverage honestly;
+- `/asset-flow` and frontend render current market from `current_market.fields`, not factor market facts.
 
-- [ ] **Step 12.5: Final no-compatibility scan**
+## Subagent Execution Order
 
-Run:
+Execute sequentially with fresh workers and review after each task:
 
-```bash
-rg -n "token_factor_snapshot_v1|hard_gates|families\\]\\[\\\"identity\\\"|families\\]\\[\\\"market_quality\\\"|social_signal_start_ms.*score" src tests web
-```
+1. Task 1 worker: constants + v2 builder + contract tests.
+2. Task 2 worker: diffusion + normalization + projection.
+3. Task 3 worker: repository retention + asset flow current-market + evaluation service.
+4. Task 4 worker: migration + diagnostics + CLI audit/ops.
+5. Task 5 worker: Pulse + notifications.
+6. Task 6 worker: frontend adapter + components.
+7. Task 7 worker: docs/generated + final verification.
 
-Expected: no runtime compatibility paths remain. Mentions in migration history or docs explaining the hard cut are acceptable only outside runtime code.
+Workers are not alone in the codebase. Each worker must avoid reverting edits from other workers and must adapt to previous task changes. Use disjoint write scopes where possible; if a task needs to touch a file owned by an earlier task, inspect the current file first and preserve existing edits.
 
-## Review Checklist
+## Final Review Checklist
 
-- [ ] Every old score source that was a presence fact is either `subject`, `gates`, `data_health`, or `provenance`.
-- [ ] Every alpha family is based on variation in social evidence, semantics, timing response, or cross-section.
-- [ ] `token_radar_rows` retains historical runs for settlement.
-- [ ] `latest_rows` still returns only the newest run.
-- [ ] `token_score_evaluations` has real bucket rows keyed by v2 score version.
-- [ ] CLI diagnostics make saturation and low dispersion visible.
-- [ ] Signal Labs pulse and notifications explain gate blocks separately from alpha score.
-- [ ] No runtime code accepts old snapshot shape.
-
+- [x] Identity, market freshness, DEX floors, CEX native-market identity, duplicate clean state, and `social_signal_start_ms` are never positive alpha.
+- [x] Runtime producers persist only v2 snapshot shape.
+- [x] Runtime readers reject v1 shape rather than falling back.
+- [x] `token_radar_rows` retains historical runs while `latest_rows` remains latest-only.
+- [x] Asset-flow `current_market` is from the current-market read model, not factor snapshot.
+- [x] `token_score_evaluations` receives real bucket/IC diagnostics keyed by v2 score version.
+- [x] Signal Labs and notifications explain gates separately from alpha families.
+- [x] Frontend adapters render v2 and fail loudly on v1.
+- [ ] `make check-all` passes.

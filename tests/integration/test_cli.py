@@ -3,6 +3,7 @@ import json
 import tempfile
 import time
 import unittest
+from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
@@ -139,8 +140,21 @@ class CliTests(unittest.TestCase):
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
             ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
-            ["ops", "backfill-token-price-baselines", "--limit", "25"],
-            ["ops", "backfill-current-market-field-facts", "--limit", "25"],
+            ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "200"],
+            [
+                "ops",
+                "settle-token-factors",
+                "--window",
+                "1h",
+                "--scope",
+                "all",
+                "--horizon",
+                "1h",
+                "--limit",
+                "1000",
+                "--now-ms",
+                "1700000000000",
+            ],
             ["current-market", "--target-type", "Asset", "--target-id", f"asset:eip155:1:erc20:{PEPE}"],
         ]
 
@@ -165,10 +179,10 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[10].ops_command, "audit-token-intent")
         self.assertEqual(parsed[11].ops_command, "rebuild-token-radar")
         self.assertEqual(parsed[12].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[13].ops_command, "backfill-token-price-baselines")
-        self.assertEqual(parsed[13].limit, 25)
-        self.assertEqual(parsed[14].ops_command, "backfill-current-market-field-facts")
-        self.assertEqual(parsed[14].limit, 25)
+        self.assertEqual(parsed[13].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[13].limit, 200)
+        self.assertEqual(parsed[14].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[14].now_ms, 1_700_000_000_000)
         self.assertEqual(parsed[15].command, "current-market")
         self.assertEqual(parsed[15].target_type, "Asset")
 
@@ -274,7 +288,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
         self.assertEqual(lines[2]["data"]["targets"][0]["target"]["symbol"], "PEPE")
-        self.assertEqual(lines[2]["data"]["targets"][0]["attention"]["mentions_window"], 1)
+        self.assertEqual(lines[2]["data"]["targets"][0]["attention"]["mentions_5m"], 1)
         self.assertEqual(lines[3]["data"]["market_status"], "partial")
         self.assertEqual(lines[3]["data"]["fields"]["price_usd"]["status"], "fresh")
         self.assertEqual(
@@ -560,6 +574,148 @@ def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path)
     assert captured["max_pages"] == 3
     assert captured["repository_type"] == "AccountQualityRepository"
     assert isinstance(captured["client"], FakeClient)
+
+
+def test_cli_ops_factor_diagnostics_reads_latest_token_radar_rows(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+    from gmgn_twitter_intel.domains.token_intel.interfaces import (
+        TOKEN_FACTOR_SNAPSHOT_VERSION,
+        TOKEN_RADAR_FACTOR_FAMILIES,
+        TOKEN_RADAR_PROJECTION_VERSION,
+    )
+
+    captured = {}
+
+    class FakeTokenRadar:
+        def latest_rows(self, **kwargs):
+            captured.update(kwargs)
+            return [
+                {
+                    "factor_snapshot_json": {
+                        "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                        "families": {
+                            family: {"score": 50, "data_health": "ready", "facts": {}, "factors": {}}
+                            for family in TOKEN_RADAR_FACTOR_FAMILIES
+                        },
+                        "gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
+                        "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
+                        "normalization": {},
+                        "composite": {"rank_score": 50, "recommended_decision": "watch"},
+                    }
+                }
+            ]
+
+    class FakeRepos:
+        token_radar = FakeTokenRadar()
+
+    @contextmanager
+    def fake_repositories(_settings):
+        yield FakeRepos()
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    stdout = io.StringIO()
+
+    code = cli_module.main(
+        ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "7"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured == {
+        "window": "1h",
+        "scope": "all",
+        "limit": 7,
+        "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+    }
+    assert payload["ok"] is True
+    assert payload["data"]["row_count"] == 1
+
+
+def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    captured = {}
+
+    class FakeRepos:
+        pass
+
+    @contextmanager
+    def fake_repositories(_settings):
+        yield FakeRepos()
+
+    def fake_settle_token_factor_scores(**kwargs):
+        captured.update(kwargs)
+        return {"settled_count": 3, "generated_at_ms": kwargs["generated_at_ms"]}
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    monkeypatch.setattr(cli_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
+    stdout = io.StringIO()
+
+    code = cli_module.main(
+        [
+            "ops",
+            "settle-token-factors",
+            "--window",
+            "1h",
+            "--scope",
+            "all",
+            "--horizon",
+            "1h",
+            "--limit",
+            "9",
+            "--now-ms",
+            "1700000000123",
+        ],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured["repos"].__class__ is FakeRepos
+    assert captured["window"] == "1h"
+    assert captured["scope"] == "all"
+    assert captured["horizon"] == "1h"
+    assert captured["limit"] == 9
+    assert captured["generated_at_ms"] == 1_700_000_000_123
+    assert payload == {"ok": True, "data": {"settled_count": 3, "generated_at_ms": 1_700_000_000_123}}
+
+
+def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    captured = {}
+
+    class FakeRepos:
+        pass
+
+    @contextmanager
+    def fake_repositories(_settings):
+        yield FakeRepos()
+
+    def fake_settle_token_factor_scores(**kwargs):
+        captured.update(kwargs)
+        return {"generated_at_ms": kwargs["generated_at_ms"]}
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    monkeypatch.setattr(cli_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
+    monkeypatch.setattr(cli_module, "_now_ms", lambda: 9_999)
+    stdout = io.StringIO()
+
+    code = cli_module.main(
+        ["ops", "settle-token-factors", "--window", "1h", "--scope", "all", "--horizon", "1h", "--now-ms", "0"],
+        stdout=stdout,
+    )
+
+    assert code == 0
+    assert captured["generated_at_ms"] == 0
+    assert json.loads(stdout.getvalue())["data"]["generated_at_ms"] == 0
 
 
 def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch, tmp_path):

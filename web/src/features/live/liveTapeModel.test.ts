@@ -97,7 +97,7 @@ function tokenItem({
     },
     social_heat: {
       score: 68,
-      score_version: "social_heat_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
       reasons: [],
       risks: [],
       contributions: [],
@@ -117,7 +117,7 @@ function tokenItem({
     },
     propagation: {
       score: 61,
-      score_version: "propagation_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
       reasons: [],
       risks: [],
       contributions: [],
@@ -133,7 +133,7 @@ function tokenItem({
     },
     timing: {
       score: 55,
-      score_version: "timing_v4",
+      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
       status: "neutral",
       chase_risk: false,
       reasons: [],
@@ -141,7 +141,7 @@ function tokenItem({
     },
     opportunity: {
       score: 72,
-      score_version: "social_opportunity_v3",
+      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
       decision: "watch",
       reasons,
       risks: [],
@@ -151,7 +151,6 @@ function tokenItem({
         heat: 68,
         quality: 50,
         propagation: 61,
-        tradeability: 60,
         timing: 55,
       },
     },

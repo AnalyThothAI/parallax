@@ -15,9 +15,15 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
     { key: "heat", label: "Heat", block: token.social_heat },
     { key: "quality", label: "Quality", block: token.discussion_quality },
     { key: "propagation", label: "Propagation", block: token.propagation },
-    { key: "tradeability", label: "Tradeability", block: token.tradeability },
     { key: "timing", label: "Timing", block: token.timing },
   ];
+  const alphaComponents = [
+    ["heat", token.opportunity.components.heat],
+    ["quality", token.opportunity.components.quality],
+    ["propagation", token.opportunity.components.propagation],
+    ["timing", token.opportunity.components.timing],
+  ] as const;
+  const healthWarnings = dataHealthWarnings(token.factor_data_health);
   return (
     <div className="score-ledger">
       <section className="score-health">
@@ -33,17 +39,55 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
         </div>
         <div>
           <span>market</span>
-          <b>{token.market.price_change_status}</b>
+          <b>{token.factor_data_health?.market ?? token.market.price_change_status}</b>
+        </div>
+        <div>
+          <span>rank</span>
+          <b>
+            {rankValue(
+              token.factor_normalization?.alpha_rank,
+              token.factor_normalization?.cohort_size,
+            )}
+          </b>
         </div>
         <div>
           <span>evidence</span>
           <b>{token.evidence_total_count} posts</b>
         </div>
       </section>
-      {(token.opportunity.hard_risks ?? []).length ? (
+      {(token.factor_gates?.blocked_reasons ?? token.opportunity.hard_risks ?? []).length ? (
         <div className="hard-risk-strip">
-          {token.opportunity.hard_risks?.map((risk) => (
-            <span key={risk}>{formatRisk(risk)}</span>
+          {(token.factor_gates?.blocked_reasons ?? token.opportunity.hard_risks ?? []).map(
+            (risk) => (
+              <span key={risk}>{formatRisk(risk)}</span>
+            ),
+          )}
+        </div>
+      ) : null}
+      {token.factor_gates ? (
+        <section className="score-overview">
+          <div>
+            <span>Gate</span>
+            <b>{token.factor_gates.eligible_for_high_alert ? "eligible" : "blocked"}</b>
+          </div>
+          <div>
+            <span>max decision</span>
+            <b>{token.factor_gates.max_decision ?? "-"}</b>
+          </div>
+          <div>
+            <span>identity</span>
+            <b>{token.factor_data_health?.identity ?? "-"}</b>
+          </div>
+          <div>
+            <span>alpha</span>
+            <b>{token.factor_data_health?.alpha ?? "-"}</b>
+          </div>
+        </section>
+      ) : null}
+      {healthWarnings.length ? (
+        <div className="hard-risk-strip">
+          {healthWarnings.map((warning) => (
+            <span key={warning}>{warning}</span>
           ))}
         </div>
       ) : null}
@@ -61,7 +105,7 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
           <span>Opportunity</span>
           <b>{formatScore(token.opportunity.score)}</b>
         </div>
-        {Object.entries(token.opportunity.components).map(([key, value]) => (
+        {alphaComponents.map(([key, value]) => (
           <div key={key}>
             <span>{key}</span>
             <b>{formatScore(value)}</b>
@@ -100,6 +144,25 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
       </div>
     </div>
   );
+}
+
+function dataHealthWarnings(dataHealth: TokenFlowItem["factor_data_health"]): string[] {
+  if (!dataHealth) {
+    return [];
+  }
+  return Object.entries(dataHealth)
+    .filter(([, status]) => typeof status === "string" && status !== "ready")
+    .map(([key, status]) => `${key}:${status}`);
+}
+
+function rankValue(rank: unknown, cohortSize: unknown): string {
+  const parsedRank = typeof rank === "number" && Number.isFinite(rank) ? rank : null;
+  const parsedCohortSize =
+    typeof cohortSize === "number" && Number.isFinite(cohortSize) ? cohortSize : null;
+  if (parsedRank === null) {
+    return "-";
+  }
+  return parsedCohortSize === null ? `#${parsedRank}` : `#${parsedRank} / ${parsedCohortSize}`;
 }
 
 function PillStrip({

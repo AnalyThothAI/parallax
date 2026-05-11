@@ -185,3 +185,42 @@ def test_runtime_schema_contains_signal_pulse_tables(tmp_path):
         "pulse_playbook_snapshots",
         "pulse_playbook_outcomes",
     }.issubset(table_names)
+
+
+def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        columns = {
+            row["column_name"]: row
+            for row in conn.execute(
+                """
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'token_score_evaluations'
+                """
+            ).fetchall()
+        }
+        indexes = {
+            row["indexname"]
+            for row in conn.execute(
+                """
+                SELECT indexname
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND tablename IN ('token_score_evaluations', 'token_radar_rows', 'price_observations')
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert columns["sample_start_ms"]["data_type"] == "bigint"
+    assert columns["sample_end_ms"]["data_type"] == "bigint"
+    assert columns["spearman_ic"]["data_type"] == "double precision"
+    assert columns["icir"]["data_type"] == "double precision"
+    assert columns["score_stddev"]["data_type"] == "double precision"
+    assert columns["score_stddev"]["is_nullable"] == "YES"
+    assert columns["diagnostics_json"]["is_nullable"] == "NO"
+    assert {"idx_token_score_evaluations_generated", "idx_token_radar_rows_settlement"}.issubset(indexes)
+    assert "idx_price_observations_subject_price_after" in indexes

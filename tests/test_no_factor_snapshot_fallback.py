@@ -41,6 +41,19 @@ LEGACY_FRONTEND_PATTERNS = (
     "top_risks",
 )
 
+FACTOR_SNAPSHOT_PRODUCER_FILES = (
+    SRC_ROOT / "domains" / "token_intel" / "_constants.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_snapshot.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "cross_section_normalizer.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_cohort.py",
+    SRC_ROOT / "domains" / "token_intel" / "services" / "token_radar_projection.py",
+)
+
+FACTOR_SNAPSHOT_FALLBACK_PATTERNS = (
+    "token_factor_snapshot_v1",
+    "hard_gates",
+)
+
 
 def test_runtime_has_no_legacy_pulse_thesis_or_score_fallback_paths() -> None:
     offenders = _matches(
@@ -56,6 +69,15 @@ def test_frontend_runtime_has_no_legacy_signal_pulse_fallback_fields() -> None:
     offenders = _matches(
         _frontend_runtime_files(),
         patterns=LEGACY_FRONTEND_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_token_factor_snapshot_producers_have_no_legacy_snapshot_fallback_contract() -> None:
+    offenders = _matches(
+        list(FACTOR_SNAPSHOT_PRODUCER_FILES),
+        patterns=FACTOR_SNAPSHOT_FALLBACK_PATTERNS,
     )
 
     assert offenders == []

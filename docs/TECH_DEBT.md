@@ -96,3 +96,4 @@ unit test) and gated behind an explicit env flag like `GMGN_RUN_LIVE_IDEMPOTENCY
 
 | Description | Introduced | Resolved | Resolution |
 |-------------|------------|----------|------------|
+| Token Radar v1 factor snapshot mixed presence/data-quality facts into scoring families, which made many factors saturate near 100 and reduced IC/dispersion usefulness | pre-2026-05-11 Token Radar | 2026-05-11-token-factor-engineering-hard-cut | Replaced runtime contract with `token_factor_snapshot_v2_alpha_gated`: identity/market/data availability are gates or data-health, alpha families are social-first, current market is read from `current_market.fields`, and diagnostics/settlement evaluate v2 rows by score version |

@@ -124,53 +124,93 @@ function pulseItem(index: number): SignalPulseItem {
     evidence_event_ids: [`evidence-${index}`],
     source_event_ids: [`source-${index}`],
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v1",
+      schema_version: "token_factor_snapshot_v2_alpha_gated",
       subject: {
         target_type: "CexToken",
         target_id: `asset:cex:okx:TOKEN${index}-USDT`,
         symbol: `TOKEN${index}`,
+        pricefeed_id: `pricefeed:cex:okx:spot:TOKEN${index}-USDT`,
       },
+      gates: {
+        eligible_for_high_alert: true,
+        max_decision: "high_alert",
+        blocked_reasons: [],
+        risk_reasons: [],
+      },
+      data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
       families: {
-        market_quality: {
-          score: 76,
-          data_health: "ready",
-          facts: {
-            native_market_id: `pricefeed:cex:okx:spot:TOKEN${index}-USDT`,
-            liquidity_usd: 75_000,
-            market_cap_usd: 2_500_000,
-            holders: 1200,
-            volume_24h_usd: 430_000,
-          },
-          factors: {},
-        },
-        social_attention: {
+        attention_heat: {
+          raw_score: 81,
           score: 81,
+          weight: 0.35,
           data_health: "ready",
           facts: { mentions_1h: index + 1, watched_mentions: 1 },
           factors: {},
         },
-        social_quality: {
+        diffusion_quality: {
+          raw_score: 70,
           score: 70,
+          weight: 0.3,
           data_health: "ready",
           facts: { independent_authors: 3 },
           factors: {},
         },
+        semantic_quality: {
+          raw_score: 68,
+          score: 68,
+          weight: 0.25,
+          data_health: "ready",
+          facts: {
+            impact_mean: 0.68,
+            novelty_mean: 0.7,
+            confidence_mean: 0.8,
+            direction_counts: { bullish: 1 },
+          },
+          factors: {},
+        },
+        timing_response: {
+          raw_score: 64,
+          score: 64,
+          weight: 0.1,
+          data_health: "ready",
+          facts: { price_change_since_social_pct: 0.02, price_change_before_social_pct: 0.01 },
+          factors: {},
+        },
       },
-      hard_gates: { eligible_for_high_alert: true, blocked_reasons: [] },
-      composite: { rank_score: 82, recommended_decision: "watch" },
+      normalization: {
+        status: "ready",
+        cohort: { window: "24h" },
+        factor_ranks: {},
+        alpha_rank: index + 1,
+        cohort_size: 7,
+      },
+      composite: {
+        rank_score: 82,
+        recommended_decision: "watch",
+        family_scores: {
+          attention_heat: 81,
+          diffusion_quality: 70,
+          semantic_quality: 68,
+          timing_response: 64,
+        },
+      },
+      provenance: {
+        source_event_ids: [`source-${index}`],
+        computed_at_ms: 1_700_000_000_000 + index,
+      },
     },
     agent_recommendation: {
       schema_version: "pulse_recommendation_v1",
       recommendation: "watch",
       summary_zh: `recommendation ${index}`,
       primary_reasons: [
-        { factor_key: "social_attention.mentions_1h", explanation_zh: "mentions expanding" },
+        { factor_key: "attention_heat.mentions_1h", explanation_zh: "mentions expanding" },
       ],
       upgrade_conditions: [],
       invalidation_conditions: [],
       residual_risks: [
         {
-          factor_key: "market_quality.liquidity_usd",
+          factor_key: "diffusion_quality.duplicate_text_share",
           description_zh: "liquidity can thin quickly",
         },
       ],

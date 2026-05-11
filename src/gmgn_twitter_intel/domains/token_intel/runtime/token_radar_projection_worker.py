@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Callable
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from contextlib import AbstractContextManager, suppress
+from typing import TYPE_CHECKING, Any, cast
 
 from loguru import logger
 
@@ -13,6 +13,9 @@ from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJEC
 DEFAULT_WINDOWS = ("5m", "1h", "4h", "24h")
 DEFAULT_SCOPES = ("all", "matched")
 DEFAULT_HOT_WINDOWS = ("5m",)
+
+if TYPE_CHECKING:
+    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
 
 class TokenRadarProjectionWorker:
@@ -37,19 +40,30 @@ class TokenRadarProjectionWorker:
         self.last_result: dict[str, Any] | None = None
         self.last_error: str | None = None
         self._stopped = False
+        self._stop_event: asyncio.Event | None = None
         self._cursor = 0
 
     async def run(self) -> None:
+        self._stop_event = asyncio.Event()
         while not self._stopped:
             try:
                 await asyncio.to_thread(self.rebuild_once)
+            except asyncio.CancelledError:
+                self._stopped = True
+                raise
             except Exception as exc:  # pragma: no cover - watchdog path
                 self.last_error = str(exc)
                 logger.exception(f"token radar projection worker failed: {exc}")
-            await asyncio.sleep(self.interval_seconds)
+            if self._stopped:
+                break
+            with suppress(TimeoutError):
+                await asyncio.wait_for(self._stop_event.wait(), timeout=self.interval_seconds)
+        self._stop_event = None
 
     def stop(self) -> None:
         self._stopped = True
+        if self._stop_event is not None:
+            self._stop_event.set()
 
     def rebuild_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         computed_at_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -61,8 +75,8 @@ class TokenRadarProjectionWorker:
             "source_rows": 0,
             "windows": {},
         }
-        publications = self._latest_publications()
-        missing_items = self._missing_work_items(publications)
+        coverage = self._latest_coverage()
+        missing_items = self._missing_work_items(coverage)
         if missing_items:
             work_items = _dedupe_work_items([*self._hot_work_items(), *missing_items])
             primary_item = missing_items[0]
@@ -89,7 +103,7 @@ class TokenRadarProjectionWorker:
                     "status": "failed",
                     "error": str(exc),
                 }
-                self._mark_failed_refresh(
+                self._mark_failed_coverage(
                     window=window,
                     scope=scope,
                     computed_at_ms=computed_at_ms,
@@ -131,31 +145,33 @@ class TokenRadarProjectionWorker:
     def _hot_work_items(self) -> list[tuple[str, str]]:
         return [(window, scope) for window in self.hot_windows for scope in self.scopes]
 
-    def _latest_publications(self) -> dict[tuple[str, str], dict[str, Any]]:
+    def _latest_coverage(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self.repository_session() as repos:
-            publications = repos.token_radar.latest_publications(
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                windows=self.windows,
-                scopes=self.scopes,
+            return cast(
+                dict[tuple[str, str], dict[str, Any]],
+                repos.token_radar.latest_coverage(
+                    projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                    windows=self.windows,
+                    scopes=self.scopes,
+                ),
             )
-        return cast(dict[tuple[str, str], dict[str, Any]], publications)
 
-    def _missing_work_items(self, publications: dict[tuple[str, str], dict[str, Any]]) -> list[tuple[str, str]]:
+    def _missing_work_items(self, coverage: dict[tuple[str, str], dict[str, Any]]) -> list[tuple[str, str]]:
         return [
             (window, scope)
             for window in self.windows
             for scope in self.scopes
-            if publications.get((window, scope), {}).get("published_computed_at_ms") is None
+            if str(coverage.get((window, scope), {}).get("status") or "") != "ready"
         ]
 
-    def _mark_failed_refresh(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
+    def _mark_failed_coverage(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
         try:
             with self.repository_session() as repos:
-                repos.token_radar.mark_refresh_status(
+                repos.token_radar.mark_coverage(
                     projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                     window=window,
                     scope=scope,
-                    refresh_status="failed",
+                    status="failed",
                     reason="projection_window_failed",
                     source_rows=0,
                     row_count=0,
@@ -166,7 +182,7 @@ class TokenRadarProjectionWorker:
                     commit=True,
                 )
         except Exception as exc:  # pragma: no cover - diagnostic side path
-            logger.exception(f"failed to mark token radar projection refresh failure: {exc}")
+            logger.exception(f"failed to mark token radar projection coverage failure: {exc}")
 
 
 def _now_ms() -> int:
@@ -184,7 +200,7 @@ def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return out
 
 
-def _projection_class() -> type[Any]:
+def _projection_class() -> type[TokenRadarProjection]:
     from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
     return TokenRadarProjection

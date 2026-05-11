@@ -24,6 +24,9 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.asset_signal_repository import AssetSignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.token_factor_evaluation_repository import (
+    TokenFactorEvaluationRepository,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
     TokenIntentLookupRepository,
 )
@@ -51,6 +54,7 @@ class RepositorySession:
     current_market: CurrentMarketRepository
     market: MarketRepository
     token_radar: TokenRadarRepository
+    token_factor_evaluations: TokenFactorEvaluationRepository
     token_targets: TokenTargetRepository
     asset_signals: AssetSignalRepository
     enrichment: EnrichmentRepository
@@ -80,6 +84,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         current_market=CurrentMarketRepository(conn),
         market=MarketRepository(conn),
         token_radar=TokenRadarRepository(conn),
+        token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),
         asset_signals=AssetSignalRepository(conn),
         enrichment=EnrichmentRepository(conn),

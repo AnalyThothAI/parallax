@@ -53,8 +53,8 @@ ASSET_IDENTITY_EVIDENCE_MIGRATION = Path(
 TOKEN_RADAR_RECOVERY_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0024_price_observation_field_indexes.py"
 )
-TOKEN_RADAR_READ_MODELS_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0025_token_radar_production_read_models.py"
+TOKEN_FACTOR_EVAL_DIAGNOSTICS_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py"
 )
 
 
@@ -136,17 +136,32 @@ def test_token_radar_recovery_migration_adds_concurrent_field_indexes_and_covera
     assert 'PRIMARY KEY(projection_version, "window", scope)' in text
 
 
-def test_token_radar_production_read_models_migration() -> None:
-    text = TOKEN_RADAR_READ_MODELS_MIGRATION.read_text()
+def test_token_factor_eval_diagnostics_migration_adds_nullable_metrics_and_indexes() -> None:
+    text = TOKEN_FACTOR_EVAL_DIAGNOSTICS_MIGRATION.read_text()
 
-    assert 'revision = "20260511_0025"' in text
-    assert 'down_revision = "20260511_0024"' in text
-    assert "CREATE TABLE IF NOT EXISTS token_radar_publications" in text
-    assert "CREATE TABLE IF NOT EXISTS current_market_field_facts" in text
-    assert "CREATE TABLE IF NOT EXISTS token_market_price_baselines" in text
-    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_radar_rows_publication_read" in text
-    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_current_market_field_facts_latest" in text
-    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_market_price_baselines_resolution" in text
+    assert 'revision = "20260511_0026"' in text
+    assert 'down_revision = "20260511_0025"' in text
+    for column in (
+        "sample_start_ms BIGINT",
+        "sample_end_ms BIGINT",
+        "spearman_ic DOUBLE PRECISION",
+        "icir DOUBLE PRECISION",
+        "score_stddev DOUBLE PRECISION",
+        "diagnostics_json JSONB NOT NULL DEFAULT '{}'::jsonb",
+    ):
+        assert column in text
+    assert "score_stddev DOUBLE PRECISION NOT NULL" not in text
+    for index_name in (
+        "idx_token_score_evaluations_generated",
+        "idx_token_radar_rows_settlement",
+        "idx_price_observations_subject_price_after",
+    ):
+        assert index_name in text
+    assert 'ON token_score_evaluations(horizon, "window", scope, score_version, generated_at_ms DESC)' in text
+    assert 'ON token_radar_rows(factor_version, "window", scope, computed_at_ms, target_type, target_id)' in text
+    assert "WHERE price_usd IS NOT NULL" in text
+    assert "idx.indisvalid = false" in text
+    assert "DROP INDEX IF EXISTS public.{index_name}" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

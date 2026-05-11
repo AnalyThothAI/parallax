@@ -1,5 +1,6 @@
 import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
+import { requireTokenFactorSnapshotV2 } from "../lib/tokenFactorSnapshot";
 import { signalPulseVenueActions } from "../lib/venue";
 
 import {
@@ -19,14 +20,18 @@ type SignalLabInspectorProps = {
 };
 
 export function SignalLabInspector({ item }: SignalLabInspectorProps) {
+  const factorSnapshot = requireTokenFactorSnapshotV2(item.factor_snapshot);
   const venueActions = signalPulseVenueActions(item);
   const sourceEventIds = stringList(item.source_event_ids);
   const evidenceEventIds = stringList(item.evidence_event_ids);
   const gateBlockedReasons = stringList(item.gate.blocked_reasons);
-  const hardGateBlockedReasons = stringList(item.factor_snapshot.hard_gates.blocked_reasons);
-  const blockedReasons = [...new Set([...hardGateBlockedReasons, ...gateBlockedReasons])];
+  const factorGateBlockedReasons = stringList(factorSnapshot.gates.blocked_reasons);
+  const blockedReasons = [...new Set([...factorGateBlockedReasons, ...gateBlockedReasons])];
   const recommendation = item.agent_recommendation;
   const playbooks = Array.isArray(item.playbooks) ? item.playbooks : [];
+  const alphaFamilies = alphaFamilyEntries(factorSnapshot.families);
+  const normalization = factorSnapshot.normalization;
+  const healthWarnings = dataHealthWarnings(factorSnapshot.data_health);
   return (
     <DetailDrawerShell className="signal-lab-inspector">
       <DetailDrawerHeader
@@ -48,16 +53,12 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
         }
         subtitle={
           <>
-            {recommendation.recommendation} ·{" "}
-            {item.factor_snapshot.composite.recommended_decision ?? "decision unknown"} ·{" "}
+            {recommendation.recommendation} · {factorSnapshot.composite.recommended_decision} ·{" "}
             {item.window}/{item.scope}
           </>
         }
         title={
-          item.factor_snapshot.subject.symbol ||
-          item.symbol ||
-          item.subject_key ||
-          item.candidate_id
+          factorSnapshot.subject.symbol || item.symbol || item.subject_key || item.candidate_id
         }
       />
       <DetailDrawerSection className="detail-drawer-card-stack">
@@ -143,11 +144,15 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
-        <DetailDrawerCard title="Hard Gates">
+        <DetailDrawerCard title="Eligibility Gates">
           <DetailDrawerFieldGrid>
             <DetailDrawerField
               label="eligible_for_high_alert"
-              value={String(Boolean(item.factor_snapshot.hard_gates.eligible_for_high_alert))}
+              value={String(Boolean(factorSnapshot.gates.eligible_for_high_alert))}
+            />
+            <DetailDrawerField
+              label="max_decision"
+              value={factorSnapshot.gates.max_decision ?? "-"}
             />
             <DetailDrawerField
               label="gate_status"
@@ -165,10 +170,25 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           <DetailDrawerTagStrip emptyLabel="No blocked reasons." items={blockedReasons} />
         </DetailDrawerCard>
 
-        <DetailDrawerCard title="Factor Families">
-          {Object.entries(item.factor_snapshot.families).length ? (
+        <DetailDrawerCard title="Data Health">
+          <DetailDrawerFieldGrid>
+            <DetailDrawerField label="identity" value={factorSnapshot.data_health.identity} />
+            <DetailDrawerField label="market" value={factorSnapshot.data_health.market} />
+            <DetailDrawerField label="social" value={factorSnapshot.data_health.social} />
+            <DetailDrawerField label="alpha" value={factorSnapshot.data_health.alpha} />
+            <DetailDrawerField
+              label="alpha_rank"
+              value={rankValue(normalization.alpha_rank, normalization.cohort_size)}
+            />
+            <DetailDrawerField label="normalization" value={normalization.status ?? "-"} />
+          </DetailDrawerFieldGrid>
+          <DetailDrawerTagStrip emptyLabel="No data-health warnings." items={healthWarnings} />
+        </DetailDrawerCard>
+
+        <DetailDrawerCard title="Alpha Families">
+          {alphaFamilies.length ? (
             <div className="detail-drawer-card-stack">
-              {Object.entries(item.factor_snapshot.families).map(([familyName, family]) => (
+              {alphaFamilies.map(([familyName, family]) => (
                 <section className="detail-drawer-family" key={familyName}>
                   <h4>{familyName}</h4>
                   <DetailDrawerFieldGrid>
@@ -212,7 +232,7 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
-        <JsonCard title="factor_snapshot" value={jsonValue(item.factor_snapshot)} />
+        <JsonCard title="factor_snapshot" value={jsonValue(factorSnapshot)} />
         <JsonCard title="gate" value={jsonValue(item.gate)} />
         {playbooks.length ? <JsonCard title="playbooks" value={playbooks} /> : null}
 
@@ -227,6 +247,36 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
       </DetailDrawerSection>
     </DetailDrawerShell>
   );
+}
+
+const ALPHA_FAMILY_ORDER = [
+  "attention_heat",
+  "diffusion_quality",
+  "semantic_quality",
+  "timing_response",
+] as const;
+
+function alphaFamilyEntries(families: SignalPulseItem["factor_snapshot"]["families"]) {
+  return ALPHA_FAMILY_ORDER.map((familyName) => [familyName, families[familyName]] as const).filter(
+    ([, family]) => Boolean(family),
+  );
+}
+
+function dataHealthWarnings(
+  dataHealth: SignalPulseItem["factor_snapshot"]["data_health"],
+): string[] {
+  return Object.entries(dataHealth)
+    .filter(([, status]) => typeof status === "string" && status !== "ready")
+    .map(([key, status]) => `${key}:${status}`);
+}
+
+function rankValue(rank: unknown, cohortSize: unknown): string {
+  const parsedRank = numberValue(rank);
+  const parsedCohortSize = numberValue(cohortSize);
+  if (parsedRank === null) {
+    return "-";
+  }
+  return parsedCohortSize === null ? `#${parsedRank}` : `#${parsedRank} / ${parsedCohortSize}`;
 }
 
 function ListValue({ items }: { items: string[] }) {

@@ -6,7 +6,7 @@ import time
 from typing import Any
 from urllib.parse import quote
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot_v2
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
@@ -29,6 +29,7 @@ SIGNAL_PULSE_COOLDOWN_MS = {
     "theme_watch": 2 * 60 * 60_000,
     "risk_rejected_high_info": 60 * 60_000,
 }
+ALPHA_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality", "timing_response")
 
 
 class NotificationRuleEngine:
@@ -230,7 +231,10 @@ class NotificationRuleEngine:
             items.extend(data.get("attention") or [])
         candidates: list[NotificationCandidate] = []
         for item in items:
-            decision = str(item.get("decision") or "").strip().lower()
+            factor_snapshot = _asset_flow_factor_snapshot(item)
+            if factor_snapshot is None:
+                continue
+            decision = _asset_flow_decision(factor_snapshot)
             if decision not in {"driver", "watch"}:
                 continue
             social_heat_score = _score_value(item, "heat")
@@ -244,8 +248,7 @@ class NotificationRuleEngine:
                 continue
             target = _dict(item.get("target"))
             attention = _dict(item.get("attention"))
-            data_health = _dict(item.get("data_health"))
-            score = _dict(item.get("score"))
+            data_health = _dict(factor_snapshot.get("data_health"))
             identity_key = str(target.get("target_id") or "").strip()
             if not identity_key:
                 continue
@@ -270,7 +273,7 @@ class NotificationRuleEngine:
                 "social_heat_score": social_heat_score,
                 "discussion_quality_score": discussion_quality_score,
                 "opportunity_score": opportunity_score,
-                "score_version": _score_version(score.get("opportunity")),
+                "score_version": str(factor_snapshot.get("schema_version") or ""),
                 "decision": decision,
                 "data_health": data_health,
                 "mentions": _int(attention.get("mentions_window")),
@@ -398,8 +401,7 @@ class NotificationRuleEngine:
             factor_snapshot = _dict(row.get("factor_snapshot_json"))
             if not _valid_factor_snapshot(factor_snapshot):
                 continue
-            gate = _dict(row.get("gate_json"))
-            severity = _signal_pulse_severity(row, factor_snapshot=factor_snapshot, gate=gate)
+            severity = _signal_pulse_severity(row, factor_snapshot=factor_snapshot)
             if severity is None:
                 continue
             if severity in {"high", "critical"} and not _has_resolved_pulse_target(row, factor_snapshot):
@@ -440,11 +442,34 @@ class NotificationRuleEngine:
 
 
 def _score_value(item: dict[str, Any], key: str) -> int:
-    raw_score = item.get("score")
-    score: dict[str, Any] = raw_score if isinstance(raw_score, dict) else {}
-    raw_block = score.get(key)
-    block: dict[str, Any] = raw_block if isinstance(raw_block, dict) else {}
-    return _int(block.get("score"))
+    factor_snapshot = _asset_flow_factor_snapshot(item)
+    if factor_snapshot is None:
+        return 0
+    if key == "heat":
+        return _int(_dict(_dict(factor_snapshot.get("families")).get("attention_heat")).get("score"))
+    if key == "quality":
+        return _int(_dict(_dict(factor_snapshot.get("families")).get("semantic_quality")).get("score"))
+    if key == "opportunity":
+        return _int(_dict(factor_snapshot.get("composite")).get("rank_score"))
+    return 0
+
+
+def _asset_flow_factor_snapshot(item: dict[str, Any]) -> dict[str, Any] | None:
+    value = item.get("factor_snapshot")
+    if not is_token_factor_snapshot_v2(value):
+        return None
+    return _dict(value)
+
+
+def _asset_flow_decision(factor_snapshot: dict[str, Any]) -> str:
+    value = str(_dict(factor_snapshot.get("composite")).get("recommended_decision") or "").strip().lower()
+    if value in {"driver", "high_alert", "alert", "trade_candidate"}:
+        return "driver"
+    if value in {"watch", "token_watch"}:
+        return "watch"
+    if value in {"discard", "ignore"}:
+        return "discard"
+    return "investigate"
 
 
 def _score_version(block: Any) -> str | None:
@@ -484,14 +509,15 @@ def _alert_dedup_key(
 def _pulse_notification_signature(row: dict[str, Any]) -> str:
     evidence_ids = _list(row.get("evidence_event_ids_json"))
     source_ids = _list(row.get("source_event_ids_json"))
+    factor_snapshot = _dict(row.get("factor_snapshot_json"))
     payload = {
         "pulse_version": row.get("pulse_version"),
         "candidate_id": row.get("candidate_id"),
         "pulse_status": row.get("pulse_status"),
         "score_band": row.get("score_band"),
-        "gate": _dict(row.get("gate_json")),
+        "gates": _dict(factor_snapshot.get("gates")),
         "agent_recommendation": _dict(row.get("agent_recommendation_json")),
-        "factor_snapshot_fingerprint": _short_hash(_dict(row.get("factor_snapshot_json"))),
+        "factor_snapshot_fingerprint": _short_hash(factor_snapshot),
         "latest_evidence_event_id_bucket": _event_id_bucket([*evidence_ids, *source_ids]),
         "source_event_fingerprint": _short_hash(_stable_list(source_ids)),
     }
@@ -499,6 +525,7 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
 
 
 def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[str, Any]:
+    factor_snapshot = _dict(row.get("factor_snapshot_json"))
     return {
         "candidate_id": row.get("candidate_id"),
         "pulse_status": row.get("pulse_status"),
@@ -506,8 +533,8 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
         "social_phase": row.get("social_phase"),
         "narrative_type": row.get("narrative_type"),
         "agent_recommendation": _dict(row.get("agent_recommendation_json")),
-        "gate": _dict(row.get("gate_json")),
-        "factor_snapshot": _dict(row.get("factor_snapshot_json")),
+        "gate": _dict(factor_snapshot.get("gates")),
+        "factor_snapshot": factor_snapshot,
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
         "candidate_score": row.get("candidate_score"),
@@ -520,14 +547,14 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
 
 def _pulse_body(row: dict[str, Any]) -> str:
     snapshot = _dict(row.get("factor_snapshot_json"))
-    gate = _dict(row.get("gate_json"))
     recommendation = _dict(row.get("agent_recommendation_json"))
     subject = _dict(snapshot.get("subject"))
     symbol = _symbol(row.get("symbol") or subject.get("symbol"))
     display = f"${symbol}" if symbol else str(row.get("subject_key") or row.get("candidate_id") or "Signal Pulse")
     market = _market_fact_line(snapshot)
+    alpha = _alpha_fact_line(snapshot)
     social = _social_fact_line(snapshot)
-    blocked_reasons = _list(gate.get("blocked_reasons"))
+    blocked_reasons = _list(_nested(snapshot, "gates", "blocked_reasons"))
     summary = _compact_text(
         recommendation.get("summary_zh")
         or recommendation.get("summary")
@@ -541,6 +568,7 @@ def _pulse_body(row: dict[str, Any]) -> str:
         f"- **Status:** {str(row.get('pulse_status') or '').replace('_', ' ')}",
         f"- **Gate:** {_human_reasons(blocked_reasons) if blocked_reasons else 'clear'}",
         f"- **Market:** {market}",
+        f"- **Alpha:** {alpha}",
         f"- **Social:** {social}",
     ]
     if summary:
@@ -552,20 +580,16 @@ def _signal_pulse_severity(
     row: dict[str, Any],
     *,
     factor_snapshot: dict[str, Any],
-    gate: dict[str, Any],
 ) -> str | None:
     status = str(row.get("pulse_status") or "")
-    eligible_for_high_alert = bool(_nested(factor_snapshot, "hard_gates", "eligible_for_high_alert")) and bool(
-        gate.get("eligible_for_high_alert")
-    )
-    blocked_reasons = _list(gate.get("blocked_reasons")) or _list(
-        _nested(factor_snapshot, "hard_gates", "blocked_reasons")
-    )
-    max_recommendation = str(gate.get("max_recommendation") or "").strip()
+    gates = _dict(factor_snapshot.get("gates"))
+    eligible_for_high_alert = bool(gates.get("eligible_for_high_alert"))
+    blocked_reasons = _list(gates.get("blocked_reasons"))
+    max_decision = str(gates.get("max_decision") or "").strip()
     gate_allows_high = (
         eligible_for_high_alert
         and not blocked_reasons
-        and max_recommendation
+        and max_decision
         in {
             "watch",
             "trade_candidate",
@@ -576,7 +600,7 @@ def _signal_pulse_severity(
     if status == "token_watch":
         return "high" if gate_allows_high else None
     if status == "trade_candidate":
-        return "critical" if gate_allows_high and max_recommendation == "trade_candidate" else None
+        return "critical" if gate_allows_high else None
     return SIGNAL_PULSE_SEVERITY.get(status)
 
 
@@ -588,24 +612,24 @@ def _has_resolved_pulse_target(row: dict[str, Any], factor_snapshot: dict[str, A
 
 
 def _market_fact_line(snapshot: dict[str, Any]) -> str:
-    facts = _family_facts(snapshot, "market_quality")
-    parts = [
-        f"mcap {_money(facts.get('market_cap_usd'))}",
-        f"liq {_money(facts.get('liquidity_usd'))}",
-        f"holders {_int(facts.get('holders'))}",
-    ]
-    volume = facts.get("volume_24h_usd")
-    if volume is not None:
-        parts.append(f"vol24h {_money(volume)}")
-    status = str(facts.get("market_status") or "").strip()
-    if status:
-        parts.append(status)
-    return " · ".join(parts)
+    subject = _dict(snapshot.get("subject"))
+    data_health = _dict(snapshot.get("data_health"))
+    target_market_type = str(subject.get("target_market_type") or "unknown").strip()
+    market_health = str(data_health.get("market") or "unknown").strip()
+    return f"{target_market_type} · market {market_health}"
+
+
+def _alpha_fact_line(snapshot: dict[str, Any]) -> str:
+    scores = _alpha_family_scores(snapshot)
+    strongest = sorted(scores.items(), key=lambda item: _int(item[1]), reverse=True)[:2]
+    if not strongest:
+        return "none"
+    return " · ".join(f"{family.replace('_', ' ')} {_int(score)}" for family, score in strongest)
 
 
 def _social_fact_line(snapshot: dict[str, Any]) -> str:
-    attention = _family_facts(snapshot, "social_attention")
-    quality = _family_facts(snapshot, "social_quality")
+    attention = _family_facts(snapshot, "attention_heat")
+    quality = _family_facts(snapshot, "diffusion_quality")
     mentions = _int(attention.get("mentions_1h"))
     authors = _int(quality.get("independent_authors") or attention.get("unique_authors"))
     watched = _int(attention.get("watched_mentions"))
@@ -619,15 +643,23 @@ def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
 
 
 def _valid_factor_snapshot(value: Any) -> bool:
-    snapshot = _dict(value)
-    return (
-        bool(snapshot)
-        and snapshot.get("schema_version") == TOKEN_FACTOR_SNAPSHOT_VERSION
-        and isinstance(snapshot.get("subject"), dict)
-        and isinstance(snapshot.get("families"), dict)
-        and isinstance(snapshot.get("hard_gates"), dict)
-        and isinstance(snapshot.get("composite"), dict)
-    )
+    return is_token_factor_snapshot_v2(value)
+
+
+def _alpha_family_scores(snapshot: dict[str, Any]) -> dict[str, Any]:
+    composite_scores = _dict(_dict(snapshot.get("composite")).get("family_scores"))
+    if composite_scores:
+        return {
+            family: composite_scores.get(family)
+            for family in ALPHA_FAMILIES
+            if composite_scores.get(family) is not None
+        }
+    families = _dict(snapshot.get("families"))
+    return {
+        family: _dict(families.get(family)).get("score")
+        for family in ALPHA_FAMILIES
+        if _dict(families.get(family)).get("score") is not None
+    }
 
 
 def _human_reasons(reasons: list[Any]) -> str:

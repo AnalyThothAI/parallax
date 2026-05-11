@@ -1,0 +1,124 @@
+from __future__ import annotations
+
+from typing import Any
+
+from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
+)
+
+TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema_version",
+        "subject",
+        "gates",
+        "data_health",
+        "families",
+        "normalization",
+        "composite",
+        "provenance",
+    }
+)
+TOKEN_FACTOR_SNAPSHOT_PROVENANCE_KEYS = frozenset({"source_event_ids", "computed_at_ms"})
+TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
+    {
+        "raw_score",
+        "score",
+        "weight",
+        "data_health",
+        "facts",
+        "factors",
+    }
+)
+
+
+def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
+    if not isinstance(value, dict) or not value:
+        raise ValueError(f"{field_name} must be a non-empty v2 factor snapshot")
+    if value.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        raise ValueError(f"{field_name}.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
+    if "hard_gates" in value:
+        raise ValueError(f"{field_name}.hard_gates is not allowed")
+
+    keys = set(value)
+    missing = sorted(TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS - keys)
+    if missing:
+        raise ValueError(f"{field_name}.{missing[0]} is required")
+    extra = sorted(keys - TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS)
+    if extra:
+        raise ValueError(f"{field_name}.{extra[0]} is not allowed")
+
+    for key in ("subject", "gates", "data_health", "normalization", "composite", "provenance"):
+        _required_dict(value.get(key), field_name=f"{field_name}.{key}")
+
+    provenance = _required_dict(value.get("provenance"), field_name=f"{field_name}.provenance")
+    _require_exact_keys(
+        provenance,
+        allowed=TOKEN_FACTOR_SNAPSHOT_PROVENANCE_KEYS,
+        field_name=f"{field_name}.provenance",
+    )
+    source_event_ids = provenance.get("source_event_ids")
+    if (
+        not isinstance(source_event_ids, list)
+        or not source_event_ids
+        or any(not isinstance(item, str) or not item for item in source_event_ids)
+    ):
+        raise ValueError(f"{field_name}.provenance.source_event_ids is required")
+    if not _is_json_number(provenance.get("computed_at_ms")):
+        raise ValueError(f"{field_name}.provenance.computed_at_ms is required")
+
+    families = value.get("families")
+    if not isinstance(families, dict):
+        raise ValueError(f"{field_name}.families is required")
+    family_keys = set(str(key) for key in families)
+    allowed_families = set(TOKEN_RADAR_FACTOR_FAMILIES)
+    missing_families = sorted(allowed_families - family_keys)
+    if missing_families:
+        raise ValueError(f"{field_name}.families.{missing_families[0]} is required")
+    extra_families = sorted(family_keys - allowed_families)
+    if extra_families:
+        raise ValueError(f"{field_name}.families.{extra_families[0]} is not allowed")
+    for family in TOKEN_RADAR_FACTOR_FAMILIES:
+        family_block = _required_dict(families.get(family), field_name=f"{field_name}.families.{family}")
+        _require_exact_keys(
+            family_block,
+            allowed=TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS,
+            field_name=f"{field_name}.families.{family}",
+        )
+        for score_key in ("raw_score", "score", "weight"):
+            if not _is_json_number(family_block.get(score_key)):
+                raise ValueError(f"{field_name}.families.{family}.{score_key} is required")
+        if not isinstance(family_block.get("data_health"), str) or not family_block.get("data_health"):
+            raise ValueError(f"{field_name}.families.{family}.data_health is required")
+        _required_dict(family_block.get("facts"), field_name=f"{field_name}.families.{family}.facts")
+        _required_dict(family_block.get("factors"), field_name=f"{field_name}.families.{family}.factors")
+
+    return value
+
+
+def is_token_factor_snapshot_v2(value: Any) -> bool:
+    try:
+        require_token_factor_snapshot_v2(value)
+    except ValueError:
+        return False
+    return True
+
+
+def _required_dict(value: Any, *, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} is required")
+    return value
+
+
+def _require_exact_keys(value: dict[str, Any], *, allowed: frozenset[str], field_name: str) -> None:
+    keys = set(value)
+    missing = sorted(allowed - keys)
+    if missing:
+        raise ValueError(f"{field_name}.{missing[0]} is required")
+    extra = sorted(keys - allowed)
+    if extra:
+        raise ValueError(f"{field_name}.{extra[0]} is not allowed")
+
+
+def _is_json_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)

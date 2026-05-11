@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from gmgn_twitter_intel.app.surfaces.cli import main as cli_main
 from gmgn_twitter_intel.cli import _audit_token_radar_rows
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_FACTOR_FAMILIES,
+    TOKEN_RADAR_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
@@ -35,6 +38,7 @@ def test_audit_token_radar_rows_accepts_factor_snapshot_contract():
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
                 "factor_snapshot_json": factor_snapshot(),
                 "score_json": {},
                 "attention_json": {},
@@ -82,11 +86,12 @@ def test_audit_token_radar_rows_accepts_empty_projection_when_current_scope_is_e
 
 def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
     snapshot = factor_snapshot()
-    del snapshot["families"]["social_attention"]
+    del snapshot["families"]["attention_heat"]
     audit = _audit_token_radar_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
                 "factor_snapshot_json": snapshot,
                 "score_json": {},
                 "attention_json": {},
@@ -105,16 +110,15 @@ def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
     assert any(item["code"] == "missing_factor_families" for item in audit["violations"])
 
 
-def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch):
-    runtime_version = "token_factor_snapshot_runtime_test"
-    monkeypatch.setattr(cli_main, "TOKEN_FACTOR_SNAPSHOT_VERSION", runtime_version)
+def test_audit_token_radar_rows_rejects_extra_old_factor_family_contract():
     snapshot = factor_snapshot()
-    snapshot["schema_version"] = runtime_version
+    snapshot["families"]["market_quality"] = family({"market_status": "fresh"})
 
-    audit = cli_main._audit_token_radar_rows(
+    audit = _audit_token_radar_rows(
         [
             {
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
                 "factor_snapshot_json": snapshot,
                 "score_json": {},
                 "attention_json": {},
@@ -129,26 +133,262 @@ def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch)
         source_max_price_observed_at_ms=1_699_999_999_500,
     )
 
-    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v1"
-    assert audit["ok"] is True
+    assert audit["ok"] is False
+    assert any(item["code"] == "extra_factor_families" for item in audit["violations"])
+
+
+def test_audit_token_radar_rows_rejects_hard_gates_key():
+    snapshot = factor_snapshot()
+    snapshot["hard_gates"] = {"eligible_for_high_alert": True}
+
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(item["code"] == "hard_gates_present" for item in audit["violations"])
+    assert any(
+        item["code"] == "invalid_factor_snapshot_contract" and "hard_gates" in item["error"]
+        for item in audit["violations"]
+    )
+
+
+def test_audit_token_radar_rows_rejects_malformed_v2_contract():
+    snapshot = factor_snapshot()
+    snapshot["nested"] = {"volume_24h_usd": 123.45}
+
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(
+        item["code"] == "invalid_factor_snapshot_contract" and "nested" in item["error"] for item in audit["violations"]
+    )
+
+
+def test_audit_token_radar_rows_rejects_empty_v2_provenance():
+    snapshot = factor_snapshot()
+    snapshot["provenance"] = {}
+
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(
+        item["code"] == "invalid_factor_snapshot_contract" and "provenance.computed_at_ms" in item["error"]
+        for item in audit["violations"]
+    )
+
+
+def test_audit_token_radar_rows_rejects_empty_v2_source_event_ids():
+    snapshot = factor_snapshot()
+    snapshot["provenance"]["source_event_ids"] = []
+
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(
+        item["code"] == "invalid_factor_snapshot_contract" and "provenance.source_event_ids" in item["error"]
+        for item in audit["violations"]
+    )
+
+
+def test_audit_token_radar_rows_rejects_empty_v2_family_block():
+    snapshot = factor_snapshot()
+    snapshot["families"]["attention_heat"] = {}
+
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(
+        item["code"] == "invalid_factor_snapshot_contract" and "families.attention_heat.data_health" in item["error"]
+        for item in audit["violations"]
+    )
+
+
+def test_audit_token_radar_rows_rejects_wrong_factor_version():
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": "token_factor_snapshot_v1",
+                "factor_snapshot_json": factor_snapshot(),
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(item["code"] == "wrong_factor_version" for item in audit["violations"])
+
+
+def test_audit_token_radar_rows_rejects_high_alert_when_gate_is_not_eligible():
+    snapshot = factor_snapshot()
+    snapshot["gates"]["eligible_for_high_alert"] = False
+    snapshot["gates"]["blocked_reasons"] = ["market_stale"]
+    snapshot["composite"]["recommended_decision"] = "high_alert"
+
+    audit = _audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "high_alert",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert audit["ok"] is False
+    assert any(item["code"] == "high_alert_without_gate_eligibility" for item in audit["violations"])
+
+
+def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch):
+    runtime_version = "token_factor_snapshot_runtime_test"
+    monkeypatch.setattr(cli_main, "TOKEN_FACTOR_SNAPSHOT_VERSION", runtime_version)
+    snapshot = factor_snapshot()
+    snapshot["schema_version"] = runtime_version
+
+    audit = cli_main._audit_token_radar_rows(
+        [
+            {
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "factor_version": runtime_version,
+                "factor_snapshot_json": snapshot,
+                "score_json": {},
+                "attention_json": {},
+                "decision": "watch",
+                "market_json": {},
+                "price_json": {},
+            }
+        ],
+        now_ms=1_700_000_000_000,
+        source_current_window_rows=1,
+        source_max_resolution_ms=1_699_999_999_000,
+        source_max_price_observed_at_ms=1_699_999_999_500,
+    )
+
+    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v2_alpha_gated"
+    assert audit["ok"] is False
+    assert any(
+        item["code"] == "invalid_factor_snapshot_contract" and "schema_version" in item["error"]
+        for item in audit["violations"]
+    )
 
 
 def factor_snapshot():
     families = {
-        "identity": family({"target_id": "asset:pepe"}),
-        "social_attention": family({"mentions_1h": 4, "unique_authors": 3}),
-        "social_quality": family({"duplicate_text_share": 0.0}),
-        "social_semantics": family({"direction_counts": {"bullish": 1}}),
-        "market_quality": family({"market_status": "fresh"}),
-        "timing": family({"social_signal_start_ms": 1_700_000_000_000}),
+        "attention_heat": family({"mentions_1h": 4, "unique_authors": 3}),
+        "diffusion_quality": family({"duplicate_text_share": 0.0}),
+        "semantic_quality": family({"direction_counts": {"bullish": 1}}),
+        "timing_response": family({"social_signal_start_ms": 1_700_000_000_000}),
     }
     return {
-        "schema_version": "token_factor_snapshot_v1",
+        "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {"target_type": "Asset", "target_id": "asset:pepe", "symbol": "PEPE"},
+        "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
+        "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": families,
-        "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "gates": []},
+        "normalization": {"status": "ready", "cohort": {}, "factor_ranks": {}, "alpha_rank": None},
         "composite": {
-            "family_scores": {name: item["score"] for name, item in families.items()},
+            "family_scores": {family: families[family]["score"] for family in TOKEN_RADAR_FACTOR_FAMILIES},
             "rank_score": 55,
             "recommended_decision": "watch",
         },
@@ -161,7 +401,9 @@ def factor_snapshot():
 
 def family(facts: dict):
     return {
+        "raw_score": 80,
         "score": 80,
+        "weight": 0.25,
         "data_health": "ready",
         "facts": facts,
         "factors": {"test": {"score": 80, "data_health": "ready"}},

@@ -7,9 +7,14 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_RECOMMENDATION_SCHEMA_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_FACTOR_FAMILIES,
+    require_token_factor_snapshot_v2,
+)
 
 Recommendation = Literal["ignore", "watch", "research", "alert", "trade_candidate"]
 ConditionOperator = Literal[">=", ">", "<=", "<", "=="]
+ALPHA_FACTOR_FAMILIES = TOKEN_RADAR_FACTOR_FAMILIES
 
 _RECOMMENDATION_RANK: dict[str, int] = {
     "ignore": 0,
@@ -132,11 +137,12 @@ def pulse_recommendation_agent_instructions() -> str:
 
 
 def pulse_recommendation_agent_input(context: dict[str, Any]) -> str:
+    factor_snapshot = _required_v2_factor_snapshot(context.get("factor_snapshot"))
     payload = {
         "task": "write_pulse_recommendation_v1",
-        "factor_snapshot": context.get("factor_snapshot") or {},
+        "factor_snapshot": factor_snapshot,
         "gate_result": context.get("gate_result") or {},
-        "available_factor_keys": sorted(collect_factor_keys(context.get("factor_snapshot"))),
+        "available_factor_keys": sorted(collect_factor_keys(factor_snapshot)),
         "selected_posts": context.get("selected_posts") or [],
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -147,15 +153,14 @@ def contains_trading_execution_instruction(text: str) -> bool:
 
 
 def collect_factor_keys(factor_snapshot: Any) -> set[str]:
-    if not isinstance(factor_snapshot, dict):
-        return set()
-    families = factor_snapshot.get("families")
-    if not isinstance(families, dict):
+    snapshot = _required_v2_factor_snapshot(factor_snapshot)
+    families = snapshot.get("families")
+    if not isinstance(families, dict):  # pragma: no cover - guarded by _required_v2_factor_snapshot
         return set()
     keys: set[str] = set()
-    for family, family_payload in families.items():
-        family_name = str(family or "").strip()
-        if not family_name or not isinstance(family_payload, dict):
+    for family_name in ALPHA_FACTOR_FAMILIES:
+        family_payload = families.get(family_name)
+        if not isinstance(family_payload, dict):
             continue
         for section_name in ("facts", "factors"):
             section = family_payload.get(section_name)
@@ -166,6 +171,10 @@ def collect_factor_keys(factor_snapshot: Any) -> set[str]:
                 if item:
                     keys.add(f"{family_name}.{item}")
     return keys
+
+
+def _required_v2_factor_snapshot(value: Any) -> dict[str, Any]:
+    return require_token_factor_snapshot_v2(value)
 
 
 def _validate_max_recommendation(recommendation: str, max_recommendation: str | None) -> None:

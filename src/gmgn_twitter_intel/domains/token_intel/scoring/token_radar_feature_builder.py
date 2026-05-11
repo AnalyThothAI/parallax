@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.scoring.baseline_scoring import token_baseline_v2
+from gmgn_twitter_intel.domains.token_intel.scoring.diffusion_health import diffusion_health
 from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score, post_text_features
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import mention_confidence_from_status, tweet_quality
 
@@ -62,8 +63,17 @@ def build_radar_features(
         "baseline_nonzero_sample_count": heat["baseline_nonzero_sample_count"],
         "zero_slot_count": heat["zero_slot_count"],
     }
-    quality = _quality_features(window)
-    propagation = _propagation_features(window=window, previous=previous, window_ms=window_ms)
+    diffusion = diffusion_health(
+        window,
+        watched_author_handles={str(row.get("author_handle") or "") for row in window if row.get("is_watched")},
+    )
+    quality = _quality_features(window, diffusion=diffusion)
+    propagation = _propagation_features(
+        window=window,
+        previous=previous,
+        window_ms=window_ms,
+        diffusion=diffusion,
+    )
     market = _latest_market_row(window)
     tradeability = _tradeability_features(market)
     timing = {
@@ -182,11 +192,10 @@ def _baseline_slot_counts(*, context: list[dict[str, Any]], now_ms: int, window_
     return counts
 
 
-def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:
+def _quality_features(window: list[dict[str, Any]], *, diffusion: dict[str, Any]) -> dict[str, Any]:
     mentions = max(1, len({str(row["event_id"]) for row in window}))
     post_scores = [_post_score(row) for row in window]
-    texts = [str(row.get("text_clean") or row.get("text") or "").strip().lower() for row in window]
-    duplicate_share = _duplicate_share(texts)
+    duplicate_share = float(diffusion.get("duplicate_text_share") or 0.0)
     text_features = [post_text_features(str(row.get("text") or row.get("text_clean") or "")) for row in window]
     informative_count = sum(1 for item in text_features if item.get("informative"))
     market_context_count = sum(1 for item in text_features if item.get("has_market_context"))
@@ -207,6 +216,9 @@ def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:
         "avg_post_quality": round(sum(post_scores) / max(1, len(post_scores))),
         "llm_semantic_utility": llm_semantic_utility,
         "llm_label_confidence": llm_label_confidence,
+        "diffusion_status": diffusion.get("status"),
+        "diffusion_score": diffusion.get("score"),
+        "diffusion_risks": diffusion.get("risks") or [],
     }
 
 
@@ -215,14 +227,13 @@ def _propagation_features(
     window: list[dict[str, Any]],
     previous: list[dict[str, Any]],
     window_ms: int,
+    diffusion: dict[str, Any],
 ) -> dict[str, Any]:
     authors = [str(row.get("author_handle") or "") for row in window if row.get("author_handle")]
     previous_authors = {str(row.get("author_handle") or "") for row in previous if row.get("author_handle")}
     counts = Counter(authors)
     mentions = len({str(row["event_id"]) for row in window})
     independent = len(counts)
-    top_share = max(counts.values(), default=0) / max(1, len(authors))
-    duplicate_share = _duplicate_share([str(row.get("text_clean") or row.get("text") or "") for row in window])
     bucket_count = max(1, math.ceil(window_ms / (5 * 60_000)))
     active_buckets = len(
         {int(row.get("received_at_ms") or 0) // (5 * 60_000) for row in window if row.get("received_at_ms") is not None}
@@ -230,16 +241,16 @@ def _propagation_features(
     return {
         "mentions": mentions,
         "independent_authors": independent,
-        "effective_authors": independent * max(0.0, 1.0 - duplicate_share),
+        "effective_authors": diffusion.get("effective_authors"),
         "new_authors": len(set(authors) - previous_authors),
-        "top_author_share": top_share,
-        "duplicate_text_share": duplicate_share,
+        "top_author_share": diffusion.get("top_author_share"),
+        "duplicate_text_share": diffusion.get("duplicate_text_share"),
         "watched_author_count": len({str(row.get("author_handle")) for row in window if row.get("is_watched")}),
         "seed_lag_ms": None,
         "watch_status": "seed_linked" if any(row.get("is_watched") for row in window) else "public_only",
         "reproduction_rate": active_buckets / bucket_count,
         "phase_hint": None,
-        "top_authors": [{"author_handle": author, "mentions": count} for author, count in counts.most_common(3)],
+        "top_authors": diffusion.get("top_authors") or [],
     }
 
 

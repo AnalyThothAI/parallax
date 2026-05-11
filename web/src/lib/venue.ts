@@ -1,6 +1,7 @@
 import type { SignalPulseItem, TokenFlowItem } from "../api/types";
 
 import { gmgnTokenUrl } from "./gmgn";
+import { requireTokenFactorSnapshotV2 } from "./tokenFactorSnapshot";
 
 export type VenueAction = {
   label: string;
@@ -29,13 +30,13 @@ export function signalPulseVenueActions(item: SignalPulseItem): VenueAction[] {
 }
 
 function signalPulseDexVenueAction(item: SignalPulseItem): VenueAction | null {
-  const subject = item.factor_snapshot?.subject;
-  const chain = subject?.chain;
-  const address = subject?.address;
+  const subject = requireTokenFactorSnapshotV2(item.factor_snapshot).subject;
+  const chain = subject.chain;
+  const address = subject.address;
   if (!chain || !address) {
     return null;
   }
-  const targetType = subject?.target_type ?? item.target_type;
+  const targetType = subject.target_type ?? item.target_type;
   if (targetType !== "Asset") {
     return null;
   }
@@ -44,9 +45,9 @@ function signalPulseDexVenueAction(item: SignalPulseItem): VenueAction | null {
 }
 
 function signalPulseCexVenueAction(item: SignalPulseItem): VenueAction | null {
-  const subject = item.factor_snapshot?.subject;
-  const targetType = subject?.target_type ?? item.target_type;
-  const targetId = subject?.target_id ?? item.target_id;
+  const subject = requireTokenFactorSnapshotV2(item.factor_snapshot).subject;
+  const targetType = subject.target_type ?? item.target_type;
+  const targetId = subject.target_id ?? item.target_id;
   if (
     targetType !== "CexToken" &&
     !targetId?.startsWith("cex_token:") &&
@@ -54,9 +55,7 @@ function signalPulseCexVenueAction(item: SignalPulseItem): VenueAction | null {
   ) {
     return null;
   }
-  const facts = signalPulseFactorFacts(item);
-  const nativeMarketId =
-    stringValue(facts.native_market_id) ?? stringValue(facts.pricefeed_id) ?? targetId;
+  const nativeMarketId = stringValue(subject.pricefeed_id) ?? targetId;
   const pricefeed = parseCexPricefeedId(nativeMarketId);
   if (pricefeed?.exchange === "okx") {
     return { label: "OKX", url: okxUrl(pricefeed.instId, pricefeed.instType) };
@@ -65,7 +64,7 @@ function signalPulseCexVenueAction(item: SignalPulseItem): VenueAction | null {
   if (parsedTarget?.exchange === "okx") {
     return { label: "OKX", url: okxUrl(parsedTarget.instId, parsedTarget.instType) };
   }
-  const symbol = (subject?.symbol ?? item.symbol)?.trim().replace(/^\$/, "").toUpperCase();
+  const symbol = (subject.symbol ?? item.symbol)?.trim().replace(/^\$/, "").toUpperCase();
   return symbol ? { label: "OKX", url: okxUrl(`${symbol}-USDT`, "SPOT") } : null;
 }
 
@@ -117,22 +116,6 @@ function okxUrl(instId: string, instType?: string | null): string {
   const type = instType?.trim().toUpperCase();
   const path = type === "SWAP" || slug.endsWith("-swap") ? "trade-swap" : "trade-spot";
   return `https://www.okx.com/${path}/${slug}`;
-}
-
-function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function signalPulseFactorFacts(item: SignalPulseItem): Record<string, unknown> {
-  return Object.values(item.factor_snapshot.families ?? {}).reduce<Record<string, unknown>>(
-    (acc, family) => {
-      Object.assign(acc, recordValue(family.facts));
-      return acc;
-    },
-    {},
-  );
 }
 
 function stringValue(value: unknown): string | null {
