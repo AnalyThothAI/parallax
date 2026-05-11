@@ -53,8 +53,7 @@ def test_stream_worker_writes_okx_dex_ws_price_info_observation():
         {
             "provider": "okx_dex_ws_price_info",
             "pricefeed_id": (
-                "pricefeed:dex-token:okx_dex_ws_price_info:"
-                "solana:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2"
+                "pricefeed:dex-token:okx_dex_ws_price_info:solana:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2"
             ),
             "observed_at_ms": 1_700_086_420_000,
             "subject_type": "Asset",
@@ -137,12 +136,7 @@ class FakeRegistry:
         ]
 
     def upsert_pricefeed(self, **kwargs):
-        return {
-            "pricefeed_id": (
-                "pricefeed:dex-token:okx_dex_ws_price_info:"
-                f"{kwargs['chain_id']}:{kwargs['address']}"
-            )
-        }
+        return {"pricefeed_id": (f"pricefeed:dex-token:okx_dex_ws_price_info:{kwargs['chain_id']}:{kwargs['address']}")}
 
 
 class FakePriceObservations:

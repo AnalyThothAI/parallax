@@ -128,8 +128,7 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
     assert len(dex_quote_observations) == 2
     assert all(item["price_usd"] == 1.23 for item in dex_quote_observations)
     assert [
-        (item.get("market_cap_usd"), item.get("liquidity_usd"), item.get("holders"))
-        for item in dex_quote_observations
+        (item.get("market_cap_usd"), item.get("liquidity_usd"), item.get("holders")) for item in dex_quote_observations
     ] == [(None, None, None), (None, None, None)]
 
 

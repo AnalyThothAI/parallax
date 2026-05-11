@@ -54,9 +54,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
     """
     dsn = _live_pg_dsn()
     if not dsn:
-        pytest.skip(
-            "No live PG DSN available — set GMGN_PROD_POSTGRES_DSN or GMGN_TEST_POSTGRES_DSN"
-        )
+        pytest.skip("No live PG DSN available — set GMGN_PROD_POSTGRES_DSN or GMGN_TEST_POSTGRES_DSN")
 
     try:
         conn = connect_postgres(dsn)
@@ -77,9 +75,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
         )
 
         window_ms = WINDOW_MS["1h"]
-        analysis_since_ms = _analysis_since_ms(
-            computed_at_ms=fixed_now_ms, window_ms=window_ms
-        )
+        analysis_since_ms = _analysis_since_ms(computed_at_ms=fixed_now_ms, window_ms=window_ms)
         frozen_rows = projector._source_rows(
             since_ms=analysis_since_ms,
             scope="all",
@@ -89,14 +85,12 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
         assert frozen_rows, "No source rows — nothing to score"
 
         # Both rebuilds use the same frozen source list.
-        def _frozen_source_rows(self, *, since_ms, scope, now_ms):  # noqa: ANN001
+        def _frozen_source_rows(self, *, since_ms, scope, now_ms):
             return frozen_rows
 
         with patch.object(TokenRadarProjection, "_source_rows", _frozen_source_rows):
             # First rebuild.
-            projector.rebuild(
-                window="1h", scope="all", now_ms=fixed_now_ms, limit=10
-            )
+            projector.rebuild(window="1h", scope="all", now_ms=fixed_now_ms, limit=10)
             rows_first = conn.execute(
                 """
                 SELECT target_id, factor_snapshot_json
@@ -107,9 +101,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
             ).fetchall()
 
             # Second rebuild — same now_ms and same frozen source rows.
-            projector.rebuild(
-                window="1h", scope="all", now_ms=fixed_now_ms, limit=10
-            )
+            projector.rebuild(window="1h", scope="all", now_ms=fixed_now_ms, limit=10)
             rows_second = conn.execute(
                 """
                 SELECT target_id, factor_snapshot_json
@@ -137,11 +129,7 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
         s2 = _strip_wall_clock(dict(r2["factor_snapshot_json"]))
         if s1 != s2:
             # Identify which top-level keys differ for actionable diagnostics.
-            differing_keys = sorted(
-                k for k in set(list(s1) + list(s2)) if s1.get(k) != s2.get(k)
-            )
-            diffs.append(
-                f"factor_snapshot_json diverged for {tid1!r}: differing_keys={differing_keys}"
-            )
+            differing_keys = sorted(k for k in set(list(s1) + list(s2)) if s1.get(k) != s2.get(k))
+            diffs.append(f"factor_snapshot_json diverged for {tid1!r}: differing_keys={differing_keys}")
 
     assert not diffs, "Idempotency violated (G1):\n" + "\n".join(diffs[:10])

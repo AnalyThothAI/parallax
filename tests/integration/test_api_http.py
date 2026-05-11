@@ -109,9 +109,7 @@ def _pulse_recommendation(summary: str = "PEPE 社交热度显著上升。") -> 
                 "description_zh": "讨论快速降温。",
             }
         ],
-        "residual_risks": [
-            {"factor_key": "market_quality.liquidity_usd", "description_zh": "流动性仍可能快速变化。"}
-        ],
+        "residual_risks": [{"factor_key": "market_quality.liquidity_usd", "description_zh": "流动性仍可能快速变化。"}],
         "evidence_event_ids": ["event-api-1"],
         "confidence": 0.72,
     }

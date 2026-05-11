@@ -246,7 +246,7 @@ def test_replace_rows_requires_complete_factor_snapshot_contract_before_insert()
     row = _valid_factor_row()
     del row["factor_snapshot_json"]["hard_gates"]
 
-    with pytest.raises(ValueError, match="factor_snapshot_json.hard_gates is required"):
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.hard_gates is required"):
         TokenRadarRepository(conn).replace_rows(
             projection_version="token-radar-v9-factor-snapshot",
             window="1h",
@@ -264,7 +264,7 @@ def test_replace_rows_rejects_factor_snapshot_version_mismatch_before_insert():
     row = _valid_factor_row()
     row["factor_snapshot_json"]["schema_version"] = "token_factor_snapshot_legacy"
 
-    with pytest.raises(ValueError, match="factor_snapshot_json.schema_version must match factor_version"):
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.schema_version must match factor_version"):
         TokenRadarRepository(conn).replace_rows(
             projection_version="token-radar-v9-factor-snapshot",
             window="1h",

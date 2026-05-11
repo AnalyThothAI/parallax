@@ -810,8 +810,7 @@ class FakePulseSummaryConn:
                     "displayable_count": 1,
                     "market_fresh_count": (
                         1
-                        if "factor_snapshot_json #>> '{families,market_quality,facts,market_status}' = 'fresh'"
-                        in text
+                        if "factor_snapshot_json #>> '{families,market_quality,facts,market_status}' = 'fresh'" in text
                         else 0
                     ),
                 }

@@ -664,9 +664,7 @@ def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypa
     monkeypatch.setattr(
         TokenRadarProjection,
         "_source_rows",
-        lambda self, since_ms, scope, now_ms: [
-            source_row("event-1", received_at_ms=now_ms - 60_000)
-        ],
+        lambda self, since_ms, scope, now_ms: [source_row("event-1", received_at_ms=now_ms - 60_000)],
     )
 
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)

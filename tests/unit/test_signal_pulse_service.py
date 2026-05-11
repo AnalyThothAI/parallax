@@ -499,9 +499,7 @@ def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
                     "market_status": market_status,
                 }
             },
-            "social_attention": {
-                "facts": {"mentions_1h": 9, "unique_authors": 3, "watched_mentions": 1}
-            },
+            "social_attention": {"facts": {"mentions_1h": 9, "unique_authors": 3, "watched_mentions": 1}},
             "social_quality": {"facts": {"independent_authors": 4}},
         },
         "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},

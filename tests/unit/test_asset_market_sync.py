@@ -204,9 +204,9 @@ def test_sync_dex_prices_refreshes_active_dex_venues_in_batches():
     assert [(item.chain_id, item.address) for item in dex_market.price_requests[0]] == [
         ("eip155:56", "0x8f32420f2e3728c49399b00dd0a796602d984444")
     ]
-    dex_price_observation = [
-        item for item in price_observations.observations if item["provider"] == "okx_dex_price"
-    ][-1]
+    dex_price_observation = [item for item in price_observations.observations if item["provider"] == "okx_dex_price"][
+        -1
+    ]
     assert dex_price_observation == {
         "provider": "okx_dex_price",
         "pricefeed_id": "pricefeed:dex-token:okx_dex_price:eip155:56:0x8f32420f2e3728c49399b00dd0a796602d984444",

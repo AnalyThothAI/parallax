@@ -20,7 +20,6 @@ PRICE_PROVIDER_SQL = _sql_values(PRICE_CAPABLE_PROVIDERS)
 DEX_METADATA_PROVIDER_SQL = _sql_values(DEX_METADATA_CAPABLE_PROVIDERS)
 
 
-
 class RegistryRepository:
     def __init__(self, conn: Any):
         self.conn = conn

@@ -120,10 +120,7 @@ class TokenRadarProjectionWorker:
 
     def _next_background_window_scope(self) -> tuple[str, str] | None:
         work_items = [
-            (window, scope)
-            for window in self.windows
-            if window not in self.hot_windows
-            for scope in self.scopes
+            (window, scope) for window in self.windows if window not in self.hot_windows for scope in self.scopes
         ]
         if not work_items:
             return None

@@ -562,12 +562,17 @@ def _signal_pulse_severity(
         _nested(factor_snapshot, "hard_gates", "blocked_reasons")
     )
     max_recommendation = str(gate.get("max_recommendation") or "").strip()
-    gate_allows_high = eligible_for_high_alert and not blocked_reasons and max_recommendation in {
-        "watch",
-        "trade_candidate",
-        "alert",
-        "high_alert",
-    }
+    gate_allows_high = (
+        eligible_for_high_alert
+        and not blocked_reasons
+        and max_recommendation
+        in {
+            "watch",
+            "trade_candidate",
+            "alert",
+            "high_alert",
+        }
+    )
     if status == "token_watch":
         return "high" if gate_allows_high else None
     if status == "trade_candidate":

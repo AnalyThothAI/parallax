@@ -85,7 +85,5 @@ def _matches(files: list[Path], *, patterns: tuple[str, ...]) -> list[str]:
     offenders: list[str] = []
     for path in files:
         text = path.read_text()
-        for pattern in patterns:
-            if pattern in text:
-                offenders.append(f"{path.relative_to(ROOT).as_posix()}: {pattern}")
+        offenders.extend(f"{path.relative_to(ROOT).as_posix()}: {pattern}" for pattern in patterns if pattern in text)
     return offenders

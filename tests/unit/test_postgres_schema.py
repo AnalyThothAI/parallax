@@ -130,7 +130,7 @@ def test_token_radar_recovery_migration_adds_concurrent_field_indexes_and_covera
     assert "DROP INDEX CONCURRENTLY IF EXISTS idx_price_observations_current_market_cap" in text
     assert "okx_dex_ws_price_info" in text
     assert "CREATE TABLE IF NOT EXISTS token_radar_projection_coverage" in text
-    assert "PRIMARY KEY(projection_version, \"window\", scope)" in text
+    assert 'PRIMARY KEY(projection_version, "window", scope)' in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

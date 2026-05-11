@@ -26,8 +26,7 @@ def test_audit_token_radar_rows_rejects_legacy_runtime_payload_without_snapshot(
     assert audit["ok"] is False
     assert any(item["code"] == "missing_factor_snapshot" for item in audit["violations"])
     assert any(
-        item["code"] == "legacy_runtime_payload" and item["field"] == "score_json"
-        for item in audit["violations"]
+        item["code"] == "legacy_runtime_payload" and item["field"] == "score_json" for item in audit["violations"]
     )
 
 

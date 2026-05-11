@@ -262,9 +262,7 @@ def _validate_factor_contract(row: dict[str, Any]) -> None:
     if schema_version != factor_version:
         raise ValueError("factor_snapshot_json.schema_version must match factor_version")
     if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
-        raise ValueError(
-            f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}"
-        )
+        raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
     for key in ("families", "hard_gates", "composite"):
         payload = factor_snapshot.get(key)
         if not isinstance(payload, dict) or not payload:

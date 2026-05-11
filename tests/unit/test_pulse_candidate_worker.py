@@ -280,9 +280,7 @@ class FakeClient:
             schema_version=PULSE_RECOMMENDATION_SCHEMA_VERSION,
             recommendation=self.recommendation,
             summary_zh="因子快照显示信号值得继续观察。",
-            primary_reasons=[
-                {"factor_key": "social_attention.unique_authors", "explanation_zh": "独立作者数上升。"}
-            ],
+            primary_reasons=[{"factor_key": "social_attention.unique_authors", "explanation_zh": "独立作者数上升。"}],
             upgrade_conditions=[
                 {
                     "factor_key": "market_quality.liquidity_usd",
@@ -299,9 +297,7 @@ class FakeClient:
                     "description_zh": "独立作者数回落。",
                 }
             ],
-            residual_risks=[
-                {"factor_key": "market_quality.liquidity_usd", "description_zh": "低流动性仍需约束。"}
-            ],
+            residual_risks=[{"factor_key": "market_quality.liquidity_usd", "description_zh": "低流动性仍需约束。"}],
             evidence_event_ids=context.get("source_event_ids") or ["event-1"],
             confidence=0.7,
         )
