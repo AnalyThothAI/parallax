@@ -766,6 +766,12 @@ class FakeProjectionRepository:
 
 
 class FakeRejectingTokenRadar:
+    def __init__(self):
+        self.coverage: list[dict[str, object]] = []
+
+    def mark_coverage(self, **kwargs):
+        self.coverage.append(kwargs)
+
     def replace_rows(self, **kwargs):
         return False
 
@@ -773,6 +779,10 @@ class FakeRejectingTokenRadar:
 class FakeTokenRadar:
     def __init__(self):
         self.rows: list[dict[str, object]] = []
+        self.coverage: list[dict[str, object]] = []
+
+    def mark_coverage(self, **kwargs):
+        self.coverage.append(kwargs)
 
     def replace_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from decimal import Decimal
 from typing import Any
 
@@ -132,6 +133,100 @@ class TokenRadarRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def mark_coverage(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        status: str,
+        reason: str | None = None,
+        source_rows: int = 0,
+        row_count: int = 0,
+        computed_at_ms: int | None = None,
+        started_at_ms: int | None = None,
+        finished_at_ms: int | None = None,
+        error: str | None = None,
+        commit: bool = True,
+    ) -> None:
+        now_ms = _now_ms()
+        self.conn.execute(
+            """
+            INSERT INTO token_radar_projection_coverage(
+              projection_version, "window", scope, status, reason, source_rows, row_count,
+              computed_at_ms, started_at_ms, finished_at_ms, error, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(projection_version, "window", scope) DO UPDATE SET
+              status = excluded.status,
+              reason = excluded.reason,
+              source_rows = excluded.source_rows,
+              row_count = excluded.row_count,
+              computed_at_ms = excluded.computed_at_ms,
+              started_at_ms = excluded.started_at_ms,
+              finished_at_ms = excluded.finished_at_ms,
+              error = excluded.error,
+              updated_at_ms = excluded.updated_at_ms
+            WHERE token_radar_projection_coverage.computed_at_ms IS NULL
+               OR excluded.computed_at_ms IS NULL
+               OR token_radar_projection_coverage.computed_at_ms <= excluded.computed_at_ms
+            """,
+            (
+                projection_version,
+                window,
+                scope,
+                status,
+                reason,
+                max(0, int(source_rows)),
+                max(0, int(row_count)),
+                int(computed_at_ms) if computed_at_ms is not None else None,
+                int(started_at_ms) if started_at_ms is not None else None,
+                int(finished_at_ms) if finished_at_ms is not None else None,
+                error,
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
+    def latest_coverage(
+        self,
+        *,
+        projection_version: str,
+        windows: tuple[str, ...],
+        scopes: tuple[str, ...],
+    ) -> dict[tuple[str, str], dict[str, Any]]:
+        requested = [(window, scope) for window in windows for scope in scopes]
+        if not requested:
+            return {}
+        values_sql = ",".join(["(%s, %s)"] * len(requested))
+        params: list[Any] = []
+        for window, scope in requested:
+            params.extend([window, scope])
+        rows = self.conn.execute(
+            f"""
+            WITH requested("window", scope) AS (VALUES {values_sql})
+            SELECT coverage.*
+            FROM requested
+            JOIN token_radar_projection_coverage coverage
+              ON coverage."window" = requested."window"
+             AND coverage.scope = requested.scope
+            WHERE coverage.projection_version = %s
+            """,
+            [*params, projection_version],
+        ).fetchall()
+        return {
+            (str(row["window"]), str(row["scope"])): {
+                "status": str(row["status"]),
+                "reason": row.get("reason"),
+                "source_rows": int(row.get("source_rows") or 0),
+                "row_count": int(row.get("row_count") or 0),
+                "computed_at_ms": int(row["computed_at_ms"]) if row.get("computed_at_ms") is not None else None,
+                "error": row.get("error"),
+            }
+            for row in rows
+        }
+
 
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
     _validate_factor_contract(row)
@@ -148,6 +243,10 @@ def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
         payload = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
         out[key] = Jsonb(_json_ready(payload))
     return out
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _validate_factor_contract(row: dict[str, Any]) -> None:

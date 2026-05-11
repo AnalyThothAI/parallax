@@ -52,6 +52,9 @@ TOKEN_SYMBOL_SEARCH_TAIL_SWEEP_MIGRATION = Path(
 ASSET_IDENTITY_EVIDENCE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260510_0021_asset_identity_evidence_hard_cut.py"
 )
+TOKEN_RADAR_RECOVERY_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0024_price_observation_field_indexes.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -109,6 +112,27 @@ def test_event_price_observation_migration_adds_message_attribution_columns() ->
     assert "observation_lag_ms" in text
     assert "idx_price_observations_source_event" in text
     assert "idx_price_observations_subject_time_kind" in text
+
+
+def test_token_radar_recovery_migration_adds_concurrent_field_indexes_and_coverage() -> None:
+    text = TOKEN_RADAR_RECOVERY_MIGRATION.read_text()
+
+    for index_name in (
+        "idx_price_observations_current_price",
+        "idx_price_observations_current_market_cap",
+        "idx_price_observations_current_liquidity",
+        "idx_price_observations_current_holders",
+        "idx_price_observations_current_volume_24h",
+        "idx_price_observations_current_open_interest",
+        "idx_price_observations_subject_first",
+        "idx_price_observations_message_resolution_latest",
+    ):
+        assert index_name in text
+    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_market_cap" in text
+    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_price_observations_current_market_cap" in text
+    assert "okx_dex_ws_price_info" in text
+    assert "CREATE TABLE IF NOT EXISTS token_radar_projection_coverage" in text
+    assert "PRIMARY KEY(projection_version, \"window\", scope)" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

@@ -3,9 +3,22 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from gmgn_twitter_intel.domains.asset_market.market_field_facts import (
+    DEX_METADATA_CAPABLE_PROVIDERS,
+    PRICE_CAPABLE_PROVIDERS,
+)
+
+
+def _sql_values(values: frozenset[str]) -> str:
+    return ", ".join(f"'{value}'" for value in sorted(values))
+
+
 # Inlined to avoid circular import: asset_market.interfaces → token_intel.interfaces → asset_market.interfaces
 # This string must stay in sync with TOKEN_RADAR_RESOLVER_POLICY_VERSION in token_intel/interfaces.py
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
+PRICE_PROVIDER_SQL = _sql_values(PRICE_CAPABLE_PROVIDERS)
+DEX_METADATA_PROVIDER_SQL = _sql_values(DEX_METADATA_CAPABLE_PROVIDERS)
+
 
 class RegistryRepository:
     def __init__(self, conn: Any):
@@ -192,7 +205,7 @@ class RegistryRepository:
 
     def find_assets_by_symbol_with_latest_observation(self, symbol: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            """
+            f"""
             SELECT
               registry_assets.*,
               asset_identity_current.canonical_symbol AS symbol,
@@ -219,7 +232,7 @@ class RegistryRepository:
               FROM price_observations
               WHERE price_observations.subject_type = 'Asset'
                 AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_price')
+                AND price_observations.provider IN ({PRICE_PROVIDER_SQL})
                 AND price_observations.price_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -229,7 +242,7 @@ class RegistryRepository:
               FROM price_observations
               WHERE price_observations.subject_type = 'Asset'
                 AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+                AND price_observations.provider IN ({DEX_METADATA_PROVIDER_SQL})
                 AND price_observations.market_cap_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -239,7 +252,7 @@ class RegistryRepository:
               FROM price_observations
               WHERE price_observations.subject_type = 'Asset'
                 AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+                AND price_observations.provider IN ({DEX_METADATA_PROVIDER_SQL})
                 AND price_observations.liquidity_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -249,7 +262,7 @@ class RegistryRepository:
               FROM price_observations
               WHERE price_observations.subject_type = 'Asset'
                 AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+                AND price_observations.provider IN ({DEX_METADATA_PROVIDER_SQL})
                 AND price_observations.holders IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -263,6 +276,50 @@ class RegistryRepository:
             (_symbol(symbol),),
         ).fetchall()
         return [_with_resolution_field_statuses(dict(row)) for row in rows]
+
+    def active_dex_market_stream_targets(
+        self,
+        *,
+        projection_version: str,
+        since_ms: int,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            WITH active_targets AS (
+              SELECT DISTINCT ON (token_radar_rows.target_id)
+                token_radar_rows.target_id AS asset_id,
+                token_radar_rows.pricefeed_id,
+                token_radar_rows.computed_at_ms,
+                token_radar_rows.source_max_received_at_ms
+              FROM token_radar_rows
+              WHERE token_radar_rows.projection_version = %s
+                AND token_radar_rows.target_type = 'Asset'
+                AND token_radar_rows.target_id IS NOT NULL
+                AND token_radar_rows.computed_at_ms >= %s
+              ORDER BY token_radar_rows.target_id, token_radar_rows.computed_at_ms DESC
+            )
+            SELECT
+              registry_assets.asset_id,
+              registry_assets.chain_id,
+              registry_assets.address,
+              asset_identity_current.canonical_symbol AS symbol,
+              active_targets.pricefeed_id,
+              active_targets.computed_at_ms,
+              active_targets.source_max_received_at_ms
+            FROM active_targets
+            JOIN registry_assets ON registry_assets.asset_id = active_targets.asset_id
+            LEFT JOIN asset_identity_current
+              ON asset_identity_current.asset_id = registry_assets.asset_id
+            WHERE registry_assets.status IN ('candidate', 'canonical')
+              AND registry_assets.chain_id IS NOT NULL
+              AND registry_assets.address IS NOT NULL
+            ORDER BY active_targets.computed_at_ms DESC, registry_assets.asset_id
+            LIMIT %s
+            """,
+            (projection_version, int(since_ms), max(0, int(limit))),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def find_cex_pricefeed(self, *, exchange: str, native_market_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(

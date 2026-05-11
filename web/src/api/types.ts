@@ -159,6 +159,15 @@ export type NotificationLivePayload = {
   notification: NotificationItem;
 };
 
+export type MarketUpdatePayload = {
+  type: "market_update";
+  target_type: string;
+  target_id: string;
+  provider?: string | null;
+  observed_at_ms?: number | null;
+  current_market: CurrentMarketSnapshot;
+};
+
 export type RecentData = {
   scope: ScopeKey;
   events: EventRecord[];
@@ -343,11 +352,15 @@ export type AssetFlowData = {
   targets: AssetFlowRow[];
   attention: AssetFlowRow[];
   projection: {
-    status: "fresh" | "stale" | string;
+    status: "fresh" | "stale" | "pending" | string;
     version: string;
     source: string;
+    reason?: string | null;
+    row_count?: number | null;
+    source_rows?: number | null;
     source_max_received_at_ms?: number | null;
     computed_at_ms?: number | null;
+    error?: string | null;
   };
 };
 

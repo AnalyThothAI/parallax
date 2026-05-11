@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, app_log_path, config_path
 
@@ -292,6 +292,11 @@ class OkxProviderConfig(BaseModel):
     dex_price_hot_stale_seconds: float = Field(default=90.0, gt=0)
     dex_price_warm_stale_seconds: float = Field(default=300.0, gt=0)
     dex_price_refresh_limit: int = Field(default=160, gt=0)
+    dex_ws_enabled: bool = False
+    dex_ws_url: str = "wss://wsdex.okx.com/ws/v6/dex"
+    dex_ws_subscription_limit: int = Field(default=100, gt=0)
+    dex_ws_hot_target_ttl_seconds: float = Field(default=300.0, gt=0)
+    dex_ws_reconnect_delay_seconds: float = Field(default=3.0, gt=0)
     dex_api_key: str | None = None
     dex_secret_key: str | None = None
     dex_passphrase: str | None = None
@@ -315,6 +320,17 @@ class OkxProviderConfig(BaseModel):
             return None
         normalized = str(value).strip()
         return normalized or None
+
+    @field_validator("dex_ws_url", mode="before")
+    @classmethod
+    def parse_ws_url(cls, value: Any) -> str:
+        return str(value or "wss://wsdex.okx.com/ws/v6/dex").strip()
+
+    @model_validator(mode="after")
+    def validate_dex_ws_credentials(self) -> OkxProviderConfig:
+        if self.dex_ws_enabled and not (self.dex_api_key and self.dex_secret_key and self.dex_passphrase):
+            raise ValueError("dex_ws_enabled requires dex_api_key, dex_secret_key, and dex_passphrase")
+        return self
 
 
 class ProvidersConfig(BaseModel):
@@ -555,6 +571,26 @@ class Settings(BaseModel):
         return self.providers.okx.dex_price_refresh_limit
 
     @property
+    def okx_dex_ws_enabled(self) -> bool:
+        return bool(self.providers.okx.dex_ws_enabled)
+
+    @property
+    def okx_dex_ws_url(self) -> str:
+        return self.providers.okx.dex_ws_url
+
+    @property
+    def okx_dex_ws_subscription_limit(self) -> int:
+        return self.providers.okx.dex_ws_subscription_limit
+
+    @property
+    def okx_dex_ws_hot_target_ttl_seconds(self) -> float:
+        return self.providers.okx.dex_ws_hot_target_ttl_seconds
+
+    @property
+    def okx_dex_ws_reconnect_delay_seconds(self) -> float:
+        return self.providers.okx.dex_ws_reconnect_delay_seconds
+
+    @property
     def okx_dex_api_key(self) -> str | None:
         return self.providers.okx.dex_api_key
 
@@ -573,6 +609,16 @@ class Settings(BaseModel):
     @property
     def okx_dex_configured(self) -> bool:
         return bool(self.okx_dex_base_url)
+
+    @property
+    def okx_dex_ws_configured(self) -> bool:
+        return bool(
+            self.okx_dex_ws_enabled
+            and self.okx_dex_ws_url
+            and self.okx_dex_api_key
+            and self.okx_dex_secret_key
+            and self.okx_dex_passphrase
+        )
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:
@@ -727,6 +773,11 @@ providers:
     dex_price_hot_stale_seconds: 90
     dex_price_warm_stale_seconds: 300
     dex_price_refresh_limit: 160
+    dex_ws_enabled: false
+    dex_ws_url: "wss://wsdex.okx.com/ws/v6/dex"
+    dex_ws_subscription_limit: 100
+    dex_ws_hot_target_ttl_seconds: 300
+    dex_ws_reconnect_delay_seconds: 3
     dex_api_key:
     dex_secret_key:
     dex_passphrase:

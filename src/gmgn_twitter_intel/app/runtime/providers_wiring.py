@@ -8,7 +8,9 @@ from typing import Any
 from gmgn_twitter_intel.domains.asset_market.providers import (
     CexMarketProvider,
     CexTicker,
+    DexMarketFactUpdate,
     DexMarketProvider,
+    DexMarketStreamProvider,
     DexTokenCandidate,
     DexTokenPrice,
     DexTokenPriceRequest,
@@ -20,6 +22,7 @@ from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketCl
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
+from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
 from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_client import (
     OpenAIAgentsPulseRecommendationClient,
 )
@@ -42,6 +45,7 @@ class AssetMarketProviders:
     message_cex_market: CexMarketProvider | None = None
     message_dex_market: DexMarketProvider | None = None
     discovery_dex_market: DexMarketProvider | None = None
+    stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
 
 
@@ -129,6 +133,31 @@ class _SerializedDexMarketProvider:
                 return
             close()
             self._closed = True
+
+
+class OkxDexWebSocketMarketProviderAdapter:
+    def __init__(self, provider: OkxDexWebSocketMarketProvider) -> None:
+        self._provider = provider
+
+    async def stream_price_info(self, targets):
+        mapped_targets = []
+        for target in targets:
+            chain_index = okx_chain_index(target.chain_id)
+            if not chain_index:
+                continue
+            mapped_targets.append(
+                {
+                    "chainIndex": chain_index,
+                    "tokenContractAddress": _normalize_address(target.address),
+                }
+            )
+        async for update in self._provider.stream_price_info(mapped_targets):
+            yield _domain_dex_market_fact_update(update)
+
+    def close(self) -> None:
+        close = getattr(self._provider, "close", None)
+        if close:
+            close()
 
 
 class OpenAIPulseRecommendationProvider:
@@ -225,6 +254,7 @@ def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMar
         message_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
         message_dex_market=dex_market,
         discovery_dex_market=dex_market,
+        stream_dex_market=_okx_dex_ws_market(settings) if settings.okx_dex_ws_configured else None,
         discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
     )
 
@@ -262,6 +292,18 @@ def _okx_dex_market(settings: Settings) -> OkxDexMarketProvider:
             secret_key=settings.okx_dex_secret_key,
             passphrase=settings.okx_dex_passphrase,
             timeout_seconds=settings.okx_timeout_seconds,
+        )
+    )
+
+
+def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapter:
+    return OkxDexWebSocketMarketProviderAdapter(
+        OkxDexWebSocketMarketProvider(
+            url=settings.okx_dex_ws_url,
+            api_key=settings.okx_dex_api_key or "",
+            secret_key=settings.okx_dex_secret_key or "",
+            passphrase=settings.okx_dex_passphrase or "",
+            subscription_limit=settings.okx_dex_ws_subscription_limit,
         )
     )
 
@@ -328,6 +370,21 @@ def _dex_token_price(price: Any) -> DexTokenPrice:
     )
 
 
+def _domain_dex_market_fact_update(update: Any) -> DexMarketFactUpdate:
+    return DexMarketFactUpdate(
+        chain_id=okx_index_to_chain_id(update.chain_id) or update.chain_id,
+        address=_normalize_address(update.address),
+        observed_at_ms=update.observed_at_ms,
+        price_usd=update.price_usd,
+        market_cap_usd=update.market_cap_usd,
+        liquidity_usd=update.liquidity_usd,
+        volume_24h_usd=update.volume_24h_usd,
+        open_interest_usd=update.open_interest_usd,
+        holders=update.holders,
+        raw=update.raw,
+    )
+
+
 def _domain_chain_id(value: Any) -> str | None:
     normalized = str(value or "").strip().lower()
     if not normalized:
@@ -357,6 +414,7 @@ __all__ = [
     "IngestionProviders",
     "OkxCexMarketProvider",
     "OkxDexMarketProvider",
+    "OkxDexWebSocketMarketProviderAdapter",
     "PulseLabProviders",
     "SocialEnrichmentProviders",
     "WiredProviders",

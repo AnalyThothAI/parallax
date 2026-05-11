@@ -3,11 +3,25 @@ from __future__ import annotations
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.market_field_facts import (
+    CEX_MARKET_CAPABLE_PROVIDERS,
     DEFAULT_MARKET_METADATA_FRESH_MS,
     DEFAULT_PRICE_FRESH_MS,
+    DEX_METADATA_CAPABLE_PROVIDERS,
+    PRICE_CAPABLE_PROVIDERS,
+    VOLUME_24H_CAPABLE_PROVIDERS,
     aggregate_market_status,
     field_fact,
 )
+
+
+def _sql_values(values: frozenset[str]) -> str:
+    return ", ".join(f"'{value}'" for value in sorted(values))
+
+
+PRICE_PROVIDER_SQL = _sql_values(PRICE_CAPABLE_PROVIDERS)
+DEX_METADATA_PROVIDER_SQL = _sql_values(DEX_METADATA_CAPABLE_PROVIDERS)
+VOLUME_24H_PROVIDER_SQL = _sql_values(VOLUME_24H_CAPABLE_PROVIDERS)
+OPEN_INTEREST_PROVIDER_SQL = _sql_values(CEX_MARKET_CAPABLE_PROVIDERS)
 
 
 class CurrentMarketRepository:
@@ -70,7 +84,7 @@ class CurrentMarketRepository:
               WHERE subject_type = requested.subject_type
                 AND subject_id = requested.subject_id
                 AND observed_at_ms <= clock.now_ms
-                AND provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_price', 'okx_cex')
+                AND provider IN ({PRICE_PROVIDER_SQL})
                 AND (price_usd IS NOT NULL OR price_quote IS NOT NULL)
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -81,7 +95,7 @@ class CurrentMarketRepository:
               WHERE subject_type = requested.subject_type
                 AND subject_id = requested.subject_id
                 AND observed_at_ms <= clock.now_ms
-                AND provider IN ('gmgn_payload', 'okx_dex_search')
+                AND provider IN ({DEX_METADATA_PROVIDER_SQL})
                 AND market_cap_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -92,7 +106,7 @@ class CurrentMarketRepository:
               WHERE subject_type = requested.subject_type
                 AND subject_id = requested.subject_id
                 AND observed_at_ms <= clock.now_ms
-                AND provider IN ('gmgn_payload', 'okx_dex_search')
+                AND provider IN ({DEX_METADATA_PROVIDER_SQL})
                 AND liquidity_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -103,7 +117,7 @@ class CurrentMarketRepository:
               WHERE subject_type = requested.subject_type
                 AND subject_id = requested.subject_id
                 AND observed_at_ms <= clock.now_ms
-                AND provider IN ('gmgn_payload', 'okx_dex_search')
+                AND provider IN ({DEX_METADATA_PROVIDER_SQL})
                 AND holders IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -114,7 +128,7 @@ class CurrentMarketRepository:
               WHERE subject_type = requested.subject_type
                 AND subject_id = requested.subject_id
                 AND observed_at_ms <= clock.now_ms
-                AND provider IN ('okx_cex', 'gmgn_payload', 'okx_dex_search')
+                AND provider IN ({VOLUME_24H_PROVIDER_SQL})
                 AND volume_24h_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
@@ -125,7 +139,7 @@ class CurrentMarketRepository:
               WHERE subject_type = requested.subject_type
                 AND subject_id = requested.subject_id
                 AND observed_at_ms <= clock.now_ms
-                AND provider IN ('okx_cex')
+                AND provider IN ({OPEN_INTEREST_PROVIDER_SQL})
                 AND open_interest_usd IS NOT NULL
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1

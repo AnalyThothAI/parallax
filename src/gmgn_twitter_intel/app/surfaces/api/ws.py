@@ -20,6 +20,7 @@ class ClientSubscription:
     handles: set[str] = field(default_factory=set)
     cas: set[tuple[str, str]] = field(default_factory=set)
     symbols: set[str] = field(default_factory=set)
+    market_targets: set[tuple[str, str]] = field(default_factory=set)
     notifications: bool = False
 
 
@@ -100,6 +101,7 @@ class PublicWebSocketHub:
             await client.websocket.send_text(_json_message({"type": "error", "code": "invalid_ca"}))
             return
         client.symbols = _normalize_symbols(message.get("symbols") or message.get("tokens") or [])
+        client.market_targets = _normalize_market_targets(message.get("market_targets") or [])
         client.notifications = bool(message.get("notifications"))
         replay_limit = _replay_limit(message.get("replay"), self.default_replay_limit)
         replay_events = self._replay_events(client, replay_limit)
@@ -127,6 +129,9 @@ class PublicWebSocketHub:
     def _payload_matches_subscription(self, payload: dict[str, Any], client: ClientSubscription) -> bool:
         if payload.get("type") == "notification":
             return client.notifications
+        if payload.get("type") == "market_update":
+            target = _market_target(payload)
+            return bool(target and target in client.market_targets)
         has_token_filters = bool(client.cas or client.symbols)
         if client.handles and _event_handle(payload.get("event")) in client.handles:
             return True
@@ -206,6 +211,26 @@ def _normalize_symbols(raw: Any) -> set[str]:
         if value and not value.startswith("0X"):
             symbols.add(value)
     return symbols
+
+
+def _normalize_market_targets(raw: Any) -> set[tuple[str, str]]:
+    values = raw if isinstance(raw, list) else [raw]
+    targets: set[tuple[str, str]] = set()
+    for item in values:
+        if not isinstance(item, dict):
+            continue
+        target = _market_target(item)
+        if target:
+            targets.add(target)
+    return targets
+
+
+def _market_target(payload: dict[str, Any]) -> tuple[str, str] | None:
+    target_type = str(payload.get("target_type") or "").strip()
+    target_id = str(payload.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return None
+    return (target_type, target_id)
 
 
 def _ca_subscription_matches(ca_key: tuple[Any, Any], subscribed: set[tuple[str, str]]) -> bool:

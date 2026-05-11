@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { getApi, getBootstrap } from "./api/client";
 import { getNotifications, getNotificationSummary, markAllNotificationsRead, markNotificationRead } from "./api/notifications";
 import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "./api/useTokenTargetQueries";
 import type {
   AccountQualityData,
+  ApiResponse,
   AssetFlowData,
+  AssetFlowRow,
   LivePayload,
+  MarketUpdatePayload,
   NotificationItem,
   RecentData,
   SearchData,
@@ -109,7 +112,6 @@ export function App() {
   }, [bootstrapQuery.data?.data.ws_token, setToken]);
 
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
-  const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true });
 
   const statusQuery = useQuery({
     queryKey: ["status"],
@@ -186,6 +188,14 @@ export function App() {
     [assetFlowQuery.data?.data, scope, windowKey]
   );
   const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
+  const marketTargets = useMemo(
+    () => rawTokenItems.flatMap((item) => {
+      const target = targetRefFromTokenItem(item);
+      return target ? [target] : [];
+    }),
+    [rawTokenItems]
+  );
+  const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true, marketTargets });
   const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const drawerTargetRef = targetRefFromTokenItem(selectedToken);
@@ -281,6 +291,7 @@ export function App() {
   const notificationSummary = notificationSummaryQuery.data?.data ?? statusQuery.data?.data.notifications?.summary ?? null;
   const notifications = notificationsQuery.data?.data.items ?? [];
   const latestSocketNotificationId = socket.notifications[0]?.notification.notification_id ?? null;
+  const socketMarketUpdates = socket.marketUpdates ?? [];
   const watchlistRows = useMemo(
     () =>
       buildWatchlistRows({
@@ -298,6 +309,13 @@ export function App() {
     void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
     void queryClient.invalidateQueries({ queryKey: ["notifications"] });
   }, [latestSocketNotificationId, queryClient]);
+
+  useEffect(() => {
+    if (!socketMarketUpdates.length) {
+      return;
+    }
+    patchTokenRadarMarketUpdate(queryClient, socketMarketUpdates[0]);
+  }, [assetFlowQuery.dataUpdatedAt, queryClient, socketMarketUpdates]);
 
   useEffect(() => {
     if (!selectedSignal && tokenItems.length) {
@@ -829,6 +847,41 @@ function tokenCaKey(chain?: string | null, address?: string | null): string | nu
     return null;
   }
   return `${chain.toLowerCase()}:${address.toLowerCase()}`;
+}
+
+function patchTokenRadarMarketUpdate(queryClient: QueryClient, update: MarketUpdatePayload) {
+  queryClient.setQueriesData<ApiResponse<AssetFlowData>>({ queryKey: ["token-radar"] }, (response) => {
+    if (!response?.data) {
+      return response;
+    }
+    const data = patchAssetFlowData(response.data, update);
+    return data === response.data ? response : { ...response, data };
+  });
+}
+
+function patchAssetFlowData(data: AssetFlowData, update: MarketUpdatePayload): AssetFlowData {
+  const targets = patchAssetFlowRows(data.targets, update);
+  const attention = patchAssetFlowRows(data.attention, update);
+  if (targets === data.targets && attention === data.attention) {
+    return data;
+  }
+  return { ...data, targets, attention };
+}
+
+function patchAssetFlowRows(rows: AssetFlowRow[], update: MarketUpdatePayload): AssetFlowRow[] {
+  let changed = false;
+  const next = rows.map((row) => {
+    if (!assetFlowRowMatchesMarketUpdate(row, update)) {
+      return row;
+    }
+    changed = true;
+    return { ...row, current_market: update.current_market };
+  });
+  return changed ? next : rows;
+}
+
+function assetFlowRowMatchesMarketUpdate(row: AssetFlowRow, update: MarketUpdatePayload): boolean {
+  return row.target?.target_type === update.target_type && row.target?.target_id === update.target_id;
 }
 
 function tapeItemId(item: LiveSignalTapeItem): string {

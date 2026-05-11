@@ -12,6 +12,77 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
+def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenRadarRepository(conn)
+        repo.mark_coverage(
+            projection_version="token-radar-v10-current-market",
+            window="5m",
+            scope="matched",
+            status="ready",
+            reason=None,
+            source_rows=17,
+            row_count=0,
+            computed_at_ms=1_778_000_000_000,
+            started_at_ms=1_777_999_990_000,
+            finished_at_ms=1_778_000_000_000,
+            error=None,
+        )
+
+        coverage = repo.latest_coverage(
+            projection_version="token-radar-v10-current-market",
+            windows=("5m",),
+            scopes=("matched",),
+        )
+    finally:
+        conn.close()
+
+    assert coverage == {
+        ("5m", "matched"): {
+            "status": "ready",
+            "reason": None,
+            "source_rows": 17,
+            "row_count": 0,
+            "computed_at_ms": 1_778_000_000_000,
+            "error": None,
+        }
+    }
+
+
+def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenRadarRepository(conn)
+        repo.mark_coverage(
+            projection_version="token-radar-v10-current-market",
+            window="1h",
+            scope="all",
+            status="failed",
+            reason="query_timeout",
+            source_rows=0,
+            row_count=0,
+            computed_at_ms=1_778_000_000_000,
+            started_at_ms=1_777_999_990_000,
+            finished_at_ms=1_778_000_000_000,
+            error="statement timeout",
+        )
+
+        coverage = repo.latest_coverage(
+            projection_version="token-radar-v10-current-market",
+            windows=("1h",),
+            scopes=("all",),
+        )
+    finally:
+        conn.close()
+
+    assert coverage[("1h", "all")]["status"] == "failed"
+    assert coverage[("1h", "all")]["reason"] == "query_timeout"
+    assert coverage[("1h", "all")]["error"] == "statement timeout"
+
+
 def test_json_payload_converts_decimal_values_before_jsonb_binding():
     snapshot = _valid_factor_snapshot(rank_score=Decimal("12.5"))
     snapshot["nested"] = {"volume_24h_usd": Decimal("123.45")}

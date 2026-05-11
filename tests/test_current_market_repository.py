@@ -96,6 +96,52 @@ def test_current_market_updates_market_cap_from_full_metadata_provider(tmp_path)
     assert snapshot["market_status"] == "fresh"
 
 
+def test_current_market_reads_okx_dex_ws_price_info_as_metadata_provider(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        observations = PriceObservationRepository(conn)
+        observations.insert_observation(
+            provider="okx_dex_search",
+            pricefeed_id="feed-search",
+            observed_at_ms=1_700_000_000_000,
+            subject_type=SUBJECT_TYPE,
+            subject_id=SUBJECT_ID,
+            price_usd=0.051,
+            price_basis="usd",
+            market_cap_usd=51_000_000,
+            liquidity_usd=3_000_000,
+            holders=52_000,
+        )
+        observations.insert_observation(
+            provider="okx_dex_ws_price_info",
+            pricefeed_id="feed-ws",
+            observed_at_ms=1_700_086_420_000,
+            subject_type=SUBJECT_TYPE,
+            subject_id=SUBJECT_ID,
+            price_usd=0.111,
+            price_basis="usd",
+            market_cap_usd=110_900_000,
+            liquidity_usd=4_820_000,
+            volume_24h_usd=27_400_000,
+            holders=57_141,
+        )
+        snapshot = CurrentMarketRepository(conn).current_for_subjects(
+            [{"target_type": SUBJECT_TYPE, "target_id": SUBJECT_ID}],
+            now_ms=1_700_086_430_000,
+        )[(SUBJECT_TYPE, SUBJECT_ID)]
+    finally:
+        conn.close()
+
+    assert snapshot["fields"]["price_usd"]["value"] == 0.111
+    assert snapshot["fields"]["market_cap_usd"]["value"] == 110_900_000
+    assert snapshot["fields"]["liquidity_usd"]["value"] == 4_820_000
+    assert snapshot["fields"]["volume_24h_usd"]["value"] == 27_400_000
+    assert snapshot["fields"]["holders"]["value"] == 57_141
+    assert snapshot["fields"]["market_cap_usd"]["provider"] == "okx_dex_ws_price_info"
+    assert snapshot["market_status"] == "fresh"
+
+
 def test_current_market_ignores_observations_after_read_time(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

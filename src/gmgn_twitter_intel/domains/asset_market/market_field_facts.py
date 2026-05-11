@@ -6,9 +6,37 @@ DEFAULT_PRICE_FRESH_MS = 5 * 60 * 1000
 DEFAULT_MARKET_METADATA_FRESH_MS = 5 * 60 * 1000
 RESOLUTION_MARKET_FRESH_MS = 24 * 60 * 60 * 1000
 
-PRICE_CAPABLE_PROVIDERS = frozenset({"gmgn_payload", "okx_dex_search", "okx_dex_price", "okx_cex"})
-DEX_METADATA_CAPABLE_PROVIDERS = frozenset({"gmgn_payload", "okx_dex_search"})
-CEX_MARKET_CAPABLE_PROVIDERS = frozenset({"okx_cex"})
+PROVIDER_GMGN_PAYLOAD = "gmgn_payload"
+PROVIDER_OKX_DEX_SEARCH = "okx_dex_search"
+PROVIDER_OKX_DEX_PRICE = "okx_dex_price"
+PROVIDER_OKX_DEX_WS_PRICE_INFO = "okx_dex_ws_price_info"
+PROVIDER_OKX_CEX = "okx_cex"
+
+PRICE_CAPABLE_PROVIDERS = frozenset(
+    {
+        PROVIDER_GMGN_PAYLOAD,
+        PROVIDER_OKX_DEX_SEARCH,
+        PROVIDER_OKX_DEX_PRICE,
+        PROVIDER_OKX_DEX_WS_PRICE_INFO,
+        PROVIDER_OKX_CEX,
+    }
+)
+DEX_METADATA_CAPABLE_PROVIDERS = frozenset(
+    {
+        PROVIDER_GMGN_PAYLOAD,
+        PROVIDER_OKX_DEX_SEARCH,
+        PROVIDER_OKX_DEX_WS_PRICE_INFO,
+    }
+)
+CEX_MARKET_CAPABLE_PROVIDERS = frozenset({PROVIDER_OKX_CEX})
+VOLUME_24H_CAPABLE_PROVIDERS = frozenset(
+    {
+        PROVIDER_OKX_CEX,
+        PROVIDER_GMGN_PAYLOAD,
+        PROVIDER_OKX_DEX_SEARCH,
+        PROVIDER_OKX_DEX_WS_PRICE_INFO,
+    }
+)
 
 
 def field_status(*, value: Any, observed_at_ms: int | None, now_ms: int, fresh_ms: int) -> str:

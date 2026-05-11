@@ -30,6 +30,35 @@ def test_okx_dex_market_workers_share_one_provider_budget_when_configured(monkey
     assert len(created) == 1
 
 
+def test_okx_dex_ws_market_provider_is_wired_separately_from_rest_provider(monkeypatch) -> None:
+    rest_created: list[FakeDexMarketProvider] = []
+    stream_created: list[FakeDexStreamProvider] = []
+
+    def fake_okx_dex_market(settings: Settings) -> FakeDexMarketProvider:
+        provider = FakeDexMarketProvider()
+        rest_created.append(provider)
+        return provider
+
+    def fake_okx_dex_ws_market(settings: Settings) -> FakeDexStreamProvider:
+        provider = FakeDexStreamProvider()
+        stream_created.append(provider)
+        return provider
+
+    monkeypatch.setattr(providers_wiring, "_okx_dex_market", fake_okx_dex_market)
+    monkeypatch.setattr(providers_wiring, "_okx_dex_ws_market", fake_okx_dex_ws_market)
+
+    providers = providers_wiring.wire_providers(
+        _settings_with_okx_dex_ws_enabled(),
+        start_collector=True,
+    ).asset_market
+
+    assert providers.sync_dex_market is not None
+    assert providers.stream_dex_market is not None
+    assert providers.stream_dex_market is not providers.sync_dex_market
+    assert len(rest_created) == 1
+    assert len(stream_created) == 1
+
+
 def test_shared_okx_dex_market_serializes_search_and_price_calls(monkeypatch) -> None:
     search_entered = Event()
     release_search = Event()
@@ -150,6 +179,12 @@ class FakeDexMarketProvider:
         return []
 
 
+class FakeDexStreamProvider:
+    async def stream_price_info(self, targets):
+        if False:
+            yield None
+
+
 class CloseCountingDexMarketProvider(FakeDexMarketProvider):
     def __init__(self) -> None:
         self.close_count = 0
@@ -164,6 +199,21 @@ def _settings_with_okx_dex_credentials() -> Settings:
         providers={
             "okx": {
                 "cex_sync_enabled": False,
+                "dex_api_key": "okx-key",
+                "dex_secret_key": "okx-secret",
+                "dex_passphrase": "okx-passphrase",
+            }
+        },
+    )
+
+
+def _settings_with_okx_dex_ws_enabled() -> Settings:
+    return Settings(
+        ws_token="secret",
+        providers={
+            "okx": {
+                "cex_sync_enabled": False,
+                "dex_ws_enabled": True,
                 "dex_api_key": "okx-key",
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",

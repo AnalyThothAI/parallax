@@ -32,16 +32,77 @@ def test_asset_flow_has_resolved_and_attention_lanes_from_token_radar_rows():
     assert service.token_radar.calls[0]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
 
 
-def test_asset_flow_marks_projection_missing_when_no_radar_rows():
+def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
     service = asset_flow_service(rows=[])
 
     result = service.asset_flow(window="5m", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     assert result["targets"] == []
     assert result["attention"] == []
-    assert result["projection"]["status"] == "missing"
+    assert result["projection"]["status"] == "fresh"
     assert result["projection"]["computed_at_ms"] is None
     assert result["projection"]["market_hydration"]["status"] == "missing"
+
+
+def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
+    current_market = FakeCurrentMarket()
+    service = asset_flow_service(rows=[], coverage={}, current_market=current_market)
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["targets"] == []
+    assert result["attention"] == []
+    assert result["projection"]["status"] == "pending"
+    assert result["projection"]["reason"] == "projection_window_missing"
+    assert result["projection"]["computed_at_ms"] is None
+    assert current_market.calls == []
+
+
+def test_asset_flow_treats_ready_zero_row_coverage_as_fresh_empty_projection():
+    service = asset_flow_service(
+        rows=[],
+        coverage={
+            ("5m", "matched"): {
+                "status": "ready",
+                "reason": None,
+                "row_count": 0,
+                "source_rows": 12,
+                "computed_at_ms": 1_700_000_050_000,
+            }
+        },
+    )
+
+    result = service.asset_flow(window="5m", limit=20, scope="matched", now_ms=1_700_000_060_000)
+
+    assert result["targets"] == []
+    assert result["attention"] == []
+    assert result["projection"]["status"] == "fresh"
+    assert result["projection"]["reason"] is None
+    assert result["projection"]["row_count"] == 0
+    assert result["projection"]["source_rows"] == 12
+    assert result["projection"]["computed_at_ms"] == 1_700_000_050_000
+
+
+def test_asset_flow_marks_failed_coverage_as_pending_with_reason():
+    service = asset_flow_service(
+        rows=[],
+        coverage={
+            ("4h", "all"): {
+                "status": "failed",
+                "reason": "query_timeout",
+                "row_count": 0,
+                "source_rows": 0,
+                "computed_at_ms": 1_700_000_040_000,
+                "error": "statement timeout",
+            }
+        },
+    )
+
+    result = service.asset_flow(window="4h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    assert result["projection"]["status"] == "pending"
+    assert result["projection"]["reason"] == "projection_window_failed"
+    assert result["projection"]["error"] == "statement timeout"
 
 
 def test_asset_flow_exposes_projection_market_hydration_summary():
@@ -364,13 +425,33 @@ def test_asset_flow_exposes_market_timing_inside_factor_snapshot():
 
 
 class FakeTokenRadar:
-    def __init__(self, *, rows):
+    def __init__(self, *, rows, coverage=None):
         self.rows = rows
+        self.coverage = coverage
         self.calls = []
 
     def latest_rows(self, *, window, scope, limit, projection_version):
         self.calls.append({"window": window, "scope": scope, "limit": limit, "projection_version": projection_version})
         return self.rows[:limit]
+
+    def latest_coverage(self, *, projection_version, windows, scopes):
+        if self.coverage is None:
+            return {
+                (window, scope): {
+                    "status": "ready",
+                    "reason": None,
+                    "row_count": len(self.rows),
+                    "source_rows": len(self.rows),
+                    "computed_at_ms": max(
+                        (int(row.get("computed_at_ms") or 0) for row in self.rows),
+                        default=0,
+                    )
+                    or None,
+                }
+                for window in windows
+                for scope in scopes
+            }
+        return dict(self.coverage)
 
 
 class FakeCurrentMarket:
@@ -387,9 +468,14 @@ class FakeCurrentMarket:
         }
 
 
-def asset_flow_service(*, rows: list[dict], current_market: FakeCurrentMarket | None = None) -> AssetFlowService:
+def asset_flow_service(
+    *,
+    rows: list[dict],
+    coverage: dict[tuple[str, str], dict] | None = None,
+    current_market: FakeCurrentMarket | None = None,
+) -> AssetFlowService:
     return AssetFlowService(
-        token_radar=FakeTokenRadar(rows=rows),
+        token_radar=FakeTokenRadar(rows=rows, coverage=coverage),
         current_market=current_market or FakeCurrentMarket(),
     )
 

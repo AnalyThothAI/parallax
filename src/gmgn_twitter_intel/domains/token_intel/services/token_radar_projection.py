@@ -48,107 +48,152 @@ class TokenRadarProjection:
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
-        source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
-        source_rows = self._hydrate_current_market(source_rows, now_ms=computed_at_ms)
-        grouped = self._group_rows(source_rows)
-        total_window_events = len(
-            {
-                str(row["event_id"])
-                for row in source_rows
-                if int(row.get("received_at_ms") or 0) >= score_since_ms
-            }
-        )
-        projected = [
-            row
-            for group in grouped.values()
-            if (row := _project_group(
-                group,
-                now_ms=computed_at_ms,
-                window=window,
-                scope=scope,
-                score_since_ms=score_since_ms,
-                window_ms=window_ms,
-                total_window_events=total_window_events,
-            ))
-        ]
-        projected = self._apply_cross_section(projected)
-        resolved = [row for row in projected if row["lane"] == "resolved"]
-        attention = [row for row in projected if row["lane"] == "attention"]
-        resolved.sort(key=_rank_key)
-        attention.sort(key=_rank_key)
-        rows = []
-        for lane_rows in (resolved, attention):
-            for rank, row in enumerate(lane_rows[:limit], start=1):
-                rows.append({**row, "rank": rank})
-        source_max_received_at_ms = max(
-            (int(row.get("source_max_received_at_ms") or 0) for row in rows),
-            default=0,
-        )
-        projection_repo = ProjectionRepository(self.repos.conn)
-        projection_repo.mark_stale_running_runs(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=PROJECTION_VERSION,
-            stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
-            finished_at_ms=computed_at_ms,
-            commit=False,
-        )
-        run = projection_repo.start_run(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=PROJECTION_VERSION,
-            mode="rebuild",
-            source_start_ms=analysis_since_ms,
-            source_end_ms=computed_at_ms,
-            commit=False,
-        )
-        rows_replaced = self.repos.token_radar.replace_rows(
+        self.repos.token_radar.mark_coverage(
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
+            status="running",
+            reason="projection_window_running",
+            source_rows=0,
+            row_count=0,
             computed_at_ms=computed_at_ms,
-            rows=rows,
-            commit=False,
+            started_at_ms=computed_at_ms,
+            finished_at_ms=None,
+            error=None,
+            commit=True,
         )
-        if not rows_replaced:
+        try:
+            source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
+            source_rows = self._hydrate_current_market(source_rows, now_ms=computed_at_ms)
+            grouped = self._group_rows(source_rows)
+            total_window_events = len(
+                {
+                    str(row["event_id"])
+                    for row in source_rows
+                    if int(row.get("received_at_ms") or 0) >= score_since_ms
+                }
+            )
+            projected = [
+                row
+                for group in grouped.values()
+                if (row := _project_group(
+                    group,
+                    now_ms=computed_at_ms,
+                    window=window,
+                    scope=scope,
+                    score_since_ms=score_since_ms,
+                    window_ms=window_ms,
+                    total_window_events=total_window_events,
+                ))
+            ]
+            projected = self._apply_cross_section(projected)
+            resolved = [row for row in projected if row["lane"] == "resolved"]
+            attention = [row for row in projected if row["lane"] == "attention"]
+            resolved.sort(key=_rank_key)
+            attention.sort(key=_rank_key)
+            rows = []
+            for lane_rows in (resolved, attention):
+                for rank, row in enumerate(lane_rows[:limit], start=1):
+                    rows.append({**row, "rank": rank})
+            source_max_received_at_ms = max(
+                (int(row.get("source_max_received_at_ms") or 0) for row in rows),
+                default=0,
+            )
+            projection_repo = ProjectionRepository(self.repos.conn)
+            projection_repo.mark_stale_running_runs(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=PROJECTION_VERSION,
+                stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
+                finished_at_ms=computed_at_ms,
+                commit=False,
+            )
+            run = projection_repo.start_run(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=PROJECTION_VERSION,
+                mode="rebuild",
+                source_start_ms=analysis_since_ms,
+                source_end_ms=computed_at_ms,
+                commit=False,
+            )
+            rows_replaced = self.repos.token_radar.replace_rows(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                rows=rows,
+                commit=False,
+            )
+            if not rows_replaced:
+                projection_repo.finish_run(
+                    run_id=str(run["run_id"]),
+                    status="stale_skipped",
+                    rows_read=len(source_rows),
+                    rows_written=0,
+                    dirty_ranges_written=0,
+                    error="newer_projection_exists",
+                    commit=True,
+                )
+                return {
+                    "rows_written": 0,
+                    "source_rows": len(source_rows),
+                    "computed_at_ms": computed_at_ms,
+                    "status": "stale_skipped",
+                }
+            projection_repo.advance_offset(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=PROJECTION_VERSION,
+                source_table=TOKEN_RADAR_SOURCE_TABLE,
+                source_max_received_at_ms=source_max_received_at_ms,
+                source_max_id=str(rows[0]["row_id"]) if rows else "",
+                last_run_id=str(run["run_id"]),
+                lag_ms=max(0, computed_at_ms - source_max_received_at_ms) if source_max_received_at_ms else 0,
+                status="ready",
+                commit=False,
+            )
             projection_repo.finish_run(
                 run_id=str(run["run_id"]),
-                status="stale_skipped",
+                status="ready",
                 rows_read=len(source_rows),
-                rows_written=0,
+                rows_written=len(rows),
                 dirty_ranges_written=0,
-                error="newer_projection_exists",
+                commit=True,
+            )
+            self.repos.token_radar.mark_coverage(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                status="ready",
+                reason=None,
+                source_rows=len(source_rows),
+                row_count=len(rows),
+                computed_at_ms=computed_at_ms,
+                started_at_ms=computed_at_ms,
+                finished_at_ms=_now_ms(),
+                error=None,
                 commit=True,
             )
             return {
-                "rows_written": 0,
+                "rows_written": len(rows),
                 "source_rows": len(source_rows),
                 "computed_at_ms": computed_at_ms,
-                "status": "stale_skipped",
+                "status": "ready",
             }
-        projection_repo.advance_offset(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=PROJECTION_VERSION,
-            source_table=TOKEN_RADAR_SOURCE_TABLE,
-            source_max_received_at_ms=source_max_received_at_ms,
-            source_max_id=str(rows[0]["row_id"]) if rows else "",
-            last_run_id=str(run["run_id"]),
-            lag_ms=max(0, computed_at_ms - source_max_received_at_ms) if source_max_received_at_ms else 0,
-            status="ready",
-            commit=False,
-        )
-        projection_repo.finish_run(
-            run_id=str(run["run_id"]),
-            status="ready",
-            rows_read=len(source_rows),
-            rows_written=len(rows),
-            dirty_ranges_written=0,
-            commit=True,
-        )
-        return {
-            "rows_written": len(rows),
-            "source_rows": len(source_rows),
-            "computed_at_ms": computed_at_ms,
-            "status": "ready",
-        }
+        except Exception as exc:
+            self.repos.token_radar.mark_coverage(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                status="failed",
+                reason="projection_window_failed",
+                source_rows=0,
+                row_count=0,
+                computed_at_ms=computed_at_ms,
+                started_at_ms=computed_at_ms,
+                finished_at_ms=_now_ms(),
+                error=str(exc),
+                commit=True,
+            )
+            raise
 
     def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
         return TokenRadarSourceQuery(self.repos.conn).source_rows(since_ms=since_ms, scope=scope, now_ms=now_ms)
@@ -244,6 +289,10 @@ class TokenRadarProjection:
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
     return score_since_ms - BASELINE_SLOT_COUNT * window_ms
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _project_group(

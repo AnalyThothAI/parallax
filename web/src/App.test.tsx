@@ -49,10 +49,24 @@ const apiMock = vi.hoisted(() => {
   return state;
 });
 
-const socketMock: { status: string; events: LivePayload[]; notifications: NotificationLivePayload[]; lastMessageAt: number | null } = {
+const socketMock: {
+  status: string;
+  events: LivePayload[];
+  notifications: NotificationLivePayload[];
+  marketUpdates: Array<{
+    type: "market_update";
+    target_type: string;
+    target_id: string;
+    current_market: AssetFlowRow["current_market"];
+    observed_at_ms: number;
+    provider: string;
+  }>;
+  lastMessageAt: number | null;
+} = {
   status: "connected",
   events: [],
   notifications: [],
+  marketUpdates: [],
   lastMessageAt: 1_777_770_000_000
 };
 
@@ -141,6 +155,7 @@ describe("App Token Radar social heat cockpit", () => {
     socketMock.status = "connected";
     socketMock.events = [liveUpegEvent()];
     socketMock.notifications = [];
+    socketMock.marketUpdates = [];
     socketMock.lastMessageAt = 1_777_770_000_000;
     useTraderStore.setState({
       token: "",
@@ -193,6 +208,42 @@ describe("App Token Radar social heat cockpit", () => {
     expect(container.querySelector(".decision-controls")).not.toBeInTheDocument();
     expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText("$UPEG").length).toBeGreaterThan(0));
+  });
+
+  it("patches visible token-radar rows with websocket market updates", async () => {
+    const target = {
+      target_type: "Asset",
+      target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    };
+    socketMock.marketUpdates = [
+      {
+        type: "market_update",
+        ...target,
+        observed_at_ms: 1_777_770_120_000,
+        provider: "okx_dex_ws_price_info",
+        current_market: {
+          target_type: target.target_type,
+          target_id: target.target_id,
+          market_status: "fresh",
+          fields: {
+            price_usd: fieldFact(0.111, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
+            market_cap_usd: fieldFact(110_900_000, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
+            liquidity_usd: fieldFact(4_820_000, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
+            holders: fieldFact(57_141, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
+            volume_24h_usd: fieldFact(27_400_000, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info")
+          }
+        }
+      }
+    ];
+
+    const { container } = renderWithQuery(<App />);
+
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
+    await waitFor(() => {
+      expect(row.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$111M");
+      expect(row.querySelector('[data-radar-metric="market"]')).toHaveTextContent("fresh");
+    });
+    expect(container.querySelectorAll(".token-radar-table .radar-row")).toHaveLength(1);
   });
 
   it("keeps search results in the evidence drawer instead of a bottom panel", async () => {

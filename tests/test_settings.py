@@ -55,6 +55,10 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.okx_dex_price_hot_stale_seconds == 90.0
     assert settings.okx_dex_price_warm_stale_seconds == 300.0
     assert settings.okx_dex_price_refresh_limit == 160
+    assert settings.okx_dex_ws_enabled is False
+    assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
+    assert settings.okx_dex_ws_subscription_limit == 100
+    assert settings.okx_dex_ws_configured is False
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):
@@ -244,6 +248,14 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
                     "dex_price_hot_stale_seconds": 45,
                     "dex_price_warm_stale_seconds": 180,
                     "dex_price_refresh_limit": 25,
+                    "dex_ws_enabled": True,
+                    "dex_ws_url": "wss://okx-ws.example.test/ws/v6/dex",
+                    "dex_ws_subscription_limit": 20,
+                    "dex_ws_hot_target_ttl_seconds": 120,
+                    "dex_ws_reconnect_delay_seconds": 2,
+                    "dex_api_key": "okx-key",
+                    "dex_secret_key": "okx-secret",
+                    "dex_passphrase": "okx-pass",
                     "timeout_seconds": 9,
                 }
             },
@@ -267,7 +279,34 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.okx_dex_price_hot_stale_seconds == 45
     assert settings.okx_dex_price_warm_stale_seconds == 180
     assert settings.okx_dex_price_refresh_limit == 25
+    assert settings.okx_dex_ws_enabled is True
+    assert settings.okx_dex_ws_url == "wss://okx-ws.example.test/ws/v6/dex"
+    assert settings.okx_dex_ws_subscription_limit == 20
+    assert settings.okx_dex_ws_hot_target_ttl_seconds == 120
+    assert settings.okx_dex_ws_reconnect_delay_seconds == 2
+    assert settings.okx_dex_ws_configured is True
     assert settings.okx_timeout_seconds == 9
+
+
+def test_okx_dex_ws_enabled_requires_all_credentials(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {
+                "okx": {
+                    "dex_ws_enabled": True,
+                    "dex_api_key": "okx-key",
+                    "dex_secret_key": "okx-secret",
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="dex_ws_enabled requires dex_api_key, dex_secret_key, and dex_passphrase"):
+        load_settings()
 
 
 def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
@@ -297,6 +336,9 @@ def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
         ("dex_price_hot_stale_seconds", -1),
         ("dex_price_warm_stale_seconds", 0),
         ("dex_price_refresh_limit", -10),
+        ("dex_ws_subscription_limit", 0),
+        ("dex_ws_hot_target_ttl_seconds", 0),
+        ("dex_ws_reconnect_delay_seconds", -1),
     ],
 )
 def test_okx_provider_rejects_invalid_dex_refresh_knobs(tmp_path, monkeypatch, key, value):
