@@ -1,5 +1,6 @@
 import type { RadarSortMode, TokenFlowItem } from "../api/types";
 import { tokenKey } from "../lib/format";
+
 import { TokenRadarRow } from "./TokenRadarRow";
 
 const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
@@ -7,7 +8,7 @@ const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
   { mode: "heat", label: "Heat" },
   { mode: "quality", label: "Quality" },
   { mode: "propagation", label: "Propagation" },
-  { mode: "timing", label: "Timing" }
+  { mode: "timing", label: "Timing" },
 ];
 
 type TokenRadarTableProps = {
@@ -29,7 +30,7 @@ export function TokenRadarTable({
   error,
   onSelect,
   onOpenPage,
-  onSortModeChange
+  onSortModeChange,
 }: TokenRadarTableProps) {
   return (
     <section className="radar-panel" aria-label="Token Radar">
@@ -69,7 +70,9 @@ export function TokenRadarTable({
         </div>
         {isLoading ? <RadarSkeleton /> : null}
         {error ? <div className="table-state">Token Radar 暂不可用 · {error.message}</div> : null}
-        {!isLoading && !error && items.length === 0 ? <div className="table-state">当前窗口暂无可交易 token 热度</div> : null}
+        {!isLoading && !error && items.length === 0 ? (
+          <div className="table-state">当前窗口暂无可交易 token 热度</div>
+        ) : null}
         {!isLoading && !error
           ? items.map((item) => {
               const key = tokenKey(item);

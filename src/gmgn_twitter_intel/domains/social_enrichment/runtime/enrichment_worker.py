@@ -18,11 +18,11 @@ class EnrichmentWorker:
         self,
         *,
         client: SocialEventEnrichmentProvider,
-        publisher=None,
+        publisher: Any = None,
         repository_session: Callable[[], AbstractContextManager[Any]],
         poll_interval: float = 2.0,
         concurrency: int = 1,
-    ):
+    ) -> None:
         self.repository_session = repository_session
         self.client = client
         self.publisher = publisher
@@ -173,4 +173,4 @@ def _run_id(job: dict[str, Any]) -> str:
             str(_now_ms()),
         ]
     )
-    return "run-" + hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return "run-" + hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()

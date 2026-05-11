@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
 
@@ -8,14 +9,10 @@ from gmgn_twitter_intel.domains.evidence.interfaces import TwitterEvent
 def normalize_handles(handles: Iterable[str] | None) -> set[str]:
     if not handles:
         return set()
-    return {
-        handle.lstrip("@").strip().lower()
-        for handle in handles
-        if handle and handle.lstrip("@").strip()
-    }
+    return {handle.lstrip("@").strip().lower() for handle in handles if handle and handle.lstrip("@").strip()}
 
 
-def event_matches_handles(event: TwitterEvent | dict, handles: set[str]) -> bool:
+def event_matches_handles(event: TwitterEvent | dict[str, Any], handles: set[str]) -> bool:
     if not handles:
         return True
 

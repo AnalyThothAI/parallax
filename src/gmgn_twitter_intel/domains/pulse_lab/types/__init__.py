@@ -10,8 +10,8 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
 
 __all__ = [
     "PulseCondition",
-    "PulseRecommendationPayload",
     "PulseReason",
+    "PulseRecommendationPayload",
     "PulseResidualRisk",
     "Recommendation",
     "collect_factor_keys",

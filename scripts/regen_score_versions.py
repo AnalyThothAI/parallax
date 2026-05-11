@@ -1,5 +1,6 @@
 # scripts/regen_score_versions.py
 """Regenerate docs/generated/score-versions.md by scanning src/ for score_version literals."""
+
 from __future__ import annotations
 
 import re
@@ -18,7 +19,7 @@ def main() -> None:
         rel = path.relative_to(ROOT).as_posix()
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for match in PATTERN.finditer(line):
-                rows.append((match.group(1), rel, lineno, line.strip()))
+                rows.append((match.group(1), rel, lineno, line.strip()))  # noqa: PERF401 -- triple-nested loop; extend() not applicable
     body = ["# Score Versions", "", "| Version | File | Line | Context |", "|---------|------|------|---------|"]
     for version, rel, lineno, context in sorted(rows):
         body.append(f"| `{version}` | `{rel}` | {lineno} | `{context}` |")

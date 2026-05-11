@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 URL_RE = re.compile(r"https?://[^\s<>()]+", re.IGNORECASE)
 CASHTAG_RE = re.compile(r"(?<![A-Za-z0-9_])\$([A-Za-z][A-Za-z0-9_]{1,15})")
@@ -52,9 +54,7 @@ def _clean_text(text: str | None) -> str | None:
 
 
 def _extract_urls(text: str | None) -> list[str]:
-    urls = []
-    for match in URL_RE.findall(text or ""):
-        urls.append(match.rstrip(".,!?;:)]}"))
+    urls = [match.rstrip(".,!?;:)]}") for match in URL_RE.findall(text or "")]
     return _unique(urls)
 
 
@@ -63,7 +63,7 @@ def _is_emoji_like(ch: str) -> bool:
     return category in {"So", "Sk"} or ch in {"\ufe0f", "\u200d"}
 
 
-def _unique(values) -> list[str]:
+def _unique(values: Iterable[Any]) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
     for value in values:

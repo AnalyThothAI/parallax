@@ -100,7 +100,9 @@ def rebuild_token_radar_windows(
     scopes: tuple[str, ...] = DEFAULT_SCOPES,
     limit: int = 100,
 ) -> dict[str, Any]:
-    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+    from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import (
+        TokenRadarProjection,
+    )
 
     projection = TokenRadarProjection(repos=repos)
     result: dict[str, Any] = {"rows_written": 0, "source_rows": 0, "windows": {}}

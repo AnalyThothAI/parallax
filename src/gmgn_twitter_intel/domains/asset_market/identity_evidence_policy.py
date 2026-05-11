@@ -72,9 +72,7 @@ def select_current_identity(
         "canonical_symbol": _symbol(selected.get("symbol")),
         "canonical_name": _string(selected.get("name")),
         "decimals": selected.get("decimals"),
-        "identity_confidence": _CONFIDENCE_BY_KIND.get(
-            str(selected.get("evidence_kind") or ""), CONFIDENCE_UNKNOWN
-        ),
+        "identity_confidence": _CONFIDENCE_BY_KIND.get(str(selected.get("evidence_kind") or ""), CONFIDENCE_UNKNOWN),
         "selected_evidence_id": selected.get("evidence_id"),
         "selection_reason_codes": reason_codes,
         "conflict_count": conflict_count,

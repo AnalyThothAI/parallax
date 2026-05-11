@@ -11,7 +11,7 @@ from .token_target_stage_builder import build_token_target_stages
 
 
 class TokenTargetSocialTimelineService:
-    def __init__(self, *, targets):
+    def __init__(self, *, targets: Any) -> None:
         self.targets = targets
 
     def timeline(
@@ -165,11 +165,11 @@ def _buckets(rows: list[dict[str, Any]], *, bucket_ms: int, since_ms: int, now_m
         authors = set(bucket["authors"])
         new_authors = len(authors - seen_authors)
         seen_authors.update(authors)
-        price = bucket.get("price")
-        if start_price is None and price and price.get("price_usd") is not None:
-            start_price = float(price["price_usd"])
-        if start_price and price and price.get("price_usd") is not None:
-            bucket["price_change_from_start_pct"] = round(float(price["price_usd"]) / start_price - 1.0, 6)
+        bucket_price = bucket.get("price")
+        if start_price is None and bucket_price and bucket_price.get("price_usd") is not None:
+            start_price = float(bucket_price["price_usd"])
+        if start_price and bucket_price and bucket_price.get("price_usd") is not None:
+            bucket["price_change_from_start_pct"] = round(float(bucket_price["price_usd"]) / start_price - 1.0, 6)
         public.append({**bucket, "authors": len(authors), "new_authors": new_authors})
     return public
 

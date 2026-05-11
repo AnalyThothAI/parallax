@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .app.surfaces.cli.main import (  # noqa: F401
+from .app.surfaces.cli.main import (
     _audit_token_radar_rows,
     _search_query,
     build_parser,

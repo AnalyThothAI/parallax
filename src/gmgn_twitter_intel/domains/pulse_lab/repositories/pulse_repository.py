@@ -620,9 +620,7 @@ class PulseRepository:
                 job_params.extend([normalized_handle, *candidate_handle_params])
         if q:
             pattern = f"%{q.strip()}%"
-            job_clauses.append(
-                "(candidate.symbol ILIKE %s OR job.subject_key ILIKE %s OR job.target_id ILIKE %s)"
-            )
+            job_clauses.append("(candidate.symbol ILIKE %s OR job.subject_key ILIKE %s OR job.target_id ILIKE %s)")
             job_params.extend([pattern, pattern, pattern])
         job_row = self.conn.execute(
             f"""
@@ -851,7 +849,7 @@ def _decode_json_value(value: Any) -> Any:
 def _json_ready(value: Any) -> Any:
     if isinstance(value, dict):
         return {str(key): _json_ready(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_json_ready(item) for item in value]
     return value
 

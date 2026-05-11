@@ -12,7 +12,11 @@ type BuildWatchlistRowsInput = {
   liveItems: LivePayload[];
 };
 
-export function buildWatchlistRows({ handles, accountUnreadCounts, liveItems }: BuildWatchlistRowsInput): WatchlistRow[] {
+export function buildWatchlistRows({
+  handles,
+  accountUnreadCounts,
+  liveItems,
+}: BuildWatchlistRowsInput): WatchlistRow[] {
   const normalizedHandles = dedupeHandles(handles);
   const latestByHandle = new Map<string, number>();
   for (const item of liveItems) {
@@ -28,13 +32,13 @@ export function buildWatchlistRows({ handles, accountUnreadCounts, liveItems }: 
     .map((handle) => ({
       handle,
       unreadCount: Number(accountUnreadCounts?.[handle] ?? 0),
-      lastSeenAtMs: latestByHandle.get(handle) ?? null
+      lastSeenAtMs: latestByHandle.get(handle) ?? null,
     }))
     .sort(
       (a, b) =>
         b.unreadCount - a.unreadCount ||
         Number(b.lastSeenAtMs ?? 0) - Number(a.lastSeenAtMs ?? 0) ||
-        Number(originalIndex.get(a.handle) ?? 0) - Number(originalIndex.get(b.handle) ?? 0)
+        Number(originalIndex.get(a.handle) ?? 0) - Number(originalIndex.get(b.handle) ?? 0),
     );
 }
 

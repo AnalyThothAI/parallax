@@ -12,7 +12,7 @@ MIN_OUTCOME_HORIZON_MS = 5 * 60_000
 
 
 class AccountQualityService:
-    def __init__(self, *, signals, repository: AccountQualityRepository):
+    def __init__(self, *, signals: Any, repository: AccountQualityRepository) -> None:
         self.signals = signals
         self.repository = repository
 
@@ -70,7 +70,12 @@ class AccountQualityService:
     def account_quality_for_handles(self, handles: list[str]) -> dict[str, Any]:
         normalized = [_handle(handle) for handle in handles if _handle(handle)]
         seen: set[str] = set()
-        unique_handles = [handle for handle in normalized if not (handle in seen or seen.add(handle))]
+        unique_handles: list[str] = []
+        for handle in normalized:
+            if handle in seen:
+                continue
+            seen.add(handle)
+            unique_handles.append(handle)
         accounts = [_account_quality_payload(self.repository.account_quality(handle)) for handle in unique_handles]
         return {
             "query": {"handles": unique_handles},
@@ -114,9 +119,7 @@ class AccountQualityService:
         }
         drawdown = _max_drawdown(rows, start_price=first_price, before_ms=first_mention_ms + 60 * 60_000)
         outcome_status = (
-            "ready"
-            if any(value is not None for value in changes.values())
-            else "insufficient_market_history"
+            "ready" if any(value is not None for value in changes.values()) else "insufficient_market_history"
         )
         return changes | {
             "max_drawdown_1h_pct": drawdown,

@@ -180,15 +180,11 @@ class AssetMarketSyncWorker:
 
     def _refresh_status(self) -> None:
         started = [
-            state["last_started_at_ms"]
-            for state in self.provider_states.values()
-            if state["last_started_at_ms"]
+            state["last_started_at_ms"] for state in self.provider_states.values() if state["last_started_at_ms"]
         ]
         runs = [state["last_run_at_ms"] for state in self.provider_states.values() if state["last_run_at_ms"]]
         errors = [
-            f"{name}:{state['last_error']}"
-            for name, state in self.provider_states.items()
-            if state.get("last_error")
+            f"{name}:{state['last_error']}" for name, state in self.provider_states.items() if state.get("last_error")
         ]
         self.last_started_at_ms = max(started) if started else None
         self.last_run_at_ms = max(runs) if runs else None

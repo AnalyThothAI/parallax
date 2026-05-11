@@ -68,7 +68,7 @@ export function DetailDrawerHeader({
   metrics,
   actions,
   children,
-  className
+  className,
 }: DetailDrawerHeaderProps) {
   return (
     <header className={cx("drawer-head", className)}>
@@ -79,7 +79,9 @@ export function DetailDrawerHeader({
           {subtitle ? <p>{subtitle}</p> : null}
           {actions}
         </div>
-        {badge !== undefined && badge !== null ? <div className="opportunity-score">{badge}</div> : null}
+        {badge !== undefined && badge !== null ? (
+          <div className="opportunity-score">{badge}</div>
+        ) : null}
       </div>
       {metrics}
       {children}
@@ -109,9 +111,16 @@ export function DetailDrawerSection({ children, title, className }: DetailDrawer
   );
 }
 
-export function DetailDrawerCard({ children, title, tone = "default", className }: DetailDrawerCardProps) {
+export function DetailDrawerCard({
+  children,
+  title,
+  tone = "default",
+  className,
+}: DetailDrawerCardProps) {
   return (
-    <article className={cx("detail-drawer-card", tone === "accent" ? "is-accent" : undefined, className)}>
+    <article
+      className={cx("detail-drawer-card", tone === "accent" ? "is-accent" : undefined, className)}
+    >
       {title ? <h3>{title}</h3> : null}
       {children}
     </article>
@@ -131,7 +140,12 @@ export function DetailDrawerField({ label, value }: DetailDrawerFieldProps) {
   );
 }
 
-export function DetailDrawerTagStrip({ items, emptyLabel, featuredItem, className }: DetailDrawerTagStripProps) {
+export function DetailDrawerTagStrip({
+  items,
+  emptyLabel,
+  featuredItem,
+  className,
+}: DetailDrawerTagStripProps) {
   const renderedItems = items.length ? items : [emptyLabel];
   return (
     <div className={cx("risk-strip", "detail-drawer-tag-strip", className)}>

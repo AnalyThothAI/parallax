@@ -1,6 +1,6 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { App } from "../../App";
@@ -12,8 +12,8 @@ vi.mock("../../api/useIntelSocket", () => ({
     status: "connected",
     events: [],
     notifications: [],
-    lastMessageAt: null
-  })
+    lastMessageAt: null,
+  }),
 }));
 
 beforeEach(() => {
@@ -25,13 +25,13 @@ describe("watchlist sidebar", () => {
   it("renders each handle as a Link to /signal-lab?handle=...", async () => {
     vi.spyOn(client, "getBootstrap").mockResolvedValue({
       ok: true,
-      data: { ws_token: "test-token", handles: ["toly"], replay_limit: 25 }
+      data: { ws_token: "test-token", handles: ["toly"], replay_limit: 25 },
     } as any);
     vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
       if (path === "/api/status") {
         return {
           ok: true,
-          data: { ok: true, handles: ["toly"], collector: {}, notifications: { summary: {} } }
+          data: { ok: true, handles: ["toly"], collector: {}, notifications: { summary: {} } },
         } as any;
       }
       if (path === "/api/recent") {
@@ -50,8 +50,8 @@ describe("watchlist sidebar", () => {
             items: [],
             returned_count: 0,
             has_more: false,
-            next_cursor: null
-          }
+            next_cursor: null,
+          },
         } as any;
       }
       if (path === "/api/notification-summary") {
@@ -69,7 +69,7 @@ describe("watchlist sidebar", () => {
         <MemoryRouter initialEntries={["/"]}>
           <App />
         </MemoryRouter>
-      </QueryClientProvider>
+      </QueryClientProvider>,
     );
 
     const link = await waitFor(() => screen.getByRole("link", { name: /toly/i }));

@@ -1,6 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import type { TokenFlowItem } from "../api/types";
+
 import { TokenRadarRow } from "./TokenRadarRow";
 
 afterEach(() => cleanup());
@@ -10,7 +12,9 @@ describe("TokenRadarRow", () => {
     render(<TokenRadarRow item={unresolvedSymbolOnly()} selected={false} onSelect={vi.fn()} />);
 
     expect(screen.getByText("$SLOP")).toBeInTheDocument();
-    expect(screen.getByText("symbol-only · 候选价格过期 · 2 candidates · found:2")).toBeInTheDocument();
+    expect(
+      screen.getByText("symbol-only · 候选价格过期 · 2 candidates · found:2"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/8ff41158.*e70faa/i)).not.toBeInTheDocument();
   });
 
@@ -84,7 +88,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       symbol: "SLOP",
       resolution_reasons: ["SYMBOL_CANDIDATES_STALE"],
       candidate_count: 2,
-      discovery_status: "found:2"
+      discovery_status: "found:2",
     },
     market: { market_status: "missing", price_change_status: "missing" },
     flow: {
@@ -95,7 +99,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       mention_delta: 1,
       stream_dominance: 1,
       baseline_status: "insufficient_history",
-      baseline_sample_count: 0
+      baseline_sample_count: 0,
     },
     social_heat: {
       score_version: "social_heat_v1",
@@ -115,7 +119,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       mention_delta: 1,
       stream_share: 1,
       watched_share: 0,
-      status: "insufficient_history"
+      status: "insufficient_history",
     },
     discussion_quality: {
       score_version: "discussion_quality_v1",
@@ -129,7 +133,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       avg_attribution_confidence: 0,
       duplicate_text_share: 0,
       informative_post_count: 1,
-      watched_source_count: 0
+      watched_source_count: 0,
     },
     propagation: {
       score_version: "propagation_v1",
@@ -145,7 +149,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       duplicate_text_share: 0,
       author_entropy: 0,
       phase: "seed",
-      top_authors: []
+      top_authors: [],
     },
     tradeability: {
       score_version: "tradeability_v1",
@@ -158,7 +162,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       market_fresh: false,
       market_cap_present: false,
       liquidity_present: false,
-      pool_present: false
+      pool_present: false,
     },
     timing: {
       score_version: "timing_v4",
@@ -167,7 +171,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       chase_risk: false,
       reasons: [],
       risks: ["no_resolved_target"],
-      market_observation_status: "no_resolved_target"
+      market_observation_status: "no_resolved_target",
     },
     opportunity: {
       score_version: "social_opportunity_v3",
@@ -177,7 +181,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       risks: [],
       contributions: [],
       risk_caps: [],
-      components: { heat: 44, quality: 43, propagation: 50, tradeability: 0, timing: 0 }
+      components: { heat: 44, quality: 43, propagation: 50, tradeability: 0, timing: 0 },
     },
     watch: {
       status: "seed",
@@ -186,10 +190,16 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       seed_link_count: 0,
       top_seed: null,
       reasons: [],
-      risks: []
+      risks: [],
     },
     evidence_total_count: 1,
-    posts_query: { target_type: null, target_id: null, window: "5m", scope: "all", range: "current_window" },
-    timeline_query: { target_type: null, target_id: null, window: "5m", scope: "all" }
+    posts_query: {
+      target_type: null,
+      target_id: null,
+      window: "5m",
+      scope: "all",
+      range: "current_window",
+    },
+    timeline_query: { target_type: null, target_id: null, window: "5m", scope: "all" },
   };
 }

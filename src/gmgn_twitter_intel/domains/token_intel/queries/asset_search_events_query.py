@@ -50,7 +50,7 @@ class AssetSearchEventsQuery:
               LEFT JOIN token_intent_resolutions
                 ON token_intent_resolutions.intent_id = token_intent_evidence.intent_id
                AND token_intent_resolutions.is_current = true
-              WHERE {' AND '.join(clauses)}
+              WHERE {" AND ".join(clauses)}
               ORDER BY events.event_id, token_intent_resolutions.decision_time_ms DESC NULLS LAST
             )
             SELECT *

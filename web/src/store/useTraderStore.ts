@@ -1,4 +1,5 @@
 import { create } from "zustand";
+
 import type {
   RadarSortMode,
   ScopeKey,
@@ -6,7 +7,7 @@ import type {
   TokenDetailTab,
   TokenPostRange,
   TokenPostSortMode,
-  WindowKey
+  WindowKey,
 } from "../api/types";
 
 type TraderState = {
@@ -76,5 +77,5 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setPostRange: (postRange) => set({ postRange }),
   setPostSortMode: (postSortMode) => set({ postSortMode }),
   setHideDuplicateClusters: (hideDuplicateClusters) => set({ hideDuplicateClusters }),
-  setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly })
+  setWatchedPostsOnly: (watchedPostsOnly) => set({ watchedPostsOnly }),
 }));

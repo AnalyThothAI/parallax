@@ -132,7 +132,7 @@ class TokenTargetRepository:
                 price_observations.observation_id DESC
               LIMIT 1
             ) message_price ON true
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,

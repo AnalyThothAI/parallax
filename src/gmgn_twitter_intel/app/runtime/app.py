@@ -162,6 +162,7 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
         app.mount("/assets", StaticFiles(directory=assets), name="frontend-assets")
 
     if (dist / "favicon.svg").exists():
+
         async def frontend_favicon() -> FileResponse:
             return FileResponse(dist / "favicon.svg")
 
@@ -528,9 +529,7 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_started_at_ms": runtime.pulse_candidate_worker.last_started_at_ms
             if runtime.pulse_candidate_worker
             else None,
-            "last_run_at_ms": runtime.pulse_candidate_worker.last_run_at_ms
-            if runtime.pulse_candidate_worker
-            else None,
+            "last_run_at_ms": runtime.pulse_candidate_worker.last_run_at_ms if runtime.pulse_candidate_worker else None,
             "last_result": runtime.pulse_candidate_worker.last_result if runtime.pulse_candidate_worker else None,
             "last_error": runtime.pulse_candidate_worker.last_error if runtime.pulse_candidate_worker else None,
         },
@@ -567,9 +566,7 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_started_at_ms": runtime.token_discovery_worker.last_started_at_ms
             if runtime.token_discovery_worker
             else None,
-            "last_run_at_ms": runtime.token_discovery_worker.last_run_at_ms
-            if runtime.token_discovery_worker
-            else None,
+            "last_run_at_ms": runtime.token_discovery_worker.last_run_at_ms if runtime.token_discovery_worker else None,
             "last_result": runtime.token_discovery_worker.last_result if runtime.token_discovery_worker else None,
             "last_error": runtime.token_discovery_worker.last_error if runtime.token_discovery_worker else None,
         },
@@ -613,9 +610,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_delivery_worker_stopped")
     if runtime.asset_market_sync_worker is not None and not _task_running(runtime.asset_market_sync_task):
         reasons.append("asset_market_sync_worker_stopped")
-    if (
-        runtime.message_market_observation_worker is not None
-        and not _task_running(runtime.message_market_observation_task)
+    if runtime.message_market_observation_worker is not None and not _task_running(
+        runtime.message_market_observation_task
     ):
         reasons.append("message_market_observation_worker_stopped")
     if runtime.token_discovery_worker is not None and not _task_running(runtime.token_discovery_task):

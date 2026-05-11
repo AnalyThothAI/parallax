@@ -11,7 +11,7 @@ WINDOW_MS = {
 
 
 class HarnessService:
-    def __init__(self, harness):
+    def __init__(self, harness: Any) -> None:
         self.harness = harness
 
     def social_events(

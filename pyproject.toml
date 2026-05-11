@@ -26,7 +26,11 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
-    "ruff>=0.8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.8.6",
+    "pre-commit>=3.7",
+    "mypy>=1.13",
+    "testcontainers[postgres]>=4.8",
 ]
 
 [project.scripts]
@@ -41,10 +45,118 @@ packages = ["src/gmgn_twitter_intel"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "unit: pure logic, no external dependencies (lives in tests/unit/)",
+  "integration: requires real Postgres (lives in tests/integration/)",
+  "e2e: cross-process; needs testcontainers + uvicorn subprocess (lives in tests/e2e/)",
+  "architecture: AST/grep enforcement of repo invariants (lives in tests/architecture/)",
+  "contract: front-back schema/contract drift checks (lives in tests/contract/)",
+]
 
 [tool.ruff]
 line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "SIM"]
+select = ["E", "F", "I", "UP", "B", "SIM", "S", "ASYNC", "RUF", "PERF", "PL"]
+# Common pragmatic ignores. Each ignore is a deliberate choice:
+# - PLR0913: too many args is sometimes correct for adapters/factories
+# - PLR2004: magic numbers in tests are normal (also blocked by per-file-ignores)
+# - PLR0911/PLR0912/PLR0915: cyclomatic complexity caps too low for a few orchestration funcs
+# - S608: 43 hits across repos — all use controlled clause building (not user input);
+#         the pattern `f"WHERE {' AND '.join(clauses)}"` where clauses is filled with
+#         hardcoded strings + %s placeholders is a safe dynamic-filter pattern for psycopg.
+# - S105/S106: "possible password" fires on version strings, filename defaults, redaction
+#         strings (TOKEN_RADAR_PROJECTION_VERSION, "password_file", "token_resolution_status");
+#         no actual credentials are hardcoded in the src/ tree.
+# - RUF001: codebase has intentional Chinese fullwidth characters in constant/model strings
+#         (e.g. Chinese punctuation in user-visible prompts); not copy-paste accidents.
+# - PLC0415: 5 deferred imports in src/ are intentional (break circular deps or defer optional
+#         deps: apprise in notification_delivery, psycopg in cli, TokenRadarProjection in two
+#         runtime workers). ruff --fix strips noqa comments on these so they're globally ignored.
+ignore = [
+  "PLR0913",
+  "PLR2004",
+  "PLR0911",
+  "PLR0912",
+  "PLR0915",
+  "S608",
+  "S105",
+  "S106",
+  "RUF001",
+  "PLC0415",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+  "S101",   # asserts are the test contract
+  "S311",   # pseudo-random in tests is fine
+  "PLR2004",
+  "ASYNC",
+  "PLC0415",  # deferred imports in test helpers/parametrized fixtures are intentional
+  "S603",   # subprocess in integration tests always calls well-known CLI tools
+  "S607",   # subprocess calls in integration tests use well-known CLI tools (make, git, uv)
+]
+"scripts/**" = [
+  "S603",   # subprocess inputs are local CLI args
+  "S607",
+]
+
+[tool.ruff.format]
+# Default settings; line-length inherited from [tool.ruff] = 120
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "gmgn_twitter_intel.app.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+warn_return_any = false
+disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = "gmgn_twitter_intel.integrations.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+disallow_subclassing_any = false
+warn_return_any = false
+disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*", "loguru.*", "psycopg.*", "apprise.*", "curl_cffi.*", "websockets.*", "openai_agents.*", "solders.*", "eth_hash.*", "eth_utils.*", "testcontainers.*", "yaml"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/gmgn_twitter_intel"]
+omit = [
+  "src/gmgn_twitter_intel/platform/db/alembic/versions/*",
+  "src/gmgn_twitter_intel/cli.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+precision = 1
+fail_under = 80
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+  "\\.\\.\\.",
+]

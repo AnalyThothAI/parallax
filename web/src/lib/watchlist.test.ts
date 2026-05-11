@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildWatchlistRows } from "./watchlist";
+
 import type { LivePayload } from "../api/types";
+
+import { buildWatchlistRows } from "./watchlist";
 
 describe("watchlist helpers", () => {
   it("keeps every configured handle and ranks unread then latest activity", () => {
@@ -10,8 +12,8 @@ describe("watchlist helpers", () => {
       liveItems: [
         liveEvent("theunipcs", 1_700_000_300_000),
         liveEvent("toly", 1_700_000_200_000),
-        liveEvent("cz_binance", 1_700_000_100_000)
-      ]
+        liveEvent("cz_binance", 1_700_000_100_000),
+      ],
     });
 
     expect(rows.map((row) => row.handle)).toEqual(["traderpow", "cz_binance", "theunipcs", "toly"]);
@@ -26,9 +28,9 @@ function liveEvent(handle: string, receivedAtMs: number): LivePayload {
     event: {
       event_id: `${handle}-${receivedAtMs}`,
       author_handle: handle,
-      received_at_ms: receivedAtMs
+      received_at_ms: receivedAtMs,
     },
     entities: [],
-    alerts: []
+    alerts: [],
   };
 }

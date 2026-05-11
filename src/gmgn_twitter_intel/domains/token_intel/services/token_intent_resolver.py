@@ -14,7 +14,7 @@ TokenIntentResolutionDecision = DeterministicResolution
 
 
 class TokenIntentResolver:
-    def __init__(self, *, registry, resolutions):
+    def __init__(self, *, registry: Any, resolutions: Any) -> None:
         self.registry = registry
         self.resolutions = resolutions
         self.resolver = DeterministicTokenResolver(registry=registry)
@@ -60,7 +60,8 @@ def _cex_pricefeed_id(evidence: list[TokenEvidenceInput] | list[dict[str, Any]])
     for item in evidence:
         evidence_type = _evidence_value(item, "evidence_type")
         if evidence_type == "cex_pricefeed":
-            return _evidence_value(item, "provider_ref")
+            ref = _evidence_value(item, "provider_ref")
+            return str(ref) if ref is not None else None
     return None
 
 

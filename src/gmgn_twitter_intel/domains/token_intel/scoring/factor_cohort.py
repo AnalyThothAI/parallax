@@ -4,10 +4,23 @@ from __future__ import annotations
 
 COHORT_DEFINITION_VERSION = "cohort_v1"
 
-STABLECOIN_SYMBOLS: frozenset[str] = frozenset({
-    "USDT", "USDC", "DAI", "FDUSD", "TUSD",
-    "USDD", "USDP", "GUSD", "PYUSD", "USDE", "FRAX", "LUSD", "BUSD",
-})
+STABLECOIN_SYMBOLS: frozenset[str] = frozenset(
+    {
+        "USDT",
+        "USDC",
+        "DAI",
+        "FDUSD",
+        "TUSD",
+        "USDD",
+        "USDP",
+        "GUSD",
+        "PYUSD",
+        "USDE",
+        "FRAX",
+        "LUSD",
+        "BUSD",
+    }
+)
 
 
 def is_active_cohort_member(

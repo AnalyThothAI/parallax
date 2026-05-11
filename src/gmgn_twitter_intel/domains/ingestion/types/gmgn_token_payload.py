@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from eth_utils import is_address, to_checksum_address
+from eth_utils.address import is_address, to_checksum_address
 
 from gmgn_twitter_intel.domains.evidence.interfaces import TokenSnapshot
 

@@ -9,9 +9,7 @@ def actual_return(*, entry_price: float, exit_price: float) -> float:
 
 def expected_return(benchmark_returns: dict[str, float], *, momentum_return: float, weights: dict[str, float]) -> float:
     total = sum(
-        float(benchmark_returns.get(key, 0.0)) * float(weight)
-        for key, weight in weights.items()
-        if key != "momentum"
+        float(benchmark_returns.get(key, 0.0)) * float(weight) for key, weight in weights.items() if key != "momentum"
     )
     total += float(momentum_return) * float(weights.get("momentum", 0.0))
     return round(total, 12)

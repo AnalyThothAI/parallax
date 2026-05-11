@@ -1,4 +1,5 @@
 import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
+
 import type { NotificationItem, NotificationSummary } from "../api/types";
 import { formatRelativeTime } from "../lib/format";
 
@@ -21,7 +22,7 @@ export function NotificationDrawer({
   onClose,
   onMarkAllRead,
   onMarkRead,
-  onOpenNotification
+  onOpenNotification,
 }: Props) {
   if (!open) {
     return null;
@@ -33,19 +34,35 @@ export function NotificationDrawer({
           <span>notifications</span>
           <b>{summary?.unread_count ?? 0} unread</b>
         </div>
-        <button aria-label="mark all read" className="icon-button" disabled={(summary?.unread_count ?? 0) === 0} onClick={onMarkAllRead} type="button">
+        <button
+          aria-label="mark all read"
+          className="icon-button"
+          disabled={(summary?.unread_count ?? 0) === 0}
+          onClick={onMarkAllRead}
+          type="button"
+        >
           <CheckCheck aria-hidden />
         </button>
-        <button aria-label="close notifications" className="icon-button" onClick={onClose} type="button">
+        <button
+          aria-label="close notifications"
+          className="icon-button"
+          onClick={onClose}
+          type="button"
+        >
           <X aria-hidden />
         </button>
       </header>
 
       <div className="notification-list">
         {loading ? <div className="notification-empty">loading</div> : null}
-        {!loading && notifications.length === 0 ? <div className="notification-empty">clear</div> : null}
+        {!loading && notifications.length === 0 ? (
+          <div className="notification-empty">clear</div>
+        ) : null}
         {notifications.map((item) => (
-          <article className={`notification-row severity-${item.severity} ${item.read_at_ms ? "read" : "unread"}`} key={item.notification_id}>
+          <article
+            className={`notification-row severity-${item.severity} ${item.read_at_ms ? "read" : "unread"}`}
+            key={item.notification_id}
+          >
             <button
               aria-label={`open ${item.title}`}
               className="notification-row-main"
@@ -58,7 +75,12 @@ export function NotificationDrawer({
               <small>{formatRelativeTime(item.last_seen_at_ms)}</small>
             </button>
             <div className="notification-row-actions">
-              <button aria-label={`jump to ${item.title}`} className="icon-button" onClick={() => onOpenNotification(item)} type="button">
+              <button
+                aria-label={`jump to ${item.title}`}
+                className="icon-button"
+                onClick={() => onOpenNotification(item)}
+                type="button"
+              >
                 <ExternalLink aria-hidden />
               </button>
               <button

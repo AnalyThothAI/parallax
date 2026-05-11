@@ -44,7 +44,8 @@ export function formatSignedPercent(value: number | null | undefined): string {
     return "-";
   }
   const percent = Math.abs(value) * 100;
-  const formatted = percent >= 10 ? `${Math.round(percent)}%` : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
+  const formatted =
+    percent >= 10 ? `${Math.round(percent)}%` : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
   return `${value > 0 ? "+" : value < 0 ? "-" : ""}${formatted}`;
 }
 
@@ -128,7 +129,7 @@ export function formatTimingStatus(value: string | null | undefined): string {
     neutral: "中性",
     market_pending: "市场观测中",
     market_unavailable: "市场不可用",
-    chase_risk: "追高风险"
+    chase_risk: "追高风险",
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
@@ -139,7 +140,7 @@ export function formatPropagationPhase(value: string | null | undefined): string
     ignition: "点火",
     expansion: "扩散",
     concentration: "集中",
-    fade: "衰退"
+    fade: "衰退",
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
@@ -150,7 +151,7 @@ export function formatHeatStatus(value: string | null | undefined): string {
     rising: "升温",
     burst: "爆发",
     new_burst: "新爆发",
-    insufficient_history: "历史不足"
+    insufficient_history: "历史不足",
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
@@ -160,9 +161,9 @@ export function formatDecision(value: string | null | undefined): string {
     driver: "driver",
     watch: "watch",
     investigate: "investigate",
-    discard: "discard"
+    discard: "discard",
   };
-  return labels[value ?? ""] ?? (value ?? "-");
+  return labels[value ?? ""] ?? value ?? "-";
 }
 
 export function formatRisk(value: string | null | undefined): string {
@@ -198,7 +199,7 @@ export function formatRisk(value: string | null | undefined): string {
     SYMBOL_CANDIDATES_STALE: "候选价格过期",
     ADDRESS_NOT_IN_REGISTRY: "地址未入库",
     NO_MARKET_DOMINANT_CHAIN_ASSET: "候选不唯一",
-    CEX_PRICEFEED_NOT_IN_REGISTRY: "CEX 行情未入库"
+    CEX_PRICEFEED_NOT_IN_REGISTRY: "CEX 行情未入库",
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }
@@ -215,7 +216,7 @@ export function formatReason(value: string | null | undefined): string {
     informative_discussion: "讨论有信息量",
     independent_expansion: "独立作者扩散",
     low_concentration: "集中度低",
-    fresh_market: "市场快照新鲜"
+    fresh_market: "市场快照新鲜",
   };
   return labels[value ?? ""] ?? (value ? value.replaceAll("_", " ") : "-");
 }

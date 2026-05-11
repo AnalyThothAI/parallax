@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 WINDOW_MS = {
     "5m": 300_000,
     "1h": 3_600_000,
@@ -9,7 +11,7 @@ WINDOW_MS = {
 
 
 class AccountAlertService:
-    def __init__(self, signals):
+    def __init__(self, signals: Any) -> None:
         self.signals = signals
 
     def account_alerts(
@@ -19,10 +21,11 @@ class AccountAlertService:
         limit: int = 50,
         handles: set[str] | None = None,
         alert_type: str | None = None,
-    ) -> list[dict]:
-        return self.signals.account_alerts(
+    ) -> list[dict[str, Any]]:
+        result: list[dict[str, Any]] = self.signals.account_alerts(
             window_ms=WINDOW_MS[window],
             limit=limit,
             handles=handles,
             alert_type=alert_type,
         )
+        return result

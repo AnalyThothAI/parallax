@@ -31,12 +31,17 @@ Coding agents MUST work in an isolated git worktree, not the main checkout.
 
 ## Completion gates
 
-Do not claim a task is complete, fixed, or passing until all of the following are true and have been written into the verification artefact:
+Do not claim a task is complete, fixed, or passing until all of the following
+are true and have been written into the verification artefact:
 
 - The implementation matches the approved spec; deviations are documented.
-- `uv run ruff check .`, `uv run pytest`, `uv run python -m compileall src tests` all passed in the worktree.
+- `make check-all` exited 0 in the worktree, AND the verification artefact contains
+  its full output (no abridging) plus the new `Coverage`, `Skipped tests`, and
+  `E2E golden path` sections.
 - The diff was reviewed against the plan.
-- UI / live-WebSocket / Docker Compose flows that cannot be exercised by tests were exercised manually, or the gap is explicitly stated.
-- Remaining risks and follow-ups are listed and, if non-trivial, appended to `docs/TECH_DEBT.md`.
+- UI flows genuinely outside `make check-all` coverage were exercised manually
+  and recorded under `Other commands run`.
+- Remaining risks and follow-ups are listed and, if non-trivial, appended to
+  `docs/TECH_DEBT.md`.
 
 If any of the above cannot be satisfied, surface the gap rather than claiming completion.

@@ -1,12 +1,21 @@
 import { ExternalLink } from "lucide-react";
-import type { AlertRecord, EntityRecord, EventRecord, SearchData, TokenIntentRecord, TokenResolutionRecord } from "../api/types";
+
+import type {
+  AlertRecord,
+  EntityRecord,
+  EventRecord,
+  SearchData,
+  TokenIntentRecord,
+  TokenResolutionRecord,
+} from "../api/types";
 import { eventHandle, eventText, formatRelativeTime, shortAddress } from "../lib/format";
+
 import {
   DetailDrawerHeader,
   DetailDrawerMetric,
   DetailDrawerMetricGrid,
   DetailDrawerSection,
-  DetailDrawerShell
+  DetailDrawerShell,
 } from "./DetailDrawer";
 
 export type EvidenceDetailDrawerProps =
@@ -41,7 +50,8 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         eyebrow="selected evidence"
         subtitle={
           <>
-            {props.sourceLabel} · {props.matchType ?? "stream"} · {formatRelativeTime(props.event.received_at_ms)}
+            {props.sourceLabel} · {props.matchType ?? "stream"} ·{" "}
+            {formatRelativeTime(props.event.received_at_ms)}
           </>
         }
         title={`@${eventHandle(props.event)}`}
@@ -50,7 +60,12 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
       <DetailDrawerSection className="evidence-body" title="post">
         <p className="evidence-text">{eventText(props.event) || "no text"}</p>
         {props.event.canonical_url ? (
-          <a className="external-row" href={props.event.canonical_url} rel="noreferrer" target="_blank">
+          <a
+            className="external-row"
+            href={props.event.canonical_url}
+            rel="noreferrer"
+            target="_blank"
+          >
             <ExternalLink aria-hidden />
             Open source post
           </a>
@@ -75,24 +90,41 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         {props.tokenIntents.length || props.tokenResolutions.length ? (
           <div className="evidence-list">
             {props.tokenIntents.map((item) => {
-              const resolution = props.tokenResolutions.find((row) => row.intent_id === item.intent_id);
+              const resolution = props.tokenResolutions.find(
+                (row) => row.intent_id === item.intent_id,
+              );
               return (
-                <div className="evidence-kv-row" key={item.intent_id ?? `${item.display_symbol}:${item.address_hint}`}>
-                  <strong>{item.display_symbol ? `$${item.display_symbol}` : shortAddress(item.address_hint ?? item.intent_id)}</strong>
+                <div
+                  className="evidence-kv-row"
+                  key={item.intent_id ?? `${item.display_symbol}:${item.address_hint}`}
+                >
+                  <strong>
+                    {item.display_symbol
+                      ? `$${item.display_symbol}`
+                      : shortAddress(item.address_hint ?? item.intent_id)}
+                  </strong>
                   <span>
-                    {item.chain_hint ?? "intent"} · {resolution?.resolution_status ?? item.intent_status ?? "-"} · conf {formatConfidence(item.intent_confidence)}
+                    {item.chain_hint ?? "intent"} ·{" "}
+                    {resolution?.resolution_status ?? item.intent_status ?? "-"} · conf{" "}
+                    {formatConfidence(item.intent_confidence)}
                   </span>
                 </div>
               );
             })}
-            {props.tokenIntents.length ? null : props.tokenResolutions.map((item) => (
-              <div className="evidence-kv-row" key={item.resolution_id ?? `${item.intent_id}:${item.target_id}`}>
-                <strong>{shortAddress(item.target_id ?? item.intent_id)}</strong>
-                <span>
-                  {item.pricefeed_id ?? item.target_type ?? "resolution"} · {item.resolution_status ?? "-"}
-                </span>
-              </div>
-            ))}
+            {props.tokenIntents.length
+              ? null
+              : props.tokenResolutions.map((item) => (
+                  <div
+                    className="evidence-kv-row"
+                    key={item.resolution_id ?? `${item.intent_id}:${item.target_id}`}
+                  >
+                    <strong>{shortAddress(item.target_id ?? item.intent_id)}</strong>
+                    <span>
+                      {item.pricefeed_id ?? item.target_type ?? "resolution"} ·{" "}
+                      {item.resolution_status ?? "-"}
+                    </span>
+                  </div>
+                ))}
           </div>
         ) : (
           <div className="empty-state compact">no token intent</div>
@@ -103,7 +135,10 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         {props.alerts.length ? (
           <div className="evidence-list">
             {props.alerts.map((item) => (
-              <div className="evidence-kv-row" key={`${item.alert_type}:${item.event_id}:${item.entity_key}`}>
+              <div
+                className="evidence-kv-row"
+                key={`${item.alert_type}:${item.event_id}:${item.entity_key}`}
+              >
                 <strong>{item.alert_type}</strong>
                 <span>{item.summary ?? item.entity_key ?? item.normalized_value ?? "-"}</span>
               </div>
@@ -117,7 +152,12 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
   );
 }
 
-function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceDetailDrawerProps, { mode: "query" }>) {
+function SearchQueryDrawer({
+  query,
+  data,
+  isFetching,
+  error,
+}: Extract<EvidenceDetailDrawerProps, { mode: "query" }>) {
   const total = data?.total_count ?? 0;
   const returned = data?.returned_count ?? 0;
   const items = data?.items ?? [];
@@ -131,7 +171,10 @@ function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceD
             <DetailDrawerMetric label="returned" value={returned} />
             <DetailDrawerMetric label="total" value={total} />
             <DetailDrawerMetric label="more" value={data?.has_more ? "yes" : "no"} />
-            <DetailDrawerMetric label="state" value={error ? "error" : isFetching ? "loading" : "ready"} />
+            <DetailDrawerMetric
+              label="state"
+              value={error ? "error" : isFetching ? "loading" : "ready"}
+            />
           </DetailDrawerMetricGrid>
         }
         subtitle={query || "empty query"}
@@ -139,17 +182,26 @@ function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceD
       />
       <DetailDrawerSection title="search context">
         <p className="ledger-note">
-          {error ? error.message : total ? "命中项已收进当前 Evidence，上下文不再散落到底部面板。" : "没有命中时，尝试 CA、$SYMBOL、@handle 或更具体的文本。"}
+          {error
+            ? error.message
+            : total
+              ? "命中项已收进当前 Evidence，上下文不再散落到底部面板。"
+              : "没有命中时，尝试 CA、$SYMBOL、@handle 或更具体的文本。"}
         </p>
       </DetailDrawerSection>
 
       <DetailDrawerSection title="matches">
         {isFetching ? <div className="empty-state compact">检索中</div> : null}
-        {!isFetching && items.length === 0 ? <div className="empty-state compact">no matches</div> : null}
+        {!isFetching && items.length === 0 ? (
+          <div className="empty-state compact">no matches</div>
+        ) : null}
         {!isFetching && items.length ? (
           <div className="evidence-list">
             {items.slice(0, 8).map((item) => (
-              <article className="evidence-match-row" key={`${item.match_type}:${item.event.event_id}`}>
+              <article
+                className="evidence-match-row"
+                key={`${item.match_type}:${item.event.event_id}`}
+              >
                 <header>
                   <strong>@{eventHandle(item.event)}</strong>
                   <span>
@@ -158,7 +210,12 @@ function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceD
                 </header>
                 <p>{eventText(item.event) || "no text"}</p>
                 {item.event.canonical_url ? (
-                  <a className="external-row" href={item.event.canonical_url} rel="noreferrer" target="_blank">
+                  <a
+                    className="external-row"
+                    href={item.event.canonical_url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
                     <ExternalLink aria-hidden />
                     Open source post
                   </a>
@@ -172,10 +229,13 @@ function SearchQueryDrawer({ query, data, isFetching, error }: Extract<EvidenceD
   );
 }
 
-function evidenceChips(event: EventRecord, entities: EntityRecord[]): Array<{ type: string; value: string }> {
+function evidenceChips(
+  event: EventRecord,
+  entities: EntityRecord[],
+): Array<{ type: string; value: string }> {
   const rows = entities.map((item) => ({
     type: item.entity_type,
-    value: item.entity_type === "ca" ? shortAddress(item.normalized_value) : item.normalized_value
+    value: item.entity_type === "ca" ? shortAddress(item.normalized_value) : item.normalized_value,
   }));
   rows.push(...(event.cashtags ?? []).map((value) => ({ type: "$", value })));
   rows.push(...(event.hashtags ?? []).map((value) => ({ type: "#", value })));

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.queries.asset_search_events_query import AssetSearchEventsQuery
-from gmgn_twitter_intel.domains.token_intel.services.query_parser import parse_query
+from gmgn_twitter_intel.domains.token_intel.services.query_parser import ParsedQuery, parse_query
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +21,7 @@ class AssetSearchResults:
 
 
 class AssetSearchService:
-    def __init__(self, *, evidence, assets):
+    def __init__(self, *, evidence: Any, assets: Any) -> None:
         self.evidence = evidence
         self.assets = assets
 
@@ -230,7 +230,7 @@ def _score(event: dict[str, Any], fallback_total: int) -> float:
     return float(event.get("score") or 0.0)
 
 
-def _query(parsed, *, scope: str) -> dict[str, Any]:
+def _query(parsed: ParsedQuery, *, scope: str) -> dict[str, Any]:
     payload: dict[str, Any] = {"kind": parsed.kind, "text": parsed.text, "scope": scope}
     if parsed.ca:
         payload["ca"] = parsed.ca

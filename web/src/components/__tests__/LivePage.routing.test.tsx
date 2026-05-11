@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, it, expect } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, it, expect } from "vitest";
 
 import { LivePage } from "../LivePage";
 
@@ -28,7 +28,7 @@ describe("LivePage", () => {
             <Route index element={<div data-testid="child-content" />} />
           </Route>
         </Routes>
-      </MemoryRouter>
+      </MemoryRouter>,
     );
     expect(screen.getByTestId("live-page")).toBeInTheDocument();
     expect(screen.getByTestId("child-content")).toBeInTheDocument();
