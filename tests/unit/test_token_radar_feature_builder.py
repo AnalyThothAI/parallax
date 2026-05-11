@@ -117,6 +117,27 @@ def test_feature_builder_exposes_social_heat_and_propagation_inputs():
     assert features.propagation["author_entropy"] > 1.0
 
 
+def test_feature_builder_leaves_attention_acceleration_empty_without_previous_mentions():
+    now_ms = 1_700_000_000_000
+    rows = [
+        row("event-1", received_at_ms=now_ms - 60_000, author="alice"),
+        row("event-2", received_at_ms=now_ms - 50_000, author="bob"),
+        row("event-3", received_at_ms=now_ms - 40_000, author="carol"),
+    ]
+
+    features = build_radar_features(
+        window_rows=rows,
+        context_rows=rows,
+        previous_rows=[],
+        now_ms=now_ms,
+        window_ms=5 * 60_000,
+        total_window_events=3,
+    )
+
+    assert features.attention["mention_delta_pct"] is None
+    assert features.attention["attention_acceleration"] is None
+
+
 def test_radar_feature_builder_materializes_baseline_contract():
     now_ms = 1_700_000_000_000
     window_ms = 5 * 60_000

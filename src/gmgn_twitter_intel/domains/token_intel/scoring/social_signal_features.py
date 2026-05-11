@@ -119,7 +119,7 @@ def _handle(row: Mapping[str, Any]) -> str | None:
         value = row.get("author")
     if value is None:
         return None
-    handle = str(value).strip().lower()
+    handle = str(value).strip().lstrip("@").lower()
     return handle or None
 
 

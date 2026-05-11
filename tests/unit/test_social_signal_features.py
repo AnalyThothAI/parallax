@@ -56,6 +56,16 @@ def test_source_weighted_effective_authors_uses_source_weight_by_author() -> Non
     assert source_weighted_effective_authors(repeated_single_author) == pytest.approx(1.0)
 
 
+def test_author_handles_strip_leading_at_for_entropy_and_effective_authors() -> None:
+    rows = [
+        {"author_handle": "@alice", "_source_weight": 1.0},
+        {"author_handle": "alice", "_source_weight": 1.0},
+    ]
+
+    assert source_weighted_effective_authors(rows) == pytest.approx(1.0)
+    assert author_entropy(rows) == pytest.approx(0.0)
+
+
 def test_time_to_nth_independent_author_ms_returns_elapsed_from_first_event() -> None:
     rows = [
         {"author_handle": "alice", "received_at_ms": 1_000},

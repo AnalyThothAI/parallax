@@ -146,7 +146,7 @@ def _heat_features(
     mention_delta = mentions - previous_mentions
     weighted_mentions = sum(_atomic_quality(row) * _confidence(row) for row in window)
     mention_delta_pct = mention_delta / max(previous_mentions, 1) if previous_mentions else None
-    attention_acceleration = mentions / max(previous_mentions, 1)
+    attention_acceleration = mention_delta_pct
     baseline = token_baseline_v2(
         slot_counts=_baseline_slot_counts(context=context, now_ms=now_ms, window_ms=window_ms),
         current_mentions=mentions,
