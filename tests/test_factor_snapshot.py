@@ -132,6 +132,72 @@ def test_identity_market_and_social_start_presence_do_not_score_as_alpha() -> No
     assert snapshot["composite"]["recommended_decision"] == "discard"
 
 
+def test_social_heat_formula_constants_match_spec() -> None:
+    snapshot = _strong_dex_snapshot(
+        attention={
+            "weighted_mentions": 3.0,
+            "watched_mentions": 2,
+            "attention_acceleration": 2.0,
+            "robust_z": 1.0,
+            "z_score": None,
+            "new_burst_score": 4.0,
+        }
+    )
+
+    factors = snapshot["families"]["social_heat"]["factors"]
+    assert factors["source_weighted_mentions"]["score"] == pytest.approx(_log_points(3.0, scale=3))
+    assert factors["watched_seed_strength"]["score"] == pytest.approx(_log_points(2, scale=2))
+    assert factors["attention_acceleration"]["score"] == pytest.approx(_log_points(2.0, scale=2))
+    assert factors["attention_surprise"]["score"] == pytest.approx(47.5)
+
+    fallback = _strong_dex_snapshot(attention={"robust_z": None, "z_score": None, "new_burst_score": 2.0})
+    assert fallback["families"]["social_heat"]["factors"]["attention_surprise"]["score"] == pytest.approx(70.0)
+
+
+def test_social_propagation_formula_constants_and_speed_match_spec() -> None:
+    snapshot = _strong_dex_snapshot(
+        social_quality={
+            "independent_authors": 4,
+            "source_weighted_effective_authors": 5.0,
+            "time_to_second_author_ms": 30 * 60_000,
+            "time_to_third_author_ms": 45 * 60_000,
+            "public_followup_author_count": 2,
+        }
+    )
+
+    factors = snapshot["families"]["social_propagation"]["factors"]
+    assert factors["independent_authors"]["score"] == pytest.approx(_log_points(4, scale=4))
+    assert factors["source_weighted_effective_authors"]["score"] == pytest.approx(100.0)
+    assert factors["watched_to_public_followup"]["score"] == pytest.approx(_log_points(2, scale=2))
+    expected_second = 100 - 30 / 60 * 60
+    expected_third = 100 - 45 / 60 * 40
+    assert factors["propagation_speed"]["score"] == pytest.approx(expected_second * 0.65 + expected_third * 0.35)
+
+    missing_second = _strong_dex_snapshot(social_quality={"time_to_second_author_ms": None, "time_to_third_author_ms": 45_000})
+    assert missing_second["families"]["social_propagation"]["factors"]["propagation_speed"]["raw_value"] is None
+    assert missing_second["families"]["social_propagation"]["factors"]["propagation_speed"]["score"] == 0
+
+
+def test_semantic_catalyst_weights_impact_and_novelty_by_confidence_and_coverage() -> None:
+    snapshot = _strong_dex_snapshot(
+        social_quality={"mentions": 10},
+        social_semantics={
+            "impact_mean": 0.8,
+            "novelty_mean": 0.6,
+            "confidence_mean": 0.5,
+            "llm_covered_mentions": 5,
+            "mentions": 10,
+        },
+    )
+
+    factors = snapshot["families"]["semantic_catalyst"]["factors"]
+    assert factors["semantic_impact"]["score"] == pytest.approx(20.0)
+    assert factors["semantic_impact"]["confidence"] == pytest.approx(0.25)
+    assert factors["semantic_novelty"]["score"] == pytest.approx(15.0)
+    assert factors["semantic_novelty"]["confidence"] == pytest.approx(0.25)
+    assert factors["semantic_coverage"]["score"] == pytest.approx(50.0)
+
+
 def test_dex_market_floors_gate_high_alert_without_market_alpha_family() -> None:
     snapshot = _strong_dex_snapshot(
         market={
@@ -209,6 +275,23 @@ def test_duplicate_and_top_author_concentration_are_penalties_not_clean_rewards(
     assert "duplicate_text_share_high" in risky["gates"]["blocked_reasons"]
     assert "author_concentration_high" in risky["gates"]["risk_reasons"]
     assert risky["families"]["social_propagation"]["score"] < clean["families"]["social_propagation"]["score"]
+
+
+def test_independent_source_gate_uses_two_author_floor_and_credible_reason_name() -> None:
+    watched_single_author = _strong_dex_snapshot(
+        attention={"unique_authors": 1, "watched_mentions": 1},
+        social_quality={"independent_authors": 1, "source_weighted_effective_authors": 1.0},
+    )
+    assert "insufficient_independent_social_sources" not in watched_single_author["gates"]["blocked_reasons"]
+
+    public_single_author = _strong_dex_snapshot(
+        attention={"unique_authors": 1, "watched_mentions": 0},
+        social_quality={"independent_authors": 1, "source_weighted_effective_authors": 1.0},
+    )
+    assert "insufficient_independent_social_sources" in public_single_author["gates"]["blocked_reasons"]
+    assert "insufficient_credible_social_sources" in public_single_author["gates"]["blocked_reasons"]
+    assert "thin_credible_author_set" in public_single_author["gates"]["risk_reasons"]
+    assert "thin_credible_source_set" not in public_single_author["gates"]["risk_reasons"]
 
 
 def test_high_raw_alpha_with_unresolved_identity_is_capped_to_discard() -> None:
@@ -393,8 +476,8 @@ def test_timing_risk_is_zero_weight_negative_only_and_reports_chase_or_late_risk
     assert timing["weight"] == 0
     assert timing["score"] == 0
     assert snapshot["composite"]["raw_alpha_score"] == _strong_dex_snapshot(timing={})["composite"]["raw_alpha_score"]
-    assert timing["factors"]["pre_social_chase_risk"]["score"] < 0
-    assert timing["factors"]["post_social_late_risk"]["score"] < 0
+    assert timing["factors"]["pre_social_chase_risk"]["score"] == pytest.approx(-100.0)
+    assert timing["factors"]["post_social_late_risk"]["score"] == pytest.approx(-100.0)
     assert "timing_chase_risk" in snapshot["gates"]["risk_reasons"]
     assert "timing_late_risk" in snapshot["gates"]["risk_reasons"]
 
@@ -418,6 +501,12 @@ def _all_factor_keys(snapshot: dict[str, object]) -> set[str]:
     families = snapshot["families"]
     assert isinstance(families, dict)
     return {key for family in families.values() if isinstance(family, dict) for key in (family.get("factors") or {})}
+
+
+def _log_points(value: float, *, scale: float) -> float:
+    import math
+
+    return min(100.0, math.log1p(max(0.0, value)) / math.log1p(scale) * 100.0)
 
 
 def _strong_dex_snapshot(
