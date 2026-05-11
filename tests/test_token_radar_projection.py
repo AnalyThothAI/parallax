@@ -313,7 +313,11 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
-    monkeypatch.setattr(TokenRadarProjection, "_source_rows", lambda self, since_ms, scope, now_ms: [source_row])
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_source_rows",
+        lambda self, since_ms, scope, now_ms, price_since_ms=None: [source_row],
+    )
 
     result = TokenRadarProjection(repos=repos).rebuild(
         window="5m",
@@ -365,7 +369,7 @@ def test_short_window_projection_reads_existing_market_state_without_preflight(m
     )
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
 
-    def source_rows(self, since_ms, scope, now_ms):
+    def source_rows(self, since_ms, scope, now_ms, price_since_ms=None):
         return [source_row("event-1", received_at_ms=now_ms - 60_000)]
 
     monkeypatch.setattr(
@@ -402,7 +406,7 @@ def test_projection_hydrates_market_from_current_market_read_model(monkeypatch):
     )
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
 
-    def source_rows(self, since_ms, scope, now_ms):
+    def source_rows(self, since_ms, scope, now_ms, price_since_ms=None):
         row = source_row("event-1", received_at_ms=now_ms - 60_000)
         for key in list(row):
             if key.startswith("market_"):
@@ -436,6 +440,48 @@ def test_projection_hydrates_market_from_current_market_read_model(monkeypatch):
     ]
 
 
+def test_projection_hydrates_current_market_only_for_scored_window_rows(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    now_ms = 1_777_800_060_000
+    window_row = source_row("event-window", received_at_ms=now_ms - 60_000)
+    context_row = {
+        **source_row("event-context", received_at_ms=now_ms - 20 * 60_000),
+        "target_id": "asset:eip155:1:erc20:0xcontext",
+        "asset_address": "0xcontext",
+    }
+    current_market = FakeCurrentMarket(
+        {
+            ("Asset", window_row["target_id"]): _current_market_snapshot(
+                now_ms=now_ms,
+                market_status="fresh",
+            )
+        }
+    )
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_source_rows",
+        lambda self, since_ms, scope, now_ms, price_since_ms=None: [context_row, window_row],
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    assert current_market.calls == [
+        {
+            "subjects": [{"target_type": "Asset", "target_id": window_row["target_id"]}],
+            "now_ms": now_ms,
+        }
+    ]
+
+
 def test_projection_marks_market_pending_when_no_external_price_refresh_has_arrived(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
@@ -443,7 +489,7 @@ def test_projection_marks_market_pending_when_no_external_price_refresh_has_arri
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
     now_ms = 1_777_800_060_000
 
-    def source_rows(self, since_ms, scope, now_ms):
+    def source_rows(self, since_ms, scope, now_ms, price_since_ms=None):
         return [
             {
                 **source_row("event-1", received_at_ms=now_ms - 60_000),
@@ -574,7 +620,7 @@ def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefe
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
-    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
+    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2, price_since_ms=7)
 
     assert "preferred_price_feed" in conn.sql
     assert "COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id)" in conn.sql
@@ -585,7 +631,7 @@ def test_source_rows_keeps_price_observation_laterals_index_friendly():
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
-    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
+    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2, price_since_ms=7)
 
     assert "latest_feed_price" not in conn.sql
     assert "latest_subject_price" not in conn.sql
@@ -594,7 +640,39 @@ def test_source_rows_keeps_price_observation_laterals_index_friendly():
     assert "latest_price" not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
-    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 1)
+    assert "events.received_at_ms <= %s" in conn.sql
+    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 7, 7, 7, 7, 7, 1, 2)
+
+
+def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    repos = type(
+        "Repos",
+        (),
+        {"conn": object(), "token_radar": token_radar, "current_market": FakeCurrentMarket()},
+    )()
+    now_ms = 1_777_800_060_000
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_source_rows",
+        lambda self, since_ms, scope, now_ms, price_since_ms=None: [
+            source_row("event-1", received_at_ms=now_ms - 60_000)
+        ],
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    assert recorder.finish_calls[-1]["commit"] is False
+    assert token_radar.coverage[-1]["status"] == "ready"
+    assert token_radar.coverage[-1]["commit"] is True
 
 
 def test_resolved_pending_market_never_projects_as_high_alert():

@@ -63,8 +63,17 @@ class TokenRadarProjection:
             commit=True,
         )
         try:
-            source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
-            source_rows = self._hydrate_current_market(source_rows, now_ms=computed_at_ms)
+            source_rows = self._source_rows(
+                since_ms=analysis_since_ms,
+                scope=scope,
+                now_ms=computed_at_ms,
+                price_since_ms=score_since_ms,
+            )
+            source_rows = self._hydrate_current_market(
+                source_rows,
+                now_ms=computed_at_ms,
+                score_since_ms=score_since_ms,
+            )
             grouped = self._group_rows(source_rows)
             total_window_events = len(
                 {
@@ -156,7 +165,7 @@ class TokenRadarProjection:
                 rows_read=len(source_rows),
                 rows_written=len(rows),
                 dirty_ranges_written=0,
-                commit=True,
+                commit=False,
             )
             self.repos.token_radar.mark_coverage(
                 projection_version=PROJECTION_VERSION,
@@ -195,22 +204,46 @@ class TokenRadarProjection:
             )
             raise
 
-    def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
-        return TokenRadarSourceQuery(self.repos.conn).source_rows(since_ms=since_ms, scope=scope, now_ms=now_ms)
+    def _source_rows(
+        self,
+        *,
+        since_ms: int,
+        scope: str,
+        now_ms: int,
+        price_since_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return TokenRadarSourceQuery(self.repos.conn).source_rows(
+            since_ms=since_ms,
+            scope=scope,
+            now_ms=now_ms,
+            price_since_ms=price_since_ms,
+        )
 
-    def _hydrate_current_market(self, rows: list[dict[str, Any]], *, now_ms: int) -> list[dict[str, Any]]:
+    def _hydrate_current_market(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        now_ms: int,
+        score_since_ms: int,
+    ) -> list[dict[str, Any]]:
         subjects = [
             {"target_type": row.get("target_type"), "target_id": row.get("target_id")}
             for row in rows
-            if row.get("target_type") and row.get("target_id")
+            if row.get("target_type")
+            and row.get("target_id")
+            and int(row.get("received_at_ms") or 0) >= score_since_ms
         ]
         if not subjects:
             return rows
         snapshots = self.repos.current_market.current_for_subjects(subjects, now_ms=now_ms)
         return [
-            _row_with_current_market(
-                row,
-                snapshots.get((str(row.get("target_type")), str(row.get("target_id")))),
+            (
+                _row_with_current_market(
+                    row,
+                    snapshots.get((str(row.get("target_type")), str(row.get("target_id")))),
+                )
+                if int(row.get("received_at_ms") or 0) >= score_since_ms
+                else row
             )
             for row in rows
         ]

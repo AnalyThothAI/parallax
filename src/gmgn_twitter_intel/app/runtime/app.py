@@ -374,7 +374,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market),
+        asset_flow=AssetFlowService(token_radar=repos.token_radar),
         harness=HarnessService(repos.harness),
         pulse=repos.pulse,
     )

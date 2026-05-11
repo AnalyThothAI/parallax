@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
@@ -14,9 +13,8 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar, current_market):
+    def __init__(self, *, token_radar):
         self.token_radar = token_radar
-        self.current_market = current_market
 
     def asset_flow(
         self,
@@ -41,30 +39,13 @@ class AssetFlowService:
             limit=row_limit,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
-        resolved_now_ms = int(now_ms) if now_ms is not None else _now_ms()
-        subjects = [
-            target_ref
-            for row in rows
-            if (target_ref := _target_ref_from_snapshot(row.get("factor_snapshot_json")))
-        ]
-        market_snapshots = (
-            self.current_market.current_for_subjects(subjects, now_ms=resolved_now_ms)
-            if subjects
-            else {}
-        )
         targets = [
-            _public_row(
-                row,
-                market_snapshot=market_snapshots.get(_target_key_from_snapshot(row.get("factor_snapshot_json"))),
-            )
+            _public_row(row)
             for row in rows
             if row.get("lane") == "resolved"
         ]
         attention = [
-            _public_row(
-                row,
-                market_snapshot=market_snapshots.get(_target_key_from_snapshot(row.get("factor_snapshot_json"))),
-            )
+            _public_row(row)
             for row in rows
             if row.get("lane") == "attention"
         ]
@@ -89,13 +70,13 @@ class AssetFlowService:
         }
 
 
-def _public_row(row: dict[str, Any], *, market_snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def _public_row(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
     return {
         "intent": row.get("intent_json") or {},
         "target": _target_from_snapshot(factor_snapshot),
         "attention": _attention_from_snapshot(factor_snapshot),
-        "current_market": market_snapshot or _missing_current_market(factor_snapshot),
+        "current_market": _current_market_from_snapshot(factor_snapshot),
         "resolution": row.get("resolution_json") or {},
         "score": _composite_from_snapshot(factor_snapshot),
         "factor_snapshot": factor_snapshot,
@@ -140,13 +121,6 @@ def _family(snapshot: dict[str, Any], name: str) -> dict[str, Any]:
     return family
 
 
-def _target_ref_from_snapshot(snapshot: Any) -> dict[str, str] | None:
-    key = _target_key_from_snapshot(snapshot)
-    if key is None:
-        return None
-    return {"target_type": key[0], "target_id": key[1]}
-
-
 def _target_key_from_snapshot(snapshot: Any) -> tuple[str, str] | None:
     if not isinstance(snapshot, dict):
         return None
@@ -156,6 +130,53 @@ def _target_key_from_snapshot(snapshot: Any) -> tuple[str, str] | None:
     if not target_type or not target_id:
         return None
     return (target_type, target_id)
+
+
+_MARKET_FIELD_FACT_KEYS = (
+    "price_usd",
+    "price_quote",
+    "quote_symbol",
+    "price_basis",
+    "market_cap_usd",
+    "liquidity_usd",
+    "holders",
+    "volume_24h_usd",
+    "open_interest_usd",
+)
+
+
+def _current_market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    target_key = _target_key_from_snapshot(snapshot)
+    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
+    market_quality = families.get("market_quality") if isinstance(families.get("market_quality"), dict) else {}
+    facts = market_quality.get("facts") if isinstance(market_quality.get("facts"), dict) else {}
+    market_status = str(facts.get("market_status") or "").strip()
+    statuses = facts.get("field_statuses") if isinstance(facts.get("field_statuses"), dict) else {}
+    fields = {
+        key: _snapshot_market_field(value=facts.get(key), status=statuses.get(key))
+        for key in _MARKET_FIELD_FACT_KEYS
+        if facts.get(key) is not None or statuses.get(key) is not None
+    }
+    if not fields and market_status in {"", "missing"}:
+        return _missing_current_market(snapshot)
+    return {
+        "target_type": target_key[0] if target_key else None,
+        "target_id": target_key[1] if target_key else None,
+        "market_status": market_status or "missing",
+        "fields": fields,
+    }
+
+
+def _snapshot_market_field(*, value: Any, status: Any) -> dict[str, Any]:
+    resolved_status = str(status or ("ready" if value is not None else "missing"))
+    return {
+        "value": value,
+        "status": resolved_status,
+        "observed_at_ms": None,
+        "age_ms": None,
+        "provider": None,
+        "source_observation_id": None,
+    }
 
 
 def _missing_current_market(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -227,6 +248,3 @@ def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, An
         },
     }
 
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)

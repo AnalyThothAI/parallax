@@ -45,8 +45,7 @@ def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
 
 
 def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
-    current_market = FakeCurrentMarket()
-    service = asset_flow_service(rows=[], coverage={}, current_market=current_market)
+    service = asset_flow_service(rows=[], coverage={})
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
@@ -55,7 +54,6 @@ def test_asset_flow_marks_projection_pending_when_coverage_is_missing():
     assert result["projection"]["status"] == "pending"
     assert result["projection"]["reason"] == "projection_window_missing"
     assert result["projection"]["computed_at_ms"] is None
-    assert current_market.calls == []
 
 
 def test_asset_flow_treats_ready_zero_row_coverage_as_fresh_empty_projection():
@@ -108,24 +106,28 @@ def test_asset_flow_marks_failed_coverage_as_pending_with_reason():
 def test_asset_flow_exposes_projection_market_hydration_summary():
     service = asset_flow_service(
         rows=[
-            radar_row(lane="resolved", symbol="FRESH", asset_id="asset:dex:fresh"),
-            radar_row(lane="resolved", symbol="STALE", asset_id="asset:dex:stale"),
+            radar_row(
+                lane="resolved",
+                symbol="FRESH",
+                asset_id="asset:dex:fresh",
+                market={
+                    "market_status": "fresh",
+                    "price_usd": 1.0,
+                    "field_statuses": {"price_usd": "fresh"},
+                },
+            ),
+            radar_row(
+                lane="resolved",
+                symbol="STALE",
+                asset_id="asset:dex:stale",
+                market={
+                    "market_status": "stale",
+                    "price_usd": 1.0,
+                    "field_statuses": {"price_usd": "stale"},
+                },
+            ),
             radar_row(lane="resolved", symbol="MISS", asset_id="asset:dex:missing"),
         ],
-        current_market=FakeCurrentMarket(
-            {
-                ("CexToken", "asset:dex:fresh"): current_market_snapshot(
-                    target_type="CexToken",
-                    target_id="asset:dex:fresh",
-                    market_status="fresh",
-                ),
-                ("CexToken", "asset:dex:stale"): current_market_snapshot(
-                    target_type="CexToken",
-                    target_id="asset:dex:stale",
-                    market_status="stale",
-                ),
-            }
-        ),
     )
 
     result = service.asset_flow(window="5m", limit=20, scope="all", now_ms=1_700_000_060_000)
@@ -208,17 +210,13 @@ def test_btc_cex_row_does_not_require_chain_address():
                     "chain": None,
                     "address": None,
                 },
+                market={
+                    "market_status": "fresh",
+                    "price_usd": 70_000,
+                    "field_statuses": {"price_usd": "fresh"},
+                },
             )
         ],
-        current_market=FakeCurrentMarket(
-            {
-                ("CexToken", "asset:cex:BTC"): current_market_snapshot(
-                    target_type="CexToken",
-                    target_id="asset:cex:BTC",
-                    fields={"price_usd": {"value": 70_000, "status": "fresh"}},
-                )
-            }
-        ),
     )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
@@ -232,21 +230,7 @@ def test_btc_cex_row_does_not_require_chain_address():
     assert btc["current_market"]["fields"]["price_usd"]["value"] == 70_000
 
 
-def test_asset_flow_exposes_current_market_from_asset_market_read_model():
-    current_market = FakeCurrentMarket(
-        {
-            ("CexToken", "cex_token:BTC"): current_market_snapshot(
-                target_type="CexToken",
-                target_id="cex_token:BTC",
-                market_status="fresh",
-                fields={
-                    "price_usd": {"value": 70_000, "status": "fresh", "age_ms": 15_000},
-                    "volume_24h_usd": {"value": 123_000_000, "status": "fresh"},
-                    "open_interest_usd": {"value": 45_000_000, "status": "fresh"},
-                },
-            )
-        }
-    )
+def test_asset_flow_exposes_current_market_from_factor_snapshot_without_hydrating_read_model():
     service = asset_flow_service(
         rows=[
             radar_row(
@@ -254,9 +238,15 @@ def test_asset_flow_exposes_current_market_from_asset_market_read_model():
                 symbol="BTC",
                 asset_id="cex_token:BTC",
                 asset_type="cex_asset",
+                market={
+                    "market_status": "fresh",
+                    "price_usd": 70_000,
+                    "volume_24h_usd": 123_000_000,
+                    "open_interest_usd": 45_000_000,
+                    "field_statuses": {"price_usd": "fresh"},
+                },
             )
         ],
-        current_market=current_market,
     )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
@@ -393,7 +383,9 @@ def test_asset_flow_exposes_market_timing_inside_factor_snapshot():
                 asset_id="asset:cex:BTC",
                 market={
                     "market_status": "ready",
+                    "price_usd": 70_000.0,
                     "volume_24h_usd": 50_000_000.0,
+                    "field_statuses": {"price_usd": "fresh"},
                 },
                 timing={
                     "social_signal_start_ms": 1_700_000_000_000,
@@ -402,15 +394,6 @@ def test_asset_flow_exposes_market_timing_inside_factor_snapshot():
                 },
             )
         ],
-        current_market=FakeCurrentMarket(
-            {
-                ("CexToken", "asset:cex:BTC"): current_market_snapshot(
-                    target_type="CexToken",
-                    target_id="asset:cex:BTC",
-                    fields={"volume_24h_usd": {"value": 50_000_000.0, "status": "fresh"}},
-                )
-            }
-        ),
     )
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
@@ -454,45 +437,14 @@ class FakeTokenRadar:
         return dict(self.coverage)
 
 
-class FakeCurrentMarket:
-    def __init__(self, snapshots: dict[tuple[str, str], dict] | None = None):
-        self.snapshots = snapshots or {}
-        self.calls = []
-
-    def current_for_subjects(self, subjects, *, now_ms):
-        self.calls.append({"subjects": list(subjects), "now_ms": now_ms})
-        return {
-            key: self.snapshots[key]
-            for subject in subjects
-            if (key := (str(subject.get("target_type")), str(subject.get("target_id")))) in self.snapshots
-        }
-
-
 def asset_flow_service(
     *,
     rows: list[dict],
     coverage: dict[tuple[str, str], dict] | None = None,
-    current_market: FakeCurrentMarket | None = None,
 ) -> AssetFlowService:
     return AssetFlowService(
         token_radar=FakeTokenRadar(rows=rows, coverage=coverage),
-        current_market=current_market or FakeCurrentMarket(),
     )
-
-
-def current_market_snapshot(
-    *,
-    target_type: str,
-    target_id: str,
-    market_status: str = "fresh",
-    fields: dict | None = None,
-) -> dict:
-    return {
-        "target_type": target_type,
-        "target_id": target_id,
-        "market_status": market_status,
-        "fields": fields or {"price_usd": {"value": 1.0, "status": market_status}},
-    }
 
 
 def radar_row(

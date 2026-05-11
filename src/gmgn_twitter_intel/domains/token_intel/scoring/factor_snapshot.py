@@ -168,6 +168,10 @@ def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) ->
     facts = {
         "target_market_type": target_market_type,
         "market_status": _optional_str(market.get("market_status") or market.get("market_observation_status")),
+        "price_usd": _optional_float(market.get("price_usd")),
+        "price_quote": _optional_float(market.get("price_quote")),
+        "quote_symbol": _optional_str(market.get("quote_symbol")),
+        "price_basis": _optional_str(market.get("price_basis")),
         "holders": _optional_int(market.get("holders")),
         "liquidity_usd": _optional_float(market.get("liquidity_usd")),
         "market_cap_usd": _optional_float(market.get("market_cap_usd")),

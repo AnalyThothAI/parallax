@@ -1027,6 +1027,23 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `token_radar_projection_coverage`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `projection_version` | `TEXT` | False | `None` |
+| `window` | `TEXT` | False | `None` |
+| `scope` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `reason` | `TEXT` | True | `None` |
+| `source_rows` | `BIGINT` | False | `0` |
+| `row_count` | `BIGINT` | False | `0` |
+| `computed_at_ms` | `BIGINT` | True | `None` |
+| `started_at_ms` | `BIGINT` | True | `None` |
+| `finished_at_ms` | `BIGINT` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `token_radar_rows`
 
 | Column | Type | Nullable | Default |

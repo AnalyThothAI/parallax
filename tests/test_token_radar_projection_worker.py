@@ -31,7 +31,7 @@ class FakeSession:
         return False
 
 
-def test_projection_worker_prioritizes_missing_current_version_windows(monkeypatch):
+def test_projection_worker_refreshes_hot_windows_before_missing_current_version_windows(monkeypatch):
     calls: list[dict[str, object]] = []
     coverage = {
         ("5m", "all"): {
@@ -60,14 +60,15 @@ def test_projection_worker_prioritizes_missing_current_version_windows(monkeypat
 
     result = worker.rebuild_once(now_ms=1_777_800_000_000)
 
-    assert calls[:5] == [
+    assert calls == [
+        {"window": "5m", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
         {"window": "5m", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
         {"window": "1h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
         {"window": "1h", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
         {"window": "4h", "scope": "all", "now_ms": 1_777_800_000_000, "limit": 7},
         {"window": "4h", "scope": "matched", "now_ms": 1_777_800_000_000, "limit": 7},
     ]
-    assert result["rows_written"] == 10
+    assert result["rows_written"] == 12
     assert result["windows"]["1h:all"]["status"] == "ready"
     assert worker.last_result == result
 

@@ -64,7 +64,7 @@ class TokenRadarProjectionWorker:
         coverage = self._latest_coverage()
         missing_items = self._missing_work_items(coverage)
         if missing_items:
-            work_items = missing_items
+            work_items = _dedupe_work_items([*self._hot_work_items(), *missing_items])
             primary_item = missing_items[0]
         else:
             work_items, primary_item = self._next_work_items()
@@ -109,7 +109,7 @@ class TokenRadarProjectionWorker:
         return None
 
     def _next_work_items(self) -> tuple[list[tuple[str, str]], tuple[str, str]]:
-        hot_items = [(window, scope) for window in self.hot_windows for scope in self.scopes]
+        hot_items = self._hot_work_items()
         background_item = self._next_background_window_scope()
         work_items = list(hot_items)
         if background_item is not None and background_item not in work_items:
@@ -130,6 +130,9 @@ class TokenRadarProjectionWorker:
         item = work_items[self._cursor % len(work_items)]
         self._cursor += 1
         return item
+
+    def _hot_work_items(self) -> list[tuple[str, str]]:
+        return [(window, scope) for window in self.hot_windows for scope in self.scopes]
 
     def _latest_coverage(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self.repository_session() as repos:
@@ -170,6 +173,17 @@ class TokenRadarProjectionWorker:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str]] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
 
 
 def _projection_class():

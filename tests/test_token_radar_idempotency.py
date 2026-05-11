@@ -81,13 +81,16 @@ def test_token_radar_rebuild_is_idempotent_against_live_db():
             computed_at_ms=fixed_now_ms, window_ms=window_ms
         )
         frozen_rows = projector._source_rows(
-            since_ms=analysis_since_ms, scope="all", now_ms=fixed_now_ms
+            since_ms=analysis_since_ms,
+            scope="all",
+            now_ms=fixed_now_ms,
+            price_since_ms=fixed_now_ms - window_ms,
         )
 
         assert frozen_rows, "No source rows — nothing to score"
 
         # Both rebuilds use the same frozen source list.
-        def _frozen_source_rows(self, *, since_ms, scope, now_ms):  # noqa: ANN001
+        def _frozen_source_rows(self, *, since_ms, scope, now_ms, price_since_ms=None):  # noqa: ANN001
             return frozen_rows
 
         with patch.object(TokenRadarProjection, "_source_rows", _frozen_source_rows):

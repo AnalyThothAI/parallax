@@ -447,7 +447,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,

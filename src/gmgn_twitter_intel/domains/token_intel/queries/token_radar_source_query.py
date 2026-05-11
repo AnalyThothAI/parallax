@@ -9,8 +9,16 @@ class TokenRadarSourceQuery:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
+    def source_rows(
+        self,
+        *,
+        since_ms: int,
+        scope: str,
+        now_ms: int,
+        price_since_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
         watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
+        resolved_price_since_ms = int(price_since_ms if price_since_ms is not None else since_ms)
         rows = self.conn.execute(
             f"""
             SELECT
@@ -148,7 +156,7 @@ class TokenRadarSourceQuery:
                 AND token_discovery_results.lookup_key IN (
                   SELECT jsonb_array_elements_text(token_intent_resolutions.lookup_keys_json)
                 )
-            ) discovery ON true
+            ) discovery ON events.received_at_ms >= %s
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -158,7 +166,7 @@ class TokenRadarSourceQuery:
                 AND price_observations.subject_id = token_intent_resolutions.target_id
               ORDER BY observed_at_ms ASC, observation_id ASC
               LIMIT 1
-            ) first_price ON true
+            ) first_price ON events.received_at_ms >= %s
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -177,7 +185,7 @@ class TokenRadarSourceQuery:
                 observed_at_ms DESC,
                 observation_id DESC
               LIMIT 1
-            ) message_event_price ON true
+            ) message_event_price ON events.received_at_ms >= %s
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -188,7 +196,7 @@ class TokenRadarSourceQuery:
                 AND price_observations.observed_at_ms <= events.received_at_ms
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
-            ) event_history_price ON true
+            ) event_history_price ON events.received_at_ms >= %s
             LEFT JOIN LATERAL (
               SELECT *
               FROM price_observations
@@ -199,11 +207,21 @@ class TokenRadarSourceQuery:
                 AND price_observations.observed_at_ms < events.received_at_ms - 300000
               ORDER BY observed_at_ms DESC, observation_id DESC
               LIMIT 1
-            ) before_event_price ON true
-            WHERE events.received_at_ms >= %s {watched_clause}
+            ) before_event_price ON events.received_at_ms >= %s
+            WHERE events.received_at_ms >= %s
+              AND events.received_at_ms <= %s {watched_clause}
             ORDER BY events.received_at_ms ASC, events.event_id ASC
             """,
-            (TOKEN_RADAR_RESOLVER_POLICY_VERSION, since_ms),
+            (
+                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                resolved_price_since_ms,
+                resolved_price_since_ms,
+                resolved_price_since_ms,
+                resolved_price_since_ms,
+                resolved_price_since_ms,
+                since_ms,
+                now_ms,
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 
