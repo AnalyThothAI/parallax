@@ -9,7 +9,6 @@ import {
 } from "../../api/notifications";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "../../api/types";
 import type { MobileTask } from "../../components/MobileTaskNav";
-import { useTraderStore } from "../../store/useTraderStore";
 
 type UseNotificationsControllerArgs = {
   fallbackSummary?: NotificationSummary | null;
@@ -26,7 +25,6 @@ export function useNotificationsController({
 }: UseNotificationsControllerArgs) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const runSearch = useTraderStore((state) => state.runSearch);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const summaryQuery = useQuery({
@@ -99,21 +97,18 @@ export function useNotificationsController({
       return;
     }
     if (notification.symbol) {
-      runSearch(`$${notification.symbol}`);
-      navigate("/");
-      setMobileTask("detail");
+      navigate(buildSignalLabUrl({ q: notification.symbol }));
+      setMobileTask("lab");
       return;
     }
     if (notification.author_handle) {
-      runSearch(`@${notification.author_handle}`);
-      navigate("/");
-      setMobileTask("detail");
+      navigate(buildSignalLabUrl({ handle: normalizedHandle(notification.author_handle) }));
+      setMobileTask("lab");
       return;
     }
     if (notification.event_id) {
-      runSearch(notification.event_id);
-      navigate("/");
-      setMobileTask("detail");
+      navigate(buildSignalLabUrl({ q: notification.event_id }));
+      setMobileTask("lab");
     }
   };
 

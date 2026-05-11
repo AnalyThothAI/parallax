@@ -162,8 +162,8 @@ describe("App Token Radar social heat cockpit", () => {
       window: "1h",
       scope: "all",
       handles: "",
-      search: "$PEPE",
-      submittedSearch: "$PEPE",
+      search: "",
+      submittedSearch: "",
       radarSortMode: "opportunity",
       detailTab: "timeline",
       detailWindow: "1h",
@@ -545,6 +545,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.")).toBeInTheDocument();
     expect(mockedPostApi).toHaveBeenCalledWith("/api/notifications/notification-1/read", { token: "secret" });
+    expect(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本")).toHaveValue("");
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
   it("queries the compact Signal Lab Pulse as a fresh live feed", async () => {
@@ -1181,6 +1183,8 @@ describe("App Token Radar social heat cockpit", () => {
 
   it("switches mobile task to detail after selecting a token without changing token API params", async () => {
     renderWithQuery(<App />);
+    const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
+    expect(input).toHaveValue("");
     const row = await screen.findByRole("button", { name: "select token $UPEG" });
     mockedGetApi.mockClear();
 
@@ -1189,6 +1193,8 @@ describe("App Token Radar social heat cockpit", () => {
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
     await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-radar")).toBe(false);
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
+    expect(input).toHaveValue("");
     expect(screen.getByText("selected token")).toBeInTheDocument();
   });
 

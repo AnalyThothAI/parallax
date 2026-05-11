@@ -32,7 +32,6 @@ type TraderState = {
   setHandles: (handles: string) => void;
   setSearch: (search: string) => void;
   submitSearch: () => void;
-  runSearch: (search: string) => void;
   setRadarSortMode: (mode: RadarSortMode) => void;
   setDetailTab: (tab: TokenDetailTab) => void;
   setDetailWindow: (window: WindowKey) => void;
@@ -50,8 +49,8 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   window: "1h",
   scope: "all",
   handles: "",
-  search: "$PEPE",
-  submittedSearch: "$PEPE",
+  search: "",
+  submittedSearch: "",
   radarSortMode: "opportunity",
   detailTab: "timeline",
   detailWindow: "1h",
@@ -68,7 +67,6 @@ export const useTraderStore = create<TraderState>((set, get) => ({
   setHandles: (handles) => set({ handles }),
   setSearch: (search) => set({ search }),
   submitSearch: () => set({ submittedSearch: get().search.trim() }),
-  runSearch: (search) => set({ search, submittedSearch: search.trim() }),
   setRadarSortMode: (radarSortMode) => set({ radarSortMode }),
   setDetailTab: (detailTab) => set({ detailTab }),
   setDetailWindow: (detailWindow) => set({ detailWindow }),
