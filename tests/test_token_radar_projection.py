@@ -316,7 +316,7 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
     monkeypatch.setattr(
         TokenRadarProjection,
         "_source_rows",
-        lambda self, since_ms, scope, now_ms, price_since_ms=None: [source_row],
+        lambda self, since_ms, scope, now_ms: [source_row],
     )
 
     result = TokenRadarProjection(repos=repos).rebuild(
@@ -369,7 +369,7 @@ def test_short_window_projection_reads_existing_market_state_without_preflight(m
     )
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
 
-    def source_rows(self, since_ms, scope, now_ms, price_since_ms=None):
+    def source_rows(self, since_ms, scope, now_ms):
         return [source_row("event-1", received_at_ms=now_ms - 60_000)]
 
     monkeypatch.setattr(
@@ -406,7 +406,7 @@ def test_projection_hydrates_market_from_current_market_read_model(monkeypatch):
     )
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
 
-    def source_rows(self, since_ms, scope, now_ms, price_since_ms=None):
+    def source_rows(self, since_ms, scope, now_ms):
         row = source_row("event-1", received_at_ms=now_ms - 60_000)
         for key in list(row):
             if key.startswith("market_"):
@@ -468,7 +468,7 @@ def test_projection_hydrates_current_market_only_for_scored_window_rows(monkeypa
     monkeypatch.setattr(
         TokenRadarProjection,
         "_source_rows",
-        lambda self, since_ms, scope, now_ms, price_since_ms=None: [context_row, window_row],
+        lambda self, since_ms, scope, now_ms: [context_row, window_row],
     )
 
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
@@ -489,7 +489,7 @@ def test_projection_marks_market_pending_when_no_external_price_refresh_has_arri
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
     now_ms = 1_777_800_060_000
 
-    def source_rows(self, since_ms, scope, now_ms, price_since_ms=None):
+    def source_rows(self, since_ms, scope, now_ms):
         return [
             {
                 **source_row("event-1", received_at_ms=now_ms - 60_000),
@@ -620,28 +620,30 @@ def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefe
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
-    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2, price_since_ms=7)
+    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
     assert "preferred_price_feed" in conn.sql
     assert "COALESCE(token_intent_resolutions.pricefeed_id, preferred_price_feed.pricefeed_id)" in conn.sql
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
-def test_source_rows_keeps_price_observation_laterals_index_friendly():
+def test_source_rows_does_not_read_historical_price_observations():
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
-    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2, price_since_ms=7)
+    TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
     assert "latest_feed_price" not in conn.sql
     assert "latest_subject_price" not in conn.sql
-    assert "message_event_price" in conn.sql
-    assert "event_history_price" in conn.sql
+    assert "price_observations" not in conn.sql
+    assert "message_event_price" not in conn.sql
+    assert "event_history_price" not in conn.sql
     assert "latest_price" not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
+    assert "WITH window_events AS MATERIALIZED" in conn.sql
     assert "events.received_at_ms <= %s" in conn.sql
-    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 7, 7, 7, 7, 7, 1, 2)
+    assert conn.params == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
 
 
 def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypatch):
@@ -662,7 +664,7 @@ def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypa
     monkeypatch.setattr(
         TokenRadarProjection,
         "_source_rows",
-        lambda self, since_ms, scope, now_ms, price_since_ms=None: [
+        lambda self, since_ms, scope, now_ms: [
             source_row("event-1", received_at_ms=now_ms - 60_000)
         ],
     )

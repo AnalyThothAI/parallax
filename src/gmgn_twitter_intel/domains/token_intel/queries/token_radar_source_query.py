@@ -15,12 +15,17 @@ class TokenRadarSourceQuery:
         since_ms: int,
         scope: str,
         now_ms: int,
-        price_since_ms: int | None = None,
     ) -> list[dict[str, Any]]:
         watched_clause = "AND events.is_watched = true" if scope == "matched" else ""
-        resolved_price_since_ms = int(price_since_ms if price_since_ms is not None else since_ms)
         rows = self.conn.execute(
             f"""
+            WITH window_events AS MATERIALIZED (
+              SELECT events.event_id
+              FROM events
+              WHERE events.received_at_ms >= %s
+                AND events.received_at_ms <= %s {watched_clause}
+              ORDER BY events.received_at_ms ASC, events.event_id ASC
+            )
             SELECT
               token_intents.*,
               token_intent_resolutions.resolution_id,
@@ -64,39 +69,35 @@ class TokenRadarSourceQuery:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol AS pricefeed_quote_symbol,
               price_feeds.status AS pricefeed_status,
-              first_price.observed_at_ms AS first_price_observed_at_ms,
-              first_price.price_usd AS first_price_usd,
-              first_price.price_quote AS first_price_quote,
-              first_price.quote_symbol AS first_price_quote_symbol,
-              first_price.price_basis AS first_price_basis,
-              COALESCE(
-                message_event_price.observation_id,
-                event_history_price.observation_id
-              ) AS event_price_observation_id,
-              COALESCE(
-                message_event_price.observation_kind,
-                event_history_price.observation_kind
-              ) AS event_price_observation_kind,
-              COALESCE(message_event_price.provider, event_history_price.provider) AS event_price_provider,
-              COALESCE(
-                message_event_price.observed_at_ms,
-                event_history_price.observed_at_ms
-              ) AS event_price_observed_at_ms,
-              COALESCE(message_event_price.price_usd, event_history_price.price_usd) AS event_price_usd,
-              COALESCE(message_event_price.price_quote, event_history_price.price_quote) AS event_price_quote,
-              COALESCE(message_event_price.quote_symbol, event_history_price.quote_symbol) AS event_price_quote_symbol,
-              COALESCE(message_event_price.price_basis, event_history_price.price_basis) AS event_price_basis,
-              before_event_price.observed_at_ms AS before_event_price_observed_at_ms,
-              before_event_price.price_usd AS before_event_price_usd,
-              before_event_price.price_quote AS before_event_price_quote,
-              before_event_price.quote_symbol AS before_event_price_quote_symbol,
-              before_event_price.price_basis AS before_event_price_basis
-            FROM token_intents
-            JOIN token_intent_resolutions
-              ON token_intent_resolutions.intent_id = token_intents.intent_id
-             AND token_intent_resolutions.is_current = true
-             AND token_intent_resolutions.resolver_policy_version = %s
-            JOIN events ON events.event_id = token_intents.event_id
+              NULL AS first_price_observed_at_ms,
+              NULL AS first_price_usd,
+              NULL AS first_price_quote,
+              NULL AS first_price_quote_symbol,
+              NULL AS first_price_basis,
+              NULL AS event_price_observation_id,
+              NULL AS event_price_observation_kind,
+              NULL AS event_price_provider,
+              NULL AS event_price_observed_at_ms,
+              NULL AS event_price_usd,
+              NULL AS event_price_quote,
+              NULL AS event_price_quote_symbol,
+              NULL AS event_price_basis,
+              NULL AS before_event_price_observed_at_ms,
+              NULL AS before_event_price_usd,
+              NULL AS before_event_price_quote,
+              NULL AS before_event_price_quote_symbol,
+              NULL AS before_event_price_basis
+            FROM window_events
+            JOIN events ON events.event_id = window_events.event_id
+            JOIN token_intents ON token_intents.event_id = events.event_id
+            JOIN LATERAL (
+              SELECT *
+              FROM token_intent_resolutions
+              WHERE token_intent_resolutions.intent_id = token_intents.intent_id
+                AND token_intent_resolutions.is_current = true
+                AND token_intent_resolutions.resolver_policy_version = %s
+              LIMIT 1
+            ) token_intent_resolutions ON true
             LEFT JOIN account_profiles ap ON ap.handle = LOWER(events.author_handle)
             LEFT JOIN social_event_extractions see ON see.event_id = events.event_id
             LEFT JOIN registry_assets
@@ -156,71 +157,13 @@ class TokenRadarSourceQuery:
                 AND token_discovery_results.lookup_key IN (
                   SELECT jsonb_array_elements_text(token_intent_resolutions.lookup_keys_json)
                 )
-            ) discovery ON events.received_at_ms >= %s
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE token_intent_resolutions.target_type IS NOT NULL
-                AND token_intent_resolutions.target_id IS NOT NULL
-                AND price_observations.subject_type = token_intent_resolutions.target_type
-                AND price_observations.subject_id = token_intent_resolutions.target_id
-              ORDER BY observed_at_ms ASC, observation_id ASC
-              LIMIT 1
-            ) first_price ON events.received_at_ms >= %s
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE token_intent_resolutions.target_type IS NOT NULL
-                AND token_intent_resolutions.target_id IS NOT NULL
-                AND price_observations.source_resolution_id = token_intent_resolutions.resolution_id
-                AND price_observations.subject_type = token_intent_resolutions.target_type
-                AND price_observations.subject_id = token_intent_resolutions.target_id
-                AND price_observations.observation_kind IN ('message_payload', 'message_quote')
-              ORDER BY
-                CASE
-                  WHEN price_observations.observation_kind = 'message_payload' THEN 0
-                  WHEN price_observations.observation_kind = 'message_quote' THEN 1
-                  ELSE 2
-                END,
-                observed_at_ms DESC,
-                observation_id DESC
-              LIMIT 1
-            ) message_event_price ON events.received_at_ms >= %s
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE token_intent_resolutions.target_type IS NOT NULL
-                AND token_intent_resolutions.target_id IS NOT NULL
-                AND price_observations.subject_type = token_intent_resolutions.target_type
-                AND price_observations.subject_id = token_intent_resolutions.target_id
-                AND price_observations.observed_at_ms <= events.received_at_ms
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) event_history_price ON events.received_at_ms >= %s
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE token_intent_resolutions.target_type IS NOT NULL
-                AND token_intent_resolutions.target_id IS NOT NULL
-                AND price_observations.subject_type = token_intent_resolutions.target_type
-                AND price_observations.subject_id = token_intent_resolutions.target_id
-                AND price_observations.observed_at_ms < events.received_at_ms - 300000
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) before_event_price ON events.received_at_ms >= %s
-            WHERE events.received_at_ms >= %s
-              AND events.received_at_ms <= %s {watched_clause}
+            ) discovery ON true
             ORDER BY events.received_at_ms ASC, events.event_id ASC
             """,
             (
-                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
-                resolved_price_since_ms,
-                resolved_price_since_ms,
-                resolved_price_since_ms,
-                resolved_price_since_ms,
-                resolved_price_since_ms,
                 since_ms,
                 now_ms,
+                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
             ),
         ).fetchall()
         return [dict(row) for row in rows]

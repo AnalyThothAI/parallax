@@ -67,7 +67,6 @@ class TokenRadarProjection:
                 since_ms=analysis_since_ms,
                 scope=scope,
                 now_ms=computed_at_ms,
-                price_since_ms=score_since_ms,
             )
             source_rows = self._hydrate_current_market(
                 source_rows,
@@ -210,13 +209,11 @@ class TokenRadarProjection:
         since_ms: int,
         scope: str,
         now_ms: int,
-        price_since_ms: int | None = None,
     ) -> list[dict[str, Any]]:
         return TokenRadarSourceQuery(self.repos.conn).source_rows(
             since_ms=since_ms,
             scope=scope,
             now_ms=now_ms,
-            price_since_ms=price_since_ms,
         )
 
     def _hydrate_current_market(
