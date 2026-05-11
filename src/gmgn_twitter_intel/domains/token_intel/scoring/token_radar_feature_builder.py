@@ -8,6 +8,12 @@ from typing import Any
 from gmgn_twitter_intel.domains.token_intel.scoring.baseline_scoring import token_baseline_v2
 from gmgn_twitter_intel.domains.token_intel.scoring.diffusion_health import diffusion_health
 from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score, post_text_features
+from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import (
+    author_entropy,
+    public_followup_author_count,
+    source_weighted_effective_authors,
+    time_to_nth_independent_author_ms,
+)
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import mention_confidence_from_status, tweet_quality
 
 BASELINE_SLOT_COUNT = 6
@@ -37,7 +43,7 @@ def build_radar_features(
     total_window_events: int,
 ) -> RadarFeatureSet:
     context = list(context_rows or window_rows)
-    window = list(window_rows)
+    window = [_with_source_weight(row) for row in window_rows]
     previous = list(previous_rows)
     attention = _attention(window=window, context=context, now_ms=now_ms, total_window_events=total_window_events)
     heat = _heat_features(
@@ -53,6 +59,8 @@ def build_radar_features(
         "previous_mentions": heat["previous_mentions"],
         "mention_delta": heat["mention_delta"],
         "mention_delta_pct": heat["mention_delta_pct"],
+        "weighted_mentions": heat["weighted_mentions"],
+        "attention_acceleration": heat["attention_acceleration"],
         "z_score": heat["z_score"],
         "z_ewma": heat["z_ewma"],
         "robust_z": heat["robust_z"],
@@ -137,6 +145,8 @@ def _heat_features(
     watched_mentions = int(attention.get("watched_mentions") or 0)
     mention_delta = mentions - previous_mentions
     weighted_mentions = sum(_atomic_quality(row) * _confidence(row) for row in window)
+    mention_delta_pct = mention_delta / max(previous_mentions, 1) if previous_mentions else None
+    attention_acceleration = mentions / max(previous_mentions, 1)
     baseline = token_baseline_v2(
         slot_counts=_baseline_slot_counts(context=context, now_ms=now_ms, window_ms=window_ms),
         current_mentions=mentions,
@@ -152,7 +162,8 @@ def _heat_features(
         "weighted_mentions": weighted_mentions,
         "previous_mentions": previous_mentions,
         "mention_delta": mention_delta,
-        "mention_delta_pct": mention_delta / max(previous_mentions, 1) if previous_mentions else None,
+        "mention_delta_pct": mention_delta_pct,
+        "attention_acceleration": attention_acceleration,
         "baseline_version": baseline["baseline_version"],
         "baseline_status": baseline["baseline_status"],
         "baseline_sample_count": baseline["sample_count"],
@@ -242,6 +253,11 @@ def _propagation_features(
         "mentions": mentions,
         "independent_authors": independent,
         "effective_authors": diffusion.get("effective_authors"),
+        "source_weighted_effective_authors": source_weighted_effective_authors(window),
+        "time_to_second_author_ms": time_to_nth_independent_author_ms(window, 2),
+        "time_to_third_author_ms": time_to_nth_independent_author_ms(window, 3),
+        "public_followup_author_count": public_followup_author_count(window),
+        "author_entropy": author_entropy(window),
         "new_authors": len(set(authors) - previous_authors),
         "top_author_share": diffusion.get("top_author_share"),
         "duplicate_text_share": diffusion.get("duplicate_text_share"),
@@ -285,6 +301,10 @@ def _latest_market_row(window: list[dict[str, Any]]) -> dict[str, Any]:
     if not window:
         return {}
     return max(window, key=lambda row: int(row.get("received_at_ms") or 0))
+
+
+def _with_source_weight(row: dict[str, Any]) -> dict[str, Any]:
+    return {**row, "_source_weight": _atomic_quality(row) * _confidence(row)}
 
 
 def _post_score(row: dict[str, Any]) -> int:

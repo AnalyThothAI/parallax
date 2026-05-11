@@ -47,6 +47,21 @@ def test_diffusion_health_marks_healthy_independent_authors():
     assert health["risks"] == []
 
 
+def test_diffusion_health_reports_author_entropy():
+    module = _diffusion_module()
+
+    health = module.diffusion_health(
+        mentions=[
+            {"author_handle": "alpha", "text_clean": "$DOG first clean break"},
+            {"author_handle": "bravo", "text_clean": "$DOG volume expanding"},
+            {"author_handle": "charlie", "text_clean": "$DOG buyers holding the reclaim"},
+        ],
+        watched_author_handles=set(),
+    )
+
+    assert health["author_entropy"] > 1.0
+
+
 def test_diffusion_health_marks_concentrated_single_author():
     module = _diffusion_module()
 
