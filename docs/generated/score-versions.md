@@ -5,3 +5,5 @@
 | Version | File | Line | Context |
 |---------|------|------|---------|
 | `post_quality_v1` | `src/gmgn_twitter_intel/domains/token_intel/scoring/post_text_quality.py` | 86 | `score_version="post_quality_v1",` |
+| `token-radar-v13-social-attention` | `src/gmgn_twitter_intel/domains/token_intel/_constants.py` | 7 | `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v13-social-attention"` |
+| `token_factor_snapshot_v3_social_attention` | `src/gmgn_twitter_intel/domains/token_intel/_constants.py` | 10 | `TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v3_social_attention"` |

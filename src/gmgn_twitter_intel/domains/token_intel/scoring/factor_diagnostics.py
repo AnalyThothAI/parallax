@@ -7,6 +7,10 @@ from typing import Any
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_FACTOR_FAMILIES
 
 OLD_FACTOR_FAMILIES = {
+    "attention_heat",
+    "diffusion_quality",
+    "semantic_quality",
+    "timing_response",
     "market_quality",
     "social_attention",
     "social_quality",

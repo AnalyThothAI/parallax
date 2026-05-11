@@ -37,26 +37,29 @@ GMGN frame
 | Asset identity ledger | `../asset_market/identity_evidence_policy.py`, `../asset_market/repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
 | Discovery and reprocess | `../asset_market/runtime/token_discovery_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current` | Recent NIL / AMBIGUOUS symbol and address lookup keys are discovered through OKX DEX, then affected intents are reprocessed. Symbol search writes bounded candidate evidence; exact address lookup writes exact evidence. Discovery does not write price observations. |
 | Anchor and live market | `../asset_market/runtime/{anchor_price_worker.py,live_price_gateway.py}`, `../asset_market/services/{anchor_price_observation.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `price_observations` | AnchorPriceWorker writes one `message_anchor` observation for each resolved social signal, delayed if needed. CEX route sync maintains token/feed routing without refreshing prices. LivePriceGateway keeps latest DEX/CEX prices in process memory and publishes `live_market_update` without writing DB rows. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, and anchor price observations, then emits `token_factor_snapshot_v2_alpha_gated`. Projection never hydrates current/live market from DB refresh rows. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, and anchor price observations, then emits `token_factor_snapshot_v3_social_attention`. Projection never hydrates current/live market from DB refresh rows. |
 
 ## Factor Snapshot Contract
 
 `token_radar_rows.factor_snapshot_json` is the current Token Radar product
 contract. It contains:
 
-- `schema_version = "token_factor_snapshot_v2_alpha_gated"` — the only runtime
+- `schema_version = "token_factor_snapshot_v3_social_attention"` — the only runtime
   snapshot version accepted by readers.
 - `subject` — deterministic target identity selected by the resolver and asset
   identity ledger, plus target-market identity facts.
 - `market` — immutable anchor-price/readiness context for the social signal.
-  Live/current prices are not persisted in this block.
+  Live/current prices are not persisted in this block. Market remains context
+  and gate input, not an alpha family.
 - `gates` — deterministic blockers, risk reasons, high-alert eligibility, and
   maximum decision. Identity readiness, CEX native-market identity, DEX
   market-cap / liquidity / holder floors, and market freshness are gates or
   data-health facts; they are not alpha factors.
 - `data_health` — identity, market, social, and alpha readiness.
-- `families` — alpha families only: `attention_heat`, `diffusion_quality`,
-  `semantic_quality`, and `timing_response`.
+- `families` — social attention families only: `social_heat`,
+  `social_propagation`, `semantic_catalyst`, and `timing_risk`.
+  `timing_risk.weight = 0.0`, so timing contributes risk/gate context without
+  positive alpha.
 - `normalization` — cohort definition, per-family ranks, alpha rank, and status.
 - `composite` — raw alpha score, cross-section rank score, family scores, and
   recommended decision derived from alpha families plus gates.
@@ -66,7 +69,7 @@ Token Radar current runtime explanation source is `factor_snapshot_json`.
 `anchor_price` is projected from the factor snapshot's top-level market block;
 `live_market` comes from process-local gateway updates. Legacy score-centered
 JSON fields, v1 snapshot fields, and DB current-market refresh snapshots are not
-runtime fallback sources. Signal Lab Pulse recommendations consume v2 factor
+runtime fallback sources. Signal Lab Pulse recommendations consume v3 factor
 snapshots and deterministic gates.
 
 Historical `token_radar_rows` are retained by `computed_at_ms` so
