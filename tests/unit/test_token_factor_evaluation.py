@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 
 from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.token_factor_evaluation_repository import (
     TokenFactorEvaluationRepository,
 )
@@ -188,10 +191,15 @@ def test_settle_token_factor_scores_records_family_rank_ic_diagnostics():
     )
 
     diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert set(diagnostics["family_rank_ic"]) == set(TOKEN_RADAR_FACTOR_FAMILIES)
+    assert set(diagnostics["family_coverage"]) == set(TOKEN_RADAR_FACTOR_FAMILIES)
     assert diagnostics["family_rank_ic"]["social_heat"] == pytest.approx(1.0)
     assert diagnostics["family_rank_ic"]["social_propagation"] == pytest.approx(-1.0)
     assert diagnostics["family_rank_ic"]["timing_risk"] is None
     assert diagnostics["family_coverage"]["social_heat"] == 1.0
+    assert diagnostics["family_coverage"]["social_propagation"] == 1.0
+    assert diagnostics["family_coverage"]["semantic_catalyst"] == 1.0
+    assert diagnostics["family_coverage"]["timing_risk"] == 1.0
 
 
 def test_price_exit_lookup_filters_null_price_usd():

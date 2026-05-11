@@ -5,7 +5,10 @@ from collections import defaultdict
 from statistics import mean, pstdev
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
+)
 
 HORIZON_MS = {
     "15m": 15 * 60 * 1000,
@@ -21,9 +24,6 @@ BUCKETS = (
     ("60-79", 60, 79),
     ("80-100", 80, 100),
 )
-
-FACTOR_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
-
 
 def settle_token_factor_scores(
     *,
@@ -211,7 +211,7 @@ def _rank_score(snapshot: dict[str, Any]) -> float:
 def _family_scores(snapshot: dict[str, Any]) -> dict[str, float | None]:
     composite = _mapping(snapshot.get("composite"))
     raw_scores = _mapping(composite.get("family_scores"))
-    return {family: _factor_score(raw_scores.get(family)) for family in FACTOR_FAMILIES}
+    return {family: _factor_score(raw_scores.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES}
 
 
 def _factor_score(value: Any) -> float | None:
@@ -270,7 +270,7 @@ def _daily_ics(settled: list[dict[str, Any]]) -> list[float]:
 
 def _family_rank_ics(settled: list[dict[str, Any]]) -> dict[str, float | None]:
     values: dict[str, float | None] = {}
-    for family in FACTOR_FAMILIES:
+    for family in TOKEN_RADAR_FACTOR_FAMILIES:
         paired = [
             (float(family_score), float(item["actual_return"]))
             for item in settled
@@ -282,13 +282,13 @@ def _family_rank_ics(settled: list[dict[str, Any]]) -> dict[str, float | None]:
 
 def _family_coverage(settlements: list[dict[str, Any]]) -> dict[str, float]:
     if not settlements:
-        return {family: 0.0 for family in FACTOR_FAMILIES}
+        return {family: 0.0 for family in TOKEN_RADAR_FACTOR_FAMILIES}
     return {
         family: sum(
             1 for item in settlements if _mapping(item.get("family_scores")).get(family) is not None
         )
         / len(settlements)
-        for family in FACTOR_FAMILIES
+        for family in TOKEN_RADAR_FACTOR_FAMILIES
     }
 
 
