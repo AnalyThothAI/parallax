@@ -245,6 +245,7 @@ class TokenRadarProjection:
 
             high_conf = _count_high_conf(row)
             kol_count = _count_kol_authors(row)
+            public_followup_count = _count_public_followup(row)
             first_seen_global = _cohort_first_seen_global(row)
             symbol = (
                 (row.get("target_json") or {}).get("symbol")
@@ -262,6 +263,7 @@ class TokenRadarProjection:
             cohort_metadata[target_id] = {
                 "high_confidence_mentions": high_conf,
                 "kol_mentions": kol_count,
+                "public_followup_authors": public_followup_count,
                 "first_seen_global_24h": first_seen_global,
                 "symbol": symbol,
             }
@@ -382,6 +384,7 @@ def _project_group(
     )
     cohort_kol_count = sum(1 for r in window_rows if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS)
     cohort_first_seen_global_24h = any(row.get("first_seen_global_24h") is True for row in window_rows)
+    cohort_public_followup_count = int(features.propagation.get("public_followup_author_count") or 0)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -437,6 +440,7 @@ def _project_group(
         "_cohort_high_conf_count": cohort_high_conf_count,
         "_cohort_kol_count": cohort_kol_count,
         "_cohort_first_seen_global_24h": cohort_first_seen_global_24h,
+        "_cohort_public_followup_count": cohort_public_followup_count,
     }
 
 
@@ -942,6 +946,10 @@ def _count_high_conf(row: dict[str, Any]) -> int:
 
 def _count_kol_authors(row: dict[str, Any]) -> int:
     return int(row.get("_cohort_kol_count") or 0)
+
+
+def _count_public_followup(row: dict[str, Any]) -> int:
+    return int(row.get("_cohort_public_followup_count") or 0)
 
 
 def _cohort_first_seen_global(row: dict[str, Any]) -> bool:
