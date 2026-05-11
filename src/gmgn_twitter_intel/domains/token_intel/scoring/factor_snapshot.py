@@ -117,27 +117,41 @@ def _social_heat_family(*, attention: dict[str, Any]) -> dict[str, Any]:
     watched_mentions = _optional_int(attention.get("watched_mentions"))
     weighted_mentions = _optional_float(attention.get("weighted_mentions"))
     attention_acceleration = _optional_float(attention.get("attention_acceleration"))
-    attention_surprise = _first_float(
-        attention,
-        ("attention_surprise", "robust_z", "z_score", "z_ewma", "new_burst_score"),
-    )
+    z_score = _optional_float(attention.get("z_score"))
+    z_ewma = _optional_float(attention.get("z_ewma"))
+    robust_z = _optional_float(attention.get("robust_z"))
+    new_burst_score = _optional_float(attention.get("new_burst_score"))
+    attention_surprise = _first_float(attention, ("robust_z", "z_ewma", "z_score"))
     facts = {
         "mentions_5m": mentions_5m,
         "mentions_1h": _count_int(mentions_1h),
         "mentions_4h": _count_int(mentions_4h),
         "mentions_24h": _count_int(mentions_24h),
+        "mentions_window": _optional_int(attention.get("mentions_window")),
+        "previous_mentions": _optional_int(attention.get("previous_mentions")),
+        "mention_delta": _optional_int(attention.get("mention_delta")),
+        "mention_delta_pct": _optional_float(attention.get("mention_delta_pct")),
+        "stream_share": _optional_float(attention.get("stream_share")),
         "weighted_mentions": weighted_mentions,
         "unique_authors": _count_int(unique_authors),
         "watched_mentions": _count_int(watched_mentions),
         "attention_surprise": attention_surprise,
         "attention_acceleration": attention_acceleration,
+        "z_score": z_score,
+        "z_ewma": z_ewma,
+        "robust_z": robust_z,
+        "new_burst_score": new_burst_score,
+        "baseline_status": _optional_str(attention.get("baseline_status")),
+        "baseline_sample_count": _optional_int(attention.get("baseline_sample_count")),
+        "baseline_nonzero_sample_count": _optional_int(attention.get("baseline_nonzero_sample_count")),
+        "zero_slot_count": _optional_int(attention.get("zero_slot_count")),
         "latest_seen_ms": _optional_int(attention.get("latest_seen_ms")),
     }
     return _family(
         "social_heat",
         facts=facts,
         factors=[
-            _z_or_new_burst_factor(attention_surprise),
+            _z_or_new_burst_factor(z_value=attention_surprise, new_burst_score=new_burst_score),
             _count_factor("social_heat", "source_weighted_mentions", weighted_mentions, scale=3),
             _acceleration_factor(attention_acceleration),
             _count_factor("social_heat", "watched_seed_strength", watched_mentions, scale=2),
@@ -158,12 +172,20 @@ def _social_propagation_family(*, social_quality: dict[str, Any]) -> dict[str, A
     time_to_second_author_ms = _optional_int(social_quality.get("time_to_second_author_ms"))
     time_to_third_author_ms = _optional_int(social_quality.get("time_to_third_author_ms"))
     public_followup_author_count = _optional_int(social_quality.get("public_followup_author_count"))
+    informative_post_count = _optional_int(social_quality.get("informative_post_count"))
+    new_authors = _optional_int(social_quality.get("new_authors"))
+    watched_author_count = _optional_int(social_quality.get("watched_author_count"))
+    reproduction_rate = _optional_float(social_quality.get("reproduction_rate"))
     facts = {
         "duplicate_text_share": duplicate_text_share,
         "top_author_share": top_author_share,
         "mentions": _count_int(mentions),
         "independent_authors": _count_int(independent_authors),
+        "informative_post_count": _count_int(informative_post_count),
         "effective_authors": _optional_float(social_quality.get("effective_authors")),
+        "new_authors": _count_int(new_authors),
+        "watched_author_count": _count_int(watched_author_count),
+        "reproduction_rate": reproduction_rate,
         "source_weighted_effective_authors": source_weighted_effective_authors,
         "time_to_second_author_ms": time_to_second_author_ms,
         "time_to_third_author_ms": time_to_third_author_ms,
@@ -498,14 +520,25 @@ def _direction_factor(family: str, direction_counts: dict[str, Any]) -> dict[str
     )
 
 
-def _z_or_new_burst_factor(value: float | None) -> dict[str, Any]:
-    score = 0.0 if value is None else max(0.0, min(100.0, 25.0 + value * 22.5))
+def _z_or_new_burst_factor(*, z_value: float | None, new_burst_score: float | None) -> dict[str, Any]:
+    if z_value is not None:
+        raw_value: Any = z_value
+        score = max(0.0, min(100.0, 25.0 + z_value * 22.5))
+        confidence = 0.9
+    elif new_burst_score is not None:
+        raw_value = new_burst_score
+        score = log_points(new_burst_score, scale=2.0, max_points=80.0)
+        confidence = 0.85
+    else:
+        raw_value = None
+        score = 0.0
+        confidence = 0.0
     return _factor_point(
         "social_heat",
         "attention_surprise",
-        raw_value=value,
+        raw_value=raw_value,
         score=score,
-        confidence=0.9 if value is not None else 0.0,
+        confidence=confidence,
     )
 
 

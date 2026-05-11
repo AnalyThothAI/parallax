@@ -150,8 +150,56 @@ def test_social_heat_formula_constants_match_spec() -> None:
     assert factors["attention_acceleration"]["score"] == pytest.approx(_log_points(2.0, scale=2))
     assert factors["attention_surprise"]["score"] == pytest.approx(47.5)
 
-    fallback = _strong_dex_snapshot(attention={"robust_z": None, "z_score": None, "new_burst_score": 2.0})
-    assert fallback["families"]["social_heat"]["factors"]["attention_surprise"]["score"] == pytest.approx(70.0)
+    fallback = _strong_dex_snapshot(attention={"robust_z": None, "z_ewma": None, "z_score": None, "new_burst_score": 2.0})
+    assert fallback["families"]["social_heat"]["factors"]["attention_surprise"]["score"] == pytest.approx(80.0)
+
+
+def test_social_factor_facts_preserve_auditable_inputs() -> None:
+    snapshot = _strong_dex_snapshot(
+        attention={
+            "mentions_window": 6,
+            "previous_mentions": 2,
+            "mention_delta": 4,
+            "mention_delta_pct": 2.0,
+            "stream_share": 0.12,
+            "z_score": 1.5,
+            "z_ewma": 1.2,
+            "robust_z": 1.0,
+            "new_burst_score": 3.0,
+            "baseline_status": "ready",
+            "baseline_sample_count": 6,
+            "baseline_nonzero_sample_count": 4,
+            "zero_slot_count": 2,
+        },
+        social_quality={
+            "informative_post_count": 8,
+            "new_authors": 3,
+            "watched_author_count": 1,
+            "reproduction_rate": 0.75,
+        },
+    )
+
+    heat_facts = snapshot["families"]["social_heat"]["facts"]
+    assert heat_facts["mentions_window"] == 6
+    assert heat_facts["previous_mentions"] == 2
+    assert heat_facts["mention_delta"] == 4
+    assert heat_facts["mention_delta_pct"] == 2.0
+    assert heat_facts["stream_share"] == 0.12
+    assert heat_facts["z_score"] == 1.5
+    assert heat_facts["z_ewma"] == 1.2
+    assert heat_facts["robust_z"] == 1.0
+    assert heat_facts["new_burst_score"] == 3.0
+    assert heat_facts["baseline_status"] == "ready"
+    assert heat_facts["baseline_sample_count"] == 6
+    assert heat_facts["baseline_nonzero_sample_count"] == 4
+    assert heat_facts["zero_slot_count"] == 2
+
+    propagation_facts = snapshot["families"]["social_propagation"]["facts"]
+    assert propagation_facts["informative_post_count"] == 8
+    assert propagation_facts["effective_authors"] == 6.0
+    assert propagation_facts["new_authors"] == 3
+    assert propagation_facts["watched_author_count"] == 1
+    assert propagation_facts["reproduction_rate"] == 0.75
 
 
 def test_social_propagation_formula_constants_and_speed_match_spec() -> None:
