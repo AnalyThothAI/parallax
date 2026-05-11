@@ -24,6 +24,14 @@ Known production finding before implementation:
 - `token-radar-v10-current-market` initially had only `5m` rows; after diagnostic `ANALYZE`, `1h:all` backfilled, proving worker/query performance is the immediate zero-data root.
 - Hard rule for this implementation: no fallback to old projection versions, no factor-snapshot market alias compatibility, and no browser-direct OKX WebSocket. Current-version coverage and `current_market.fields` are the only public path.
 
+Live implementation amendment after 2026-05-11 verification:
+
+- `/api/token-radar` must not hydrate `current_market` during the request path. HTTP returns the projection row's persisted market facts; live changes arrive through backend WebSocket `market_update` deltas.
+- `TokenRadarSourceQuery` must not read historical `price_observations` through per-row LATERAL joins. Projection market context comes from `current_market` hydration only; historical event-price deltas are intentionally absent instead of being a slow compatibility layer.
+- The source query materializes the bounded `events.received_at_ms` window with the event columns needed by scoring, then resolves intents through the current resolver row. Do not rejoin the full `events` table after materialization.
+- `24h/all` analysis lookback is capped at 48h. This preserves the current and previous 24h windows while avoiding 7-day source scans that can starve hot `5m` refreshes.
+- Coverage readiness and projection-run completion are committed atomically. Rows without `ready` coverage are not considered public-ready, even if `token_radar_rows` contains partial output.
+
 ## Required Amendments From Engineering Review
 
 - Add a persistent `token_radar_projection_coverage` read-model table keyed by `(projection_version, window, scope)`. It stores `status`, `reason`, `source_rows`, `row_count`, `computed_at_ms`, `started_at_ms`, `finished_at_ms`, and `error`.
