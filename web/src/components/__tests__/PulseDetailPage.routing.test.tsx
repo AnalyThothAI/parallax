@@ -25,6 +25,13 @@ function renderAt(url: string) {
 }
 
 describe("PulseDetailPage", () => {
+  it("renders a structural skeleton while the candidate request is pending", () => {
+    vi.spyOn(client, "getApi").mockReturnValue(new Promise(() => undefined) as any);
+    renderAt("/signal-lab/pulse/cand-1");
+
+    expect(screen.getByLabelText("loading pulse detail")).toBeInTheDocument();
+  });
+
   it("renders inspector when candidate exists", async () => {
     vi.spyOn(client, "getApi").mockResolvedValue({
       ok: true,

@@ -942,7 +942,7 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.scope === "all" &&
             options?.params?.status === "token_watch" &&
             !("kind" in (options?.params ?? {})) &&
-            options?.params?.handle === "@cz_binance" &&
+            options?.params?.handle === "cz_binance" &&
             options?.params?.q === "BNB"
         )
       ).toBe(true);
@@ -1168,6 +1168,15 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
     await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).not.toBeDisabled());
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
+  });
+
+  it("uses the Signal Lab mobile task when cold-loading a Signal Lab route", async () => {
+    renderWithQuery(<App />, { initialEntries: ["/signal-lab?handle=traderpow"] });
+
+    const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
+    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByRole("heading", { name: "Signal Lab" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("traderpow");
   });
 
   it("switches mobile task to detail after selecting a token without changing token API params", async () => {
@@ -2390,7 +2399,7 @@ function scoreBlock<T extends Record<string, unknown>>(extra: T) {
   } as T & { contributions: Array<{ feature: string; value: number; reason: string }>; risk_caps: [] };
 }
 
-function renderWithQuery(children: ReactNode) {
+function renderWithQuery(children: ReactNode, options: { initialEntries?: string[] } = {}) {
   const client = new QueryClient({
     defaultOptions: {
       queries: {
@@ -2401,7 +2410,7 @@ function renderWithQuery(children: ReactNode) {
   });
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter>{children}</MemoryRouter>
+      <MemoryRouter initialEntries={options.initialEntries}>{children}</MemoryRouter>
     </QueryClientProvider>
   );
 }

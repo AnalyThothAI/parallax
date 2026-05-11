@@ -1075,6 +1075,84 @@ svg {
   font-size: 10px;
 }
 
+.skeleton-rows {
+  display: grid;
+  align-content: start;
+  gap: 0;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #080c0c;
+  overflow: hidden;
+}
+
+.skeleton-rows.compact {
+  border: 0;
+  border-radius: 0;
+}
+
+.skeleton-row {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr) 54px;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 8px 10px;
+}
+
+.skeleton-row:last-child {
+  border-bottom: 0;
+}
+
+.skeleton-rows.compact .skeleton-row {
+  min-height: 54px;
+  grid-template-columns: 56px minmax(0, 1fr) 42px;
+  gap: 7px;
+  padding: 6px 8px;
+}
+
+.skeleton-row i,
+.skeleton-row b,
+.skeleton-row em {
+  display: block;
+  min-width: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025));
+}
+
+.skeleton-row i {
+  height: 20px;
+}
+
+.skeleton-row b {
+  height: 34px;
+}
+
+.skeleton-row em {
+  height: 18px;
+}
+
+.route-state-panel {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  min-height: 180px;
+  padding: 16px;
+  color: var(--faint);
+  font-family: var(--mono);
+}
+
+.route-state-panel > b {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.route-state-panel > p {
+  margin: 0;
+  line-height: 1.5;
+}
+
 /* Token Radar social heat rebuild */
 .cockpit-grid {
   grid-template-columns: 184px minmax(0, 1fr) minmax(356px, 388px);

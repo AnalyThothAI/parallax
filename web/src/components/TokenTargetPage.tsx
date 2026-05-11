@@ -83,7 +83,7 @@ export function TokenTargetPage() {
         : null;
       return rowTarget && targetRefEquals(rowTarget, target);
     });
-    if (!matchedRow) return fallbackTokenItemFromTarget(target, windowKey, scope);
+    if (!matchedRow) return null;
     return tokenRadarRowToTokenItem(matchedRow, windowKey, scope);
   }, [assetFlowQuery.data?.data, scope, target, windowKey]);
 
@@ -107,6 +107,75 @@ export function TokenTargetPage() {
   }
 
   if (!tokenItem) {
+    if (!assetFlowQuery.isPending && target) {
+      const stages = timeline?.stages ?? [];
+      const selectedStageFilter = selectedStageId && stages.some((stage) => stage.stage_id === selectedStageId) ? selectedStageId : null;
+      return (
+        <section className="mobile-task-surface" data-mobile-task-panel="radar">
+          <section className="token-target-page" aria-label="Token audit page">
+            <header className="token-case-header">
+              <button className="ghost-icon-button" type="button" onClick={() => navigate(-1)} aria-label="Back to Token Radar">
+                <ArrowLeft aria-hidden />
+                <span>Radar</span>
+              </button>
+              <div className="token-case-title">
+                <span>{target.target_type} · {target.target_id}</span>
+                <h2>{targetDisplayLabel(target)}</h2>
+              </div>
+              <div className="token-case-actions">
+                <div className="segmented mini range" aria-label="audit page window">
+                  {OBSERVATION_WINDOWS.map((item) => (
+                    <button key={item} className={windowKey === item ? "active" : ""} type="button" onClick={() => setWindowKey(item)}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </header>
+
+            <div className="route-state-panel">
+              <b>Not in current radar window</b>
+              <p>This route target has no Token Radar row for {windowKey}. Timeline and posts can still load, but no score audit is shown without a real radar row.</p>
+            </div>
+
+            <section className="case-section stage-tape-section">
+              <header>
+                <span>stage tape</span>
+                <b>{timelineQuery.isFetching ? "loading" : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}</b>
+                {selectedStageFilter ? (
+                  <button className="inline-clear-button" type="button" onClick={() => setSelectedStageId(null)}>
+                    clear filter
+                  </button>
+                ) : null}
+              </header>
+              <StageTape stages={stages} selectedStageId={selectedStageFilter} timeline={timeline} onSelect={setSelectedStageId} />
+            </section>
+
+            <section className="case-section">
+              <header>
+                <span>message evidence</span>
+                <b>{selectedStageFilter ? "stage filtered" : "all loaded posts"}</b>
+              </header>
+              <TokenPostsPanel
+                hideDuplicateClusters={hideDuplicateClusters}
+                isFetchingNextPage={postsQuery.isFetchingNextPage}
+                isLoading={postsQuery.isLoading}
+                posts={posts}
+                postRange={postRange}
+                postSortMode={postSortMode}
+                selectedStageId={selectedStageFilter}
+                watchedPostsOnly={watchedPostsOnly}
+                onHideDuplicateClustersChange={setHideDuplicateClusters}
+                onLoadMorePosts={() => void postsQuery.fetchNextPage()}
+                onPostRangeChange={setPostRange}
+                onPostSortModeChange={setPostSortMode}
+                onWatchedPostsOnlyChange={setWatchedPostsOnly}
+              />
+            </section>
+          </section>
+        </section>
+      );
+    }
     return (
       <section className="mobile-task-surface" data-mobile-task-panel="radar">
         <section className="token-target-page" aria-label="Token audit page">
@@ -267,179 +336,6 @@ function parseScopeKey(value: string | null): TokenFlowItem["posts_query"]["scop
   return value === "all" || value === "matched" ? value : null;
 }
 
-function fallbackTokenItemFromTarget(target: TargetRef, window: WindowKey, scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
-  const symbol = symbolFromTarget(target);
-  const assetParts = target.target_type === "Asset" ? parseAssetTargetId(target.target_id) : null;
-  const isCex = target.target_type === "CexToken";
-  const heatScore = routeOnlyScoreBlock("heat");
-  const qualityScore = routeOnlyScoreBlock("quality");
-  const propagationScore = routeOnlyScoreBlock("propagation");
-  const tradeabilityScore = routeOnlyScoreBlock("tradeability");
-  const opportunityScore = routeOnlyScoreBlock("opportunity");
-
-  return {
-    identity: {
-      identity_key: target.target_id,
-      identity_status: "route_only",
-      target_type: target.target_type,
-      target_id: target.target_id,
-      asset_id: isCex ? undefined : target.target_id,
-      asset_type: target.target_type,
-      venue_type: isCex ? "cex" : "dex",
-      exchange: null,
-      inst_id: isCex && symbol ? `${symbol}-USDT` : null,
-      inst_type: isCex ? "SPOT" : null,
-      chain: assetParts?.chain ?? null,
-      address: assetParts?.address ?? null,
-      symbol,
-      resolution_reasons: ["route_target"],
-      lookup_keys: [target.target_id],
-      candidate_count: 0,
-      discovery_status: "route_only"
-    },
-    market: {
-      market_status: "missing",
-      price: null,
-      market_cap: null,
-      liquidity: null,
-      pool_status: "missing",
-      holder_count: null,
-      volume_24h: null,
-      snapshot_age_ms: null,
-      snapshot_received_at_ms: null,
-      social_signal_start_ms: null,
-      reference_ms: null,
-      price_at_social_start: null,
-      price_at_reference: null,
-      price_change_since_social_pct: null,
-      price_before_social_start: null,
-      price_change_before_social_pct: null,
-      price_at_first_snapshot: null,
-      first_snapshot_observed_at_ms: null,
-      price_change_since_first_snapshot_pct: null,
-      market_observation_status: "route_only",
-      price_change_status: "missing_market"
-    },
-    flow: {
-      window,
-      window_start_ms: null,
-      window_end_ms: null,
-      mentions: 0,
-      direct_mentions: 0,
-      symbol_mentions: 0,
-      weighted_mentions: 0,
-      avg_attribution_confidence: 0,
-      watched_mentions: 0,
-      previous_mentions: 0,
-      mention_delta: 0,
-      mention_delta_pct: null,
-      z_score: null,
-      new_burst_score: null,
-      stream_dominance: 0,
-      baseline_status: "route_only",
-      baseline_sample_count: 0
-    },
-    social_heat: {
-      ...heatScore,
-      window,
-      mentions: 0,
-      mentions_5m: 0,
-      mentions_1h: 0,
-      mentions_4h: 0,
-      mentions_24h: 0,
-      weighted_mentions: 0,
-      previous_mentions: 0,
-      mention_delta: 0,
-      mention_delta_pct: null,
-      z_score: null,
-      new_burst_score: null,
-      stream_share: 0,
-      watched_share: 0,
-      status: "route_only"
-    },
-    discussion_quality: {
-      ...qualityScore,
-      evidence_specificity: 0,
-      avg_post_quality: 0,
-      avg_attribution_confidence: 0,
-      duplicate_text_share: 0,
-      informative_post_count: 0,
-      watched_source_count: 0
-    },
-    propagation: {
-      ...propagationScore,
-      independent_authors: 0,
-      effective_authors: 0,
-      new_authors: 0,
-      top_author_share: 0,
-      duplicate_text_share: 0,
-      author_entropy: 0,
-      reproduction_rate: null,
-      phase: "seed",
-      top_authors: []
-    },
-    tradeability: {
-      ...tradeabilityScore,
-      identity_tradeable: false,
-      market_fresh: false,
-      market_cap_present: false,
-      liquidity_present: false,
-      pool_present: false,
-      hard_risks: ["missing_current_window_radar_row"]
-    },
-    timing: {
-      score: 0,
-      score_version: "route-only",
-      status: "market_unavailable",
-      social_signal_start_ms: null,
-      price_change_since_social_pct: null,
-      price_change_before_social_pct: null,
-      market_observation_status: "route_only",
-      chase_risk: false,
-      reasons: ["route_target"],
-      risks: ["missing_current_window_radar_row"],
-      contributions: [{ feature: "timing", value: 0, reason: "route_target" }],
-      risk_caps: []
-    },
-    opportunity: {
-      ...opportunityScore,
-      decision: "investigate",
-      decision_priority: 1,
-      hard_risks: ["missing_current_window_radar_row"],
-      components: {
-        heat: 0,
-        quality: 0,
-        propagation: 0,
-        tradeability: 0,
-        timing: 0
-      }
-    },
-    watch: {
-      status: "public_only",
-      direct_mentions: 0,
-      direct_authors: 0,
-      seed_link_count: 0,
-      top_seed: null,
-      reasons: [],
-      risks: ["missing_current_window_radar_row"]
-    },
-    evidence_total_count: 0,
-    posts_query: { target_type: target.target_type, target_id: target.target_id, window, scope, range: "current_window" },
-    timeline_query: { target_type: target.target_type, target_id: target.target_id, window, scope }
-  };
-}
-
-function routeOnlyScoreBlock(component: string) {
-  return {
-    score: 0,
-    score_version: "route-only",
-    reasons: ["route_target"],
-    risks: ["missing_current_window_radar_row"],
-    contributions: [{ feature: component, value: 0, reason: "route_target" }],
-    risk_caps: []
-  };
-}
-
 function symbolFromTarget(target: TargetRef): string | null {
   if (target.target_type !== "CexToken") {
     return null;
@@ -449,21 +345,13 @@ function symbolFromTarget(target: TargetRef): string | null {
   return symbol || null;
 }
 
-function parseAssetTargetId(targetId: string): { chain: string | null; address: string | null } | null {
-  const parts = targetId.trim().split(":");
-  if (parts[0] !== "asset" || parts.length < 3) {
-    return null;
+function targetDisplayLabel(target: TargetRef): string {
+  if (target.target_type === "CexToken") {
+    const symbol = symbolFromTarget(target);
+    return symbol ? `$${symbol}` : target.target_id;
   }
-  if (parts[1] === "solana") {
-    return { chain: "solana", address: parts.at(-1) ?? null };
-  }
-  if (parts[1] === "eip155" && parts[2]) {
-    return { chain: `eip155:${parts[2]}`, address: parts.at(-1) ?? null };
-  }
-  if (parts[1] === "dex" && parts[2]) {
-    return { chain: parts[2], address: parts.at(-1) ?? null };
-  }
-  return { chain: null, address: parts.at(-1) ?? null };
+  const address = target.target_id.split(":").at(-1);
+  return address ? shortAddress(address) : target.target_id;
 }
 
 function identityLine(token: TokenFlowItem): string {

@@ -73,7 +73,7 @@ describe("TokenTargetPage routing", () => {
     expect(getApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(false);
   });
 
-  it("renders a CEX target page from the URL even when the current radar window has no row", async () => {
+  it("renders an honest CEX target page when the current radar window has no row", async () => {
     const getApi = vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
       if (path === "/api/token-radar") {
         return { ok: true, data: { targets: [], attention: [], projection: {} } } as any;
@@ -114,7 +114,8 @@ describe("TokenTargetPage routing", () => {
     renderAt("/token/CexToken/cex_token%3AZEC");
 
     expect(await screen.findByRole("heading", { name: "$ZEC" })).toBeInTheDocument();
-    expect(screen.queryByText("token audit target missing")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Not in current radar window").length).toBeGreaterThan(0);
+    expect(screen.queryByText("score audit")).not.toBeInTheDocument();
     expect(getApi).toHaveBeenCalledWith(
       "/api/target-social-timeline",
       expect.objectContaining({

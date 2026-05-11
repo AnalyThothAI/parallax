@@ -2,6 +2,7 @@ import { FlaskConical } from "lucide-react";
 import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
+import { SkeletonRows } from "../shared/ui/RemoteState";
 
 type SignalLabPulseProps = {
   data?: SignalPulseData;
@@ -47,7 +48,7 @@ type SignalPulseListProps = {
 
 export function SignalPulseList({ compact, isLoading, items, selectedItemId, onSelect }: SignalPulseListProps) {
   if (isLoading) {
-    return <div className="empty-state">loading signal pulse</div>;
+    return <SkeletonRows compact={compact} count={compact ? 5 : 6} label="loading signal pulse" />;
   }
   if (!items.length) {
     return <div className="empty-state">No signal pulse items in this window</div>;

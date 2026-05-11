@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData } from "../api/types";
 import { compactNumber, eventText, formatReason, formatRelativeTime, formatRisk, formatScore, formatSignedPercent } from "../lib/format";
+import { SkeletonRows } from "../shared/ui/RemoteState";
 
 type TokenPostsPanelProps = {
   posts?: TokenPostsData | null;
@@ -98,7 +99,7 @@ export function TokenPostsPanel({
       {selectedStageId ? <div className="filter-note">stage filter · {selectedStageId}</div> : null}
       {postRange === "all_history" ? <div className="filter-note">history does not all participate in current score</div> : null}
       {hideDuplicateClusters ? <div className="filter-note">已隐藏重复文本簇</div> : null}
-      {isLoading ? <div className="empty-state">加载 token posts 中</div> : null}
+      {isLoading ? <SkeletonRows count={4} label="loading token posts" /> : null}
       {!isLoading && items.length === 0 ? <div className="empty-state">该窗口暂无 token-attributed posts</div> : null}
       <div className="post-list">
         {items.map((item) => (

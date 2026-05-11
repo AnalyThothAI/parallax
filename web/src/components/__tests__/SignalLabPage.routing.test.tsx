@@ -70,4 +70,28 @@ describe("SignalLabPage routing", () => {
     expect(params.handle).toBeUndefined();
     expect(params.q).toBeUndefined();
   });
+
+  it("uses window and scope from URL params", async () => {
+    const getApi = vi.spyOn(client, "getApi").mockResolvedValue({
+      ok: true,
+      data: {
+        query: {},
+        health: {},
+        summary: {},
+        items: [],
+        returned_count: 0,
+        has_more: false,
+        next_cursor: null
+      }
+    } as any);
+    renderAt("/signal-lab?window=4h&scope=matched&q=SOL");
+    await waitFor(() => {
+      expect(getApi).toHaveBeenCalledWith(
+        "/api/signal-lab/pulse",
+        expect.objectContaining({
+          params: expect.objectContaining({ window: "4h", scope: "matched", q: "SOL" })
+        })
+      );
+    });
+  });
 });

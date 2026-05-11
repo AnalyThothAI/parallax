@@ -6,6 +6,14 @@ import { SignalLabPulse } from "./SignalLabPulse";
 afterEach(() => cleanup());
 
 describe("SignalLabPulse", () => {
+  it("renders structural skeleton rows while loading", () => {
+    render(<SignalLabPulse isLoading data={undefined} onOpenLab={vi.fn()} onSelect={vi.fn()} />);
+
+    const skeleton = screen.getByLabelText("loading signal pulse");
+    expect(skeleton.querySelectorAll(".skeleton-row")).toHaveLength(5);
+    expect(screen.queryByText("loading signal pulse")).not.toBeInTheDocument();
+  });
+
   it("shows every pulse item with the Signal Pulse row budget", () => {
     const items = Array.from({ length: 7 }, (_, index) => pulseItem(index));
 
