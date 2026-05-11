@@ -128,9 +128,6 @@ def _token_snapshot(event_json: Any) -> TokenSnapshot | None:
         address=address,
         chain=chain,
         symbol=payload.get("symbol"),
-        market_cap=_float_or_none(payload.get("market_cap")),
-        price=_float_or_none(payload.get("price")),
-        previous_price=_float_or_none(payload.get("previous_price")),
         icon_url=payload.get("icon_url"),
         trigger_type=payload.get("trigger_type"),
         raw=payload["raw"] if isinstance(payload.get("raw"), dict) else payload,
@@ -163,12 +160,3 @@ def _upsert_chain_intent_registry(*, repos: Any, intents: list[Any], observed_at
             commit=False,
         )
         repos.identity_evidence.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms, commit=False)
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None

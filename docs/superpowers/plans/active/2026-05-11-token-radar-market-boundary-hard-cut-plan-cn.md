@@ -438,8 +438,8 @@ repository/query architecture guard.
   DEFAULT_MARKET_METADATA_FRESH_MS = 5 * 60 * 1000
   RESOLUTION_MARKET_FRESH_MS = 24 * 60 * 60 * 1000
 
-  PRICE_CAPABLE_PROVIDERS = frozenset({"gmgn_payload", "okx_dex_search", "okx_dex_price", "okx_cex"})
-  DEX_METADATA_CAPABLE_PROVIDERS = frozenset({"gmgn_payload", "okx_dex_search"})
+  PRICE_CAPABLE_PROVIDERS = frozenset({"okx_dex_search", "okx_dex_price", "okx_dex_ws_price_info", "okx_cex"})
+  DEX_METADATA_CAPABLE_PROVIDERS = frozenset({"okx_dex_search", "okx_dex_ws_price_info"})
   CEX_MARKET_CAPABLE_PROVIDERS = frozenset({"okx_cex"})
 
 
@@ -552,7 +552,7 @@ repository/query architecture guard.
                 FROM price_observations
                 WHERE subject_type = requested.subject_type
                   AND subject_id = requested.subject_id
-                  AND provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_price', 'okx_cex')
+                  AND provider IN ('okx_dex_search', 'okx_dex_price', 'okx_dex_ws_price_info', 'okx_cex')
                   AND (price_usd IS NOT NULL OR price_quote IS NOT NULL)
                 ORDER BY observed_at_ms DESC, observation_id DESC
                 LIMIT 1
@@ -562,7 +562,7 @@ repository/query architecture guard.
                 FROM price_observations
                 WHERE subject_type = requested.subject_type
                   AND subject_id = requested.subject_id
-                  AND provider IN ('gmgn_payload', 'okx_dex_search')
+                  AND provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
                   AND market_cap_usd IS NOT NULL
                 ORDER BY observed_at_ms DESC, observation_id DESC
                 LIMIT 1
@@ -572,7 +572,7 @@ repository/query architecture guard.
                 FROM price_observations
                 WHERE subject_type = requested.subject_type
                   AND subject_id = requested.subject_id
-                  AND provider IN ('gmgn_payload', 'okx_dex_search')
+                  AND provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
                   AND liquidity_usd IS NOT NULL
                 ORDER BY observed_at_ms DESC, observation_id DESC
                 LIMIT 1
@@ -582,7 +582,7 @@ repository/query architecture guard.
                 FROM price_observations
                 WHERE subject_type = requested.subject_type
                   AND subject_id = requested.subject_id
-                  AND provider IN ('gmgn_payload', 'okx_dex_search')
+                  AND provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
                   AND holders IS NOT NULL
                 ORDER BY observed_at_ms DESC, observation_id DESC
                 LIMIT 1
@@ -592,7 +592,7 @@ repository/query architecture guard.
                 FROM price_observations
                 WHERE subject_type = requested.subject_type
                   AND subject_id = requested.subject_id
-                  AND provider IN ('okx_cex', 'gmgn_payload', 'okx_dex_search')
+                  AND provider IN ('okx_cex', 'okx_dex_search', 'okx_dex_ws_price_info')
                   AND volume_24h_usd IS NOT NULL
                 ORDER BY observed_at_ms DESC, observation_id DESC
                 LIMIT 1
@@ -777,7 +777,7 @@ repository/query architecture guard.
     FROM price_observations
     WHERE price_observations.subject_type = 'Asset'
       AND price_observations.subject_id = registry_assets.asset_id
-      AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_price')
+      AND price_observations.provider IN ('okx_dex_search', 'okx_dex_price', 'okx_dex_ws_price_info')
       AND price_observations.price_usd IS NOT NULL
     ORDER BY observed_at_ms DESC, observation_id DESC
     LIMIT 1
@@ -787,7 +787,7 @@ repository/query architecture guard.
     FROM price_observations
     WHERE price_observations.subject_type = 'Asset'
       AND price_observations.subject_id = registry_assets.asset_id
-      AND price_observations.provider IN ('gmgn_payload', 'okx_dex_search')
+      AND price_observations.provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
       AND price_observations.market_cap_usd IS NOT NULL
     ORDER BY observed_at_ms DESC, observation_id DESC
     LIMIT 1
@@ -1400,7 +1400,7 @@ repository/query architecture guard.
 ## Rollout Order
 
 1. Land PR 1 first to stop new `okx_dex_price` copy-forward pollution.
-2. Land PR 2; no migration is required because current market is derived from existing `price_observations`.
+2. Land PR 2; run the GMGN-payload market-data prune migration so old payload prices do not remain in current-market facts or timing baselines.
 3. Land PR 3; projection version bump creates fresh `token-radar-v10-current-market` rows.
 4. Land PR 4; frontend/API hard cut to `current_market`.
 5. Land PR 5; provider budget sharing and ops docs.

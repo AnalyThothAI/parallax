@@ -93,7 +93,7 @@ def test_insert_message_observation_writes_token_price_baseline(tmp_path):
         _insert_event_intent_resolution(conn)
         repo = PriceObservationRepository(conn)
         repo.insert_observation(
-            provider="gmgn_payload",
+            provider="okx_dex_price",
             pricefeed_id=None,
             observed_at_ms=1_700_000_000_000,
             subject_type="Asset",
@@ -102,7 +102,7 @@ def test_insert_message_observation_writes_token_price_baseline(tmp_path):
             price_basis="usd",
         )
         repo.insert_observation(
-            provider="gmgn_payload",
+            provider="okx_dex_price",
             pricefeed_id=None,
             observed_at_ms=1_700_000_060_000,
             subject_type="Asset",
@@ -112,7 +112,7 @@ def test_insert_message_observation_writes_token_price_baseline(tmp_path):
             source_event_id="event-1",
             source_intent_id="intent-1",
             source_resolution_id="resolution-1",
-            observation_kind="message_payload",
+            observation_kind="message_quote",
             event_received_at_ms=1_700_000_060_000,
         )
         baseline = conn.execute(
@@ -129,7 +129,7 @@ def test_insert_message_observation_writes_token_price_baseline(tmp_path):
     assert baseline["target_type"] == "Asset"
     assert baseline["target_id"] == "asset:eip155:1:erc20:0xabc"
     assert baseline["event_price_usd"] == 1.2
-    assert baseline["event_price_observation_kind"] == "message_payload"
+    assert baseline["event_price_observation_kind"] == "message_quote"
     assert baseline["before_event_price_usd"] == 1.0
     assert baseline["first_price_usd"] == 1.0
 

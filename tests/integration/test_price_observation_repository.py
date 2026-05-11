@@ -28,7 +28,7 @@ def test_price_observation_repository_records_message_attribution(tmp_path):
         repo = PriceObservationRepository(conn)
 
         observation = repo.insert_observation(
-            provider="gmgn_payload",
+            provider="okx_dex_price",
             pricefeed_id=None,
             observed_at_ms=1_700_000_001_000,
             subject_type="Asset",
@@ -38,13 +38,13 @@ def test_price_observation_repository_records_message_attribution(tmp_path):
             source_event_id="event-1",
             source_intent_id="intent-1",
             source_resolution_id="resolution-1",
-            observation_kind="message_payload",
+            observation_kind="message_quote",
             event_received_at_ms=1_700_000_000_000,
         )
     finally:
         conn.close()
 
-    assert observation["observation_kind"] == "message_payload"
+    assert observation["observation_kind"] == "message_quote"
     assert observation["source_event_id"] == "event-1"
     assert observation["source_intent_id"] == "intent-1"
     assert observation["source_resolution_id"] == "resolution-1"
@@ -151,7 +151,7 @@ def test_price_observation_repository_reads_baselines_and_message_price(tmp_path
         _insert_event_intent_resolution(conn)
         repo = PriceObservationRepository(conn)
         repo.insert_observation(
-            provider="gmgn_payload",
+            provider="okx_dex_price",
             pricefeed_id=None,
             observed_at_ms=1_700_000_000_000,
             subject_type="Asset",
@@ -160,7 +160,7 @@ def test_price_observation_repository_reads_baselines_and_message_price(tmp_path
             price_basis="usd",
         )
         repo.insert_observation(
-            provider="gmgn_payload",
+            provider="okx_dex_price",
             pricefeed_id=None,
             observed_at_ms=1_700_000_060_000,
             subject_type="Asset",
@@ -170,7 +170,7 @@ def test_price_observation_repository_reads_baselines_and_message_price(tmp_path
             source_event_id="event-1",
             source_intent_id="intent-1",
             source_resolution_id="resolution-1",
-            observation_kind="message_payload",
+            observation_kind="message_quote",
             event_received_at_ms=1_700_000_060_000,
         )
 
@@ -191,7 +191,7 @@ def test_price_observation_repository_reads_baselines_and_message_price(tmp_path
     assert first and first["price_usd"] == 1.0
     assert before and before["price_usd"] == 1.0
     assert message and message["price_usd"] == 1.2
-    assert message["observation_kind"] == "message_payload"
+    assert message["observation_kind"] == "message_quote"
 
 
 def _insert_event_intent_resolution(conn) -> None:

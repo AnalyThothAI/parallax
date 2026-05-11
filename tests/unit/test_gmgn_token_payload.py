@@ -1,9 +1,7 @@
-import pytest
-
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 
 
-def test_parse_gmgn_token_payload_normalizes_market_snapshot():
+def test_parse_gmgn_token_payload_normalizes_identity_snapshot():
     payload = parse_gmgn_token_payload(
         {
             "tt": "ca",
@@ -23,11 +21,15 @@ def test_parse_gmgn_token_payload_normalizes_market_snapshot():
     assert payload.address == "0xf3525965a4aD3ca0AC13f4D2F237113691194444"
     assert payload.chain == "bsc"
     assert payload.symbol == "熊猫头"
-    assert payload.market_cap == pytest.approx(4_304_699.6)
-    assert payload.price == pytest.approx(0.0043046996)
-    assert payload.previous_price == pytest.approx(0.00065198877)
     assert payload.icon_url == "https://gmgn.ai/external-res/token.webp"
     assert payload.trigger_type == "ca"
+    assert payload.raw == {
+        "a": "0xf3525965a4aD3ca0AC13f4D2F237113691194444",
+        "c": "bsc",
+        "s": "熊猫头",
+        "i": "https://gmgn.ai/external-res/token.webp",
+        "tt": "ca",
+    }
 
 
 def test_parse_gmgn_token_payload_rejects_symbol_only_without_address():
@@ -56,7 +58,7 @@ def test_parse_gmgn_token_payload_keeps_ca_when_symbol_is_address_like():
     assert payload.address == address
     assert payload.chain == "solana"
     assert payload.symbol is None
-    assert payload.market_cap == pytest.approx(1000)
+    assert payload.raw == {"a": address, "c": "solana", "tt": "ca"}
 
 
 def test_parse_gmgn_token_payload_keeps_ca_without_symbol():

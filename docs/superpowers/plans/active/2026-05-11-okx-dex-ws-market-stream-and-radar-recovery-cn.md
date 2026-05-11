@@ -65,7 +65,7 @@ def upgrade() -> None:
         """
         CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_price
         ON price_observations(subject_type, subject_id, observed_at_ms DESC, observation_id DESC)
-        WHERE provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_price', 'okx_dex_ws_price_info', 'okx_cex')
+        WHERE provider IN ('okx_dex_search', 'okx_dex_price', 'okx_dex_ws_price_info', 'okx_cex')
           AND (price_usd IS NOT NULL OR price_quote IS NOT NULL)
         """
     )
@@ -73,7 +73,7 @@ def upgrade() -> None:
         """
         CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_market_cap
         ON price_observations(subject_type, subject_id, observed_at_ms DESC, observation_id DESC)
-        WHERE provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_ws_price_info')
+        WHERE provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
           AND market_cap_usd IS NOT NULL
         """
     )
@@ -81,7 +81,7 @@ def upgrade() -> None:
         """
         CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_liquidity
         ON price_observations(subject_type, subject_id, observed_at_ms DESC, observation_id DESC)
-        WHERE provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_ws_price_info')
+        WHERE provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
           AND liquidity_usd IS NOT NULL
         """
     )
@@ -89,7 +89,7 @@ def upgrade() -> None:
         """
         CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_holders
         ON price_observations(subject_type, subject_id, observed_at_ms DESC, observation_id DESC)
-        WHERE provider IN ('gmgn_payload', 'okx_dex_search', 'okx_dex_ws_price_info')
+        WHERE provider IN ('okx_dex_search', 'okx_dex_ws_price_info')
           AND holders IS NOT NULL
         """
     )
@@ -97,7 +97,7 @@ def upgrade() -> None:
         """
         CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_volume_24h
         ON price_observations(subject_type, subject_id, observed_at_ms DESC, observation_id DESC)
-        WHERE provider IN ('okx_cex', 'gmgn_payload', 'okx_dex_search', 'okx_dex_ws_price_info')
+        WHERE provider IN ('okx_cex', 'okx_dex_search', 'okx_dex_ws_price_info')
           AND volume_24h_usd IS NOT NULL
         """
     )
@@ -119,7 +119,7 @@ def upgrade() -> None:
         """
         CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_message_resolution_latest
         ON price_observations(source_resolution_id, subject_type, subject_id, observation_kind, observed_at_ms DESC, observation_id DESC)
-        WHERE observation_kind IN ('message_payload', 'message_quote')
+        WHERE observation_kind = 'message_quote'
         """
     )
     op.execute(
@@ -176,14 +176,12 @@ PROVIDER_OKX_DEX_WS_PRICE_INFO = "okx_dex_ws_price_info"
 
 ```python
 PRICE_CAPABLE_PROVIDERS = frozenset({
-    "gmgn_payload",
     "okx_dex_search",
     "okx_dex_price",
     "okx_dex_ws_price_info",
     "okx_cex",
 })
 DEX_METADATA_CAPABLE_PROVIDERS = frozenset({
-    "gmgn_payload",
     "okx_dex_search",
     "okx_dex_ws_price_info",
 })

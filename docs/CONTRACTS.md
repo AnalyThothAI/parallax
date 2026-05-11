@@ -48,6 +48,10 @@ Token Radar market contract:
   `source_observation_id`. A DEX price-only observation may refresh
   `price_usd` while `market_cap_usd`, `liquidity_usd`, and `holders` remain
   stale or missing until a metadata-capable provider refreshes them.
+- GMGN social payload token snapshots are identity evidence only. The normalized
+  token snapshot carries address / chain / symbol metadata, not embedded price /
+  market-cap values; those values are not written to `price_observations` and are
+  not current-market providers.
 
 ## CLI
 

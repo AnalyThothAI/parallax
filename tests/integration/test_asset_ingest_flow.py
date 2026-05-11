@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-import pytest
-
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
@@ -23,7 +21,6 @@ def open_ingest(tmp_path):
         enrichment=repos.enrichment,
         registry=repos.registry,
         identity_evidence=repos.identity_evidence,
-        price_observations=repos.price_observations,
         token_intent_lookup=repos.token_intent_lookup,
     )
     return conn, repos, ingest
@@ -42,54 +39,48 @@ def test_ingest_mirror_writes_unresolved_token_intent(tmp_path):
     assert result.token_resolutions[0]["target_id"] is None
 
 
-@pytest.mark.skip(
-    reason="Test isolation flake: fails ALONE / in-file with UNIQUE_BY_CONTEXT vs expected EXACT, "
-    "but passed in original full-suite run. Likely shared-DSN state from other test files leaks "
-    "asset_identity_current rows for SOL canonical address. "
-    "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
-)
-def test_ingest_gmgn_payload_writes_direct_dex_asset(tmp_path):
+def test_ingest_gmgn_payload_writes_identity_without_market_observation(tmp_path):
     conn, repos, ingest = open_ingest(tmp_path)
+    address = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
     try:
         snapshot = parse_gmgn_token_payload(
             {
                 "tt": "ca",
                 "t": {
-                    "a": "So11111111111111111111111111111111111111112",
-                    "c": "sol",
-                    "s": "SOL",
+                    "a": address,
+                    "c": "eth",
+                    "s": "PEPE",
                     "mc": "1000000",
-                    "p": "150",
+                    "p": "0.01",
                 },
             }
         )
         event = replace(
-            make_event("event-1", text="$SOL rotation"),
+            make_event("event-gmgn-payload-no-market", text="$PEPE payload identity"),
             token_snapshot=snapshot,
         )
         result = ingest.ingest_event(event, is_watched=True)
         resolution = result.token_resolutions[0]
+        asset = repos.registry.find_assets_by_address(chain_id="eth", address=address)[0]
+        identity_evidence = repos.identity_evidence.list_identity_evidence(asset["asset_id"])
         market = repos.price_observations.latest_for_subject(
             subject_type="Asset",
             subject_id=resolution["target_id"],
             at_or_before_ms=event.received_at_ms,
+        )
+        current_market = repos.current_market.current_for_subjects(
+            [{"target_type": "Asset", "target_id": resolution["target_id"]}],
+            now_ms=event.received_at_ms,
         )
     finally:
         conn.close()
 
     assert resolution["resolution_status"] == "EXACT"
     assert resolution["target_type"] == "Asset"
-    assert resolution["target_id"] == "asset:solana:token:So11111111111111111111111111111111111111112"
-    assert market is not None
-    assert market["provider"] == "gmgn_payload"
-    assert market["observation_kind"] == "message_payload"
-    assert market["source_event_id"] == event.event_id
-    assert market["source_intent_id"] in {row["intent_id"] for row in result.token_intents}
-    assert market["source_resolution_id"] in {row["resolution_id"] for row in result.token_resolutions}
-    assert market["event_received_at_ms"] == event.received_at_ms
-    assert market["observation_lag_ms"] == 0
-    assert market["price_usd"] == 150.0
-    assert market["market_cap_usd"] == 1_000_000.0
+    assert resolution["target_id"] == f"asset:eip155:1:erc20:{address}"
+    assert any(item["evidence_kind"] == "gmgn_payload_exact" for item in identity_evidence)
+    assert market is None
+    assert current_market == {}
 
 
 def test_ingest_chain_ca_from_gmgn_url_writes_exact_registry_asset(tmp_path):

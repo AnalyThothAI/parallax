@@ -26,16 +26,22 @@ def parse_gmgn_token_payload(item: dict[str, Any]) -> TokenSnapshot | None:
         return None
 
     normalized_address = _normalize_address(address, chain)
+    symbol = _normalize_symbol(raw_symbol, address=normalized_address)
+    icon_url = _string(raw.get("i"))
+    trigger_type = _string(item.get("tt"))
     return TokenSnapshot(
         address=normalized_address,
         chain=chain,
-        symbol=_normalize_symbol(raw_symbol, address=normalized_address),
-        market_cap=_float_or_none(raw.get("mc")),
-        price=_float_or_none(raw.get("p")),
-        previous_price=_float_or_none(raw.get("p1")),
-        icon_url=_string(raw.get("i")),
-        trigger_type=_string(item.get("tt")),
-        raw=dict(raw),
+        symbol=symbol,
+        icon_url=icon_url,
+        trigger_type=trigger_type,
+        raw=_identity_payload(
+            address=normalized_address,
+            chain=chain,
+            symbol=symbol,
+            icon_url=icon_url,
+            trigger_type=trigger_type,
+        ),
     )
 
 
@@ -85,8 +91,19 @@ def _string(value: Any) -> str | None:
     return text or None
 
 
-def _float_or_none(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+def _identity_payload(
+    *,
+    address: str,
+    chain: str,
+    symbol: str | None,
+    icon_url: str | None,
+    trigger_type: str | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {"a": address, "c": chain}
+    if symbol:
+        payload["s"] = symbol
+    if icon_url:
+        payload["i"] = icon_url
+    if trigger_type:
+        payload["tt"] = trigger_type
+    return payload

@@ -91,7 +91,6 @@ def open_token_radar_runtime(tmp_path):
         signals=repos.signals,
         enrichment=repos.enrichment,
         registry=repos.registry,
-        price_observations=repos.price_observations,
         token_intent_lookup=repos.token_intent_lookup,
     )
     return conn, repos, ingest

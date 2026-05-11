@@ -139,9 +139,8 @@ class TokenTargetRepository:
                   COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
                   OR price_observations.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
                 )
-                AND price_observations.observation_kind IN ('message_payload', 'message_quote')
+                AND price_observations.observation_kind = 'message_quote'
               ORDER BY
-                CASE WHEN price_observations.observation_kind = 'message_payload' THEN 0 ELSE 1 END,
                 price_observations.observed_at_ms DESC,
                 price_observations.observation_id DESC
               LIMIT 1

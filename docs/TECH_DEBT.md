@@ -58,7 +58,6 @@ INSERT shape (cf. `src/gmgn_twitter_intel/domains/evidence/repositories/evidence
 | `tests/integration/test_api_http.py::test_api_target_posts_returns_full_post_pages_and_requires_target_identity` | identity API | IndexError |
 | `tests/integration/test_api_http.py::test_api_target_social_timeline_returns_buckets_authors_and_posts` | identity API | IndexError |
 | `tests/integration/test_cli.py::CliTests::test_recent_search_asset_flow_harness_and_alerts_use_postgres_runtime_store` | CLI runtime JSON output | Decimal serialization |
-| `tests/integration/test_asset_ingest_flow.py::test_ingest_gmgn_payload_writes_direct_dex_asset` | test isolation | passes in full-suite, fails in-file or alone — likely shared-DSN state leak |
 
 Suggested follow-up owner: `unowned` (whoever next picks up the hard-cut family of specs).
 

@@ -85,7 +85,7 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
     assert rows[0]["asset_json"]["address"] == address
 
 
-def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
+def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_path):
     _, repos, ingest = open_token_radar_runtime(tmp_path)
     event = make_gmgn_payload_event(
         symbol="PEPE",
@@ -94,7 +94,7 @@ def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
         received_at_ms=1_777_800_000_000,
     )
 
-    ingest.ingest_event(event, is_watched=True)
+    result = ingest.ingest_event(event, is_watched=True)
     TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000)
     rows = repos.token_radar.latest_rows(
         window="5m",
@@ -103,10 +103,24 @@ def test_gmgn_payload_market_snapshot_projects_into_radar(tmp_path):
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
     )
 
-    market = rows[0]["market_json"]
-    assert rows[0]["resolution_json"]["status"] == "EXACT"
-    assert market["market_status"] == "fresh"
-    assert market["market_observation_status"] == "ready"
-    assert market["provider"] == "gmgn_payload"
-    assert market["price_usd"] == 0.01
-    assert market["market_cap_usd"] == 1_000_000
+    assert result.token_resolutions[0]["resolution_status"] == "EXACT"
+    assert rows[0]["asset_json"]["symbol"] == "PEPE"
+    resolution = result.token_resolutions[0]
+    assert (
+        repos.price_observations.latest_for_subject(
+            subject_type="Asset",
+            subject_id=resolution["target_id"],
+            at_or_before_ms=event.received_at_ms,
+        )
+        is None
+    )
+    assert (
+        repos.current_market.current_for_subjects(
+            [{"target_type": "Asset", "target_id": resolution["target_id"]}],
+            now_ms=event.received_at_ms,
+        )
+        == {}
+    )
+    factor_snapshot = rows[0]["factor_snapshot_json"]
+    assert factor_snapshot["data_health"]["market"] == "missing"
+    assert "market_freshness_missing" in factor_snapshot["gates"]["blocked_reasons"]

@@ -71,9 +71,6 @@ class TokenSnapshot:
     address: str
     chain: str
     symbol: str | None
-    market_cap: float | None
-    price: float | None
-    previous_price: float | None
     icon_url: str | None
     trigger_type: str | None
     raw: dict[str, Any]

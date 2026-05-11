@@ -166,11 +166,11 @@ def timeline_row(
         "attribution_status": "EXACT",
         "confidence": Decimal("0.95"),
         "price_observation_id": f"price:{event_id}",
-        "price_provider": "gmgn_payload",
+        "price_provider": "okx_dex_price",
         "price_usd": Decimal("1.23"),
         "price_quote": None,
         "price_quote_symbol": None,
         "price_observed_at_ms": 1_700_000_000_000,
         "price_observation_lag_ms": 0,
-        "price_observation_kind": "message_payload",
+        "price_observation_kind": "message_quote",
     }

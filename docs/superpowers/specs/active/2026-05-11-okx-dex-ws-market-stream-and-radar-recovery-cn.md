@@ -13,7 +13,7 @@ Token Radar 的公开 HTTP 合同要求 `/api/token-radar` 行暴露 `current_ma
 
 当前 OKX DEX REST adapter 只有 `search_tokens(...)` 和 `token_prices(...)` 两个同步方法，见 `src/gmgn_twitter_intel/integrations/okx/dex_client.py:39` 和 `src/gmgn_twitter_intel/integrations/okx/dex_client.py:55`。领域 provider contract 也只暴露 `DexMarketProvider.search_tokens(...)` 与 `DexMarketProvider.token_prices(...)`，见 `src/gmgn_twitter_intel/domains/asset_market/providers.py:52`.
 
-最新 hard cut 正确地阻止了 price-only provider 污染 metadata：`sync_dex_prices(...)` 写入 `okx_dex_price` 时明确把 `market_cap_usd`、`liquidity_usd`、`holders` 置空，见 `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py:256`. `CurrentMarketRepository.current_for_subjects(...)` 也只允许 `gmgn_payload` 与 `okx_dex_search` 供应 DEX metadata，见 `src/gmgn_twitter_intel/domains/asset_market/repositories/current_market_repository.py:84`.
+最新 hard cut 正确地阻止了 price-only provider 污染 metadata：`sync_dex_prices(...)` 写入 `okx_dex_price` 时明确把 `market_cap_usd`、`liquidity_usd`、`holders` 置空，见 `src/gmgn_twitter_intel/domains/asset_market/services/asset_market_sync.py:256`. Current market 只从 field-fact read model 读取，DEX metadata-capable provider 为 `okx_dex_search` 与 `okx_dex_ws_price_info`；GMGN payload 不作为 market provider。
 
 Token Radar projection worker 每轮总是重建 `5m` hot windows，然后轮询一个 background window/scope，见 `src/gmgn_twitter_intel/domains/token_intel/runtime/token_radar_projection_worker.py:89`. Projection 本身先跑 source query，再批量 hydrate current market，见 `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:51` 和 `src/gmgn_twitter_intel/domains/token_intel/services/token_radar_projection.py:156`.
 

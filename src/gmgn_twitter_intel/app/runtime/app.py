@@ -216,7 +216,6 @@ class _PooledIngestStore:
                 enrichment=repos.enrichment,
                 registry=repos.registry,
                 identity_evidence=repos.identity_evidence,
-                price_observations=repos.price_observations,
                 token_intent_lookup=repos.token_intent_lookup,
             )
             return ingest.ingest_event(event, is_watched=is_watched)

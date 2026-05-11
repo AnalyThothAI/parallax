@@ -11,7 +11,6 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_TWEET_CONTRACT_MENTION,
     IdentityEvidenceRepository,
-    PriceObservationRepository,
     RegistryRepository,
 )
 from gmgn_twitter_intel.domains.evidence.interfaces import (
@@ -47,7 +46,6 @@ class IngestService:
         enrichment: Any,
         registry: RegistryRepository | None = None,
         identity_evidence: IdentityEvidenceRepository | None = None,
-        price_observations: PriceObservationRepository | None = None,
         token_intent_lookup: TokenIntentLookupRepository | None = None,
     ) -> None:
         self.evidence = evidence
@@ -56,7 +54,6 @@ class IngestService:
         self.enrichment = enrichment
         self.registry = registry or RegistryRepository(evidence.conn)
         self.identity_evidence = identity_evidence or IdentityEvidenceRepository(evidence.conn)
-        self.price_observations = price_observations or PriceObservationRepository(evidence.conn)
         self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
 
     def insert_raw_frame(self, **kwargs: Any) -> bool:
@@ -121,7 +118,6 @@ class IngestService:
                     commit=False,
                 )
             token_resolutions = intent_resolution_repo.resolutions_for_event(event.event_id)
-            self._insert_gmgn_payload_price_observation(event, token_resolutions)
             alerts = self._insert_token_alerts(
                 event,
                 decisions,
@@ -220,56 +216,6 @@ class IngestService:
                 now_ms=event.received_at_ms,
                 commit=False,
             )
-
-    def _insert_gmgn_payload_price_observation(
-        self,
-        event: TwitterEvent,
-        token_resolutions: list[dict[str, Any]],
-    ) -> None:
-        snapshot = event.token_snapshot
-        if snapshot is None:
-            return
-        if snapshot.price is None and snapshot.market_cap is None:
-            return
-        asset = self._upsert_gmgn_payload_registry(event)
-        if not asset:
-            return
-        for resolution in token_resolutions:
-            if resolution.get("target_type") != "Asset" or resolution.get("target_id") != asset.get("asset_id"):
-                continue
-            pricefeed = self.registry.upsert_pricefeed(
-                feed_type="dex_token",
-                provider="gmgn_payload",
-                subject_type="Asset",
-                subject_id=str(asset["asset_id"]),
-                observed_at_ms=event.received_at_ms,
-                chain_id=str(asset["chain_id"]),
-                address=str(asset["address"]),
-                base_asset_id=str(asset["asset_id"]),
-                base_symbol=snapshot.symbol,
-                commit=False,
-            )
-            self.price_observations.insert_observation(
-                provider="gmgn_payload",
-                pricefeed_id=str(pricefeed["pricefeed_id"]),
-                observed_at_ms=event.received_at_ms,
-                subject_type="Asset",
-                subject_id=str(asset["asset_id"]),
-                price_usd=snapshot.price,
-                price_basis="usd" if snapshot.price is not None else "unavailable",
-                market_cap_usd=snapshot.market_cap,
-                liquidity_usd=_raw_number(snapshot.raw, "liquidity", "liq", "pool_liquidity"),
-                volume_24h_usd=_raw_number(snapshot.raw, "volume_24h", "v24h", ("stat", "volume_24h")),
-                holders=_raw_int(snapshot.raw, "holder_count", "holders"),
-                source_event_id=event.event_id,
-                source_intent_id=str(resolution["intent_id"]),
-                source_resolution_id=str(resolution["resolution_id"]),
-                observation_kind="message_payload",
-                event_received_at_ms=event.received_at_ms,
-                raw_payload={**snapshot.raw, "payload_hash": _payload_hash(snapshot.raw)},
-                commit=False,
-            )
-            return
 
     def _insert_token_alerts(
         self,
@@ -371,31 +317,3 @@ def _alert_value(intent: Any, decision: TokenIntentResolutionDecision) -> str:
 def _payload_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
-
-
-def _raw_number(payload: dict[str, Any], *keys: str | tuple[str, str]) -> float | None:
-    for key in keys:
-        value = _raw_value(payload, key)
-        if value is None:
-            continue
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            continue
-    return None
-
-
-def _raw_int(payload: dict[str, Any], *keys: str | tuple[str, str]) -> int | None:
-    value = _raw_number(payload, *keys)
-    return int(value) if value is not None else None
-
-
-def _raw_value(payload: dict[str, Any], key: str | tuple[str, str]) -> Any:
-    if isinstance(key, tuple):
-        node: Any = payload
-        for part in key:
-            if not isinstance(node, dict):
-                return None
-            node = node.get(part)
-        return node
-    return payload.get(key)

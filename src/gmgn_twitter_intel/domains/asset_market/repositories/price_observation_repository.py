@@ -43,6 +43,8 @@ class PriceObservationRepository:
         raw_payload: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> dict[str, Any]:
+        if provider == "gmgn_payload":
+            raise ValueError("GMGN payload token snapshots are identity evidence only, not market observations")
         observation_lag_ms = (
             max(0, int(observed_at_ms) - int(event_received_at_ms)) if event_received_at_ms is not None else None
         )
@@ -275,9 +277,8 @@ class PriceObservationRepository:
             WHERE source_event_id = %s
               AND subject_type = %s
               AND subject_id = %s
-              AND observation_kind IN ('message_payload', 'message_quote')
+              AND observation_kind = 'message_quote'
             ORDER BY
-              CASE WHEN observation_kind = 'message_payload' THEN 0 ELSE 1 END,
               observed_at_ms DESC,
               observation_id DESC
             LIMIT 1
@@ -294,7 +295,7 @@ class PriceObservationRepository:
             WHERE source_resolution_id IS NOT NULL
               AND source_event_id IS NOT NULL
               AND event_received_at_ms IS NOT NULL
-              AND observation_kind IN ('message_payload', 'message_quote')
+              AND observation_kind = 'message_quote'
             ORDER BY event_received_at_ms DESC, observation_id DESC
             LIMIT %s
             """,

@@ -81,7 +81,7 @@ DEX search 是异步 discovery/reprocess 链路。`DiscoveryRepository.due_looku
 - 不把 Token Radar projection 改成 provider caller。projection purity 保留。
 - 不承诺所有长尾 DEX token 都能 exchange-grade realtime。目标是 active/hot Radar targets 的 provider-budget-bound near-realtime，以及不把 stale 字段伪装成 fresh。
 - 不让前端直接调用 OKX、GMGN 或任意外部 provider。provider secrets、quota、identity mapping 和 freshness semantics 必须留在后端。
-- 不把 GMGN public WebSocket 当作连续价格 feed。GMGN payload 只能作为 event/message price evidence。
+- 不把 GMGN public WebSocket 当作价格 feed。GMGN payload 只能作为 identity evidence；payload 自带 price / market cap 不写入市场观测。
 - 不重做 token identity hard cut；本 spec 依赖 `asset_identity_evidence/current` 和 resolver 输出。
 - 不在 factor snapshot 中塞入所有 market current 字段来“临时满足 UI”。这会继续耦合 Radar scoring 和 price product。
 - 不把 OKX search 或 CEX universe sync 加进 synchronous tweet ingest hot path。
@@ -92,7 +92,7 @@ DEX search 是异步 discovery/reprocess 链路。`DiscoveryRepository.due_looku
 
 ```mermaid
 flowchart TD
-  A["Provider adapters (OKX CEX, OKX DEX, GMGN payload)"] --> B["asset_market observation services"]
+  A["Provider adapters (OKX CEX, OKX DEX)"] --> B["asset_market observation services"]
   B --> C["price_observations / field observations"]
   C --> D["asset_market current market projector"]
   D --> E["current market read model"]
@@ -141,7 +141,9 @@ The current market snapshot MAY also expose aggregate status such as `tradabilit
 ## Conceptual data flow
 
 ```text
-GMGN payload / OKX search / OKX ticker / OKX price
+GMGN payload -> asset_identity_evidence/current only
+
+OKX search / OKX ticker / OKX price
   -> asset_market observation writer
   -> field-aware observation ledger
   -> current market snapshot projector

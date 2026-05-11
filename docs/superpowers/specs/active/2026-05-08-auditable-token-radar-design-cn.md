@@ -109,7 +109,7 @@ timing = 50 if resolved else 35
 - timeline bucket 的 `price` 仍为 `None`。
 - radar market 里的 `price_at_social_start` 和 `price_change_since_social_pct` 仍为 `None`。
 
-GMGN payload 事件可以在 ingest 时写价格，但一般解析后的 CEX/DEX token 还没有“这条消息对应价格”的生产级记录。
+GMGN payload 事件只作为 identity evidence；payload 自带 price / market cap 不写入 `price_observations`。解析后的 CEX/DEX token 的“这条消息对应价格”只由 message quote worker 产生。
 
 ## 目标 Contract
 
@@ -195,7 +195,7 @@ GMGN payload 事件可以在 ingest 时写价格，但一般解析后的 CEX/DEX
   "received_at_ms": 1777800000000,
   "price": {
     "status": "ready | stale | pending_observation | missing_observation",
-    "provider": "gmgn_payload | okx_cex | okx_dex_price",
+    "provider": "okx_cex | okx_dex_price",
     "pricefeed_id": "feed-id",
     "price_usd": 1.11,
     "price_quote": null,
@@ -209,8 +209,8 @@ GMGN payload 事件可以在 ingest 时写价格，但一般解析后的 CEX/DEX
 
 价格不能伪造：
 
-- GMGN payload 自带价格：`observed_at_ms = event.received_at_ms`。
 - CEX/DEX 当前报价：`observed_at_ms = provider quote time or fetch time`，并记录 `observation_lag_ms`。
+- GMGN payload 自带价格不写入；没有主动报价前，post price 必须是 `pending_observation` 或 `missing_observation`。
 - 如果 provider 返回太晚，post price 是 `stale`，不能显示为 ready。
 - 如果没有观测，post price 是 `pending_observation` 或 `missing_observation`。
 
@@ -235,7 +235,6 @@ GMGN payload 事件可以在 ingest 时写价格，但一般解析后的 CEX/DEX
 
 `observation_kind` 取值：
 
-- `message_payload`：消息 payload 自带价格。
 - `message_quote`：消息解析后主动拉取的价格。
 - `refresh`：周期刷新价格。
 - `discovery`：token discovery/search 带回价格。
@@ -404,7 +403,7 @@ market/radar row 必须展示：
 ## 落地顺序
 
 1. 硬切 scoring contract：生产投影接入成熟 scoring 函数，输出 `token-radar-v5-auditable`，删除旧 `_score()` 公式。
-2. 扩展 `price_observations` 事件归因字段，GMGN payload 价格写成 `message_payload`。
+2. 扩展 `price_observations` 事件归因字段，并删除 GMGN payload 价格写入路径。
 3. 增加 message quote worker：对已解析 CEX/DEX 目标补齐消息价格，并记录观测延迟。
 4. 投影计算 market baselines：social start、first snapshot、latest reference。
 5. timeline API 输出 post price 和 bucket price overlay。
@@ -420,7 +419,7 @@ market/radar row 必须展示：
 - sparse public-only row 不能拿到 100 heat。
 - stale/missing market row 不能成为 driver。
 - unresolved target 只能进入 attention/investigate，不进入 driver/watch 的 resolved lane。
-- GMGN payload event 写入的 price observation 包含 `source_event_id` 和 `observation_kind = "message_payload"`。
+- GMGN payload event 不产生 price observation；只保留 identity evidence / deterministic resolution。
 - 解析后的 CEX/DEX message 若 provider 可用，会产生 `message_quote` observation；否则 timeline 显示显式 pending/missing。
 - `/api/target-social-timeline` 的 posts 每条都有 `price.status`。
 - market/radar row 有 `price_change_since_first_snapshot_pct`，有观察时不为 null。

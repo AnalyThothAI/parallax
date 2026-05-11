@@ -550,7 +550,7 @@ def test_projection_market_uses_latest_market_snapshot_fields():
                 "target_type": "Asset",
                 "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
                 "received_at_ms": 1_777_800_000_000,
-                "market_provider": "gmgn_payload",
+                "market_provider": "okx_dex_search",
                 "market_observed_at_ms": 1_777_800_000_000,
                 "market_price_usd": 0.01,
                 "market_price_quote": None,
@@ -574,7 +574,7 @@ def test_projection_market_uses_latest_market_snapshot_fields():
 
     assert market["market_status"] == "fresh"
     assert market["market_observation_status"] == "ready"
-    assert market["provider"] == "gmgn_payload"
+    assert market["provider"] == "okx_dex_search"
     assert market["price_usd"] == 0.01
     assert market["market_cap_usd"] == 1_000_000
     assert market["liquidity_usd"] == 250_000
@@ -584,7 +584,7 @@ def test_projection_market_uses_latest_market_snapshot_fields():
     assert market["market_readiness"] == {
         "status": "fresh",
         "observation_status": "ready",
-        "provider": "gmgn_payload",
+        "provider": "okx_dex_search",
         "snapshot_age_ms": 60_000,
         "snapshot_observed_at_ms": 1_777_800_000_000,
     }
@@ -602,7 +602,7 @@ def test_projection_market_uses_social_start_row_not_latest_row():
         [
             {
                 "received_at_ms": 1_777_800_000_000,
-                "market_provider": "gmgn_payload",
+                "market_provider": "okx_dex_search",
                 "market_observed_at_ms": 1_777_800_120_000,
                 "market_price_usd": 1.5,
                 "market_price_basis": "usd",
@@ -615,7 +615,7 @@ def test_projection_market_uses_social_start_row_not_latest_row():
             },
             {
                 "received_at_ms": 1_777_800_120_000,
-                "market_provider": "gmgn_payload",
+                "market_provider": "okx_dex_search",
                 "market_observed_at_ms": 1_777_800_120_000,
                 "market_price_usd": 1.5,
                 "market_price_basis": "usd",
@@ -706,7 +706,7 @@ def test_resolved_pending_market_never_projects_as_high_alert():
             "resolution_status": "EXACT",
             "target_type": "Asset",
             "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-            "pricefeed_id": "pricefeed:dex-token:gmgn:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+            "pricefeed_id": "pricefeed:dex-token:okx_dex_search:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
             "display_symbol": "PEPE",
             "asset_symbol": "PEPE",
             "asset_registry_status": "candidate",
@@ -765,7 +765,7 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "resolution_status": "EXACT",
         "target_type": "Asset",
         "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-        "pricefeed_id": "pricefeed:dex-token:gmgn:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "pricefeed_id": "pricefeed:dex-token:okx_dex_search:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933",
         "display_symbol": "PEPE",
         "asset_symbol": "PEPE",
         "asset_chain_id": "eip155:1",
@@ -774,7 +774,7 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "reason_codes_json": [],
         "candidate_ids_json": [],
         "lookup_keys_json": [],
-        "market_provider": "gmgn_payload",
+        "market_provider": "okx_dex_search",
         "market_observed_at_ms": received_at_ms,
         "market_price_usd": 0.01,
         "market_price_basis": "usd",

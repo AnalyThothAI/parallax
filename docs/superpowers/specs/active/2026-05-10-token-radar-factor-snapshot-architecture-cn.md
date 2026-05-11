@@ -97,7 +97,7 @@ DEX target 需要 holders、liquidity、market cap、pool/feed readiness、fresh
 - 不建设完整 quant research platform，不引入 IC/ICIR、在线学习、回测优化、PCA/GBDT。
 - 不实现完整 holder distribution、top holder concentration、tax/honeypot、LP lock、transfer flow、smart-money labels。
 - 不把 OKX CEX WebSocket 当成 DEX CA 价格解决方案。CEX WS 只适合已上市 CEX instruments；长尾 DEX CA 仍走 DEX quote provider 或其他明确 DEX provider。
-- 不把 GMGN public WebSocket 当连续价格 feed。GMGN payload 中的价格是 message/payload evidence，不是所有 target 的 realtime quote bus。
+- 不把 GMGN public WebSocket 当价格 feed。GMGN payload 中的 chain/address 可以作为 identity evidence；payload 中的 price / market cap 不写入 `price_observations`，也不作为 current-market 或 timing baseline 来源。
 - 不为旧 `score_json` / `radar_score_json` / `market_context_json` / thesis-first notification 保留运行时兼容。
 
 ## Target Architecture
@@ -171,7 +171,7 @@ The SLO is not a guarantee that every long-tail DEX token is realtime. It is a d
 
 - CEX listed instruments may use REST polling or WebSocket-backed ticker cache behind the same market observation interface.
 - DEX CA prices use DEX quote providers capable of chain+address requests. REST batch polling is acceptable for v1 if it meets hot-target SLO.
-- GMGN message payload prices remain event evidence. They can seed message/event prices, but they do not replace active quote refresh for current hot targets.
+- GMGN message payload prices are ignored as market data. GMGN payloads may seed exact identity evidence only; active quote refresh owns current market and timing baselines.
 - Provider health is part of snapshot data health. A provider outage downgrades eligibility instead of creating stale high alerts.
 
 ### Refresh priority

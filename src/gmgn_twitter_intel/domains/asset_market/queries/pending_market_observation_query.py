@@ -98,7 +98,7 @@ class PendingMarketObservationQuery:
                     COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
                     OR po.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
                   )
-                  AND po.observation_kind IN ('message_payload', 'message_quote')
+                  AND po.observation_kind = 'message_quote'
               )
             ORDER BY
               CASE WHEN events.received_at_ms >= %s THEN 0 ELSE 1 END,

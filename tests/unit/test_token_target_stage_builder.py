@@ -48,7 +48,7 @@ def row(event_id: str, handle: str, received_at_ms: int, *, watched: bool = Fals
         "is_watched": watched,
         "received_at_ms": received_at_ms,
         "price_observation_id": f"price:{event_id}",
-        "price_provider": "gmgn_payload",
+        "price_provider": "okx_dex_price",
         "pricefeed_id": "pricefeed:test",
         "price_usd": Decimal(price),
         "price_quote": None,
@@ -56,5 +56,5 @@ def row(event_id: str, handle: str, received_at_ms: int, *, watched: bool = Fals
         "quote_symbol": "USDT",
         "price_observed_at_ms": received_at_ms,
         "price_observation_lag_ms": 0,
-        "price_observation_kind": "message_payload",
+        "price_observation_kind": "message_quote",
     }
