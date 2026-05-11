@@ -857,10 +857,10 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         return (3, 0.0, 0, 0, 0)
     composite = _dict(snapshot.get("composite"))
     families = _dict(snapshot.get("families"))
-    attention_heat = _dict(families.get("social_heat"))
-    diffusion_quality = _dict(families.get("social_propagation"))
-    attention = _dict(attention_heat.get("facts"))
-    diffusion = _dict(diffusion_quality.get("facts"))
+    social_heat = _dict(families.get("social_heat"))
+    social_propagation = _dict(families.get("social_propagation"))
+    attention = _dict(social_heat.get("facts"))
+    diffusion = _dict(social_propagation.get("facts"))
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
     decision = composite.get("recommended_decision") or "discard"
     rank_score = _float_or_none(composite.get("rank_score")) or 0.0

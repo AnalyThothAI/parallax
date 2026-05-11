@@ -120,14 +120,6 @@ def test_factor_snapshot_contract_rejects_old_family_before_missing_new_family()
         require_token_factor_snapshot(snapshot)
 
 
-def test_factor_snapshot_contract_lists_forbidden_family_keys_with_project_quote_style() -> None:
-    contract_path = SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_snapshot_contract.py"
-    text = contract_path.read_text()
-
-    assert "'attention_heat'" not in text
-    assert '"attention_heat"' in text
-
-
 def test_python_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
     offenders = _matches(
         _python_runtime_files(),

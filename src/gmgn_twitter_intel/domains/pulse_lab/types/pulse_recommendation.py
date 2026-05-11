@@ -149,7 +149,7 @@ def pulse_recommendation_agent_instructions() -> str:
 
 
 def pulse_recommendation_agent_input(context: dict[str, Any]) -> str:
-    factor_snapshot = _required_v2_factor_snapshot(context.get("factor_snapshot"))
+    factor_snapshot = _required_factor_snapshot(context.get("factor_snapshot"))
     payload = {
         "task": "write_pulse_recommendation_v1",
         "factor_snapshot": factor_snapshot,
@@ -165,9 +165,9 @@ def contains_trading_execution_instruction(text: str) -> bool:
 
 
 def collect_factor_keys(factor_snapshot: Any) -> set[str]:
-    snapshot = _required_v2_factor_snapshot(factor_snapshot)
+    snapshot = _required_factor_snapshot(factor_snapshot)
     families = snapshot.get("families")
-    if not isinstance(families, dict):  # pragma: no cover - guarded by _required_v2_factor_snapshot
+    if not isinstance(families, dict):  # pragma: no cover - guarded by _required_factor_snapshot
         return set()
     keys: set[str] = set()
     keys.update({"gates", "data_health", "normalization", "composite"})
@@ -217,7 +217,7 @@ def _section_keys(snapshot: dict[str, Any], section_name: str, field_names: tupl
     return {f"{section_name}.{field_name}" for field_name in field_names if field_name in section}
 
 
-def _required_v2_factor_snapshot(value: Any) -> dict[str, Any]:
+def _required_factor_snapshot(value: Any) -> dict[str, Any]:
     return require_token_factor_snapshot(value)
 
 
