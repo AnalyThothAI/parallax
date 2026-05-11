@@ -38,9 +38,7 @@ class TokenRadarRepository:
             (projection_version, window, scope),
         ).fetchone()
         latest_computed_at_ms = (
-            int(latest["computed_at_ms"])
-            if latest and latest["computed_at_ms"] is not None
-            else None
+            int(latest["computed_at_ms"]) if latest and latest["computed_at_ms"] is not None else None
         )
         if latest_computed_at_ms is not None and latest_computed_at_ms > int(computed_at_ms):
             if commit:
@@ -264,9 +262,7 @@ def _validate_factor_contract(row: dict[str, Any]) -> None:
     if schema_version != factor_version:
         raise ValueError("factor_snapshot_json.schema_version must match factor_version")
     if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
-        raise ValueError(
-            f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}"
-        )
+        raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
     for key in ("families", "hard_gates", "composite"):
         payload = factor_snapshot.get(key)
         if not isinstance(payload, dict) or not payload:

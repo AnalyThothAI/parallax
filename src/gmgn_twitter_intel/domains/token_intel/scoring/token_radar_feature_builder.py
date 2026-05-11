@@ -192,18 +192,10 @@ def _quality_features(window: list[dict[str, Any]]) -> dict[str, Any]:
     market_context_count = sum(1 for item in text_features if item.get("has_market_context"))
     llm_utility_values = [v for row in window if (v := _llm_utility(row)) is not None]
     llm_confidence_values = [
-        float(row["llm_label_confidence"])
-        for row in window
-        if row.get("llm_label_confidence") is not None
+        float(row["llm_label_confidence"]) for row in window if row.get("llm_label_confidence") is not None
     ]
-    llm_semantic_utility = (
-        sum(llm_utility_values) / len(llm_utility_values)
-        if llm_utility_values else None
-    )
-    llm_label_confidence = (
-        sum(llm_confidence_values) / len(llm_confidence_values)
-        if llm_confidence_values else None
-    )
+    llm_semantic_utility = sum(llm_utility_values) / len(llm_utility_values) if llm_utility_values else None
+    llm_label_confidence = sum(llm_confidence_values) / len(llm_confidence_values) if llm_confidence_values else None
     return {
         "mentions": mentions,
         "direct_mentions": mentions,
@@ -233,11 +225,7 @@ def _propagation_features(
     duplicate_share = _duplicate_share([str(row.get("text_clean") or row.get("text") or "") for row in window])
     bucket_count = max(1, math.ceil(window_ms / (5 * 60_000)))
     active_buckets = len(
-        {
-            int(row.get("received_at_ms") or 0) // (5 * 60_000)
-            for row in window
-            if row.get("received_at_ms") is not None
-        }
+        {int(row.get("received_at_ms") or 0) // (5 * 60_000) for row in window if row.get("received_at_ms") is not None}
     )
     return {
         "mentions": mentions,
@@ -315,8 +303,7 @@ def _confidence(row: dict[str, Any]) -> float:
 def _atomic_quality(row: dict[str, Any]) -> float:
     return tweet_quality(
         gmgn_platform_followers=_int_or_none(row.get("gmgn_platform_followers")),
-        ws_author_followers=_int_or_none(row.get("ws_author_followers"))
-        or _int_or_none(row.get("author_followers")),
+        ws_author_followers=_int_or_none(row.get("ws_author_followers")) or _int_or_none(row.get("author_followers")),
         user_tags=row.get("gmgn_user_tags") or (),
         first_seen_age_ms=_age_ms(
             row.get("account_profile_first_seen_ms"),

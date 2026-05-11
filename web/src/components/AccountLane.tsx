@@ -14,7 +14,7 @@ export function AccountLane({ timeline, accountQuality, isLoading }: AccountLane
   const qualityByHandle = new Map(
     (accountQuality?.accounts ?? [])
       .filter((item) => item.profile?.handle)
-      .map((item) => [String(item.profile?.handle), item])
+      .map((item) => [String(item.profile?.handle), item]),
   );
   const authors = timeline?.authors ?? [];
   if (!authors.length) {
@@ -39,11 +39,21 @@ export function AccountLane({ timeline, accountQuality, isLoading }: AccountLane
               <span>followers</span>
               <b>{compactNumber(author.followers)}</b>
               <span>quality</span>
-              <b>{summary?.status === "ready" ? formatScore(summary.precision_score) : "样本不足"}</b>
+              <b>
+                {summary?.status === "ready" ? formatScore(summary.precision_score) : "样本不足"}
+              </b>
               <span>early</span>
-              <b>{summary?.early_call_score !== null && summary?.early_call_score !== undefined ? formatScore(summary.early_call_score) : "-"}</b>
+              <b>
+                {summary?.early_call_score !== null && summary?.early_call_score !== undefined
+                  ? formatScore(summary.early_call_score)
+                  : "-"}
+              </b>
               <span>spam risk</span>
-              <b>{summary?.spam_risk_score !== null && summary?.spam_risk_score !== undefined ? formatScore(summary.spam_risk_score) : "-"}</b>
+              <b>
+                {summary?.spam_risk_score !== null && summary?.spam_risk_score !== undefined
+                  ? formatScore(summary.spam_risk_score)
+                  : "-"}
+              </b>
             </div>
           </article>
         );

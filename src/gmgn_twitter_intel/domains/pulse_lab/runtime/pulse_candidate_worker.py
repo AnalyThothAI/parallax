@@ -512,11 +512,7 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
     watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_attention", "facts", "watched_mentions"))
-    return (
-        decision in {"high_alert", "watch"}
-        or score >= resolved_thresholds.min_rank_score
-        or watched_mentions > 0
-    )
+    return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score or watched_mentions > 0
 
 
 def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
@@ -977,9 +973,7 @@ def _snapshot_trigger_metrics(snapshot: dict[str, Any]) -> dict[str, Any]:
     return {
         "rank_score": rank_score,
         "recommended_decision": _clean(_nested(snapshot, "composite", "recommended_decision")),
-        "watched_confirmation": safe_int(
-            _nested(snapshot, "families", "social_attention", "facts", "watched_mentions")
-        )
+        "watched_confirmation": safe_int(_nested(snapshot, "families", "social_attention", "facts", "watched_mentions"))
         > 0,
         "independent_author_count": safe_int(
             _nested(snapshot, "families", "social_attention", "facts", "unique_authors")

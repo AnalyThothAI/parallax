@@ -1,4 +1,5 @@
 import { UserRound } from "lucide-react";
+
 import type { ScopeKey, WindowKey } from "../api/types";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 
@@ -19,29 +20,46 @@ export function RadarControls({
   handlePlaceholder = "handles",
   onWindowChange,
   onScopeChange,
-  onHandlesChange
+  onHandlesChange,
 }: RadarControlsProps) {
   return (
     <>
       <div className="segmented" aria-label="radar window">
         {OBSERVATION_WINDOWS.map((item) => (
-          <button key={item} className={item === windowKey ? "active" : ""} onClick={() => onWindowChange(item)} type="button">
+          <button
+            key={item}
+            className={item === windowKey ? "active" : ""}
+            onClick={() => onWindowChange(item)}
+            type="button"
+          >
             {item}
           </button>
         ))}
       </div>
       <div className="segmented scope-toggle" aria-label="token flow scope">
-        <button className={scope === "matched" ? "active" : ""} onClick={() => onScopeChange("matched")} type="button">
+        <button
+          className={scope === "matched" ? "active" : ""}
+          onClick={() => onScopeChange("matched")}
+          type="button"
+        >
           watched
         </button>
-        <button className={scope === "all" ? "active" : ""} onClick={() => onScopeChange("all")} type="button">
+        <button
+          className={scope === "all" ? "active" : ""}
+          onClick={() => onScopeChange("all")}
+          type="button"
+        >
           all
         </button>
       </div>
       {onHandlesChange ? (
         <label className="handle-filter compact">
           <UserRound aria-hidden />
-          <input value={handles ?? ""} onChange={(event) => onHandlesChange(event.target.value)} placeholder={handlePlaceholder} />
+          <input
+            value={handles ?? ""}
+            onChange={(event) => onHandlesChange(event.target.value)}
+            placeholder={handlePlaceholder}
+          />
         </label>
       ) : null}
     </>

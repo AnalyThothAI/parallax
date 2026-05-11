@@ -11,9 +11,17 @@ from curl_cffi import requests as curl_requests
 DEFAULT_BASE_URL = "https://gmgn.ai"
 DEFAULT_PATH = "/vas/api/v1/twitter/user/search"
 DEFAULT_USER_TAGS: tuple[str, ...] = (
-    "kol", "trader", "master", "politics", "media",
-    "companies", "founder", "exchange", "celebrity",
-    "binance_square", "other",
+    "kol",
+    "trader",
+    "master",
+    "politics",
+    "media",
+    "companies",
+    "founder",
+    "exchange",
+    "celebrity",
+    "binance_square",
+    "other",
 )
 DEFAULT_LIMIT = 50
 DEFAULT_FINGERPRINT: dict[str, str] = {
@@ -121,9 +129,7 @@ class GmgnDirectoryClient:
             try:
                 payload = response.json()
             except ValueError as exc:
-                raise GmgnDirectoryError(
-                    f"GET {self._path} returned non-JSON HTTP {status_code}"
-                ) from exc
+                raise GmgnDirectoryError(f"GET {self._path} returned non-JSON HTTP {status_code}") from exc
         elif self._curl_session is not None:
             response = self._curl_session.get(
                 f"{self._base_url}{self._path}",
@@ -134,9 +140,7 @@ class GmgnDirectoryClient:
             try:
                 payload = response.json()
             except ValueError as exc:
-                raise GmgnDirectoryError(
-                    f"GET {self._path} returned non-JSON HTTP {status_code}"
-                ) from exc
+                raise GmgnDirectoryError(f"GET {self._path} returned non-JSON HTTP {status_code}") from exc
         else:
             raise GmgnDirectoryError("client not initialized")
         if not isinstance(payload, dict):
@@ -154,7 +158,7 @@ def _entry_from_dict(item: dict[str, Any]) -> GmgnDirectoryEntry:
     tags_raw = item.get("user_tags") or []
     user_tags = tuple(str(tag) for tag in tags_raw if tag)
     followers_raw = item.get("followers")
-    followers = int(followers_raw) if isinstance(followers_raw, (int, float)) else None
+    followers = int(followers_raw) if isinstance(followers_raw, int | float) else None
     return GmgnDirectoryEntry(
         handle=handle,
         gmgn_user_id=user_id,

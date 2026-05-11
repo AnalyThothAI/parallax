@@ -193,7 +193,9 @@ def _is_single_preceding_alias_candidate(
     return len(preceding) == 1 and preceding[0].evidence_id == cashtag.evidence_id
 
 
-def _alias_sort_key(item) -> tuple[int, str, str]:
+def _alias_sort_key(
+    item: tuple[int, str, str, TokenEvidenceInput, TokenEvidenceInput],
+) -> tuple[int, str, str]:
     distance, identity_id, cashtag_id, _identity, _cashtag = item
     return int(distance), str(identity_id), str(cashtag_id)
 

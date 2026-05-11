@@ -25,14 +25,16 @@ def parse_query(text: str) -> ParsedQuery:
         return ParsedQuery(kind="symbol", text=query, symbol=query.lstrip("$").upper())
     chain_prefixed_ca = _parse_chain_prefixed_ca(query)
     if chain_prefixed_ca is not None:
-        chain, ca = chain_prefixed_ca
-        return ParsedQuery(kind="ca", text=query, ca=ca, chain=chain)
+        prefixed_chain, prefixed_ca = chain_prefixed_ca
+        return ParsedQuery(kind="ca", text=query, ca=prefixed_ca, chain=prefixed_chain)
+    fallback_chain: str | None
+    fallback_ca: str | None
     try:
-        chain, ca = normalize_ca(query)
+        fallback_chain, fallback_ca = normalize_ca(query)
     except ValueError:
-        chain = ca = None
-    if ca:
-        return ParsedQuery(kind="ca", text=query, ca=ca, chain=chain)
+        fallback_chain = fallback_ca = None
+    if fallback_ca:
+        return ParsedQuery(kind="ca", text=query, ca=fallback_ca, chain=fallback_chain)
     return ParsedQuery(kind="text", text=query)
 
 

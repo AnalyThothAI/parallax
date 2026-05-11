@@ -44,12 +44,12 @@ class IngestService:
         evidence: EvidenceRepository,
         entities: EntityRepository,
         signals: SignalRepository,
-        enrichment,
+        enrichment: Any,
         registry: RegistryRepository | None = None,
         identity_evidence: IdentityEvidenceRepository | None = None,
         price_observations: PriceObservationRepository | None = None,
         token_intent_lookup: TokenIntentLookupRepository | None = None,
-    ):
+    ) -> None:
         self.evidence = evidence
         self.entities = entities
         self.signals = signals
@@ -59,8 +59,9 @@ class IngestService:
         self.price_observations = price_observations or PriceObservationRepository(evidence.conn)
         self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
 
-    def insert_raw_frame(self, **kwargs) -> bool:
-        return self.evidence.insert_raw_frame(**kwargs)
+    def insert_raw_frame(self, **kwargs: Any) -> bool:
+        result: bool = self.evidence.insert_raw_frame(**kwargs)
+        return result
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
         extracted = extract_entities_from_surfaces(_event_surfaces(event))
@@ -275,7 +276,7 @@ class IngestService:
         event: TwitterEvent,
         decisions: list[TokenIntentResolutionDecision],
         *,
-        resolutions,
+        resolutions: Any,
         intents_by_id: dict[str, Any],
         is_watched: bool,
     ) -> list[dict[str, Any]]:
@@ -341,7 +342,7 @@ def _event_surfaces(event: TwitterEvent) -> list[TextSurface]:
     return surfaces
 
 
-def _entity_payload(entity) -> dict[str, Any]:
+def _entity_payload(entity: Any) -> dict[str, Any]:
     return {
         "entity_type": entity.entity_type,
         "raw_value": entity.raw_value,

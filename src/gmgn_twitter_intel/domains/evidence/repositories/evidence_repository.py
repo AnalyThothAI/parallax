@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import time
+from contextlib import AbstractContextManager
 from dataclasses import asdict
 from typing import Any
 
@@ -17,10 +18,10 @@ from gmgn_twitter_intel.platform.db.postgres_client import transaction
 
 
 class EvidenceRepository:
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def unit_of_work(self):
+    def unit_of_work(self) -> AbstractContextManager[None]:
         return transaction(self.conn)
 
     def insert_raw_frame(
@@ -45,7 +46,7 @@ class EvidenceRepository:
             (frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, _now_ms()),
         )
         self.conn.commit()
-        return cursor.rowcount == 1
+        return bool(cursor.rowcount == 1)
 
     def insert_event(self, event: TwitterEvent, *, is_watched: bool) -> bool:
         now_ms = _now_ms()
@@ -78,7 +79,7 @@ class EvidenceRepository:
             """,
             row,
         )
-        return cursor.rowcount != 0
+        return bool(cursor.rowcount != 0)
 
     def recent_events(
         self,
@@ -195,43 +196,46 @@ def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[
     reference_text = event.reference.text if event.reference else None
     projection = build_text_projection(event.content.text, reference_text=reference_text)
     matched_handles = [handle.lower() for handle in event.matched_handles]
-    return _sanitize_postgres_value({
-        "event_id": event.event_id,
-        "logical_dedup_key": logical_dedup_key(event),
-        "canonical_url": canonical_tweet_url(event),
-        "source_provider": event.source.provider,
-        "source_transport": event.source.transport,
-        "coverage": event.source.coverage,
-        "channel": event.source.channel,
-        "action": event.action,
-        "original_action": event.original_action,
-        "tweet_id": event.tweet_id,
-        "internal_id": event.internal_id,
-        "timestamp_ms": event.timestamp * 1000 if event.timestamp < 10_000_000_000 else event.timestamp,
-        "received_at_ms": event.received_at_ms,
-        "author_handle": event.author.handle.lower() if event.author.handle else None,
-        "author_name": event.author.name,
-        "author_avatar": event.author.avatar,
-        "author_followers": event.author.followers,
-        "author_tags_json": _json(event.author.tags),
-        "text": event.content.text,
-        "text_raw": projection.text_raw,
-        "text_clean": projection.text_clean,
-        "search_text": projection.search_text,
-        "urls_json": _json(projection.urls),
-        "cashtags_json": _json(projection.cashtags),
-        "hashtags_json": _json(projection.hashtags),
-        "mentions_json": _json(projection.mentions),
-        "media_json": _json([asdict(item) for item in event.content.media]),
-        "reference_json": _json(event_dict["reference"]),
-        "matched_handles_json": _json(matched_handles),
-        "is_watched": is_watched,
-        "matched_at_ms": now_ms if is_watched else 0,
-        "raw_json": _json(event.raw),
-        "event_json": _json(event_dict),
-        "created_at_ms": now_ms,
-        "updated_at_ms": now_ms,
-    })
+    sanitized: dict[str, Any] = _sanitize_postgres_value(
+        {
+            "event_id": event.event_id,
+            "logical_dedup_key": logical_dedup_key(event),
+            "canonical_url": canonical_tweet_url(event),
+            "source_provider": event.source.provider,
+            "source_transport": event.source.transport,
+            "coverage": event.source.coverage,
+            "channel": event.source.channel,
+            "action": event.action,
+            "original_action": event.original_action,
+            "tweet_id": event.tweet_id,
+            "internal_id": event.internal_id,
+            "timestamp_ms": event.timestamp * 1000 if event.timestamp < 10_000_000_000 else event.timestamp,
+            "received_at_ms": event.received_at_ms,
+            "author_handle": event.author.handle.lower() if event.author.handle else None,
+            "author_name": event.author.name,
+            "author_avatar": event.author.avatar,
+            "author_followers": event.author.followers,
+            "author_tags_json": _json(event.author.tags),
+            "text": event.content.text,
+            "text_raw": projection.text_raw,
+            "text_clean": projection.text_clean,
+            "search_text": projection.search_text,
+            "urls_json": _json(projection.urls),
+            "cashtags_json": _json(projection.cashtags),
+            "hashtags_json": _json(projection.hashtags),
+            "mentions_json": _json(projection.mentions),
+            "media_json": _json([asdict(item) for item in event.content.media]),
+            "reference_json": _json(event_dict["reference"]),
+            "matched_handles_json": _json(matched_handles),
+            "is_watched": is_watched,
+            "matched_at_ms": now_ms if is_watched else 0,
+            "raw_json": _json(event.raw),
+            "event_json": _json(event_dict),
+            "created_at_ms": now_ms,
+            "updated_at_ms": now_ms,
+        }
+    )
+    return sanitized
 
 
 def decode_event_row(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
@@ -276,10 +280,7 @@ def _sanitize_postgres_value(value: Any) -> Any:
     if isinstance(value, str):
         return value.replace("\x00", "")
     if isinstance(value, dict):
-        return {
-            _sanitize_postgres_value(key): _sanitize_postgres_value(item)
-            for key, item in value.items()
-        }
+        return {_sanitize_postgres_value(key): _sanitize_postgres_value(item) for key, item in value.items()}
     if isinstance(value, list):
         return [_sanitize_postgres_value(item) for item in value]
     if isinstance(value, tuple):

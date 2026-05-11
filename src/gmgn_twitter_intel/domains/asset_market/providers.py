@@ -86,8 +86,8 @@ class DexMarketStreamProvider(Protocol):
 __all__ = [
     "CexMarketProvider",
     "CexTicker",
-    "DexMarketProvider",
     "DexMarketFactUpdate",
+    "DexMarketProvider",
     "DexMarketStreamProvider",
     "DexMarketStreamTarget",
     "DexTokenCandidate",

@@ -26,18 +26,53 @@ Deviations from plan (with reason):
 
 ## Verification commands
 
+The only command whose output may be pasted as evidence is `make check-all`.
+Paste the FULL output below, including the exit code line.
+
 ```text
-$ uv run ruff check .
-<paste tail of output>
-
-$ uv run pytest
-<paste summary line: N passed, M failed, ... in <duration>>
-
-$ uv run python -m compileall src tests
-<paste tail of output>
+$ make check-all
+<paste full stdout/stderr here>
+exit code: 0
 ```
 
-Other commands run (manual UI / live-WebSocket / docker compose smoke):
+If `make check-all` exit code is non-zero, the work is not complete — do not
+file this artefact until it is.
+
+## Coverage
+
+| metric | value | threshold | status |
+|--------|-------|-----------|--------|
+| line   | X.X%  | ≥ 80%     | ✅/❌  |
+| branch | X.X%  | ≥ 70%     | ✅/❌  |
+
+If thresholds were temporarily relaxed in `pyproject.toml [tool.coverage.report]`,
+state the relaxed value and the follow-up entry in `docs/TECH_DEBT.md`.
+
+## Skipped tests
+
+Number of skipped tests in the run above: <N>
+
+If N > 0, list categories and explain why each is acceptable:
+
+| count | reason | acceptable? |
+|-------|--------|-------------|
+|       |        |             |
+
+A run with unexplained skips cannot serve as completion evidence.
+
+## E2E golden path
+
+Confirm each runtime signal from the spec §6.4 was asserted:
+
+- [ ] /readyz returned 200
+- [ ] writer wrote a row visible to a separate process
+- [ ] /api/recent returned the injected event
+- [ ] WS /ws/live pushed within 5s
+- [ ] testcontainers PG and uvicorn subprocess cleaned up
+
+If `SKIP_E2E=1` was set, this run cannot serve as completion evidence.
+
+## Other commands run (manual UI smoke; only for areas not coverable by tests)
 
 ```text
 $ <command>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import type { TokenFlowItem } from "../api/types";
+
 import {
   compactNumber,
   eventHandle,
@@ -12,7 +14,7 @@ import {
   formatTokenPriceUsd,
   formatTimingStatus,
   formatUsdCompact,
-  tokenLabel
+  tokenLabel,
 } from "./format";
 
 describe("format helpers", () => {
@@ -70,7 +72,7 @@ function sampleToken(): TokenFlowItem {
       asset_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       chain: "eip155:1",
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
-      symbol: "PEPE"
+      symbol: "PEPE",
     },
     market: { market_status: "fresh", price_change_status: "insufficient_history" },
     flow: {
@@ -81,7 +83,7 @@ function sampleToken(): TokenFlowItem {
       mention_delta: 1,
       stream_dominance: 1,
       baseline_status: "insufficient_history",
-      baseline_sample_count: 0
+      baseline_sample_count: 0,
     },
     social_heat: {
       score_version: "social_heat_v1",
@@ -101,7 +103,7 @@ function sampleToken(): TokenFlowItem {
       mention_delta: 1,
       stream_share: 1,
       watched_share: 1,
-      status: "new_burst"
+      status: "new_burst",
     },
     discussion_quality: {
       score_version: "discussion_quality_v1",
@@ -115,7 +117,7 @@ function sampleToken(): TokenFlowItem {
       avg_attribution_confidence: 1,
       duplicate_text_share: 0,
       informative_post_count: 1,
-      watched_source_count: 1
+      watched_source_count: 1,
     },
     propagation: {
       score_version: "propagation_v1",
@@ -131,7 +133,7 @@ function sampleToken(): TokenFlowItem {
       duplicate_text_share: 0,
       author_entropy: 0,
       phase: "seed",
-      top_authors: []
+      top_authors: [],
     },
     tradeability: {
       score_version: "tradeability_v1",
@@ -144,7 +146,7 @@ function sampleToken(): TokenFlowItem {
       market_fresh: true,
       market_cap_present: false,
       liquidity_present: false,
-      pool_present: false
+      pool_present: false,
     },
     timing: {
       score_version: "timing_v4",
@@ -152,7 +154,7 @@ function sampleToken(): TokenFlowItem {
       status: "neutral",
       chase_risk: false,
       reasons: [],
-      risks: []
+      risks: [],
     },
     opportunity: {
       score_version: "social_opportunity_v3",
@@ -167,8 +169,8 @@ function sampleToken(): TokenFlowItem {
         quality: 50,
         propagation: 50,
         tradeability: 50,
-        timing: 50
-      }
+        timing: 50,
+      },
     },
     watch: {
       status: "direct_watch",
@@ -177,7 +179,7 @@ function sampleToken(): TokenFlowItem {
       seed_link_count: 0,
       top_seed: null,
       reasons: [],
-      risks: []
+      risks: [],
     },
     evidence_total_count: 0,
     posts_query: {
@@ -185,13 +187,13 @@ function sampleToken(): TokenFlowItem {
       target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       window: "5m",
       scope: "all",
-      range: "current_window"
+      range: "current_window",
     },
     timeline_query: {
       target_type: "Asset",
       target_id: "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       window: "5m",
-      scope: "all"
-    }
+      scope: "all",
+    },
   };
 }

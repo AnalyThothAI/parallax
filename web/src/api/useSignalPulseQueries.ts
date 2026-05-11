@@ -1,11 +1,12 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+
 import { getApi } from "./client";
 import type {
   ScopeKey,
   SignalPulseData,
   SignalPulseItem,
   SignalPulseStatusFilter,
-  WindowKey
+  WindowKey,
 } from "./types";
 
 type ListArgs = {
@@ -18,7 +19,15 @@ type ListArgs = {
   limit?: number;
 };
 
-export function useSignalPulseList({ token, window, scope, status, handle, q, limit = 80 }: ListArgs) {
+export function useSignalPulseList({
+  token,
+  window,
+  scope,
+  status,
+  handle,
+  q,
+  limit = 80,
+}: ListArgs) {
   return useInfiniteQuery({
     queryKey: ["signal-lab-pulse", window, scope, status, handle, q, limit],
     queryFn: async ({ pageParam }) => {
@@ -31,15 +40,15 @@ export function useSignalPulseList({ token, window, scope, status, handle, q, li
           handle: handle || undefined,
           q: q || undefined,
           limit,
-          cursor: pageParam || undefined
-        }
+          cursor: pageParam || undefined,
+        },
       });
       return response.data;
     },
     initialPageParam: "",
     getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 }
 
@@ -52,10 +61,12 @@ export function useSignalPulseCandidate({ token, candidateId }: CandidateArgs) {
   return useQuery({
     queryKey: ["signal-lab-pulse-candidate", candidateId],
     queryFn: () =>
-      getApi<SignalPulseItem>("/api/signal-lab/pulse/" + encodeURIComponent(candidateId!), { token }),
+      getApi<SignalPulseItem>("/api/signal-lab/pulse/" + encodeURIComponent(candidateId!), {
+        token,
+      }),
     enabled: Boolean(token && candidateId),
     staleTime: 8_000,
-    retry: false
+    retry: false,
   });
 }
 
@@ -79,6 +90,6 @@ export function mergeSignalPulsePages(pages?: SignalPulseData[]): SignalPulseDat
     returned_count: items.length,
     has_more: last.has_more,
     next_cursor: last.next_cursor,
-    items
+    items,
   };
 }

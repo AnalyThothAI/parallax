@@ -318,11 +318,7 @@ def _market_dominant_asset(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _candidate_ids(rows: list[dict[str, Any]]) -> list[str]:
-    return [
-        str(row["asset_id"])
-        for row in rows[:MAX_AUDIT_CANDIDATE_IDS]
-        if str(row.get("asset_id") or "")
-    ]
+    return [str(row["asset_id"]) for row in rows[:MAX_AUDIT_CANDIDATE_IDS] if str(row.get("asset_id") or "")]
 
 
 def _dominance_eligible(row: dict[str, Any]) -> bool:

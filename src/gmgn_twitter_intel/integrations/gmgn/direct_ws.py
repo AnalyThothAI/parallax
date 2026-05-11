@@ -139,9 +139,7 @@ class DirectGmgnWebSocketClient:
         }
 
         async with websockets.connect(ws_url, **connect_kwargs) as websocket:
-            logger.success(
-                f"GMGN 直连 WS 已连接，匿名订阅频道: {', '.join(self.channels)}"
-            )
+            logger.success(f"GMGN 直连 WS 已连接，匿名订阅频道: {', '.join(self.channels)}")
             await self._subscribe_all(websocket)
             heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
             try:
@@ -155,9 +153,7 @@ class DirectGmgnWebSocketClient:
             try:
                 frame = await asyncio.wait_for(websocket.recv(), timeout=self.idle_timeout)
             except TimeoutError as exc:
-                raise UpstreamIdleTimeoutError(
-                    f"no upstream frame received for {self.idle_timeout:g}s"
-                ) from exc
+                raise UpstreamIdleTimeoutError(f"no upstream frame received for {self.idle_timeout:g}s") from exc
             result = self.on_frame(frame)
             if inspect.isawaitable(result):
                 await result
@@ -166,9 +162,7 @@ class DirectGmgnWebSocketClient:
         data = [{"chain": chain} for chain in self.chains]
         for channel in self.channels:
             message = build_subscribe_message(channel, data)
-            await websocket.send(
-                json.dumps(message, ensure_ascii=False, separators=(",", ":"))
-            )
+            await websocket.send(json.dumps(message, ensure_ascii=False, separators=(",", ":")))
             logger.info(f"📡 已订阅 GMGN 匿名频道: {channel} chains={','.join(self.chains)}")
 
     async def _heartbeat_loop(self, websocket) -> None:

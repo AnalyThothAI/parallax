@@ -1,6 +1,6 @@
+import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 
 import type {
   Decision,
@@ -9,10 +9,11 @@ import type {
   NotificationSummary,
   ScopeKey,
   StatusData,
-  WindowKey
+  WindowKey,
 } from "../api/types";
 import { compactNumber, formatRelativeTime } from "../lib/format";
 import type { WatchlistRow } from "../lib/watchlist";
+
 import { MobileTaskNav, type MobileTask } from "./MobileTaskNav";
 import { NotificationBell } from "./NotificationBell";
 import { NotificationDrawer } from "./NotificationDrawer";
@@ -117,7 +118,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
     detailAvailable,
     onMobileTaskChange,
     detailPanel,
-    onHotkey
+    onHotkey,
   } = props;
 
   const navigate = useNavigate();
@@ -125,7 +126,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
   const [searchParams] = useSearchParams();
   const isSignalLab = location.pathname.startsWith(SIGNAL_LAB_PATH);
   const isLive = location.pathname === "/";
-  const activeWatchHandle = isSignalLab ? searchParams.get("handle") ?? "" : "";
+  const activeWatchHandle = isSignalLab ? (searchParams.get("handle") ?? "") : "";
 
   return (
     <main className="cockpit-shell" onKeyDown={onHotkey} tabIndex={-1}>
@@ -188,12 +189,20 @@ export function CockpitLayout(props: CockpitLayoutProps) {
           onClick={onToggleNotificationDrawer}
         />
 
-        <button className="icon-button" type="button" onClick={onRefresh} title="刷新" aria-label="刷新">
+        <button
+          className="icon-button"
+          type="button"
+          onClick={onRefresh}
+          title="刷新"
+          aria-label="刷新"
+        >
           <RefreshCw aria-hidden />
         </button>
       </header>
 
-      <div className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""}`}>
+      <div
+        className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""}`}
+      >
         <aside className="side-rail desktop-side-rail">
           <RailSection label="views">
             <RailButton
@@ -217,16 +226,28 @@ export function CockpitLayout(props: CockpitLayoutProps) {
 
           <RailSection label="scope">
             <div className="scope-stack">
-              <button className={scope === "matched" ? "active" : ""} onClick={() => onScopeChange("matched")} type="button">
+              <button
+                className={scope === "matched" ? "active" : ""}
+                onClick={() => onScopeChange("matched")}
+                type="button"
+              >
                 watched
               </button>
-              <button className={scope === "all" ? "active" : ""} onClick={() => onScopeChange("all")} type="button">
+              <button
+                className={scope === "all" ? "active" : ""}
+                onClick={() => onScopeChange("all")}
+                type="button"
+              >
                 all stream
               </button>
             </div>
             <label className="handle-filter">
               <UserRound aria-hidden />
-              <input value={handles} onChange={(event) => onHandlesChange(event.target.value)} placeholder="toly, ansem" />
+              <input
+                value={handles}
+                onChange={(event) => onHandlesChange(event.target.value)}
+                placeholder="toly, ansem"
+              />
             </label>
           </RailSection>
 
@@ -248,7 +269,11 @@ export function CockpitLayout(props: CockpitLayoutProps) {
                   <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
                   <span className="watchlist-copy">
                     <b>@{row.handle}</b>
-                    <small>{row.lastSeenAtMs ? `${formatRelativeTime(row.lastSeenAtMs)} ago` : "no recent"}</small>
+                    <small>
+                      {row.lastSeenAtMs
+                        ? `${formatRelativeTime(row.lastSeenAtMs)} ago`
+                        : "no recent"}
+                    </small>
                   </span>
                   <WatchlistNotificationDot count={row.unreadCount} />
                 </Link>
@@ -305,7 +330,15 @@ export function CockpitLayout(props: CockpitLayoutProps) {
   );
 }
 
-function RailSection({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
+function RailSection({
+  label,
+  children,
+  className = "",
+}: {
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <section className={`rail-section ${className}`.trim()}>
       <h2>{label}</h2>
@@ -314,7 +347,19 @@ function RailSection({ label, children, className = "" }: { label: string; child
   );
 }
 
-function RailButton({ active, label, value, index, onClick }: { active?: boolean; label: string; value: number; index: string; onClick: () => void }) {
+function RailButton({
+  active,
+  label,
+  value,
+  index,
+  onClick,
+}: {
+  active?: boolean;
+  label: string;
+  value: number;
+  index: string;
+  onClick: () => void;
+}) {
   return (
     <button className={`rail-button ${active ? "active" : ""}`} type="button" onClick={onClick}>
       <span>{index}</span>
@@ -339,7 +384,7 @@ function StatusPills({
   status,
   statusLoading,
   statusError,
-  lastMessageAt
+  lastMessageAt,
 }: {
   socketStatus: string;
   configReady: boolean;
@@ -375,7 +420,7 @@ function readinessLabel({
   configReady,
   status,
   statusLoading,
-  statusError
+  statusError,
 }: {
   configReady: boolean;
   status?: StatusData;
@@ -397,6 +442,6 @@ function readinessLabel({
   return {
     label: "not ready",
     ok: false,
-    title: status?.reasons?.join(", ") || undefined
+    title: status?.reasons?.join(", ") || undefined,
   };
 }

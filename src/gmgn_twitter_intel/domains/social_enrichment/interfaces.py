@@ -11,10 +11,10 @@ from .types.social_event_extraction import (
 )
 
 __all__ = [
-    "AnchorTerm",
-    "EnrichmentRepository",
     "PROMPT_VERSION",
     "SCHEMA_VERSION",
+    "AnchorTerm",
+    "EnrichmentRepository",
     "SocialEventExtraction",
     "SocialTokenCandidate",
     "watched_social_event_priority",

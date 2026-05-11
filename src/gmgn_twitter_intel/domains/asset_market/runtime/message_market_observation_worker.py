@@ -16,8 +16,8 @@ class MessageMarketObservationWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        cex_market=None,
-        dex_market=None,
+        cex_market: Any = None,
+        dex_market: Any = None,
         interval_seconds: float = 5.0,
         limit: int = 100,
     ) -> None:

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Toaster, toast } from "sonner";
+
 import type { NotificationItem } from "../api/types";
 
 type Props = {
@@ -23,8 +24,8 @@ export function NotificationToastBridge({ notifications, onOpenNotification }: P
         description: notification.body,
         action: {
           label: "Open",
-          onClick: () => onOpenNotification(notification)
-        }
+          onClick: () => onOpenNotification(notification),
+        },
       });
     }
   }, [notifications, onOpenNotification]);

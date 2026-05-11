@@ -1,4 +1,5 @@
 import type { RadarSortMode, ScopeKey, TokenFlowItem, WindowKey } from "../api/types";
+
 import { RadarControls } from "./RadarControls";
 import { TokenRadarTable } from "./TokenRadarTable";
 
@@ -29,12 +30,17 @@ export function LiveRadar({
   scope,
   windowKey,
   onScopeChange,
-  onWindowChange
+  onWindowChange,
 }: LiveRadarProps) {
   return (
     <section className="mobile-task-surface" data-mobile-task-panel="radar">
       <div className="radar-control-row">
-        <RadarControls scope={scope} windowKey={windowKey} onScopeChange={onScopeChange} onWindowChange={onWindowChange} />
+        <RadarControls
+          scope={scope}
+          windowKey={windowKey}
+          onScopeChange={onScopeChange}
+          onWindowChange={onWindowChange}
+        />
       </div>
 
       <TokenRadarTable

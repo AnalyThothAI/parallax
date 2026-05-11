@@ -36,12 +36,12 @@ class NotificationRuleEngine:
         self,
         *,
         settings: Settings,
-        evidence,
-        account_alerts,
-        asset_flow,
-        harness,
-        pulse=None,
-    ):
+        evidence: Any,
+        account_alerts: Any,
+        asset_flow: Any,
+        harness: Any,
+        pulse: Any = None,
+    ) -> None:
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
@@ -56,9 +56,9 @@ class NotificationRuleEngine:
         candidates: list[NotificationCandidate] = []
         candidates.extend(self._watched_account_activity(now_ms=now))
         candidates.extend(self._watched_account_token_alerts(now_ms=now))
-        hot_entity_keys = set()
+        hot_entity_keys: set[str] = set()
         hot_candidates = self._hot_quality_tokens(now_ms=now)
-        hot_entity_keys.update(item.entity_key for item in hot_candidates if item.entity_key)
+        hot_entity_keys.update(key for item in hot_candidates if (key := item.entity_key))
         candidates.extend(hot_candidates)
         candidates.extend(self._quality_tokens(now_ms=now, skip_entity_keys=hot_entity_keys))
         candidates.extend(self._harness_snapshots(now_ms=now))
@@ -224,7 +224,7 @@ class NotificationRuleEngine:
             scope="all",
             now_ms=now_ms,
         )
-        items = []
+        items: list[dict[str, Any]] = []
         if isinstance(data, dict):
             items.extend(data.get("targets") or [])
             items.extend(data.get("attention") or [])
@@ -242,10 +242,10 @@ class NotificationRuleEngine:
                 continue
             if rule.opportunity_min is not None and opportunity_score < rule.opportunity_min:
                 continue
-            target = item.get("target") if isinstance(item.get("target"), dict) else {}
-            attention = item.get("attention") if isinstance(item.get("attention"), dict) else {}
-            data_health = item.get("data_health") if isinstance(item.get("data_health"), dict) else {}
-            score = item.get("score") if isinstance(item.get("score"), dict) else {}
+            target = _dict(item.get("target"))
+            attention = _dict(item.get("attention"))
+            data_health = _dict(item.get("data_health"))
+            score = _dict(item.get("score"))
             identity_key = str(target.get("target_id") or "").strip()
             if not identity_key:
                 continue
@@ -440,8 +440,10 @@ class NotificationRuleEngine:
 
 
 def _score_value(item: dict[str, Any], key: str) -> int:
-    score = item.get("score") if isinstance(item.get("score"), dict) else {}
-    block = score.get(key) if isinstance(score.get(key), dict) else {}
+    raw_score = item.get("score")
+    score: dict[str, Any] = raw_score if isinstance(raw_score, dict) else {}
+    raw_block = score.get(key)
+    block: dict[str, Any] = raw_block if isinstance(raw_block, dict) else {}
     return _int(block.get("score"))
 
 
@@ -456,7 +458,7 @@ def _cooldown_bucket(occurrence_at_ms: int, cooldown_seconds: int) -> int:
 def _activity_dedup_key(
     rule_id: str,
     *,
-    author_handle: str,
+    author_handle: str | None,
     action: str,
     occurrence_at_ms: int,
     cooldown_seconds: int,
@@ -470,7 +472,7 @@ def _alert_dedup_key(
     rule_id: str,
     *,
     entity_key: str,
-    author_handle: str,
+    author_handle: str | None,
     occurrence_at_ms: int,
     cooldown_seconds: int,
 ) -> str:
@@ -560,12 +562,17 @@ def _signal_pulse_severity(
         _nested(factor_snapshot, "hard_gates", "blocked_reasons")
     )
     max_recommendation = str(gate.get("max_recommendation") or "").strip()
-    gate_allows_high = eligible_for_high_alert and not blocked_reasons and max_recommendation in {
-        "watch",
-        "trade_candidate",
-        "alert",
-        "high_alert",
-    }
+    gate_allows_high = (
+        eligible_for_high_alert
+        and not blocked_reasons
+        and max_recommendation
+        in {
+            "watch",
+            "trade_candidate",
+            "alert",
+            "high_alert",
+        }
+    )
     if status == "token_watch":
         return "high" if gate_allows_high else None
     if status == "trade_candidate":

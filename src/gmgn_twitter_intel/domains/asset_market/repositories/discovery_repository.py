@@ -146,8 +146,10 @@ class DiscoveryRepository:
     ) -> bool:
         current = self.result(provider=provider, lookup_key=lookup_key)
         current_status = str((current or {}).get("status") or "")
-        changed = current is None or str(current.get("result_hash") or "") != result_hash or (
-            current_status != "running" and current_status != status
+        changed = (
+            current is None
+            or str(current.get("result_hash") or "") != result_hash
+            or (current_status not in {"running", status})
         )
         self.conn.execute(
             """

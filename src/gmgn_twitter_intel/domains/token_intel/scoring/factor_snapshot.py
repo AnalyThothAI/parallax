@@ -110,9 +110,7 @@ def _social_attention_family(*, attention: dict[str, Any]) -> dict[str, Any]:
 def _social_quality_family(*, social_quality: dict[str, Any]) -> dict[str, Any]:
     duplicate_text_share = _optional_float(social_quality.get("duplicate_text_share"))
     duplicate_risk = (
-        ["duplicate_text_share_high"]
-        if _is_at_or_above(duplicate_text_share, "duplicate_text_share")
-        else []
+        ["duplicate_text_share_high"] if _is_at_or_above(duplicate_text_share, "duplicate_text_share") else []
     )
     facts = {
         "duplicate_text_share": duplicate_text_share,
@@ -251,10 +249,7 @@ def _hard_gates(*, families: dict[str, dict[str, Any]]) -> dict[str, Any]:
     return {
         "eligible_for_high_alert": not blocked_reasons,
         "blocked_reasons": blocked_reasons,
-        "gates": [
-            {"reason": reason, "action": "block_high_alert"}
-            for reason in blocked_reasons
-        ],
+        "gates": [{"reason": reason, "action": "block_high_alert"} for reason in blocked_reasons],
     }
 
 

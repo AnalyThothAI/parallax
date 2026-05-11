@@ -347,7 +347,9 @@ class ProjectionRepository:
             known.append(
                 {
                     **item,
-                    "status": offset["status"] if version_ready else "wrong_version" if offset else "missing",
+                    "status": (offset["status"] if (offset and version_ready) else "wrong_version")
+                    if offset
+                    else "missing",
                     "offset_projection_version": offset_version,
                     "lag_ms": offset["lag_ms"] if offset else None,
                     "source_max_received_at_ms": offset["source_max_received_at_ms"] if offset else None,

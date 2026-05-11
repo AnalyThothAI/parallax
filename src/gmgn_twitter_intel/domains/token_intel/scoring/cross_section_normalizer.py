@@ -10,11 +10,7 @@ def rank_within_cohort(
     scores: dict[str, float | None],
     cohort: set[str],
 ) -> dict[str, float | None]:
-    rankable = [
-        (token_id, score)
-        for token_id, score in scores.items()
-        if token_id in cohort and score is not None
-    ]
+    rankable = [(token_id, score) for token_id, score in scores.items() if token_id in cohort and score is not None]
     out: dict[str, float | None] = {token_id: None for token_id in scores}
     if not rankable:
         return out

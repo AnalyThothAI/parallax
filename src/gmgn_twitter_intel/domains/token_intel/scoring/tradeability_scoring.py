@@ -30,9 +30,7 @@ def tradeability_score(features: dict[str, Any]) -> dict[str, Any]:
     volume_present = features.get("volume_24h") is not None
     open_interest_present = features.get("open_interest") is not None
     pool_present = (
-        features.get("pool_status") == "ready"
-        if target_type != "CexToken"
-        else bool(features.get("native_market_id"))
+        features.get("pool_status") == "ready" if target_type != "CexToken" else bool(features.get("native_market_id"))
     )
     lookahead_risk = bool(features.get("lookahead_risk"))
 

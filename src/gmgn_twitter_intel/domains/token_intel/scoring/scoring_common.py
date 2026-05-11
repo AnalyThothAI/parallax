@@ -47,7 +47,7 @@ def cap(risk: str, value: int) -> dict[str, Any]:
 
 
 def clamp_score(value: float) -> int:
-    return max(0, min(100, int(round(value))))
+    return max(0, min(100, round(value)))
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:

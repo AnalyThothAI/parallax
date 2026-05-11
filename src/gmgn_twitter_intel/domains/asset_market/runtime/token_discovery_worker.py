@@ -42,7 +42,7 @@ class TokenDiscoveryWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        dex_market=None,
+        dex_market: Any = None,
         chain_ids: tuple[str, ...] | list[str] = ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton"),
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
@@ -101,8 +101,8 @@ class TokenDiscoveryWorker:
 
 def run_token_discovery_once(
     *,
-    repos,
-    dex_market,
+    repos: Any,
+    dex_market: Any,
     chain_ids: tuple[str, ...] | list[str],
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
@@ -182,10 +182,10 @@ def run_token_discovery_once(
 
 def _process_lookup(
     *,
-    repos,
+    repos: Any,
     lookup_key: str,
     lookup_type: str,
-    dex_market,
+    dex_market: Any,
     chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
@@ -210,9 +210,9 @@ def _process_lookup(
 
 def _process_dex_symbol_lookup(
     *,
-    repos,
+    repos: Any,
     lookup_key: str,
-    dex_market,
+    dex_market: Any,
     chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
@@ -257,9 +257,9 @@ def _process_dex_symbol_lookup(
 
 def _process_address_lookup(
     *,
-    repos,
+    repos: Any,
     lookup_key: str,
-    dex_market,
+    dex_market: Any,
     chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
@@ -307,8 +307,8 @@ def _process_address_lookup(
 
 def _write_dex_candidate(
     *,
-    repos,
-    candidate,
+    repos: Any,
+    candidate: Any,
     now_ms: int,
     evidence_kind: str,
     confidence: str,

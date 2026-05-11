@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
-from eth_utils import is_address, to_checksum_address
+from eth_utils.address import is_address, to_checksum_address
 from solders.pubkey import Pubkey
 
 from gmgn_twitter_intel.domains.evidence.types.tweet_text import CASHTAG_RE, HASHTAG_RE, MENTION_RE, URL_RE

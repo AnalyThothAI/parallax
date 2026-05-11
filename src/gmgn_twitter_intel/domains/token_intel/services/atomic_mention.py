@@ -6,9 +6,7 @@ import math
 from collections.abc import Iterable
 
 KOL_TIER_TAGS: frozenset[str] = frozenset({"kol", "founder", "master"})
-MID_TIER_TAGS: frozenset[str] = frozenset({
-    "exchange", "binance_square", "celebrity", "politics", "media", "companies"
-})
+MID_TIER_TAGS: frozenset[str] = frozenset({"exchange", "binance_square", "celebrity", "politics", "media", "companies"})
 LOW_TIER_TAGS: frozenset[str] = frozenset({"trader", "other"})
 
 _KOL_WEIGHT = 1.0

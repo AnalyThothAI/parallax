@@ -291,7 +291,7 @@ class AssetRepository:
               asset_venues.is_active
             FROM asset_venues
             JOIN assets ON assets.asset_id = asset_venues.asset_id
-            WHERE {' AND '.join(clauses)}
+            WHERE {" AND ".join(clauses)}
               AND asset_venues.is_active = true
             ORDER BY asset_venues.confidence DESC, assets.confidence DESC
             """,

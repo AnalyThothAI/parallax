@@ -4,11 +4,17 @@ import asyncio
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
 from ..types import NotificationCandidate
+
+if TYPE_CHECKING:
+    from gmgn_twitter_intel.domains.notifications.repositories.notification_repository import (
+        NotificationRepository,
+    )
+    from gmgn_twitter_intel.platform.config.settings import NotificationChannelConfig
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
 
@@ -17,13 +23,13 @@ class NotificationWorker:
     def __init__(
         self,
         *,
-        rule_engine=None,
-        publisher=None,
-        delivery_channels: dict | None = None,
+        rule_engine: Any = None,
+        publisher: Any = None,
+        delivery_channels: dict[str, NotificationChannelConfig] | None = None,
         repository_session: Callable[[], AbstractContextManager[Any]],
         rule_engine_factory: Callable[[Any], Any] | None = None,
         poll_interval: float = 5.0,
-    ):
+    ) -> None:
         self.repository_session = repository_session
         self.rule_engine_factory = rule_engine_factory
         self.rule_engine = rule_engine
@@ -45,12 +51,12 @@ class NotificationWorker:
     def stop(self) -> None:
         self._stopped.set()
 
-    async def process_once(self, *, now_ms: int | None = None) -> list[dict]:
+    async def process_once(self, *, now_ms: int | None = None) -> list[dict[str, Any]]:
         now = int(now_ms if now_ms is not None else _now_ms())
         with self.repository_session() as repos:
             rule_engine = self.rule_engine_factory(repos) if self.rule_engine_factory is not None else self.rule_engine
             candidates = rule_engine.evaluate(now_ms=now)
-            created: list[dict] = []
+            created: list[dict[str, Any]] = []
             for candidate in candidates:
                 row = self._insert_candidate_with_repository(repos.notifications, candidate)
                 if row is None:
@@ -64,8 +70,10 @@ class NotificationWorker:
         return created
 
     @staticmethod
-    def _insert_candidate_with_repository(repository, candidate: NotificationCandidate) -> dict | None:
-        return repository.insert_notification(
+    def _insert_candidate_with_repository(
+        repository: NotificationRepository, candidate: NotificationCandidate
+    ) -> dict[str, Any] | None:
+        result: dict[str, Any] | None = repository.insert_notification(
             dedup_key=candidate.dedup_key,
             rule_id=candidate.rule_id,
             severity=candidate.severity,
@@ -84,11 +92,12 @@ class NotificationWorker:
             payload=candidate.payload,
             channels=candidate.channels,
         )
+        return result
 
     def _enqueue_external_deliveries_with_repository(
         self,
-        repository,
-        row: dict,
+        repository: NotificationRepository,
+        row: dict[str, Any],
         candidate: NotificationCandidate,
     ) -> None:
         for channel_id in candidate.channels:

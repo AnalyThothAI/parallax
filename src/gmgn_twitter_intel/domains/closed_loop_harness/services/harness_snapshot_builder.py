@@ -30,7 +30,7 @@ HORIZONS = ("6h", "24h")
 
 
 class HarnessSnapshotBuilder:
-    def __init__(self, harness, *, assets=None):
+    def __init__(self, harness: Any, *, assets: Any = None) -> None:
         self.harness = harness
         self.assets = assets
 
@@ -49,7 +49,7 @@ class HarnessSnapshotBuilder:
         extraction_id = _id("social_event_extraction", event_id)
         anchor_terms = [asdict(anchor) for anchor in extraction.anchor_terms]
         token_candidates = [asdict(candidate) for candidate in extraction.token_candidates]
-        risks = list(dict.fromkeys(extraction.semantic_risks + ["public_stream_coverage"]))
+        risks = list(dict.fromkeys([*extraction.semantic_risks, "public_stream_coverage"]))
         social_event = self.harness.upsert_social_event_extraction(
             extraction_id=extraction_id,
             event_id=event_id,
@@ -187,7 +187,7 @@ class HarnessSnapshotBuilder:
             time_decay=1.0,
             price_penalty=1.0,
         )
-        return self.harness.upsert_event_cluster(
+        cluster: dict[str, Any] = self.harness.upsert_event_cluster(
             cluster_id=_id("event_cluster", str(event["event_id"]), asset, extraction.event_type),
             seed_id=seed_id,
             extraction_id=extraction_id,
@@ -210,6 +210,7 @@ class HarnessSnapshotBuilder:
             risks=risks,
             commit=commit,
         )
+        return cluster
 
     def _pricedness(self, *, asset: str, received_at_ms: int) -> float:
         if self.assets is None:
@@ -288,7 +289,7 @@ class HarnessSnapshotBuilder:
 
 def _resolved_candidate_assets(
     candidates: list[SocialTokenCandidate],
-    assets,
+    assets: Any,
     *,
     event_id: str,
     received_at_ms: int,
@@ -318,7 +319,7 @@ def _resolved_candidate_assets(
 
 
 def _asset_for_candidate(
-    assets,
+    assets: Any,
     candidate: SocialTokenCandidate,
     *,
     event_id: str,
@@ -335,7 +336,8 @@ def _asset_for_candidate(
             provider="social_event_extraction",
             commit=commit,
         )
-        return result.asset
+        asset_result: dict[str, Any] | None = result.asset
+        return asset_result
     if candidate.symbol:
         candidates = _real_candidates(assets.candidates_for_symbol(candidate.symbol))
         asset_ids = {str(row["asset_id"]): row for row in candidates if row.get("asset_id")}
@@ -363,7 +365,7 @@ def _real_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def _entry_market_ready(assets, *, asset_id: str, received_at_ms: int) -> bool:
+def _entry_market_ready(assets: Any, *, asset_id: str, received_at_ms: int) -> bool:
     if assets is None:
         return False
     snapshot = assets.market_snapshot_at_or_before(asset_id, received_at_ms)

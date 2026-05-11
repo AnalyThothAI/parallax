@@ -36,9 +36,7 @@ class PriceObservationRepository:
         commit: bool = True,
     ) -> dict[str, Any]:
         observation_lag_ms = (
-            max(0, int(observed_at_ms) - int(event_received_at_ms))
-            if event_received_at_ms is not None
-            else None
+            max(0, int(observed_at_ms) - int(event_received_at_ms)) if event_received_at_ms is not None else None
         )
         observation_id = _observation_id(
             provider=provider,

@@ -1,5 +1,6 @@
 # scripts/regen_cli_help.py
 """Regenerate docs/generated/cli-help.md from `gmgn-twitter-intel --help`."""
+
 from __future__ import annotations
 
 import subprocess

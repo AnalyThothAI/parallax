@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenPriceRequest
+from gmgn_twitter_intel.domains.asset_market.providers import (
+    CexTicker,
+    DexTokenPrice,
+    DexTokenPriceRequest,
+)
 from gmgn_twitter_intel.domains.asset_market.queries.pending_market_observation_query import (
     PendingMarketObservationQuery,
 )
@@ -16,9 +21,9 @@ MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
 
 def observe_message_market(
     *,
-    repos,
-    cex_market=None,
-    dex_market=None,
+    repos: Any,
+    cex_market: Any = None,
+    dex_market: Any = None,
     now_ms: int,
     limit: int = 100,
 ) -> dict[str, Any]:
@@ -61,12 +66,14 @@ def observe_message_market(
     return result
 
 
-def _select_pending_rows(conn, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
+def _select_pending_rows(conn: Any, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
     return PendingMarketObservationQuery(conn).pending_rows(now_ms=now_ms, limit=limit)
 
 
-def _fetch_cex_quotes(rows: list[dict[str, Any]], *, cex_market, result: dict[str, Any]) -> dict[str, Any]:
-    quotes: dict[str, Any] = {}
+def _fetch_cex_quotes(
+    rows: list[dict[str, Any]], *, cex_market: Any, result: dict[str, Any]
+) -> dict[str, CexTicker | None]:
+    quotes: dict[str, CexTicker | None] = {}
     if cex_market is None:
         if any(row.get("target_type") == "CexToken" for row in rows):
             result["skipped_missing_provider"] += 1
@@ -87,8 +94,10 @@ def _fetch_cex_quotes(rows: list[dict[str, Any]], *, cex_market, result: dict[st
     return quotes
 
 
-def _fetch_dex_quotes(rows: list[dict[str, Any]], *, dex_market, result: dict[str, Any]) -> dict[tuple[str, str], Any]:
-    quotes: dict[tuple[str, str], Any] = {}
+def _fetch_dex_quotes(
+    rows: list[dict[str, Any]], *, dex_market: Any, result: dict[str, Any]
+) -> dict[tuple[str, str], DexTokenPrice]:
+    quotes: dict[tuple[str, str], DexTokenPrice] = {}
     if dex_market is None:
         if any(row.get("target_type") == "Asset" for row in rows):
             result["skipped_missing_provider"] += 1
@@ -117,7 +126,9 @@ def _fetch_dex_quotes(rows: list[dict[str, Any]], *, dex_market, result: dict[st
     return quotes
 
 
-def _write_cex_observation(*, repos, row: dict[str, Any], ticker, now_ms: int, result: dict[str, Any]) -> bool:
+def _write_cex_observation(
+    *, repos: Any, row: dict[str, Any], ticker: CexTicker | None, now_ms: int, result: dict[str, Any]
+) -> bool:
     if ticker is None:
         result["skipped_missing_market"] += 1
         return False
@@ -150,7 +161,9 @@ def _write_cex_observation(*, repos, row: dict[str, Any], ticker, now_ms: int, r
     return True
 
 
-def _write_dex_observation(*, repos, row: dict[str, Any], price, now_ms: int, result: dict[str, Any]) -> bool:
+def _write_dex_observation(
+    *, repos: Any, row: dict[str, Any], price: DexTokenPrice | None, now_ms: int, result: dict[str, Any]
+) -> bool:
     if price is None:
         result["skipped_missing_market"] += 1
         return False
@@ -208,6 +221,6 @@ def _payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _chunks(items: list[DexTokenPriceRequest], size: int):
+def _chunks(items: list[DexTokenPriceRequest], size: int) -> Iterator[list[DexTokenPriceRequest]]:
     for index in range(0, len(items), max(1, int(size))):
         yield items[index : index + size]

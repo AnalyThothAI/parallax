@@ -17,17 +17,23 @@ export class ApiError extends Error {
   }
 }
 
-export async function getApi<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
+export async function getApi<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<ApiResponse<T>> {
   return requestApi<T>(path, { ...options, method: "GET" });
 }
 
-export async function postApi<T>(path: string, options: RequestOptions = {}): Promise<ApiResponse<T>> {
+export async function postApi<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<ApiResponse<T>> {
   return requestApi<T>(path, { ...options, method: "POST" });
 }
 
 async function requestApi<T>(
   path: string,
-  options: RequestOptions & { method: "GET" | "POST" } = { method: "GET" }
+  options: RequestOptions & { method: "GET" | "POST" } = { method: "GET" },
 ): Promise<ApiResponse<T>> {
   const url = new URL(path, window.location.origin);
   for (const [key, value] of Object.entries(options.params ?? {})) {

@@ -7,6 +7,7 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     EVIDENCE_TWEET_CONTRACT_MENTION,
 )
 from gmgn_twitter_intel.domains.evidence.interfaces import TextSurface, TokenSnapshot, extract_entities_from_surfaces
+from gmgn_twitter_intel.domains.token_intel._constants import WINDOW_MS
 from gmgn_twitter_intel.domains.token_intel.queries.event_rebuild_query import EventRebuildQuery
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
     DEFAULT_REPROCESS_WINDOW,
@@ -15,7 +16,6 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
 from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from gmgn_twitter_intel.domains.token_intel.services.token_intent_builder import build_token_intents
 from gmgn_twitter_intel.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
-from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS
 
 
 def rebuild_recent_token_intents(
@@ -133,7 +133,7 @@ def _token_snapshot(event_json: Any) -> TokenSnapshot | None:
         previous_price=_float_or_none(payload.get("previous_price")),
         icon_url=payload.get("icon_url"),
         trigger_type=payload.get("trigger_type"),
-        raw=payload.get("raw") if isinstance(payload.get("raw"), dict) else payload,
+        raw=payload["raw"] if isinstance(payload.get("raw"), dict) else payload,
     )
 
 

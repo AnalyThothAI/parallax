@@ -27,7 +27,7 @@ NOTIFICATION_RULE_IDS = (
 class ApiConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    host: str = "0.0.0.0"
+    host: str = "0.0.0.0"  # noqa: S104 -- configurable API bind address; defaults to all interfaces intentionally
     port: int = 8765
     heartbeat_interval: int = 30
     replay_limit: int = 100
@@ -259,14 +259,16 @@ class NotificationsConfig(BaseModel):
             return merged
         if not isinstance(value, Mapping):
             raise ValueError("notifications.rules must be a mapping")
-        for rule_id, payload in value.items():
+        for rule_id, raw_payload in value.items():
             key = str(rule_id).strip()
             if key not in NOTIFICATION_RULE_IDS:
                 raise ValueError(f"unknown notification rule: {key}")
-            if isinstance(payload, NotificationRuleConfig):
-                payload = payload.model_dump(exclude_unset=True)
-            if payload is None:
+            if isinstance(raw_payload, NotificationRuleConfig):
+                payload: Mapping[str, Any] = raw_payload.model_dump(exclude_unset=True)
+            elif raw_payload is None:
                 payload = {}
+            else:
+                payload = raw_payload
             if not isinstance(payload, Mapping):
                 raise ValueError(f"notifications.rules.{key} must be a mapping")
             if key == "signal_pulse_candidate":
@@ -851,7 +853,7 @@ def _split_values(value: Any) -> list[str]:
         return []
     if isinstance(value, str):
         return [item.strip() for item in value.split(",") if item.strip()]
-    if isinstance(value, (list, tuple, set)):
+    if isinstance(value, list | tuple | set):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
 

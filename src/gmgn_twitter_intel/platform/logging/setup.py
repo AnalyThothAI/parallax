@@ -1,15 +1,14 @@
 import sys
 from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
-LOG_FORMAT = (
-    "<level>{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}</level>"
-)
+LOG_FORMAT = "<level>{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}</level>"
 FILE_FORMAT = "{time:YYYY-MM-DD HH:mm:ss.SSS} | {level:<8} | {message}"
 
 
-def setup_logging(log_file: Path | str = "twitter_monitor.log"):
+def setup_logging(log_file: Path | str = "twitter_monitor.log") -> Any:
     logger.remove()
     log_path = Path(log_file)
     log_path.parent.mkdir(parents=True, exist_ok=True)

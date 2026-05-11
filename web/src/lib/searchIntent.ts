@@ -23,7 +23,9 @@ export function tokenForSearchQuery(query: string, items: TokenFlowItem[]): Toke
     const [chain, address] = chainAddress;
     return uniqueMatch(
       items,
-      (item) => item.identity.chain?.toLowerCase() === chain && item.identity.address?.toLowerCase() === address
+      (item) =>
+        item.identity.chain?.toLowerCase() === chain &&
+        item.identity.address?.toLowerCase() === address,
     );
   }
 
@@ -34,7 +36,10 @@ export function tokenForSearchQuery(query: string, items: TokenFlowItem[]): Toke
   return uniqueMatch(items, (item) => item.identity.symbol?.toUpperCase() === symbol);
 }
 
-function uniqueMatch(items: TokenFlowItem[], predicate: (item: TokenFlowItem) => boolean): TokenFlowItem | null {
+function uniqueMatch(
+  items: TokenFlowItem[],
+  predicate: (item: TokenFlowItem) => boolean,
+): TokenFlowItem | null {
   const matches = items.filter(predicate);
   return matches.length === 1 ? matches[0] : null;
 }
@@ -45,7 +50,10 @@ function chainAddressQuery(text: string): [string, string] | null {
     return null;
   }
   const chain = text.slice(0, separator).trim().toLowerCase();
-  const address = text.slice(separator + 1).trim().toLowerCase();
+  const address = text
+    .slice(separator + 1)
+    .trim()
+    .toLowerCase();
   return chain && address ? [chain, address] : null;
 }
 

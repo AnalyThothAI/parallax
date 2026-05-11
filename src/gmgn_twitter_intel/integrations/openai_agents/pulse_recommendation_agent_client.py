@@ -241,8 +241,7 @@ def _input_source_event_ids(context: dict[str, Any]) -> list[str]:
     values: list[Any] = []
     values.extend(_iter_list(context.get("source_event_ids")))
     values.extend(_iter_list(context.get("evidence_event_ids")))
-    for post in _iter_mapping_items(context.get("selected_posts")):
-        values.append(post.get("event_id"))
+    values.extend(post.get("event_id") for post in _iter_mapping_items(context.get("selected_posts")))
     for cluster in _iter_mapping_items(context.get("post_clusters")):
         values.extend(_iter_list(cluster.get("event_ids")))
     for segment in _iter_mapping_items(context.get("stage_segments")):

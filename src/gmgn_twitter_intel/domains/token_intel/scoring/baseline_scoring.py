@@ -79,7 +79,7 @@ def robust_z_score(*, current: float, counts: list[float]) -> float | None:
     if not counts:
         return None
     center = float(median(counts))
-    mad = _mad(counts, center)
+    mad = _mad(counts, center) or 0.0
     denom = max(1.4826 * mad, 1.0)
     return (float(current) - center) / denom
 

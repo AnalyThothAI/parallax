@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { TokenTargetPage } from "../TokenTargetPage";
 import * as client from "../../api/client";
 import { useTraderStore } from "../../store/useTraderStore";
+import { TokenTargetPage } from "../TokenTargetPage";
 
 beforeEach(() => {
   useTraderStore.setState({ token: "test-token", scope: "all" });
@@ -24,7 +24,7 @@ function renderAt(url: string) {
           <Route path="/token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Routes>
       </MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -34,10 +34,26 @@ describe("TokenTargetPage routing", () => {
       if (path === "/api/target-posts") {
         return {
           ok: true,
-          data: { items: [], returned_count: 0, total_count: 0, has_more: false, score_window: { window: "1h" }, query: { sort: "recent" } }
+          data: {
+            items: [],
+            returned_count: 0,
+            total_count: 0,
+            has_more: false,
+            score_window: { window: "1h" },
+            query: { sort: "recent" },
+          },
         } as any;
       }
-      return { ok: true, data: { stages: [], posts: [], summary: { posts: 0, authors: 0 }, targets: [], attention: [] } } as any;
+      return {
+        ok: true,
+        data: {
+          stages: [],
+          posts: [],
+          summary: { posts: 0, authors: 0 },
+          targets: [],
+          attention: [],
+        },
+      } as any;
     });
 
     renderAt("/token/Asset/asset%3Apepe");
@@ -48,9 +64,9 @@ describe("TokenTargetPage routing", () => {
         expect.objectContaining({
           params: expect.objectContaining({
             target_type: "Asset",
-            target_id: "asset:pepe"
-          })
-        })
+            target_id: "asset:pepe",
+          }),
+        }),
       );
     });
   });
@@ -60,7 +76,14 @@ describe("TokenTargetPage routing", () => {
       if (path === "/api/target-posts") {
         return {
           ok: true,
-          data: { items: [], returned_count: 0, total_count: 0, has_more: false, score_window: { window: "1h" }, query: { sort: "recent" } }
+          data: {
+            items: [],
+            returned_count: 0,
+            total_count: 0,
+            has_more: false,
+            score_window: { window: "1h" },
+            query: { sort: "recent" },
+          },
         } as any;
       }
       return { ok: true, data: { targets: [], attention: [] } } as any;
@@ -84,8 +107,14 @@ describe("TokenTargetPage routing", () => {
           data: {
             stages: [],
             posts: [],
-            summary: { posts: 0, authors: 0, effective_authors: 0, watched_posts: 0, phase: "seed" }
-          }
+            summary: {
+              posts: 0,
+              authors: 0,
+              effective_authors: 0,
+              watched_posts: 0,
+              phase: "seed",
+            },
+          },
         } as any;
       }
       if (path === "/api/target-posts") {
@@ -103,9 +132,9 @@ describe("TokenTargetPage routing", () => {
               window: "1h",
               scope: "all",
               range: "current_window",
-              sort: "recent"
-            }
-          }
+              sort: "recent",
+            },
+          },
         } as any;
       }
       return { ok: true, data: {} } as any;
@@ -121,9 +150,9 @@ describe("TokenTargetPage routing", () => {
       expect.objectContaining({
         params: expect.objectContaining({
           target_type: "CexToken",
-          target_id: "cex_token:ZEC"
-        })
-      })
+          target_id: "cex_token:ZEC",
+        }),
+      }),
     );
   });
 
@@ -132,11 +161,21 @@ describe("TokenTargetPage routing", () => {
       if (path === "/api/target-posts") {
         return {
           ok: true,
-          data: { items: [], returned_count: 0, total_count: 0, has_more: false, score_window: { window: "24h" }, query: { sort: "recent" } }
+          data: {
+            items: [],
+            returned_count: 0,
+            total_count: 0,
+            has_more: false,
+            score_window: { window: "24h" },
+            query: { sort: "recent" },
+          },
         } as any;
       }
       if (path === "/api/target-social-timeline") {
-        return { ok: true, data: { stages: [], posts: [], summary: { posts: 0, authors: 0 } } } as any;
+        return {
+          ok: true,
+          data: { stages: [], posts: [], summary: { posts: 0, authors: 0 } },
+        } as any;
       }
       return { ok: true, data: { targets: [], attention: [], projection: {} } } as any;
     });
@@ -148,9 +187,9 @@ describe("TokenTargetPage routing", () => {
         "/api/token-radar",
         expect.objectContaining({
           params: expect.objectContaining({
-            window: "24h"
-          })
-        })
+            window: "24h",
+          }),
+        }),
       );
     });
   });

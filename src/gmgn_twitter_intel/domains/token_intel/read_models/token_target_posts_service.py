@@ -22,7 +22,7 @@ class TokenTargetPostsSortError(Exception):
 
 
 class TokenTargetPostsService:
-    def __init__(self, *, targets):
+    def __init__(self, *, targets: Any) -> None:
         self.targets = targets
 
     def target_posts(

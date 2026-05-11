@@ -763,7 +763,7 @@ class HarnessRepository:
         return [dict(row) for row in rows]
 
     # ---------------------------------------------------------------------------
-    # Query methods – own all raw SQL that was previously in harness_ops / harness_service
+    # Query methods - own all raw SQL that was previously in harness_ops / harness_service
     # ---------------------------------------------------------------------------
 
     def pending_market_unavailable_social_events(self, *, limit: int) -> list[dict[str, Any]]:

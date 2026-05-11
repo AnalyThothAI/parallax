@@ -58,9 +58,7 @@ def diffusion_health(mentions: list[dict[str, Any]], watched_author_handles: set
     duplicate_text_share = (max_fingerprint_mentions / total_mentions) if total_mentions else 0.0
     repeated_cluster_count = sum(1 for count in fingerprint_counts.values() if count >= 2)
     shill_author_count = sum(
-        1
-        for handle, count in author_counts.items()
-        if count >= 3 and len(author_fingerprints.get(handle, set())) < 2
+        1 for handle, count in author_counts.items() if count >= 3 and len(author_fingerprints.get(handle, set())) < 2
     )
     effective_authors = min(independent_authors, len(fingerprint_counts)) if total_mentions else 0
 
@@ -112,7 +110,7 @@ def _top_authors(
     author_watched_counts: Counter[str],
     author_latest_seen: dict[str, int],
 ) -> list[dict[str, Any]]:
-    authors = [
+    authors: list[dict[str, Any]] = [
         {
             "handle": handle,
             "count": count,

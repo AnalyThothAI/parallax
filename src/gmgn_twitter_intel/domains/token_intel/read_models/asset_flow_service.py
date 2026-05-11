@@ -39,16 +39,8 @@ class AssetFlowService:
             limit=row_limit,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
-        targets = [
-            _public_row(row)
-            for row in rows
-            if row.get("lane") == "resolved"
-        ]
-        attention = [
-            _public_row(row)
-            for row in rows
-            if row.get("lane") == "attention"
-        ]
+        targets = [_public_row(row) for row in rows if row.get("lane") == "resolved"]
+        attention = [_public_row(row) for row in rows if row.get("lane") == "attention"]
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
         return {
             "targets": targets[:limit],
@@ -205,7 +197,7 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
         market_status = str(current_market.get("market_status") or "")
         if market_status in {"fresh", "ready"}:
             counts["fresh"] += 1
-        elif market_status == "partial" or market_status == "stale":
+        elif market_status in {"partial", "stale"}:
             counts["stale"] += 1
         else:
             counts["missing"] += 1
@@ -247,4 +239,3 @@ def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, An
             },
         },
     }
-

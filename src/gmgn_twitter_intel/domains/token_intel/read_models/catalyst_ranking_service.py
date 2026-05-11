@@ -4,7 +4,7 @@ import json
 import math
 from typing import Any
 
-from .discussion_quality_scoring import post_quality_score
+from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import post_quality_score
 
 CATALYST_OBSERVATION_MS = 30 * 60_000
 CATALYST_BASELINE_MS = 60 * 60_000
@@ -19,10 +19,7 @@ class CatalystRankingService:
         pool: list[dict[str, Any]],
         limit: int,
     ) -> list[dict[str, Any]]:
-        scored = [
-            self._score_candidate(candidate=dict(candidate), pool=pool)
-            for candidate in candidates
-        ]
+        scored = [self._score_candidate(candidate=dict(candidate), pool=pool) for candidate in candidates]
         scored.sort(
             key=lambda item: (
                 float(item.get("catalyst_score") or 0.0),
@@ -103,11 +100,7 @@ def _explicit_followups(candidate: dict[str, Any], followups: list[dict[str, Any
     tweet_id = str(candidate.get("tweet_id") or "")
     if not tweet_id:
         return []
-    return [
-        row
-        for row in followups
-        if (_reference(row.get("reference_json")) or {}).get("tweet_id") == tweet_id
-    ]
+    return [row for row in followups if (_reference(row.get("reference_json")) or {}).get("tweet_id") == tweet_id]
 
 
 def _time_to_k_authors_ms(*, candidate_ms: int, followups: list[dict[str, Any]]) -> int | None:
@@ -150,16 +143,14 @@ def _avg_followup_quality(followups: list[dict[str, Any]]) -> float:
                 "attribution_confidence": row.get("attribution_confidence"),
                 "attribution_weight": row.get("attribution_weight"),
                 "is_watched": bool(
-                    row.get("event_is_watched")
-                    if row.get("event_is_watched") is not None
-                    else row.get("is_watched")
+                    row.get("event_is_watched") if row.get("event_is_watched") is not None else row.get("is_watched")
                 ),
             }
         )["score"]
         / 100
         for row in followups
     ]
-    return sum(scores) / len(scores)
+    return float(sum(scores) / len(scores))
 
 
 def _reference(value: Any) -> dict[str, Any] | None:

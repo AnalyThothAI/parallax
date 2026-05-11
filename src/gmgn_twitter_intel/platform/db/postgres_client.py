@@ -22,9 +22,9 @@ def with_password_from_file(dsn: str, password_file: Path | None) -> str:
     password = password_file.read_text(encoding="utf-8").strip()
     if "://" in dsn:
         return _url_dsn_with_password(dsn, password)
-    parts = conninfo.conninfo_to_dict(dsn)
+    parts: dict[str, Any] = dict(conninfo.conninfo_to_dict(dsn))
     parts["password"] = password
-    return conninfo.make_conninfo(**parts)
+    return str(conninfo.make_conninfo(**parts))
 
 
 def local_docker_host_dsn(dsn: str) -> str:
@@ -32,12 +32,12 @@ def local_docker_host_dsn(dsn: str) -> str:
         return dsn
     if "://" in dsn:
         return _url_dsn_with_local_docker_host(dsn)
-    parts = conninfo.conninfo_to_dict(dsn)
+    parts: dict[str, Any] = dict(conninfo.conninfo_to_dict(dsn))
     if parts.get("host") != _COMPOSE_POSTGRES_HOST:
         return dsn
     parts["host"] = _HOST_LOOPBACK
     parts["port"] = _host_postgres_port()
-    return conninfo.make_conninfo(**parts)
+    return str(conninfo.make_conninfo(**parts))
 
 
 def create_pool(
@@ -113,7 +113,7 @@ def transaction(conn: Connection) -> Iterator[None]:
         yield
 
 
-def postgres_health_check(conn, *, expected_migration_version: str | None = None) -> dict[str, object]:
+def postgres_health_check(conn: Any, *, expected_migration_version: str | None = None) -> dict[str, object]:
     try:
         row = conn.execute("SELECT 1 AS ok").fetchone()
         if row is None or int(row["ok"]) != 1:
