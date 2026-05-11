@@ -17,6 +17,18 @@ describe("token radar factor snapshot mapper", () => {
     );
   });
 
+  it("rejects v2 alpha-gated factor snapshots", () => {
+    const row = productionFactorSnapshotRow();
+    row.factor_snapshot = {
+      ...row.factor_snapshot!,
+      schema_version: "token_factor_snapshot_v2_alpha_gated",
+    } as unknown as AssetFlowRow["factor_snapshot"];
+
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
+      /factor_snapshot\.schema_version/,
+    );
+  });
+
   it("rejects v2 snapshots with legacy hard_gates", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {

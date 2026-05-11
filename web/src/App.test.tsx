@@ -202,7 +202,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row).not.toHaveClass("is-selected");
     expect(within(row).getByText("86 · 4 +4")).toBeInTheDocument();
     expect(within(row).getByText("4 posts · new burst · share 0%")).toBeInTheDocument();
-    expect(within(row).getByText("78 · semantic quality snapshot")).toBeInTheDocument();
+    expect(within(row).getByText("78 · semantic catalyst snapshot")).toBeInTheDocument();
     expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
     expect(within(row).getByText("top 33% · repro -")).toBeInTheDocument();
@@ -340,7 +340,7 @@ describe("App Token Radar social heat cockpit", () => {
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
     expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent(
-      "78 · semantic quality snapshot",
+      "78 · semantic catalyst snapshot",
     );
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent(
       "expansion · 3 author",
@@ -724,7 +724,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     expect(drawer.querySelector(".opportunity-score")).toHaveTextContent("79");
     expect(within(drawer).getByText("86 / rising")).toBeInTheDocument();
-    expect(within(drawer).getByText("78 / semantic quality snapshot")).toBeInTheDocument();
+    expect(within(drawer).getByText("78 / semantic catalyst snapshot")).toBeInTheDocument();
     expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
     expect(within(drawer).getByText("market pending")).toBeInTheDocument();
     expect(within(drawer).getByText("driver")).toBeInTheDocument();
