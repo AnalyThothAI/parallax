@@ -14,6 +14,13 @@ from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import (
     safe_float,
 )
 
+__all__ = [
+    "DEX_HIGH_ALERT_FLOORS",
+    "FACTOR_FAMILIES",
+    "TOKEN_FACTOR_SNAPSHOT_VERSION",
+    "build_token_factor_snapshot",
+]
+
 FACTOR_FAMILIES = TOKEN_RADAR_FACTOR_FAMILIES
 
 DEX_HIGH_ALERT_FLOORS = {
@@ -142,7 +149,7 @@ def _social_semantics_family(*, social_semantics: dict[str, Any]) -> dict[str, A
     impact_mean = _optional_float(social_semantics.get("impact_mean"))
     novelty_mean = _optional_float(social_semantics.get("novelty_mean"))
     confidence_mean = _optional_float(social_semantics.get("confidence_mean"))
-    facts = {
+    facts: dict[str, Any] = {
         "direction_counts": direction_counts,
         "impact_mean": impact_mean,
         "novelty_mean": novelty_mean,
@@ -162,8 +169,9 @@ def _social_semantics_family(*, social_semantics: dict[str, Any]) -> dict[str, A
 
 def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
     target_market_type = _target_market_type(target)
-    field_statuses = market.get("field_statuses") if isinstance(market.get("field_statuses"), dict) else {}
-    facts = {
+    raw_field_statuses = market.get("field_statuses")
+    field_statuses: dict[str, Any] = raw_field_statuses if isinstance(raw_field_statuses, dict) else {}
+    facts: dict[str, Any] = {
         "target_market_type": target_market_type,
         "market_status": _optional_str(market.get("market_status") or market.get("market_observation_status")),
         "price_usd": _optional_float(market.get("price_usd")),

@@ -17,7 +17,7 @@ class DexMarketStreamWorker:
     def __init__(
         self,
         *,
-        stream_provider,
+        stream_provider: Any,
         repository_session: Callable[[], AbstractContextManager[Any]],
         projection_version: str,
         subscription_limit: int,

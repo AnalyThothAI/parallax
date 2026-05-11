@@ -1,4 +1,5 @@
 import { FlaskConical } from "lucide-react";
+
 import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
@@ -13,7 +14,14 @@ type SignalLabPulseProps = {
   onSelect: (item: SignalPulseItem) => void;
 };
 
-export function SignalLabPulse({ data, isLoading, selectedItemId, mobileTaskPanel, onOpenLab, onSelect }: SignalLabPulseProps) {
+export function SignalLabPulse({
+  data,
+  isLoading,
+  selectedItemId,
+  mobileTaskPanel,
+  onOpenLab,
+  onSelect,
+}: SignalLabPulseProps) {
   const items = Array.isArray(data?.items) ? data.items : [];
   const summary = data?.summary;
   return (
@@ -33,7 +41,13 @@ export function SignalLabPulse({ data, isLoading, selectedItemId, mobileTaskPane
         <SummaryPill label="theme" value={summary?.theme_watch ?? 0} />
         <SummaryPill label="rejected" value={summary?.risk_rejected_high_info ?? 0} />
       </div>
-      <SignalPulseList compact isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
+      <SignalPulseList
+        compact
+        isLoading={isLoading}
+        items={items}
+        selectedItemId={selectedItemId}
+        onSelect={onSelect}
+      />
     </section>
   );
 }
@@ -46,7 +60,13 @@ type SignalPulseListProps = {
   onSelect: (item: SignalPulseItem) => void;
 };
 
-export function SignalPulseList({ compact, isLoading, items, selectedItemId, onSelect }: SignalPulseListProps) {
+export function SignalPulseList({
+  compact,
+  isLoading,
+  items,
+  selectedItemId,
+  onSelect,
+}: SignalPulseListProps) {
   if (isLoading) {
     return <SkeletonRows compact={compact} count={compact ? 5 : 6} label="loading signal pulse" />;
   }
@@ -60,14 +80,19 @@ export function SignalPulseList({ compact, isLoading, items, selectedItemId, onS
         const facts = pulseFactChips(item);
         const venueActions = signalPulseVenueActions(item);
         return (
-          <article className={`signal-chain-row ${selectedItemId === item.candidate_id ? "selected" : ""}`} key={rowKey}>
+          <article
+            className={`signal-chain-row ${selectedItemId === item.candidate_id ? "selected" : ""}`}
+            key={rowKey}
+          >
             <button
               aria-label={`open Signal Pulse ${itemTitle(item)}`}
               className="signal-chain-select"
               type="button"
               onClick={() => onSelect(item)}
             >
-              <span className={`signal-stage-badge ${item.pulse_status}`}>{statusLabel(item.pulse_status)}</span>
+              <span className={`signal-stage-badge ${item.pulse_status}`}>
+                {statusLabel(item.pulse_status)}
+              </span>
               <span className="signal-chain-main">
                 <strong>{itemTitle(item)}</strong>
                 <em>{compact ? compactPulseMeta(item) : fullPulseMeta(item)}</em>
@@ -80,7 +105,9 @@ export function SignalPulseList({ compact, isLoading, items, selectedItemId, onS
               </span>
               <span className="signal-chain-score">
                 <b>{scoreBand(item) ?? compactNumber(gateScore(item))}</b>
-                <small>{gateStatus(item) ?? item.agent_recommendation.recommendation ?? "gate unknown"}</small>
+                <small>
+                  {gateStatus(item) ?? item.agent_recommendation.recommendation ?? "gate unknown"}
+                </small>
               </span>
               <span className="signal-chain-time">{formatRelativeTime(item.updated_at_ms)}</span>
             </button>
@@ -114,7 +141,14 @@ function SummaryPill({ label, value }: { label: string; value: number }) {
 }
 
 function itemTitle(item: SignalPulseItem): string {
-  return item.factor_snapshot.subject.symbol || item.symbol || item.subject_key || item.target_id || item.candidate_id || "unknown pulse";
+  return (
+    item.factor_snapshot.subject.symbol ||
+    item.symbol ||
+    item.subject_key ||
+    item.target_id ||
+    item.candidate_id ||
+    "unknown pulse"
+  );
 }
 
 function itemKey(item: SignalPulseItem, index: number): string {
@@ -122,13 +156,20 @@ function itemKey(item: SignalPulseItem, index: number): string {
 }
 
 function fullPulseMeta(item: SignalPulseItem): string {
-  return [marketFactMeta(item), socialFactMeta(item), gateMeta(item), `updated ${formatRelativeTime(item.updated_at_ms)} ago`]
+  return [
+    marketFactMeta(item),
+    socialFactMeta(item),
+    gateMeta(item),
+    `updated ${formatRelativeTime(item.updated_at_ms)} ago`,
+  ]
     .filter(Boolean)
     .join(" · ");
 }
 
 function compactPulseMeta(item: SignalPulseItem): string {
-  return [socialFactMeta(item), gateMeta(item), `${formatRelativeTime(item.updated_at_ms)} ago`].filter(Boolean).join(" · ");
+  return [socialFactMeta(item), gateMeta(item), `${formatRelativeTime(item.updated_at_ms)} ago`]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function statusLabel(status: SignalPulseStatus): string {
@@ -146,24 +187,32 @@ function pulseFactChips(item: SignalPulseItem): string[] {
     usdFact("vol", item.fact_card.volume_24h_usd),
     numberFact("mentions", item.fact_card.mentions_1h),
     numberFact("authors", item.fact_card.unique_authors),
-    gateMeta(item)
+    gateMeta(item),
   ].filter((value): value is string => Boolean(value));
 }
 
 function marketFactMeta(item: SignalPulseItem): string | null {
-  return [
-    usdFact("cap", item.fact_card.market_cap_usd),
-    usdFact("liq", item.fact_card.liquidity_usd),
-    numberFact("holders", item.fact_card.holders) ?? usdFact("vol", item.fact_card.volume_24h_usd)
-  ]
-    .filter(Boolean)
-    .join(" · ") || null;
+  return (
+    [
+      usdFact("cap", item.fact_card.market_cap_usd),
+      usdFact("liq", item.fact_card.liquidity_usd),
+      numberFact("holders", item.fact_card.holders) ??
+        usdFact("vol", item.fact_card.volume_24h_usd),
+    ]
+      .filter(Boolean)
+      .join(" · ") || null
+  );
 }
 
 function socialFactMeta(item: SignalPulseItem): string | null {
-  return [numberFact("mentions", item.fact_card.mentions_1h), numberFact("authors", item.fact_card.unique_authors)]
-    .filter(Boolean)
-    .join(" · ") || null;
+  return (
+    [
+      numberFact("mentions", item.fact_card.mentions_1h),
+      numberFact("authors", item.fact_card.unique_authors),
+    ]
+      .filter(Boolean)
+      .join(" · ") || null
+  );
 }
 
 function gateMeta(item: SignalPulseItem): string | null {
@@ -174,7 +223,12 @@ function gateMeta(item: SignalPulseItem): string | null {
 }
 
 function gateStatus(item: SignalPulseItem): string | null {
-  return stringValue(item.gate.pulse_status) ?? stringValue(item.fact_card.market_status) ?? item.pulse_status ?? null;
+  return (
+    stringValue(item.gate.pulse_status) ??
+    stringValue(item.fact_card.market_status) ??
+    item.pulse_status ??
+    null
+  );
 }
 
 function scoreBand(item: SignalPulseItem): string | null {
@@ -182,7 +236,12 @@ function scoreBand(item: SignalPulseItem): string | null {
 }
 
 function gateScore(item: SignalPulseItem): number | null {
-  return numberValue(item.gate.candidate_score) ?? item.candidate_score ?? item.factor_snapshot.composite.rank_score ?? null;
+  return (
+    numberValue(item.gate.candidate_score) ??
+    item.candidate_score ??
+    item.factor_snapshot.composite.rank_score ??
+    null
+  );
 }
 
 function usdFact(label: string, value: unknown): string | null {

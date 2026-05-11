@@ -1,6 +1,7 @@
 import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
+
 import {
   DetailDrawerCard,
   DetailDrawerField,
@@ -10,7 +11,7 @@ import {
   DetailDrawerMetricGrid,
   DetailDrawerSection,
   DetailDrawerShell,
-  DetailDrawerTagStrip
+  DetailDrawerTagStrip,
 } from "./DetailDrawer";
 
 type SignalLabInspectorProps = {
@@ -33,18 +34,31 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
         eyebrow="selected Signal Pulse"
         metrics={
           <DetailDrawerMetricGrid>
-            <DetailDrawerMetric label="score" value={compactNumber(numberValue(item.gate.candidate_score) ?? item.candidate_score)} />
+            <DetailDrawerMetric
+              label="score"
+              value={compactNumber(numberValue(item.gate.candidate_score) ?? item.candidate_score)}
+            />
             <DetailDrawerMetric label="status" value={statusLabel(item.pulse_status)} />
             <DetailDrawerMetric label="gate" value={stringValue(item.gate.pulse_status) ?? "-"} />
-            <DetailDrawerMetric label="updated" value={`${formatRelativeTime(item.updated_at_ms)} ago`} />
+            <DetailDrawerMetric
+              label="updated"
+              value={`${formatRelativeTime(item.updated_at_ms)} ago`}
+            />
           </DetailDrawerMetricGrid>
         }
         subtitle={
           <>
-            {recommendation.recommendation} · {item.factor_snapshot.composite.recommended_decision ?? "decision unknown"} · {item.window}/{item.scope}
+            {recommendation.recommendation} ·{" "}
+            {item.factor_snapshot.composite.recommended_decision ?? "decision unknown"} ·{" "}
+            {item.window}/{item.scope}
           </>
         }
-        title={item.factor_snapshot.subject.symbol || item.symbol || item.subject_key || item.candidate_id}
+        title={
+          item.factor_snapshot.subject.symbol ||
+          item.symbol ||
+          item.subject_key ||
+          item.candidate_id
+        }
       />
       <DetailDrawerSection className="detail-drawer-card-stack">
         <DetailDrawerCard title="Agent Recommendation" tone="accent">
@@ -52,10 +66,22 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           <DetailDrawerFieldGrid>
             <DetailDrawerField label="recommendation" value={recommendation.recommendation} />
             <DetailDrawerField label="schema_version" value={recommendation.schema_version} />
-            <DetailDrawerField label="primary_reasons" value={<ReasonList items={recommendation.primary_reasons} />} />
-            <DetailDrawerField label="upgrade_conditions" value={<ConditionList items={recommendation.upgrade_conditions} />} />
-            <DetailDrawerField label="invalidation_conditions" value={<ConditionList items={recommendation.invalidation_conditions} />} />
-            <DetailDrawerField label="residual_risks" value={<RiskList items={recommendation.residual_risks} />} />
+            <DetailDrawerField
+              label="primary_reasons"
+              value={<ReasonList items={recommendation.primary_reasons} />}
+            />
+            <DetailDrawerField
+              label="upgrade_conditions"
+              value={<ConditionList items={recommendation.upgrade_conditions} />}
+            />
+            <DetailDrawerField
+              label="invalidation_conditions"
+              value={<ConditionList items={recommendation.invalidation_conditions} />}
+            />
+            <DetailDrawerField
+              label="residual_risks"
+              value={<RiskList items={recommendation.residual_risks} />}
+            />
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
@@ -82,14 +108,38 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
 
         <DetailDrawerCard title="Fact Card">
           <DetailDrawerFieldGrid>
-            <DetailDrawerField label="market_cap_usd" value={usdValue(item.fact_card.market_cap_usd)} />
-            <DetailDrawerField label="liquidity_usd" value={usdValue(item.fact_card.liquidity_usd)} />
-            <DetailDrawerField label="holders" value={compactNumber(numberValue(item.fact_card.holders))} />
-            <DetailDrawerField label="volume_24h_usd" value={usdValue(item.fact_card.volume_24h_usd)} />
-            <DetailDrawerField label="mentions_1h" value={compactNumber(numberValue(item.fact_card.mentions_1h))} />
-            <DetailDrawerField label="unique_authors" value={compactNumber(numberValue(item.fact_card.unique_authors))} />
-            <DetailDrawerField label="watched_mentions" value={compactNumber(numberValue(item.fact_card.watched_mentions))} />
-            <DetailDrawerField label="market_status" value={stringValue(item.fact_card.market_status) ?? "-"} />
+            <DetailDrawerField
+              label="market_cap_usd"
+              value={usdValue(item.fact_card.market_cap_usd)}
+            />
+            <DetailDrawerField
+              label="liquidity_usd"
+              value={usdValue(item.fact_card.liquidity_usd)}
+            />
+            <DetailDrawerField
+              label="holders"
+              value={compactNumber(numberValue(item.fact_card.holders))}
+            />
+            <DetailDrawerField
+              label="volume_24h_usd"
+              value={usdValue(item.fact_card.volume_24h_usd)}
+            />
+            <DetailDrawerField
+              label="mentions_1h"
+              value={compactNumber(numberValue(item.fact_card.mentions_1h))}
+            />
+            <DetailDrawerField
+              label="unique_authors"
+              value={compactNumber(numberValue(item.fact_card.unique_authors))}
+            />
+            <DetailDrawerField
+              label="watched_mentions"
+              value={compactNumber(numberValue(item.fact_card.watched_mentions))}
+            />
+            <DetailDrawerField
+              label="market_status"
+              value={stringValue(item.fact_card.market_status) ?? "-"}
+            />
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
@@ -99,9 +149,18 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
               label="eligible_for_high_alert"
               value={String(Boolean(item.factor_snapshot.hard_gates.eligible_for_high_alert))}
             />
-            <DetailDrawerField label="gate_status" value={stringValue(item.gate.pulse_status) ?? "-"} />
-            <DetailDrawerField label="candidate_score" value={compactNumber(numberValue(item.gate.candidate_score) ?? item.candidate_score)} />
-            <DetailDrawerField label="score_band" value={stringValue(item.gate.score_band) ?? item.score_band ?? "-"} />
+            <DetailDrawerField
+              label="gate_status"
+              value={stringValue(item.gate.pulse_status) ?? "-"}
+            />
+            <DetailDrawerField
+              label="candidate_score"
+              value={compactNumber(numberValue(item.gate.candidate_score) ?? item.candidate_score)}
+            />
+            <DetailDrawerField
+              label="score_band"
+              value={stringValue(item.gate.score_band) ?? item.score_band ?? "-"}
+            />
           </DetailDrawerFieldGrid>
           <DetailDrawerTagStrip emptyLabel="No blocked reasons." items={blockedReasons} />
         </DetailDrawerCard>
@@ -117,7 +176,13 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
                     <DetailDrawerField label="data_health" value={family.data_health ?? "-"} />
                   </DetailDrawerFieldGrid>
                   <pre>
-                    <code>{JSON.stringify({ facts: family.facts ?? {}, factors: family.factors ?? {} }, null, 2)}</code>
+                    <code>
+                      {JSON.stringify(
+                        { facts: family.facts ?? {}, factors: family.factors ?? {} },
+                        null,
+                        2,
+                      )}
+                    </code>
                   </pre>
                 </section>
               ))}
@@ -131,10 +196,19 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
           <DetailDrawerFieldGrid>
             <DetailDrawerField label="candidate_id" value={item.candidate_id} />
             <DetailDrawerField label="candidate_type" value={item.candidate_type} />
-            <DetailDrawerField label="target" value={[item.target_type, item.target_id].filter(Boolean).join(" · ")} />
+            <DetailDrawerField
+              label="target"
+              value={[item.target_type, item.target_id].filter(Boolean).join(" · ")}
+            />
             <DetailDrawerField label="agent_run_id" value={item.agent_run_id} />
-            <DetailDrawerField label="source_event_ids" value={<ListValue items={sourceEventIds} />} />
-            <DetailDrawerField label="evidence_event_ids" value={<ListValue items={evidenceEventIds} />} />
+            <DetailDrawerField
+              label="source_event_ids"
+              value={<ListValue items={sourceEventIds} />}
+            />
+            <DetailDrawerField
+              label="evidence_event_ids"
+              value={<ListValue items={evidenceEventIds} />}
+            />
           </DetailDrawerFieldGrid>
         </DetailDrawerCard>
 
@@ -180,23 +254,38 @@ function statusLabel(status: SignalPulseItem["pulse_status"]): string {
 }
 
 function stringList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.length > 0) : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.length > 0)
+    : [];
 }
 
 function jsonValue(value: unknown): unknown {
   return value ?? {};
 }
 
-function ReasonList({ items }: { items: SignalPulseItem["agent_recommendation"]["primary_reasons"] }) {
+function ReasonList({
+  items,
+}: {
+  items: SignalPulseItem["agent_recommendation"]["primary_reasons"];
+}) {
   return <ListValue items={items.map((item) => `${item.factor_key}: ${item.explanation_zh}`)} />;
 }
 
 function ConditionList({
-  items
+  items,
 }: {
-  items: SignalPulseItem["agent_recommendation"]["upgrade_conditions"] | SignalPulseItem["agent_recommendation"]["invalidation_conditions"];
+  items:
+    | SignalPulseItem["agent_recommendation"]["upgrade_conditions"]
+    | SignalPulseItem["agent_recommendation"]["invalidation_conditions"];
 }) {
-  return <ListValue items={items.map((item) => `${item.factor_key} ${item.operator} ${String(item.value)}: ${item.description_zh}`)} />;
+  return (
+    <ListValue
+      items={items.map(
+        (item) =>
+          `${item.factor_key} ${item.operator} ${String(item.value)}: ${item.description_zh}`,
+      )}
+    />
+  );
 }
 
 function RiskList({ items }: { items: SignalPulseItem["agent_recommendation"]["residual_risks"] }) {

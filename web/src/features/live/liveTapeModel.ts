@@ -13,7 +13,7 @@ export type LiveSignalTapeItem =
 
 export function buildLiveSignalTapeItems({
   liveItems,
-  tokenItems
+  tokenItems,
 }: {
   liveItems: LivePayload[];
   tokenItems: TokenFlowItem[];
@@ -46,7 +46,7 @@ export function buildLiveSignalTapeItems({
         event: payload,
         score: tokenMatch.opportunity.score,
         reason: tokenTapeReason(tokenMatch),
-        body: eventText(payload.event) || tokenTapeBody(tokenMatch)
+        body: eventText(payload.event) || tokenTapeBody(tokenMatch),
       });
     } else {
       rows.push({
@@ -54,7 +54,7 @@ export function buildLiveSignalTapeItems({
         payload,
         score: payload.alerts.length ? 80 : null,
         reason: payload.alerts.length ? "watched alert" : "public pulse",
-        body: eventText(payload.event)
+        body: eventText(payload.event),
       });
     }
   }
@@ -65,7 +65,7 @@ export function buildLiveSignalTapeItems({
       event: null,
       score: item.opportunity.score,
       reason: tokenTapeReason(item),
-      body: tokenTapeBody(item)
+      body: tokenTapeBody(item),
     });
   }
   const seen = new Set<string>();
@@ -85,8 +85,11 @@ export function tapeItemId(item: LiveSignalTapeItem): string {
 }
 
 export function tokenTapeReason(token: TokenFlowItem): string {
-  const reason = token.opportunity.reasons[0] ?? token.opportunity.risks[0] ?? token.social_heat.reasons[0];
-  return reason ? reason.replaceAll("_", " ") : `${compactNumber(token.social_heat.mentions)} mentions`;
+  const reason =
+    token.opportunity.reasons[0] ?? token.opportunity.risks[0] ?? token.social_heat.reasons[0];
+  return reason
+    ? reason.replaceAll("_", " ")
+    : `${compactNumber(token.social_heat.mentions)} mentions`;
 }
 
 function tokenTapeBody(item: TokenFlowItem): string {
@@ -94,7 +97,9 @@ function tokenTapeBody(item: TokenFlowItem): string {
     `${compactNumber(item.social_heat.mentions)} 帖`,
     `Heat ${compactNumber(item.social_heat.score)}`,
     `作者 ${compactNumber(item.propagation.independent_authors)}`,
-    item.timing.status === "market_pending" ? "市场观测处理中" : formatRelativeTime(item.flow.window_end_ms)
+    item.timing.status === "market_pending"
+      ? "市场观测处理中"
+      : formatRelativeTime(item.flow.window_end_ms),
   ].join(" · ");
 }
 
@@ -105,7 +110,7 @@ function tokenMatchForPayload(
     byCa: Map<string, TokenFlowItem>;
     byIdentityKey: Map<string, TokenFlowItem>;
     bySymbol: Map<string, TokenFlowItem[]>;
-  }
+  },
 ): TokenFlowItem | undefined {
   for (const resolution of payload.token_resolutions ?? []) {
     if (resolution.target_id && lookup.byTargetId.has(resolution.target_id)) {
@@ -123,7 +128,7 @@ function tokenMatchForPayload(
       return lookup.byIdentityKey.get(intent.intent_id);
     }
     const symbol = intent.display_symbol?.toUpperCase();
-    const symbolMatches = symbol ? lookup.bySymbol.get(symbol) ?? [] : [];
+    const symbolMatches = symbol ? (lookup.bySymbol.get(symbol) ?? []) : [];
     if (symbolMatches.length === 1) {
       return symbolMatches[0];
     }
@@ -143,8 +148,10 @@ function tokenMatchForPayload(
   }
   const symbol =
     payload.event.cashtags?.[0]?.toUpperCase() ??
-    payload.entities.find((entity) => entity.entity_type === "symbol")?.normalized_value?.toUpperCase();
-  const symbolMatches = symbol ? lookup.bySymbol.get(symbol) ?? [] : [];
+    payload.entities
+      .find((entity) => entity.entity_type === "symbol")
+      ?.normalized_value?.toUpperCase();
+  const symbolMatches = symbol ? (lookup.bySymbol.get(symbol) ?? []) : [];
   return symbolMatches.length === 1 ? symbolMatches[0] : undefined;
 }
 

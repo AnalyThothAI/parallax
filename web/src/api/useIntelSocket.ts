@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
-import type { LivePayload, MarketUpdatePayload, NotificationLivePayload } from "./types";
+
 import { websocketUrl } from "./client";
+import type { LivePayload, MarketUpdatePayload, NotificationLivePayload } from "./types";
 
 type SocketStatus = "idle" | "connecting" | "authenticating" | "connected" | "closed" | "error";
 
@@ -13,7 +14,13 @@ type Options = {
   marketTargets?: Array<{ target_type?: string | null; target_id?: string | null }>;
 };
 
-export function useIntelSocket({ token, handles, replay, notifications = false, marketTargets = [] }: Options) {
+export function useIntelSocket({
+  token,
+  handles,
+  replay,
+  notifications = false,
+  marketTargets = [],
+}: Options) {
   const [status, setStatus] = useState<SocketStatus>("idle");
   const [events, setEvents] = useState<LivePayload[]>([]);
   const [notificationEvents, setNotificationEvents] = useState<NotificationLivePayload[]>([]);
@@ -31,13 +38,16 @@ export function useIntelSocket({ token, handles, replay, notifications = false, 
       setLastMessageAt(null);
       return;
     }
-    const normalizedMarketTargets = JSON.parse(marketTargetKey) as Array<{ target_type: string; target_id: string }>;
+    const normalizedMarketTargets = JSON.parse(marketTargetKey) as Array<{
+      target_type: string;
+      target_id: string;
+    }>;
 
     const ws = new ReconnectingWebSocket(websocketUrl(), [], {
       connectionTimeout: 4_000,
       maxRetries: Infinity,
       maxReconnectionDelay: 8_000,
-      minReconnectionDelay: 800
+      minReconnectionDelay: 800,
     });
     socketRef.current = ws;
     setStatus("connecting");
@@ -58,8 +68,8 @@ export function useIntelSocket({ token, handles, replay, notifications = false, 
             handles: normalizeHandles(handles),
             notifications,
             market_targets: normalizedMarketTargets,
-            replay
-          })
+            replay,
+          }),
         );
         return;
       }
@@ -68,7 +78,9 @@ export function useIntelSocket({ token, handles, replay, notifications = false, 
         return;
       }
       if (payload.type === "notification") {
-        setNotificationEvents((current) => [payload as NotificationLivePayload, ...current].slice(0, 50));
+        setNotificationEvents((current) =>
+          [payload as NotificationLivePayload, ...current].slice(0, 50),
+        );
         return;
       }
       if (payload.type === "market_update") {
@@ -96,7 +108,7 @@ function normalizeHandles(value: string): string[] {
 }
 
 function normalizeMarketTargets(
-  values: Array<{ target_type?: string | null; target_id?: string | null }>
+  values: Array<{ target_type?: string | null; target_id?: string | null }>,
 ): Array<{ target_type: string; target_id: string }> {
   const seen = new Set<string>();
   const targets = [];
@@ -113,5 +125,9 @@ function normalizeMarketTargets(
     seen.add(key);
     targets.push({ target_type: targetType, target_id: targetId });
   }
-  return targets.sort((left, right) => `${left.target_type}:${left.target_id}`.localeCompare(`${right.target_type}:${right.target_id}`));
+  return targets.sort((left, right) =>
+    `${left.target_type}:${left.target_id}`.localeCompare(
+      `${right.target_type}:${right.target_id}`,
+    ),
+  );
 }

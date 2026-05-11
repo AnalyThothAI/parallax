@@ -40,8 +40,8 @@ class TokenRadarProjection:
     def __init__(
         self,
         *,
-        repos,
-    ):
+        repos: Any,
+    ) -> None:
         self.repos = repos
 
     def rebuild(self, *, window: str, scope: str, now_ms: int | None = None, limit: int = 100) -> dict[str, Any]:
@@ -600,7 +600,8 @@ def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | Non
             "current_market_snapshot": None,
             **_missing_current_market_fields(),
         }
-    fields = snapshot.get("fields") if isinstance(snapshot.get("fields"), dict) else {}
+    raw_fields = snapshot.get("fields")
+    fields: dict[str, Any] = raw_fields if isinstance(raw_fields, dict) else {}
     price = _market_field(fields, "price_usd")
     price_quote = _market_field(fields, "price_quote")
     quote_symbol = _market_field(fields, "quote_symbol")
@@ -924,8 +925,10 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         return (3, 0.0, 0, 0, 0)
     composite = snapshot["composite"]
     families = snapshot["families"]
-    social_attention = families.get("social_attention") if isinstance(families.get("social_attention"), dict) else {}
-    attention = social_attention.get("facts") if isinstance(social_attention.get("facts"), dict) else {}
+    raw_social_attention = families.get("social_attention")
+    social_attention: dict[str, Any] = raw_social_attention if isinstance(raw_social_attention, dict) else {}
+    raw_attention = social_attention.get("facts")
+    attention: dict[str, Any] = raw_attention if isinstance(raw_attention, dict) else {}
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
     decision = composite.get("recommended_decision") or "discard"
     rank_score = _float_or_none(composite.get("rank_score")) or 0.0
