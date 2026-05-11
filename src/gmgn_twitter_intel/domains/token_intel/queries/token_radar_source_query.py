@@ -20,7 +20,15 @@ class TokenRadarSourceQuery:
         rows = self.conn.execute(
             f"""
             WITH window_events AS MATERIALIZED (
-              SELECT events.event_id
+              SELECT
+                events.event_id,
+                events.author_handle,
+                events.is_watched,
+                events.received_at_ms,
+                events.text,
+                events.text_clean,
+                events.reference_json,
+                events.author_followers
               FROM events
               WHERE events.received_at_ms >= %s
                 AND events.received_at_ms <= %s {watched_clause}
@@ -36,7 +44,7 @@ class TokenRadarSourceQuery:
               token_intent_resolutions.reason_codes_json,
               token_intent_resolutions.candidate_ids_json,
               token_intent_resolutions.lookup_keys_json,
-              discovery.discovery_results AS discovery_results_json,
+              NULL AS discovery_results_json,
               token_intent_resolutions.decision_time_ms,
               events.author_handle,
               events.is_watched,
@@ -87,8 +95,7 @@ class TokenRadarSourceQuery:
               NULL AS before_event_price_quote,
               NULL AS before_event_price_quote_symbol,
               NULL AS before_event_price_basis
-            FROM window_events
-            JOIN events ON events.event_id = window_events.event_id
+            FROM window_events events
             JOIN token_intents ON token_intents.event_id = events.event_id
             JOIN LATERAL (
               SELECT *
@@ -138,26 +145,6 @@ class TokenRadarSourceQuery:
                 token_intent_resolutions.pricefeed_id,
                 preferred_price_feed.pricefeed_id
               )
-            LEFT JOIN LATERAL (
-              SELECT jsonb_agg(
-                jsonb_build_object(
-                  'lookup_key', token_discovery_results.lookup_key,
-                  'lookup_type', token_discovery_results.lookup_type,
-                  'status', token_discovery_results.status,
-                  'candidate_count', token_discovery_results.candidate_count,
-                  'last_lookup_at_ms', token_discovery_results.last_lookup_at_ms,
-                  'next_refresh_at_ms', token_discovery_results.next_refresh_at_ms,
-                  'last_error', token_discovery_results.last_error,
-                  'error_count', token_discovery_results.error_count
-                )
-                ORDER BY token_discovery_results.lookup_key
-              ) AS discovery_results
-              FROM token_discovery_results
-              WHERE token_discovery_results.provider = 'okx_dex_search'
-                AND token_discovery_results.lookup_key IN (
-                  SELECT jsonb_array_elements_text(token_intent_resolutions.lookup_keys_json)
-                )
-            ) discovery ON true
             ORDER BY events.received_at_ms ASC, events.event_id ASC
             """,
             (

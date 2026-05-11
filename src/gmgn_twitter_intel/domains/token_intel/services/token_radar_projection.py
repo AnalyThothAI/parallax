@@ -33,6 +33,7 @@ from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_
 MARKET_FRESH_MS = 5 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
+MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
 
 
 class TokenRadarProjection:
@@ -318,7 +319,8 @@ class TokenRadarProjection:
 
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
-    return score_since_ms - BASELINE_SLOT_COUNT * window_ms
+    baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
+    return max(baseline_since_ms, computed_at_ms - MAX_ANALYSIS_LOOKBACK_MS)
 
 
 def _now_ms() -> int:
