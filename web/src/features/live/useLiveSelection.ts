@@ -1,12 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "../../api/types";
+
+import type {
+  LivePayload,
+  ScopeKey,
+  SignalPulseItem,
+  TokenFlowItem,
+  WindowKey,
+} from "../../api/types";
 import type { MobileTask } from "../../components/MobileTaskNav";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { tokenKey } from "../../lib/format";
 import { tokenForSearchQuery } from "../../lib/searchIntent";
 import { useTraderStore } from "../../store/useTraderStore";
 import { requiredMobileTaskForPathname } from "../cockpit/mobileRouteTask";
+
 import { tapeItemId, type LiveSignalTapeItem } from "./liveTapeModel";
 
 export type SelectedSignal =
@@ -29,7 +37,7 @@ export function useLiveSelection({
   isSignalLabPulseFetching,
   scope,
   tokenItems,
-  windowKey
+  windowKey,
 }: UseLiveSelectionArgs) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -58,6 +66,25 @@ export function useLiveSelection({
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
   const [mobileTask, setMobileTask] = useState<MobileTask>("radar");
 
+  const resetTokenDetail = useCallback(
+    (nextWindow: WindowKey) => {
+      setDetailTab("timeline");
+      setDetailWindow(nextWindow);
+      setDetailMode("compact");
+      setSelectedBucketStartMs(null);
+      setSelectedEventId(null);
+      setPostRange("current_window");
+    },
+    [
+      setDetailMode,
+      setDetailTab,
+      setDetailWindow,
+      setPostRange,
+      setSelectedBucketStartMs,
+      setSelectedEventId,
+    ],
+  );
+
   useEffect(() => {
     const requiredTask = requiredMobileTaskForPathname(location.pathname);
     if (requiredTask && mobileTask !== requiredTask) {
@@ -70,7 +97,7 @@ export function useLiveSelection({
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
       resetTokenDetail(windowKey);
     }
-  }, [selectedSignal, tokenItems, windowKey]);
+  }, [resetTokenDetail, selectedSignal, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "token") {
@@ -89,13 +116,15 @@ export function useLiveSelection({
     if (!latest) {
       setSelectedSignal(null);
     }
-  }, [selectedSignal, tokenItems, windowKey]);
+  }, [resetTokenDetail, selectedSignal, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "pulse") {
       return;
     }
-    const latest = compactSignalPulseItems.find((item) => item.candidate_id === selectedSignal.item.candidate_id);
+    const latest = compactSignalPulseItems.find(
+      (item) => item.candidate_id === selectedSignal.item.candidate_id,
+    );
     if (latest && latest !== selectedSignal.item) {
       setSelectedSignal({ kind: "pulse", item: latest });
       return;
@@ -105,13 +134,18 @@ export function useLiveSelection({
     }
   }, [compactSignalPulseItems, isSignalLabPulseFetching, selectedSignal]);
 
-  const selectedToken = selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
+  const selectedToken =
+    selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const drawerTargetRef = targetRefFromTokenItem(selectedToken);
-  const selectedPulseItemId = selectedSignal?.kind === "pulse" ? selectedSignal.item.candidate_id : null;
+  const selectedPulseItemId =
+    selectedSignal?.kind === "pulse" ? selectedSignal.item.candidate_id : null;
   const selectedPulseItem =
-    selectedSignal?.kind === "pulse" ? latestPulseForSelection(selectedSignal.item, compactSignalPulseItems) : null;
-  const selectedAccountEventId = selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null;
+    selectedSignal?.kind === "pulse"
+      ? latestPulseForSelection(selectedSignal.item, compactSignalPulseItems)
+      : null;
+  const selectedAccountEventId =
+    selectedSignal?.kind === "event" ? selectedSignal.item.event.event_id : null;
 
   const selectToken = (item: TokenFlowItem, tapeId: string | null = null) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
@@ -128,7 +162,9 @@ export function useLiveSelection({
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
     setDetailWindow(windowKey);
     setMobileTask("radar");
-    navigate(`/token/${target.target_type}/${encodeURIComponent(target.target_id)}?window=${windowKey}&scope=${scope}`);
+    navigate(
+      `/token/${target.target_type}/${encodeURIComponent(target.target_id)}?window=${windowKey}&scope=${scope}`,
+    );
   };
 
   const selectPulseItem = (item: SignalPulseItem, options: { openLab?: boolean } = {}) => {
@@ -224,7 +260,10 @@ export function useLiveSelection({
     setMobileTask("lab");
   };
 
-  const detailAvailable = useMemo(() => Boolean(selectedSignal || selectedToken), [selectedSignal, selectedToken]);
+  const detailAvailable = useMemo(
+    () => Boolean(selectedSignal || selectedToken),
+    [selectedSignal, selectedToken],
+  );
 
   return {
     detailAvailable,
@@ -263,17 +302,8 @@ export function useLiveSelection({
     setSelectedEventId,
     setWatchedPostsOnly,
     submitEvidenceSearch,
-    watchedPostsOnly
+    watchedPostsOnly,
   };
-
-  function resetTokenDetail(nextWindow: WindowKey) {
-    setDetailTab("timeline");
-    setDetailWindow(nextWindow);
-    setDetailMode("compact");
-    setSelectedBucketStartMs(null);
-    setSelectedEventId(null);
-    setPostRange("current_window");
-  }
 
   function onTimelineExit(tab: typeof detailTab) {
     if (tab !== "timeline") {
@@ -284,10 +314,16 @@ export function useLiveSelection({
   }
 }
 
-function latestTokenForSelection(signal: Extract<SelectedSignal, { kind: "token" }>, items: TokenFlowItem[]) {
+function latestTokenForSelection(
+  signal: Extract<SelectedSignal, { kind: "token" }>,
+  items: TokenFlowItem[],
+) {
   return items.find((item) => tokenKey(item) === signal.key) ?? null;
 }
 
-function latestPulseForSelection(selected: SignalPulseItem, items: SignalPulseItem[]): SignalPulseItem {
+function latestPulseForSelection(
+  selected: SignalPulseItem,
+  items: SignalPulseItem[],
+): SignalPulseItem {
   return items.find((item) => item.candidate_id === selected.candidate_id) ?? selected;
 }

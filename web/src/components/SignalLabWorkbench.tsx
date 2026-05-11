@@ -1,13 +1,36 @@
-import type { LivePayload, SignalPulseData, SignalPulseItem, SignalPulseStatus, SignalPulseStatusFilter } from "../api/types";
+import type {
+  LivePayload,
+  SignalPulseData,
+  SignalPulseItem,
+  SignalPulseStatus,
+  SignalPulseStatusFilter,
+} from "../api/types";
 import { eventHandle, eventText, formatRelativeTime } from "../lib/format";
 import { SkeletonRows } from "../shared/ui/RemoteState";
+
 import { SignalPulseList } from "./SignalLabPulse";
 
 const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; description: string }> = [
-  { status: "trade_candidate", label: "Trade candidate", description: "Actionable setup with enough social and market context." },
-  { status: "token_watch", label: "Token watch", description: "Token-specific signal that still needs confirmation." },
-  { status: "theme_watch", label: "Theme watch", description: "Narrative or cluster worth monitoring." },
-  { status: "risk_rejected_high_info", label: "Rejected high info", description: "Informative but rejected by gates." }
+  {
+    status: "trade_candidate",
+    label: "Trade candidate",
+    description: "Actionable setup with enough social and market context.",
+  },
+  {
+    status: "token_watch",
+    label: "Token watch",
+    description: "Token-specific signal that still needs confirmation.",
+  },
+  {
+    status: "theme_watch",
+    label: "Theme watch",
+    description: "Narrative or cluster worth monitoring.",
+  },
+  {
+    status: "risk_rejected_high_info",
+    label: "Rejected high info",
+    description: "Informative but rejected by gates.",
+  },
 ];
 
 type SignalLabWorkbenchProps = {
@@ -53,14 +76,19 @@ export function SignalLabWorkbench({
   onSearchChange,
   onSelectAccountEvent,
   onSelect,
-  onStatusChange
+  onStatusChange,
 }: SignalLabWorkbenchProps) {
   const items = data?.items ?? [];
   const summary = overviewData?.summary ?? data?.summary;
   const health = overviewData?.health ?? data?.health;
-  const hasActiveFilters = statusFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
+  const hasActiveFilters =
+    statusFilter !== "all" || Boolean(handleFilter.trim()) || Boolean(searchFilter.trim());
   const hasAccountLens = Boolean(handleFilter.trim()) && !searchFilter.trim();
-  const showAccountEvents = !isLoading && !items.length && hasAccountLens && (Boolean(isAccountEventsLoading) || accountEvents.length > 0);
+  const showAccountEvents =
+    !isLoading &&
+    !items.length &&
+    hasAccountLens &&
+    (Boolean(isAccountEventsLoading) || accountEvents.length > 0);
   const statusLabel = statusFilter === "all" ? "all statuses" : labelForStatus(statusFilter);
   const totalPulse = totalByStatus(summary);
   return (
@@ -101,7 +129,11 @@ export function SignalLabWorkbench({
       <div className="signal-filter-bar" aria-label="Signal Lab filters">
         <div className="filter-cell signal-stage-filter">
           <span>Status</span>
-          <b>{statusFilter === "all" ? "All pulse" : PULSE_STATUSES.find((item) => item.status === statusFilter)?.label}</b>
+          <b>
+            {statusFilter === "all"
+              ? "All pulse"
+              : PULSE_STATUSES.find((item) => item.status === statusFilter)?.label}
+          </b>
         </div>
         <FilterField
           label="Source"
@@ -121,7 +153,12 @@ export function SignalLabWorkbench({
           <span>Sort</span>
           <b>Updated</b>
         </div>
-        <button className="signal-clear-filters" disabled={!hasActiveFilters} type="button" onClick={onClearFilters}>
+        <button
+          className="signal-clear-filters"
+          disabled={!hasActiveFilters}
+          type="button"
+          onClick={onClearFilters}
+        >
           Reset
         </button>
       </div>
@@ -130,7 +167,9 @@ export function SignalLabWorkbench({
         <header>
           <h3>{showAccountEvents ? "Watched account events" : "Signal Pulse"}</h3>
           <span>
-            {showAccountEvents ? `${accountEvents.length} posts · account lens` : `${items.length} shown · ${statusLabel}`}
+            {showAccountEvents
+              ? `${accountEvents.length} posts · account lens`
+              : `${items.length} shown · ${statusLabel}`}
           </span>
         </header>
         {showAccountEvents ? (
@@ -141,12 +180,25 @@ export function SignalLabWorkbench({
             onSelect={onSelectAccountEvent}
           />
         ) : !isLoading && !items.length ? (
-          <SignalLabEmptyState hasActiveFilters={hasActiveFilters} onClearFilters={onClearFilters} />
+          <SignalLabEmptyState
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={onClearFilters}
+          />
         ) : (
-          <SignalPulseList isLoading={isLoading} items={items} selectedItemId={selectedItemId} onSelect={onSelect} />
+          <SignalPulseList
+            isLoading={isLoading}
+            items={items}
+            selectedItemId={selectedItemId}
+            onSelect={onSelect}
+          />
         )}
         {hasNextPage ? (
-          <button className="signal-load-more" disabled={isFetchingNextPage} type="button" onClick={onLoadMore}>
+          <button
+            className="signal-load-more"
+            disabled={isFetchingNextPage}
+            type="button"
+            onClick={onLoadMore}
+          >
             {isFetchingNextPage ? "Loading..." : "Load more"}
           </button>
         ) : null}
@@ -159,7 +211,7 @@ function AccountEventList({
   isLoading,
   items,
   selectedEventId,
-  onSelect
+  onSelect,
 }: {
   isLoading?: boolean;
   items: LivePayload[];
@@ -175,19 +227,22 @@ function AccountEventList({
         const title = eventText(item.event) || "no text";
         const chips = accountEventChips(item);
         return (
-          <article className={`signal-chain-row ${selectedEventId === item.event.event_id ? "selected" : ""}`} key={item.event.event_id}>
+          <article
+            className={`signal-chain-row ${selectedEventId === item.event.event_id ? "selected" : ""}`}
+            key={item.event.event_id}
+          >
             <button
               aria-label={`open watched post ${title}`}
               className="signal-chain-select"
               type="button"
               onClick={() => onSelect(item)}
             >
-              <span className="signal-stage-badge account_event">{item.event.action ?? "post"}</span>
+              <span className="signal-stage-badge account_event">
+                {item.event.action ?? "post"}
+              </span>
               <span className="signal-chain-main">
                 <strong>@{eventHandle(item.event)}</strong>
-                <em>
-                  watched · {formatRelativeTime(item.event.received_at_ms)} ago
-                </em>
+                <em>watched · {formatRelativeTime(item.event.received_at_ms)} ago</em>
                 <p>{title}</p>
                 <span className="signal-chain-chipline">
                   {chips.slice(0, 4).map((chip) => (
@@ -199,7 +254,9 @@ function AccountEventList({
                 <b>{chips.length || "-"}</b>
                 <small>{item.alerts.length ? "alerts" : "entities"}</small>
               </span>
-              <span className="signal-chain-time">{formatRelativeTime(item.event.received_at_ms)}</span>
+              <span className="signal-chain-time">
+                {formatRelativeTime(item.event.received_at_ms)}
+              </span>
             </button>
           </article>
         );
@@ -208,10 +265,20 @@ function AccountEventList({
   );
 }
 
-function SignalLabEmptyState({ hasActiveFilters, onClearFilters }: { hasActiveFilters: boolean; onClearFilters: () => void }) {
+function SignalLabEmptyState({
+  hasActiveFilters,
+  onClearFilters,
+}: {
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
+}) {
   return (
     <div className="signal-empty-panel">
-      <b>{hasActiveFilters ? "No matching Signal Pulse items" : "No Signal Pulse items in this window"}</b>
+      <b>
+        {hasActiveFilters
+          ? "No matching Signal Pulse items"
+          : "No Signal Pulse items in this window"}
+      </b>
       {hasActiveFilters ? (
         <button type="button" onClick={onClearFilters}>
           Clear filters
@@ -227,7 +294,7 @@ function accountEventChips(item: LivePayload): string[] {
     ...(item.event.hashtags ?? []).map((value) => `#${value}`),
     ...(item.event.mentions ?? []).map((value) => `@${value}`),
     ...item.entities.map((entity) => `${entity.entity_type}:${entity.normalized_value}`),
-    ...item.alerts.map((alert) => alert.alert_type)
+    ...item.alerts.map((alert) => alert.alert_type),
   ];
   const seen = new Set<string>();
   return values.filter((value) => {
@@ -254,7 +321,7 @@ function FilterField({
   label,
   onChange,
   placeholder,
-  value
+  value,
 }: {
   ariaLabel: string;
   label: string;
@@ -265,7 +332,12 @@ function FilterField({
   return (
     <label className="filter-cell signal-filter-cell">
       <span>{label}</span>
-      <input aria-label={ariaLabel} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <input
+        aria-label={ariaLabel}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </label>
   );
 }

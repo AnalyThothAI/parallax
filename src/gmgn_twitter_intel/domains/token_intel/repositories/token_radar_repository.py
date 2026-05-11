@@ -6,7 +6,10 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+)
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot_v2
 
 
 class TokenRadarRepository:
@@ -49,9 +52,12 @@ class TokenRadarRepository:
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            WHERE projection_version = %s
+              AND "window" = %s
+              AND scope = %s
+              AND computed_at_ms = %s
             """,
-            (projection_version, window, scope),
+            (projection_version, window, scope, int(computed_at_ms)),
         )
         for row in rows:
             self.conn.execute(
@@ -263,10 +269,7 @@ def _validate_factor_contract(row: dict[str, Any]) -> None:
         raise ValueError("factor_snapshot_json.schema_version must match factor_version")
     if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
         raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
-    for key in ("families", "hard_gates", "composite"):
-        payload = factor_snapshot.get(key)
-        if not isinstance(payload, dict) or not payload:
-            raise ValueError(f"factor_snapshot_json.{key} is required for token radar row hard-cut contract")
+    require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
 
 
 def _json_ready(value: Any) -> Any:

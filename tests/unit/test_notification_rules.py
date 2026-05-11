@@ -1,3 +1,5 @@
+import pytest
+
 from gmgn_twitter_intel.domains.notifications.services.notification_rules import NotificationRuleEngine
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, NotificationsConfig, Settings
 
@@ -308,7 +310,17 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
                     },
                     "resolution": {"status": "EXACT"},
                     "score": radar_score(heat=92, quality=78, opportunity=81),
-                    "decision": "driver",
+                    "decision": "investigate",
+                    "factor_snapshot": _factor_snapshot(
+                        symbol="PEPE",
+                        target_type="Asset",
+                        target_id="asset:eip155:1:erc20:0xpepe",
+                        eligible_for_high_alert=True,
+                        blocked_reasons=[],
+                        market_facts={"market_status": "fresh"},
+                        social_facts={"mentions_1h": 5, "unique_authors": 3, "watched_mentions": 1},
+                        rank_score=81,
+                    ),
                     "data_health": {"identity": "EXACT", "market": "ready"},
                 },
                 {
@@ -326,6 +338,16 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
                     "resolution": {"status": "NIL"},
                     "score": radar_score(heat=100, quality=70, opportunity=96),
                     "decision": "investigate",
+                    "factor_snapshot": _factor_snapshot(
+                        symbol="FOMO",
+                        target_type=None,
+                        target_id=None,
+                        eligible_for_high_alert=False,
+                        blocked_reasons=["identity_unresolved"],
+                        market_facts={"market_status": "missing"},
+                        social_facts={"mentions_1h": 1, "unique_authors": 1, "watched_mentions": 0},
+                        rank_score=96,
+                    ),
                     "data_health": {"identity": "NIL", "market": "no_resolved_target"},
                 },
             ],
@@ -339,16 +361,16 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
     assert hot[0].severity == "high"
     assert hot[0].symbol == "PEPE"
     assert "## $PEPE 5m heat alert" in hot[0].body
-    assert "**Heat:** 92" in hot[0].body
-    assert "**Discussion quality:** 78" in hot[0].body
+    assert "**Heat:** 82" in hot[0].body
+    assert "**Discussion quality:** 70" in hot[0].body
     assert "`0xpepe`" in hot[0].body
     assert "[GMGN](https://gmgn.ai/eth/token/0xpepe)" in hot[0].body
     assert "[X Search]" in hot[0].body
     assert hot[0].source_table == "token_radar_rows"
     assert hot[0].payload["target_id"] == "asset:eip155:1:erc20:0xpepe"
-    assert hot[0].payload["social_heat_score"] == 92
+    assert hot[0].payload["social_heat_score"] == 82
     assert hot[0].payload["decision"] == "driver"
-    assert hot[0].payload["score_version"] == "social_opportunity_v3"
+    assert hot[0].payload["score_version"] == "token_factor_snapshot_v2_alpha_gated"
 
 
 def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
@@ -370,6 +392,16 @@ def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
                     "resolution": {"status": "NIL"},
                     "score": radar_score(heat=100, quality=70, opportunity=98),
                     "decision": "investigate",
+                    "factor_snapshot": _factor_snapshot(
+                        symbol="VERSA",
+                        target_type=None,
+                        target_id=None,
+                        eligible_for_high_alert=False,
+                        blocked_reasons=["identity_unresolved"],
+                        market_facts={"market_status": "missing"},
+                        social_facts={"mentions_1h": 9, "unique_authors": 5, "watched_mentions": 2},
+                        rank_score=98,
+                    ),
                     "data_health": {"identity": "NIL", "market": "no_resolved_target"},
                 }
             ],
@@ -501,15 +533,18 @@ def test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature():
 
 def test_signal_pulse_signature_changes_on_meaningful_state_changes():
     base = pulse_candidate("watch", status="token_watch", score_band="watch", risks=["public_stream_coverage"])
+    gate_changed = pulse_candidate("watch")
+    gate_changed["factor_snapshot_json"] = {
+        **gate_changed["factor_snapshot_json"],
+        "gates": {**gate_changed["factor_snapshot_json"]["gates"], "max_decision": "alert"},
+    }
 
     signatures = {
         "base": _only_pulse_notification(base).payload["notification_signature"],
         "high_conviction": _only_pulse_notification({**base, "score_band": "high_conviction"}).payload[
             "notification_signature"
         ],
-        "gate": _only_pulse_notification(
-            pulse_candidate("watch", gate={"gate_reasons": ["manual_gate_override"]})
-        ).payload["notification_signature"],
+        "gate": _only_pulse_notification(gate_changed).payload["notification_signature"],
         "recommendation": _only_pulse_notification(
             pulse_candidate("watch", recommendation_summary="新增独立作者确认")
         ).payload["notification_signature"],
@@ -649,7 +684,8 @@ def test_signal_pulse_eligible_token_watch_can_emit_high_notification():
     assert candidate.symbol == "BOV"
     assert "- **Status:** token watch" in candidate.body
     assert "- **Gate:** clear" in candidate.body
-    assert "- **Market:** mcap $250.0k · liq $55.0k · holders 600 · fresh" in candidate.body
+    assert "- **Market:** dex · market ready" in candidate.body
+    assert "- **Alpha:** attention heat 82 · diffusion quality 78" in candidate.body
     assert "- **Social:** 6 mentions · 4 authors · watched 1" in candidate.body
     assert "链上质量达标" in candidate.body
 
@@ -685,6 +721,28 @@ def test_signal_pulse_notification_rejects_malformed_factor_snapshot_contract():
         "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
         "composite": {"rank_score": 82},
     }
+
+    candidates = [
+        item
+        for item in engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+        if item.rule_id == "signal_pulse_candidate"
+    ]
+
+    assert candidates == []
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda snapshot: snapshot["families"].__setitem__("market_quality", {"facts": {}}),
+        lambda snapshot: snapshot.pop("normalization"),
+        lambda snapshot: snapshot.pop("provenance"),
+        lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}),
+    ],
+)
+def test_signal_pulse_notification_rejects_malformed_v2_snapshot_shape(mutate):
+    row = pulse_candidate("pulse-malformed-v2", status="token_watch", eligible_for_high_alert=True)
+    mutate(row["factor_snapshot_json"])
 
     candidates = [
         item
@@ -830,21 +888,74 @@ def _factor_snapshot(
         "market_cap_usd": 120_000,
         "liquidity_usd": 55_000,
         "holders": 800,
-        "market_status": "fresh",
         **(market_facts or {}),
     }
     resolved_social_facts = {"mentions_1h": 9, "unique_authors": 4, "watched_mentions": 1, **(social_facts or {})}
+    market_ready = "ready" if resolved_market_facts.get("market_status", "fresh") == "fresh" else "partial"
     return {
-        "schema_version": "token_factor_snapshot_v1",
-        "subject": {"symbol": symbol, "target_type": target_type, "target_id": target_id},
-        "families": {
-            "market_quality": {"facts": resolved_market_facts},
-            "social_attention": {"facts": resolved_social_facts},
-            "social_quality": {"facts": {"independent_authors": resolved_social_facts.get("unique_authors")}},
+        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "subject": {
+            "symbol": symbol,
+            "target_type": target_type,
+            "target_id": target_id,
+            "target_market_type": "dex" if target_id else None,
         },
-        "hard_gates": {
+        "gates": {
             "eligible_for_high_alert": eligible_for_high_alert and not blocked_reasons,
             "blocked_reasons": blocked_reasons,
+            "risk_reasons": blocked_reasons,
+            "max_decision": "watch" if blocked_reasons else "high_alert",
         },
-        "composite": {"rank_score": rank_score},
+        "data_health": {
+            "identity": "ready" if target_id else "unresolved",
+            "market": market_ready if target_id else "no_resolved_target",
+            "social": "ready",
+            "alpha": "ready",
+        },
+        "families": {
+            "attention_heat": {
+                "raw_score": 82,
+                "score": 82,
+                "weight": 0.35,
+                "data_health": "ready",
+                "facts": resolved_social_facts,
+                "factors": {"mentions_1h": {"family": "attention_heat", "key": "mentions_1h"}},
+            },
+            "diffusion_quality": {
+                "raw_score": 78,
+                "score": 78,
+                "weight": 0.3,
+                "data_health": "ready",
+                "facts": {"independent_authors": resolved_social_facts.get("unique_authors")},
+                "factors": {"independent_authors": {"family": "diffusion_quality", "key": "independent_authors"}},
+            },
+            "semantic_quality": {
+                "raw_score": 70,
+                "score": 70,
+                "weight": 0.25,
+                "data_health": "ready",
+                "facts": {"phase": "ignition"},
+                "factors": {},
+            },
+            "timing_response": {
+                "raw_score": 64,
+                "score": 64,
+                "weight": 0.1,
+                "data_health": "ready",
+                "facts": {"price_change_status": resolved_market_facts.get("market_status", "fresh")},
+                "factors": {},
+            },
+        },
+        "normalization": {"status": "pending_cross_section"},
+        "composite": {
+            "rank_score": rank_score,
+            "recommended_decision": "high_alert" if rank_score >= 70 else "watch",
+            "family_scores": {
+                "attention_heat": 82,
+                "diffusion_quality": 78,
+                "semantic_quality": 70,
+                "timing_response": 64,
+            },
+        },
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},
     }

@@ -38,28 +38,68 @@ def _pulse_factor_snapshot(
     blocked_reasons: list[str] | None = None,
 ) -> dict[str, object]:
     blocked = blocked_reasons or []
+    market_health = "ready" if market_status == "fresh" else "partial"
     return {
-        "schema_version": "token_factor_snapshot_v1",
-        "subject": {"target_type": "Asset", "target_id": target_id, "symbol": symbol, "chain": "sol"},
+        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "subject": {
+            "target_type": "Asset",
+            "target_id": target_id,
+            "target_market_type": "dex",
+            "symbol": symbol,
+            "chain": "sol",
+        },
+        "gates": {
+            "eligible_for_high_alert": not blocked,
+            "blocked_reasons": blocked,
+            "risk_reasons": blocked,
+            "max_decision": "watch" if blocked else "high_alert",
+        },
+        "data_health": {"identity": "ready", "market": market_health, "social": "ready", "alpha": "ready"},
         "families": {
-            "market_quality": {
-                "facts": {
-                    "market_status": market_status,
-                    "market_cap_usd": 1_200_000,
-                    "liquidity_usd": 150_000,
-                    "holders": 1_500,
-                    "volume_24h_usd": 250_000,
-                },
-                "factors": {},
-            },
-            "social_attention": {
+            "attention_heat": {
+                "raw_score": 82,
+                "score": 82,
+                "weight": 0.35,
+                "data_health": "ready",
                 "facts": {"mentions_1h": 8, "unique_authors": 4, "watched_mentions": 1},
                 "factors": {},
             },
-            "social_quality": {"facts": {"independent_authors": 4}, "factors": {}},
+            "diffusion_quality": {
+                "raw_score": 78,
+                "score": 78,
+                "weight": 0.3,
+                "data_health": "ready",
+                "facts": {"independent_authors": 4},
+                "factors": {},
+            },
+            "semantic_quality": {
+                "raw_score": 72,
+                "score": 72,
+                "weight": 0.25,
+                "data_health": "ready",
+                "facts": {"phase": "ignition"},
+                "factors": {},
+            },
+            "timing_response": {
+                "raw_score": 65,
+                "score": 65,
+                "weight": 0.1,
+                "data_health": "ready",
+                "facts": {"price_change_status": market_status},
+                "factors": {},
+            },
         },
-        "hard_gates": {"eligible_for_high_alert": not blocked, "blocked_reasons": blocked},
-        "composite": {"rank_score": score, "recommended_decision": "watch"},
+        "normalization": {"status": "pending_cross_section"},
+        "composite": {
+            "rank_score": score,
+            "recommended_decision": "watch",
+            "family_scores": {
+                "attention_heat": 82,
+                "diffusion_quality": 78,
+                "semantic_quality": 72,
+                "timing_response": 65,
+            },
+        },
         "provenance": {"source_event_ids": ["event-api-1"], "computed_at_ms": 2_000},
     }
 
@@ -91,25 +131,27 @@ def _pulse_recommendation(summary: str = "PEPE 社交热度显著上升。") -> 
         "recommendation": "research",
         "summary_zh": summary,
         "primary_reasons": [
-            {"factor_key": "social_attention.unique_authors", "explanation_zh": "独立作者扩散正在增加。"}
+            {"factor_key": "diffusion_quality.independent_authors", "explanation_zh": "独立作者扩散正在增加。"}
         ],
         "upgrade_conditions": [
             {
-                "factor_key": "market_quality.liquidity_usd",
+                "factor_key": "attention_heat.watched_mentions",
                 "operator": ">=",
-                "value": 250_000,
-                "description_zh": "流动性继续改善。",
+                "value": 1,
+                "description_zh": "关注账号继续确认。",
             }
         ],
         "invalidation_conditions": [
             {
-                "factor_key": "social_attention.mentions_1h",
+                "factor_key": "attention_heat.mentions_1h",
                 "operator": "<",
                 "value": 3,
                 "description_zh": "讨论快速降温。",
             }
         ],
-        "residual_risks": [{"factor_key": "market_quality.liquidity_usd", "description_zh": "流动性仍可能快速变化。"}],
+        "residual_risks": [
+            {"factor_key": "timing_response.price_change_status", "description_zh": "价格响应仍可能变化。"}
+        ],
         "evidence_event_ids": ["event-api-1"],
         "confidence": 0.72,
     }
@@ -309,6 +351,12 @@ def make_token_event(
     )
 
 
+def rebuild_token_radar(client: TestClient, *, now_ms: int | None = None) -> None:
+    worker = client.app.state.service.token_radar_projection_worker
+    assert worker is not None
+    worker.rebuild_once(now_ms=now_ms if now_ms is not None else int(time.time() * 1000))
+
+
 def test_api_bootstrap_exposes_frontend_runtime_config_without_token(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
@@ -369,39 +417,38 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     with TestClient(app) as client:
         event = make_token_event("event-1", symbol="PEPE", address=PEPE, text=f"$PEPE ignition {PEPE}")
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
-        HarnessSnapshotBuilder(
-            client.app.state.service.harness,
-            tokens=client.app.state.service.tokens,
-        ).materialize(
-            event=event.to_dict(),
-            extraction=SocialEventExtraction(
-                is_signal_event=True,
-                event_type="meme_phrase_seed",
-                source_action="posted",
-                subject="PEPE ignition",
-                direction_hint="attention_positive",
-                attention_mechanism="direct_token_mention",
-                impact_hint=0.75,
-                semantic_novelty_hint=0.7,
-                confidence=0.9,
-                anchor_terms=[AnchorTerm(term="$PEPE", role="asset", evidence="$PEPE")],
-                token_candidates=[
-                    SocialTokenCandidate(
-                        symbol="PEPE",
-                        project_name=None,
-                        chain="eth",
-                        address=PEPE,
-                        evidence="$PEPE",
-                        confidence=0.9,
-                    )
-                ],
-                semantic_risks=["public_stream_coverage"],
-                summary_zh="PEPE ignition 形成 harness 事件。",
-                raw_response={"ok": True},
-            ),
-            run_id="run-event-1",
-            model_version="fake-model",
-        )
+        with client.app.state.service.repositories() as repos:
+            HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+                event=event.to_dict(),
+                extraction=SocialEventExtraction(
+                    is_signal_event=True,
+                    event_type="meme_phrase_seed",
+                    source_action="posted",
+                    subject="PEPE ignition",
+                    direction_hint="attention_positive",
+                    attention_mechanism="direct_token_mention",
+                    impact_hint=0.75,
+                    semantic_novelty_hint=0.7,
+                    confidence=0.9,
+                    anchor_terms=[AnchorTerm(term="$PEPE", role="asset", evidence="$PEPE")],
+                    token_candidates=[
+                        SocialTokenCandidate(
+                            symbol="PEPE",
+                            project_name=None,
+                            chain="eth",
+                            address=PEPE,
+                            evidence="$PEPE",
+                            confidence=0.9,
+                        )
+                    ],
+                    semantic_risks=["public_stream_coverage"],
+                    summary_zh="PEPE ignition 形成 harness 事件。",
+                    raw_response={"ok": True},
+                ),
+                run_id="run-event-1",
+                model_version="fake-model",
+            )
+        rebuild_token_radar(client)
 
         headers = {"Authorization": "Bearer secret"}
         recent = client.get("/api/recent?limit=5", headers=headers)
@@ -424,7 +471,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
-    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "resolved"
+    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "UNIQUE_BY_CONTEXT"
 
 
 def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
@@ -648,7 +695,7 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
     assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
-    assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v1"
+    assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
     assert "radar_score_json" not in data["items"][0]
     assert "market_context_json" not in data["items"][0]
     assert "thesis_json" not in data["items"][0]
@@ -706,7 +753,6 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 risk_reasons_json=["thin_liquidity"],
                 evidence_event_ids_json=["event-api-1"],
                 source_event_ids_json=["event-api-1"],
-                agent_run_id="run-api-1",
                 pulse_version="pulse-v1",
                 gate_version="gate-v1",
                 prompt_version="prompt-v1",
@@ -813,7 +859,7 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     assert data["returned_count"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-api-token"
     assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
-    assert data["items"][0]["fact_card"]["market_status"] == "fresh"
+    assert data["items"][0]["fact_card"]["market_status"] == "ready"
     assert "radar_score_json" not in data["items"][0]
     assert "market_context_json" not in data["items"][0]
     assert "thesis_json" not in data["items"][0]
@@ -839,6 +885,7 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
         )
         client.app.state.service.ingest.ingest_event(watched_event, is_watched=True)
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
+        rebuild_token_radar(client)
 
         headers = {"Authorization": "Bearer secret"}
         all_flow = client.get("/api/token-radar", params={"window": "5m", "scope": "all"}, headers=headers)
@@ -864,12 +911,12 @@ def test_api_current_market_returns_missing_snapshot_for_known_target_shape(tmp_
         missing = client.get("/api/current-market", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert response.json()["data"] == {
-        "target_type": "Asset",
-        "target_id": "asset:missing",
-        "market_status": "missing",
-        "fields": {},
-    }
+    data = response.json()["data"]
+    assert data["target_type"] == "Asset"
+    assert data["target_id"] == "asset:missing"
+    assert data["market_status"] == "missing"
+    assert data["fields"]["price_usd"]["status"] == "missing"
+    assert data["fields"]["market_cap_usd"]["status"] == "missing"
     assert missing.status_code == 400
     assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
 
@@ -889,6 +936,7 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
                 received_at_ms=base_ms - index * 1_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
+        rebuild_token_radar(client, now_ms=base_ms + 1_000)
 
         asset_flow = client.get(
             "/api/token-radar",
@@ -926,7 +974,7 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
     assert first_body["has_more"] is True
     assert first_body["query"]["target_type"] == target_type
     assert first_body["query"]["target_id"] == target_id
-    assert first_body["items"][0]["post_quality"]["score_version"] == "token_target_post_quality_v1"
+    assert first_body["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
     assert first_body["items"][0]["post_quality"]["contributions"]
     assert "score" not in first_body["items"][0]
     assert second_page.status_code == 200
@@ -967,6 +1015,7 @@ def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):
                 received_at_ms=base_ms - index * 30_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
+        rebuild_token_radar(client, now_ms=base_ms + 1_000)
 
         asset_flow = client.get(
             "/api/token-radar",

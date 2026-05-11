@@ -5,6 +5,7 @@ import json
 import secrets
 import sys
 from contextlib import contextmanager
+from decimal import Decimal
 from typing import TextIO
 
 import uvicorn
@@ -32,6 +33,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
+    require_token_factor_snapshot_v2,
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -42,6 +44,8 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
     rebuild_token_radar_windows,
     reprocess_recent_token_intents,
 )
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
+from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
@@ -255,6 +259,22 @@ def build_parser() -> argparse.ArgumentParser:
     audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     audit_token_radar.add_argument("--limit", type=int, default=100)
     audit_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
+    factor_diagnostics = ops_subcommands.add_parser(
+        "factor-diagnostics",
+        help="inspect token factor distribution health for latest radar rows",
+    )
+    factor_diagnostics.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    factor_diagnostics.add_argument("--scope", choices=("all", "matched"), default="all")
+    factor_diagnostics.add_argument("--limit", type=int, default=200)
+    settle_token_factors = ops_subcommands.add_parser(
+        "settle-token-factors",
+        help="settle token factor scores against later price observations",
+    )
+    settle_token_factors.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
+    settle_token_factors.add_argument("--scope", choices=("all", "matched"), default="all")
+    settle_token_factors.add_argument("--horizon", choices=("15m", "1h", "6h", "24h"), default="1h")
+    settle_token_factors.add_argument("--limit", type=int, default=1000)
+    settle_token_factors.add_argument("--now-ms", type=int, default=None, help=argparse.SUPPRESS)
     return parser
 
 
@@ -397,11 +417,35 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             audit = PostgresQueryAudit(
                 conn,
                 token_radar_projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                token_factor_version=TOKEN_FACTOR_SNAPSHOT_VERSION,
             ).run(analyze=bool(args.analyze))
         _emit({"ok": bool(audit.get("ok")), "data": audit}, stdout)
         return 0 if audit.get("ok") else 1
 
     with _repositories(settings) as repos:
+        if command == "ops" and args.ops_command == "factor-diagnostics":
+            rows = repos.token_radar.latest_rows(
+                window=args.window,
+                scope=args.scope,
+                limit=args.limit,
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            )
+            data = factor_distribution_report(rows)
+            _emit({"ok": data["ok"], "data": data}, stdout)
+            return 0 if data["ok"] else 1
+
+        if command == "ops" and args.ops_command == "settle-token-factors":
+            data = settle_token_factor_scores(
+                repos=repos,
+                horizon=args.horizon,
+                window=args.window,
+                scope=args.scope,
+                generated_at_ms=args.now_ms if args.now_ms is not None else _now_ms(),
+                limit=args.limit,
+            )
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
         evidence = repos.evidence
         signals = repos.signals
         assets = repos.assets
@@ -447,7 +491,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
@@ -847,7 +891,13 @@ def _repositories(settings):
 
 
 def _emit(payload: dict, stdout: TextIO) -> None:
-    stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+    stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=_json_default) + "\n")
+
+
+def _json_default(value: object) -> object:
+    if isinstance(value, Decimal):
+        return float(value)
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _ensure_postgres_password_file(app_home) -> object:
@@ -951,12 +1001,16 @@ def _audit_token_radar_rows(
 ) -> dict:
     violations: list[dict] = []
     required = set(TOKEN_RADAR_FACTOR_FAMILIES)
+    required_blocks = ("gates", "data_health", "normalization", "composite")
     if not rows and source_current_window_rows:
         violations.append({"code": "empty_projection_rows"})
     for index, row in enumerate(rows):
         projection_version = row.get("projection_version")
         if projection_version != TOKEN_RADAR_PROJECTION_VERSION:
             violations.append({"row": index, "code": "wrong_projection_version", "value": projection_version})
+        factor_version = row.get("factor_version")
+        if factor_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+            violations.append({"row": index, "code": "wrong_factor_version", "value": factor_version})
         factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
         if not factor_snapshot:
             violations.append({"row": index, "code": "missing_factor_snapshot"})
@@ -968,10 +1022,31 @@ def _audit_token_radar_rows(
                     "value": factor_snapshot.get("schema_version"),
                 }
             )
+        else:
+            try:
+                require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
+            except ValueError as exc:
+                violations.append(
+                    {
+                        "row": index,
+                        "code": "invalid_factor_snapshot_contract",
+                        "error": str(exc),
+                    }
+                )
         families = factor_snapshot.get("families") if isinstance(factor_snapshot.get("families"), dict) else {}
         missing = sorted(required - set(families))
+        extra = sorted(set(families) - required)
         if missing:
             violations.append({"row": index, "code": "missing_factor_families", "families": missing})
+        if extra:
+            violations.append({"row": index, "code": "extra_factor_families", "families": extra})
+        if "hard_gates" in factor_snapshot:
+            violations.append({"row": index, "code": "hard_gates_present"})
+        violations.extend(
+            {"row": index, "code": "missing_factor_snapshot_block", "block": block_name}
+            for block_name in required_blocks
+            if not isinstance(factor_snapshot.get(block_name), dict)
+        )
         for family in sorted(required & set(families)):
             block = families.get(family) if isinstance(families.get(family), dict) else {}
             if "score" not in block:
@@ -1001,13 +1076,9 @@ def _audit_token_radar_rows(
             payload = row.get(field) if isinstance(row.get(field), dict) else {}
             if payload:
                 violations.append({"row": index, "code": "legacy_runtime_payload", "field": field})
-        market_family = families.get("market_quality") if isinstance(families.get("market_quality"), dict) else {}
-        market_facts = market_family.get("facts") if isinstance(market_family.get("facts"), dict) else {}
-        if row.get("decision") == "high_alert" and str(market_facts.get("market_status") or "") not in {
-            "fresh",
-            "ready",
-        }:
-            violations.append({"row": index, "code": "high_alert_without_ready_market"})
+        gates = factor_snapshot.get("gates") if isinstance(factor_snapshot.get("gates"), dict) else {}
+        if row.get("decision") == "high_alert" and gates.get("eligible_for_high_alert") is not True:
+            violations.append({"row": index, "code": "high_alert_without_gate_eligibility"})
     social_lag_ms = max(0, int(now_ms) - int(source_max_resolution_ms)) if source_max_resolution_ms else None
     market_lag_ms = (
         max(0, int(now_ms) - int(source_max_price_observed_at_ms)) if source_max_price_observed_at_ms else None

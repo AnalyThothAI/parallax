@@ -26,6 +26,8 @@ def test_current_market_keeps_price_fresh_while_market_cap_stale(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
+        _insert_pricefeed(conn, "feed-search")
+        _insert_pricefeed(conn, "feed-price")
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
@@ -71,6 +73,7 @@ def test_current_market_updates_market_cap_from_full_metadata_provider(tmp_path)
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
+        _insert_pricefeed(conn, "feed-search")
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
@@ -100,6 +103,8 @@ def test_current_market_reads_okx_dex_ws_price_info_as_metadata_provider(tmp_pat
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
+        _insert_pricefeed(conn, "feed-search")
+        _insert_pricefeed(conn, "feed-ws")
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
@@ -146,6 +151,8 @@ def test_current_market_ignores_observations_after_read_time(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
+        _insert_pricefeed(conn, "feed-search-before")
+        _insert_pricefeed(conn, "feed-search-future")
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
@@ -188,6 +195,7 @@ def test_current_market_reads_cex_ticker_fields(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
+        _insert_pricefeed(conn, "feed-btc", subject_type="CexToken", subject_id="cex_token:BTC")
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_cex",
@@ -226,3 +234,23 @@ class _CaptureConnection:
 
     def fetchall(self) -> list[dict[str, object]]:
         return []
+
+
+def _insert_pricefeed(
+    conn,
+    pricefeed_id: str,
+    *,
+    subject_type: str = SUBJECT_TYPE,
+    subject_id: str = SUBJECT_ID,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO price_feeds(
+          pricefeed_id, feed_type, provider, subject_type, subject_id, native_market_id,
+          status, evidence_level, first_seen_at_ms, updated_at_ms
+        )
+        VALUES (%s, 'test_feed', 'test', %s, %s, %s, 'canonical', 'test_fixture', %s, %s)
+        ON CONFLICT(pricefeed_id) DO NOTHING
+        """,
+        (pricefeed_id, subject_type, subject_id, pricefeed_id, 1_700_000_000_000, 1_700_000_000_000),
+    )

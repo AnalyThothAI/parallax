@@ -48,7 +48,7 @@ function mixedFreshnessToken(): TokenFlowItem {
       chain: "eth",
       address: "0x1111111111111111111111111111111111111111",
       symbol: "TROLL",
-      resolution_reasons: []
+      resolution_reasons: [],
     },
     market: {
       market_status: "partial",
@@ -64,14 +64,14 @@ function mixedFreshnessToken(): TokenFlowItem {
       snapshot_age_ms: 30_000,
       snapshot_received_at_ms: 1_778_426_440_000,
       provider: "okx_dex_price",
-      price_change_status: "insufficient_history"
+      price_change_status: "insufficient_history",
     },
     timing: {
       ...item.timing,
       status: "neutral",
       risks: [],
-      market_observation_status: "partial"
-    }
+      market_observation_status: "partial",
+    },
   };
 }
 
@@ -102,7 +102,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       baseline_sample_count: 0,
     },
     social_heat: {
-      score_version: "social_heat_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
       score: 44,
       reasons: [],
       risks: [],
@@ -122,7 +122,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       status: "insufficient_history",
     },
     discussion_quality: {
-      score_version: "discussion_quality_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
       score: 43,
       reasons: [],
       risks: [],
@@ -136,7 +136,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       watched_source_count: 0,
     },
     propagation: {
-      score_version: "propagation_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
       score: 50,
       reasons: [],
       risks: [],
@@ -152,7 +152,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       top_authors: [],
     },
     tradeability: {
-      score_version: "tradeability_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
       score: 0,
       reasons: [],
       risks: ["identity_not_tradeable"],
@@ -165,7 +165,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       pool_present: false,
     },
     timing: {
-      score_version: "timing_v4",
+      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
       score: 0,
       status: "market_unavailable",
       chase_risk: false,
@@ -174,14 +174,14 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       market_observation_status: "no_resolved_target",
     },
     opportunity: {
-      score_version: "social_opportunity_v3",
+      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
       score: 44,
       decision: "investigate",
       reasons: [],
       risks: [],
       contributions: [],
       risk_caps: [],
-      components: { heat: 44, quality: 43, propagation: 50, tradeability: 0, timing: 0 },
+      components: { heat: 44, quality: 43, propagation: 50, timing: 0 },
     },
     watch: {
       status: "seed",

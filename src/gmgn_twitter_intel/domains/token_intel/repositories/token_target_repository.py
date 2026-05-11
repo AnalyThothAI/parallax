@@ -36,6 +36,7 @@ class TokenTargetRepository:
         params.append(max(0, int(limit)))
         rows = self.conn.execute(
             f"""
+            WITH matched AS (
             SELECT
               events.event_id,
               events.tweet_id,
@@ -76,7 +77,20 @@ class TokenTargetRepository:
               message_price.price_quote,
               message_price.quote_symbol AS price_quote_symbol,
               message_price.observation_kind AS price_observation_kind,
-              message_price.observation_lag_ms AS price_observation_lag_ms
+              message_price.observation_lag_ms AS price_observation_lag_ms,
+              row_number() OVER (
+                PARTITION BY events.event_id
+                ORDER BY
+                  CASE
+                    WHEN tir.resolution_status = 'EXACT' THEN 0
+                    WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 1
+                    WHEN tir.resolution_status = 'AMBIGUOUS' THEN 2
+                    ELSE 3
+                  END,
+                  tir.confidence DESC,
+                  tir.decision_time_ms DESC,
+                  tir.resolution_id DESC
+              ) AS event_target_rank
             FROM token_intent_resolutions tir
             JOIN events ON events.event_id = tir.event_id
             LEFT JOIN registry_assets
@@ -133,7 +147,11 @@ class TokenTargetRepository:
               LIMIT 1
             ) message_price ON true
             WHERE {" AND ".join(clauses)}
-            ORDER BY events.received_at_ms DESC, events.event_id DESC
+            )
+            SELECT *
+            FROM matched
+            WHERE event_target_rank = 1
+            ORDER BY received_at_ms DESC, event_id DESC
             LIMIT %s
             """,
             params,

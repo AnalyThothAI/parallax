@@ -61,10 +61,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar} ...
+                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar}
+  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -100,6 +100,11 @@ positional arguments:
                         write the current token radar read model
     audit-token-radar   audit token radar rows for scoring and market-
                         readiness regressions
+    factor-diagnostics  inspect token factor distribution health for latest
+                        radar rows
+    settle-token-factors
+                        settle token factor scores against later price
+                        observations
 
 options:
   -h, --help            show this help message and exit

@@ -13,8 +13,9 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar):
+    def __init__(self, *, token_radar: Any, current_market: Any) -> None:
         self.token_radar = token_radar
+        self.current_market = current_market
 
     def asset_flow(
         self,
@@ -39,9 +40,21 @@ class AssetFlowService:
             limit=row_limit,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
-        targets = [_public_row(row) for row in rows if row.get("lane") == "resolved"]
-        attention = [_public_row(row) for row in rows if row.get("lane") == "attention"]
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
+        market_read_time_ms = int(now_ms or computed_at_ms or 0)
+        subjects = _subjects_from_rows(rows)
+        market_snapshots = self.current_market.current_for_subjects(subjects, now_ms=market_read_time_ms)
+        public_rows = [
+            _public_row(
+                row,
+                market_snapshots.get(_target_key_from_snapshot(row.get("factor_snapshot_json"))),
+            )
+            for row in rows
+        ]
+        targets = [row for row in public_rows if row.get("_lane") == "resolved"]
+        attention = [row for row in public_rows if row.get("_lane") == "attention"]
+        for row in [*targets, *attention]:
+            row.pop("_lane", None)
         return {
             "targets": targets[:limit],
             "attention": attention[:limit],
@@ -62,24 +75,24 @@ class AssetFlowService:
         }
 
 
-def _public_row(row: dict[str, Any]) -> dict[str, Any]:
-    factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+def _public_row(row: dict[str, Any], current_market_snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    factor_snapshot = _mapping(row.get("factor_snapshot_json"))
     return {
+        "_lane": row.get("lane"),
         "intent": row.get("intent_json") or {},
         "target": _target_from_snapshot(factor_snapshot),
         "attention": _attention_from_snapshot(factor_snapshot),
-        "current_market": _current_market_from_snapshot(factor_snapshot),
+        "current_market": current_market_snapshot or _missing_current_market(factor_snapshot),
         "resolution": row.get("resolution_json") or {},
         "score": _composite_from_snapshot(factor_snapshot),
         "factor_snapshot": factor_snapshot,
-        "decision": row.get("decision"),
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
     }
 
 
 def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    subject = _mapping(snapshot.get("subject"))
     return {
         "target_type": subject.get("target_type"),
         "target_id": subject.get("target_id"),
@@ -91,84 +104,28 @@ def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    family = _family(snapshot, "social_attention")
-    facts = family.get("facts") if isinstance(family.get("facts"), dict) else {}
-    return dict(facts)
-
-
-def _market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    family = _family(snapshot, "market_quality")
-    facts = family.get("facts") if isinstance(family.get("facts"), dict) else {}
-    return dict(facts)
+    family = _family(snapshot, "attention_heat")
+    return _mapping(family.get("facts"))
 
 
 def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    composite = snapshot.get("composite") if isinstance(snapshot.get("composite"), dict) else {}
-    return dict(composite)
+    return _mapping(snapshot.get("composite"))
 
 
 def _family(snapshot: dict[str, Any], name: str) -> dict[str, Any]:
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
-    family = families.get(name) if isinstance(families.get(name), dict) else {}
-    return family
+    families = _mapping(snapshot.get("families"))
+    return _mapping(families.get(name))
 
 
 def _target_key_from_snapshot(snapshot: Any) -> tuple[str, str] | None:
     if not isinstance(snapshot, dict):
         return None
-    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    subject = _mapping(snapshot.get("subject"))
     target_type = str(subject.get("target_type") or "").strip()
     target_id = str(subject.get("target_id") or "").strip()
     if not target_type or not target_id:
         return None
     return (target_type, target_id)
-
-
-_MARKET_FIELD_FACT_KEYS = (
-    "price_usd",
-    "price_quote",
-    "quote_symbol",
-    "price_basis",
-    "market_cap_usd",
-    "liquidity_usd",
-    "holders",
-    "volume_24h_usd",
-    "open_interest_usd",
-)
-
-
-def _current_market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    target_key = _target_key_from_snapshot(snapshot)
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
-    market_quality = families.get("market_quality") if isinstance(families.get("market_quality"), dict) else {}
-    facts = market_quality.get("facts") if isinstance(market_quality.get("facts"), dict) else {}
-    market_status = str(facts.get("market_status") or "").strip()
-    statuses = facts.get("field_statuses") if isinstance(facts.get("field_statuses"), dict) else {}
-    fields = {
-        key: _snapshot_market_field(value=facts.get(key), status=statuses.get(key))
-        for key in _MARKET_FIELD_FACT_KEYS
-        if facts.get(key) is not None or statuses.get(key) is not None
-    }
-    if not fields and market_status in {"", "missing"}:
-        return _missing_current_market(snapshot)
-    return {
-        "target_type": target_key[0] if target_key else None,
-        "target_id": target_key[1] if target_key else None,
-        "market_status": market_status or "missing",
-        "fields": fields,
-    }
-
-
-def _snapshot_market_field(*, value: Any, status: Any) -> dict[str, Any]:
-    resolved_status = str(status or ("ready" if value is not None else "missing"))
-    return {
-        "value": value,
-        "status": resolved_status,
-        "observed_at_ms": None,
-        "age_ms": None,
-        "provider": None,
-        "source_observation_id": None,
-    }
 
 
 def _missing_current_market(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -179,6 +136,19 @@ def _missing_current_market(snapshot: dict[str, Any]) -> dict[str, Any]:
         "market_status": "missing",
         "fields": {},
     }
+
+
+def _subjects_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str]] = set()
+    subjects: list[dict[str, Any]] = []
+    for row in rows:
+        snapshot = row.get("factor_snapshot_json")
+        key = _target_key_from_snapshot(snapshot)
+        if key is None or key in seen:
+            continue
+        seen.add(key)
+        subjects.append({"target_type": key[0], "target_id": key[1]})
+    return subjects
 
 
 def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -193,7 +163,7 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     counts = {"fresh": 0, "stale": 0, "missing": 0, "pending": 0}
     for row in rows:
-        current_market = row.get("current_market") if isinstance(row.get("current_market"), dict) else {}
+        current_market = _mapping(row.get("current_market"))
         market_status = str(current_market.get("market_status") or "")
         if market_status in {"fresh", "ready"}:
             counts["fresh"] += 1
@@ -204,6 +174,12 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(rows)
     status = "ready" if counts["stale"] == 0 and counts["missing"] == 0 else "partial"
     return {**counts, "status": status, "total": total}
+
+
+def _mapping(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {str(key): item for key, item in value.items()}
 
 
 def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, Any]:

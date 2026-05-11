@@ -5,6 +5,7 @@ import pytest
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     gate_pulse_candidate_from_factor_snapshot,
 )
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
 def _snapshot(
@@ -15,54 +16,94 @@ def _snapshot(
     target_type: str | None = "Asset",
     target_id: str | None = "asset-1",
     symbol: str | None = "TEST",
-    market_risks: list[str] | None = None,
+    risk_reasons: list[str] | None = None,
 ) -> dict[str, object]:
     return {
-        "schema_version": "token_factor_snapshot_v1",
+        "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {
             "target_type": target_type,
             "target_id": target_id,
+            "target_market_type": "dex" if target_id else None,
             "symbol": symbol,
         },
-        "families": {
-            "identity": {
-                "facts": {"target_type": target_type, "target_id": target_id, "symbol": symbol},
-                "factors": {
-                    "target_id": {
-                        "family": "identity",
-                        "key": "target_id",
-                        "risk_flags": [],
-                        "hard_gate": None,
-                    }
-                },
-            },
-            "market_quality": {
-                "facts": {"holders": 500, "liquidity_usd": 50_000},
-                "factors": {
-                    "holders": {
-                        "family": "market_quality",
-                        "key": "holders",
-                        "risk_flags": market_risks or [],
-                        "hard_gate": "block_high_alert" if market_risks else None,
-                    },
-                    "liquidity_usd": {
-                        "family": "market_quality",
-                        "key": "liquidity_usd",
-                        "risk_flags": [],
-                        "hard_gate": None,
-                    },
-                },
-            },
-        },
-        "hard_gates": {
+        "gates": {
             "eligible_for_high_alert": eligible,
             "blocked_reasons": blocked_reasons or [],
+            "risk_reasons": risk_reasons or [],
+            "max_decision": "high_alert" if eligible else "watch",
         },
+        "data_health": {
+            "identity": "ready" if target_id else "missing",
+            "market": "ready" if target_id else "no_resolved_target",
+            "social": "ready",
+            "alpha": "ready",
+        },
+        "families": {
+            "attention_heat": _family(
+                raw_score=rank_score,
+                score=rank_score,
+                weight=0.35,
+                facts={"mentions_1h": 8, "unique_authors": 4, "watched_mentions": 1},
+                factors={},
+            ),
+            "diffusion_quality": _family(
+                raw_score=rank_score,
+                score=rank_score,
+                weight=0.3,
+                facts={"independent_authors": 4},
+                factors={
+                    "independent_authors": {
+                        "family": "diffusion_quality",
+                        "key": "independent_authors",
+                        "risk_flags": risk_reasons or [],
+                    },
+                },
+            ),
+            "semantic_quality": _family(
+                raw_score=rank_score,
+                score=rank_score,
+                weight=0.25,
+                facts={"phase": "ignition"},
+                factors={},
+            ),
+            "timing_response": _family(
+                raw_score=rank_score,
+                score=rank_score,
+                weight=0.1,
+                facts={"price_change_status": "ready"},
+                factors={},
+            ),
+        },
+        "normalization": {"status": "pending_cross_section"},
         "composite": {
+            "family_scores": {
+                "attention_heat": rank_score,
+                "diffusion_quality": rank_score,
+                "semantic_quality": rank_score,
+                "timing_response": rank_score,
+            },
             "rank_score": rank_score,
             "recommended_decision": "high_alert" if rank_score >= 70 else "watch",
         },
-        "provenance": {"source_event_ids": ["event-1"]},
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_800_000},
+    }
+
+
+def _family(
+    *,
+    raw_score: int,
+    score: int,
+    weight: float,
+    facts: dict[str, object],
+    factors: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "raw_score": raw_score,
+        "score": score,
+        "weight": weight,
+        "data_health": "ready",
+        "facts": facts,
+        "factors": factors,
     }
 
 
@@ -103,7 +144,7 @@ def test_low_score_eligible_snapshot_is_blocked_low_information() -> None:
         ["liquidity_below_high_alert_floor", "holders_below_high_alert_floor"],
     ],
 )
-def test_blocked_reasons_from_hard_gates_reject_high_info(blocked_reasons: list[str]) -> None:
+def test_blocked_reasons_from_gates_reject_high_info(blocked_reasons: list[str]) -> None:
     result = gate_pulse_candidate_from_factor_snapshot(
         factor_snapshot=_snapshot(rank_score=35, eligible=False, blocked_reasons=blocked_reasons)
     )
@@ -129,18 +170,18 @@ def test_blocked_snapshot_below_30_is_low_information() -> None:
     assert result.max_recommendation == "ignore"
 
 
-def test_factor_risk_flags_are_recorded_without_runtime_context() -> None:
+def test_alpha_risk_flags_are_recorded_without_runtime_context() -> None:
     result = gate_pulse_candidate_from_factor_snapshot(
         factor_snapshot=_snapshot(
             rank_score=80,
             eligible=True,
-            market_risks=["liquidity_below_high_alert_floor"],
+            risk_reasons=["duplicate_text_share_high"],
         )
     )
 
     assert result.pulse_status == "trade_candidate"
-    assert result.risk_reasons == ["liquidity_below_high_alert_floor"]
-    assert result.hard_risks == ["liquidity_below_high_alert_floor"]
+    assert result.risk_reasons == ["duplicate_text_share_high"]
+    assert result.hard_risks == []
 
 
 def test_source_seed_or_no_target_snapshot_is_blocked() -> None:
@@ -148,6 +189,7 @@ def test_source_seed_or_no_target_snapshot_is_blocked() -> None:
         factor_snapshot=_snapshot(
             rank_score=80,
             eligible=True,
+            blocked_reasons=["identity_unresolved"],
             target_type=None,
             target_id=None,
             symbol=None,
@@ -155,7 +197,7 @@ def test_source_seed_or_no_target_snapshot_is_blocked() -> None:
     )
 
     assert result.pulse_status == "risk_rejected_high_info"
-    assert "missing_token_target" in result.blocked_reasons
+    assert "identity_unresolved" in result.blocked_reasons
     assert result.max_recommendation == "research"
 
 
@@ -180,6 +222,39 @@ def test_to_json_contains_gate_contract_for_agent_validation() -> None:
         "eligible_for_high_alert": False,
         "blocked_reasons": ["market_freshness_missing"],
     }
+
+
+def test_rejects_factor_snapshot_with_legacy_hard_gates() -> None:
+    snapshot = _snapshot(rank_score=80)
+    snapshot["hard_gates"] = {"eligible_for_high_alert": True, "blocked_reasons": []}
+
+    with pytest.raises(ValueError, match="hard_gates"):
+        gate_pulse_candidate_from_factor_snapshot(factor_snapshot=snapshot)
+
+
+def test_rejects_factor_snapshot_missing_v2_keys() -> None:
+    snapshot = _snapshot(rank_score=80)
+    snapshot.pop("data_health")
+
+    with pytest.raises(ValueError, match="data_health"):
+        gate_pulse_candidate_from_factor_snapshot(factor_snapshot=snapshot)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda snapshot: snapshot["families"].__setitem__("market_quality", {"facts": {}}), "market_quality"),
+        (lambda snapshot: snapshot.pop("normalization"), "normalization"),
+        (lambda snapshot: snapshot.pop("provenance"), "provenance"),
+        (lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}), "legacy_score"),
+    ],
+)
+def test_rejects_malformed_v2_snapshot_shape(mutate, match: str) -> None:
+    snapshot = _snapshot(rank_score=80)
+    mutate(snapshot)
+
+    with pytest.raises(ValueError, match=match):
+        gate_pulse_candidate_from_factor_snapshot(factor_snapshot=snapshot)
 
 
 def test_legacy_gate_runtime_arguments_are_not_supported() -> None:

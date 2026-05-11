@@ -15,6 +15,14 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
     validate_pulse_recommendation_payload,
 )
 
+AVAILABLE_FACTOR_KEYS = {
+    "attention_heat.unique_authors",
+    "diffusion_quality.independent_authors",
+    "diffusion_quality.duplicate_text_share",
+    "semantic_quality.phase",
+    "timing_response.price_change_status",
+}
+
 
 def _valid_payload(**overrides: object) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -23,21 +31,21 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
         "summary_zh": "PEPE 的社交扩散有效，但成交质量和重复文本风险仍需继续确认。",
         "primary_reasons": [
             {
-                "factor_key": "social_attention.author_breadth",
+                "factor_key": "attention_heat.unique_authors",
                 "explanation_zh": "独立作者数量增加，扩散不只来自单一来源。",
             }
         ],
         "upgrade_conditions": [
             {
-                "factor_key": "market_quality.liquidity_usd",
+                "factor_key": "diffusion_quality.independent_authors",
                 "operator": ">=",
-                "value": 25000,
-                "description_zh": "流动性恢复到最低观察地板。",
+                "value": 4,
+                "description_zh": "独立作者扩散继续增加。",
             }
         ],
         "invalidation_conditions": [
             {
-                "factor_key": "timeline_quality.duplicate_share",
+                "factor_key": "diffusion_quality.duplicate_text_share",
                 "operator": ">=",
                 "value": 0.5,
                 "description_zh": "重复文本继续升高。",
@@ -45,7 +53,7 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
         ],
         "residual_risks": [
             {
-                "factor_key": "timeline_quality.duplicate_share",
+                "factor_key": "diffusion_quality.duplicate_text_share",
                 "description_zh": "重复文本比例仍可能放大噪声。",
             }
         ],
@@ -59,11 +67,7 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
 def test_valid_recommendation_passes_with_factor_and_event_backing() -> None:
     payload = validate_pulse_recommendation_payload(
         _valid_payload(),
-        available_factor_keys={
-            "social_attention.author_breadth",
-            "market_quality.liquidity_usd",
-            "timeline_quality.duplicate_share",
-        },
+        available_factor_keys=AVAILABLE_FACTOR_KEYS,
         input_source_event_ids={"event-1", "event-2", "event-3"},
         max_recommendation="research",
     )
@@ -87,7 +91,7 @@ def test_factor_keys_must_be_available_for_reasons_conditions_and_risks() -> Non
     with pytest.raises(ValueError, match="factor_key"):
         validate_pulse_recommendation_payload(
             _valid_payload(),
-            available_factor_keys={"social_attention.author_breadth", "market_quality.liquidity_usd"},
+            available_factor_keys={"attention_heat.unique_authors", "diffusion_quality.independent_authors"},
             input_source_event_ids={"event-1", "event-2", "event-3"},
         )
 
@@ -96,11 +100,7 @@ def test_evidence_event_ids_must_be_from_input_events() -> None:
     with pytest.raises(ValueError, match="evidence_event_ids"):
         validate_pulse_recommendation_payload(
             _valid_payload(),
-            available_factor_keys={
-                "social_attention.author_breadth",
-                "market_quality.liquidity_usd",
-                "timeline_quality.duplicate_share",
-            },
+            available_factor_keys=AVAILABLE_FACTOR_KEYS,
             input_source_event_ids={"event-1"},
         )
 
@@ -109,11 +109,7 @@ def test_recommendation_cannot_exceed_gate_result_max_recommendation() -> None:
     with pytest.raises(ValueError, match="max_recommendation"):
         validate_pulse_recommendation_payload(
             _valid_payload(recommendation="trade_candidate"),
-            available_factor_keys={
-                "social_attention.author_breadth",
-                "market_quality.liquidity_usd",
-                "timeline_quality.duplicate_share",
-            },
+            available_factor_keys=AVAILABLE_FACTOR_KEYS,
             input_source_event_ids={"event-1", "event-2", "event-3"},
             max_recommendation="alert",
         )
@@ -123,11 +119,7 @@ def test_forbidden_trading_execution_language_raises() -> None:
     with pytest.raises(ValueError, match="execution instruction"):
         validate_pulse_recommendation_payload(
             _valid_payload(summary_zh="满足条件后可以买入 PEPE。"),
-            available_factor_keys={
-                "social_attention.author_breadth",
-                "market_quality.liquidity_usd",
-                "timeline_quality.duplicate_share",
-            },
+            available_factor_keys=AVAILABLE_FACTOR_KEYS,
             input_source_event_ids={"event-1", "event-2", "event-3"},
         )
 
@@ -158,16 +150,7 @@ def test_instructions_require_factor_backing_and_no_fabrication() -> None:
 
 def test_agent_input_json_is_stable_and_contract_scoped() -> None:
     context = {
-        "factor_snapshot": {
-            "schema_version": "token_factor_snapshot_v1",
-            "families": {
-                "market_quality": {
-                    "facts": {"liquidity_usd": 12000},
-                    "factors": {"holder_count": {"value": 500}},
-                },
-                "social_attention": {"facts": {"author_breadth": 4}},
-            },
-        },
+        "factor_snapshot": _v2_factor_snapshot(),
         "gate_result": {"max_recommendation": "research"},
         "available_factor_keys": ["manual.key_should_not_be_used"],
         "selected_posts": [{"event_id": "event-1", "text": "PEPE heat"}],
@@ -180,20 +163,13 @@ def test_agent_input_json_is_stable_and_contract_scoped() -> None:
     assert encoded == pulse_recommendation_agent_input(context)
     assert decoded == {
         "available_factor_keys": [
-            "market_quality.holder_count",
-            "market_quality.liquidity_usd",
-            "social_attention.author_breadth",
+            "attention_heat.unique_authors",
+            "diffusion_quality.duplicate_text_share",
+            "diffusion_quality.independent_authors",
+            "semantic_quality.phase",
+            "timing_response.price_change_status",
         ],
-        "factor_snapshot": {
-            "families": {
-                "market_quality": {
-                    "facts": {"liquidity_usd": 12000},
-                    "factors": {"holder_count": {"value": 500}},
-                },
-                "social_attention": {"facts": {"author_breadth": 4}},
-            },
-            "schema_version": "token_factor_snapshot_v1",
-        },
+        "factor_snapshot": _v2_factor_snapshot(),
         "gate_result": {"max_recommendation": "research"},
         "selected_posts": [{"event_id": "event-1", "text": "PEPE heat"}],
         "task": "write_pulse_recommendation_v1",
@@ -201,21 +177,77 @@ def test_agent_input_json_is_stable_and_contract_scoped() -> None:
 
 
 def test_collect_factor_keys_reads_family_facts_and_factors() -> None:
-    assert collect_factor_keys(
-        {
-            "families": {
-                "market_quality": {
-                    "facts": {"liquidity_usd": 12000},
-                    "factors": {"holder_count": {"value": 500}},
+    assert collect_factor_keys(_v2_factor_snapshot()) == AVAILABLE_FACTOR_KEYS
+
+
+def test_agent_input_rejects_legacy_v1_factor_snapshot() -> None:
+    with pytest.raises(ValueError, match="schema_version"):
+        pulse_recommendation_agent_input(
+            {
+                "factor_snapshot": {
+                    "schema_version": "token_factor_snapshot_v1",
+                    "families": {"market_quality": {"facts": {"liquidity_usd": 12000}}},
                 },
-                "social_attention": {
-                    "facts": {"author_breadth": 4},
-                    "factors": ["not", "a", "mapping"],
-                },
+                "gate_result": {"max_recommendation": "research"},
+                "selected_posts": [],
             }
-        }
-    ) == {
-        "market_quality.holder_count",
-        "market_quality.liquidity_usd",
-        "social_attention.author_breadth",
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "match"),
+    [
+        (lambda snapshot: snapshot["families"].__setitem__("market_quality", {"facts": {}}), "market_quality"),
+        (lambda snapshot: snapshot.pop("normalization"), "normalization"),
+        (lambda snapshot: snapshot.pop("provenance"), "provenance"),
+        (lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}), "legacy_score"),
+    ],
+)
+def test_agent_input_rejects_malformed_v2_factor_snapshot(mutate, match: str) -> None:
+    snapshot = _v2_factor_snapshot()
+    mutate(snapshot)
+
+    with pytest.raises(ValueError, match=match):
+        pulse_recommendation_agent_input(
+            {
+                "factor_snapshot": snapshot,
+                "gate_result": {"max_recommendation": "research"},
+                "selected_posts": [],
+            }
+        )
+
+
+def _v2_factor_snapshot() -> dict[str, object]:
+    return {
+        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "subject": {"target_type": "Asset", "target_id": "asset:pepe", "symbol": "PEPE"},
+        "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "max_decision": "high_alert"},
+        "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
+        "families": {
+            "attention_heat": _family(76, 0.35, {"unique_authors": 4}, {}),
+            "diffusion_quality": {
+                "raw_score": 76,
+                "score": 76,
+                "weight": 0.3,
+                "data_health": "ready",
+                "facts": {"independent_authors": 4},
+                "factors": {"duplicate_text_share": {"value": 0.12}},
+            },
+            "semantic_quality": _family(76, 0.25, {"phase": "ignition"}, {}),
+            "timing_response": _family(76, 0.1, {"price_change_status": "ready"}, {}),
+        },
+        "normalization": {"status": "pending_cross_section"},
+        "composite": {"rank_score": 76, "recommended_decision": "watch"},
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},
+    }
+
+
+def _family(score: int, weight: float, facts: dict[str, object], factors: dict[str, object]) -> dict[str, object]:
+    return {
+        "raw_score": score,
+        "score": score,
+        "weight": weight,
+        "data_health": "ready",
+        "facts": facts,
+        "factors": factors,
     }

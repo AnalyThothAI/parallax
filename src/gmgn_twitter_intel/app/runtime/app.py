@@ -375,7 +375,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(token_radar=repos.token_radar),
+        asset_flow=AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market),
         harness=HarnessService(repos.harness),
         pulse=repos.pulse,
     )
@@ -432,6 +432,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.token_radar_projection_worker.stop()
     if runtime.pulse_candidate_worker is not None:
         runtime.pulse_candidate_worker.stop()
+    token_radar_projection_task = runtime.token_radar_projection_task
     tasks = [
         task
         for task in (
@@ -445,7 +446,6 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.message_market_observation_task,
             runtime.token_discovery_task,
             getattr(runtime, "dex_market_stream_task", None),
-            runtime.token_radar_projection_task,
             runtime.pulse_candidate_task,
         )
         if task is not None
@@ -454,6 +454,12 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         task.cancel()
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
+    if token_radar_projection_task is not None:
+        try:
+            await asyncio.wait_for(token_radar_projection_task, timeout=30.0)
+        except TimeoutError:
+            token_radar_projection_task.cancel()
+            await asyncio.gather(token_radar_projection_task, return_exceptions=True)
     await runtime.collector.stop()
     if runtime.asset_market_sync_worker is not None:
         runtime.asset_market_sync_worker.close()

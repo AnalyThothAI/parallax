@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+
 import type { LivePayload, TokenFlowItem } from "../../api/types";
+
 import { buildLiveSignalTapeItems, tapeItemId, tokenTapeReason } from "./liveTapeModel";
 
 describe("liveTapeModel", () => {
@@ -8,7 +10,7 @@ describe("liveTapeModel", () => {
     const event = liveEvent({
       eventId: "evt-1",
       text: "SOL volume is waking up",
-      token_resolutions: [{ target_id: "asset:sol" }]
+      token_resolutions: [{ target_id: "asset:sol" }],
     });
 
     const rows = buildLiveSignalTapeItems({ liveItems: [event], tokenItems: [token] });
@@ -22,7 +24,10 @@ describe("liveTapeModel", () => {
   it("keeps ambiguous cashtag-only events as event rows", () => {
     const rows = buildLiveSignalTapeItems({
       liveItems: [liveEvent({ eventId: "evt-1", cashtags: ["SOL"] })],
-      tokenItems: [tokenItem({ targetId: "asset:sol-1", symbol: "SOL" }), tokenItem({ targetId: "asset:sol-2", symbol: "SOL" })]
+      tokenItems: [
+        tokenItem({ targetId: "asset:sol-1", symbol: "SOL" }),
+        tokenItem({ targetId: "asset:sol-2", symbol: "SOL" }),
+      ],
     });
 
     expect(rows[0].kind).toBe("event");
@@ -30,7 +35,9 @@ describe("liveTapeModel", () => {
   });
 
   it("uses the first explicit token reason and normalizes it for display", () => {
-    expect(tokenTapeReason(tokenItem({ reasons: ["new_burst_from_watched_accounts"] }))).toBe("new burst from watched accounts");
+    expect(tokenTapeReason(tokenItem({ reasons: ["new_burst_from_watched_accounts"] }))).toBe(
+      "new burst from watched accounts",
+    );
   });
 });
 
@@ -38,7 +45,7 @@ function liveEvent({
   cashtags = [],
   eventId,
   text = "",
-  token_resolutions = []
+  token_resolutions = [],
 }: {
   cashtags?: string[];
   eventId: string;
@@ -52,18 +59,18 @@ function liveEvent({
       author_handle: "toly",
       received_at_ms: 1_700_000_000_000,
       text_clean: text,
-      cashtags
+      cashtags,
     },
     entities: [],
     alerts: [],
-    token_resolutions
+    token_resolutions,
   };
 }
 
 function tokenItem({
   reasons = [],
   symbol = "SOL",
-  targetId = "asset:sol"
+  targetId = "asset:sol",
 }: {
   reasons?: string[];
   symbol?: string;
@@ -75,7 +82,7 @@ function tokenItem({
       target_id: targetId,
       chain: "solana",
       address: targetId.replace("asset:", ""),
-      symbol
+      symbol,
     },
     flow: {
       window: "1h",
@@ -86,11 +93,11 @@ function tokenItem({
       mention_delta: 8,
       stream_dominance: 0.3,
       baseline_status: "ready",
-      baseline_sample_count: 30
+      baseline_sample_count: 30,
     },
     social_heat: {
       score: 68,
-      score_version: "social_heat_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
       reasons: [],
       risks: [],
       contributions: [],
@@ -106,11 +113,11 @@ function tokenItem({
       mention_delta: 8,
       stream_share: 0.3,
       watched_share: 0.5,
-      status: "rising"
+      status: "rising",
     },
     propagation: {
       score: 61,
-      score_version: "propagation_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
       reasons: [],
       risks: [],
       contributions: [],
@@ -122,19 +129,19 @@ function tokenItem({
       duplicate_text_share: 0,
       author_entropy: 1,
       phase: "ignition",
-      top_authors: []
+      top_authors: [],
     },
     timing: {
       score: 55,
-      score_version: "timing_v4",
+      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
       status: "neutral",
       chase_risk: false,
       reasons: [],
-      risks: []
+      risks: [],
     },
     opportunity: {
       score: 72,
-      score_version: "social_opportunity_v3",
+      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
       decision: "watch",
       reasons,
       risks: [],
@@ -144,9 +151,8 @@ function tokenItem({
         heat: 68,
         quality: 50,
         propagation: 61,
-        tradeability: 60,
-        timing: 55
-      }
-    }
+        timing: 55,
+      },
+    },
   } as unknown as TokenFlowItem;
 }

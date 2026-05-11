@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot_v2
 
 SUMMARY_STATUSES = (
     "trade_candidate",
@@ -12,6 +12,7 @@ SUMMARY_STATUSES = (
     "blocked_low_information",
 )
 DISPLAY_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
+ALPHA_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality", "timing_response")
 
 
 class SignalPulseService:
@@ -113,7 +114,7 @@ def _is_displayable(row: dict[str, Any]) -> bool:
 
 def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = _dict(row.get("factor_snapshot_json"))
-    gate = _dict(row.get("gate_json"))
+    gate = _dict(factor_snapshot.get("gates"))
     agent_recommendation = _dict(row.get("agent_recommendation_json"))
     return {
         "candidate_id": row.get("candidate_id"),
@@ -138,19 +139,7 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "factor_snapshot": factor_snapshot,
         "agent_recommendation": agent_recommendation,
         "gate": gate,
-        "fact_card": {
-            "market_cap_usd": _factor_raw(factor_snapshot, "market_quality", "market_cap_usd"),
-            "liquidity_usd": _factor_raw(factor_snapshot, "market_quality", "liquidity_usd"),
-            "holders": _factor_raw(factor_snapshot, "market_quality", "holders"),
-            "volume_24h_usd": _factor_raw(factor_snapshot, "market_quality", "volume_24h_usd"),
-            "market_status": _factor_raw(factor_snapshot, "market_quality", "market_status"),
-            "mentions_1h": _factor_raw(factor_snapshot, "social_attention", "mentions_1h"),
-            "unique_authors": _factor_raw(factor_snapshot, "social_quality", "independent_authors")
-            or _factor_raw(factor_snapshot, "social_attention", "unique_authors"),
-            "watched_mentions": _factor_raw(factor_snapshot, "social_attention", "watched_mentions"),
-            "eligible_for_high_alert": gate.get("eligible_for_high_alert"),
-            "blocked_reasons": _list(gate.get("blocked_reasons")),
-        },
+        "fact_card": _fact_card(row=row, factor_snapshot=factor_snapshot, gate=gate),
         "agent_run_id": row.get("agent_run_id"),
         "pulse_version": row.get("pulse_version"),
         "gate_version": row.get("gate_version"),
@@ -167,21 +156,67 @@ def _dict(value: Any) -> dict[str, Any]:
 
 
 def _valid_factor_snapshot(value: Any) -> bool:
-    snapshot = _dict(value)
-    return (
-        bool(snapshot)
-        and snapshot.get("schema_version") == TOKEN_FACTOR_SNAPSHOT_VERSION
-        and isinstance(snapshot.get("subject"), dict)
-        and isinstance(snapshot.get("families"), dict)
-        and isinstance(snapshot.get("hard_gates"), dict)
-    )
+    return is_token_factor_snapshot_v2(value)
 
 
-def _factor_raw(snapshot: dict[str, Any], family: str, key: str) -> Any:
+def _fact_card(*, row: dict[str, Any], factor_snapshot: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
+    subject = _dict(factor_snapshot.get("subject"))
+    data_health = _dict(factor_snapshot.get("data_health"))
+    composite = _dict(factor_snapshot.get("composite"))
+    attention_facts = _family_facts(factor_snapshot, "attention_heat")
+    diffusion_facts = _family_facts(factor_snapshot, "diffusion_quality")
+    return {
+        "rank_score": composite.get("rank_score"),
+        "recommended_decision": composite.get("recommended_decision"),
+        "target_market_type": subject.get("target_market_type"),
+        "data_health": data_health,
+        "alpha_family_scores": _alpha_family_scores(factor_snapshot),
+        "market_status": data_health.get("market"),
+        "mentions_1h": attention_facts.get("mentions_1h"),
+        "unique_authors": diffusion_facts.get("independent_authors") or attention_facts.get("unique_authors"),
+        "watched_mentions": attention_facts.get("watched_mentions"),
+        "eligible_for_high_alert": gate.get("eligible_for_high_alert"),
+        "blocked_reasons": _list(gate.get("blocked_reasons")),
+        **_row_market_facts(row),
+    }
+
+
+def _alpha_family_scores(snapshot: dict[str, Any]) -> dict[str, Any]:
+    composite_scores = _dict(_dict(snapshot.get("composite")).get("family_scores"))
+    if composite_scores:
+        return {family: composite_scores.get(family) for family in ALPHA_FAMILIES}
+    families = _dict(snapshot.get("families"))
+    return {family: _dict(families.get(family)).get("score") for family in ALPHA_FAMILIES}
+
+
+def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
     families = _dict(snapshot.get("families"))
     family_payload = _dict(families.get(family))
-    facts = _dict(family_payload.get("facts"))
-    return facts.get(key)
+    return _dict(family_payload.get("facts"))
+
+
+_MISSING = object()
+
+
+def _row_market_facts(row: dict[str, Any]) -> dict[str, Any]:
+    fields = _dict(_dict(row.get("current_market")).get("fields"))
+    facts: dict[str, Any] = {}
+    for key in ("price_usd", "market_cap_usd", "liquidity_usd", "holders", "volume_24h_usd"):
+        value = _market_field_value(fields, key)
+        if value is _MISSING and key in row:
+            value = row.get(key)
+        if value is not _MISSING:
+            facts[key] = value
+    return facts
+
+
+def _market_field_value(fields: dict[str, Any], key: str) -> Any:
+    if key not in fields:
+        return _MISSING
+    field = _dict(fields.get(key))
+    if not field:
+        return _MISSING
+    return field.get("value")
 
 
 def _list(value: Any) -> list[Any]:

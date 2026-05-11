@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -32,6 +32,7 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import Puls
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,
+    require_token_factor_snapshot_v2,
     safe_float,
     safe_int,
 )
@@ -43,6 +44,7 @@ DEFAULT_SCOPES = ("all",)
 SOURCE_WINDOW = "1h"
 SOURCE_SCOPE = "matched"
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
+V2_ALPHA_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality", "timing_response")
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
 _COOLDOWN_MS = {
@@ -511,7 +513,7 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     resolved_thresholds = thresholds or PulseTriggerThresholds()
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
-    watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_attention", "facts", "watched_mentions"))
+    watched_mentions = safe_int(_nested(factor_snapshot, "families", "attention_heat", "facts", "watched_mentions"))
     return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score or watched_mentions > 0
 
 
@@ -526,7 +528,15 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     scope = _clean(context.get("scope"))
     trigger_signature = _clean(context.get("trigger_signature"))
     timeline_signature = _clean(context.get("timeline_signature"))
-    if not all((candidate_id, candidate_type, subject_key, window, scope, trigger_signature, timeline_signature)):
+    if (
+        candidate_id is None
+        or candidate_type is None
+        or subject_key is None
+        or window is None
+        or scope is None
+        or trigger_signature is None
+        or timeline_signature is None
+    ):
         return None
     factor_snapshot = _mapping(context.get("factor_snapshot"))
     if not factor_snapshot:
@@ -590,7 +600,7 @@ def _asset_trigger_signature(
         "scope": scope,
         "rank_score_bucket": _score_bucket(metrics["rank_score"]),
         "recommended_decision": _nested(factor_snapshot, "composite", "recommended_decision"),
-        "blocked_reasons": _stable_strings(_nested(factor_snapshot, "hard_gates", "blocked_reasons")),
+        "blocked_reasons": _stable_strings(_nested(factor_snapshot, "gates", "blocked_reasons")),
         "watched_confirmation": metrics["watched_confirmation"],
         "trigger_thresholds": {"min_rank_score": resolved_trigger_thresholds.min_rank_score},
     }
@@ -635,21 +645,22 @@ def _timeline_signature(timeline_context: dict[str, Any]) -> str:
 
 def _asset_trigger_metrics(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = _factor_snapshot(row) or {}
-    blocked_reasons = _stable_strings(_nested(factor_snapshot, "hard_gates", "blocked_reasons"))
+    blocked_reasons = _stable_strings(_nested(factor_snapshot, "gates", "blocked_reasons"))
     rank_score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
+    attention_facts = _mapping(_nested(factor_snapshot, "families", "attention_heat", "facts"))
+    diffusion_facts = _mapping(_nested(factor_snapshot, "families", "diffusion_quality", "facts"))
     return {
         "rank_score": rank_score,
         "recommended_decision": _clean(_nested(factor_snapshot, "composite", "recommended_decision")),
-        "watched_confirmation": safe_int(
-            _nested(factor_snapshot, "families", "social_attention", "facts", "watched_mentions")
-        )
-        > 0,
-        "independent_author_count": safe_int(
-            _nested(factor_snapshot, "families", "social_attention", "facts", "unique_authors")
+        "watched_confirmation": safe_int(attention_facts.get("watched_mentions")) > 0,
+        "independent_author_count": max(
+            safe_int(attention_facts.get("unique_authors")),
+            safe_int(diffusion_facts.get("independent_authors")),
         ),
         "blocked_reasons": blocked_reasons,
         "hard_risks": blocked_reasons,
-        "trade_candidate_eligible": bool(_nested(factor_snapshot, "hard_gates", "eligible_for_high_alert"))
+        "trade_candidate_eligible": bool(_nested(factor_snapshot, "gates", "eligible_for_high_alert"))
+        and not blocked_reasons
         and rank_score >= 72,
     }
 
@@ -686,6 +697,8 @@ def _cooldown_bypass(
     previous: dict[str, Any],
     current: dict[str, Any],
 ) -> bool:
+    if not previous:
+        return False
     previous_status = _clean(existing_candidate.get("pulse_status") or existing_candidate.get("verdict"))
     if current.get("trade_candidate_eligible") and previous_status != "trade_candidate":
         return True
@@ -700,14 +713,14 @@ def _cooldown_ms(existing_candidate: dict[str, Any], current_metrics: dict[str, 
     status = _clean(existing_candidate.get("pulse_status") or existing_candidate.get("verdict"))
     if current_metrics.get("trade_candidate_eligible"):
         return _COOLDOWN_MS["trade_candidate"]
-    return _COOLDOWN_MS.get(status, _COOLDOWN_MS["token_watch"])
+    return _COOLDOWN_MS.get(status or "", _COOLDOWN_MS["token_watch"])
 
 
 def _previous_trigger_metrics(existing_candidate: dict[str, Any]) -> dict[str, Any]:
-    snapshot = _mapping(existing_candidate.get("factor_snapshot_json"))
-    if snapshot:
-        return _snapshot_trigger_metrics(snapshot)
-    return _mapping(existing_candidate.get("gate_json"))
+    snapshot = _factor_snapshot(existing_candidate)
+    if snapshot is None:
+        return {}
+    return _snapshot_trigger_metrics(snapshot)
 
 
 def _same_signature(row: dict[str, Any] | None, context: PulseCandidateContext) -> bool:
@@ -747,7 +760,7 @@ def _terminal_job_blocks_reenqueue(
     if not updated_at_ms:
         return False
     current_metrics = _context_trigger_metrics(context)
-    cooldown_ms = _COOLDOWN_MS.get(_inferred_status(current_metrics), _COOLDOWN_MS["token_watch"])
+    cooldown_ms = _COOLDOWN_MS.get(_inferred_status(current_metrics) or "", _COOLDOWN_MS["token_watch"])
     return now_ms < updated_at_ms + cooldown_ms
 
 
@@ -789,7 +802,7 @@ def _playbook_snapshot_payload(
             "risk_reasons": gate.risk_reasons,
             "hard_risks": gate.hard_risks,
         },
-        "entry_market": _nested(context.factor_snapshot, "families", "market_quality", "facts") or {},
+        "entry_market": _entry_market(context.factor_snapshot),
         "playbook_version": PULSE_PLAYBOOK_VERSION,
         "outcome_status": "pending",
         "created_at_ms": now_ms,
@@ -825,7 +838,7 @@ def _subject_key(target: dict[str, Any], row: dict[str, Any]) -> str:
 def _priority(row: dict[str, Any]) -> int:
     factor_snapshot = _factor_snapshot(row) or {}
     decision_priority = {"high_alert": 30, "watch": 20}.get(
-        _clean(_nested(factor_snapshot, "composite", "recommended_decision")),
+        _clean(_nested(factor_snapshot, "composite", "recommended_decision")) or "",
         0,
     )
     return decision_priority + safe_int(_nested(factor_snapshot, "composite", "rank_score"))
@@ -935,51 +948,74 @@ def _context_with_gate(context: PulseCandidateContext, gate: PulseGateResult) ->
 
 def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
     snapshot = row.get("factor_snapshot_json")
-    if not isinstance(snapshot, dict) or not snapshot:
+    try:
+        valid_snapshot = require_token_factor_snapshot_v2(snapshot, field_name="factor_snapshot_json")
+    except ValueError:
         return None
-    if snapshot.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
-        return None
-    if not all(isinstance(snapshot.get(key), dict) for key in ("subject", "hard_gates", "composite")):
-        return None
-    return _jsonable(snapshot)
+    return _mapping(_jsonable(valid_snapshot))
 
 
 def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
     source_event_id = _clean(event.get("event_id"))
+    computed_at_ms = safe_int(event.get("received_at_ms")) or _now_ms()
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {
             "target_type": None,
             "target_id": None,
+            "target_market_type": None,
             "symbol": None,
             "source_event_id": source_event_id,
         },
-        "families": {},
-        "hard_gates": {
+        "gates": {
             "eligible_for_high_alert": False,
-            "blocked_reasons": ["missing_token_target"],
+            "blocked_reasons": ["identity_unresolved"],
+            "risk_reasons": [],
+            "max_decision": "discard",
+        },
+        "data_health": {
+            "identity": "unresolved",
+            "market": "no_resolved_target",
+            "social": "partial",
+            "alpha": "missing",
+        },
+        "families": {family: _empty_family_shell(family) for family in V2_ALPHA_FAMILIES},
+        "normalization": {
+            "status": "not_applicable",
+            "cohort": {},
+            "factor_ranks": {},
+            "alpha_rank": None,
         },
         "composite": {
+            "raw_alpha_score": 0,
             "rank_score": 0,
+            "family_scores": {family: 0 for family in V2_ALPHA_FAMILIES},
             "recommended_decision": "discard",
         },
-        "provenance": {"source_event_ids": [source_event_id] if source_event_id else []},
+        "provenance": {
+            "source_event_ids": [source_event_id] if source_event_id else [],
+            "computed_at_ms": computed_at_ms,
+        },
     }
 
 
 def _snapshot_trigger_metrics(snapshot: dict[str, Any]) -> dict[str, Any]:
     rank_score = safe_int(_nested(snapshot, "composite", "rank_score"))
-    blocked_reasons = _stable_strings(_nested(snapshot, "hard_gates", "blocked_reasons"))
+    blocked_reasons = _stable_strings(_nested(snapshot, "gates", "blocked_reasons"))
+    attention_facts = _mapping(_nested(snapshot, "families", "attention_heat", "facts"))
+    diffusion_facts = _mapping(_nested(snapshot, "families", "diffusion_quality", "facts"))
     return {
         "rank_score": rank_score,
         "recommended_decision": _clean(_nested(snapshot, "composite", "recommended_decision")),
-        "watched_confirmation": safe_int(_nested(snapshot, "families", "social_attention", "facts", "watched_mentions"))
-        > 0,
-        "independent_author_count": safe_int(
-            _nested(snapshot, "families", "social_attention", "facts", "unique_authors")
+        "watched_confirmation": safe_int(attention_facts.get("watched_mentions")) > 0,
+        "independent_author_count": max(
+            safe_int(attention_facts.get("unique_authors")),
+            safe_int(diffusion_facts.get("independent_authors")),
         ),
+        "blocked_reasons": blocked_reasons,
         "hard_risks": blocked_reasons,
-        "trade_candidate_eligible": bool(_nested(snapshot, "hard_gates", "eligible_for_high_alert"))
+        "trade_candidate_eligible": bool(_nested(snapshot, "gates", "eligible_for_high_alert"))
+        and not blocked_reasons
         and rank_score >= 72,
     }
 
@@ -989,13 +1025,41 @@ def _context_trigger_metrics(context: PulseCandidateContext) -> dict[str, Any]:
 
 
 def _social_phase_from_snapshot(factor_snapshot: dict[str, Any]) -> str:
-    return _clean(_nested(factor_snapshot, "families", "social_semantics", "facts", "phase")) or "unknown"
+    semantic_facts = _mapping(_nested(factor_snapshot, "families", "semantic_quality", "facts"))
+    timing_facts = _mapping(_nested(factor_snapshot, "families", "timing_response", "facts"))
+    return (
+        _clean(semantic_facts.get("phase"))
+        or _clean(semantic_facts.get("dominant_phase"))
+        or _clean(timing_facts.get("phase"))
+        or "unknown"
+    )
 
 
 def _narrative_type_from_context(context: PulseCandidateContext) -> str:
     if context.candidate_type == "source_seed":
         return "product_catalyst"
     return "direct_token"
+
+
+def _entry_market(factor_snapshot: dict[str, Any]) -> dict[str, Any]:
+    subject = _mapping(factor_snapshot.get("subject"))
+    data_health = _mapping(factor_snapshot.get("data_health"))
+    return {
+        "target_market_type": subject.get("target_market_type"),
+        "market_data_health": data_health.get("market"),
+        "identity_data_health": data_health.get("identity"),
+    }
+
+
+def _empty_family_shell(family: str) -> dict[str, Any]:
+    return {
+        "raw_score": 0,
+        "score": 0,
+        "weight": 0,
+        "data_health": "missing",
+        "facts": {},
+        "factors": {},
+    }
 
 
 def _nested(data: dict[str, Any], *keys: str) -> Any:
@@ -1020,9 +1084,9 @@ def _call_optional(target: Any, method: str, *args: Any) -> Any:
     return func(*args)
 
 
-def _transaction(conn: Any):
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
     if hasattr(conn, "transaction"):
-        return conn.transaction()
+        return cast(AbstractContextManager[Any], conn.transaction())
     return nullcontext()
 
 

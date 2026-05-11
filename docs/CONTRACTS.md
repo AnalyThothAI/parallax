@@ -35,9 +35,11 @@ Token Radar market contract:
 
 - `/api/token-radar` rows expose `current_market`, a field-aware snapshot from
   `domains/asset_market`. Frontends must read live price, market cap, liquidity,
-  holders, volume, provider, and freshness from `current_market.fields`.
+  holders, volume, provider, freshness, and price-baseline deltas from
+  `current_market.fields`.
 - `/api/token-radar` rows do not expose `price` or `market` aliases derived from
-  `factor_snapshot.families.market_quality.facts`.
+  factor snapshot family facts. Factor snapshots may include timing context, but
+  market display values come from the current-market read model.
 - `/api/current-market?target_type=Asset|CexToken&target_id=...` returns one
   current-market snapshot:
   `{"target_type": "...", "target_id": "...", "market_status": "...", "fields": {...}}`.
@@ -62,6 +64,37 @@ or ranking-contract change. Current runtime explanations come from
 `agent_recommendation`, `gate`, and `fact_card`, not old score/thesis JSON
 fields. Downstream evaluation services filter by version, otherwise A/B
 comparisons silently mix populations. No black-box scores.
+
+Current factor snapshots use `schema_version =
+"token_factor_snapshot_v2_alpha_gated"` only. Runtime readers reject the old v1
+shape and reject `hard_gates`. The v2 contract separates:
+
+- `subject`: deterministic identity and target-market facts.
+- `gates`: high-alert eligibility, maximum decision, blocked reasons, and risk
+  reasons. Identity, market freshness, CEX native-market identity, DEX holder /
+  liquidity / market-cap floors, and data availability live here or in
+  `data_health`; they do not score alpha.
+- `data_health`: explicit readiness for identity, market, social, and alpha.
+- `families`: alpha families only: `attention_heat`, `diffusion_quality`,
+  `semantic_quality`, and `timing_response`.
+- `normalization`: cohort metadata, per-family cross-section ranks, alpha rank,
+  and status.
+- `composite`: raw alpha score, rank score, family scores, and
+  `recommended_decision`.
+- `provenance`: source event ids and compute time.
+
+Historical `token_radar_rows` are retained for forward-return settlement.
+Latest reads select the newest projection row, while diagnostics and settlement
+commands can evaluate older runs by `computed_at_ms` and score version.
+
+Operational commands:
+
+- `gmgn-twitter-intel ops factor-diagnostics` reports v2 score dispersion,
+  bucket counts, and rank-score diagnostics.
+- `gmgn-twitter-intel ops settle-token-factors` writes point-in-time forward
+  return evaluations when sufficient later market observations exist.
+- `gmgn-twitter-intel ops audit-token-radar` is v2-only and flags legacy
+  snapshots instead of accepting compatibility fallback.
 
 ## Privacy boundary
 

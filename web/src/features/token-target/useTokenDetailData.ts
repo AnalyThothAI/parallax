@@ -1,14 +1,19 @@
-import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+
 import { getApi } from "../../api/client";
-import { mergeTokenPostPages, useTokenTargetPosts, useTokenTargetTimeline } from "../../api/useTokenTargetQueries";
 import type {
   AccountQualityData,
   ScopeKey,
   TokenPostRange,
   TokenPostSortMode,
-  WindowKey
+  WindowKey,
 } from "../../api/types";
+import {
+  mergeTokenPostPages,
+  useTokenTargetPosts,
+  useTokenTargetTimeline,
+} from "../../api/useTokenTargetQueries";
 import type { TargetRef } from "../../domain/tokenTarget";
 
 type UseTokenDetailDataArgs = {
@@ -26,7 +31,7 @@ export function useTokenDetailData({
   postSortMode,
   scope,
   target,
-  token
+  token,
 }: UseTokenDetailDataArgs) {
   const tokenTimelineQuery = useTokenTargetTimeline({ token, target, window: detailWindow, scope });
   const tokenPostsQuery = useTokenTargetPosts({
@@ -35,21 +40,25 @@ export function useTokenDetailData({
     window: detailWindow,
     scope,
     range: postRange,
-    sort: postSortMode === "catalyst" ? "catalyst" : "recent"
+    sort: postSortMode === "catalyst" ? "catalyst" : "recent",
   });
 
   const accountQualityHandles = useMemo(
-    () => (tokenTimelineQuery.data?.data.authors ?? []).map((author) => author.handle).filter(Boolean).join(","),
-    [tokenTimelineQuery.data?.data.authors]
+    () =>
+      (tokenTimelineQuery.data?.data.authors ?? [])
+        .map((author) => author.handle)
+        .filter(Boolean)
+        .join(","),
+    [tokenTimelineQuery.data?.data.authors],
   );
   const accountQualityQuery = useQuery({
     queryKey: ["account-quality", accountQualityHandles],
     queryFn: () =>
       getApi<AccountQualityData>("/api/account-quality", {
         token,
-        params: { handles: accountQualityHandles }
+        params: { handles: accountQualityHandles },
       }),
-    enabled: Boolean(token && accountQualityHandles)
+    enabled: Boolean(token && accountQualityHandles),
   });
 
   return {
@@ -60,6 +69,6 @@ export function useTokenDetailData({
     isTimelineLoading: tokenTimelineQuery.isFetching,
     loadMorePosts: () => void tokenPostsQuery.fetchNextPage(),
     posts: mergeTokenPostPages(tokenPostsQuery.data?.pages),
-    timeline: tokenTimelineQuery.data?.data
+    timeline: tokenTimelineQuery.data?.data,
   };
 }

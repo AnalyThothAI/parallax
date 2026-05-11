@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
@@ -159,7 +162,7 @@ def test_asset_flow_exposes_source_event_ids_for_evidence_counting():
     assert result["targets"][0]["source_event_ids"] == ["event-a", "event-b", "event-c"]
 
 
-def test_unresolved_attention_uses_snapshot_composite_without_score_fallback():
+def test_unresolved_attention_uses_v2_snapshot_composite_without_score_fallback():
     service = asset_flow_service(
         rows=[
             radar_row(
@@ -180,18 +183,37 @@ def test_unresolved_attention_uses_snapshot_composite_without_score_fallback():
     assert versa["resolution"]["status"] == "NIL"
     assert versa["score"] == {
         "family_scores": {
-            "identity": 80,
-            "social_attention": 80,
-            "social_quality": 80,
-            "social_semantics": 80,
-            "market_quality": 80,
-            "timing": 80,
+            "attention_heat": 80,
+            "diffusion_quality": 80,
+            "semantic_quality": 80,
+            "timing_response": 80,
         },
         "rank_score": 12,
         "recommended_decision": "discard",
     }
-    assert versa["decision"] == "discard"
+    assert "decision" not in versa
     assert versa["score"] == versa["factor_snapshot"]["composite"]
+
+
+def test_asset_flow_ignores_conflicting_row_level_decision() -> None:
+    row = radar_row(
+        lane="resolved",
+        symbol="PEPE",
+        asset_id="asset:pepe",
+        identity_status="EXACT",
+        resolution_status="EXACT",
+        rank_score=88,
+        decision="high_alert",
+    )
+    row["decision"] = "discard"
+    service = asset_flow_service(rows=[row])
+
+    result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
+
+    pepe = result["targets"][0]
+    assert "decision" not in pepe
+    assert pepe["factor_snapshot"]["composite"]["recommended_decision"] == "high_alert"
+    assert pepe["score"]["recommended_decision"] == "high_alert"
 
 
 def test_btc_cex_row_does_not_require_chain_address():
@@ -226,11 +248,10 @@ def test_btc_cex_row_does_not_require_chain_address():
     assert btc["target"]["target_market_type"] == "cex"
     assert btc["target"]["chain"] is None
     assert btc["target"]["address"] is None
-    assert btc["factor_snapshot"]["families"]["market_quality"]["facts"]["native_market_id"] == "BTC-USDT"
     assert btc["current_market"]["fields"]["price_usd"]["value"] == 70_000
 
 
-def test_asset_flow_exposes_current_market_from_factor_snapshot_without_hydrating_read_model():
+def test_asset_flow_exposes_current_market_from_read_model_not_factor_snapshot():
     service = asset_flow_service(
         rows=[
             radar_row(
@@ -252,9 +273,16 @@ def test_asset_flow_exposes_current_market_from_factor_snapshot_without_hydratin
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     row = result["targets"][0]
+    assert service.current_market.calls == [
+        {
+            "subjects": [{"target_type": "CexToken", "target_id": "cex_token:BTC"}],
+            "now_ms": 1_700_000_060_000,
+        }
+    ]
     assert row["current_market"]["market_status"] == "fresh"
     assert row["current_market"]["fields"]["price_usd"]["value"] == 70_000
     assert row["current_market"]["fields"]["volume_24h_usd"]["value"] == 123_000_000
+    assert "market_quality" not in row["factor_snapshot"]["families"]
     assert "price" not in row
     assert "market" not in row
 
@@ -398,12 +426,11 @@ def test_asset_flow_exposes_market_timing_inside_factor_snapshot():
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
-    timing = result["targets"][0]["factor_snapshot"]["families"]["timing"]["facts"]
+    timing = result["targets"][0]["factor_snapshot"]["families"]["timing_response"]["facts"]
     assert timing["price_change_since_social_pct"] == pytest.approx(1 / 9)
     assert timing["price_change_before_social_pct"] == pytest.approx(0.2)
     assert timing["social_signal_start_ms"] == 1_700_000_000_000
-    market_facts = result["targets"][0]["factor_snapshot"]["families"]["market_quality"]["facts"]
-    assert market_facts["volume_24h_usd"] == 50_000_000.0
+    assert "market_quality" not in result["targets"][0]["factor_snapshot"]["families"]
     assert result["targets"][0]["current_market"]["fields"]["volume_24h_usd"]["value"] == 50_000_000.0
 
 
@@ -437,14 +464,86 @@ class FakeTokenRadar:
         return dict(self.coverage)
 
 
+class FakeCurrentMarket:
+    def __init__(self, snapshots):
+        self.snapshots = snapshots
+        self.calls = []
+
+    def current_for_subjects(self, subjects, *, now_ms):
+        normalized_subjects = [dict(subject) for subject in subjects]
+        self.calls.append({"subjects": normalized_subjects, "now_ms": now_ms})
+        return {
+            (str(subject.get("target_type")), str(subject.get("target_id"))): self.snapshots[
+                (str(subject.get("target_type")), str(subject.get("target_id")))
+            ]
+            for subject in normalized_subjects
+            if (str(subject.get("target_type")), str(subject.get("target_id"))) in self.snapshots
+        }
+
+
 def asset_flow_service(
     *,
     rows: list[dict],
     coverage: dict[tuple[str, str], dict] | None = None,
 ) -> AssetFlowService:
-    return AssetFlowService(
-        token_radar=FakeTokenRadar(rows=rows, coverage=coverage),
+    current_market = FakeCurrentMarket(
+        {
+            key: row["_current_market_snapshot"]
+            for row in rows
+            if (key := _row_subject_key(row)) is not None and row.get("_current_market_snapshot") is not None
+        }
     )
+    service = AssetFlowService(
+        token_radar=FakeTokenRadar(rows=rows, coverage=coverage),
+        current_market=current_market,
+    )
+    service.current_market = current_market
+    return service
+
+
+def _row_subject_key(row: dict) -> tuple[str, str] | None:
+    snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    target_type = str(subject.get("target_type") or "").strip()
+    target_id = str(subject.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return None
+    return (target_type, target_id)
+
+
+def _current_market_snapshot(*, target_type: str | None, target_id: str | None, market: dict | None) -> dict:
+    facts = market or {}
+    fields = {
+        key: {
+            "value": facts.get(key),
+            "status": (facts.get("field_statuses") or {}).get(
+                key,
+                "ready" if facts.get(key) is not None else "missing",
+            ),
+            "observed_at_ms": 1_700_000_000_000 if facts.get(key) is not None else None,
+            "age_ms": 60_000 if facts.get(key) is not None else None,
+            "provider": "fixture" if facts.get(key) is not None else None,
+            "source_observation_id": f"obs:{target_id}:{key}" if facts.get(key) is not None else None,
+        }
+        for key in (
+            "price_usd",
+            "price_quote",
+            "quote_symbol",
+            "price_basis",
+            "market_cap_usd",
+            "liquidity_usd",
+            "holders",
+            "volume_24h_usd",
+            "open_interest_usd",
+        )
+        if facts.get(key) is not None or (facts.get("field_statuses") or {}).get(key) is not None
+    }
+    return {
+        "target_type": target_type,
+        "target_id": target_id,
+        "market_status": str(facts.get("market_status") or ("fresh" if fields else "missing")),
+        "fields": fields,
+    }
 
 
 def radar_row(
@@ -505,6 +604,13 @@ def radar_row(
         },
         "asset_json": {},
         "target_json": {},
+        "_current_market_snapshot": _current_market_snapshot(
+            target_type=target_type,
+            target_id=asset_id,
+            market=market,
+        )
+        if target_type and asset_id
+        else None,
         "primary_venue_json": venue
         if venue is not None
         else {
@@ -516,7 +622,7 @@ def radar_row(
             "inst_id": f"{symbol or 'BTC'}-USDT",
         },
         "factor_snapshot_json": factor_snapshot,
-        "factor_version": "token_factor_snapshot_v1",
+        "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "attention_json": {},
         "resolution_json": {
             "status": resolution_status,
@@ -560,18 +666,8 @@ def factor_snapshot_json(
     decision,
 ):
     families = {
-        "identity": family(
-            "identity",
-            {
-                "target_type": target_type,
-                "target_id": target_id,
-                "symbol": symbol,
-                "chain": chain,
-                "address": address,
-            },
-        ),
-        "social_attention": family(
-            "social_attention",
+        "attention_heat": family(
+            "attention_heat",
             {
                 "mentions_5m": 1,
                 "mentions_1h": 1,
@@ -581,35 +677,29 @@ def factor_snapshot_json(
                 "watched_mentions": 1,
                 **(attention or {}),
             },
+            weight=0.35,
         ),
-        "social_quality": family("social_quality", {"duplicate_text_share": 0.0, "mentions": 1}),
-        "social_semantics": family("social_semantics", {"direction_counts": {}}),
-        "market_quality": family(
-            "market_quality",
-            {
-                "target_market_type": target_market_type,
-                "market_status": "missing",
-                "holders": None,
-                "liquidity_usd": None,
-                "market_cap_usd": None,
-                "volume_24h_usd": None,
-                "open_interest_usd": None,
-                "native_market_id": native_market_id,
-                **(market or {}),
-            },
+        "diffusion_quality": family(
+            "diffusion_quality",
+            {"duplicate_text_share": 0.0, "mentions": 1, "independent_authors": 1},
+            weight=0.30,
         ),
-        "timing": family(
-            "timing",
+        "semantic_quality": family("semantic_quality", {"direction_counts": {}}, weight=0.25),
+        "timing_response": family(
+            "timing_response",
             {
                 "price_change_before_social_pct": None,
                 "price_change_since_social_pct": None,
                 "social_signal_start_ms": 1_700_000_000_000,
+                "market_status": (market or {}).get("market_status", "missing"),
+                "native_market_id": native_market_id,
                 **(timing or {}),
             },
+            weight=0.10,
         ),
     }
     return {
-        "schema_version": "token_factor_snapshot_v1",
+        "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {
             "target_type": target_type,
             "target_id": target_id,
@@ -619,10 +709,23 @@ def factor_snapshot_json(
             "target_market_type": target_market_type,
         },
         "families": families,
-        "hard_gates": {
+        "gates": {
             "eligible_for_high_alert": decision == "high_alert",
+            "max_decision": "high_alert" if decision == "high_alert" else "watch",
             "blocked_reasons": [] if decision != "discard" else ["identity_unresolved"] if not target_id else [],
-            "gates": [],
+            "risk_reasons": [],
+        },
+        "data_health": {
+            "identity": "ready" if target_id else "missing",
+            "market": "ready" if (market or {}).get("market_status") in {"fresh", "ready"} else "missing",
+            "social": "ready",
+            "alpha": "ready",
+        },
+        "normalization": {
+            "status": "ready",
+            "cohort": {},
+            "factor_ranks": {},
+            "alpha_rank": None,
         },
         "composite": {
             "family_scores": {name: item["score"] for name, item in families.items()},
@@ -636,11 +739,12 @@ def factor_snapshot_json(
     }
 
 
-def family(name: str, facts: dict):
+def family(name: str, facts: dict, *, weight: float):
     return {
-        "family": name,
+        "raw_score": 80,
+        "weight": weight,
         "score": 80,
         "data_health": "ready",
         "facts": facts,
-        "factors": {"fixture": {"score": 80, "data_health": "ready"}},
+        "factors": {"fixture": {"family": name, "score": 80, "data_health": "ready"}},
     }

@@ -153,6 +153,74 @@ class PriceObservationRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def latest_price_for_subject_at_or_before(
+        self,
+        *,
+        subject_type: str,
+        subject_id: str,
+        at_or_before_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM price_observations
+            WHERE subject_type = %s
+              AND subject_id = %s
+              AND observed_at_ms <= %s
+              AND price_usd IS NOT NULL
+            ORDER BY observed_at_ms DESC, observation_id DESC
+            LIMIT 1
+            """,
+            (subject_type, subject_id, int(at_or_before_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def first_for_subject_at_or_after(
+        self,
+        *,
+        subject_type: str,
+        subject_id: str,
+        at_or_after_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM price_observations
+            WHERE subject_type = %s
+              AND subject_id = %s
+              AND observed_at_ms >= %s
+              AND price_usd IS NOT NULL
+            ORDER BY observed_at_ms ASC, observation_id ASC
+            LIMIT 1
+            """,
+            (subject_type, subject_id, int(at_or_after_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def first_price_for_subject_between(
+        self,
+        *,
+        subject_type: str,
+        subject_id: str,
+        at_or_after_ms: int,
+        at_or_before_ms: int,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM price_observations
+            WHERE subject_type = %s
+              AND subject_id = %s
+              AND observed_at_ms >= %s
+              AND observed_at_ms <= %s
+              AND price_usd IS NOT NULL
+            ORDER BY observed_at_ms ASC, observation_id ASC
+            LIMIT 1
+            """,
+            (subject_type, subject_id, int(at_or_after_ms), int(at_or_before_ms)),
+        ).fetchone()
+        return dict(row) if row else None
+
     def latest_message_for_event(
         self,
         *,

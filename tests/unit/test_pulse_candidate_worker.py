@@ -8,6 +8,8 @@ from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationRe
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     _asset_candidate_id,
+    _asset_trigger_metrics,
+    _source_seed_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
@@ -18,6 +20,22 @@ NOW_MS = 1_800_000
 def test_missing_factor_snapshot_is_not_enqueued() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=None)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_skipped"] == 1
+    assert result["asset_enqueued"] == 0
+    assert repos.pulse.jobs == []
+
+
+def test_malformed_v2_factor_snapshot_is_not_enqueued() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    snapshot["families"]["market_quality"] = {"facts": {"market_status": "fresh"}}
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
     worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
 
@@ -127,8 +145,92 @@ def test_source_seed_without_target_is_gated_blocked_after_agent() -> None:
     upsert = repos.pulse.candidate_upserts[0]
     assert upsert["candidate_type"] == "source_seed"
     assert upsert["pulse_status"] == "blocked_low_information"
-    assert upsert["gate_json"]["blocked_reasons"] == ["missing_token_target"]
+    assert upsert["gate_json"]["blocked_reasons"] == ["identity_unresolved"]
     assert upsert["gate_json"]["max_recommendation"] == "ignore"
+    assert "hard_gates" not in upsert["factor_snapshot_json"]
+    assert upsert["factor_snapshot_json"]["gates"]["blocked_reasons"] == ["identity_unresolved"]
+
+
+def test_worker_trigger_metrics_use_v2_families_and_gates() -> None:
+    snapshot = _factor_snapshot(rank_score=82, blocked_reasons=["duplicate_text_share_high"])
+    row = _radar_row(factor_snapshot_json=snapshot)
+
+    metrics = _asset_trigger_metrics(row)
+
+    assert metrics == {
+        "rank_score": 82,
+        "recommended_decision": "high_alert",
+        "watched_confirmation": True,
+        "independent_author_count": 7,
+        "blocked_reasons": ["duplicate_text_share_high"],
+        "hard_risks": ["duplicate_text_share_high"],
+        "trade_candidate_eligible": False,
+    }
+
+
+def test_source_seed_factor_snapshot_is_v2_without_legacy_hard_gates() -> None:
+    snapshot = _source_seed_factor_snapshot(_source_event())
+
+    assert snapshot["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert set(snapshot) == {
+        "schema_version",
+        "subject",
+        "gates",
+        "data_health",
+        "families",
+        "normalization",
+        "composite",
+        "provenance",
+    }
+    assert "hard_gates" not in snapshot
+    assert snapshot["gates"]["blocked_reasons"] == ["identity_unresolved"]
+    assert set(snapshot["families"]) == {
+        "attention_heat",
+        "diffusion_quality",
+        "semantic_quality",
+        "timing_response",
+    }
+
+
+def test_legacy_previous_candidate_gate_json_does_not_bypass_cooldown() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=50)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse.candidates[candidate_id] = {
+        "candidate_id": candidate_id,
+        "pulse_status": "token_watch",
+        "verdict": "token_watch",
+        "trigger_signature": "old-trigger",
+        "timeline_signature": "old-timeline",
+        "updated_at_ms": NOW_MS - 1_000,
+        "factor_snapshot_json": {
+            "schema_version": "token_factor_snapshot_v1",
+            "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
+            "composite": {"rank_score": 45},
+        },
+        "gate_json": {
+            "watched_confirmation": False,
+            "independent_author_count": 0,
+            "hard_risks": [],
+            "trade_candidate_eligible": False,
+        },
+    }
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse.jobs == []
 
 
 @contextmanager
@@ -280,24 +382,28 @@ class FakeClient:
             schema_version=PULSE_RECOMMENDATION_SCHEMA_VERSION,
             recommendation=self.recommendation,
             summary_zh="因子快照显示信号值得继续观察。",
-            primary_reasons=[{"factor_key": "social_attention.unique_authors", "explanation_zh": "独立作者数上升。"}],
+            primary_reasons=[
+                {"factor_key": "diffusion_quality.independent_authors", "explanation_zh": "独立作者数上升。"}
+            ],
             upgrade_conditions=[
                 {
-                    "factor_key": "market_quality.liquidity_usd",
+                    "factor_key": "attention_heat.watched_mentions",
                     "operator": ">=",
-                    "value": 50_000,
-                    "description_zh": "流动性继续改善。",
+                    "value": 1,
+                    "description_zh": "关注账号确认继续出现。",
                 }
             ],
             invalidation_conditions=[
                 {
-                    "factor_key": "social_attention.unique_authors",
+                    "factor_key": "diffusion_quality.independent_authors",
                     "operator": "<",
                     "value": 3,
                     "description_zh": "独立作者数回落。",
                 }
             ],
-            residual_risks=[{"factor_key": "market_quality.liquidity_usd", "description_zh": "低流动性仍需约束。"}],
+            residual_risks=[
+                {"factor_key": "timing_response.price_change_status", "description_zh": "价格响应仍可能变化。"}
+            ],
             evidence_event_ids=context.get("source_event_ids") or ["event-1"],
             confidence=0.7,
         )
@@ -323,47 +429,78 @@ def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]
 
 def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = None) -> dict[str, Any]:
     return {
-        "schema_version": "token_factor_snapshot_v1",
-        "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "TEST"},
+        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "subject": {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "target_market_type": "dex",
+            "symbol": "TEST",
+        },
+        "gates": {
+            "eligible_for_high_alert": not blocked_reasons,
+            "blocked_reasons": blocked_reasons or [],
+            "risk_reasons": blocked_reasons or [],
+            "max_decision": "watch" if blocked_reasons else "high_alert",
+        },
+        "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": {
-            "social_attention": {
-                "facts": {"watched_mentions": 0, "unique_authors": 4},
+            "attention_heat": {
+                "raw_score": rank_score,
+                "score": rank_score,
+                "weight": 0.35,
+                "data_health": "ready",
+                "facts": {"mentions_1h": 8, "unique_authors": 7, "watched_mentions": 1},
                 "factors": {
-                    "unique_authors": {
-                        "family": "social_attention",
-                        "key": "unique_authors",
+                    "watched_mentions": {
+                        "family": "attention_heat",
+                        "key": "watched_mentions",
                         "risk_flags": [],
                     }
                 },
             },
-            "market_quality": {
-                "facts": {"market_status": "fresh", "liquidity_usd": 80_000},
+            "diffusion_quality": {
+                "raw_score": rank_score,
+                "score": rank_score,
+                "weight": 0.3,
+                "data_health": "ready",
+                "facts": {"independent_authors": 7},
                 "factors": {
-                    "liquidity_usd": {
-                        "family": "market_quality",
-                        "key": "liquidity_usd",
+                    "independent_authors": {
+                        "family": "diffusion_quality",
+                        "key": "independent_authors",
                         "risk_flags": blocked_reasons or [],
-                        "hard_gate": "block_high_alert" if blocked_reasons else None,
                     }
                 },
             },
+            "semantic_quality": {
+                "raw_score": rank_score,
+                "score": rank_score,
+                "weight": 0.25,
+                "data_health": "ready",
+                "facts": {"phase": "ignition"},
+                "factors": {},
+            },
+            "timing_response": {
+                "raw_score": rank_score,
+                "score": rank_score,
+                "weight": 0.1,
+                "data_health": "ready",
+                "facts": {"price_change_status": "ready"},
+                "factors": {"price_change_status": {"family": "timing_response", "key": "price_change_status"}},
+            },
         },
-        "hard_gates": {
-            "eligible_for_high_alert": not blocked_reasons,
-            "blocked_reasons": blocked_reasons or [],
-        },
+        "normalization": {"status": "pending_cross_section"},
         "composite": {
             "family_scores": {
-                "social_attention": rank_score,
-                "social_quality": rank_score,
-                "social_semantics": rank_score,
-                "market_quality": rank_score,
-                "timing": rank_score,
+                "attention_heat": rank_score,
+                "diffusion_quality": rank_score,
+                "semantic_quality": rank_score,
+                "timing_response": rank_score,
             },
             "rank_score": rank_score,
             "recommended_decision": "high_alert" if rank_score >= 72 else "watch",
         },
-        "provenance": {"source_event_ids": ["event-1"]},
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": NOW_MS - 1_000},
     }
 
 

@@ -37,27 +37,40 @@ GMGN frame
 | Asset identity ledger | `../asset_market/identity_evidence_policy.py`, `../asset_market/repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
 | Discovery and reprocess | `../asset_market/runtime/token_discovery_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current`, pricefeed / price observations | Recent NIL / AMBIGUOUS symbol and address lookup keys are discovered through OKX DEX, then affected intents are reprocessed. Symbol search writes bounded candidate evidence; exact address lookup writes exact evidence. Symbol candidates do not overwrite exact identity. |
 | Market observation | `../asset_market/runtime/{asset_market_sync_worker.py,message_market_observation_worker.py}`, `../asset_market/services/{asset_market_sync.py,message_market_observation.py}`, `../asset_market/services/market_freshness_demand.py` | `cex_tokens`, `price_feeds`, `price_observations`, `asset_identity_evidence/current` | CEX universe sync creates canonical CEX tokens and feeds. GMGN payload and message-level CEX / DEX quotes write price observations. OKX DEX price sync prioritizes hot radar assets by missing/stale market facts before warm assets. Price freshness never stands in for identity confidence. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, and `asset_identity_current`, then consumes `asset_market` current-market snapshots for scoring context and emits `token_factor_snapshot_v1`. It does not read latest price-observation rows as a live market contract, call providers, or preflight-refresh markets. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, and `asset_identity_current`, then consumes `asset_market` current-market snapshots for gate/data-health context and emits `token_factor_snapshot_v2_alpha_gated`. Current-market display is hydrated by read models, not factor facts. |
 
 ## Factor Snapshot Contract
 
 `token_radar_rows.factor_snapshot_json` is the current Token Radar product
 contract. It contains:
 
-- `subject` — deterministic target identity selected by the resolver and
-  asset identity ledger.
-- `families` — raw facts and factor points for identity, social attention,
-  social quality, social semantics, market quality, and timing.
-- `hard_gates` — deterministic blockers and high-alert eligibility.
-- `composite` — rank score and recommended decision derived from factor
-  families.
+- `schema_version = "token_factor_snapshot_v2_alpha_gated"` — the only runtime
+  snapshot version accepted by readers.
+- `subject` — deterministic target identity selected by the resolver and asset
+  identity ledger, plus target-market identity facts.
+- `gates` — deterministic blockers, risk reasons, high-alert eligibility, and
+  maximum decision. Identity readiness, CEX native-market identity, DEX
+  market-cap / liquidity / holder floors, and market freshness are gates or
+  data-health facts; they are not alpha factors.
+- `data_health` — identity, market, social, and alpha readiness.
+- `families` — alpha families only: `attention_heat`, `diffusion_quality`,
+  `semantic_quality`, and `timing_response`.
+- `normalization` — cohort definition, per-family ranks, alpha rank, and status.
+- `composite` — raw alpha score, cross-section rank score, family scores, and
+  recommended decision derived from alpha families plus gates.
 - `provenance` — source event ids and computation time.
 
 Token Radar current runtime explanation source is `factor_snapshot_json`.
 Live/current market display is served from the `asset_market` current-market
-read model, not from factor snapshot market facts. Legacy score-centered JSON
-fields are not runtime fallback sources. Signal Lab Pulse recommendations
-consume factor snapshots and deterministic gates.
+read model, not from factor snapshot family facts. Legacy score-centered JSON
+fields and v1 snapshot fields are not runtime fallback sources. Signal Lab
+Pulse recommendations consume v2 factor snapshots and deterministic gates.
+
+Historical `token_radar_rows` are retained by `computed_at_ms` so
+`TokenFactorEvaluationService` can settle forward returns point-in-time. Latest
+read models select the newest run per target/window/scope; diagnostics use
+`token_score_evaluations` and v2 score-version keys to keep populations
+comparable.
 
 ## Identity Boundary
 
@@ -97,11 +110,14 @@ symbol remains `None` rather than falling back to the mention symbol.
   expand `registry_assets`.
 - Price freshness is market data health. It must not invent a new identity
   status or erase an otherwise valid deterministic identity decision.
+- Market data health, duplicate clean state, and `social_signal_start_ms` do not
+  create positive alpha. Duplicate concentration can penalize diffusion quality;
+  clean duplication only removes that penalty.
 - Token Radar target display uses current identity. Intent display symbol is
   preserved separately as what the tweet mentioned.
-- Signal Pulse reads `factor_snapshot_json`, `agent_recommendation_json`, and
-  `gate_json`. Migration `20260510_0023` drops legacy Signal Pulse
-  `thesis_json`, `radar_score_json`, and `market_context_json` columns.
+- Signal Pulse reads v2 `factor_snapshot_json`, `agent_recommendation_json`, and
+  deterministic gate output. Product decisions must not fall back to legacy
+  Signal Pulse `thesis_json`, `radar_score_json`, or `market_context_json`.
 
 ## Update Triggers
 
@@ -111,5 +127,5 @@ Update this file in the same change when any of these move:
 - token evidence, intent construction, lookup key, or resolver policy;
 - discovery admission, retained candidate, or reprocess behavior;
 - market observation semantics used by Token Radar;
-- projection windows, source query joins, factor families, hard gates, market
-  freshness SLOs, or persisted radar row shape.
+- projection windows, source query joins, factor families, gates, market
+  freshness SLOs, evaluation horizons, or persisted radar row shape.

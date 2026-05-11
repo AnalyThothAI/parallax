@@ -6,12 +6,18 @@ import type {
   FactorPoint,
   MarketFieldFact,
   RadarSortMode,
-  RiskCap,
+  ScoreBlock,
   ScoreContribution,
   TimingBlock,
+  TokenFactorFamily,
   TokenFactorSnapshot,
-  TokenFlowItem
+  TokenFlowItem,
+  TradeabilityBlock,
 } from "../api/types";
+
+import { requireTokenFactorSnapshotV2 } from "./tokenFactorSnapshot";
+
+const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v2_alpha_gated";
 
 export function sortTokenItems(items: TokenFlowItem[], mode: RadarSortMode): TokenFlowItem[] {
   const copy = [...items];
@@ -32,7 +38,7 @@ export function countDecisions(items: TokenFlowItem[]): Record<Decision, number>
       counts[item.opportunity.decision] += 1;
       return counts;
     },
-    { driver: 0, watch: 0, investigate: 0, discard: 0 }
+    { driver: 0, watch: 0, investigate: 0, discard: 0 },
   );
 }
 
@@ -54,106 +60,182 @@ export function tokenRadarItems(
   return assetFlowRows(data).map((row) => tokenRadarRowToTokenItem(row, window, scope));
 }
 
-export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowItem["flow"]["window"], scope: TokenFlowItem["posts_query"]["scope"]): TokenFlowItem {
+export function tokenRadarRowToTokenItem(
+  row: AssetFlowRow,
+  window: TokenFlowItem["flow"]["window"],
+  scope: TokenFlowItem["posts_query"]["scope"],
+): TokenFlowItem {
   const snapshot = requiredFactorSnapshot(row);
-  const subject = requiredObject(snapshot.subject, "factor_snapshot.subject") as Record<string, unknown>;
-  const attentionFamily = requiredFamily(snapshot, "social_attention");
-  const qualityFamily = requiredFamily(snapshot, "social_quality");
-  const marketFamily = requiredFamily(snapshot, "market_quality");
-  const timingFamily = requiredFamily(snapshot, "timing");
+  const subject = requiredObject(snapshot.subject, "factor_snapshot.subject") as Record<
+    string,
+    unknown
+  >;
+  const gates = requiredObject(
+    snapshot.gates,
+    "factor_snapshot.gates",
+  ) as TokenFactorSnapshot["gates"];
+  const dataHealth = requiredObject(
+    snapshot.data_health,
+    "factor_snapshot.data_health",
+  ) as TokenFactorSnapshot["data_health"];
+  const normalization = requiredObject(
+    snapshot.normalization,
+    "factor_snapshot.normalization",
+  ) as TokenFactorSnapshot["normalization"];
+  const attentionFamily = requiredFamily(snapshot, "attention_heat");
+  const diffusionFamily = requiredFamily(snapshot, "diffusion_quality");
+  const semanticFamily = requiredFamily(snapshot, "semantic_quality");
+  const timingFamily = requiredFamily(snapshot, "timing_response");
   const attention = familyFacts(attentionFamily);
-  const qualityFacts = familyFacts(qualityFamily);
-  const marketFacts = familyFacts(marketFamily);
+  const diffusionFacts = familyFacts(diffusionFamily);
   const timingFacts = familyFacts(timingFamily);
   const currentMarket = requiredCurrentMarket(row);
-  const marketFields = requiredObject(currentMarket.fields, "current_market.fields") as Record<string, unknown>;
-  const priceField = marketField(marketFields, "price_usd") ?? marketField(marketFields, "price_quote");
-  const marketStatusField = marketField(marketFields, "market_status");
+  const marketFields = requiredObject(currentMarket.fields, "current_market.fields") as Record<
+    string,
+    unknown
+  >;
+  const priceField =
+    marketField(marketFields, "price_usd") ?? marketField(marketFields, "price_quote");
   const marketCapField = marketField(marketFields, "market_cap_usd");
   const liquidityField = marketField(marketFields, "liquidity_usd");
   const holdersField = marketField(marketFields, "holders");
   const volume24hField = marketField(marketFields, "volume_24h_usd");
-  const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<string, unknown>;
+  const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<
+    string,
+    unknown
+  >;
   const familyScores = recordValue(composite.family_scores);
-  const gates = recordValue(snapshot.hard_gates);
   const provenance = recordValue(snapshot.provenance);
-  const mentions5m = requiredNumber(attention.mentions_5m, "factor_snapshot.social_attention.mentions_5m");
-  const mentions1h = requiredNumber(attention.mentions_1h, "factor_snapshot.social_attention.mentions_1h");
-  const mentions4h = requiredNumber(attention.mentions_4h, "factor_snapshot.social_attention.mentions_4h");
-  const mentions24h = requiredNumber(attention.mentions_24h, "factor_snapshot.social_attention.mentions_24h");
+  const mentions5m = requiredNumber(
+    attention.mentions_5m,
+    "factor_snapshot.attention_heat.mentions_5m",
+  );
+  const mentions1h = requiredNumber(
+    attention.mentions_1h,
+    "factor_snapshot.attention_heat.mentions_1h",
+  );
+  const mentions4h = requiredNumber(
+    attention.mentions_4h,
+    "factor_snapshot.attention_heat.mentions_4h",
+  );
+  const mentions24h = requiredNumber(
+    attention.mentions_24h,
+    "factor_snapshot.attention_heat.mentions_24h",
+  );
   const mentions = requiredNumber(
     attention[`mentions_${window}`],
-    `factor_snapshot.social_attention.mentions_${window}`
+    `factor_snapshot.attention_heat.mentions_${window}`,
   );
-  const authors = requiredNumber(attention.unique_authors, "factor_snapshot.social_attention.unique_authors");
-  const watched = requiredNumber(attention.watched_mentions, "factor_snapshot.social_attention.watched_mentions");
-  const latestSeenMs = requiredNumber(attention.latest_seen_ms, "factor_snapshot.social_attention.latest_seen_ms");
+  const authors = requiredNumber(
+    attention.unique_authors,
+    "factor_snapshot.attention_heat.unique_authors",
+  );
+  const watched = requiredNumber(
+    attention.watched_mentions,
+    "factor_snapshot.attention_heat.watched_mentions",
+  );
+  const latestSeenMs = requiredNumber(
+    attention.latest_seen_ms,
+    "factor_snapshot.attention_heat.latest_seen_ms",
+  );
   const previousMentions = optionalNumber(attention.previous_mentions) ?? 0;
   const mentionDelta = optionalNumber(attention.mention_delta) ?? mentions - previousMentions;
   const mentionDeltaPct = optionalNullableNumber(attention.mention_delta_pct);
   const zScore = optionalNullableNumber(attention.z_score);
   const newBurstScore = optionalNullableNumber(attention.new_burst_score);
   const streamShare = optionalNumber(attention.stream_share) ?? 0;
-  const baselineStatus = optionalString(attention.baseline_status) ?? String(attentionFamily.data_health ?? "snapshot");
+  const baselineStatus =
+    optionalString(attention.baseline_status) ?? String(attentionFamily.data_health ?? "snapshot");
   const baselineSampleCount = optionalNumber(attention.baseline_sample_count) ?? 0;
   const sourceEventIds = requiredStringArray(
     Array.isArray(row.source_event_ids) ? row.source_event_ids : provenance.source_event_ids,
-    "factor_snapshot.provenance.source_event_ids"
+    "factor_snapshot.provenance.source_event_ids",
   );
   const target = row.target ?? {};
   const isChainAsset = target.target_type === "Asset";
   const isSnapshotAsset = subject.target_type === "Asset";
   const isCexToken = subject.target_type === "CexToken" || target.target_type === "CexToken";
-  const displaySymbol = isChainAsset || isCexToken
-    ? stringValue(subject.symbol) ?? target.symbol ?? null
-    : row.intent?.display_symbol ?? stringValue(subject.symbol) ?? target.symbol ?? null;
-  const targetId = stringValue(subject.target_id) ?? target.target_id ?? row.resolution?.target_id ?? null;
-  const address = isSnapshotAsset ? stringValue(subject.address) ?? target.address ?? null : null;
-  const nativeMarketId = stringValue(marketFacts.native_market_id) ?? target.native_market_id ?? null;
-  const identityKey = targetId ?? row.intent?.intent_id ?? address ?? nativeMarketId ?? displaySymbol ?? "unknown-token-intent";
+  const displaySymbol =
+    isChainAsset || isCexToken
+      ? (stringValue(subject.symbol) ?? target.symbol ?? null)
+      : (row.intent?.display_symbol ?? stringValue(subject.symbol) ?? target.symbol ?? null);
+  const targetId =
+    stringValue(subject.target_id) ?? target.target_id ?? row.resolution?.target_id ?? null;
+  const address = isSnapshotAsset ? (stringValue(subject.address) ?? target.address ?? null) : null;
+  const nativeMarketId =
+    target.native_market_id ?? stringValue(subject.pricefeed_id) ?? target.pricefeed_id ?? null;
+  const identityKey =
+    targetId ??
+    row.intent?.intent_id ??
+    address ??
+    nativeMarketId ??
+    displaySymbol ??
+    "unknown-token-intent";
   const resolved = Boolean(targetId && subject.target_type);
   const resolutionReasons = row.resolution?.reason_codes ?? row.resolution?.reasons ?? [];
-  const candidateCount = row.resolution?.candidate_ids?.length ?? row.resolution?.candidates?.length ?? 0;
+  const candidateCount =
+    row.resolution?.candidate_ids?.length ?? row.resolution?.candidates?.length ?? 0;
   const discoveryStatus = discoveryStatusSummary(row.resolution?.discovery);
-  const marketStatus = optionalString(marketStatusField?.value) ?? optionalString(currentMarket.market_status) ?? "missing";
+  const marketStatus = deriveMarketDisplayStatus(marketFields);
   const marketObservationStatus = marketStatus;
   const marketHasUsableSnapshot = marketStatus === "fresh";
-  const priceChangeStatus = priceChangeStatusFromSnapshot(marketStatus, timingFacts);
-  const heat = scoreBlockFromFamily(attentionFamily, "social_attention", "social_heat");
-  const quality = scoreBlockFromFamily(qualityFamily, "social_quality", "discussion_quality");
-  const propagation = scoreBlockFromFamily(qualityFamily, "social_quality", "propagation");
-  const tradeability = scoreBlockFromFamily(marketFamily, "market_quality", "tradeability");
-  const timing = scoreBlockFromFamily(timingFamily, "timing", "timing");
-  const decision = decisionFromRecommendation(
-    optionalString(composite.recommended_decision) ?? optionalString(row.decision)
+  const priceChangeSinceSocialPct = marketFieldNumber(
+    marketFields,
+    "price_change_since_social_pct",
   );
-  const heatStatus = optionalString(attention.status) ?? heatStatusFromScore(heat.score, attentionFamily.data_health);
+  const priceChangeBeforeSocialPct = marketFieldNumber(
+    marketFields,
+    "price_change_before_social_pct",
+  );
+  const priceChangeStatus = priceChangeStatusFromMarketFields(
+    marketStatus,
+    priceChangeSinceSocialPct,
+  );
+  const heat = scoreBlockFromFamily(attentionFamily, "attention_heat", "social_heat");
+  const quality = scoreBlockFromFamily(semanticFamily, "semantic_quality", "discussion_quality");
+  const propagation = scoreBlockFromFamily(diffusionFamily, "diffusion_quality", "propagation");
+  const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, marketFields);
+  const timing = scoreBlockFromFamily(timingFamily, "timing_response", "timing");
+  const recommendedDecision = requiredString(
+    optionalString(composite.recommended_decision),
+    "factor_snapshot.composite.recommended_decision",
+  );
+  const decision = decisionFromRecommendation(recommendedDecision);
+  const heatStatus =
+    optionalString(attention.status) ??
+    heatStatusFromScore(heat.score, attentionFamily.data_health);
   const timingStatus = timingStatusFromSnapshot(marketStatus, timing.risks, resolved);
-  const chaseRisk = timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
+  const chaseRisk =
+    timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
   const marketPrice = optionalNullableNumber(priceField?.value);
   const marketProvider = firstString(
     priceField?.provider,
     marketCapField?.provider,
     liquidityField?.provider,
     holdersField?.provider,
-    volume24hField?.provider
+    volume24hField?.provider,
   );
-  const chain = isSnapshotAsset ? stringValue(subject.chain) ?? target.chain_id ?? null : null;
-  const blockedReasons = requiredStringArray(gates.blocked_reasons ?? [], "factor_snapshot.hard_gates.blocked_reasons");
-  const opportunityScore = requiredNumber(composite.rank_score, "factor_snapshot.composite.rank_score");
+  const chain = isSnapshotAsset ? (stringValue(subject.chain) ?? target.chain_id ?? null) : null;
+  const blockedReasons = requiredStringArray(
+    gates.blocked_reasons ?? [],
+    "factor_snapshot.gates.blocked_reasons",
+  );
+  const opportunityScore = requiredNumber(
+    composite.rank_score,
+    "factor_snapshot.composite.rank_score",
+  );
   const opportunity = {
     ...scoreBlockFromComposite(snapshot, blockedReasons),
     decision,
     decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
     hard_risks: blockedReasons,
     components: {
-      heat: scoreFromFamilyScores(familyScores, "social_attention", heat.score),
-      quality: scoreFromFamilyScores(familyScores, "social_quality", quality.score),
-      propagation: scoreFromFamilyScores(familyScores, "social_quality", propagation.score),
-      tradeability: scoreFromFamilyScores(familyScores, "market_quality", tradeability.score),
-      timing: scoreFromFamilyScores(familyScores, "timing", timing.score)
+      heat: scoreFromFamilyScores(familyScores, "attention_heat", heat.score),
+      quality: scoreFromFamilyScores(familyScores, "semantic_quality", quality.score),
+      propagation: scoreFromFamilyScores(familyScores, "diffusion_quality", propagation.score),
+      timing: scoreFromFamilyScores(familyScores, "timing_response", timing.score),
     },
-    score: opportunityScore
+    score: opportunityScore,
   };
   return {
     identity: {
@@ -161,19 +243,21 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       identity_status: row.resolution?.status ?? (resolved ? "EXACT" : "NIL"),
       target_type: stringValue(subject.target_type) ?? target.target_type ?? null,
       target_id: targetId,
-      asset_id: isChainAsset ? targetId ?? undefined : undefined,
+      asset_id: isChainAsset ? (targetId ?? undefined) : undefined,
       asset_type: stringValue(subject.target_type) ?? target.target_type ?? null,
       venue_type: isCexToken ? "cex" : isSnapshotAsset || isChainAsset ? "dex" : null,
-      exchange: isCexToken ? target.provider ?? marketProvider ?? stringValue(marketFacts.exchange) ?? (nativeMarketId ? "okx" : null) : null,
+      exchange: isCexToken
+        ? (target.provider ?? marketProvider ?? exchangeFromMarketId(nativeMarketId))
+        : null,
       inst_id: isCexToken ? nativeMarketId : null,
-      inst_type: isCexToken ? target.feed_type ?? stringValue(marketFacts.feed_type) ?? null : null,
+      inst_type: isCexToken ? (target.feed_type ?? instTypeFromMarketId(nativeMarketId)) : null,
       chain,
       address,
       symbol: displaySymbol,
       resolution_reasons: resolutionReasons,
       lookup_keys: row.resolution?.lookup_keys ?? [],
       candidate_count: candidateCount,
-      discovery_status: discoveryStatus
+      discovery_status: discoveryStatus,
     },
     market: {
       market_status: marketStatus,
@@ -193,16 +277,21 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       snapshot_received_at_ms: optionalNullableNumber(priceField?.observed_at_ms),
       social_signal_start_ms: optionalNumber(timingFacts.social_signal_start_ms) ?? latestSeenMs,
       reference_ms: latestSeenMs,
-      price_at_social_start: optionalNullableNumber(marketFacts.price_at_social_start),
-      price_at_reference: optionalNullableNumber(marketFacts.price_at_reference) ?? marketPrice,
-      price_change_since_social_pct: optionalNullableNumber(timingFacts.price_change_since_social_pct),
-      price_before_social_start: optionalNullableNumber(marketFacts.price_before_social_start),
-      price_change_before_social_pct: optionalNullableNumber(timingFacts.price_change_before_social_pct),
-      price_at_first_snapshot: optionalNullableNumber(marketFacts.price_at_first_snapshot),
-      first_snapshot_observed_at_ms: optionalNullableNumber(marketFacts.first_snapshot_observed_at_ms),
-      price_change_since_first_snapshot_pct: optionalNullableNumber(marketFacts.price_change_since_first_snapshot_pct),
+      price_at_social_start: marketFieldNumber(marketFields, "price_at_social_start"),
+      price_at_reference: marketFieldNumber(marketFields, "price_at_reference") ?? marketPrice,
+      price_change_since_social_pct: priceChangeSinceSocialPct,
+      price_before_social_start: marketFieldNumber(marketFields, "price_before_social_start"),
+      price_change_before_social_pct: priceChangeBeforeSocialPct,
+      price_at_first_snapshot: marketFieldNumber(marketFields, "price_at_first_snapshot"),
+      first_snapshot_observed_at_ms: optionalNullableNumber(
+        marketField(marketFields, "price_at_first_snapshot")?.observed_at_ms,
+      ),
+      price_change_since_first_snapshot_pct: marketFieldNumber(
+        marketFields,
+        "price_change_since_first_snapshot_pct",
+      ),
       market_observation_status: marketObservationStatus,
-      price_change_status: priceChangeStatus
+      price_change_status: priceChangeStatus,
     },
     flow: {
       window,
@@ -221,7 +310,7 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       new_burst_score: newBurstScore,
       stream_dominance: 0,
       baseline_status: baselineStatus,
-      baseline_sample_count: baselineSampleCount
+      baseline_sample_count: baselineSampleCount,
     },
     social_heat: {
       ...heat,
@@ -239,51 +328,54 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       new_burst_score: newBurstScore,
       stream_share: streamShare,
       watched_share: mentions ? watched / mentions : 0,
-      status: heatStatus
+      status: heatStatus,
     },
     discussion_quality: {
       ...quality,
       evidence_specificity: 0,
       avg_post_quality: quality.score,
       avg_attribution_confidence: row.resolution?.confidence ?? 0,
-      duplicate_text_share: optionalNumber(qualityFacts.duplicate_text_share) ?? 0,
-      informative_post_count: optionalNumber(qualityFacts.informative_post_count) ?? Math.min(mentions, authors || mentions),
-      watched_source_count: watched
+      duplicate_text_share: optionalNumber(diffusionFacts.duplicate_text_share) ?? 0,
+      informative_post_count:
+        optionalNumber(diffusionFacts.informative_post_count) ??
+        Math.min(mentions, authors || mentions),
+      watched_source_count: watched,
     },
     propagation: {
       ...propagation,
-      independent_authors: authors,
-      effective_authors: authors,
-      new_authors: authors,
-      top_author_share: authors ? 1 / authors : 0,
-      duplicate_text_share: 0,
+      independent_authors: optionalNumber(diffusionFacts.independent_authors) ?? authors,
+      effective_authors: optionalNumber(diffusionFacts.effective_authors) ?? authors,
+      new_authors: optionalNumber(diffusionFacts.independent_authors) ?? authors,
+      top_author_share:
+        optionalNumber(diffusionFacts.top_author_share) ?? (authors ? 1 / authors : 0),
+      duplicate_text_share: optionalNumber(diffusionFacts.duplicate_text_share) ?? 0,
       author_entropy: authors > 1 ? 1 : 0,
       reproduction_rate: null,
       phase: authors >= 3 ? "expansion" : authors >= 2 ? "ignition" : "seed",
-      top_authors: []
+      top_authors: [],
     },
     tradeability: {
       ...tradeability,
-      identity_tradeable: Boolean(tradeability.identity_tradeable ?? resolved),
-      market_fresh: Boolean(tradeability.market_fresh ?? marketHasUsableSnapshot),
-      market_cap_present: Boolean(tradeability.market_cap_present ?? hasFieldValue(marketCapField)),
-      liquidity_present: Boolean(tradeability.liquidity_present ?? hasFieldValue(liquidityField)),
-      pool_present: Boolean(tradeability.pool_present ?? marketHasUsableSnapshot),
-      hard_risks: tradeability.hard_risks ?? tradeability.risks
+      identity_tradeable: Boolean(tradeability.identity_tradeable),
+      market_fresh: Boolean(tradeability.market_fresh),
+      market_cap_present: Boolean(tradeability.market_cap_present),
+      liquidity_present: Boolean(tradeability.liquidity_present),
+      pool_present: Boolean(tradeability.pool_present),
+      hard_risks: tradeability.hard_risks ?? tradeability.risks,
     },
     timing: {
       score: timing.score,
       score_version: timing.score_version,
       status: timingStatus,
       social_signal_start_ms: optionalNumber(timingFacts.social_signal_start_ms) ?? latestSeenMs,
-      price_change_since_social_pct: optionalNullableNumber(timingFacts.price_change_since_social_pct),
-      price_change_before_social_pct: optionalNullableNumber(timingFacts.price_change_before_social_pct),
+      price_change_since_social_pct: priceChangeSinceSocialPct,
+      price_change_before_social_pct: priceChangeBeforeSocialPct,
       market_observation_status: marketObservationStatus,
       chase_risk: chaseRisk,
       reasons: timing.reasons,
       risks: timing.risks,
       contributions: timing.contributions,
-      risk_caps: timing.risk_caps
+      risk_caps: timing.risk_caps,
     },
     opportunity,
     watch: {
@@ -293,29 +385,42 @@ export function tokenRadarRowToTokenItem(row: AssetFlowRow, window: TokenFlowIte
       seed_link_count: 0,
       top_seed: null,
       reasons: watched ? ["watched_source_present"] : [],
-      risks: watched ? [] : ["no_watched_confirmation"]
+      risks: watched ? [] : ["no_watched_confirmation"],
     },
+    factor_data_health: dataHealth,
+    factor_gates: gates,
+    factor_normalization: normalization,
     evidence_total_count: sourceEventIds.length,
-    posts_query: { target_type: stringValue(subject.target_type) ?? target.target_type ?? null, target_id: targetId, window, scope, range: "current_window" },
-    timeline_query: { target_type: stringValue(subject.target_type) ?? target.target_type ?? null, target_id: targetId, window, scope }
+    posts_query: {
+      target_type: stringValue(subject.target_type) ?? target.target_type ?? null,
+      target_id: targetId,
+      window,
+      scope,
+      range: "current_window",
+    },
+    timeline_query: {
+      target_type: stringValue(subject.target_type) ?? target.target_type ?? null,
+      target_id: targetId,
+      window,
+      scope,
+    },
   };
 }
 
-type FactorFamily = TokenFactorSnapshot["families"][string];
+type FactorFamily = TokenFactorFamily;
+type ScoreBlockWithHardRisks = ScoreBlock & { hard_risks: string[] };
 
-type SnapshotRow = AssetFlowRow & {
-  factor_snapshot?: TokenFactorSnapshot;
-};
-
-function requiredFactorSnapshot(row: SnapshotRow): TokenFactorSnapshot {
-  const snapshot = row.factor_snapshot;
-  if (!snapshot || typeof snapshot !== "object") {
-    throw new Error("token_radar_contract:factor_snapshot");
+function requiredFactorSnapshot(row: AssetFlowRow): TokenFactorSnapshot {
+  try {
+    return requireTokenFactorSnapshotV2(row.factor_snapshot, "factor_snapshot");
+  } catch (error) {
+    if (error instanceof Error) {
+      throw new Error(
+        error.message.replace("token_factor_snapshot_contract:", "token_radar_contract:"),
+      );
+    }
+    throw error;
   }
-  if (snapshot.schema_version !== "token_factor_snapshot_v1") {
-    throw new Error("token_radar_contract:factor_snapshot.schema_version");
-  }
-  return snapshot;
 }
 
 function requiredCurrentMarket(row: AssetFlowRow): CurrentMarketSnapshot {
@@ -329,7 +434,10 @@ function requiredCurrentMarket(row: AssetFlowRow): CurrentMarketSnapshot {
   return currentMarket;
 }
 
-function requiredFamily(snapshot: TokenFactorSnapshot, familyName: string): FactorFamily {
+function requiredFamily(
+  snapshot: TokenFactorSnapshot,
+  familyName: keyof TokenFactorSnapshot["families"],
+): FactorFamily {
   const family = snapshot.families?.[familyName];
   if (!family || typeof family !== "object") {
     throw new Error(`token_radar_contract:factor_snapshot.families.${familyName}`);
@@ -343,86 +451,200 @@ function familyFacts(family: FactorFamily): Record<string, unknown> {
 
 function marketField(fields: Record<string, unknown>, key: string): MarketFieldFact | null {
   const field = fields[key];
-  return field && typeof field === "object" && !Array.isArray(field) ? (field as MarketFieldFact) : null;
+  return field && typeof field === "object" && !Array.isArray(field)
+    ? (field as MarketFieldFact)
+    : null;
 }
 
-function scoreBlockFromFamily(family: FactorFamily, factorFamily: string, scoreVersionFamily: string): any {
+function marketFieldNumber(fields: Record<string, unknown>, key: string): number | null {
+  return optionalNullableNumber(marketField(fields, key)?.value);
+}
+
+function deriveMarketDisplayStatus(fields: Record<string, unknown>): string {
+  const explicitMarketStatus = optionalString(marketField(fields, "market_status")?.value);
+  if (explicitMarketStatus) {
+    return explicitMarketStatus;
+  }
+  const statuses = [
+    "price_usd",
+    "price_quote",
+    "market_cap_usd",
+    "liquidity_usd",
+    "holders",
+    "volume_24h_usd",
+  ]
+    .map((key) => optionalString(marketField(fields, key)?.status))
+    .filter((status): status is string => Boolean(status));
+  const valueStatuses = [
+    "price_usd",
+    "price_quote",
+    "market_cap_usd",
+    "liquidity_usd",
+    "holders",
+    "volume_24h_usd",
+  ]
+    .map((key) => marketField(fields, key))
+    .filter((field): field is MarketFieldFact => hasFieldValue(field))
+    .map((field) => optionalString(field.status))
+    .filter((status): status is string => Boolean(status));
+  const relevantStatuses = valueStatuses.length ? valueStatuses : statuses;
+  if (!relevantStatuses.length) {
+    return "missing";
+  }
+  if (relevantStatuses.some((status) => status === "fresh" || status === "ready")) {
+    return relevantStatuses.every(
+      (status) => status === "fresh" || status === "ready" || status === "unsupported",
+    )
+      ? "fresh"
+      : "partial";
+  }
+  if (relevantStatuses.some((status) => status === "partial")) {
+    return "partial";
+  }
+  if (relevantStatuses.some((status) => status === "stale")) {
+    return "stale";
+  }
+  return relevantStatuses[0] ?? "missing";
+}
+
+function scoreBlockFromFamily(
+  family: FactorFamily,
+  factorFamily: string,
+  scoreVersionFamily: string,
+): ScoreBlockWithHardRisks {
   const score = Math.round(requiredNumber(family.score, `factor_snapshot.${factorFamily}.score`));
   const points = factorPoints(family);
   const risks = uniqueStrings(
-    points.flatMap((point) => [
-      ...stringArray(point.risk_flags),
-      optionalString(point.hard_gate)
-    ]).filter((item): item is string => Boolean(item))
+    points
+      .flatMap((point) => stringArray(point.risk_flags))
+      .filter((item): item is string => Boolean(item)),
   );
   return {
     score,
-    score_version: `token_factor_snapshot_v1:${scoreVersionFamily}`,
+    score_version: `${TOKEN_FACTOR_SNAPSHOT_SCHEMA}:${scoreVersionFamily}`,
     reasons: reasonsFromFamily(factorFamily, points, risks),
     risks,
-    hard_risks: risks.filter((risk) => risk.includes("block") || risk.includes("below") || risk.includes("missing")),
+    hard_risks: [],
     contributions: contributionsFromFactors(points, factorFamily, score),
-    risk_caps: riskCapsFromFactors(points)
+    risk_caps: [],
   };
 }
 
 function reasonsFromFamily(factorFamily: string, points: FactorPoint[], risks: string[]): string[] {
-  if (factorFamily === "timing") {
+  if (factorFamily === "timing_response") {
     return risks.length ? risks : [];
   }
-  if (factorFamily === "social_quality") {
-    return ["resolved_asset"];
-  }
-  if (factorFamily === "market_quality") {
-    return ["market_quality_snapshot"];
+  if (factorFamily === "semantic_quality") {
+    return ["semantic_quality_snapshot"];
   }
   return uniqueStrings(points.map((point) => `${point.family}.${point.key}`));
 }
 
-function scoreBlockFromComposite(snapshot: TokenFactorSnapshot, blockedReasons: string[]): any {
-  const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<string, unknown>;
-  const score = Math.round(requiredNumber(composite.rank_score, "factor_snapshot.composite.rank_score"));
+function scoreBlockFromComposite(
+  snapshot: TokenFactorSnapshot,
+  blockedReasons: string[],
+): ScoreBlockWithHardRisks {
+  const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<
+    string,
+    unknown
+  >;
+  const score = Math.round(
+    requiredNumber(composite.rank_score, "factor_snapshot.composite.rank_score"),
+  );
   return {
     score,
-    score_version: "token_factor_snapshot_v1:composite",
+    score_version: `${TOKEN_FACTOR_SNAPSHOT_SCHEMA}:composite`,
     reasons: [optionalString(composite.recommended_decision) ?? "factor_snapshot_composite"],
     risks: blockedReasons,
     hard_risks: blockedReasons,
     contributions: Object.entries(recordValue(composite.family_scores)).map(([feature, value]) => ({
       feature,
       value: optionalNumber(value) ?? 0,
-      reason: "factor_family_score"
+      reason: "factor_family_score",
     })),
-    risk_caps: blockedReasons.map((risk) => ({ risk, cap: 39 }))
+    risk_caps: blockedReasons.map((risk) => ({ risk, cap: 39 })),
+  };
+}
+
+function tradeabilityFromGatesAndHealth(
+  gates: TokenFactorSnapshot["gates"],
+  dataHealth: TokenFactorSnapshot["data_health"],
+  marketFields: Record<string, unknown>,
+): TradeabilityBlock {
+  const blockedReasons = requiredStringArray(
+    gates.blocked_reasons ?? [],
+    "factor_snapshot.gates.blocked_reasons",
+  );
+  const riskReasons = stringArray(gates.risk_reasons);
+  const marketReady = dataHealth.market === "ready";
+  const marketCapPresent = hasFieldValue(marketField(marketFields, "market_cap_usd"));
+  const liquidityPresent = hasFieldValue(marketField(marketFields, "liquidity_usd"));
+  const score = gates.eligible_for_high_alert ? 100 : marketReady ? 60 : 0;
+  return {
+    score,
+    score_version: `${TOKEN_FACTOR_SNAPSHOT_SCHEMA}:gates`,
+    reasons: [marketReady ? "market_health_ready" : "market_health_not_ready"],
+    risks: uniqueStrings([...blockedReasons, ...riskReasons]),
+    hard_risks: blockedReasons,
+    contributions: [
+      {
+        feature: "gates.eligible_for_high_alert",
+        value: gates.eligible_for_high_alert ? 100 : 0,
+        reason: "factor_snapshot.gates",
+      },
+      {
+        feature: "data_health.market",
+        value: marketReady ? 100 : 0,
+        reason: String(dataHealth.market),
+      },
+    ],
+    risk_caps: blockedReasons.map((risk) => ({ risk, cap: 39 })),
+    identity_tradeable: dataHealth.identity === "ready",
+    market_fresh: marketReady,
+    market_cap_present: marketCapPresent,
+    liquidity_present: liquidityPresent,
+    pool_present: marketReady,
   };
 }
 
 function factorPoints(family: FactorFamily): FactorPoint[] {
   const factors = recordValue(family.factors);
-  return Object.values(factors).filter((value): value is FactorPoint => Boolean(value && typeof value === "object"));
+  return Object.values(factors).filter((value): value is FactorPoint =>
+    Boolean(value && typeof value === "object"),
+  );
 }
 
-function contributionsFromFactors(points: FactorPoint[], fallbackFeature: string, fallbackScore: number): ScoreContribution[] {
+function contributionsFromFactors(
+  points: FactorPoint[],
+  fallbackFeature: string,
+  fallbackScore: number,
+): ScoreContribution[] {
   const contributions = points.map((point) => ({
     feature: `${point.family}.${point.key}`,
     value: optionalNumber(point.score) ?? 0,
-    reason: optionalString(point.data_health) ?? "factor_snapshot"
+    reason: optionalString(point.data_health) ?? "factor_snapshot",
   }));
-  return contributions.length ? contributions : [{ feature: fallbackFeature, value: fallbackScore, reason: "factor_snapshot" }];
+  return contributions.length
+    ? contributions
+    : [{ feature: fallbackFeature, value: fallbackScore, reason: "factor_snapshot" }];
 }
 
-function riskCapsFromFactors(points: FactorPoint[]): RiskCap[] {
-  return points
-    .filter((point) => Boolean(point.hard_gate))
-    .map((point) => ({ risk: optionalString(point.hard_gate) ?? `${point.family}.${point.key}`, cap: 39 }));
-}
-
-function scoreFromFamilyScores(familyScores: Record<string, unknown>, key: string, fallback: number): number {
+function scoreFromFamilyScores(
+  familyScores: Record<string, unknown>,
+  key: string,
+  fallback: number,
+): number {
   return optionalNumber(familyScores[key]) ?? fallback;
 }
 
 function decisionFromRecommendation(value: string | null | undefined): Decision {
-  if (value === "driver" || value === "high_alert" || value === "alert" || value === "trade_candidate") return "driver";
+  if (
+    value === "driver" ||
+    value === "high_alert" ||
+    value === "alert" ||
+    value === "trade_candidate"
+  )
+    return "driver";
   if (value === "watch" || value === "token_watch") return "watch";
   if (value === "discard" || value === "ignore") return "discard";
   return "investigate";
@@ -435,15 +657,22 @@ function heatStatusFromScore(score: number, dataHealth: unknown): string {
   return "cold";
 }
 
-function timingStatusFromSnapshot(marketStatus: string, risks: string[], resolved: boolean): TimingBlock["status"] {
+function timingStatusFromSnapshot(
+  marketStatus: string,
+  risks: string[],
+  resolved: boolean,
+): TimingBlock["status"] {
   if (risks.includes("chase_risk") || risks.includes("timing_chase_risk")) return "chase_risk";
   if (marketStatus === "missing") return resolved ? "market_pending" : "market_unavailable";
   return "neutral";
 }
 
-function priceChangeStatusFromSnapshot(marketStatus: string, timingFacts: Record<string, unknown>): string {
+function priceChangeStatusFromMarketFields(
+  marketStatus: string,
+  priceChangeSinceSocialPct: number | null,
+): string {
   if (marketStatus === "missing") return "missing_market";
-  if (timingFacts.price_change_since_social_pct === null || timingFacts.price_change_since_social_pct === undefined) {
+  if (priceChangeSinceSocialPct === null) {
     return "insufficient_history";
   }
   return "ready";
@@ -506,6 +735,25 @@ function firstString(...values: unknown[]): string | null {
   return null;
 }
 
+function exchangeFromMarketId(marketId: string | null): string | null {
+  const parts = marketId?.trim().split(":") ?? [];
+  if (parts.length >= 4 && parts[0] === "pricefeed" && parts[1] === "cex") {
+    return parts[2].toLowerCase();
+  }
+  return marketId ? "okx" : null;
+}
+
+function instTypeFromMarketId(marketId: string | null): string | null {
+  const parts = marketId?.trim().split(":") ?? [];
+  if (parts.length >= 5 && parts[0] === "pricefeed" && parts[1] === "cex") {
+    return parts[3].toUpperCase();
+  }
+  if (marketId?.toUpperCase().endsWith("-SWAP")) {
+    return "SWAP";
+  }
+  return marketId ? "SPOT" : null;
+}
+
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
@@ -515,7 +763,9 @@ function hasFieldValue(field: MarketFieldFact | null): boolean {
 }
 
 function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && Boolean(item)) : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item))
+    : [];
 }
 
 function uniqueStrings(items: string[]): string[] {
@@ -523,7 +773,9 @@ function uniqueStrings(items: string[]): string[] {
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function discoveryStatusSummary(discovery: AssetFlowRow["resolution"]["discovery"]): string | null {
@@ -532,7 +784,10 @@ function discoveryStatusSummary(discovery: AssetFlowRow["resolution"]["discovery
   }
   const statuses = Array.from(new Set(discovery.map((item) => item.status).filter(Boolean)));
   if (statuses.length === 1) {
-    const candidateTotal = discovery.reduce((sum, item) => sum + Number(item.candidate_count ?? 0), 0);
+    const candidateTotal = discovery.reduce(
+      (sum, item) => sum + Number(item.candidate_count ?? 0),
+      0,
+    );
     return candidateTotal > 0 ? `${statuses[0]}:${candidateTotal}` : String(statuses[0]);
   }
   return statuses.join("+");

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-COHORT_DEFINITION_VERSION = "cohort_v1"
+COHORT_DEFINITION_VERSION = "factor_cohort_v2"
 
 STABLECOIN_SYMBOLS: frozenset[str] = frozenset(
     {
@@ -25,14 +25,17 @@ STABLECOIN_SYMBOLS: frozenset[str] = frozenset(
 
 def is_active_cohort_member(
     *,
+    target_id: str | None,
     symbol: str | None,
     high_confidence_mention_count: int,
     kol_mention_count: int,
     was_first_seen_global_24h: bool,
 ) -> bool:
+    if not str(target_id or "").strip():
+        return False
     if symbol and symbol.strip().upper() in STABLECOIN_SYMBOLS:
         return False
-    if high_confidence_mention_count > 0:
+    if high_confidence_mention_count >= 2:
         return True
     if kol_mention_count > 0:
         return True

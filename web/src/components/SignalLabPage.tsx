@@ -1,6 +1,8 @@
 import { Outlet } from "react-router-dom";
+
 import type { LivePayload, SignalPulseData } from "../api/types";
 import { useSignalLabPage } from "../features/signal-lab/useSignalLabPage";
+
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
 
 type SignalLabPageProps = {
@@ -12,7 +14,7 @@ type SignalLabPageProps = {
 export function SignalLabPage({
   selectedAccountEventId = null,
   overviewData,
-  onSelectAccountEvent
+  onSelectAccountEvent,
 }: SignalLabPageProps) {
   const signalLab = useSignalLabPage({ onSelectAccountEvent });
 

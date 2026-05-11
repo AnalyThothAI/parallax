@@ -3,8 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import { App } from "./App";
-import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
+import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
 import type {
   ApiResponse,
   AssetFlowData,
@@ -13,18 +14,23 @@ import type {
   LivePayload,
   NotificationItem,
   NotificationLivePayload,
+  ScoreBlock,
   SignalPulseData,
   StatusData,
+  TokenFactorSnapshot,
   TokenFlowItem,
   TokenPostsData,
   TokenSocialTimelineData,
-  WindowKey
+  WindowKey,
 } from "./api/types";
-import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
+import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import { useTraderStore } from "./store/useTraderStore";
 
 const apiMock = vi.hoisted(() => {
-  type RequestOptions = { token?: string; params?: Record<string, string | number | boolean | null | undefined> };
+  type RequestOptions = {
+    token?: string;
+    params?: Record<string, string | number | boolean | null | undefined>;
+  };
   type State = {
     getApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
     getBootstrapImpl: () => Promise<unknown>;
@@ -45,7 +51,9 @@ const apiMock = vi.hoisted(() => {
   };
   state.getApi = vi.fn((path: string, options?: RequestOptions) => state.getApiImpl(path, options));
   state.getBootstrap = vi.fn(() => state.getBootstrapImpl());
-  state.postApi = vi.fn((path: string, options?: RequestOptions) => state.postApiImpl(path, options));
+  state.postApi = vi.fn((path: string, options?: RequestOptions) =>
+    state.postApiImpl(path, options),
+  );
   return state;
 });
 
@@ -67,7 +75,7 @@ const socketMock: {
   events: [],
   notifications: [],
   marketUpdates: [],
-  lastMessageAt: 1_777_770_000_000
+  lastMessageAt: 1_777_770_000_000,
 };
 
 vi.mock("./api/client", async () => {
@@ -76,12 +84,12 @@ vi.mock("./api/client", async () => {
     ...actual,
     getApi: apiMock.getApi,
     getBootstrap: apiMock.getBootstrap,
-    postApi: apiMock.postApi
+    postApi: apiMock.postApi,
   };
 });
 
 vi.mock("./api/useIntelSocket", () => ({
-  useIntelSocket: () => socketMock
+  useIntelSocket: () => socketMock,
 }));
 
 const mockedGetApi = vi.mocked(getApi);
@@ -104,18 +112,18 @@ const statusData: StatusData = {
     parse_errors: 0,
     last_frame_at_ms: 1_777_770_100_000,
     last_event_at_ms: 1_777_770_100_000,
-    last_matched_event_at_ms: 1_777_770_090_000
+    last_matched_event_at_ms: 1_777_770_090_000,
   },
   enrichment: {
     llm_configured: true,
     worker_running: true,
-    job_counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 }
+    job_counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 },
   },
   token_radar_projection: {
     worker_running: true,
     last_started_at_ms: 1_777_770_100_000,
     last_run_at_ms: 1_777_770_101_000,
-    last_result: { rows_written: 2, source_rows: 2 }
+    last_result: { rows_written: 2, source_rows: 2 },
   },
   asset_market_sync: {
     okx_cex_sync_enabled: true,
@@ -125,8 +133,8 @@ const statusData: StatusData = {
     last_result: { ready: 1 },
     providers: {
       cex: { running: false },
-      dex: { running: false }
-    }
+      dex: { running: false },
+    },
   },
   notifications: {
     enabled: true,
@@ -137,9 +145,9 @@ const statusData: StatusData = {
       high_unread_count: 0,
       critical_unread_count: 0,
       highest_unread_severity: null,
-      account_unread_counts: {}
-    }
-  }
+      account_unread_counts: {},
+    },
+  },
 };
 
 describe("App Token Radar social heat cockpit", () => {
@@ -173,9 +181,10 @@ describe("App Token Radar social heat cockpit", () => {
       postRange: "current_window",
       postSortMode: "recent",
       hideDuplicateClusters: false,
-      watchedPostsOnly: false
+      watchedPostsOnly: false,
     });
-    apiMock.getBootstrapImpl = async () => ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 });
+    apiMock.getBootstrapImpl = async () =>
+      ok<BootstrapData>({ ws_token: "secret", handles: ["toly", "traderpow"], replay_limit: 100 });
     mockApi();
   });
 
@@ -196,7 +205,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row).not.toHaveClass("is-selected");
     expect(within(row).getByText("86 · 4 +4")).toBeInTheDocument();
     expect(within(row).getByText("4 posts · new burst · share 0%")).toBeInTheDocument();
-    expect(within(row).getByText("78 · resolved asset")).toBeInTheDocument();
+    expect(within(row).getByText("78 · semantic quality snapshot")).toBeInTheDocument();
     expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
     expect(within(row).getByText("top 33% · repro -")).toBeInTheDocument();
@@ -213,7 +222,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("patches visible token-radar rows with websocket market updates", async () => {
     const target = {
       target_type: "Asset",
-      target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+      target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
     };
     socketMock.marketUpdates = [
       {
@@ -227,13 +236,31 @@ describe("App Token Radar social heat cockpit", () => {
           market_status: "fresh",
           fields: {
             price_usd: fieldFact(0.111, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
-            market_cap_usd: fieldFact(110_900_000, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
-            liquidity_usd: fieldFact(4_820_000, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
+            market_cap_usd: fieldFact(
+              110_900_000,
+              "fresh",
+              1_777_770_120_000,
+              0,
+              "okx_dex_ws_price_info",
+            ),
+            liquidity_usd: fieldFact(
+              4_820_000,
+              "fresh",
+              1_777_770_120_000,
+              0,
+              "okx_dex_ws_price_info",
+            ),
             holders: fieldFact(57_141, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info"),
-            volume_24h_usd: fieldFact(27_400_000, "fresh", 1_777_770_120_000, 0, "okx_dex_ws_price_info")
-          }
-        }
-      }
+            volume_24h_usd: fieldFact(
+              27_400_000,
+              "fresh",
+              1_777_770_120_000,
+              0,
+              "okx_dex_ws_price_info",
+            ),
+          },
+        },
+      },
     ];
 
     const { container } = renderWithQuery(<App />);
@@ -257,7 +284,9 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
     expect(screen.queryByText("检索结果")).not.toBeInTheDocument();
     const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
-    await waitFor(() => expect(within(drawer).getByText("PEPE ignition from search")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(drawer).getByText("PEPE ignition from search")).toBeInTheDocument(),
+    );
     expect(within(drawer).getByText("@searcher")).toBeInTheDocument();
     expect(screen.queryByText("Select Token")).not.toBeInTheDocument();
   });
@@ -295,7 +324,10 @@ describe("App Token Radar social heat cockpit", () => {
       expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     });
     const mobileNav = screen.getByRole("navigation", { name: "mobile cockpit tasks" });
-    expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
@@ -316,7 +348,7 @@ describe("App Token Radar social heat cockpit", () => {
     const link = await screen.findByRole("link", { name: "Open $UPEG on GMGN" });
     expect(link).toHaveAttribute(
       "href",
-      "https://gmgn.ai/eth/token/0x6982508145454Ce325dDbE47a25d4ec3d2311933"
+      "https://gmgn.ai/eth/token/0x6982508145454Ce325dDbE47a25d4ec3d2311933",
     );
     expect(link).toHaveAttribute("target", "_blank");
   });
@@ -327,10 +359,16 @@ describe("App Token Radar social heat cockpit", () => {
     const rowButton = await screen.findByRole("button", { name: "select token $UPEG" });
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
-    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent("78 · resolved asset");
-    expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent("expansion · 3 author");
+    expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent(
+      "78 · semantic quality snapshot",
+    );
+    expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent(
+      "expansion · 3 author",
+    );
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- missing");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("market pending");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent(
+      "market pending",
+    );
     expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
   });
 
@@ -359,7 +397,7 @@ describe("App Token Radar social heat cockpit", () => {
             inst_id: "BTC-USDT",
             base_symbol: "BTC",
             quote_symbol: "USDT",
-            inst_type: "SPOT"
+            inst_type: "SPOT",
           },
           price: {
             market_status: "fresh",
@@ -376,10 +414,10 @@ describe("App Token Radar social heat cockpit", () => {
             snapshot_observed_at_ms: 1_777_746_270_000,
             price_change_5m_pct: null,
             price_change_1h_pct: null,
-            price_change_24h_pct: null
-          }
-        })
-      ]
+            price_change_24h_pct: null,
+          },
+        }),
+      ],
     });
 
     renderWithQuery(<App />);
@@ -390,11 +428,15 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("fresh");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("neutral");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("fresh");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("历史不足");
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent("market pending");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent(
+      "历史不足",
+    );
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toHaveTextContent(
+      "market pending",
+    );
     expect(await screen.findByRole("link", { name: "Open $BTC on OKX" })).toHaveAttribute(
       "href",
-      "https://www.okx.com/trade-spot/btc-usdt"
+      "https://www.okx.com/trade-spot/btc-usdt",
     );
   });
 
@@ -414,7 +456,7 @@ describe("App Token Radar social heat cockpit", () => {
             inst_id: "TON-USDT",
             base_symbol: "TON",
             quote_symbol: "USDT",
-            inst_type: "SPOT"
+            inst_type: "SPOT",
           },
           price: {
             market_status: "fresh",
@@ -430,8 +472,8 @@ describe("App Token Radar social heat cockpit", () => {
             snapshot_age_ms: 30_000,
             snapshot_observed_at_ms: 1_777_746_270_000,
             price_change_since_social_pct: null,
-            price_change_before_social_pct: null
-          }
+            price_change_before_social_pct: null,
+          },
         }),
         assetFlowRow({
           symbol: "",
@@ -451,10 +493,10 @@ describe("App Token Radar social heat cockpit", () => {
             snapshot_age_ms: 30_000,
             snapshot_observed_at_ms: 1_777_746_270_000,
             price_change_since_social_pct: null,
-            price_change_before_social_pct: null
-          }
-        })
-      ]
+            price_change_before_social_pct: null,
+          },
+        }),
+      ],
     });
 
     renderWithQuery(<App />);
@@ -465,7 +507,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     const microRow = await screen.findByRole("button", { name: /select token 0x111111/ });
     expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$0.00001361");
-    expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$0 fresh");
+    expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent(
+      "$0 fresh",
+    );
   });
 
   it("renders token-radar timing changes from backend market baselines", async () => {
@@ -492,16 +536,18 @@ describe("App Token Radar social heat cockpit", () => {
             price_change_since_social_pct: 0.111111,
             price_before_social_start: 0.017,
             price_change_before_social_pct: 0.058823,
-            price_change_status: "ready"
-          }
-        })
-      ]
+            price_change_status: "ready",
+          },
+        }),
+      ],
     });
 
     renderWithQuery(<App />);
 
     const rowButton = await screen.findByRole("button", { name: "select token $USDUC" });
-    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent("+11% since social");
+    expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent(
+      "+11% since social",
+    );
   });
 
   it("uses Signal Lab as the trader-facing product label", async () => {
@@ -517,8 +563,12 @@ describe("App Token Radar social heat cockpit", () => {
 
     const pulseTitle = await screen.findByText("Signal Lab Pulse");
     const pulse = pulseTitle.closest("section") as HTMLElement;
-    expect(await within(pulse).findByText(/mentions 42 · authors 18 · trade_candidate A/)).toBeInTheDocument();
-    expect(within(pulse).getByText("CZ 推动 BNB build 叙事，候选处于点火阶段。")).toBeInTheDocument();
+    expect(
+      await within(pulse).findByText(/mentions 42 · authors 18 · trade_candidate A/),
+    ).toBeInTheDocument();
+    expect(
+      within(pulse).getByText("CZ 推动 BNB build 叙事，候选处于点火阶段。"),
+    ).toBeInTheDocument();
     expect(within(pulse).queryByText("extractor configured")).not.toBeInTheDocument();
     expect(within(pulse).queryByLabelText("signal lab pulse stages")).not.toBeInTheDocument();
     expect(screen.getByText("Token")).toBeInTheDocument();
@@ -535,7 +585,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("routes Signal Pulse notifications into Signal Lab instead of token search", async () => {
     mockApi({
       notifications: [signalPulseNotification()],
-      signalPulseWorkbench: signalPulseData()
+      signalPulseWorkbench: signalPulseData(),
     });
 
     renderWithQuery(<App />);
@@ -543,8 +593,12 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(await screen.findByRole("button", { name: "notifications" }));
     fireEvent.click(await screen.findByRole("button", { name: "open $BNB trade candidate" }));
 
-    expect(await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.")).toBeInTheDocument();
-    expect(mockedPostApi).toHaveBeenCalledWith("/api/notifications/notification-1/read", { token: "secret" });
+    expect(
+      await screen.findByText("Review Signal Pulse agent candidates by status, source, and query."),
+    ).toBeInTheDocument();
+    expect(mockedPostApi).toHaveBeenCalledWith("/api/notifications/notification-1/read", {
+      token: "secret",
+    });
     expect(screen.getByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本")).toHaveValue("");
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
@@ -562,8 +616,8 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.window === "1h" &&
             options?.params?.scope === "all" &&
             options?.params?.limit === 80 &&
-            options?.params?.sort === "recent"
-        )
+            options?.params?.sort === "recent",
+        ),
       ).toBe(true);
     });
   });
@@ -574,10 +628,14 @@ describe("App Token Radar social heat cockpit", () => {
     const rail = container.querySelector(".side-rail") as HTMLElement;
     fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
-    const workbench = await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
+    const workbench = await screen.findByText(
+      "Review Signal Pulse agent candidates by status, source, and query.",
+    );
     expect(workbench).toBeInTheDocument();
     expect(screen.getByText("Signal Pulse")).toBeInTheDocument();
-    const views = within(container.querySelector(".side-rail") as HTMLElement).getByText("views").closest("section") as HTMLElement;
+    const views = within(container.querySelector(".side-rail") as HTMLElement)
+      .getByText("views")
+      .closest("section") as HTMLElement;
     expect(within(views).queryByText("Tokens")).not.toBeInTheDocument();
     expect(within(views).queryByText("Accounts")).not.toBeInTheDocument();
     expect(within(views).queryByText("Jobs/Ops")).not.toBeInTheDocument();
@@ -628,8 +686,8 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.window === "1h" &&
             options?.params?.scope === "all" &&
             options?.params?.handle === "traderpow" &&
-            options?.params?.q === undefined
-        )
+            options?.params?.q === undefined,
+        ),
       ).toBe(true);
     });
   });
@@ -637,7 +695,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("shows watched account events when an account lens has no Signal Pulse candidates", async () => {
     mockApi({
       recentItemsByHandle: { traderpow: [watchedAccountLensEvent("traderpow")] },
-      signalPulseByHandle: { traderpow: emptySignalPulseData("@traderpow") }
+      signalPulseByHandle: { traderpow: emptySignalPulseData("@traderpow") },
     });
     const { container } = renderWithQuery(<App />);
 
@@ -657,12 +715,14 @@ describe("App Token Radar social heat cockpit", () => {
             path === "/api/recent" &&
             options?.params?.scope === "all" &&
             options?.params?.handles === "traderpow" &&
-            options?.params?.limit === 80
-        )
+            options?.params?.limit === 80,
+        ),
       ).toBe(true);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "open watched post Account lens raw post without pulse" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "open watched post Account lens raw post without pulse" }),
+    );
 
     await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
     const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
@@ -682,7 +742,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     expect(drawer.querySelector(".opportunity-score")).toHaveTextContent("79");
     expect(within(drawer).getByText("86 / rising")).toBeInTheDocument();
-    expect(within(drawer).getByText("78 / resolved asset")).toBeInTheDocument();
+    expect(within(drawer).getByText("78 / semantic quality snapshot")).toBeInTheDocument();
     expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
     expect(within(drawer).getByText("market pending")).toBeInTheDocument();
     expect(within(drawer).getByText("driver")).toBeInTheDocument();
@@ -701,23 +761,29 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(await screen.findByRole("button", { name: "Timeline" })).toHaveClass("active");
     await waitFor(() => {
-      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(true);
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(
+        true,
+      );
       expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/target-posts")).toBe(true);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
-    await waitFor(() => expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0));
+    await waitFor(() =>
+      expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Score" }));
     await waitFor(() => expect(screen.getAllByText("Opportunity").length).toBeGreaterThan(0));
-    expect(screen.getAllByText("Tradeability").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Gate").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
     await waitFor(() => expect(screen.getAllByText("样本不足").length).toBeGreaterThan(0));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     fireEvent.click(within(drawer).getByRole("button", { name: "Lab" }));
     await waitFor(() =>
       expect(
-        within(drawer).getByText("Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.")
-      ).toBeInTheDocument()
+        within(drawer).getByText(
+          "Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention.",
+        ),
+      ).toBeInTheDocument(),
     );
     expect(within(drawer).queryByText("Active Snapshots")).not.toBeInTheDocument();
     expect(within(drawer).queryByText("Credit Rows")).not.toBeInTheDocument();
@@ -726,8 +792,13 @@ describe("App Token Radar social heat cockpit", () => {
   it("maps radar evidence count from source event ids instead of empty intent evidence", () => {
     const row = {
       ...assetFlowRow(),
-      intent: { intent_id: "intent-upeg", display_symbol: "UPEG", display_name: null, evidence: [] },
-      source_event_ids: ["event-1", "event-2", "event-3", "event-4"]
+      intent: {
+        intent_id: "intent-upeg",
+        display_symbol: "UPEG",
+        display_name: null,
+        evidence: [],
+      },
+      source_event_ids: ["event-1", "event-2", "event-3", "event-4"],
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
@@ -738,7 +809,12 @@ describe("App Token Radar social heat cockpit", () => {
   it("uses the resolved target symbol for identity when a mention symbol disagrees", () => {
     const row = {
       ...assetFlowRow({ symbol: "SLOP" }),
-      intent: { intent_id: "intent-shit-mention", display_symbol: "SHIT", display_name: null, evidence: [] }
+      intent: {
+        intent_id: "intent-shit-mention",
+        display_symbol: "SHIT",
+        display_name: null,
+        evidence: [],
+      },
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
@@ -754,35 +830,42 @@ describe("App Token Radar social heat cockpit", () => {
       ...base,
       target: {
         ...base.target,
-        symbol: null
+        symbol: null,
       },
       factor_snapshot: {
         ...base.factor_snapshot!,
         subject: {
           ...base.factor_snapshot!.subject,
-          symbol: null
-        }
+          symbol: null,
+        },
       },
-      intent: { intent_id: "intent-sato-mention", display_symbol: "SATO", display_name: null, evidence: [] }
+      intent: {
+        intent_id: "intent-sato-mention",
+        display_symbol: "SATO",
+        display_name: null,
+        evidence: [],
+      },
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
     expect(item.identity.symbol).toBeNull();
-    expect(item.identity.target_id).toBe(base.factor_snapshot?.subject.target_id);
+    expect(item.identity.target_id).toBe(base.factor_snapshot.subject.target_id);
   });
 
   it("rejects token radar rows when the backend omits factor_snapshot", () => {
     const row = assetFlowRow() as unknown as Record<string, unknown>;
     delete row.factor_snapshot;
 
-    expect(() => tokenRadarRowToTokenItem(row as unknown as AssetFlowRow, "1h", "all")).toThrow(/factor_snapshot/);
+    expect(() => tokenRadarRowToTokenItem(row as unknown as AssetFlowRow, "1h", "all")).toThrow(
+      /factor_snapshot/,
+    );
   });
 
   it("rejects token radar rows when the factor snapshot omits the current attention window", () => {
     const row = assetFlowRow();
-    const socialAttention = row.factor_snapshot!.families.social_attention;
-    const facts = { ...(socialAttention.facts ?? {}) };
+    const attentionHeat = row.factor_snapshot!.families.attention_heat;
+    const facts = { ...(attentionHeat.facts ?? {}) };
     delete facts.mentions_1h;
 
     expect(() =>
@@ -793,17 +876,17 @@ describe("App Token Radar social heat cockpit", () => {
             ...row.factor_snapshot!,
             families: {
               ...row.factor_snapshot!.families,
-              social_attention: {
-                ...socialAttention,
-                facts
-              }
-            }
-          }
+              attention_heat: {
+                ...attentionHeat,
+                facts,
+              },
+            },
+          },
         } as unknown as AssetFlowRow,
         "1h",
-        "all"
-      )
-    ).toThrow(/factor_snapshot\.social_attention\.mentions_1h/);
+        "all",
+      ),
+    ).toThrow(/factor_snapshot\.attention_heat\.mentions_1h/);
   });
 
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
@@ -811,7 +894,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    const detailWindow = await within(drawer).findByLabelText("selected token detail window") as HTMLSelectElement;
+    const detailWindow = (await within(drawer).findByLabelText(
+      "selected token detail window",
+    )) as HTMLSelectElement;
 
     expect(detailWindow).toHaveValue("1h");
     expect(drawer.querySelector(".detail-window-control button")).not.toBeInTheDocument();
@@ -827,7 +912,9 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.change(detailWindow, { target: { value: "4h" } });
 
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-social-timeline");
+      const timelineCall = mockedGetApi.mock.calls.find(
+        ([path]) => path === "/api/target-social-timeline",
+      );
       expect(timelineCall?.[1]?.params).toMatchObject({ window: "4h" });
       expect(timelineCall?.[1]?.params).not.toHaveProperty("bucket");
     });
@@ -838,12 +925,16 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-    const bucket = await within(drawer).findByRole("button", { name: /open replay bucket .*2 posts/i });
+    const bucket = await within(drawer).findByRole("button", {
+      name: /open replay bucket .*2 posts/i,
+    });
 
     fireEvent.click(bucket);
 
     await waitFor(() => expect(within(drawer).getByText("Replay Focus")).toBeInTheDocument());
-    expect(within(drawer).getByText("selected bucket · 2 posts · 1 new author")).toBeInTheDocument();
+    expect(
+      within(drawer).getByText("selected bucket · 2 posts · 1 new author"),
+    ).toBeInTheDocument();
     expect(within(drawer).getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
     expect(within(drawer).getByRole("button", { name: "Back to timeline" })).toBeInTheDocument();
   });
@@ -859,7 +950,9 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(postRange).getByRole("button", { name: "window" })).toHaveClass("active");
     expect(within(postRange).getByRole("button", { name: "ignition" })).toBeInTheDocument();
     expect(within(postRange).getByRole("button", { name: "history" })).toBeInTheDocument();
-    expect(await within(drawer).findByText("3 total · 3 loaded · score window 1h")).toBeInTheDocument();
+    expect(
+      await within(drawer).findByText("3 total · 3 loaded · score window 1h"),
+    ).toBeInTheDocument();
 
     mockedGetApi.mockClear();
     fireEvent.click(within(postRange).getByRole("button", { name: "history" }));
@@ -868,7 +961,9 @@ describe("App Token Radar social heat cockpit", () => {
       const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
       expect(postsCall?.[1]?.params).toMatchObject({ range: "all_history" });
     });
-    expect(await within(drawer).findByText("history does not all participate in current score")).toBeInTheDocument();
+    expect(
+      await within(drawer).findByText("history does not all participate in current score"),
+    ).toBeInTheDocument();
   });
 
   it("requests catalyst post sorting from the server", async () => {
@@ -901,7 +996,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByText("Signal Lab Pulse");
 
-    await waitFor(() => expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/pulse")).toBe(true));
+    await waitFor(() =>
+      expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/pulse")).toBe(true),
+    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/signal-lab/chains")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/social-events")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/attention-seeds")).toBe(false);
@@ -932,8 +1029,12 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(await within(rail).findByRole("button", { name: /Signal Lab/ }));
 
     fireEvent.click(await screen.findByRole("button", { name: /Token watch/ }));
-    fireEvent.change(screen.getByLabelText("Signal Lab source filter"), { target: { value: "@cz_binance" } });
-    fireEvent.change(screen.getByLabelText("Signal Lab identity filter"), { target: { value: "BNB" } });
+    fireEvent.change(screen.getByLabelText("Signal Lab source filter"), {
+      target: { value: "@cz_binance" },
+    });
+    fireEvent.change(screen.getByLabelText("Signal Lab identity filter"), {
+      target: { value: "BNB" },
+    });
 
     await waitFor(() => {
       expect(
@@ -945,8 +1046,8 @@ describe("App Token Radar social heat cockpit", () => {
             options?.params?.status === "token_watch" &&
             !("kind" in (options?.params ?? {})) &&
             options?.params?.handle === "cz_binance" &&
-            options?.params?.q === "BNB"
-        )
+            options?.params?.q === "BNB",
+        ),
       ).toBe(true);
     });
   });
@@ -956,8 +1057,8 @@ describe("App Token Radar social heat cockpit", () => {
       ...signalPulseData(),
       summary: {
         ...signalPulseData().summary,
-        trade_candidate: 2
-      }
+        trade_candidate: 2,
+      },
     };
     const secondItem = {
       ...firstPage.items[0],
@@ -969,18 +1070,18 @@ describe("App Token Radar social heat cockpit", () => {
         subject: {
           ...firstPage.items[0].factor_snapshot.subject,
           target_id: "asset:cex:okx:SOL-USDT",
-          symbol: "SOL"
-        }
+          symbol: "SOL",
+        },
       },
       agent_recommendation: {
         ...firstPage.items[0].agent_recommendation,
-        summary_zh: "SOL pulse loaded from cursor."
+        summary_zh: "SOL pulse loaded from cursor.",
       },
       fact_card: {
         ...firstPage.items[0].fact_card,
         mentions_1h: 24,
-        unique_authors: 12
-      }
+        unique_authors: 12,
+      },
     };
     mockApi({
       signalPulsePages: {
@@ -990,9 +1091,9 @@ describe("App Token Radar social heat cockpit", () => {
           items: [firstPage.items[0], secondItem],
           returned_count: 2,
           has_more: false,
-          next_cursor: null
-        }
-      }
+          next_cursor: null,
+        },
+      },
     });
     const { container } = renderWithQuery(<App />);
 
@@ -1003,8 +1104,8 @@ describe("App Token Radar social heat cockpit", () => {
     await waitFor(() => {
       expect(
         mockedGetApi.mock.calls.some(
-          ([path, options]) => path === "/api/signal-lab/pulse" && options?.params?.cursor === "80"
-        )
+          ([path, options]) => path === "/api/signal-lab/pulse" && options?.params?.cursor === "80",
+        ),
       ).toBe(true);
     });
     expect(await screen.findByText("SOL pulse loaded from cursor.")).toBeInTheDocument();
@@ -1024,8 +1125,8 @@ describe("App Token Radar social heat cockpit", () => {
         token_watch: 0,
         theme_watch: 0,
         risk_rejected_high_info: 0,
-        blocked_low_information: 0
-      }
+        blocked_low_information: 0,
+      },
     };
     mockApi({ signalPulseCompact: signalPulseData(), signalPulseWorkbench: emptyWorkbench });
     const { container } = renderWithQuery(<App />);
@@ -1042,7 +1143,9 @@ describe("App Token Radar social heat cockpit", () => {
     const { container } = renderWithQuery(<App />);
 
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
-    const signalChainRow = await within(pulse).findByRole("button", { name: "open Signal Pulse BNB" });
+    const signalChainRow = await within(pulse).findByRole("button", {
+      name: "open Signal Pulse BNB",
+    });
 
     fireEvent.click(signalChainRow);
 
@@ -1052,8 +1155,9 @@ describe("App Token Radar social heat cockpit", () => {
     expect(drawer.querySelector(".detail-drawer-field")).toBeInTheDocument();
     expect(within(drawer).getByText("Agent Recommendation")).toBeInTheDocument();
     expect(within(drawer).getByText("Fact Card")).toBeInTheDocument();
-    expect(within(drawer).getByText("Hard Gates")).toBeInTheDocument();
-    expect(within(drawer).getByText("Factor Families")).toBeInTheDocument();
+    expect(within(drawer).getByText("Eligibility Gates")).toBeInTheDocument();
+    expect(within(drawer).getByText("Data Health")).toBeInTheDocument();
+    expect(within(drawer).getByText("Alpha Families")).toBeInTheDocument();
     expect(within(drawer).getByText("Source Events")).toBeInTheDocument();
     expect(within(drawer).getByText("source_event_ids")).toBeInTheDocument();
     expect(within(drawer).getByText("evidence_event_ids")).toBeInTheDocument();
@@ -1109,19 +1213,20 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
-      const timelineCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-social-timeline");
+      const timelineCall = mockedGetApi.mock.calls.find(
+        ([path]) => path === "/api/target-social-timeline",
+      );
       const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
       expect(timelineCall?.[1]?.params).toMatchObject({
         target_type: "Asset",
-        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       });
       expect(postsCall?.[1]?.params).toMatchObject({
         target_type: "Asset",
-        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+        target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
       });
     });
   });
-
 
   it("does not offer an audit page for unresolved token radar rows", async () => {
     mockApi({ assetFlowRows: [unresolvedAssetFlowRow()] });
@@ -1129,7 +1234,9 @@ describe("App Token Radar social heat cockpit", () => {
 
     await screen.findByRole("button", { name: "select token $UPEG" });
     expect(screen.queryByText("Page")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /open token audit page/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /open token audit page/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("realigns the drawer when the selected token disappears after a window switch", async () => {
@@ -1157,8 +1264,12 @@ describe("App Token Radar social heat cockpit", () => {
 
     await waitFor(() => {
       const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-      expect(within(drawer).getByText((content) => content.includes("0x111111"))).toBeInTheDocument();
-      expect(within(drawer).queryByText((content) => content.includes("0x222222"))).not.toBeInTheDocument();
+      expect(
+        within(drawer).getByText((content) => content.includes("0x111111")),
+      ).toBeInTheDocument();
+      expect(
+        within(drawer).queryByText((content) => content.includes("0x222222")),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -1167,8 +1278,13 @@ describe("App Token Radar social heat cockpit", () => {
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
     expect(mobileNav).toBeInTheDocument();
-    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
-    await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).not.toBeDisabled());
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await waitFor(() =>
+      expect(within(mobileNav).getByRole("button", { name: "Detail" })).not.toBeDisabled(),
+    );
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
   });
 
@@ -1176,7 +1292,10 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />, { initialEntries: ["/signal-lab?handle=traderpow"] });
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
-    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(await screen.findByRole("heading", { name: "Signal Lab" })).toBeInTheDocument();
     expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("traderpow");
   });
@@ -1191,7 +1310,12 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(row);
 
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
-    await waitFor(() => expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute("aria-current", "page"));
+    await waitFor(() =>
+      expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute(
+        "aria-current",
+        "page",
+      ),
+    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-radar")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
     expect(input).toHaveValue("");
@@ -1204,13 +1328,22 @@ describe("App Token Radar social heat cockpit", () => {
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
-    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Lab" }));
-    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Lab" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
-    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
 
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
@@ -1227,14 +1360,22 @@ describe("App Token Radar social heat cockpit", () => {
     await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Radar" }));
-    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Radar" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(await screen.findByText("TOKEN RADAR")).toBeInTheDocument();
 
-    const livePulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
+    const livePulse = (await screen.findByText("Signal Lab Pulse")).closest(
+      "section",
+    ) as HTMLElement;
     fireEvent.click(within(livePulse).getByRole("button", { name: "Open Lab" }));
     await screen.findByText("Review Signal Pulse agent candidates by status, source, and query.");
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
-    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
+    expect(within(mobileNav).getByRole("button", { name: "Tape" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
   });
 
@@ -1264,28 +1405,32 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
     const pulse = (await screen.findByText("Signal Lab Pulse")).closest("section") as HTMLElement;
 
-    expect(await within(pulse).findByRole("button", { name: "open Signal Pulse BNB" })).toBeInTheDocument();
+    expect(
+      await within(pulse).findByRole("button", { name: "open Signal Pulse BNB" }),
+    ).toBeInTheDocument();
     expect(within(pulse).queryByRole("link", { name: /source post/ })).not.toBeInTheDocument();
   });
 });
 
-function mockApi(options: {
-  missingTokenId?: boolean;
-  duplicateSymbol?: boolean;
-  insufficientTiming?: boolean;
-  windowSwapToken?: boolean;
-  searchResult?: boolean;
-  signalPulse?: SignalPulseData;
-  signalPulseCompact?: SignalPulseData;
-  signalPulseWorkbench?: SignalPulseData;
-  signalPulseByHandle?: Record<string, SignalPulseData>;
-  signalPulsePages?: Record<string, SignalPulseData>;
-  recentItemsByHandle?: Record<string, LivePayload[]>;
-  notifications?: NotificationItem[];
-  assetFlowRows?: AssetFlowRow[];
-  assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
-  projectionVersion?: string;
-} = {}) {
+function mockApi(
+  options: {
+    missingTokenId?: boolean;
+    duplicateSymbol?: boolean;
+    insufficientTiming?: boolean;
+    windowSwapToken?: boolean;
+    searchResult?: boolean;
+    signalPulse?: SignalPulseData;
+    signalPulseCompact?: SignalPulseData;
+    signalPulseWorkbench?: SignalPulseData;
+    signalPulseByHandle?: Record<string, SignalPulseData>;
+    signalPulsePages?: Record<string, SignalPulseData>;
+    recentItemsByHandle?: Record<string, LivePayload[]>;
+    notifications?: NotificationItem[];
+    assetFlowRows?: AssetFlowRow[];
+    assetFlowRowsByWindow?: Partial<Record<WindowKey, AssetFlowRow[]>>;
+    projectionVersion?: string;
+  } = {},
+) {
   apiMock.getApiImpl = async (path, requestOptions) => {
     if (path === "/api/status") return ok(statusData);
     if (path === "/api/notification-summary") {
@@ -1296,7 +1441,11 @@ function mockApi(options: {
     }
     if (path === "/api/recent") {
       const handle = normalizedHandle(String(requestOptions?.params?.handles ?? ""));
-      return ok({ scope: requestOptions?.params?.scope, events: [], items: options.recentItemsByHandle?.[handle] ?? [liveUpegEvent()] });
+      return ok({
+        scope: requestOptions?.params?.scope,
+        events: [],
+        items: options.recentItemsByHandle?.[handle] ?? [liveUpegEvent()],
+      });
     }
     if (path === "/api/token-radar") {
       if (options.duplicateSymbol) {
@@ -1305,10 +1454,10 @@ function mockApi(options: {
           scope: "all",
           targets: [
             assetFlowRow({ address: "0x1111111111111111111111111111111111111111" }),
-            assetFlowRow({ address: "0x2222222222222222222222222222222222222222" })
+            assetFlowRow({ address: "0x2222222222222222222222222222222222222222" }),
           ],
           attention: [],
-          projection: assetFlowProjection(options.projectionVersion)
+          projection: assetFlowProjection(options.projectionVersion),
         });
       }
       const window = String(requestOptions?.params?.window ?? "1h");
@@ -1317,19 +1466,22 @@ function mockApi(options: {
       return ok<AssetFlowData>({
         window: window as AssetFlowData["window"],
         scope: "all",
-        targets: rowsForWindow ?? options.assetFlowRows ?? [
-          assetFlowRow({
-            address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
-            symbol: swapped ? "ALT" : undefined,
-            insufficientTiming: options.insufficientTiming
-          })
-        ],
+        targets: rowsForWindow ??
+          options.assetFlowRows ?? [
+            assetFlowRow({
+              address: swapped ? "0x2222222222222222222222222222222222222222" : undefined,
+              symbol: swapped ? "ALT" : undefined,
+              insufficientTiming: options.insufficientTiming,
+            }),
+          ],
         attention: [],
-        projection: assetFlowProjection(options.projectionVersion)
+        projection: assetFlowProjection(options.projectionVersion),
       });
     }
     if (path === "/api/target-social-timeline") {
-      return ok<TokenSocialTimelineData>(timelineData(targetFixtureOptions(requestOptions?.params?.target_id)));
+      return ok<TokenSocialTimelineData>(
+        timelineData(targetFixtureOptions(requestOptions?.params?.target_id)),
+      );
     }
     if (path === "/api/target-posts") {
       return ok<TokenPostsData>(postsData(targetFixtureOptions(requestOptions?.params?.target_id)));
@@ -1339,12 +1491,25 @@ function mockApi(options: {
         query: { handles: ["traderpow", "alien19710628"] },
         accounts: [
           {
-            profile: { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, follower_max: 168_905, watched_status: "watched" },
-            summary: { status: "insufficient_sample", sample_size: 1, precision_score: null, early_call_score: 100, spam_risk_score: 0, avg_realized_return: null },
+            profile: {
+              handle: "traderpow",
+              first_seen_ms: 1_777_746_010_000,
+              latest_seen_ms: 1_777_746_010_000,
+              follower_max: 168_905,
+              watched_status: "watched",
+            },
+            summary: {
+              status: "insufficient_sample",
+              sample_size: 1,
+              precision_score: null,
+              early_call_score: 100,
+              spam_risk_score: 0,
+              avg_realized_return: null,
+            },
             token_call_stats: [],
-            quality_snapshots: []
-          }
-        ]
+            quality_snapshots: [],
+          },
+        ],
       });
     }
     if (path === "/api/signal-lab/pulse") {
@@ -1359,7 +1524,9 @@ function mockApi(options: {
         return ok(options.signalPulseCompact);
       }
       if (window === "1h" && options.signalPulsePages) {
-        return ok(options.signalPulsePages[cursor] ?? options.signalPulsePages[""] ?? signalPulseData());
+        return ok(
+          options.signalPulsePages[cursor] ?? options.signalPulsePages[""] ?? signalPulseData(),
+        );
       }
       if (window === "1h" && options.signalPulseWorkbench) {
         return ok(options.signalPulseWorkbench);
@@ -1383,7 +1550,8 @@ function mockApi(options: {
       }
       throw new ApiError("not found", 404);
     }
-    if (path === "/api/enrichment-jobs") return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
+    if (path === "/api/enrichment-jobs")
+      return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     if (path === "/api/search") {
       if (options.searchResult) {
         return ok({
@@ -1402,20 +1570,25 @@ function mockApi(options: {
                 cashtags: ["PEPE"],
                 hashtags: ["alpha"],
                 mentions: ["watcher"],
-                is_watched: 0
+                is_watched: 0,
               },
               match_type: "fts",
-              score: -2.1
-            }
-          ]
+              score: -2.1,
+            },
+          ],
         });
       }
       return ok({
-        query: { kind: "symbol", text: String(requestOptions?.params?.q ?? ""), scope: "all", symbol: "PEPE" },
+        query: {
+          kind: "symbol",
+          text: String(requestOptions?.params?.q ?? ""),
+          scope: "all",
+          symbol: "PEPE",
+        },
         total_count: 0,
         returned_count: 0,
         has_more: false,
-        items: []
+        items: [],
       });
     }
     throw new Error(`unexpected path ${path}`);
@@ -1434,13 +1607,15 @@ function plainLiveEvent(): LivePayload {
       cashtags: [],
       hashtags: ["macro"],
       mentions: [],
-      is_watched: 0
+      is_watched: 0,
     },
-    entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 }],
+    entities: [
+      { entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_090_000 },
+    ],
     token_intents: [],
     token_resolutions: [],
     alerts: [],
-    harness: null
+    harness: null,
   };
 }
 
@@ -1472,6 +1647,21 @@ type AssetFlowPriceFixture = {
   price_change_since_first_snapshot_pct?: number | null;
 };
 
+type AssetFlowScoreFixture = {
+  heat: ScoreBlock;
+  quality: ScoreBlock;
+  propagation: ScoreBlock;
+  timing: ScoreBlock;
+  opportunity: ScoreBlock & {
+    components: {
+      heat: number;
+      quality: number;
+      propagation: number;
+      timing: number;
+    };
+  };
+};
+
 function assetFlowRow(
   options: {
     address?: string;
@@ -1491,9 +1681,9 @@ function assetFlowRow(
     };
     price?: AssetFlowPriceFixture;
     attention?: Partial<AssetFlowRow["attention"]>;
-    score?: Partial<NonNullable<AssetFlowRow["score"]>>;
+    score?: Partial<AssetFlowScoreFixture>;
     insufficientTiming?: boolean;
-  } = {}
+  } = {},
 ): AssetFlowRow {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const symbol = options.symbol ?? "UPEG";
@@ -1515,10 +1705,17 @@ function assetFlowRow(
     snapshot_age_ms: null,
     snapshot_observed_at_ms: null,
     price_change_since_social_pct: null,
-    price_change_before_social_pct: null
+    price_change_before_social_pct: null,
   };
-  const marketFresh = price.market_status === "fresh" || price.market_status === "ready" || price.market_status === "stale";
-  const timingStatus = options.insufficientTiming ? "market_pending" : marketFresh ? "neutral" : "market_pending";
+  const marketFresh =
+    price.market_status === "fresh" ||
+    price.market_status === "ready" ||
+    price.market_status === "stale";
+  const timingStatus = options.insufficientTiming
+    ? "market_pending"
+    : marketFresh
+      ? "neutral"
+      : "market_pending";
   const timingRisks = timingStatus === "market_pending" ? ["market_observation_pending"] : [];
   const target = isCex
     ? {
@@ -1529,7 +1726,7 @@ function assetFlowRow(
         provider: options.primaryVenue?.exchange ?? "okx",
         native_market_id: options.primaryVenue?.inst_id ?? `${symbol}-USDT`,
         feed_type: options.primaryVenue?.inst_type ?? "cex_spot",
-        quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT"
+        quote_symbol: options.primaryVenue?.quote_symbol ?? "USDT",
       }
     : {
         target_type: "Asset",
@@ -1539,7 +1736,7 @@ function assetFlowRow(
         chain_id: "eip155:1",
         token_standard: "erc20",
         address,
-        pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`
+        pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`,
       };
   const attention = {
     mentions_5m: 2,
@@ -1563,7 +1760,7 @@ function assetFlowRow(
     baseline_sample_count: 0,
     baseline_nonzero_sample_count: 0,
     zero_slot_count: 6,
-    ...options.attention
+    ...options.attention,
   };
   const resolution = {
     status: "EXACT",
@@ -1572,14 +1769,30 @@ function assetFlowRow(
     target_id: targetId,
     reason_codes: ["CHAIN_ADDRESS_EXACT"],
     candidate_ids: [targetId],
-    lookup_keys: []
+    lookup_keys: [],
   };
   const score = {
-    heat: scoreBlock({ score_version: "social_heat_v1", score: 86, status: "rising", reasons: ["rising"], risks: ["public_stream_coverage"] }),
-    quality: scoreBlock({ score_version: "discussion_quality_v1", score: 78, reasons: ["resolved_asset"], risks: [] }),
-    propagation: scoreBlock({ score_version: "propagation_v1", score: 72, reasons: ["independent_expansion"], risks: [] }),
+    heat: scoreBlock({
+      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
+      score: 86,
+      status: "rising",
+      reasons: ["rising"],
+      risks: ["public_stream_coverage"],
+    }),
+    quality: scoreBlock({
+      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
+      score: 78,
+      reasons: ["resolved_asset"],
+      risks: [],
+    }),
+    propagation: scoreBlock({
+      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
+      score: 72,
+      reasons: ["independent_expansion"],
+      risks: [],
+    }),
     tradeability: scoreBlock({
-      score_version: "tradeability_v2",
+      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
       score: marketFresh ? 80 : 60,
       reasons: ["resolved_target"],
       risks: [],
@@ -1587,24 +1800,29 @@ function assetFlowRow(
       market_fresh: marketFresh,
       market_cap_present: true,
       liquidity_present: true,
-      pool_present: marketFresh
+      pool_present: marketFresh,
     }),
     timing: scoreBlock({
-      score_version: "timing_v4",
+      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
       score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
       status: timingStatus,
       chase_risk: false,
       reasons: [],
-      risks: timingRisks
+      risks: timingRisks,
     }),
     opportunity: scoreBlock({
-      score_version: "social_opportunity_v3",
+      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
       score: 79,
       reasons: ["backend_decision"],
       risks: ["public_stream_coverage"],
-      components: { heat: 86, quality: 78, propagation: 72, tradeability: marketFresh ? 80 : 60, timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45 }
+      components: {
+        heat: 86,
+        quality: 78,
+        propagation: 72,
+        timing: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
+      },
     }),
-    ...options.score
+    ...options.score,
   };
   const sourceEventIds = ["event-upeg-1", "event-upeg-2", "event-upeg-3", "event-upeg-4"];
   return {
@@ -1612,17 +1830,25 @@ function assetFlowRow(
       intent_id: `intent:${assetId}`,
       display_symbol: symbol,
       display_name: null,
-      evidence: []
+      evidence: [],
     },
     target,
     attention,
     current_market: currentMarketFromPriceFixture({ target, price }),
     resolution,
-    score,
-    factor_snapshot: factorSnapshotFromAssetFlowFixture({ attention, price, score, sourceEventIds, target }),
-    decision: "driver",
-    data_health: { identity: "EXACT", market: price.market_observation_status ?? "pending", coverage: "public_stream" },
-    source_event_ids: sourceEventIds
+    factor_snapshot: factorSnapshotFromAssetFlowFixture({
+      attention,
+      price,
+      score,
+      sourceEventIds,
+      target,
+    }),
+    data_health: {
+      identity: "EXACT",
+      market: price.market_observation_status ?? "pending",
+      coverage: "public_stream",
+    },
+    source_event_ids: sourceEventIds,
   };
 }
 
@@ -1631,30 +1857,44 @@ function factorSnapshotFromAssetFlowFixture({
   price,
   score,
   sourceEventIds,
-  target
+  target,
 }: {
   attention: AssetFlowRow["attention"];
   price: AssetFlowPriceFixture;
-  score: NonNullable<AssetFlowRow["score"]>;
+  score: AssetFlowScoreFixture;
   sourceEventIds: string[];
   target: NonNullable<AssetFlowRow["target"]>;
-}) {
+}): TokenFactorSnapshot {
   const marketStatus = price.market_status ?? "missing";
   const targetMarketType = target.target_type === "CexToken" ? "cex" : "dex";
   const blockedReasons = marketStatus === "missing" ? ["market_freshness_missing"] : [];
   return {
-    schema_version: "token_factor_snapshot_v1",
+    schema_version: "token_factor_snapshot_v2_alpha_gated",
     subject: {
       target_type: target.target_type ?? null,
       target_id: target.target_id ?? null,
       symbol: target.symbol ?? null,
-      chain: target.target_type === "Asset" ? target.chain_id ?? null : null,
-      address: target.target_type === "Asset" ? target.address ?? null : null,
-      target_market_type: targetMarketType
+      chain: target.target_type === "Asset" ? (target.chain_id ?? null) : null,
+      address: target.target_type === "Asset" ? (target.address ?? null) : null,
+      target_market_type: targetMarketType,
+    },
+    gates: {
+      eligible_for_high_alert: blockedReasons.length === 0,
+      max_decision: blockedReasons.length === 0 ? "high_alert" : "discard",
+      blocked_reasons: blockedReasons,
+      risk_reasons: blockedReasons,
+    },
+    data_health: {
+      identity: target.target_id ? "ready" : "missing",
+      market: marketStatus === "missing" ? "missing" : "ready",
+      social: "ready",
+      alpha: "ready",
     },
     families: {
-      social_attention: {
+      attention_heat: {
+        raw_score: score.heat.score,
         score: score.heat.score,
+        weight: 0.35,
         facts: {
           mentions_5m: attention.mentions_5m,
           mentions_1h: attention.mentions_1h,
@@ -1671,83 +1911,117 @@ function factorSnapshotFromAssetFlowFixture({
           status: (score.heat as { status?: string }).status,
           stream_share: attention.stream_share,
           baseline_status: attention.baseline_status,
-          baseline_sample_count: attention.baseline_sample_count
+          baseline_sample_count: attention.baseline_sample_count,
         },
         factors: {
-          mentions_1h: factorPoint("social_attention", "mentions_1h", attention.mentions_1h, 70),
-          unique_authors: factorPoint("social_attention", "unique_authors", attention.unique_authors, 70),
-          watched_mentions: factorPoint("social_attention", "watched_mentions", attention.watched_mentions, 60)
+          mentions_1h: factorPoint("attention_heat", "mentions_1h", attention.mentions_1h, 70),
+          unique_authors: factorPoint(
+            "attention_heat",
+            "unique_authors",
+            attention.unique_authors,
+            70,
+          ),
+          watched_mentions: factorPoint(
+            "attention_heat",
+            "watched_mentions",
+            attention.watched_mentions,
+            60,
+          ),
         },
-        data_health: "ready"
+        data_health: "ready",
       },
-      social_quality: {
-        score: score.quality.score,
+      diffusion_quality: {
+        raw_score: score.propagation.score,
+        score: score.propagation.score,
+        weight: 0.3,
         facts: {
           mentions: attention.mentions_window,
           independent_authors: attention.unique_authors,
           duplicate_text_share: 0,
-          informative_post_count: Math.min(attention.mentions_window, attention.unique_authors)
+          informative_post_count: Math.min(attention.mentions_window, attention.unique_authors),
         },
         factors: {
-          independent_authors: factorPoint("social_quality", "independent_authors", attention.unique_authors, 70),
-          informative_post_count: factorPoint("social_quality", "informative_post_count", attention.mentions_window, 70)
+          independent_authors: factorPoint(
+            "diffusion_quality",
+            "independent_authors",
+            attention.unique_authors,
+            70,
+          ),
+          informative_post_count: factorPoint(
+            "diffusion_quality",
+            "informative_post_count",
+            attention.mentions_window,
+            70,
+          ),
         },
-        data_health: "ready"
+        data_health: "ready",
       },
-      market_quality: {
-        score: score.tradeability.score,
+      semantic_quality: {
+        raw_score: score.quality.score,
+        score: score.quality.score,
+        weight: 0.25,
         facts: {
-          market_status: marketStatus,
-          market_observation_status: price.market_observation_status ?? marketStatus,
-          volume_24h_usd: price.volume_24h_usd ?? null,
-          open_interest_usd: price.open_interest_usd ?? null,
-          native_market_id: target.native_market_id ?? null,
-          feed_type: target.feed_type ?? null,
-          target_market_type: targetMarketType
+          impact_mean: 0.78,
+          novelty_mean: 0.7,
+          confidence_mean: 0.9,
+          direction_counts: { bullish: attention.mentions_window },
         },
         factors: {
-          market_status: factorPoint("market_quality", "market_status", marketStatus, marketStatus === "missing" ? 0 : 100),
-          liquidity_usd: factorPoint("market_quality", "liquidity_usd", price.liquidity_usd ?? null, price.liquidity_usd ? 100 : 0)
+          impact_mean: factorPoint("semantic_quality", "impact_mean", 0.78, score.quality.score),
         },
-        data_health: marketStatus === "missing" ? "partial" : "ready"
+        data_health: "ready",
       },
-      timing: {
+      timing_response: {
+        raw_score: score.timing.score,
         score: score.timing.score,
+        weight: 0.1,
         facts: {
           social_signal_start_ms: price.social_signal_start_ms ?? attention.latest_seen_ms,
           price_change_since_social_pct: price.price_change_since_social_pct ?? null,
-          price_change_before_social_pct: price.price_change_before_social_pct ?? null
+          price_change_before_social_pct: price.price_change_before_social_pct ?? null,
         },
         factors: {
-          price_change_since_social_pct: factorPoint("timing", "price_change_since_social_pct", price.price_change_since_social_pct ?? null, score.timing.score)
+          price_change_since_social_pct: factorPoint(
+            "timing_response",
+            "price_change_since_social_pct",
+            price.price_change_since_social_pct ?? null,
+            score.timing.score,
+          ),
         },
-        data_health: price.price_change_since_social_pct === null || price.price_change_since_social_pct === undefined ? "partial" : "ready"
-      }
+        data_health:
+          price.price_change_since_social_pct === null ||
+          price.price_change_since_social_pct === undefined
+            ? "partial"
+            : "ready",
+      },
     },
-    hard_gates: {
-      eligible_for_high_alert: blockedReasons.length === 0,
-      blocked_reasons: blockedReasons
+    normalization: {
+      status: "ready",
+      cohort: { window: "1h", target_market_type: targetMarketType },
+      factor_ranks: {},
+      alpha_rank: 4,
+      cohort_size: 80,
     },
     composite: {
       rank_score: score.opportunity.score,
       recommended_decision: score.opportunity.score >= 75 ? "high_alert" : "watch",
       family_scores: {
-        social_attention: score.heat.score,
-        social_quality: score.quality.score,
-        market_quality: score.tradeability.score,
-        timing: score.timing.score
-      }
+        attention_heat: score.heat.score,
+        diffusion_quality: score.propagation.score,
+        semantic_quality: score.quality.score,
+        timing_response: score.timing.score,
+      },
     },
     provenance: {
       source_event_ids: sourceEventIds,
-      computed_at_ms: attention.latest_seen_ms
-    }
+      computed_at_ms: attention.latest_seen_ms,
+    },
   };
 }
 
 function currentMarketFromPriceFixture({
   target,
-  price
+  price,
 }: {
   target: NonNullable<AssetFlowRow["target"]>;
   price: AssetFlowPriceFixture;
@@ -1762,14 +2036,111 @@ function currentMarketFromPriceFixture({
     target_id: targetId,
     market_status: price.market_status,
     fields: {
-      price_usd: fieldFact(price.price_usd ?? null, price.price_usd === null || price.price_usd === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
-      price_quote: fieldFact(price.price_quote ?? null, price.price_quote === null || price.price_quote === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
-      market_cap_usd: fieldFact(price.market_cap_usd ?? null, marketMetadataStatus(targetType, price.market_cap_usd, price.market_status), observedAt, ageMs, provider),
-      liquidity_usd: fieldFact(price.liquidity_usd ?? null, marketMetadataStatus(targetType, price.liquidity_usd, price.market_status), observedAt, ageMs, provider),
-      volume_24h_usd: fieldFact(price.volume_24h_usd ?? null, price.volume_24h_usd === null || price.volume_24h_usd === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
-      open_interest_usd: fieldFact(price.open_interest_usd ?? null, price.open_interest_usd === null || price.open_interest_usd === undefined ? "missing" : price.market_status, observedAt, ageMs, provider),
-      holders: fieldFact(price.holders ?? null, marketMetadataStatus(targetType, price.holders, price.market_status), observedAt, ageMs, provider)
-    }
+      price_usd: fieldFact(
+        price.price_usd ?? null,
+        price.price_usd === null || price.price_usd === undefined ? "missing" : price.market_status,
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_quote: fieldFact(
+        price.price_quote ?? null,
+        price.price_quote === null || price.price_quote === undefined
+          ? "missing"
+          : price.market_status,
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      market_cap_usd: fieldFact(
+        price.market_cap_usd ?? null,
+        marketMetadataStatus(targetType, price.market_cap_usd, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      liquidity_usd: fieldFact(
+        price.liquidity_usd ?? null,
+        marketMetadataStatus(targetType, price.liquidity_usd, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      volume_24h_usd: fieldFact(
+        price.volume_24h_usd ?? null,
+        price.volume_24h_usd === null || price.volume_24h_usd === undefined
+          ? "missing"
+          : price.market_status,
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      open_interest_usd: fieldFact(
+        price.open_interest_usd ?? null,
+        price.open_interest_usd === null || price.open_interest_usd === undefined
+          ? "missing"
+          : price.market_status,
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      holders: fieldFact(
+        price.holders ?? null,
+        marketMetadataStatus(targetType, price.holders, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_at_social_start: fieldFact(
+        price.price_at_social_start ?? null,
+        marketValueStatus(price.price_at_social_start, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_at_reference: fieldFact(
+        price.price_at_reference ?? null,
+        marketValueStatus(price.price_at_reference, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_before_social_start: fieldFact(
+        price.price_before_social_start ?? null,
+        marketValueStatus(price.price_before_social_start, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_change_since_social_pct: fieldFact(
+        price.price_change_since_social_pct ?? null,
+        marketValueStatus(price.price_change_since_social_pct, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_change_before_social_pct: fieldFact(
+        price.price_change_before_social_pct ?? null,
+        marketValueStatus(price.price_change_before_social_pct, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+      price_at_first_snapshot: fieldFact(
+        price.price_at_first_snapshot ?? null,
+        marketValueStatus(price.price_at_first_snapshot, price.market_status),
+        price.first_snapshot_observed_at_ms ?? observedAt,
+        ageMs,
+        provider,
+      ),
+      price_change_since_first_snapshot_pct: fieldFact(
+        price.price_change_since_first_snapshot_pct ?? null,
+        marketValueStatus(price.price_change_since_first_snapshot_pct, price.market_status),
+        observedAt,
+        ageMs,
+        provider,
+      ),
+    },
   };
 }
 
@@ -1778,7 +2149,7 @@ function fieldFact(
   status: string,
   observedAt: number | null,
   ageMs: number | null,
-  provider: string | null
+  provider: string | null,
 ) {
   return {
     value,
@@ -1786,15 +2157,23 @@ function fieldFact(
     observed_at_ms: observedAt,
     age_ms: ageMs,
     provider,
-    source_observation_id: null
+    source_observation_id: null,
   };
 }
 
-function marketMetadataStatus(targetType: string | null, value: unknown, marketStatus: string): string {
+function marketMetadataStatus(
+  targetType: string | null,
+  value: unknown,
+  marketStatus: string,
+): string {
   if (value !== null && value !== undefined) {
     return marketStatus;
   }
   return targetType === "CexToken" ? "unsupported" : "missing";
+}
+
+function marketValueStatus(value: unknown, marketStatus: string): string {
+  return value === null || value === undefined ? "missing" : marketStatus;
 }
 
 function factorPoint(family: string, key: string, rawValue: unknown, score: number) {
@@ -1807,7 +2186,6 @@ function factorPoint(family: string, key: string, rawValue: unknown, score: numb
     data_health: rawValue === null || rawValue === undefined ? "missing" : "ready",
     source_refs: [],
     risk_flags: [],
-    hard_gate: null
   };
 }
 
@@ -1820,7 +2198,7 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
       target_type: null,
       target_id: null,
       symbol: row.target?.symbol ?? "UPEG",
-      status: "unresolved"
+      status: "unresolved",
     },
     resolution: {
       status: "UNRESOLVED",
@@ -1829,21 +2207,21 @@ function unresolvedAssetFlowRow(): AssetFlowRow {
       target_id: null,
       reason_codes: ["NO_DETERMINISTIC_TARGET"],
       candidate_ids: [],
-      lookup_keys: []
+      lookup_keys: [],
     },
     factor_snapshot: {
       ...snapshot,
       subject: {
         ...snapshot.subject,
         target_type: null,
-        target_id: null
+        target_id: null,
       },
-      hard_gates: {
+      gates: {
+        ...snapshot.gates,
         eligible_for_high_alert: false,
-        blocked_reasons: ["identity_unresolved"]
-      }
+        blocked_reasons: ["identity_unresolved"],
+      },
     },
-    decision: "investigate"
   };
 }
 
@@ -1853,11 +2231,13 @@ function assetFlowProjection(version = "token-radar-fixture-current"): AssetFlow
     version,
     source: "token_radar_rows",
     source_max_received_at_ms: 1_777_746_300_000,
-    computed_at_ms: 1_777_746_300_000
+    computed_at_ms: 1_777_746_300_000,
   };
 }
 
-function tokenFlowItem(options: { address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {}): TokenFlowItem {
+function tokenFlowItem(
+  options: { address?: string; symbol?: string; score?: number; insufficientTiming?: boolean } = {},
+): TokenFlowItem {
   const address = options.address ?? "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
   const assetId = `asset:dex:eth:${address.toLowerCase()}`;
   const symbol = options.symbol ?? "UPEG";
@@ -1873,7 +2253,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       exchange: "gmgn",
       chain: "eth",
       address,
-      symbol
+      symbol,
     },
     market: {
       market_status: "fresh",
@@ -1891,7 +2271,7 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       price_before_social_start: 0.0009,
       price_change_before_social_pct: 0.111111,
       market_observation_status: "ready",
-      price_change_status: "ready"
+      price_change_status: "ready",
     },
     flow: {
       window: "1h",
@@ -1907,10 +2287,10 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       new_burst_score: null,
       stream_dominance: 0.25,
       baseline_status: "ready",
-      baseline_sample_count: 20
+      baseline_sample_count: 20,
     },
     social_heat: scoreBlock({
-      score_version: "social_heat_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
       score: 86,
       reasons: ["z_score_above_3", "positive_mention_delta"],
       risks: ["public_stream_coverage"],
@@ -1928,10 +2308,10 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       new_burst_score: null,
       stream_share: 0.25,
       watched_share: 0.25,
-      status: "burst"
+      status: "burst",
     }),
     discussion_quality: scoreBlock({
-      score_version: "discussion_quality_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
       score: 78,
       reasons: ["resolved_direct_evidence", "informative_discussion"],
       risks: [],
@@ -1940,10 +2320,10 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       avg_attribution_confidence: 1,
       duplicate_text_share: 0,
       informative_post_count: 3,
-      watched_source_count: 1
+      watched_source_count: 1,
     }),
     propagation: scoreBlock({
-      score_version: "propagation_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
       score: 72,
       reasons: ["independent_expansion"],
       risks: [],
@@ -1955,10 +2335,10 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       author_entropy: 1,
       reproduction_rate: 1.5,
       phase: "expansion",
-      top_authors: [{ handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 }]
+      top_authors: [{ handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 }],
     }),
     tradeability: scoreBlock({
-      score_version: "tradeability_v1",
+      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
       score: 80,
       reasons: ["resolved_ca", "fresh_market"],
       risks: [],
@@ -1966,11 +2346,11 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       market_fresh: true,
       market_cap_present: true,
       liquidity_present: true,
-      pool_present: true
+      pool_present: true,
     }),
     timing: options.insufficientTiming
       ? {
-          score_version: "timing_v4",
+          score_version: "token_factor_snapshot_v2_alpha_gated:timing",
           score: 45,
           status: "market_pending",
           chase_risk: false,
@@ -1979,10 +2359,10 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
           price_change_before_social_pct: null,
           market_observation_status: "pending",
           reasons: [],
-          risks: ["market_observation_pending"]
+          risks: ["market_observation_pending"],
         }
       : {
-          score_version: "timing_v4",
+          score_version: "token_factor_snapshot_v2_alpha_gated:timing",
           score: 50,
           status: "neutral",
           chase_risk: false,
@@ -1991,16 +2371,16 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
           price_change_before_social_pct: 0.111111,
           market_observation_status: "ready",
           reasons: [],
-          risks: []
+          risks: [],
         },
     opportunity: scoreBlock({
-      score_version: "social_opportunity_v3",
+      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
       score: options.score ?? 79,
       decision: "driver",
       decision_priority: 3,
       reasons: ["z_score_above_3", "independent_expansion"],
       risks: ["public_stream_coverage"],
-      components: { heat: 86, quality: 78, propagation: 72, tradeability: 80, timing: 50 }
+      components: { heat: 86, quality: 78, propagation: 72, timing: 50 },
     }),
     watch: {
       status: "direct_watch",
@@ -2009,11 +2389,17 @@ function tokenFlowItem(options: { address?: string; symbol?: string; score?: num
       seed_link_count: 0,
       top_seed: null,
       reasons: ["watched_direct_mention"],
-      risks: []
+      risks: [],
     },
     evidence_total_count: 4,
-    posts_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all", range: "current_window" },
-    timeline_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all" }
+    posts_query: {
+      target_type: "Asset",
+      target_id: assetId,
+      window: "1h",
+      scope: "all",
+      range: "current_window",
+    },
+    timeline_query: { target_type: "Asset", target_id: assetId, window: "1h", scope: "all" },
   };
 }
 
@@ -2025,7 +2411,9 @@ function targetFixtureOptions(targetId: unknown): { symbol?: string; address?: s
   return {};
 }
 
-function timelineData(options: { symbol?: string; address?: string } = {}): TokenSocialTimelineData {
+function timelineData(
+  options: { symbol?: string; address?: string } = {},
+): TokenSocialTimelineData {
   const token = tokenFlowItem(options);
   return {
     query: { ...token.timeline_query, bucket: "5m" },
@@ -2041,11 +2429,31 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
       duplicate_text_share: 0,
       peak_posts_per_bucket: 2,
       peak_new_authors_per_bucket: 1,
-      reproduction_rate: 1.5
+      reproduction_rate: 1.5,
     },
     buckets: [
-      { start_ms: 1_777_746_000_000, end_ms: 1_777_746_300_000, posts: 2, authors: 1, new_authors: 1, watched_posts: 1, duplicate_text_share: 0, price: null, price_change_from_start_pct: null },
-      { start_ms: 1_777_746_300_000, end_ms: 1_777_746_600_000, posts: 1, authors: 1, new_authors: 1, watched_posts: 0, duplicate_text_share: 0, price: null, price_change_from_start_pct: null }
+      {
+        start_ms: 1_777_746_000_000,
+        end_ms: 1_777_746_300_000,
+        posts: 2,
+        authors: 1,
+        new_authors: 1,
+        watched_posts: 1,
+        duplicate_text_share: 0,
+        price: null,
+        price_change_from_start_pct: null,
+      },
+      {
+        start_ms: 1_777_746_300_000,
+        end_ms: 1_777_746_600_000,
+        posts: 1,
+        authors: 1,
+        new_authors: 1,
+        watched_posts: 0,
+        duplicate_text_share: 0,
+        price: null,
+        price_change_from_start_pct: null,
+      },
     ],
     market_overlay: {
       target_type: "Asset",
@@ -2053,7 +2461,7 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
       chain_id: "eip155:1",
       address: token.identity.address,
       symbol: token.identity.symbol,
-      pricefeed_id: "pricefeed:test"
+      pricefeed_id: "pricefeed:test",
     },
     stages: [
       {
@@ -2064,19 +2472,49 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
         duration_ms: 0,
         trigger_reason: "first_token_evidence",
         confidence: 0.61,
-        people: { posts: 1, authors: 1, new_authors: 1, watched_posts: 1, watched_authors: 1, top_author_share: 1 },
+        people: {
+          posts: 1,
+          authors: 1,
+          new_authors: 1,
+          watched_posts: 1,
+          watched_authors: 1,
+          top_author_share: 1,
+        },
         representative_event_ids: [`event-${(options.symbol ?? "UPEG").toLowerCase()}-1`],
-        price: { status: "pending_observation", start_price: null, end_price: null, delta_pct: null, observation_ids: [], max_observation_lag_ms: null },
-        risks: []
-      }
+        price: {
+          status: "pending_observation",
+          start_price: null,
+          end_price: null,
+          delta_pct: null,
+          observation_ids: [],
+          max_observation_lag_ms: null,
+        },
+        risks: [],
+      },
     ],
     authors: [
-      { handle: "traderpow", first_seen_ms: 1_777_746_010_000, latest_seen_ms: 1_777_746_010_000, posts: 1, followers: 168_905, role: "watched", quality_score: null },
-      { handle: "alien19710628", first_seen_ms: 1_777_746_060_000, latest_seen_ms: 1_777_746_060_000, posts: 2, followers: 220, role: "amplifier", quality_score: null }
+      {
+        handle: "traderpow",
+        first_seen_ms: 1_777_746_010_000,
+        latest_seen_ms: 1_777_746_010_000,
+        posts: 1,
+        followers: 168_905,
+        role: "watched",
+        quality_score: null,
+      },
+      {
+        handle: "alien19710628",
+        first_seen_ms: 1_777_746_060_000,
+        latest_seen_ms: 1_777_746_060_000,
+        posts: 2,
+        followers: 220,
+        role: "amplifier",
+        quality_score: null,
+      },
     ],
     posts: postsData(options).items.map((item, index) => ({
       ...item,
-      bucket_start_ms: index < 2 ? 1_777_746_000_000 : 1_777_746_300_000
+      bucket_start_ms: index < 2 ? 1_777_746_000_000 : 1_777_746_300_000,
     })),
     cascade: {
       edges: [
@@ -2086,14 +2524,14 @@ function timelineData(options: { symbol?: string; address?: string } = {}): Toke
           parent_tweet_id: "tweet-upeg-1",
           edge_type: "quote",
           parent_author_handle: "traderpow",
-          resolved: true
-        }
+          resolved: true,
+        },
       ],
-      unresolved_parents: []
+      unresolved_parents: [],
     },
     returned_count: 3,
     has_more: false,
-    next_cursor: null
+    next_cursor: null,
   };
 }
 
@@ -2107,10 +2545,28 @@ function postsData(options: { symbol?: string; address?: string } = {}): TokenPo
     has_more: false,
     next_cursor: null,
     items: [
-      post(`event-${symbol.toLowerCase()}-1`, "traderpow", `$${symbol} watched account evidence`, true, 86),
-      post(`event-${symbol.toLowerCase()}-2`, "alien19710628", `$${symbol} public follow-through`, false, 74),
-      post(`event-${symbol.toLowerCase()}-3`, "alien19710628", `$${symbol} another public post`, false, 68)
-    ]
+      post(
+        `event-${symbol.toLowerCase()}-1`,
+        "traderpow",
+        `$${symbol} watched account evidence`,
+        true,
+        86,
+      ),
+      post(
+        `event-${symbol.toLowerCase()}-2`,
+        "alien19710628",
+        `$${symbol} public follow-through`,
+        false,
+        74,
+      ),
+      post(
+        `event-${symbol.toLowerCase()}-3`,
+        "alien19710628",
+        `$${symbol} another public post`,
+        false,
+        68,
+      ),
+    ],
   };
 }
 
@@ -2130,7 +2586,10 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
     is_watched: watched,
     is_first_seen_by_watched_for_token: watched,
     event_type: watched ? "watched_token_call" : "public_followup",
-    reference: eventId === "event-upeg-2" ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" } : null,
+    reference:
+      eventId === "event-upeg-2"
+        ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" }
+        : null,
     stage_id: `${phase}:1777746010000:1`,
     stage_phase: phase,
     author_role: watched ? "watched" : "early_amplifier",
@@ -2141,9 +2600,11 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
       score,
       reasons: ["structured_token_payload"],
       risks: [],
-      contributions: [{ feature: "source_specificity", value: 18, reason: "structured_token_payload" }],
-      risk_caps: []
-    }
+      contributions: [
+        { feature: "source_specificity", value: 18, reason: "structured_token_payload" },
+      ],
+      risk_caps: [],
+    },
   };
 }
 
@@ -2154,7 +2615,7 @@ function signalPulseData(): SignalPulseData {
       scope: "all",
       status: null,
       handle: null,
-      q: null
+      q: null,
     },
     health: {
       pulse_ready: true,
@@ -2163,14 +2624,14 @@ function signalPulseData(): SignalPulseData {
       blocked_low_information_count: 1,
       dead_job_count: 0,
       market_ready_rate: 0.67,
-      settlement_coverage: 0.5
+      settlement_coverage: 0.5,
     },
     summary: {
       trade_candidate: 1,
       token_watch: 1,
       theme_watch: 1,
       risk_rejected_high_info: 0,
-      blocked_low_information: 1
+      blocked_low_information: 1,
     },
     items: [
       {
@@ -2191,56 +2652,118 @@ function signalPulseData(): SignalPulseData {
         evidence_event_ids: ["event-cz-bnb"],
         source_event_ids: ["event-cz-bnb", "event-bnb-2"],
         factor_snapshot: {
-          schema_version: "token_factor_snapshot_v1",
+          schema_version: "token_factor_snapshot_v2_alpha_gated",
           subject: {
             target_type: "CexToken",
             target_id: "asset:cex:okx:BNB-USDT",
-            symbol: "BNB"
+            symbol: "BNB",
+            pricefeed_id: "pricefeed:cex:okx:spot:BNB-USDT",
           },
+          gates: {
+            eligible_for_high_alert: true,
+            max_decision: "high_alert",
+            blocked_reasons: [],
+            risk_reasons: [],
+          },
+          data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
           families: {
-            market_quality: {
-              score: 78,
-              data_health: "ready",
-              facts: {
-                native_market_id: "pricefeed:cex:okx:spot:BNB-USDT",
-                market_cap_usd: 82_000_000_000,
-                liquidity_usd: 18_000_000,
-                holders: 900_000,
-                volume_24h_usd: 2_100_000_000,
-                market_status: "ready"
-              },
-              factors: {}
-            },
-            social_attention: {
+            attention_heat: {
+              raw_score: 86,
               score: 86,
+              weight: 0.35,
               data_health: "ready",
               facts: { mentions_1h: 42, watched_mentions: 3 },
-              factors: {}
+              factors: {},
             },
-            social_quality: {
+            diffusion_quality: {
+              raw_score: 72,
               score: 72,
+              weight: 0.3,
               data_health: "ready",
               facts: { independent_authors: 18 },
-              factors: {}
-            }
+              factors: {},
+            },
+            semantic_quality: {
+              raw_score: 74,
+              score: 74,
+              weight: 0.25,
+              data_health: "ready",
+              facts: {
+                impact_mean: 0.74,
+                novelty_mean: 0.7,
+                confidence_mean: 0.9,
+                direction_counts: { bullish: 3 },
+              },
+              factors: {},
+            },
+            timing_response: {
+              raw_score: 68,
+              score: 68,
+              weight: 0.1,
+              data_health: "ready",
+              facts: { price_change_since_social_pct: 0.03, price_change_before_social_pct: 0.01 },
+              factors: {},
+            },
           },
-          hard_gates: { eligible_for_high_alert: true, blocked_reasons: [] },
-          composite: { rank_score: 84, recommended_decision: "watch" }
+          normalization: {
+            status: "ready",
+            cohort: { window: "1h" },
+            factor_ranks: {},
+            alpha_rank: 2,
+            cohort_size: 21,
+          },
+          composite: {
+            rank_score: 84,
+            recommended_decision: "watch",
+            family_scores: {
+              attention_heat: 86,
+              diffusion_quality: 72,
+              semantic_quality: 74,
+              timing_response: 68,
+            },
+          },
+          provenance: {
+            source_event_ids: ["event-cz-bnb", "event-bnb-2"],
+            computed_at_ms: 1_777_746_300_000,
+          },
         },
         agent_recommendation: {
           schema_version: "pulse_recommendation_v1",
           recommendation: "watch",
           summary_zh: "CZ 推动 BNB build 叙事，候选处于点火阶段。",
-          primary_reasons: [{ factor_key: "social_attention.watched_mentions", explanation_zh: "强账号触发" }],
+          primary_reasons: [
+            { factor_key: "attention_heat.watched_mentions", explanation_zh: "强账号触发" },
+          ],
           upgrade_conditions: [
-            { factor_key: "market_quality.volume_24h_usd", operator: ">", value: 2_500_000_000, description_zh: "成交量确认" }
+            {
+              factor_key: "attention_heat.mentions_1h",
+              operator: ">",
+              value: 50,
+              description_zh: "热度确认",
+            },
           ],
           invalidation_conditions: [
-            { factor_key: "social_quality.independent_authors", operator: "<", value: 6, description_zh: "讨论未扩散" }
+            {
+              factor_key: "diffusion_quality.independent_authors",
+              operator: "<",
+              value: 6,
+              description_zh: "讨论未扩散",
+            },
           ],
-          residual_risks: [{ factor_key: "social_quality.source_concentration", description_zh: "单一账号驱动" }]
+          residual_risks: [
+            {
+              factor_key: "diffusion_quality.source_concentration",
+              description_zh: "单一账号驱动",
+            },
+          ],
         },
-        gate: { pulse_status: "trade_candidate", candidate_score: 84, score_band: "A", eligible_for_high_alert: true, blocked_reasons: [] },
+        gate: {
+          pulse_status: "trade_candidate",
+          candidate_score: 84,
+          score_band: "A",
+          eligible_for_high_alert: true,
+          blocked_reasons: [],
+        },
         fact_card: {
           market_cap_usd: 82_000_000_000,
           liquidity_usd: 18_000_000,
@@ -2251,7 +2774,7 @@ function signalPulseData(): SignalPulseData {
           unique_authors: 18,
           watched_mentions: 3,
           eligible_for_high_alert: true,
-          blocked_reasons: []
+          blocked_reasons: [],
         },
         agent_run_id: "agent-run-bnb",
         pulse_version: "pulse-v10",
@@ -2260,12 +2783,12 @@ function signalPulseData(): SignalPulseData {
         schema_version: "signal-pulse-v1",
         created_at_ms: 1_777_746_020_000,
         updated_at_ms: 1_777_746_040_000,
-        playbooks: [{ name: "watch_breakout", state: "armed" }]
-      }
+        playbooks: [{ name: "watch_breakout", state: "armed" }],
+      },
     ],
     returned_count: 1,
     has_more: false,
-    next_cursor: null
+    next_cursor: null,
   };
 }
 
@@ -2275,25 +2798,25 @@ function emptySignalPulseData(handle: string | null = null): SignalPulseData {
     ...data,
     query: {
       ...data.query,
-      handle
+      handle,
     },
     health: {
       ...data.health,
       pulse_ready: false,
       candidate_count: 0,
-      blocked_low_information_count: 0
+      blocked_low_information_count: 0,
     },
     summary: {
       trade_candidate: 0,
       token_watch: 0,
       theme_watch: 0,
       risk_rejected_high_info: 0,
-      blocked_low_information: 0
+      blocked_low_information: 0,
     },
     items: [],
     returned_count: 0,
     has_more: false,
-    next_cursor: null
+    next_cursor: null,
   };
 }
 
@@ -2309,13 +2832,15 @@ function watchedAccountLensEvent(handle: string): LivePayload {
       cashtags: [],
       hashtags: ["macro"],
       mentions: [],
-      is_watched: 1
+      is_watched: 1,
     },
-    entities: [{ entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_070_000 }],
+    entities: [
+      { entity_type: "hashtag", normalized_value: "macro", received_at_ms: 1_777_746_070_000 },
+    ],
     token_intents: [],
     token_resolutions: [],
     alerts: [],
-    harness: null
+    harness: null,
   };
 }
 
@@ -2345,9 +2870,9 @@ function signalPulseNotification(): NotificationItem {
     payload: {
       candidate_id: "pulse-bnb",
       pulse_status: "trade_candidate",
-      symbol: "BNB"
+      symbol: "BNB",
     },
-    channels: ["in_app", "pushdeer"]
+    channels: ["in_app", "pushdeer"],
   };
 }
 
@@ -2367,9 +2892,11 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
       received_at_ms: 1_777_746_010_000,
       text_clean: "$UPEG watched account evidence",
       cashtags: ["UPEG"],
-      is_watched: 1
+      is_watched: 1,
     },
-    entities: [{ entity_type: "symbol", normalized_value: "UPEG", received_at_ms: 1_777_746_010_000 }],
+    entities: [
+      { entity_type: "symbol", normalized_value: "UPEG", received_at_ms: 1_777_746_010_000 },
+    ],
     token_intents: [
       {
         intent_id: `intent:${assetId}`,
@@ -2378,8 +2905,8 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
         chain_hint: "eth",
         address_hint: address,
         intent_status: "active",
-        intent_confidence: 1
-      }
+        intent_confidence: 1,
+      },
     ],
     token_resolutions: [
       {
@@ -2390,10 +2917,10 @@ function liveUpegEvent(options: { assetId?: string; address?: string } = {}): Li
         target_id: assetId,
         pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${address.toLowerCase()}`,
         resolution_status: "EXACT",
-        reason_codes_json: ["CHAIN_ADDRESS_EXACT"]
-      }
+        reason_codes_json: ["CHAIN_ADDRESS_EXACT"],
+      },
     ],
-    alerts: []
+    alerts: [],
   };
 }
 
@@ -2401,8 +2928,11 @@ function scoreBlock<T extends Record<string, unknown>>(extra: T) {
   return {
     contributions: [{ feature: "test", value: 10, reason: "test_reason" }],
     risk_caps: [],
-    ...extra
-  } as T & { contributions: Array<{ feature: string; value: number; reason: string }>; risk_caps: [] };
+    ...extra,
+  } as T & {
+    contributions: Array<{ feature: string; value: number; reason: string }>;
+    risk_caps: [];
+  };
 }
 
 function renderWithQuery(children: ReactNode, options: { initialEntries?: string[] } = {}) {
@@ -2410,14 +2940,14 @@ function renderWithQuery(children: ReactNode, options: { initialEntries?: string
     defaultOptions: {
       queries: {
         retry: false,
-        gcTime: 0
-      }
-    }
+        gcTime: 0,
+      },
+    },
   });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={options.initialEntries}>{children}</MemoryRouter>
-    </QueryClientProvider>
+    </QueryClientProvider>,
   );
 }
 

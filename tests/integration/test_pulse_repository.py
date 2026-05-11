@@ -360,7 +360,7 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
         conn.close()
 
     assert [item["candidate_id"] for item in first_page["items"]] == ["candidate-newer"]
-    assert first_page["items"][0]["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v1"
+    assert first_page["items"][0]["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
     assert first_page["items"][0]["agent_recommendation_json"]["recommendation"] == "watch"
     assert first_page["items"][0]["gate_reasons_json"] == ["fresh_attention"]
     assert second_page["items"][0]["candidate_id"] == "candidate-older"
@@ -389,8 +389,12 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
             **_candidate_payload(
                 "candidate-factor-snapshot",
                 factor_snapshot_json={
-                    "schema_version": "token_factor_snapshot_v1",
-                    "hard_gates": {"eligible_for_high_alert": False},
+                    "schema_version": "token_factor_snapshot_v2_alpha_gated",
+                    "subject": {},
+                    "gates": {"eligible_for_high_alert": False, "blocked_reasons": ["identity_unresolved"]},
+                    "data_health": {"identity": "unresolved", "market": "no_resolved_target"},
+                    "families": {},
+                    "composite": {"rank_score": 0},
                 },
                 agent_recommendation_json={
                     "schema_version": "pulse_recommendation_v1",
@@ -404,8 +408,12 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
         conn.close()
 
     assert row["factor_snapshot_json"] == {
-        "schema_version": "token_factor_snapshot_v1",
-        "hard_gates": {"eligible_for_high_alert": False},
+        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "subject": {},
+        "gates": {"eligible_for_high_alert": False, "blocked_reasons": ["identity_unresolved"]},
+        "data_health": {"identity": "unresolved", "market": "no_resolved_target"},
+        "families": {},
+        "composite": {"rank_score": 0},
     }
     assert row["agent_recommendation_json"] == {
         "schema_version": "pulse_recommendation_v1",
@@ -420,7 +428,8 @@ def test_pulse_summary_reads_market_fresh_count_from_factor_snapshot_contract() 
     summary = PulseRepository(conn).pulse_summary(window="1h", scope="global")
 
     assert summary["market_ready_rate"] == 1.0
-    assert "factor_snapshot_json #>> '{families,market_quality,facts,market_status}' = 'fresh'" in conn.summary_sql
+    assert "factor_snapshot_json #>> '{data_health,market}' = 'ready'" in conn.summary_sql
+    assert "families,market_quality" not in conn.summary_sql
     assert "market_context_json" not in conn.summary_sql
 
 
@@ -433,13 +442,7 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
             **_candidate_payload(
                 "candidate-fresh-factor",
                 factor_snapshot_json={
-                    "families": {
-                        "market_quality": {
-                            "facts": {
-                                "market_status": "fresh",
-                            }
-                        }
-                    }
+                    "data_health": {"market": "ready"},
                 },
                 updated_at_ms=3_000,
             )
@@ -448,13 +451,7 @@ def test_pulse_summary_counts_market_freshness_from_factor_snapshot(tmp_path) ->
             **_candidate_payload(
                 "candidate-stale-factor",
                 factor_snapshot_json={
-                    "families": {
-                        "market_quality": {
-                            "facts": {
-                                "market_status": "stale",
-                            }
-                        }
-                    }
+                    "data_health": {"market": "partial"},
                 },
                 updated_at_ms=2_000,
             )
@@ -774,7 +771,14 @@ def _candidate_payload(
         "trigger_signature": f"trigger:{candidate_id}",
         "timeline_signature": f"timeline:{candidate_id}",
         "factor_snapshot_json": factor_snapshot_json
-        or {"schema_version": "token_factor_snapshot_v1", "composite": {"rank_score": 82}},
+        or {
+            "schema_version": "token_factor_snapshot_v2_alpha_gated",
+            "subject": {"target_type": "asset", "target_id": f"asset:{symbol.lower()}", "symbol": symbol},
+            "gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
+            "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
+            "families": {},
+            "composite": {"rank_score": 82},
+        },
         "agent_recommendation_json": agent_recommendation_json
         or {"schema_version": "pulse_recommendation_v1", "recommendation": "watch"},
         "gate_json": gate_json or {"pulse_status": pulse_status, "candidate_score": 82},
@@ -809,9 +813,7 @@ class FakePulseSummaryConn:
                     "blocked_low_information_count": 0,
                     "displayable_count": 1,
                     "market_fresh_count": (
-                        1
-                        if "factor_snapshot_json #>> '{families,market_quality,facts,market_status}' = 'fresh'" in text
-                        else 0
+                        1 if "factor_snapshot_json #>> '{data_health,market}' = 'ready'" in text else 0
                     ),
                 }
             )

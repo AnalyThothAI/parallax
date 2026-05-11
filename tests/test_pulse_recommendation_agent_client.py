@@ -23,6 +23,14 @@ from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_cl
     PulseRecommendationOutputSchema,
 )
 
+AVAILABLE_FACTOR_KEYS = [
+    "attention_heat.unique_authors",
+    "diffusion_quality.duplicate_text_share",
+    "diffusion_quality.independent_authors",
+    "semantic_quality.phase",
+    "timing_response.price_change_status",
+]
+
 
 class FakeRunner:
     def __init__(self, output: PulseRecommendationPayload | dict[str, object]):
@@ -41,6 +49,42 @@ class FakeRunner:
         return SimpleNamespace(final_output=self.output)
 
 
+def _factor_snapshot() -> dict[str, object]:
+    return {
+        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "subject": {"target_type": "CexToken", "target_id": "cex-token:PEPE", "symbol": "PEPE"},
+        "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "max_decision": "high_alert"},
+        "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
+        "families": {
+            "attention_heat": _family(76, 0.35, {"unique_authors": 4}, {}),
+            "diffusion_quality": {
+                "raw_score": 76,
+                "score": 76,
+                "weight": 0.3,
+                "data_health": "ready",
+                "facts": {"independent_authors": 4},
+                "factors": {"duplicate_text_share": {"value": 0.12}},
+            },
+            "semantic_quality": _family(76, 0.25, {"phase": "ignition"}, {}),
+            "timing_response": _family(76, 0.1, {"price_change_status": "ready"}, {}),
+        },
+        "normalization": {"status": "pending_cross_section"},
+        "composite": {"rank_score": 76, "recommended_decision": "watch"},
+        "provenance": {"source_event_ids": ["event-evidence"], "computed_at_ms": 1_700_000_000_000},
+    }
+
+
+def _family(score: int, weight: float, facts: dict[str, object], factors: dict[str, object]) -> dict[str, object]:
+    return {
+        "raw_score": score,
+        "score": score,
+        "weight": weight,
+        "data_health": "ready",
+        "facts": facts,
+        "factors": factors,
+    }
+
+
 def _context(**overrides: object) -> dict[str, object]:
     context: dict[str, object] = {
         "candidate_id": "candidate-1",
@@ -48,17 +92,7 @@ def _context(**overrides: object) -> dict[str, object]:
         "subject_key": "target:CexToken:cex-token:PEPE",
         "target_type": "CexToken",
         "target_id": "cex-token:PEPE",
-        "factor_snapshot": {
-            "schema_version": "token_factor_snapshot_v1",
-            "families": {
-                "market_quality": {
-                    "facts": {"liquidity_usd": 12000},
-                    "factors": {"holder_count": {"value": 500}},
-                },
-                "social_attention": {"facts": {"author_breadth": 4}},
-                "timeline_quality": {"factors": {"duplicate_share": {"value": 0.12}}},
-            },
-        },
+        "factor_snapshot": _factor_snapshot(),
         "gate_result": {"pulse_status": "token_watch", "max_recommendation": "research"},
         "available_factor_keys": [
             "manual.key_should_not_be_used",
@@ -88,21 +122,21 @@ def _payload(**overrides: object) -> PulseRecommendationPayload:
         "summary_zh": "PEPE 社交扩散有效，但行情和重复文本风险仍需确认。",
         "primary_reasons": [
             {
-                "factor_key": "social_attention.author_breadth",
+                "factor_key": "attention_heat.unique_authors",
                 "explanation_zh": "独立作者扩散正在增加。",
             }
         ],
         "upgrade_conditions": [
             {
-                "factor_key": "market_quality.liquidity_usd",
+                "factor_key": "diffusion_quality.independent_authors",
                 "operator": ">=",
-                "value": 25000,
-                "description_zh": "继续观察流动性是否恢复到观察地板。",
+                "value": 4,
+                "description_zh": "继续观察独立作者扩散是否增加。",
             }
         ],
         "invalidation_conditions": [
             {
-                "factor_key": "timeline_quality.duplicate_share",
+                "factor_key": "diffusion_quality.duplicate_text_share",
                 "operator": ">=",
                 "value": 0.5,
                 "description_zh": "重复文本继续升高会削弱信号。",
@@ -110,7 +144,7 @@ def _payload(**overrides: object) -> PulseRecommendationPayload:
         ],
         "residual_risks": [
             {
-                "factor_key": "timeline_quality.duplicate_share",
+                "factor_key": "diffusion_quality.duplicate_text_share",
                 "description_zh": "重复文本可能放大噪声。",
             }
         ],
@@ -161,12 +195,7 @@ def test_openai_agents_pulse_client_uses_recommendation_output_and_trace_metadat
         "available_factor_keys",
         "selected_posts",
     }
-    assert decoded_input["available_factor_keys"] == [
-        "market_quality.holder_count",
-        "market_quality.liquidity_usd",
-        "social_attention.author_breadth",
-        "timeline_quality.duplicate_share",
-    ]
+    assert decoded_input["available_factor_keys"] == AVAILABLE_FACTOR_KEYS
     assert run_config.workflow_name == WORKFLOW_NAME
     assert run_config.group_id == "candidate-1"
     assert run_config.trace_id.startswith("trace_")
@@ -311,12 +340,7 @@ def test_openai_agents_pulse_client_can_build_request_audit_before_model_returns
         "event-cluster-2",
         "event-stage-1",
     ]
-    assert audit["available_factor_keys"] == [
-        "market_quality.holder_count",
-        "market_quality.liquidity_usd",
-        "social_attention.author_breadth",
-        "timeline_quality.duplicate_share",
-    ]
+    assert audit["available_factor_keys"] == AVAILABLE_FACTOR_KEYS
     assert audit["max_recommendation"] == "research"
     assert audit["trace_metadata"]["attempt_count"] == 4
 

@@ -10,4 +10,4 @@
 | `social_heat_v3` | `src/gmgn_twitter_intel/domains/token_intel/scoring/social_heat_scoring.py` | 106 | `score_version="social_heat_v3",` |
 | `social_opportunity_v4` | `src/gmgn_twitter_intel/domains/token_intel/scoring/opportunity_scoring.py` | 54 | `score_version="social_opportunity_v4",` |
 | `timing_v5` | `src/gmgn_twitter_intel/domains/token_intel/scoring/timing_scoring.py` | 49 | `score_version="timing_v5",` |
-| `tradeability_v2` | `src/gmgn_twitter_intel/domains/token_intel/scoring/tradeability_scoring.py` | 123 | `score_version="tradeability_v2",` |
+| `tradeability_v2` | `src/gmgn_twitter_intel/domains/token_intel/scoring/tradeability_scoring.py` | 121 | `score_version="tradeability_v2",` |
