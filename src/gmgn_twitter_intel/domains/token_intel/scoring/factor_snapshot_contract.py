@@ -33,14 +33,14 @@ TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
 )
 FORBIDDEN_FACTOR_FAMILY_KEYS = frozenset(
     {
-        'attention_heat',
-        'diffusion_quality',
-        'semantic_quality',
-        'timing_response',
-        'social_attention',
-        'social_quality',
-        'market_quality',
-        'identity',
+        "attention_heat",
+        "diffusion_quality",
+        "semantic_quality",
+        "timing_response",
+        "social_attention",
+        "social_quality",
+        "market_quality",
+        "identity",
     }
 )
 

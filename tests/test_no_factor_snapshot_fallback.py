@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src" / "gmgn_twitter_intel"
 WEB_SRC_ROOT = ROOT / "web" / "src"
@@ -52,23 +56,6 @@ FACTOR_SNAPSHOT_PRODUCER_FILES = (
 FACTOR_SNAPSHOT_FALLBACK_PATTERNS = (
     "token_factor_snapshot_v1",
     "hard_gates",
-)
-
-FACTOR_SNAPSHOT_CONTRACT_SURFACE_FILES = (
-    SRC_ROOT / "domains" / "token_intel" / "_constants.py",
-    SRC_ROOT / "domains" / "token_intel" / "interfaces.py",
-    SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_snapshot_contract.py",
-)
-
-OLD_FACTOR_FAMILY_LITERAL_PATTERNS = (
-    '"attention_heat"',
-    '"diffusion_quality"',
-    '"semantic_quality"',
-    '"timing_response"',
-    '"social_attention"',
-    '"social_quality"',
-    '"market_quality"',
-    '"identity"',
 )
 
 STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS = (
@@ -125,13 +112,20 @@ def test_token_factor_snapshot_producers_have_no_legacy_snapshot_fallback_contra
     assert offenders == []
 
 
-def test_factor_snapshot_contract_surface_has_no_old_family_literals() -> None:
-    offenders = _matches(
-        list(FACTOR_SNAPSHOT_CONTRACT_SURFACE_FILES),
-        patterns=OLD_FACTOR_FAMILY_LITERAL_PATTERNS,
-    )
+def test_factor_snapshot_contract_rejects_old_family_before_missing_new_family() -> None:
+    snapshot = _valid_factor_snapshot()
+    snapshot["families"]["attention_heat"] = _family_block()
 
-    assert offenders == []
+    with pytest.raises(ValueError, match=r"^factor_snapshot\.families\.attention_heat is not allowed$"):
+        require_token_factor_snapshot(snapshot)
+
+
+def test_factor_snapshot_contract_lists_forbidden_family_keys_with_project_quote_style() -> None:
+    contract_path = SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_snapshot_contract.py"
+    text = contract_path.read_text()
+
+    assert "'attention_heat'" not in text
+    assert '"attention_heat"' in text
 
 
 def test_python_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
@@ -196,3 +190,33 @@ def _matches(files: list[Path], *, patterns: tuple[str, ...]) -> list[str]:
         text = path.read_text()
         offenders.extend(f"{path.relative_to(ROOT).as_posix()}: {pattern}" for pattern in patterns if pattern in text)
     return offenders
+
+
+def _valid_factor_snapshot() -> dict[str, object]:
+    return {
+        "schema_version": "token_factor_snapshot_v3_social_attention",
+        "subject": {"target_type": "Asset", "target_id": "asset:test"},
+        "market": {},
+        "gates": {},
+        "data_health": {},
+        "families": {
+            "social_heat": _family_block(),
+            "social_propagation": _family_block(),
+            "semantic_catalyst": _family_block(),
+            "timing_risk": _family_block(),
+        },
+        "normalization": {},
+        "composite": {},
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1},
+    }
+
+
+def _family_block() -> dict[str, object]:
+    return {
+        "raw_score": 0,
+        "score": 0,
+        "weight": 0,
+        "data_health": "missing",
+        "facts": {},
+        "factors": {},
+    }
