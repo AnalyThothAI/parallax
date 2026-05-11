@@ -1,4 +1,5 @@
 import type { SignalPulseItem, TokenFlowItem } from "../api/types";
+
 import { gmgnTokenUrl } from "./gmgn";
 
 export type VenueAction = {
@@ -46,11 +47,16 @@ function signalPulseCexVenueAction(item: SignalPulseItem): VenueAction | null {
   const subject = item.factor_snapshot?.subject;
   const targetType = subject?.target_type ?? item.target_type;
   const targetId = subject?.target_id ?? item.target_id;
-  if (targetType !== "CexToken" && !targetId?.startsWith("cex_token:") && !targetId?.includes(":cex:")) {
+  if (
+    targetType !== "CexToken" &&
+    !targetId?.startsWith("cex_token:") &&
+    !targetId?.includes(":cex:")
+  ) {
     return null;
   }
   const facts = signalPulseFactorFacts(item);
-  const nativeMarketId = stringValue(facts.native_market_id) ?? stringValue(facts.pricefeed_id) ?? targetId;
+  const nativeMarketId =
+    stringValue(facts.native_market_id) ?? stringValue(facts.pricefeed_id) ?? targetId;
   const pricefeed = parseCexPricefeedId(nativeMarketId);
   if (pricefeed?.exchange === "okx") {
     return { label: "OKX", url: okxUrl(pricefeed.instId, pricefeed.instType) };
@@ -63,7 +69,9 @@ function signalPulseCexVenueAction(item: SignalPulseItem): VenueAction | null {
   return symbol ? { label: "OKX", url: okxUrl(`${symbol}-USDT`, "SPOT") } : null;
 }
 
-function parseCexPricefeedId(pricefeedId?: string | null): { exchange: string; instType: string; instId: string } | null {
+function parseCexPricefeedId(
+  pricefeedId?: string | null,
+): { exchange: string; instType: string; instId: string } | null {
   const parts = pricefeedId?.trim().split(":") ?? [];
   if (parts.length < 5 || parts[0] !== "pricefeed" || parts[1] !== "cex") {
     return null;
@@ -71,11 +79,13 @@ function parseCexPricefeedId(pricefeedId?: string | null): { exchange: string; i
   return {
     exchange: parts[2].toLowerCase(),
     instType: parts[3].toUpperCase(),
-    instId: parts.slice(4).join(":")
+    instId: parts.slice(4).join(":"),
   };
 }
 
-function parseCexTargetId(targetId?: string | null): { exchange: string; instType: string; instId: string } | null {
+function parseCexTargetId(
+  targetId?: string | null,
+): { exchange: string; instType: string; instId: string } | null {
   const parts = targetId?.trim().split(":") ?? [];
   if (parts.length < 4 || parts[0] !== "asset" || parts[1] !== "cex") {
     return null;
@@ -83,7 +93,7 @@ function parseCexTargetId(targetId?: string | null): { exchange: string; instTyp
   return {
     exchange: parts[2].toLowerCase(),
     instType: parts.at(-1)?.toUpperCase().endsWith("-SWAP") ? "SWAP" : "SPOT",
-    instId: parts.slice(3).join(":")
+    instId: parts.slice(3).join(":"),
   };
 }
 
@@ -110,14 +120,19 @@ function okxUrl(instId: string, instType?: string | null): string {
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function signalPulseFactorFacts(item: SignalPulseItem): Record<string, unknown> {
-  return Object.values(item.factor_snapshot.families ?? {}).reduce<Record<string, unknown>>((acc, family) => {
-    Object.assign(acc, recordValue(family.facts));
-    return acc;
-  }, {});
+  return Object.values(item.factor_snapshot.families ?? {}).reduce<Record<string, unknown>>(
+    (acc, family) => {
+      Object.assign(acc, recordValue(family.facts));
+      return acc;
+    },
+    {},
+  );
 }
 
 function stringValue(value: unknown): string | null {

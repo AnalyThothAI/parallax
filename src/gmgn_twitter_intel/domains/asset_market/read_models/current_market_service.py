@@ -4,7 +4,7 @@ from typing import Any
 
 
 class CurrentMarketService:
-    def __init__(self, *, current_market):
+    def __init__(self, *, current_market: Any) -> None:
         self.current_market = current_market
 
     def current_market_snapshot(self, *, target_type: str, target_id: str, now_ms: int) -> dict[str, Any]:

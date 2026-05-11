@@ -28,13 +28,7 @@ export function PanelSkeleton({ label }: { label: string }) {
   );
 }
 
-export function RouteStatePanel({
-  title,
-  children
-}: {
-  title: string;
-  children?: ReactNode;
-}) {
+export function RouteStatePanel({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className="route-state-panel">
       <b>{title}</b>

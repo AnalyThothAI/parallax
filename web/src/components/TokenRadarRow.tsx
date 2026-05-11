@@ -10,9 +10,10 @@ import {
   formatTokenPriceUsd,
   formatUsdCompact,
   shortAddress,
-  tokenLabel
+  tokenLabel,
 } from "../lib/format";
 import { tokenVenueAction } from "../lib/venue";
+
 import { DecisionTag } from "./DecisionTag";
 
 type TokenRadarRowProps = {
@@ -23,7 +24,9 @@ type TokenRadarRowProps = {
 };
 
 export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRadarRowProps) {
-  const delta = formatSignedPercent(item.market.price_change_since_social_pct ?? item.market.price_change_since_first_snapshot_pct);
+  const delta = formatSignedPercent(
+    item.market.price_change_since_social_pct ?? item.market.price_change_since_first_snapshot_pct,
+  );
   const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
   const venueAction = tokenVenueAction(item);
   const targetRef = targetRefFromTokenItem(item);
@@ -40,7 +43,7 @@ export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRad
             <span className="symbol-line">
               <span>{tokenLabel(item)}</span>
             </span>
-              <small>{identitySubtitle(item)}</small>
+            <small>{identitySubtitle(item)}</small>
           </strong>
         </span>
 
@@ -77,12 +80,23 @@ export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRad
 
       <span className="venue-cell" data-radar-action="venue">
         {venueAction ? (
-          <a aria-label={`Open ${tokenLabel(item)} on ${venueAction.label}`} className="venue-link" href={venueAction.url} rel="noreferrer" target="_blank">
+          <a
+            aria-label={`Open ${tokenLabel(item)} on ${venueAction.label}`}
+            className="venue-link"
+            href={venueAction.url}
+            rel="noreferrer"
+            target="_blank"
+          >
             {venueAction.label}
           </a>
         ) : null}
         {onOpenPage && targetRef ? (
-          <button type="button" className="page-open-button" aria-label={`open token audit page ${tokenLabel(item)}`} onClick={() => onOpenPage(item)}>
+          <button
+            type="button"
+            className="page-open-button"
+            aria-label={`open token audit page ${tokenLabel(item)}`}
+            onClick={() => onOpenPage(item)}
+          >
             &gt;
           </button>
         ) : null}
@@ -98,7 +112,10 @@ function heatTitle(item: TokenFlowItem): string {
 
 function identitySubtitle(item: TokenFlowItem): string {
   if (item.identity.venue_type === "cex") {
-    return [item.identity.exchange?.toUpperCase(), item.identity.inst_id].filter(Boolean).join(" · ") || "CEX";
+    return (
+      [item.identity.exchange?.toUpperCase(), item.identity.inst_id].filter(Boolean).join(" · ") ||
+      "CEX"
+    );
   }
   if (item.identity.address) {
     return `${item.identity.chain ?? "unknown"} · ${shortAddress(item.identity.address)}`;
@@ -107,8 +124,12 @@ function identitySubtitle(item: TokenFlowItem): string {
     return item.identity.chain ? `${item.identity.chain} · resolved target` : "resolved target";
   }
   const reason = item.identity.resolution_reasons?.[0] ?? item.identity.identity_status;
-  const candidateText = item.identity.candidate_count ? ` · ${compactNumber(item.identity.candidate_count)} candidates` : "";
-  const discoveryText = item.identity.discovery_status ? ` · ${compactLabel(item.identity.discovery_status)}` : "";
+  const candidateText = item.identity.candidate_count
+    ? ` · ${compactNumber(item.identity.candidate_count)} candidates`
+    : "";
+  const discoveryText = item.identity.discovery_status
+    ? ` · ${compactLabel(item.identity.discovery_status)}`
+    : "";
   return `symbol-only · ${formatRisk(reason)}${candidateText}${discoveryText}`;
 }
 
@@ -124,7 +145,9 @@ function marketPrimary(item: TokenFlowItem): string {
 
 function marketMeta(item: TokenFlowItem, delta: string): string {
   const details = marketFreshnessDetails(item);
-  return details.length ? `${delta} ${item.market.market_status} · ${details.join(" · ")}` : `${delta} ${item.market.market_status}`;
+  return details.length
+    ? `${delta} ${item.market.market_status} · ${details.join(" · ")}`
+    : `${delta} ${item.market.market_status}`;
 }
 
 function marketFreshnessDetails(item: TokenFlowItem): string[] {
@@ -133,16 +156,27 @@ function marketFreshnessDetails(item: TokenFlowItem): string[] {
   if (shouldShowFieldStatus(item.market.price_status, marketStatus)) {
     details.push(`price ${compactLabel(item.market.price_status)}`);
   }
-  if (item.market.market_cap !== null && item.market.market_cap !== undefined && shouldShowFieldStatus(item.market.market_cap_status, marketStatus)) {
+  if (
+    item.market.market_cap !== null &&
+    item.market.market_cap !== undefined &&
+    shouldShowFieldStatus(item.market.market_cap_status, marketStatus)
+  ) {
     details.push(`cap ${compactLabel(item.market.market_cap_status)}`);
   }
-  if (item.market.liquidity !== null && item.market.liquidity !== undefined && shouldShowFieldStatus(item.market.liquidity_status, marketStatus)) {
+  if (
+    item.market.liquidity !== null &&
+    item.market.liquidity !== undefined &&
+    shouldShowFieldStatus(item.market.liquidity_status, marketStatus)
+  ) {
     details.push(`liq ${compactLabel(item.market.liquidity_status)}`);
   }
   return details;
 }
 
-function shouldShowFieldStatus(fieldStatus: string | null | undefined, marketStatus: string): boolean {
+function shouldShowFieldStatus(
+  fieldStatus: string | null | undefined,
+  marketStatus: string,
+): boolean {
   if (!fieldStatus) {
     return false;
   }
@@ -187,7 +221,7 @@ function qualityLabel(item: TokenFlowItem): string {
     catalyst: "catalyst",
     duplicate_text_cluster: "repeat",
     repeated_text_cluster: "repeat",
-    low_information_posts: "meme only"
+    low_information_posts: "meme only",
   };
   return labels[reason] ?? compactLabel(reason);
 }
@@ -202,7 +236,7 @@ export function tokenDrawerSummary(item: TokenFlowItem) {
     heat: `${formatScore(item.social_heat.score)} / ${compactLabel(item.social_heat.status)}`,
     quality: `${formatScore(item.discussion_quality.score)} / ${drawerQualityLabel(item)}`,
     spread: `${compactNumber(item.propagation.independent_authors)} authors`,
-    timing: timingDrawerLabel(item)
+    timing: timingDrawerLabel(item),
   };
 }
 
@@ -219,7 +253,7 @@ function timingTitle(item: TokenFlowItem): string {
     neutral: "neutral",
     market_pending: "market pending",
     market_unavailable: "market unavailable",
-    chase_risk: "chase risk"
+    chase_risk: "chase risk",
   };
   return labels[item.timing.status] ?? compactLabel(item.timing.status);
 }
@@ -233,7 +267,11 @@ function timingMeta(item: TokenFlowItem): string {
     return "market observation pending";
   }
   if (item.timing.status === "market_unavailable") {
-    return formatRisk(item.timing.market_observation_status ?? item.market.market_observation_status ?? item.timing.risks[0]);
+    return formatRisk(
+      item.timing.market_observation_status ??
+        item.market.market_observation_status ??
+        item.timing.risks[0],
+    );
   }
   if (item.timing.chase_risk || item.timing.status === "chase_risk") {
     return `${formatSignedPercent(item.timing.price_change_before_social_pct ?? item.market.price_change_before_social_pct)} before social`;
@@ -242,7 +280,8 @@ function timingMeta(item: TokenFlowItem): string {
   if (risk) {
     return formatRisk(risk);
   }
-  const change = item.timing.price_change_since_social_pct ?? item.market.price_change_since_social_pct;
+  const change =
+    item.timing.price_change_since_social_pct ?? item.market.price_change_since_social_pct;
   if (change !== null && change !== undefined) {
     return `${formatSignedPercent(change)} since social`;
   }

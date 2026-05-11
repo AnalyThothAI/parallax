@@ -14,7 +14,7 @@ export const SIGNAL_LAB_ROUTE_DEFAULTS: SignalLabRouteState = {
   scope: "all",
   status: "all",
   handle: "",
-  q: ""
+  q: "",
 };
 
 const SIGNAL_LAB_STATUSES: SignalPulseStatusFilter[] = [
@@ -22,7 +22,7 @@ const SIGNAL_LAB_STATUSES: SignalPulseStatusFilter[] = [
   "trade_candidate",
   "token_watch",
   "theme_watch",
-  "risk_rejected_high_info"
+  "risk_rejected_high_info",
 ];
 
 export function parseSignalLabRouteState(searchParams: URLSearchParams): SignalLabRouteState {
@@ -31,7 +31,7 @@ export function parseSignalLabRouteState(searchParams: URLSearchParams): SignalL
     scope: parseScope(searchParams.get("scope")),
     status: parseStatus(searchParams.get("status")),
     handle: normalizeHandle(searchParams.get("handle") ?? ""),
-    q: (searchParams.get("q") ?? "").trim()
+    q: (searchParams.get("q") ?? "").trim(),
   };
 }
 
@@ -42,11 +42,13 @@ export function serializeSignalLabRouteState(state: SignalLabRouteState): URLSea
     scope: parseScope(state.scope),
     status: parseStatus(state.status),
     handle: normalizeHandle(state.handle),
-    q: state.q.trim()
+    q: state.q.trim(),
   };
-  if (normalized.window !== SIGNAL_LAB_ROUTE_DEFAULTS.window) params.set("window", normalized.window);
+  if (normalized.window !== SIGNAL_LAB_ROUTE_DEFAULTS.window)
+    params.set("window", normalized.window);
   if (normalized.scope !== SIGNAL_LAB_ROUTE_DEFAULTS.scope) params.set("scope", normalized.scope);
-  if (normalized.status !== SIGNAL_LAB_ROUTE_DEFAULTS.status) params.set("status", normalized.status);
+  if (normalized.status !== SIGNAL_LAB_ROUTE_DEFAULTS.status)
+    params.set("status", normalized.status);
   if (normalized.handle) params.set("handle", normalized.handle);
   if (normalized.q) params.set("q", normalized.q);
   return params;
@@ -59,16 +61,18 @@ export function signalLabRouteSearch(state: SignalLabRouteState): string {
 
 export function signalLabRouteStateWith(
   state: SignalLabRouteState,
-  patch: Partial<SignalLabRouteState>
+  patch: Partial<SignalLabRouteState>,
 ): SignalLabRouteState {
   return {
     ...state,
-    ...patch
+    ...patch,
   };
 }
 
 function parseWindow(value: string | null): WindowKey {
-  return OBSERVATION_WINDOWS.includes(value as WindowKey) ? (value as WindowKey) : SIGNAL_LAB_ROUTE_DEFAULTS.window;
+  return OBSERVATION_WINDOWS.includes(value as WindowKey)
+    ? (value as WindowKey)
+    : SIGNAL_LAB_ROUTE_DEFAULTS.window;
 }
 
 function parseScope(value: string | null): ScopeKey {

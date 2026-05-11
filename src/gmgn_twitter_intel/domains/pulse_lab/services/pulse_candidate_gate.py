@@ -90,7 +90,8 @@ def _valid_snapshot(factor_snapshot: dict[str, Any]) -> dict[str, Any]:
 
 def _blocked_reasons(snapshot: dict[str, Any], hard_gate_reasons: list[str]) -> list[str]:
     reasons = list(hard_gate_reasons)
-    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    raw_subject = snapshot.get("subject")
+    subject: dict[str, Any] = raw_subject if isinstance(raw_subject, dict) else {}
     target_type = str(subject.get("target_type") or "").strip()
     target_id = str(subject.get("target_id") or "").strip()
     if not target_type or not target_id or target_type in {"source_seed", "SourceSeed", "unresolved"}:
@@ -163,7 +164,8 @@ def _factor_hard_risks(snapshot: dict[str, Any]) -> list[str]:
 
 
 def _factor_values(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
+    raw_families = snapshot.get("families")
+    families: dict[str, Any] = raw_families if isinstance(raw_families, dict) else {}
     factors: list[dict[str, Any]] = []
     for family_payload in families.values():
         if not isinstance(family_payload, dict):
