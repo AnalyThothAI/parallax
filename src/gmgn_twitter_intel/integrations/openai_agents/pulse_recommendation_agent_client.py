@@ -165,7 +165,7 @@ class OpenAIAgentsPulseRecommendationClient:
         payload = validate_pulse_recommendation_payload(
             result.final_output,
             available_factor_keys=set(available_factor_keys),
-            input_source_event_ids=set(input_source_event_ids),
+            input_source_event_ids=input_source_event_ids,
             max_recommendation=max_recommendation,
         )
         output_json = payload.model_dump(mode="json")

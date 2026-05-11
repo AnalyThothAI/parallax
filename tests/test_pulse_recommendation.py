@@ -16,11 +16,49 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
 )
 
 AVAILABLE_FACTOR_KEYS = {
+    "attention_heat",
+    "attention_heat.data_health",
+    "attention_heat.raw_score",
+    "attention_heat.score",
     "attention_heat.unique_authors",
+    "attention_heat.weight",
+    "composite",
+    "composite.family_scores.attention_heat",
+    "composite.family_scores.diffusion_quality",
+    "composite.family_scores.semantic_quality",
+    "composite.family_scores.timing_response",
+    "composite.rank_score",
+    "composite.recommended_decision",
+    "data_health",
+    "data_health.alpha",
+    "data_health.identity",
+    "data_health.market",
+    "data_health.social",
+    "diffusion_quality",
+    "diffusion_quality.data_health",
     "diffusion_quality.independent_authors",
     "diffusion_quality.duplicate_text_share",
+    "diffusion_quality.raw_score",
+    "diffusion_quality.score",
+    "diffusion_quality.weight",
+    "gates",
+    "gates.blocked_reasons",
+    "gates.eligible_for_high_alert",
+    "gates.max_decision",
+    "normalization",
+    "normalization.status",
+    "semantic_quality",
+    "semantic_quality.data_health",
     "semantic_quality.phase",
+    "semantic_quality.raw_score",
+    "semantic_quality.score",
+    "semantic_quality.weight",
+    "timing_response",
+    "timing_response.data_health",
     "timing_response.price_change_status",
+    "timing_response.raw_score",
+    "timing_response.score",
+    "timing_response.weight",
 }
 
 
@@ -91,18 +129,29 @@ def test_factor_keys_must_be_available_for_reasons_conditions_and_risks() -> Non
     with pytest.raises(ValueError, match="factor_key"):
         validate_pulse_recommendation_payload(
             _valid_payload(),
-            available_factor_keys={"attention_heat.unique_authors", "diffusion_quality.independent_authors"},
+            available_factor_keys={"attention_heat", "diffusion_quality.independent_authors"},
             input_source_event_ids={"event-1", "event-2", "event-3"},
         )
 
 
-def test_evidence_event_ids_must_be_from_input_events() -> None:
-    with pytest.raises(ValueError, match="evidence_event_ids"):
-        validate_pulse_recommendation_payload(
-            _valid_payload(),
-            available_factor_keys=AVAILABLE_FACTOR_KEYS,
-            input_source_event_ids={"event-1"},
-        )
+def test_evidence_event_ids_are_sanitized_to_input_backed_ids() -> None:
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(evidence_event_ids=["event-1", "model-mutated-event"]),
+        available_factor_keys=AVAILABLE_FACTOR_KEYS,
+        input_source_event_ids=["event-1", "event-2"],
+    )
+
+    assert payload.evidence_event_ids == ["event-1"]
+
+
+def test_evidence_event_ids_fall_back_to_first_input_event_when_model_copies_ids_badly() -> None:
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(evidence_event_ids=["model-mutated-event"]),
+        available_factor_keys=AVAILABLE_FACTOR_KEYS,
+        input_source_event_ids=["event-1", "event-2"],
+    )
+
+    assert payload.evidence_event_ids == ["event-1"]
 
 
 def test_recommendation_cannot_exceed_gate_result_max_recommendation() -> None:
@@ -115,13 +164,14 @@ def test_recommendation_cannot_exceed_gate_result_max_recommendation() -> None:
         )
 
 
-def test_forbidden_trading_execution_language_raises() -> None:
-    with pytest.raises(ValueError, match="execution instruction"):
-        validate_pulse_recommendation_payload(
-            _valid_payload(summary_zh="满足条件后可以买入 PEPE。"),
-            available_factor_keys=AVAILABLE_FACTOR_KEYS,
-            input_source_event_ids={"event-1", "event-2", "event-3"},
-        )
+def test_forbidden_trading_execution_language_is_neutralized() -> None:
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(summary_zh="满足条件后可以买入 PEPE。"),
+        available_factor_keys=AVAILABLE_FACTOR_KEYS,
+        input_source_event_ids={"event-1", "event-2", "event-3"},
+    )
+
+    assert payload.summary_zh == "满足条件后可以观察 PEPE。"
 
 
 def test_payload_from_output_accepts_dict_and_model() -> None:
@@ -130,6 +180,50 @@ def test_payload_from_output_accepts_dict_and_model() -> None:
 
     assert isinstance(from_dict, PulseRecommendationPayload)
     assert from_model is from_dict
+
+
+def test_family_level_factor_keys_are_valid_but_still_bounded_to_available_context() -> None:
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(
+            primary_reasons=[
+                {
+                    "factor_key": "attention_heat",
+                    "explanation_zh": "热度 family 已经进入可解释集合。",
+                }
+            ],
+            residual_risks=[
+                {
+                    "factor_key": "gates.blocked_reasons",
+                    "description_zh": "硬门槛原因仍要作为风险边界。",
+                }
+            ],
+        ),
+        available_factor_keys=collect_factor_keys(_v2_factor_snapshot()),
+        input_source_event_ids={"event-1", "event-2", "event-3"},
+        max_recommendation="research",
+    )
+
+    assert payload.primary_reasons[0].factor_key == "attention_heat"
+    assert payload.residual_risks[0].factor_key == "gates.blocked_reasons"
+
+
+def test_condition_values_accept_structured_factor_maps() -> None:
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(
+            invalidation_conditions=[
+                {
+                    "factor_key": "semantic_quality.direction_counts",
+                    "operator": "==",
+                    "value": {"bearish": 10, "neutral": 0, "bullish": 0},
+                    "description_zh": "方向计数转弱会降低信号质量。",
+                }
+            ],
+        ),
+        available_factor_keys={*AVAILABLE_FACTOR_KEYS, "semantic_quality.direction_counts"},
+        input_source_event_ids=["event-1", "event-2"],
+    )
+
+    assert payload.invalidation_conditions[0].value.model_dump() == {"bearish": 10, "neutral": 0, "bullish": 0}
 
 
 def test_instructions_require_factor_backing_and_no_fabrication() -> None:
@@ -163,11 +257,49 @@ def test_agent_input_json_is_stable_and_contract_scoped() -> None:
     assert encoded == pulse_recommendation_agent_input(context)
     assert decoded == {
         "available_factor_keys": [
+            "attention_heat",
+            "attention_heat.data_health",
+            "attention_heat.raw_score",
+            "attention_heat.score",
             "attention_heat.unique_authors",
+            "attention_heat.weight",
+            "composite",
+            "composite.family_scores.attention_heat",
+            "composite.family_scores.diffusion_quality",
+            "composite.family_scores.semantic_quality",
+            "composite.family_scores.timing_response",
+            "composite.rank_score",
+            "composite.recommended_decision",
+            "data_health",
+            "data_health.alpha",
+            "data_health.identity",
+            "data_health.market",
+            "data_health.social",
+            "diffusion_quality",
+            "diffusion_quality.data_health",
             "diffusion_quality.duplicate_text_share",
             "diffusion_quality.independent_authors",
+            "diffusion_quality.raw_score",
+            "diffusion_quality.score",
+            "diffusion_quality.weight",
+            "gates",
+            "gates.blocked_reasons",
+            "gates.eligible_for_high_alert",
+            "gates.max_decision",
+            "normalization",
+            "normalization.status",
+            "semantic_quality",
+            "semantic_quality.data_health",
             "semantic_quality.phase",
+            "semantic_quality.raw_score",
+            "semantic_quality.score",
+            "semantic_quality.weight",
+            "timing_response",
+            "timing_response.data_health",
             "timing_response.price_change_status",
+            "timing_response.raw_score",
+            "timing_response.score",
+            "timing_response.weight",
         ],
         "factor_snapshot": _v2_factor_snapshot(),
         "gate_result": {"max_recommendation": "research"},
@@ -237,7 +369,16 @@ def _v2_factor_snapshot() -> dict[str, object]:
             "timing_response": _family(76, 0.1, {"price_change_status": "ready"}, {}),
         },
         "normalization": {"status": "pending_cross_section"},
-        "composite": {"rank_score": 76, "recommended_decision": "watch"},
+        "composite": {
+            "rank_score": 76,
+            "recommended_decision": "watch",
+            "family_scores": {
+                "attention_heat": 76,
+                "diffusion_quality": 76,
+                "semantic_quality": 76,
+                "timing_response": 76,
+            },
+        },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},
     }
 

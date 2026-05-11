@@ -31,6 +31,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import
 from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
     require_token_factor_snapshot_v2,
     safe_float,
@@ -44,7 +45,6 @@ DEFAULT_SCOPES = ("all",)
 SOURCE_WINDOW = "1h"
 SOURCE_SCOPE = "matched"
 PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
-V2_ALPHA_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality", "timing_response")
 
 _PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
 _COOLDOWN_MS = {
@@ -979,7 +979,7 @@ def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
             "social": "partial",
             "alpha": "missing",
         },
-        "families": {family: _empty_family_shell(family) for family in V2_ALPHA_FAMILIES},
+        "families": {family: _empty_family_shell(family) for family in TOKEN_RADAR_FACTOR_FAMILIES},
         "normalization": {
             "status": "not_applicable",
             "cohort": {},
@@ -989,7 +989,7 @@ def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
         "composite": {
             "raw_alpha_score": 0,
             "rank_score": 0,
-            "family_scores": {family: 0 for family in V2_ALPHA_FAMILIES},
+            "family_scores": {family: 0 for family in TOKEN_RADAR_FACTOR_FAMILIES},
             "recommended_decision": "discard",
         },
         "provenance": {

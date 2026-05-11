@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import post_quality_score
+from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score
 
 from .token_message_price_payload import message_price_payload
 

@@ -21,6 +21,10 @@ class IntentResolutionRepository:
             str(payload["decision_time_ms"]),
         )
         self.conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (payload["intent_id"],),
+        )
+        self.conn.execute(
             """
             UPDATE token_intent_resolutions
             SET record_status = 'superseded',

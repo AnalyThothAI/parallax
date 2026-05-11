@@ -24,11 +24,49 @@ from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_cl
 )
 
 AVAILABLE_FACTOR_KEYS = [
+    "attention_heat",
+    "attention_heat.data_health",
+    "attention_heat.raw_score",
+    "attention_heat.score",
     "attention_heat.unique_authors",
+    "attention_heat.weight",
+    "composite",
+    "composite.family_scores.attention_heat",
+    "composite.family_scores.diffusion_quality",
+    "composite.family_scores.semantic_quality",
+    "composite.family_scores.timing_response",
+    "composite.rank_score",
+    "composite.recommended_decision",
+    "data_health",
+    "data_health.alpha",
+    "data_health.identity",
+    "data_health.market",
+    "data_health.social",
+    "diffusion_quality",
+    "diffusion_quality.data_health",
     "diffusion_quality.duplicate_text_share",
     "diffusion_quality.independent_authors",
+    "diffusion_quality.raw_score",
+    "diffusion_quality.score",
+    "diffusion_quality.weight",
+    "gates",
+    "gates.blocked_reasons",
+    "gates.eligible_for_high_alert",
+    "gates.max_decision",
+    "normalization",
+    "normalization.status",
+    "semantic_quality",
+    "semantic_quality.data_health",
     "semantic_quality.phase",
+    "semantic_quality.raw_score",
+    "semantic_quality.score",
+    "semantic_quality.weight",
+    "timing_response",
+    "timing_response.data_health",
     "timing_response.price_change_status",
+    "timing_response.raw_score",
+    "timing_response.score",
+    "timing_response.weight",
 ]
 
 
@@ -69,7 +107,16 @@ def _factor_snapshot() -> dict[str, object]:
             "timing_response": _family(76, 0.1, {"price_change_status": "ready"}, {}),
         },
         "normalization": {"status": "pending_cross_section"},
-        "composite": {"rank_score": 76, "recommended_decision": "watch"},
+        "composite": {
+            "rank_score": 76,
+            "recommended_decision": "watch",
+            "family_scores": {
+                "attention_heat": 76,
+                "diffusion_quality": 76,
+                "semantic_quality": 76,
+                "timing_response": 76,
+            },
+        },
         "provenance": {"source_event_ids": ["event-evidence"], "computed_at_ms": 1_700_000_000_000},
     }
 
@@ -266,7 +313,7 @@ def test_openai_agents_pulse_client_uses_subject_key_group_without_candidate_id(
     assert runner.calls[0]["run_config"].group_id == "target:CexToken:cex-token:PEPE"
 
 
-def test_openai_agents_pulse_client_validates_event_ids_before_return() -> None:
+def test_openai_agents_pulse_client_sanitizes_event_ids_before_return() -> None:
     runner = FakeRunner(
         _payload(
             evidence_event_ids=["event-outside"],
@@ -274,8 +321,9 @@ def test_openai_agents_pulse_client_validates_event_ids_before_return() -> None:
     )
     client = OpenAIAgentsPulseRecommendationClient(api_key="sk-test", model="gpt-test", runner=runner)
 
-    with pytest.raises(ValueError, match="evidence_event_ids"):
-        asyncio.run(client.write_recommendation(context=_context(), run_id="run-123", job={}))
+    result = asyncio.run(client.write_recommendation(context=_context(), run_id="run-123", job={}))
+
+    assert result.payload.evidence_event_ids == ["event-top"]
 
 
 def test_openai_agents_pulse_client_validates_factor_keys_before_return() -> None:

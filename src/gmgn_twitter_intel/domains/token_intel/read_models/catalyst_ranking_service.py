@@ -4,7 +4,7 @@ import json
 import math
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import post_quality_score
+from gmgn_twitter_intel.domains.token_intel.scoring.post_text_quality import post_quality_score
 
 CATALYST_OBSERVATION_MS = 30 * 60_000
 CATALYST_BASELINE_MS = 60 * 60_000

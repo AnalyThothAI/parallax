@@ -54,6 +54,25 @@ FACTOR_SNAPSHOT_FALLBACK_PATTERNS = (
     "hard_gates",
 )
 
+LEGACY_SCORING_MODULE_PATHS = (
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "social_heat_scoring.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "propagation_scoring.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "discussion_quality_scoring.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "tradeability_scoring.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "opportunity_scoring.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "timing_scoring.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "timeline_features.py",
+)
+
+LEGACY_SCORING_VERSION_PATTERNS = (
+    "social_heat_v3",
+    "propagation_v2",
+    "discussion_quality_v3",
+    "tradeability_v2",
+    "social_opportunity_v4",
+    "timing_v5",
+)
+
 
 def test_runtime_has_no_legacy_pulse_thesis_or_score_fallback_paths() -> None:
     offenders = _matches(
@@ -81,6 +100,24 @@ def test_token_factor_snapshot_producers_have_no_legacy_snapshot_fallback_contra
     )
 
     assert offenders == []
+
+
+def test_legacy_token_radar_scoring_modules_are_removed() -> None:
+    assert [path.relative_to(ROOT).as_posix() for path in LEGACY_SCORING_MODULE_PATHS if path.exists()] == []
+
+
+def test_runtime_has_no_legacy_scoring_version_literals() -> None:
+    offenders = _matches(
+        _python_runtime_files(),
+        patterns=LEGACY_SCORING_VERSION_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_pulse_worker_uses_token_radar_factor_family_constant_as_single_source() -> None:
+    worker_path = SRC_ROOT / "domains" / "pulse_lab" / "runtime" / "pulse_candidate_worker.py"
+    assert "V2_ALPHA_FAMILIES" not in worker_path.read_text()
 
 
 def _python_runtime_files() -> list[Path]:

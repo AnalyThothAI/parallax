@@ -1,6 +1,6 @@
 import type { TokenFactorFamilyKey, TokenFactorSnapshot } from "../api/types";
 
-const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v2_alpha_gated";
+export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v2_alpha_gated";
 const TOP_LEVEL_KEYS = new Set([
   "schema_version",
   "subject",

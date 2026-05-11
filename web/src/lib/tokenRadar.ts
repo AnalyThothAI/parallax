@@ -15,9 +15,7 @@ import type {
   TradeabilityBlock,
 } from "../api/types";
 
-import { requireTokenFactorSnapshotV2 } from "./tokenFactorSnapshot";
-
-const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v2_alpha_gated";
+import { TOKEN_FACTOR_SNAPSHOT_SCHEMA, requireTokenFactorSnapshotV2 } from "./tokenFactorSnapshot";
 
 export function sortTokenItems(items: TokenFlowItem[], mode: RadarSortMode): TokenFlowItem[] {
   const copy = [...items];

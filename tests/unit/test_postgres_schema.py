@@ -56,6 +56,9 @@ TOKEN_RADAR_RECOVERY_MIGRATION = Path(
 TOKEN_FACTOR_EVAL_DIAGNOSTICS_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0026_token_factor_eval_diagnostics.py"
 )
+TOKEN_FACTOR_PULSE_CLEANUP_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0027_prune_legacy_pulse_factor_snapshots.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -162,6 +165,20 @@ def test_token_factor_eval_diagnostics_migration_adds_nullable_metrics_and_index
     assert "WHERE price_usd IS NOT NULL" in text
     assert "idx.indisvalid = false" in text
     assert "DROP INDEX IF EXISTS public.{index_name}" in text
+
+
+def test_token_factor_pulse_cleanup_migration_prunes_legacy_jobs_and_candidates() -> None:
+    text = TOKEN_FACTOR_PULSE_CLEANUP_MIGRATION.read_text()
+
+    assert 'revision = "20260511_0027"' in text
+    assert 'down_revision = "20260511_0026"' in text
+    assert "DELETE FROM pulse_agent_jobs" in text
+    assert "DELETE FROM pulse_candidates" in text
+    assert "context_json #>> '{factor_snapshot,schema_version}'" in text
+    assert "factor_snapshot_json->>'schema_version'" in text
+    assert "token_factor_snapshot_v2_alpha_gated" in text
+    assert "UPDATE pulse_agent_jobs" not in text
+    assert "mark" not in text.lower()
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:

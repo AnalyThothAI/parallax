@@ -352,12 +352,3 @@ def _llm_utility(row: dict[str, Any]) -> float | None:
         return max(0.0, min(1.0, 0.5 * float(novelty) + 0.5 * float(impact)))
     except (TypeError, ValueError):
         return None
-
-
-def _duplicate_share(texts: list[str]) -> float:
-    normalized = [text for text in (str(item).strip().lower() for item in texts) if text]
-    if len(normalized) < 2:
-        return 0.0
-    counts = Counter(normalized)
-    duplicates = sum(count - 1 for count in counts.values() if count > 1)
-    return round(duplicates / len(normalized), 6)

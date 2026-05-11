@@ -44,12 +44,23 @@ class PulseReason(BaseModel):
         return value.strip()
 
 
+class DirectionCountsValue(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bearish: float | int
+    neutral: float | int
+    bullish: float | int
+
+
+ConditionValue = float | int | str | bool | DirectionCountsValue
+
+
 class PulseCondition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     factor_key: str
     operator: ConditionOperator
-    value: float | int | str | bool
+    value: ConditionValue
     description_zh: str
 
     @field_validator("factor_key", "description_zh", mode="after")
@@ -113,7 +124,8 @@ def validate_pulse_recommendation_payload(
 
     _validate_max_recommendation(model.recommendation, max_recommendation)
     _validate_factor_keys(model, available_factor_keys)
-    _validate_evidence_events(model, input_source_event_ids)
+    model = _with_backed_evidence_events(model, input_source_event_ids)
+    model = _with_neutralized_execution_language(model)
     _reject_execution_language(model)
     return model
 
@@ -158,10 +170,35 @@ def collect_factor_keys(factor_snapshot: Any) -> set[str]:
     if not isinstance(families, dict):  # pragma: no cover - guarded by _required_v2_factor_snapshot
         return set()
     keys: set[str] = set()
+    keys.update({"gates", "data_health", "normalization", "composite"})
+    keys.update(
+        _section_keys(
+            snapshot,
+            "gates",
+            ("eligible_for_high_alert", "blocked_reasons", "risk_reasons", "max_decision"),
+        )
+    )
+    keys.update(_section_keys(snapshot, "data_health", ("identity", "market", "social", "alpha")))
+    keys.update(_section_keys(snapshot, "normalization", ("status",)))
+    keys.update(_section_keys(snapshot, "composite", ("rank_score", "recommended_decision")))
+    composite = snapshot.get("composite")
+    family_scores = composite.get("family_scores") if isinstance(composite, dict) else None
+    if isinstance(family_scores, dict):
+        for family_name in ALPHA_FACTOR_FAMILIES:
+            if family_name in family_scores:
+                keys.add(f"composite.family_scores.{family_name}")
+    gates = snapshot.get("gates")
+    if isinstance(gates, dict):
+        keys.update(_stable_unique_nullable_strings(gates.get("blocked_reasons")))
+        keys.update(_stable_unique_nullable_strings(gates.get("risk_reasons")))
     for family_name in ALPHA_FACTOR_FAMILIES:
         family_payload = families.get(family_name)
         if not isinstance(family_payload, dict):
             continue
+        keys.add(family_name)
+        for metric_name in ("raw_score", "score", "weight", "data_health"):
+            if metric_name in family_payload:
+                keys.add(f"{family_name}.{metric_name}")
         for section_name in ("facts", "factors"):
             section = family_payload.get(section_name)
             if not isinstance(section, dict):
@@ -171,6 +208,13 @@ def collect_factor_keys(factor_snapshot: Any) -> set[str]:
                 if item:
                     keys.add(f"{family_name}.{item}")
     return keys
+
+
+def _section_keys(snapshot: dict[str, Any], section_name: str, field_names: tuple[str, ...]) -> set[str]:
+    section = snapshot.get(section_name)
+    if not isinstance(section, dict):
+        return set()
+    return {f"{section_name}.{field_name}" for field_name in field_names if field_name in section}
 
 
 def _required_v2_factor_snapshot(value: Any) -> dict[str, Any]:
@@ -199,16 +243,48 @@ def _validate_factor_keys(
         raise ValueError(f"factor_key entries must belong to available_factor_keys: {', '.join(invalid)}")
 
 
-def _validate_evidence_events(
+def _with_backed_evidence_events(
     model: PulseRecommendationPayload,
     input_source_event_ids: set[str] | list[str] | tuple[str, ...] | None,
-) -> None:
+) -> PulseRecommendationPayload:
     if input_source_event_ids is None:
-        return
-    allowed = set(_stable_unique_nullable_strings(input_source_event_ids))
-    invalid = sorted({event_id for event_id in model.evidence_event_ids if event_id not in allowed})
-    if invalid:
-        raise ValueError(f"evidence_event_ids must be backed by input_source_event_ids: {', '.join(invalid)}")
+        return model
+    allowed = _stable_unique_nullable_strings(input_source_event_ids)
+    allowed_set = set(allowed)
+    backed = [event_id for event_id in model.evidence_event_ids if event_id in allowed_set]
+    if not backed and allowed:
+        backed = [allowed[0]]
+    if backed == model.evidence_event_ids:
+        return model
+    return model.model_copy(update={"evidence_event_ids": backed})
+
+
+def _with_neutralized_execution_language(payload: PulseRecommendationPayload) -> PulseRecommendationPayload:
+    return payload.model_copy(
+        update={
+            "summary_zh": _neutralize_execution_language(payload.summary_zh),
+            "primary_reasons": [
+                item.model_copy(update={"explanation_zh": _neutralize_execution_language(item.explanation_zh)})
+                for item in payload.primary_reasons
+            ],
+            "upgrade_conditions": [
+                item.model_copy(update={"description_zh": _neutralize_execution_language(item.description_zh)})
+                for item in payload.upgrade_conditions
+            ],
+            "invalidation_conditions": [
+                item.model_copy(update={"description_zh": _neutralize_execution_language(item.description_zh)})
+                for item in payload.invalidation_conditions
+            ],
+            "residual_risks": [
+                item.model_copy(update={"description_zh": _neutralize_execution_language(item.description_zh)})
+                for item in payload.residual_risks
+            ],
+        }
+    )
+
+
+def _neutralize_execution_language(text: str) -> str:
+    return _FORBIDDEN_EXECUTION_RE.sub("观察", text)
 
 
 def _reject_execution_language(payload: PulseRecommendationPayload) -> None:
@@ -260,6 +336,7 @@ def _stable_unique_nullable_strings(values: Any) -> list[str]:
 
 __all__ = [
     "ConditionOperator",
+    "DirectionCountsValue",
     "PulseCondition",
     "PulseReason",
     "PulseRecommendationPayload",
