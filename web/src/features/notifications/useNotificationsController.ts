@@ -1,13 +1,18 @@
-import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import {
   getNotifications,
   getNotificationSummary,
   markAllNotificationsRead,
-  markNotificationRead
+  markNotificationRead,
 } from "../../api/notifications";
-import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "../../api/types";
+import type {
+  NotificationItem,
+  NotificationLivePayload,
+  NotificationSummary,
+} from "../../api/types";
 import type { MobileTask } from "../../components/MobileTaskNav";
 import { useTraderStore } from "../../store/useTraderStore";
 
@@ -22,7 +27,7 @@ export function useNotificationsController({
   fallbackSummary,
   setMobileTask,
   socketNotifications,
-  token
+  token,
 }: UseNotificationsControllerArgs) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -33,14 +38,14 @@ export function useNotificationsController({
     queryKey: ["notification-summary"],
     queryFn: () => getNotificationSummary(token),
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
     queryFn: () => getNotifications(token),
     enabled: Boolean(token),
-    refetchInterval: drawerOpen ? 8_000 : 20_000
+    refetchInterval: drawerOpen ? 8_000 : 20_000,
   });
 
   const markReadMutation = useMutation({
@@ -48,7 +53,7 @@ export function useNotificationsController({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
   });
 
   const markAllReadMutation = useMutation({
@@ -56,7 +61,7 @@ export function useNotificationsController({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
       void queryClient.invalidateQueries({ queryKey: ["notifications"] });
-    }
+    },
   });
 
   const latestSocketNotificationId = socketNotifications[0]?.notification.notification_id ?? null;
@@ -71,7 +76,10 @@ export function useNotificationsController({
   const openNotification = (notification: NotificationItem) => {
     markReadMutation.mutate(notification.notification_id);
     setDrawerOpen(false);
-    if (notification.entity_type === "pulse_candidate" || notification.source_table === "pulse_candidates") {
+    if (
+      notification.entity_type === "pulse_candidate" ||
+      notification.source_table === "pulse_candidates"
+    ) {
       let q: string | null = null;
       if (notification.symbol) {
         q = notification.symbol;
@@ -84,7 +92,10 @@ export function useNotificationsController({
       setMobileTask("lab");
       return;
     }
-    if (notification.entity_type === "social_event" || notification.source_table === "social_event_extractions") {
+    if (
+      notification.entity_type === "social_event" ||
+      notification.source_table === "social_event_extractions"
+    ) {
       let q: string | null = null;
       let handle: string | null = null;
       if (notification.symbol) {
@@ -128,7 +139,7 @@ export function useNotificationsController({
     markRead: (notificationId: string) => markReadMutation.mutate(notificationId),
     openNotification,
     closeDrawer: () => setDrawerOpen(false),
-    toggleDrawer: () => setDrawerOpen((current) => !current)
+    toggleDrawer: () => setDrawerOpen((current) => !current),
   };
 }
 

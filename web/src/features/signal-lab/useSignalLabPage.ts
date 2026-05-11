@@ -1,16 +1,18 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+
 import { getApi } from "../../api/client";
-import { mergeSignalPulsePages, useSignalPulseList } from "../../api/useSignalPulseQueries";
 import type { LivePayload, RecentData, SignalPulseItem } from "../../api/types";
+import { mergeSignalPulsePages, useSignalPulseList } from "../../api/useSignalPulseQueries";
 import { useTraderStore } from "../../store/useTraderStore";
+
 import {
   parseSignalLabRouteState,
   serializeSignalLabRouteState,
   signalLabRouteSearch,
   signalLabRouteStateWith,
-  type SignalLabRouteState
+  type SignalLabRouteState,
 } from "./signalLabRouteState";
 
 type UseSignalLabPageArgs = {
@@ -32,7 +34,7 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
     scope: routeState.scope,
     status: routeState.status,
     handle: routeState.handle,
-    q: routeState.q
+    q: routeState.q,
   });
 
   const signalLabAccountEventsQuery = useQuery({
@@ -43,16 +45,16 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
         params: {
           limit: 80,
           scope: routeState.scope,
-          handles: activeSignalLabHandle
-        }
+          handles: activeSignalLabHandle,
+        },
       }),
     enabled: Boolean(token && activeSignalLabHandle),
-    refetchInterval: 15_000
+    refetchInterval: 15_000,
   });
 
   const signalPulseData = useMemo(
     () => mergeSignalPulsePages(signalPulseQuery.data?.pages),
-    [signalPulseQuery.data?.pages]
+    [signalPulseQuery.data?.pages],
   );
   const signalLabAccountEvents = signalLabAccountEventsQuery.data?.data.items ?? [];
   const selectedPulseItemId = pulseIdFromPathname(location.pathname);
@@ -63,7 +65,9 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
   };
 
   const selectPulse = (item: SignalPulseItem) => {
-    navigate(`/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}${signalLabRouteSearch(routeState)}`);
+    navigate(
+      `/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}${signalLabRouteSearch(routeState)}`,
+    );
   };
 
   const clearFilters = () => {
@@ -90,7 +94,7 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
     selectPulse,
     setHandleFilter: (handle: string) => updateRouteState({ handle }),
     setSearchFilter: (q: string) => updateRouteState({ q }),
-    setStatusFilter: (status: SignalLabRouteState["status"]) => updateRouteState({ status }, false)
+    setStatusFilter: (status: SignalLabRouteState["status"]) => updateRouteState({ status }, false),
   };
 }
 

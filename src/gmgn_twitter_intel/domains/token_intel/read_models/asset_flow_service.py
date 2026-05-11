@@ -13,7 +13,7 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar):
+    def __init__(self, *, token_radar: Any) -> None:
         self.token_radar = token_radar
 
     def asset_flow(
@@ -63,7 +63,7 @@ class AssetFlowService:
 
 
 def _public_row(row: dict[str, Any]) -> dict[str, Any]:
-    factor_snapshot = row.get("factor_snapshot_json") if isinstance(row.get("factor_snapshot_json"), dict) else {}
+    factor_snapshot = _dict_or_empty(row.get("factor_snapshot_json"))
     return {
         "intent": row.get("intent_json") or {},
         "target": _target_from_snapshot(factor_snapshot),
@@ -79,7 +79,7 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
 
 
 def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    subject = _dict_or_empty(snapshot.get("subject"))
     return {
         "target_type": subject.get("target_type"),
         "target_id": subject.get("target_id"),
@@ -92,31 +92,27 @@ def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     family = _family(snapshot, "social_attention")
-    facts = family.get("facts") if isinstance(family.get("facts"), dict) else {}
-    return dict(facts)
+    return dict(_dict_or_empty(family.get("facts")))
 
 
 def _market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     family = _family(snapshot, "market_quality")
-    facts = family.get("facts") if isinstance(family.get("facts"), dict) else {}
-    return dict(facts)
+    return dict(_dict_or_empty(family.get("facts")))
 
 
 def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    composite = snapshot.get("composite") if isinstance(snapshot.get("composite"), dict) else {}
-    return dict(composite)
+    return dict(_dict_or_empty(snapshot.get("composite")))
 
 
 def _family(snapshot: dict[str, Any], name: str) -> dict[str, Any]:
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
-    family = families.get(name) if isinstance(families.get(name), dict) else {}
-    return family
+    families = _dict_or_empty(snapshot.get("families"))
+    return _dict_or_empty(families.get(name))
 
 
 def _target_key_from_snapshot(snapshot: Any) -> tuple[str, str] | None:
     if not isinstance(snapshot, dict):
         return None
-    subject = snapshot.get("subject") if isinstance(snapshot.get("subject"), dict) else {}
+    subject = _dict_or_empty(snapshot.get("subject"))
     target_type = str(subject.get("target_type") or "").strip()
     target_id = str(subject.get("target_id") or "").strip()
     if not target_type or not target_id:
@@ -139,11 +135,11 @@ _MARKET_FIELD_FACT_KEYS = (
 
 def _current_market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     target_key = _target_key_from_snapshot(snapshot)
-    families = snapshot.get("families") if isinstance(snapshot.get("families"), dict) else {}
-    market_quality = families.get("market_quality") if isinstance(families.get("market_quality"), dict) else {}
-    facts = market_quality.get("facts") if isinstance(market_quality.get("facts"), dict) else {}
+    families = _dict_or_empty(snapshot.get("families"))
+    market_quality = _dict_or_empty(families.get("market_quality"))
+    facts = _dict_or_empty(market_quality.get("facts"))
     market_status = str(facts.get("market_status") or "").strip()
-    statuses = facts.get("field_statuses") if isinstance(facts.get("field_statuses"), dict) else {}
+    statuses = _dict_or_empty(facts.get("field_statuses"))
     fields = {
         key: _snapshot_market_field(value=facts.get(key), status=statuses.get(key))
         for key in _MARKET_FIELD_FACT_KEYS
@@ -193,7 +189,7 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
         }
     counts = {"fresh": 0, "stale": 0, "missing": 0, "pending": 0}
     for row in rows:
-        current_market = row.get("current_market") if isinstance(row.get("current_market"), dict) else {}
+        current_market = _dict_or_empty(row.get("current_market"))
         market_status = str(current_market.get("market_status") or "")
         if market_status in {"fresh", "ready"}:
             counts["fresh"] += 1
@@ -204,6 +200,10 @@ def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(rows)
     status = "ready" if counts["stale"] == 0 and counts["missing"] == 0 else "partial"
     return {**counts, "status": status, "total": total}
+
+
+def _dict_or_empty(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, Any]:

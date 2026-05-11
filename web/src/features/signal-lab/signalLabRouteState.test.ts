@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
+
 import {
   parseSignalLabRouteState,
   serializeSignalLabRouteState,
-  signalLabRouteSearch
+  signalLabRouteSearch,
 } from "./signalLabRouteState";
 
 describe("signalLabRouteState", () => {
@@ -12,27 +13,35 @@ describe("signalLabRouteState", () => {
       scope: "all",
       status: "all",
       handle: "",
-      q: ""
+      q: "",
     });
   });
 
   it("normalizes supported params and strips @ from handles", () => {
-    expect(parseSignalLabRouteState(new URLSearchParams("window=4h&scope=matched&status=token_watch&handle=@Toly&q=SOL"))).toEqual({
+    expect(
+      parseSignalLabRouteState(
+        new URLSearchParams("window=4h&scope=matched&status=token_watch&handle=@Toly&q=SOL"),
+      ),
+    ).toEqual({
       window: "4h",
       scope: "matched",
       status: "token_watch",
       handle: "toly",
-      q: "SOL"
+      q: "SOL",
     });
   });
 
   it("falls back to defaults for invalid enum params", () => {
-    expect(parseSignalLabRouteState(new URLSearchParams("window=2d&scope=private&status=moon&handle=  @TraderPow  "))).toEqual({
+    expect(
+      parseSignalLabRouteState(
+        new URLSearchParams("window=2d&scope=private&status=moon&handle=  @TraderPow  "),
+      ),
+    ).toEqual({
       window: "1h",
       scope: "all",
       status: "all",
       handle: "traderpow",
-      q: ""
+      q: "",
     });
   });
 
@@ -43,8 +52,8 @@ describe("signalLabRouteState", () => {
         scope: "all",
         status: "all",
         handle: "",
-        q: ""
-      }).toString()
+        q: "",
+      }).toString(),
     ).toBe("");
   });
 
@@ -55,8 +64,8 @@ describe("signalLabRouteState", () => {
         scope: "matched",
         status: "trade_candidate",
         handle: "toly",
-        q: "SOL"
-      })
+        q: "SOL",
+      }),
     ).toBe("?window=24h&scope=matched&status=trade_candidate&handle=toly&q=SOL");
   });
 });

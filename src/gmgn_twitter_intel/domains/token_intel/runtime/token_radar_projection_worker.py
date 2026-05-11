@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -133,10 +133,13 @@ class TokenRadarProjectionWorker:
 
     def _latest_coverage(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self.repository_session() as repos:
-            return repos.token_radar.latest_coverage(
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                windows=self.windows,
-                scopes=self.scopes,
+            return cast(
+                dict[tuple[str, str], dict[str, Any]],
+                repos.token_radar.latest_coverage(
+                    projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                    windows=self.windows,
+                    scopes=self.scopes,
+                ),
             )
 
     def _missing_work_items(self, coverage: dict[tuple[str, str], dict[str, Any]]) -> list[tuple[str, str]]:
@@ -183,7 +186,7 @@ def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return out
 
 
-def _projection_class():
+def _projection_class() -> type[Any]:
     from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
     return TokenRadarProjection

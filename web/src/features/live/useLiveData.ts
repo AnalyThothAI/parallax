@@ -1,11 +1,20 @@
-import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo } from "react";
+
 import { getApi, getBootstrap } from "../../api/client";
-import type { AssetFlowData, LivePayload, RecentData, SearchData, SignalPulseData, StatusData } from "../../api/types";
+import type {
+  AssetFlowData,
+  LivePayload,
+  RecentData,
+  SearchData,
+  SignalPulseData,
+  StatusData,
+} from "../../api/types";
 import { useIntelSocket } from "../../api/useIntelSocket";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/tokenRadar";
 import { useTraderStore } from "../../store/useTraderStore";
+
 import { buildLiveSignalTapeItems } from "./liveTapeModel";
 import { patchTokenRadarMarketUpdate } from "./marketUpdatePatch";
 
@@ -25,7 +34,7 @@ export function useLiveData() {
   const bootstrapQuery = useQuery({
     queryKey: ["bootstrap"],
     queryFn: getBootstrap,
-    staleTime: Infinity
+    staleTime: Infinity,
   });
 
   useEffect(() => {
@@ -40,7 +49,7 @@ export function useLiveData() {
     queryKey: ["status"],
     queryFn: () => getApi<StatusData>("/api/status", { token }),
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 
   const recentQuery = useQuery({
@@ -48,10 +57,10 @@ export function useLiveData() {
     queryFn: () =>
       getApi<RecentData>("/api/recent", {
         token,
-        params: { limit: 80, scope, handles }
+        params: { limit: 80, scope, handles },
       }),
     enabled: Boolean(token),
-    refetchInterval: 15_000
+    refetchInterval: 15_000,
   });
 
   const assetFlowQuery = useQuery({
@@ -59,10 +68,10 @@ export function useLiveData() {
     queryFn: () =>
       getApi<AssetFlowData>("/api/token-radar", {
         token,
-        params: { window: windowKey, limit: 48, scope }
+        params: { window: windowKey, limit: 48, scope },
       }),
     enabled: Boolean(token),
-    refetchInterval: 10_000
+    refetchInterval: 10_000,
   });
 
   const signalPulseOverviewQuery = useQuery({
@@ -73,11 +82,11 @@ export function useLiveData() {
         params: {
           window: SIGNAL_LAB_COMPACT_WINDOW,
           scope: SIGNAL_LAB_COMPACT_SCOPE,
-          limit: 1
-        }
+          limit: 1,
+        },
       }),
     enabled: Boolean(token),
-    refetchInterval: 12_000
+    refetchInterval: 12_000,
   });
 
   const signalLabPulseQuery = useQuery({
@@ -89,11 +98,11 @@ export function useLiveData() {
           window: SIGNAL_LAB_COMPACT_WINDOW,
           scope: SIGNAL_LAB_COMPACT_SCOPE,
           limit: 80,
-          sort: "recent"
-        }
+          sort: "recent",
+        },
       }),
     enabled: Boolean(token),
-    refetchInterval: 20_000
+    refetchInterval: 20_000,
   });
 
   const searchQuery = useQuery({
@@ -101,47 +110,60 @@ export function useLiveData() {
     queryFn: () =>
       getApi<SearchData>("/api/search", {
         token,
-        params: { q: submittedSearch, limit: 36, scope: "all" }
+        params: { q: submittedSearch, limit: 36, scope: "all" },
       }),
-    enabled: Boolean(token && submittedSearch)
+    enabled: Boolean(token && submittedSearch),
   });
 
   const rawTokenItems = useMemo(
     () => tokenRadarItems(assetFlowQuery.data?.data, windowKey, scope),
-    [assetFlowQuery.data?.data, scope, windowKey]
+    [assetFlowQuery.data?.data, scope, windowKey],
   );
-  const tokenItems = useMemo(() => sortTokenItems(rawTokenItems, radarSortMode), [rawTokenItems, radarSortMode]);
+  const tokenItems = useMemo(
+    () => sortTokenItems(rawTokenItems, radarSortMode),
+    [rawTokenItems, radarSortMode],
+  );
   const marketTargets = useMemo(
     () =>
       rawTokenItems.flatMap((item) => {
         const target = targetRefFromTokenItem(item);
         return target ? [target] : [];
       }),
-    [rawTokenItems]
+    [rawTokenItems],
   );
 
-  const socket = useIntelSocket({ token, handles, replay: replayLimit, notifications: true, marketTargets });
+  const socket = useIntelSocket({
+    token,
+    handles,
+    replay: replayLimit,
+    notifications: true,
+    marketTargets,
+  });
   const liveItems = useMemo(() => {
     const replayItems = recentQuery.data?.data.items ?? [];
     const byId = new Map<string, LivePayload>();
     for (const item of [...replayItems, ...socket.events]) {
       byId.set(item.event.event_id, item);
     }
-    return [...byId.values()].sort((a, b) => Number(b.event.received_at_ms ?? 0) - Number(a.event.received_at_ms ?? 0));
+    return [...byId.values()].sort(
+      (a, b) => Number(b.event.received_at_ms ?? 0) - Number(a.event.received_at_ms ?? 0),
+    );
   }, [recentQuery.data?.data.items, socket.events]);
 
   const searchData = searchQuery.data?.data;
-  const currentSearchData = searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
-  const signalLabOverviewData = signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data;
+  const currentSearchData =
+    searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
+  const signalLabOverviewData =
+    signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data;
   const signalLabPulseData = signalLabPulseQuery.data?.data ?? signalLabOverviewData;
   const compactSignalPulseItems = signalLabPulseData?.items ?? [];
   const liveSignalTapeItems = useMemo(
     () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
-    [liveItems, tokenItems]
+    [liveItems, tokenItems],
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
 
-  const socketMarketUpdates = socket.marketUpdates ?? [];
+  const socketMarketUpdates = useMemo(() => socket.marketUpdates ?? [], [socket.marketUpdates]);
   useEffect(() => {
     if (!socketMarketUpdates.length) {
       return;
@@ -176,7 +198,7 @@ export function useLiveData() {
     statusLoading: Boolean(token) && statusQuery.isPending,
     token,
     tokenItems,
-    windowKey
+    windowKey,
   };
 }
 
