@@ -521,20 +521,18 @@ def test_signal_pulse_fact_card_does_not_fallback_to_legacy_market_context() -> 
     assert "market_context_json" not in item
 
 
-def test_signal_pulse_fact_card_reads_market_facts_from_current_row_only() -> None:
+def test_signal_pulse_fact_card_reads_market_facts_from_anchor_row_only() -> None:
     row = _candidate_row(
-        "candidate-current-market",
+        "candidate-anchor-market",
         pulse_status="token_watch",
         verdict="token_watch",
         market_status="fresh",
     )
-    row["current_market"] = {
-        "fields": {
-            "market_cap_usd": {"value": 12_500_000},
-            "liquidity_usd": {"value": 820_000},
-            "holders": {"value": 14_200},
-            "volume_24h_usd": {"value": 2_300_000},
-        }
+    row["anchor_price"] = {
+        "market_cap_usd": 12_500_000,
+        "liquidity_usd": 820_000,
+        "holders": 14_200,
+        "volume_24h_usd": 2_300_000,
     }
     row["market_context_json"] = {
         "market_cap_usd": 999_000_000,
@@ -634,6 +632,18 @@ def test_signal_pulse_rejects_malformed_v2_snapshot_shape(mutate, match: str) ->
 
 def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
     market_health = "ready" if market_status == "fresh" else "missing"
+    market = {
+        "market_status": "anchored" if market_status else "missing",
+        "event_price_readiness": {"status": "ready" if market_status else "missing"},
+        "provider": "okx" if market_status else None,
+        "anchor_price_usd": 0.42 if market_status else None,
+        "anchor_price_quote": None,
+        "anchor_quote_symbol": "USD" if market_status else None,
+        "anchor_price_basis": "usd" if market_status else None,
+        "anchor_observed_at_ms": 1_700_000_000_500 if market_status else None,
+        "social_signal_start_ms": 1_700_000_000_000,
+        "anchor_lag_ms": 500 if market_status else None,
+    }
     return {
         "schema_version": "token_factor_snapshot_v2_alpha_gated",
         "subject": {
@@ -642,6 +652,7 @@ def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
             "target_id": "asset:pepe",
             "target_market_type": "dex",
         },
+        "market": market,
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
         "data_health": {"identity": "ready", "market": market_health, "social": "ready", "alpha": "ready"},
         "families": {

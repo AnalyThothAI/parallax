@@ -91,6 +91,14 @@ def _factor_snapshot() -> dict[str, object]:
     return {
         "schema_version": "token_factor_snapshot_v2_alpha_gated",
         "subject": {"target_type": "CexToken", "target_id": "cex-token:PEPE", "symbol": "PEPE"},
+        "market": {
+            "market_status": "anchored",
+            "price_change_status": "live_not_persisted",
+            "provider": "okx",
+            "anchor_price_usd": 0.42,
+            "social_signal_start_ms": 1_700_000_000_000,
+            "event_price_readiness": {"status": "ready"},
+        },
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "max_decision": "high_alert"},
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": {

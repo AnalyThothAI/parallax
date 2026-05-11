@@ -172,5 +172,5 @@ def timeline_row(
         "price_quote_symbol": None,
         "price_observed_at_ms": 1_700_000_000_000,
         "price_observation_lag_ms": 0,
-        "price_observation_kind": "message_quote",
+        "price_observation_kind": "message_anchor",
     }

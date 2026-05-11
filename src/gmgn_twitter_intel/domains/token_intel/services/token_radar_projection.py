@@ -32,7 +32,6 @@ from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder 
 )
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
 
-MARKET_FRESH_MS = 5 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
@@ -70,11 +69,6 @@ class TokenRadarProjection:
                 since_ms=analysis_since_ms,
                 scope=scope,
                 now_ms=computed_at_ms,
-            )
-            source_rows = self._hydrate_current_market(
-                source_rows,
-                now_ms=computed_at_ms,
-                score_since_ms=score_since_ms,
             )
             grouped = self._group_rows(source_rows)
             total_window_events = len(
@@ -216,33 +210,6 @@ class TokenRadarProjection:
             scope=scope,
             now_ms=now_ms,
         )
-
-    def _hydrate_current_market(
-        self,
-        rows: list[dict[str, Any]],
-        *,
-        now_ms: int,
-        score_since_ms: int,
-    ) -> list[dict[str, Any]]:
-        subjects = [
-            {"target_type": row.get("target_type"), "target_id": row.get("target_id")}
-            for row in rows
-            if row.get("target_type") and row.get("target_id") and int(row.get("received_at_ms") or 0) >= score_since_ms
-        ]
-        if not subjects:
-            return rows
-        snapshots = self.repos.current_market.current_for_subjects(subjects, now_ms=now_ms)
-        return [
-            (
-                _row_with_current_market(
-                    row,
-                    snapshots.get((str(row.get("target_type")), str(row.get("target_id")))),
-                )
-                if int(row.get("received_at_ms") or 0) >= score_since_ms
-                else row
-            )
-            for row in rows
-        ]
 
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -630,146 +597,68 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | None) -> dict[str, Any]:
-    if not snapshot:
-        return {
-            **row,
-            "current_market_snapshot": None,
-            **_missing_current_market_fields(),
-        }
-    fields = _dict(snapshot.get("fields"))
-    price = _market_field(fields, "price_usd")
-    price_quote = _market_field(fields, "price_quote")
-    quote_symbol = _market_field(fields, "quote_symbol")
-    price_basis = _market_field(fields, "price_basis")
-    market_cap = _market_field(fields, "market_cap_usd")
-    liquidity = _market_field(fields, "liquidity_usd")
-    volume_24h = _market_field(fields, "volume_24h_usd")
-    open_interest = _market_field(fields, "open_interest_usd")
-    holders = _market_field(fields, "holders")
-    return {
-        **row,
-        "current_market_snapshot": snapshot,
-        "market_provider": price.get("provider"),
-        "market_observed_at_ms": price.get("observed_at_ms"),
-        "market_price_usd": price.get("value"),
-        "market_price_status": price.get("status"),
-        "market_price_quote": price_quote.get("value"),
-        "market_quote_symbol": quote_symbol.get("value"),
-        "market_price_basis": price_basis.get("value"),
-        "market_market_cap_usd": market_cap.get("value"),
-        "market_market_cap_status": market_cap.get("status"),
-        "market_liquidity_usd": liquidity.get("value"),
-        "market_liquidity_status": liquidity.get("status"),
-        "market_volume_24h_usd": volume_24h.get("value"),
-        "market_open_interest_usd": open_interest.get("value"),
-        "market_holders": holders.get("value"),
-        "market_holders_status": holders.get("status"),
-        "market_status_from_current": snapshot.get("market_status"),
-        "market_field_statuses": {key: value.get("status") for key, value in fields.items() if isinstance(value, dict)},
-    }
-
-
-def _market_field(fields: dict[str, Any], key: str) -> dict[str, Any]:
-    value = fields.get(key)
-    return value if isinstance(value, dict) else {}
-
-
-def _missing_current_market_fields() -> dict[str, Any]:
-    return {
-        "market_provider": None,
-        "market_observed_at_ms": None,
-        "market_price_usd": None,
-        "market_price_status": "missing",
-        "market_price_quote": None,
-        "market_quote_symbol": None,
-        "market_price_basis": None,
-        "market_market_cap_usd": None,
-        "market_market_cap_status": "missing",
-        "market_liquidity_usd": None,
-        "market_liquidity_status": "missing",
-        "market_volume_24h_usd": None,
-        "market_open_interest_usd": None,
-        "market_holders": None,
-        "market_holders_status": "missing",
-        "market_status_from_current": "missing",
-        "market_field_statuses": {},
-    }
-
-
 def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
         latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0)) if window_rows else {}
         return _missing_market("no_resolved_target", native_market_id=latest.get("native_market_id"))
     if not window_rows:
-        return _missing_market("pending_refresh")
-    latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
+        return _missing_market("missing_anchor")
     social_start = min(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
-    observed_at_ms = _int_or_none(latest.get("market_observed_at_ms"))
-    if observed_at_ms is not None:
-        snapshot_age_ms = max(0, int(now_ms) - observed_at_ms)
-        fresh = snapshot_age_ms <= MARKET_FRESH_MS
-        current_status = str(latest.get("market_status_from_current") or "")
-        market_status = current_status or ("fresh" if fresh else "stale")
-        reference_value, social_value, social_basis = _comparable_price(
-            _price_values(latest, "market"),
-            _price_values(social_start, "event"),
-        )
-        social_for_before, before_value, before_basis = _comparable_price(
-            _price_values(social_start, "event"),
-            _price_values(social_start, "before_event"),
-        )
-        reference_for_first, first_value, first_basis = _comparable_price(
-            _price_values(latest, "market"),
-            _price_values(latest, "first"),
-        )
-        price_change_status = (
-            "ready" if reference_value is not None and social_value is not None else "insufficient_history"
-        )
-        if social_basis == "basis_mismatch":
-            price_change_status = "basis_mismatch"
-        market = {
-            "market_status": market_status,
-            "market_observation_status": "ready" if fresh else "stale",
-            "price_change_status": price_change_status,
-            "provider": latest.get("market_provider"),
-            "pricefeed_id": latest.get("pricefeed_id"),
-            "native_market_id": latest.get("native_market_id"),
-            "price_usd": latest.get("market_price_usd"),
-            "price_quote": latest.get("market_price_quote"),
-            "quote_symbol": latest.get("market_quote_symbol") or latest.get("pricefeed_quote_symbol"),
-            "price_basis": latest.get("market_price_basis"),
-            "market_cap_usd": latest.get("market_market_cap_usd"),
-            "liquidity_usd": latest.get("market_liquidity_usd"),
-            "volume_24h_usd": latest.get("market_volume_24h_usd"),
-            "open_interest_usd": latest.get("market_open_interest_usd"),
-            "holders": latest.get("market_holders"),
-            "field_statuses": latest.get("market_field_statuses") or {},
-            "price_status": latest.get("market_price_status"),
-            "market_cap_status": latest.get("market_market_cap_status"),
-            "liquidity_status": latest.get("market_liquidity_status"),
-            "holders_status": latest.get("market_holders_status"),
-            "snapshot_age_ms": snapshot_age_ms,
-            "snapshot_observed_at_ms": observed_at_ms,
-            "social_signal_start_ms": social_start.get("received_at_ms"),
-            "price_at_social_start": social_value,
-            "price_at_reference": reference_value,
-            "price_change_since_social_pct": _pct_change(reference_value, social_value),
-            "price_change_basis": social_basis,
-            "price_before_social_start": before_value,
-            "price_change_before_social_pct": _pct_change(social_for_before, before_value)
-            if before_basis != "basis_mismatch"
-            else None,
-            "price_at_first_snapshot": first_value,
-            "first_snapshot_observed_at_ms": latest.get("first_price_observed_at_ms"),
-            "price_change_since_first_snapshot_pct": _pct_change(reference_for_first, first_value)
-            if first_basis != "basis_mismatch"
-            else None,
-        }
-        return _with_readiness(market)
-    missing = _missing_market("pending_refresh", native_market_id=latest.get("native_market_id"))
-    missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
-    return _with_readiness(missing)
+    anchor_price_usd = social_start.get("event_price_usd")
+    anchor_price_quote = social_start.get("event_price_quote")
+    if anchor_price_usd is None and anchor_price_quote is None:
+        missing = _missing_market("missing_anchor", native_market_id=social_start.get("native_market_id"))
+        missing["social_signal_start_ms"] = social_start.get("received_at_ms")
+        return _with_readiness(missing)
+    anchor_observed_at_ms = _int_or_none(social_start.get("event_price_observed_at_ms"))
+    event_received_at_ms = _int_or_none(social_start.get("received_at_ms"))
+    anchor_lag_ms = (
+        max(0, int(anchor_observed_at_ms) - int(event_received_at_ms))
+        if anchor_observed_at_ms is not None and event_received_at_ms is not None
+        else None
+    )
+    market = {
+        "market_status": "anchored",
+        "market_observation_status": "ready",
+        "price_change_status": "live_not_persisted",
+        "provider": social_start.get("event_price_provider"),
+        "pricefeed_id": social_start.get("pricefeed_id"),
+        "native_market_id": social_start.get("native_market_id"),
+        "price_usd": None,
+        "price_quote": None,
+        "quote_symbol": social_start.get("event_price_quote_symbol"),
+        "price_basis": social_start.get("event_price_basis"),
+        "market_cap_usd": None,
+        "liquidity_usd": None,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "holders": None,
+        "field_statuses": {},
+        "price_status": "anchor_only",
+        "market_cap_status": "missing",
+        "liquidity_status": "missing",
+        "holders_status": "missing",
+        "snapshot_age_ms": None,
+        "snapshot_observed_at_ms": None,
+        "social_signal_start_ms": event_received_at_ms,
+        "anchor_price_usd": anchor_price_usd,
+        "anchor_price_quote": anchor_price_quote,
+        "anchor_quote_symbol": social_start.get("event_price_quote_symbol"),
+        "anchor_price_basis": social_start.get("event_price_basis"),
+        "anchor_observed_at_ms": anchor_observed_at_ms,
+        "anchor_lag_ms": anchor_lag_ms,
+        "price_at_social_start": anchor_price_usd if anchor_price_usd is not None else anchor_price_quote,
+        "price_at_reference": None,
+        "price_change_since_social_pct": None,
+        "price_change_basis": "anchor_only",
+        "price_before_social_start": None,
+        "price_change_before_social_pct": None,
+        "price_at_first_snapshot": social_start.get("first_price_usd") or social_start.get("first_price_quote"),
+        "first_snapshot_observed_at_ms": social_start.get("first_price_observed_at_ms"),
+        "price_change_since_first_snapshot_pct": None,
+        "live_price_persisted": False,
+    }
+    return _with_readiness(market)
 
 
 def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, Any]:
@@ -797,6 +686,12 @@ def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, A
         "snapshot_age_ms": None,
         "snapshot_observed_at_ms": None,
         "social_signal_start_ms": None,
+        "anchor_price_usd": None,
+        "anchor_price_quote": None,
+        "anchor_quote_symbol": None,
+        "anchor_price_basis": None,
+        "anchor_observed_at_ms": None,
+        "anchor_lag_ms": None,
         "price_at_social_start": None,
         "price_at_reference": None,
         "price_before_social_start": None,
@@ -805,6 +700,7 @@ def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, A
         "price_change_since_social_pct": None,
         "price_change_before_social_pct": None,
         "price_change_since_first_snapshot_pct": None,
+        "live_price_persisted": False,
     }
     return _with_readiness(market)
 

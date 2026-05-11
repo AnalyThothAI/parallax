@@ -6,10 +6,10 @@
 
 ```
 usage: gmgn-twitter-intel [-h]
-                          {serve,init,config,db,recent,search,asset-flow,current-market,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops} ...
+                          {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,db,recent,search,asset-flow,current-market,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops}
+  {serve,init,config,db,recent,search,asset-flow,account-alerts,account-quality,social-events,attention-seeds,harness-snapshots,harness-outcomes,harness-credits,harness-weights,harness-score-buckets,harness-health,enrichment-jobs,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.gmgn-twitter-intel/config.yaml
     config              print effective runtime configuration
@@ -18,7 +18,6 @@ positional arguments:
     search              search stored tweets by CA, symbol, handle, or text
     asset-flow          rank resolved assets and unresolved attention
                         candidates
-    current-market      print field-aware current market snapshot
     account-alerts      print watched-account token alerts
     account-quality     print account quality profiles
     social-events       print harness social event read model
@@ -61,10 +60,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,backfill-current-market-field-facts,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,backfill-current-market-field-facts,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -103,9 +102,6 @@ positional arguments:
     backfill-token-price-baselines
                         backfill token radar event price baselines from
                         message observations
-    backfill-current-market-field-facts
-                        backfill current market field facts from price
-                        observations
     factor-diagnostics  inspect token factor distribution health for latest
                         radar rows
     settle-token-factors

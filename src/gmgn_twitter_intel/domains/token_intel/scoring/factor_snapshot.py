@@ -35,8 +35,9 @@ _FAMILY_WEIGHTS = {
     "attention_heat": 0.35,
     "diffusion_quality": 0.30,
     "semantic_quality": 0.25,
-    "timing_response": 0.10,
+    "timing_response": 0.0,
 }
+_ALPHA_RANK_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality")
 
 
 def build_token_factor_snapshot(
@@ -77,6 +78,7 @@ def build_token_factor_snapshot(
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": subject,
+        "market": market,
         "gates": gates,
         "data_health": {
             "identity": identity_health,
@@ -194,12 +196,22 @@ def _timing_response_family(*, timing: dict[str, Any], market: dict[str, Any]) -
     social_signal_start_ms = timing.get("social_signal_start_ms") or market.get("social_signal_start_ms")
     price_change_before_social_pct = _optional_float(timing.get("price_change_before_social_pct"))
     price_change_since_social_pct = _optional_float(timing.get("price_change_since_social_pct"))
+    price_change_status = _optional_str(market.get("price_change_status"))
     facts = {
         "price_change_before_social_pct": price_change_before_social_pct,
         "price_change_since_social_pct": price_change_since_social_pct,
         "social_signal_start_ms": _optional_int(social_signal_start_ms),
-        "price_change_status": _optional_str(market.get("price_change_status")),
+        "price_change_status": price_change_status,
     }
+    if price_change_status == "live_not_persisted":
+        return {
+            "raw_score": 0,
+            "score": 0,
+            "weight": _FAMILY_WEIGHTS["timing_response"],
+            "data_health": "anchor_only",
+            "facts": facts,
+            "factors": {},
+        }
     return _family(
         "timing_response",
         facts=facts,
@@ -225,17 +237,20 @@ def _gates(
     if _identity_unresolved(subject):
         blocked_reasons.append("identity_unresolved")
         discard_cap_reasons.append("identity_unresolved")
-    market_status = market.get("market_status") or market.get("market_observation_status")
-    if freshness_reason := _market_freshness_block_reason(market_status):
-        blocked_reasons.append(freshness_reason)
-        discard_cap_reasons.append(freshness_reason)
     if alpha_health == "missing":
         blocked_reasons.append("alpha_data_missing")
         discard_cap_reasons.append("alpha_data_missing")
     if subject["target_market_type"] == "dex":
+        metadata_missing = False
         for key, reason in _DEX_FLOOR_REASONS.items():
-            if _is_below(market.get(key), key):
+            value = _optional_float(market.get(key))
+            if value is None:
+                metadata_missing = True
+                continue
+            if _is_below(value, key):
                 blocked_reasons.append(reason)
+        if metadata_missing:
+            risk_reasons.append("market_metadata_missing")
     independent_sources = max(
         _count_int(attention.get("unique_authors")),
         _count_int(social_quality.get("independent_authors")),
@@ -282,11 +297,15 @@ def _composite(*, families: dict[str, dict[str, Any]], gates: dict[str, Any]) ->
 
 
 def _raw_alpha_score(families: dict[str, dict[str, Any]]) -> int:
+    total_weight = sum(safe_float(families[family].get("weight")) for family in _ALPHA_RANK_FAMILIES)
+    if total_weight <= 0:
+        return 0
     return clamp_score(
         sum(
             safe_float(families[family].get("score")) * safe_float(families[family].get("weight"))
-            for family in FACTOR_FAMILIES
+            for family in _ALPHA_RANK_FAMILIES
         )
+        / total_weight
     )
 
 
@@ -439,11 +458,13 @@ def _market_health(*, subject: dict[str, Any], market: dict[str, Any]) -> str:
     status = str(market.get("market_status") or market.get("market_observation_status") or "").lower()
     if status in {"", "missing", "missing_market", "none", "null"}:
         return "missing"
-    if status not in {"fresh", "ready"}:
+    if status not in {"fresh", "ready", "anchored"}:
         return "partial"
     if subject["target_market_type"] != "dex":
         return "ready"
     floor_health = [_optional_float(market.get(key)) is not None for key in _DEX_FLOOR_REASONS]
+    if status == "anchored" and not any(floor_health):
+        return "partial"
     if all(floor_health):
         return "ready"
     if any(floor_health):
@@ -530,15 +551,6 @@ def _identity_unresolved(subject: dict[str, Any]) -> bool:
     target_type = str(subject.get("target_type") or "").lower()
     target_id = str(subject.get("target_id") or "")
     return not target_type or not target_id or target_type in {"source_seed", "sourceseed", "unresolved"}
-
-
-def _market_freshness_block_reason(market_status: Any) -> str | None:
-    status = str(market_status or "").lower()
-    if status in {"fresh", "ready"}:
-        return None
-    if status in {"", "missing", "missing_market", "none", "null"}:
-        return "market_freshness_missing"
-    return "market_freshness_stale"
 
 
 def _is_below(value: Any, floor_key: str) -> bool:

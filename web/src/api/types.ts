@@ -159,13 +159,13 @@ export type NotificationLivePayload = {
   notification: NotificationItem;
 };
 
-export type MarketUpdatePayload = {
-  type: "market_update";
+export type LiveMarketUpdatePayload = {
+  type: "live_market_update";
   target_type: string;
   target_id: string;
   provider?: string | null;
   observed_at_ms?: number | null;
-  current_market: CurrentMarketSnapshot;
+  live_market: LiveMarketSnapshot;
 };
 
 export type RecentData = {
@@ -262,20 +262,36 @@ export type TokenRadarDataHealth = {
   [key: string]: unknown;
 };
 
-export type MarketFieldFact = {
-  value?: number | string | null;
-  status: "fresh" | "partial" | "stale" | "missing" | "unsupported" | "rate_limited" | "provider_error" | string;
-  observed_at_ms?: number | null;
-  age_ms?: number | null;
-  provider?: string | null;
-  source_observation_id?: string | null;
-};
-
-export type CurrentMarketSnapshot = {
+export type AnchorPriceSnapshot = {
   target_type?: string | null;
   target_id?: string | null;
-  market_status: "fresh" | "partial" | "stale" | "missing" | string;
-  fields: Record<string, MarketFieldFact>;
+  status: "ready" | "missing" | "pending" | string;
+  price_usd?: number | null;
+  price_quote?: number | null;
+  quote_symbol?: string | null;
+  price_basis?: string | null;
+  provider?: string | null;
+  anchor_observed_at_ms?: number | null;
+  event_received_at_ms?: number | null;
+  anchor_lag_ms?: number | null;
+};
+
+export type LiveMarketSnapshot = {
+  target_type?: string | null;
+  target_id?: string | null;
+  status: "live" | "stale" | "missing" | "unsupported" | string;
+  price_usd?: number | null;
+  price_quote?: number | null;
+  quote_symbol?: string | null;
+  price_basis?: string | null;
+  market_cap_usd?: number | null;
+  liquidity_usd?: number | null;
+  holders?: number | null;
+  volume_24h_usd?: number | null;
+  observed_at_ms?: number | null;
+  received_at_ms?: number | null;
+  age_ms?: number | null;
+  provider?: string | null;
 };
 
 export type AssetFlowRow = {
@@ -283,7 +299,8 @@ export type AssetFlowRow = {
   target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
   source_event_ids?: string[];
-  current_market: CurrentMarketSnapshot;
+  anchor_price: AnchorPriceSnapshot;
+  live_market: LiveMarketSnapshot;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
@@ -818,6 +835,7 @@ export type TokenFactorSnapshot = {
     address?: string | null;
     pricefeed_id?: string | null;
   };
+  market: Record<string, unknown>;
   gates: {
     eligible_for_high_alert: boolean;
     max_decision?: string | null;
@@ -970,14 +988,21 @@ export type StatusData = {
     last_result?: Record<string, unknown> | null;
     last_error?: string | null;
   };
-  asset_market_sync?: {
-    okx_cex_sync_enabled?: boolean;
+  anchor_price?: {
     worker_running: boolean;
     last_started_at_ms?: number | null;
     last_run_at_ms?: number | null;
     last_result?: Record<string, unknown> | null;
     last_error?: string | null;
-    providers?: Record<string, Record<string, unknown>>;
+  };
+  live_price_gateway?: {
+    configured?: boolean;
+    worker_running: boolean;
+    subscription_limit?: number | null;
+    last_started_at_ms?: number | null;
+    last_run_at_ms?: number | null;
+    last_result?: Record<string, unknown> | null;
+    last_error?: string | null;
   };
   notifications?: {
     enabled: boolean;

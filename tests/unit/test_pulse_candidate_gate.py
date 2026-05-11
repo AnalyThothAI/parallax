@@ -26,6 +26,14 @@ def _snapshot(
             "target_market_type": "dex" if target_id else None,
             "symbol": symbol,
         },
+        "market": {
+            "market_status": "anchored" if target_id else "missing",
+            "price_change_status": "live_not_persisted" if target_id else "missing_anchor",
+            "provider": "okx" if target_id else None,
+            "anchor_price_usd": 0.42 if target_id else None,
+            "social_signal_start_ms": 1_700_000_000_000,
+            "event_price_readiness": {"status": "ready" if target_id else "missing"},
+        },
         "gates": {
             "eligible_for_high_alert": eligible,
             "blocked_reasons": blocked_reasons or [],

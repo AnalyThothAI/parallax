@@ -32,6 +32,7 @@ def test_factor_snapshot_outputs_v2_alpha_gated_shape() -> None:
     assert set(snapshot) == {
         "schema_version",
         "subject",
+        "market",
         "gates",
         "data_health",
         "families",
@@ -140,13 +141,11 @@ def test_fresh_dex_market_missing_floor_inputs_is_not_market_ready() -> None:
     )
 
     assert snapshot["data_health"]["market"] == "missing"
-    assert set(snapshot["gates"]["blocked_reasons"]) >= {
-        "holders_below_high_alert_floor",
-        "liquidity_below_high_alert_floor",
-        "market_cap_below_high_alert_floor",
-    }
-    assert snapshot["gates"]["eligible_for_high_alert"] is False
-    assert snapshot["composite"]["recommended_decision"] != "high_alert"
+    assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
+    assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
+    assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
+    assert "market_cap_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
+    assert snapshot["gates"]["eligible_for_high_alert"] is True
 
 
 def test_cex_token_does_not_apply_dex_holder_liquidity_floors_or_native_market_alpha() -> None:
@@ -196,25 +195,25 @@ def test_high_raw_alpha_with_unresolved_identity_is_capped_to_discard() -> None:
 
 
 @pytest.mark.parametrize(
-    ("market_status", "reason", "market_health"),
+    ("market_status", "market_health"),
     [
-        ("stale", "market_freshness_stale", "partial"),
-        (None, "market_freshness_missing", "missing"),
+        ("stale", "partial"),
+        (None, "missing"),
     ],
 )
-def test_high_raw_alpha_with_unfresh_market_is_capped_to_discard(
+def test_high_raw_alpha_with_unfresh_market_is_not_capped_by_backend_market_freshness(
     market_status: object,
-    reason: str,
     market_health: str,
 ) -> None:
     snapshot = _strong_dex_snapshot(market={"market_status": market_status})
 
     assert snapshot["composite"]["raw_alpha_score"] >= 70
     assert snapshot["data_health"]["market"] == market_health
-    assert snapshot["gates"]["eligible_for_high_alert"] is False
-    assert reason in snapshot["gates"]["blocked_reasons"]
-    assert snapshot["gates"]["max_decision"] == "discard"
-    assert snapshot["composite"]["recommended_decision"] == "discard"
+    assert "market_freshness_stale" not in snapshot["gates"]["blocked_reasons"]
+    assert "market_freshness_missing" not in snapshot["gates"]["blocked_reasons"]
+    assert snapshot["gates"]["eligible_for_high_alert"] is True
+    assert snapshot["gates"]["max_decision"] == "high_alert"
+    assert snapshot["composite"]["recommended_decision"] == "high_alert"
 
 
 def test_unresolved_identity_and_stale_market_gate_high_alert() -> None:
@@ -226,10 +225,8 @@ def test_unresolved_identity_and_stale_market_gate_high_alert() -> None:
     assert snapshot["data_health"]["identity"] == "missing"
     assert snapshot["data_health"]["market"] == "partial"
     assert snapshot["gates"]["eligible_for_high_alert"] is False
-    assert set(snapshot["gates"]["blocked_reasons"]) >= {
-        "identity_unresolved",
-        "market_freshness_stale",
-    }
+    assert set(snapshot["gates"]["blocked_reasons"]) >= {"identity_unresolved"}
+    assert "market_freshness_stale" not in snapshot["gates"]["blocked_reasons"]
     assert snapshot["composite"]["recommended_decision"] != "high_alert"
 
 
@@ -262,7 +259,7 @@ def test_eligible_raw_alpha_35_recommends_watch() -> None:
 
     assert snapshot["gates"]["eligible_for_high_alert"] is True
     assert snapshot["gates"]["max_decision"] == "high_alert"
-    assert snapshot["composite"]["raw_alpha_score"] == 35
+    assert snapshot["composite"]["raw_alpha_score"] == 39
     assert snapshot["composite"]["recommended_decision"] == "watch"
 
 
@@ -330,11 +327,10 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
     assert snapshot["families"]["diffusion_quality"]["factors"]["duplicate_text_share_penalty"]["raw_value"] is None
     assert snapshot["families"]["diffusion_quality"]["factors"]["top_author_concentration_penalty"]["raw_value"] is None
     assert snapshot["families"]["timing_response"]["facts"]["social_signal_start_ms"] is None
-    assert set(snapshot["gates"]["blocked_reasons"]) >= {
-        "holders_below_high_alert_floor",
-        "liquidity_below_high_alert_floor",
-        "market_cap_below_high_alert_floor",
-    }
+    assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
+    assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
+    assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
+    assert "market_cap_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
 
 
 @pytest.mark.parametrize("computed_at_ms", [float("inf"), float("-inf"), float("nan")])

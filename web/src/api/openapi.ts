@@ -72,23 +72,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/current-market": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Current Market */
-        get: operations["current_market_api_current_market_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/enrichment-jobs": {
         parameters: {
             query?: never;
@@ -200,6 +183,23 @@ export interface paths {
         };
         /** Harness Weights */
         get: operations["harness_weights_api_harness_weights_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/live-market": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live Market */
+        get: operations["live_market_api_live_market_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -629,38 +629,6 @@ export interface operations {
             };
         };
     };
-    current_market_api_current_market_get: {
-        parameters: {
-            query?: {
-                target_type?: string;
-                target_id?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     enrichment_jobs_api_enrichment_jobs_get: {
         parameters: {
             query?: {
@@ -851,6 +819,38 @@ export interface operations {
             query?: {
                 horizon?: string;
                 limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    live_market_api_live_market_get: {
+        parameters: {
+            query?: {
+                target_type?: string;
+                target_id?: string;
             };
             header?: never;
             path?: never;

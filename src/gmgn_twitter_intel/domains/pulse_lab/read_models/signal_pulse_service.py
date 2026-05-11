@@ -199,24 +199,15 @@ _MISSING = object()
 
 
 def _row_market_facts(row: dict[str, Any]) -> dict[str, Any]:
-    fields = _dict(_dict(row.get("current_market")).get("fields"))
+    anchor = _dict(row.get("anchor_price"))
     facts: dict[str, Any] = {}
     for key in ("price_usd", "market_cap_usd", "liquidity_usd", "holders", "volume_24h_usd"):
-        value = _market_field_value(fields, key)
+        value = anchor.get(key, _MISSING)
         if value is _MISSING and key in row:
             value = row.get(key)
         if value is not _MISSING:
             facts[key] = value
     return facts
-
-
-def _market_field_value(fields: dict[str, Any], key: str) -> Any:
-    if key not in fields:
-        return _MISSING
-    field = _dict(fields.get(key))
-    if not field:
-        return _MISSING
-    return field.get("value")
 
 
 def _list(value: Any) -> list[Any]:

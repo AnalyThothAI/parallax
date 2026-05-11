@@ -421,7 +421,7 @@ class FakeRegistry:
     def find_preferred_cex_pricefeed(self, base_symbol):
         return self.preferred_cex_pricefeeds.get(str(base_symbol).upper())
 
-    def find_assets_by_symbol_with_latest_observation(self, symbol):
+    def find_assets_by_symbol_with_identity_metadata(self, symbol):
         return [_registry_asset_row(row) for row in self.symbol_assets.get(str(symbol).upper(), [])]
 
     def find_assets_by_address(self, *, chain_id=None, address):

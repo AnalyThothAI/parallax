@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenPrice
-from gmgn_twitter_intel.domains.asset_market.services.message_market_observation import observe_message_market
+from gmgn_twitter_intel.domains.asset_market.services.anchor_price_observation import observe_anchor_prices
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
-def test_message_market_observation_writes_cex_message_quote():
+def test_anchor_price_observation_writes_cex_message_anchor():
     repos = FakeRepos(
         rows=[
             {
@@ -21,7 +21,7 @@ def test_message_market_observation_writes_cex_message_quote():
             }
         ]
     )
-    result = observe_message_market(
+    result = observe_anchor_prices(
         repos=repos,
         cex_market=FakeCexMarket(
             {
@@ -41,9 +41,10 @@ def test_message_market_observation_writes_cex_message_quote():
     )
 
     assert result["rows_selected"] == 1
-    assert result["observations_written"] == 1
+    assert result["anchor_observations_written"] == 1
     observation = repos.price_observations.observations[0]
-    assert observation["observation_kind"] == "message_quote"
+    assert observation["provider"] == "okx"
+    assert observation["observation_kind"] == "message_anchor"
     assert observation["source_event_id"] == "event-1"
     assert observation["source_intent_id"] == "intent-1"
     assert observation["source_resolution_id"] == "resolution-1"
@@ -59,7 +60,7 @@ def test_message_market_observation_writes_cex_message_quote():
     assert repos.conn.params[-1] == 10
 
 
-def test_message_market_observation_writes_dex_message_quote_per_message():
+def test_anchor_price_observation_writes_dex_message_anchor_per_message():
     repos = FakeRepos(
         rows=[
             {
@@ -94,7 +95,7 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
             },
         ]
     )
-    result = observe_message_market(
+    result = observe_anchor_prices(
         repos=repos,
         cex_market=None,
         dex_market=FakeDexMarket(
@@ -114,7 +115,7 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
 
     assert result["rows_selected"] == 2
     assert result["dex_price_requests"] == 1
-    assert result["observations_written"] == 2
+    assert result["anchor_observations_written"] == 2
     assert [item["source_event_id"] for item in repos.price_observations.observations] == ["event-1", "event-2"]
     assert {item["source_resolution_id"] for item in repos.price_observations.observations} == {
         "resolution-1",
@@ -123,7 +124,7 @@ def test_message_market_observation_writes_dex_message_quote_per_message():
     dex_quote_observations = [
         item
         for item in repos.price_observations.observations
-        if item["provider"] == "okx_dex_price" and item["observation_kind"] == "message_quote"
+        if item["provider"] == "okx" and item["observation_kind"] == "message_anchor"
     ]
     assert len(dex_quote_observations) == 2
     assert all(item["price_usd"] == 1.23 for item in dex_quote_observations)

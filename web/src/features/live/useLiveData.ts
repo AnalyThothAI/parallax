@@ -16,7 +16,7 @@ import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/token
 import { useTraderStore } from "../../store/useTraderStore";
 
 import { buildLiveSignalTapeItems } from "./liveTapeModel";
-import { patchTokenRadarMarketUpdate } from "./marketUpdatePatch";
+import { patchTokenRadarLiveMarketUpdate } from "./liveMarketUpdatePatch";
 
 const SIGNAL_LAB_COMPACT_WINDOW = "1h";
 const SIGNAL_LAB_COMPACT_SCOPE = "all";
@@ -164,12 +164,12 @@ export function useLiveData() {
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
 
   useEffect(() => {
-    const socketMarketUpdates = socket.marketUpdates ?? [];
-    if (!socketMarketUpdates.length) {
+    const liveMarketUpdates = socket.liveMarketUpdates ?? [];
+    if (!liveMarketUpdates.length) {
       return;
     }
-    patchTokenRadarMarketUpdate(queryClient, socketMarketUpdates[0]);
-  }, [assetFlowQuery.dataUpdatedAt, queryClient, socket.marketUpdates]);
+    patchTokenRadarLiveMarketUpdate(queryClient, liveMarketUpdates[0]);
+  }, [assetFlowQuery.dataUpdatedAt, queryClient, socket.liveMarketUpdates]);
 
   return {
     assetFlowError: assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null,

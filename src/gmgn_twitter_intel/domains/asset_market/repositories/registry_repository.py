@@ -3,22 +3,6 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
-from gmgn_twitter_intel.domains.asset_market.market_field_facts import (
-    DEX_METADATA_CAPABLE_PROVIDERS,
-    PRICE_CAPABLE_PROVIDERS,
-)
-
-
-def _sql_values(values: frozenset[str]) -> str:
-    return ", ".join(f"'{value}'" for value in sorted(values))
-
-
-# Inlined to avoid circular import: asset_market.interfaces → token_intel.interfaces → asset_market.interfaces
-# This string must stay in sync with TOKEN_RADAR_RESOLVER_POLICY_VERSION in token_intel/interfaces.py
-TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
-PRICE_PROVIDER_SQL = _sql_values(PRICE_CAPABLE_PROVIDERS)
-DEX_METADATA_PROVIDER_SQL = _sql_values(DEX_METADATA_CAPABLE_PROVIDERS)
-
 
 class RegistryRepository:
     def __init__(self, conn: Any):
@@ -203,81 +187,41 @@ class RegistryRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def find_assets_by_symbol_with_latest_observation(self, symbol: str) -> list[dict[str, Any]]:
+    def find_assets_by_symbol_with_identity_metadata(self, symbol: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            f"""
+            """
             SELECT
               registry_assets.*,
               asset_identity_current.canonical_symbol AS symbol,
               asset_identity_current.canonical_name AS name,
               asset_identity_current.decimals,
               asset_identity_current.identity_confidence,
-              latest_price.price_usd,
-              latest_price.observed_at_ms AS observed_at_ms,
-              latest_price.observed_at_ms AS price_observed_at_ms,
-              latest_price.provider AS price_provider,
-              market_cap.market_cap_usd,
-              market_cap.observed_at_ms AS market_cap_observed_at_ms,
-              market_cap.provider AS market_cap_provider,
-              liquidity.liquidity_usd,
-              liquidity.observed_at_ms AS liquidity_observed_at_ms,
-              liquidity.provider AS liquidity_provider,
-              latest_price.volume_24h_usd,
-              holders.holders,
-              holders.observed_at_ms AS holders_observed_at_ms,
-              holders.provider AS holders_provider
+              identity_metadata.raw_payload_json AS identity_raw_payload_json,
+              identity_metadata.observed_at_ms AS observed_at_ms,
+              identity_metadata.observed_at_ms AS identity_metadata_observed_at_ms,
+              identity_metadata.provider AS identity_metadata_provider
             FROM registry_assets
             LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = 'Asset'
-                AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ({PRICE_PROVIDER_SQL})
-                AND price_observations.price_usd IS NOT NULL
-              ORDER BY observed_at_ms DESC, observation_id DESC
+              SELECT raw_payload_json, observed_at_ms, provider
+              FROM asset_identity_evidence
+              WHERE asset_identity_evidence.asset_id = registry_assets.asset_id
+                AND asset_identity_evidence.provider = 'okx'
+                AND asset_identity_evidence.lookup_mode IN ('symbol_search', 'exact_address')
+              ORDER BY observed_at_ms DESC, evidence_id DESC
               LIMIT 1
-            ) latest_price ON true
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = 'Asset'
-                AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ({DEX_METADATA_PROVIDER_SQL})
-                AND price_observations.market_cap_usd IS NOT NULL
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) market_cap ON true
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = 'Asset'
-                AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ({DEX_METADATA_PROVIDER_SQL})
-                AND price_observations.liquidity_usd IS NOT NULL
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) liquidity ON true
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = 'Asset'
-                AND price_observations.subject_id = registry_assets.asset_id
-                AND price_observations.provider IN ({DEX_METADATA_PROVIDER_SQL})
-                AND price_observations.holders IS NOT NULL
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) holders ON true
+            ) identity_metadata ON true
             JOIN asset_identity_current
               ON asset_identity_current.asset_id = registry_assets.asset_id
             WHERE asset_identity_current.canonical_symbol = %s
               AND registry_assets.status IN ('candidate', 'canonical')
-            ORDER BY market_cap.market_cap_usd DESC NULLS LAST, registry_assets.asset_id
+            ORDER BY registry_assets.asset_id
             """,
             (_symbol(symbol),),
         ).fetchall()
-        return [_with_resolution_field_statuses(dict(row)) for row in rows]
+        assets = [_with_identity_metadata(dict(row)) for row in rows]
+        return sorted(assets, key=_identity_metadata_sort_key)
 
-    def active_dex_market_stream_targets(
+    def active_live_market_targets(
         self,
         *,
         projection_version: str,
@@ -287,34 +231,92 @@ class RegistryRepository:
         rows = self.conn.execute(
             """
             WITH active_targets AS (
-              SELECT DISTINCT ON (token_radar_rows.target_id)
-                token_radar_rows.target_id AS asset_id,
+              SELECT DISTINCT ON (token_radar_rows.target_type, token_radar_rows.target_id)
+                token_radar_rows.target_type,
+                token_radar_rows.target_id,
                 token_radar_rows.pricefeed_id,
                 token_radar_rows.computed_at_ms,
                 token_radar_rows.source_max_received_at_ms
               FROM token_radar_rows
               WHERE token_radar_rows.projection_version = %s
-                AND token_radar_rows.target_type = 'Asset'
+                AND token_radar_rows.target_type IN ('Asset', 'CexToken')
                 AND token_radar_rows.target_id IS NOT NULL
                 AND token_radar_rows.computed_at_ms >= %s
-              ORDER BY token_radar_rows.target_id, token_radar_rows.computed_at_ms DESC
+              ORDER BY token_radar_rows.target_type, token_radar_rows.target_id, token_radar_rows.computed_at_ms DESC
+            ),
+            live_targets AS (
+              SELECT
+                'Asset' AS target_type,
+                active_targets.target_id,
+                registry_assets.chain_id,
+                registry_assets.address,
+                NULL::text AS native_market_id,
+                NULL::text AS quote_symbol,
+                'okx' AS provider,
+                active_targets.computed_at_ms,
+                active_targets.source_max_received_at_ms
+              FROM active_targets
+              JOIN registry_assets ON registry_assets.asset_id = active_targets.target_id
+              WHERE active_targets.target_type = 'Asset'
+                AND registry_assets.status IN ('candidate', 'canonical')
+                AND registry_assets.chain_id IS NOT NULL
+                AND registry_assets.address IS NOT NULL
+              UNION ALL
+              SELECT
+                'CexToken' AS target_type,
+                active_targets.target_id,
+                NULL::text AS chain_id,
+                NULL::text AS address,
+                COALESCE(selected_pricefeed.native_market_id, preferred_pricefeed.native_market_id) AS native_market_id,
+                COALESCE(selected_pricefeed.quote_symbol, preferred_pricefeed.quote_symbol) AS quote_symbol,
+                COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider, 'okx') AS provider,
+                active_targets.computed_at_ms,
+                active_targets.source_max_received_at_ms
+              FROM active_targets
+              JOIN cex_tokens ON cex_tokens.cex_token_id = active_targets.target_id
+              LEFT JOIN price_feeds selected_pricefeed
+                ON selected_pricefeed.pricefeed_id = active_targets.pricefeed_id
+               AND selected_pricefeed.subject_type = 'CexToken'
+               AND selected_pricefeed.subject_id = active_targets.target_id
+              LEFT JOIN LATERAL (
+                SELECT *
+                FROM price_feeds
+                WHERE price_feeds.subject_type = 'CexToken'
+                  AND price_feeds.subject_id = active_targets.target_id
+                  AND price_feeds.feed_type LIKE 'cex_%%'
+                  AND price_feeds.status IN ('candidate', 'canonical')
+                ORDER BY
+                  CASE
+                    WHEN price_feeds.feed_type = 'cex_spot' THEN 0
+                    WHEN price_feeds.feed_type = 'cex_swap' THEN 1
+                    ELSE 2
+                  END,
+                  CASE
+                    WHEN price_feeds.quote_symbol = 'USDT' THEN 0
+                    WHEN price_feeds.quote_symbol = 'USD' THEN 1
+                    WHEN price_feeds.quote_symbol = 'USDC' THEN 2
+                    ELSE 9
+                  END,
+                  price_feeds.updated_at_ms DESC,
+                  price_feeds.native_market_id ASC
+                LIMIT 1
+              ) preferred_pricefeed ON true
+              WHERE active_targets.target_type = 'CexToken'
+                AND cex_tokens.status IN ('candidate', 'canonical')
             )
             SELECT
-              registry_assets.asset_id,
-              registry_assets.chain_id,
-              registry_assets.address,
-              asset_identity_current.canonical_symbol AS symbol,
-              active_targets.pricefeed_id,
-              active_targets.computed_at_ms,
-              active_targets.source_max_received_at_ms
-            FROM active_targets
-            JOIN registry_assets ON registry_assets.asset_id = active_targets.asset_id
-            LEFT JOIN asset_identity_current
-              ON asset_identity_current.asset_id = registry_assets.asset_id
-            WHERE registry_assets.status IN ('candidate', 'canonical')
-              AND registry_assets.chain_id IS NOT NULL
-              AND registry_assets.address IS NOT NULL
-            ORDER BY active_targets.computed_at_ms DESC, registry_assets.asset_id
+              target_type,
+              target_id,
+              chain_id,
+              address,
+              native_market_id,
+              quote_symbol,
+              provider,
+              computed_at_ms,
+              source_max_received_at_ms
+            FROM live_targets
+            WHERE target_type = 'Asset' OR native_market_id IS NOT NULL
+            ORDER BY computed_at_ms DESC, target_type, target_id
             LIMIT %s
             """,
             (projection_version, int(since_ms), max(0, int(limit))),
@@ -362,117 +364,6 @@ class RegistryRepository:
             (_symbol(base_symbol),),
         ).fetchone()
         return dict(row) if row else None
-
-    def chain_assets_needing_price_refresh(self, *, stale_before_ms: int, limit: int) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT
-              registry_assets.*,
-              asset_identity_current.canonical_symbol AS symbol,
-              asset_identity_current.canonical_name AS name,
-              asset_identity_current.decimals,
-              asset_identity_current.identity_confidence,
-              latest_price.observed_at_ms AS latest_price_observed_at_ms,
-              latest_price.market_cap_usd,
-              latest_price.liquidity_usd,
-              latest_price.volume_24h_usd,
-              latest_price.open_interest_usd,
-              latest_price.holders
-            FROM registry_assets
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = 'Asset'
-                AND price_observations.subject_id = registry_assets.asset_id
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) latest_price ON true
-            LEFT JOIN asset_identity_current
-              ON asset_identity_current.asset_id = registry_assets.asset_id
-            WHERE registry_assets.status IN ('candidate', 'canonical')
-              AND (
-                latest_price.observed_at_ms IS NULL
-                OR latest_price.observed_at_ms < %s
-              )
-            ORDER BY COALESCE(latest_price.observed_at_ms, 0) ASC, registry_assets.updated_at_ms DESC
-            LIMIT %s
-            """,
-            (int(stale_before_ms), max(0, int(limit))),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def chain_assets_needing_radar_price_refresh(
-        self,
-        *,
-        stale_before_ms: int,
-        radar_since_ms: int,
-        hot_since_ms: int,
-        limit: int,
-    ) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH candidate_mentions AS (
-              SELECT
-                token_intent_resolutions.target_id AS asset_id,
-                MAX(events.received_at_ms) AS latest_candidate_received_at_ms,
-                COUNT(DISTINCT events.event_id) AS candidate_event_count
-              FROM token_intent_resolutions
-              JOIN events ON events.event_id = token_intent_resolutions.event_id
-              WHERE token_intent_resolutions.is_current = true
-                AND token_intent_resolutions.resolver_policy_version = %s
-                AND token_intent_resolutions.target_type = 'Asset'
-                AND token_intent_resolutions.target_id IS NOT NULL
-                AND events.received_at_ms >= %s
-              GROUP BY token_intent_resolutions.target_id
-            )
-            SELECT
-              registry_assets.*,
-              asset_identity_current.canonical_symbol AS symbol,
-              asset_identity_current.canonical_name AS name,
-              asset_identity_current.decimals,
-              asset_identity_current.identity_confidence,
-              latest_price.observed_at_ms AS latest_price_observed_at_ms,
-              latest_price.market_cap_usd,
-              latest_price.liquidity_usd,
-              latest_price.volume_24h_usd,
-              latest_price.open_interest_usd,
-              latest_price.holders,
-              candidate_mentions.latest_candidate_received_at_ms,
-              candidate_mentions.candidate_event_count
-            FROM candidate_mentions
-            JOIN registry_assets ON registry_assets.asset_id = candidate_mentions.asset_id
-            LEFT JOIN asset_identity_current
-              ON asset_identity_current.asset_id = registry_assets.asset_id
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = 'Asset'
-                AND price_observations.subject_id = registry_assets.asset_id
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) latest_price ON true
-            WHERE registry_assets.status IN ('candidate', 'canonical')
-              AND (
-                latest_price.observed_at_ms IS NULL
-                OR latest_price.observed_at_ms < %s
-              )
-            ORDER BY
-              CASE WHEN candidate_mentions.latest_candidate_received_at_ms >= %s THEN 0 ELSE 1 END,
-              candidate_mentions.latest_candidate_received_at_ms DESC,
-              COALESCE(latest_price.observed_at_ms, 0) ASC,
-              registry_assets.updated_at_ms DESC,
-              registry_assets.asset_id
-            LIMIT %s
-            """,
-            (
-                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
-                int(radar_since_ms),
-                int(stale_before_ms),
-                int(hot_since_ms),
-                max(0, int(limit)),
-            ),
-        ).fetchall()
-        return [dict(row) for row in rows]
 
     def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
         row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()
@@ -526,18 +417,77 @@ def _address_lookup(value: str) -> str:
     return value.strip().lower()
 
 
-def _with_resolution_field_statuses(row: dict[str, Any]) -> dict[str, Any]:
+def _with_identity_metadata(row: dict[str, Any]) -> dict[str, Any]:
+    payload = row.pop("identity_raw_payload_json", None) or {}
+    observed_at_ms = row.get("identity_metadata_observed_at_ms")
+    provider = row.get("identity_metadata_provider")
+    market_cap_usd = _metadata_number(
+        payload,
+        "market_cap_usd",
+        "marketCapUsd",
+        "marketCapUSD",
+        "marketCap",
+        "market_cap",
+        "mcap",
+    )
+    liquidity_usd = _metadata_number(
+        payload,
+        "liquidity_usd",
+        "liquidityUsd",
+        "liquidityUSD",
+        "liquidity",
+    )
+    holders = _metadata_int(payload, "holders", "holderCount", "holder_count")
     return {
         **row,
-        "market_cap_status": _resolution_field_status(row, "market_cap"),
-        "liquidity_status": _resolution_field_status(row, "liquidity"),
-        "holders_status": _resolution_field_status(row, "holders"),
+        "price_usd": _metadata_number(payload, "price_usd", "priceUsd", "priceUSD", "price"),
+        "price_observed_at_ms": observed_at_ms,
+        "price_provider": provider,
+        "market_cap_usd": market_cap_usd,
+        "market_cap_observed_at_ms": observed_at_ms if market_cap_usd is not None else None,
+        "market_cap_provider": provider if market_cap_usd is not None else None,
+        "liquidity_usd": liquidity_usd,
+        "liquidity_observed_at_ms": observed_at_ms if liquidity_usd is not None else None,
+        "liquidity_provider": provider if liquidity_usd is not None else None,
+        "volume_24h_usd": _metadata_number(payload, "volume_24h_usd", "volume24hUsd", "volume24hUSD", "volume24h"),
+        "holders": holders,
+        "holders_observed_at_ms": observed_at_ms if holders is not None else None,
+        "holders_provider": provider if holders is not None else None,
+        "market_cap_status": _identity_metadata_status(market_cap_usd, observed_at_ms),
+        "liquidity_status": _identity_metadata_status(liquidity_usd, observed_at_ms),
+        "holders_status": _identity_metadata_status(holders, observed_at_ms),
     }
 
 
-def _resolution_field_status(row: dict[str, Any], key: str) -> str:
-    observed_at_ms = row.get(f"{key}_observed_at_ms")
-    value = row.get(f"{key}_usd") if key in {"market_cap", "liquidity"} else row.get(key)
-    if value is None or observed_at_ms is None:
-        return "missing"
-    return "fresh"
+def _identity_metadata_status(value: Any, observed_at_ms: Any) -> str:
+    return "fresh" if value is not None and observed_at_ms is not None else "missing"
+
+
+def _identity_metadata_sort_key(row: dict[str, Any]) -> tuple[float, str]:
+    return (-_metadata_float(row.get("market_cap_usd")), str(row.get("asset_id") or ""))
+
+
+def _metadata_number(payload: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def _metadata_int(payload: dict[str, Any], *keys: str) -> int | None:
+    value = _metadata_number(payload, *keys)
+    return int(value) if value is not None else None
+
+
+def _metadata_float(value: Any) -> float:
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0

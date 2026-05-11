@@ -13,9 +13,8 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar: Any, current_market: Any) -> None:
+    def __init__(self, *, token_radar: Any) -> None:
         self.token_radar = token_radar
-        self.current_market = current_market
 
     def asset_flow(
         self,
@@ -41,20 +40,12 @@ class AssetFlowService:
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
-        market_read_time_ms = int(now_ms or computed_at_ms or 0)
-        subjects = _subjects_from_rows(rows)
-        market_snapshots = self.current_market.current_for_subjects(subjects, now_ms=market_read_time_ms)
-        public_rows = [
-            _public_row(
-                row,
-                market_snapshots.get(_target_key_from_snapshot(row.get("factor_snapshot_json"))),
-            )
-            for row in rows
-        ]
+        public_rows = [_public_row(row) for row in rows]
         targets = [row for row in public_rows if row.get("_lane") == "resolved"]
         attention = [row for row in public_rows if row.get("_lane") == "attention"]
         for row in [*targets, *attention]:
             row.pop("_lane", None)
+        returned_rows = [*targets[:limit], *attention[:limit]]
         return {
             "targets": targets[:limit],
             "attention": attention[:limit],
@@ -70,19 +61,20 @@ class AssetFlowService:
                     default=0,
                 ),
                 "computed_at_ms": computed_at_ms if computed_at_ms is not None else coverage.get("computed_at_ms"),
-                "market_hydration": _market_hydration([*targets, *attention]),
+                "anchor_coverage": _anchor_coverage(returned_rows),
             },
         }
 
 
-def _public_row(row: dict[str, Any], current_market_snapshot: dict[str, Any] | None) -> dict[str, Any]:
+def _public_row(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = _mapping(row.get("factor_snapshot_json"))
     return {
         "_lane": row.get("lane"),
         "intent": row.get("intent_json") or {},
         "target": _target_from_snapshot(factor_snapshot),
         "attention": _attention_from_snapshot(factor_snapshot),
-        "current_market": current_market_snapshot or _missing_current_market(factor_snapshot),
+        "anchor_price": _anchor_price_from_snapshot(factor_snapshot),
+        "live_market": _missing_live_market(factor_snapshot),
         "resolution": row.get("resolution_json") or {},
         "score": _composite_from_snapshot(factor_snapshot),
         "factor_snapshot": factor_snapshot,
@@ -108,6 +100,58 @@ def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     return _mapping(family.get("facts"))
 
 
+def _anchor_price_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    market = _mapping(snapshot.get("market"))
+    subject = _mapping(snapshot.get("subject"))
+    readiness = _mapping(market.get("event_price_readiness"))
+    status = str(readiness.get("status") or ("ready" if market.get("anchor_price_usd") is not None else "missing"))
+    return {
+        "status": status,
+        "target_type": subject.get("target_type"),
+        "target_id": subject.get("target_id"),
+        "price_usd": market.get("anchor_price_usd"),
+        "price_quote": market.get("anchor_price_quote"),
+        "quote_symbol": market.get("anchor_quote_symbol"),
+        "price_basis": market.get("anchor_price_basis"),
+        "provider": market.get("provider"),
+        "anchor_observed_at_ms": market.get("anchor_observed_at_ms"),
+        "event_received_at_ms": market.get("social_signal_start_ms"),
+        "anchor_lag_ms": market.get("anchor_lag_ms"),
+    }
+
+
+def _missing_live_market(snapshot: dict[str, Any]) -> dict[str, Any]:
+    target_key = _target_key_from_snapshot(snapshot)
+    return {
+        "target_type": target_key[0] if target_key else None,
+        "target_id": target_key[1] if target_key else None,
+        "status": "missing",
+        "price_usd": None,
+        "price_quote": None,
+        "quote_symbol": None,
+        "price_basis": "unavailable",
+        "provider": None,
+        "observed_at_ms": None,
+        "received_at_ms": None,
+        "age_ms": None,
+    }
+
+
+def _anchor_coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(rows)
+    ready = sum(1 for row in rows if _mapping(row.get("anchor_price")).get("status") == "ready")
+    missing = total - ready
+    if total == 0:
+        status = "missing"
+    elif missing == 0:
+        status = "ready"
+    elif ready > 0:
+        status = "partial"
+    else:
+        status = "missing"
+    return {"status": status, "ready": ready, "missing": missing, "total": total}
+
+
 def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     return _mapping(snapshot.get("composite"))
 
@@ -126,54 +170,6 @@ def _target_key_from_snapshot(snapshot: Any) -> tuple[str, str] | None:
     if not target_type or not target_id:
         return None
     return (target_type, target_id)
-
-
-def _missing_current_market(snapshot: dict[str, Any]) -> dict[str, Any]:
-    target_key = _target_key_from_snapshot(snapshot)
-    return {
-        "target_type": target_key[0] if target_key else None,
-        "target_id": target_key[1] if target_key else None,
-        "market_status": "missing",
-        "fields": {},
-    }
-
-
-def _subjects_from_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[tuple[str, str]] = set()
-    subjects: list[dict[str, Any]] = []
-    for row in rows:
-        snapshot = row.get("factor_snapshot_json")
-        key = _target_key_from_snapshot(snapshot)
-        if key is None or key in seen:
-            continue
-        seen.add(key)
-        subjects.append({"target_type": key[0], "target_id": key[1]})
-    return subjects
-
-
-def _market_hydration(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    if not rows:
-        return {
-            "status": "missing",
-            "fresh": 0,
-            "stale": 0,
-            "missing": 0,
-            "pending": 0,
-            "total": 0,
-        }
-    counts = {"fresh": 0, "stale": 0, "missing": 0, "pending": 0}
-    for row in rows:
-        current_market = _mapping(row.get("current_market"))
-        market_status = str(current_market.get("market_status") or "")
-        if market_status in {"fresh", "ready"}:
-            counts["fresh"] += 1
-        elif market_status in {"partial", "stale"}:
-            counts["stale"] += 1
-        else:
-            counts["missing"] += 1
-    total = len(rows)
-    status = "ready" if counts["stale"] == 0 and counts["missing"] == 0 else "partial"
-    return {**counts, "status": status, "total": total}
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -205,13 +201,6 @@ def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, An
             "source_max_received_at_ms": 0,
             "computed_at_ms": (coverage or {}).get("computed_at_ms"),
             "error": (coverage or {}).get("error"),
-            "market_hydration": {
-                "status": "pending",
-                "fresh": 0,
-                "stale": 0,
-                "missing": 0,
-                "pending": 0,
-                "total": 0,
-            },
+            "anchor_coverage": {"status": "pending", "ready": 0, "missing": 0, "total": 0},
         },
     }

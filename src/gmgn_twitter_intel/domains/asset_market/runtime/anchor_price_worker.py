@@ -8,10 +8,10 @@ from typing import Any
 
 from loguru import logger
 
-from ..services.message_market_observation import observe_message_market
+from ..services.anchor_price_observation import observe_anchor_prices
 
 
-class MessageMarketObservationWorker:
+class AnchorPriceWorker:
     def __init__(
         self,
         *,
@@ -38,7 +38,7 @@ class MessageMarketObservationWorker:
                 await asyncio.to_thread(self.run_once)
             except Exception as exc:  # pragma: no cover - watchdog path
                 self.last_error = str(exc)
-                logger.exception(f"message market observation worker failed: {exc}")
+                logger.exception(f"anchor price worker failed: {exc}")
             await asyncio.sleep(self.interval_seconds)
 
     def run_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -46,7 +46,7 @@ class MessageMarketObservationWorker:
         self.last_started_at_ms = observed_at_ms
         self.last_error = None
         with self.repository_session() as repos:
-            result = observe_message_market(
+            result = observe_anchor_prices(
                 repos=repos,
                 cex_market=self.cex_market,
                 dex_market=self.dex_market,

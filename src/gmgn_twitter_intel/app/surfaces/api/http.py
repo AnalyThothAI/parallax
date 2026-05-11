@@ -12,7 +12,6 @@ from fastapi.responses import JSONResponse
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.domains.asset_market.interfaces import CurrentMarketService
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -164,7 +163,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
-            data = AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
                 window=parsed_window,
                 limit=_limit(limit),
                 scope=parsed_scope,
@@ -172,8 +171,8 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
 
-    @router.get("/current-market")
-    async def current_market(
+    @router.get("/live-market")
+    async def live_market(
         request: Request,
         target_type: Annotated[str, Query()] = "",
         target_id: Annotated[str, Query()] = "",
@@ -182,12 +181,11 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_target_type = _target_type(target_type)
         if not parsed_target_type or not target_id:
             raise ApiBadRequest("target_required", field="target_id")
-        with runtime.repositories() as repos:
-            snapshot = CurrentMarketService(current_market=repos.current_market).current_market_snapshot(
-                target_type=parsed_target_type,
-                target_id=target_id,
-                now_ms=_now_ms(),
-            )
+        gateway = getattr(runtime, "live_price_gateway", None)
+        if gateway is None:
+            snapshot = {"target_type": parsed_target_type, "target_id": target_id, "status": "unsupported"}
+        else:
+            snapshot = gateway.snapshot(target_type=parsed_target_type, target_id=target_id, now_ms=_now_ms())
         return _json({"ok": True, "data": snapshot})
 
     @router.get("/target-posts")

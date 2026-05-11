@@ -80,6 +80,14 @@ function minimalPulseItem() {
         chain: "solana",
         address: "pepe",
       },
+      market: {
+        market_status: "missing",
+        price_change_status: "missing_anchor",
+        provider: null,
+        anchor_price_usd: null,
+        social_signal_start_ms: 1_700_000_000_000,
+        event_price_readiness: { status: "missing" },
+      },
       gates: {
         eligible_for_high_alert: false,
         max_decision: "watch",

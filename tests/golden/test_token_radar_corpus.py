@@ -114,13 +114,6 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
         )
         is None
     )
-    assert (
-        repos.current_market.current_for_subjects(
-            [{"target_type": "Asset", "target_id": resolution["target_id"]}],
-            now_ms=event.received_at_ms,
-        )
-        == {}
-    )
     factor_snapshot = rows[0]["factor_snapshot_json"]
     assert factor_snapshot["data_health"]["market"] == "missing"
-    assert "market_freshness_missing" in factor_snapshot["gates"]["blocked_reasons"]
+    assert "market_metadata_missing" in factor_snapshot["gates"]["risk_reasons"]

@@ -32,6 +32,7 @@ def _row(
         "factor_snapshot_json": {
             "schema_version": "token_factor_snapshot_v2_alpha_gated",
             "subject": {"target_id": target_id},
+            "market": _market(),
             "gates": {"max_decision": "high_alert", "blocked_reasons": []},
             "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
             "composite": {
@@ -70,6 +71,17 @@ def _family(score: float | None, weight: float) -> dict[str, Any]:
         "data_health": "ready",
         "facts": {},
         "factors": {},
+    }
+
+
+def _market(status: str = "anchored") -> dict[str, Any]:
+    return {
+        "market_status": status,
+        "price_change_status": "live_not_persisted" if status != "missing" else "missing_anchor",
+        "provider": "okx" if status != "missing" else None,
+        "anchor_price_usd": 0.42 if status != "missing" else None,
+        "social_signal_start_ms": 1_700_000_000_000,
+        "event_price_readiness": {"status": "ready" if status != "missing" else "missing"},
     }
 
 
@@ -154,6 +166,7 @@ def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
             "factor_snapshot_json": {
                 "schema_version": "token_factor_snapshot_v2_alpha_gated",
                 "subject": {"target_id": None},
+                "market": _market(status="missing"),
                 "gates": {"max_decision": "high_alert", "blocked_reasons": []},
                 "data_health": {"identity": "missing", "market": "missing", "social": "ready", "alpha": "ready"},
                 "composite": {

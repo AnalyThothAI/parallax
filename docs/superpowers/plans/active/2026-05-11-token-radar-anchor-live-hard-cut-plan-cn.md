@@ -18,7 +18,7 @@
 - No `CurrentMarketRepository`, `CurrentMarketService`, `current_market_field_facts`, or `backfill-current-market-field-facts`.
 - No live/refresh worker writes to `price_observations`.
 - No TokenDiscovery pricefeed or price-observation side effects for DEX search.
-- No `message_quote` compatibility branch. The canonical anchor observation kind is `message_anchor`; migration rewrites existing `message_quote` baselines/observations once.
+- No `message_quote` compatibility branch. The canonical anchor observation kind is `message_anchor`; migration destructively clears legacy price observations/baselines so AnchorPriceWorker rebuilds only canonical anchors.
 - No frontend parser fallback from `anchor_price` to `current_market`.
 
 ## Pre-flight
@@ -47,8 +47,7 @@
 ### Schema and repositories
 
 - Create Alembic migration `src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0029_anchor_live_hard_cut.py`
-  - Delete non-anchor price observations.
-  - Rewrite `message_quote` to `message_anchor`.
+  - Truncate legacy `price_observations` and `token_market_price_baselines`.
   - Drop `current_market_field_facts`.
   - Drop current-market price indexes.
   - Add anchor-only partial unique/indexes.
@@ -241,20 +240,7 @@
 
 
   def upgrade() -> None:
-      op.execute("UPDATE price_observations SET observation_kind = 'message_anchor' WHERE observation_kind = 'message_quote'")
-      op.execute(
-          """
-          UPDATE token_market_price_baselines
-          SET event_price_observation_kind = 'message_anchor'
-          WHERE event_price_observation_kind = 'message_quote'
-          """
-      )
-      op.execute(
-          """
-          DELETE FROM price_observations
-          WHERE COALESCE(observation_kind, '') <> 'message_anchor'
-          """
-      )
+      op.execute("TRUNCATE TABLE price_observations, token_market_price_baselines")
       with op.get_context().autocommit_block():
           for name in (
               "idx_current_market_field_facts_latest",

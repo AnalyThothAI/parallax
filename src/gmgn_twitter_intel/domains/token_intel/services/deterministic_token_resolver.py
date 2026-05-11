@@ -245,7 +245,7 @@ class DeterministicTokenResolver:
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
-        assets = self.registry.find_assets_by_symbol_with_latest_observation(symbol)
+        assets = self.registry.find_assets_by_symbol_with_identity_metadata(symbol)
         assets = [row for row in assets if str(row.get("asset_id") or "")]
         assets = [{**row, "decision_time_ms": decision_time_ms} for row in assets]
         candidate_ids = _candidate_ids(assets)

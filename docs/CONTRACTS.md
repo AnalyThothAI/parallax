@@ -19,13 +19,16 @@ The only application config source.
   `pulse_agent_gate_high_info_rejection_min`, and
   `pulse_agent_gate_high_conviction_min`. Older heat / quality / propagation /
   tradeability / timing Pulse threshold keys are rejected.
-- Optional market-related groups (OKX, GMGN OpenAPI) for the asset / price pipelines.
+- Optional market-related groups (OKX, GMGN OpenAPI) for identity discovery,
+  route sync, anchor-price lookup, and the process-local live price gateway.
 
 ## WebSocket at `/ws`
 
 - Auth: `{"type":"auth","token":"..."}`
-- Subscribe: `{"type":"subscribe","handles":[...],"replay":N}`
-- Push payloads include `event`, `entities`, `alerts`, `enrichment`, and harness updates after store commit.
+- Subscribe: `{"type":"subscribe","handles":[...],"replay":N,"market_targets":[{"target_type":"Asset","target_id":"..."}]}`
+- Push payloads include `event`, `entities`, `alerts`, `enrichment`, harness
+  updates after store commit, and `live_market_update` messages for subscribed
+  market targets.
 
 ## HTTP
 
@@ -33,32 +36,29 @@ The only application config source.
 
 Token Radar market contract:
 
-- `/api/token-radar` rows expose `current_market`, a field-aware snapshot from
-  `domains/asset_market`. Frontends must read live price, market cap, liquidity,
-  holders, volume, provider, freshness, and price-baseline deltas from
-  `current_market.fields`.
-- `/api/token-radar` rows do not expose `price` or `market` aliases derived from
-  factor snapshot family facts. Factor snapshots may include timing context, but
-  market display values come from the current-market read model.
-- `/api/current-market?target_type=Asset|CexToken&target_id=...` returns one
-  current-market snapshot:
-  `{"target_type": "...", "target_id": "...", "market_status": "...", "fields": {...}}`.
-- `fields.<field>` values include `value`, `status`, optional
-  `observed_at_ms`, optional `age_ms`, optional `provider`, and optional
-  `source_observation_id`. A DEX price-only observation may refresh
-  `price_usd` while `market_cap_usd`, `liquidity_usd`, and `holders` remain
-  stale or missing until a metadata-capable provider refreshes them.
+- `/api/token-radar` rows expose `anchor_price` and `live_market`.
+  `anchor_price` is the immutable event-time price recorded once for the social
+  signal. `live_market` is an initially-missing process-local placeholder that
+  may be patched by WebSocket live updates.
+- `/api/token-radar` rows do not expose `current_market`. Factor snapshots carry
+  a top-level `market` block for anchor/readiness context only; live price is not
+  reconstructed from factor families or persisted price refresh rows.
+- `/api/live-market?target_type=Asset|CexToken&target_id=...` returns the current
+  in-process live gateway snapshot when the gateway has one, or
+  `{"target_type":"...","target_id":"...","status":"unsupported|missing"}` when
+  live pricing is unavailable for that process/target.
+- `/ws` live market messages use `type="live_market_update"` and include
+  `target_type`, `target_id`, `provider`, `observed_at_ms`, and `live_market`.
+  Clients calculate price change by comparing `live_market.price_*` with the
+  row's immutable `anchor_price`.
 - GMGN social payload token snapshots are identity evidence only. The normalized
-  token snapshot carries address / chain / symbol metadata, not embedded price /
-  market-cap values; those values are not written to `price_observations` and are
-  not current-market providers.
+  token snapshot carries address / chain / symbol metadata. Embedded price /
+  market-cap values are not written during ingest; anchor prices are written by
+  the anchor worker using provider payloads or delayed OKX lookup.
 
 ## CLI
 
 `gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.
-
-`gmgn-twitter-intel current-market --target-type ... --target-id ...` prints the
-same field-aware current-market snapshot used by the HTTP contract.
 
 ## Token Radar Factor Snapshot Discipline
 
@@ -78,6 +78,8 @@ shape and reject `hard_gates`. The v2 contract separates:
   reasons. Identity, market freshness, CEX native-market identity, DEX holder /
   liquidity / market-cap floors, and data availability live here or in
   `data_health`; they do not score alpha.
+- `market`: immutable anchor-price/readiness context. It is not a live price
+  cache.
 - `data_health`: explicit readiness for identity, market, social, and alpha.
 - `families`: alpha families only: `attention_heat`, `diffusion_quality`,
   `semantic_quality`, and `timing_response`.

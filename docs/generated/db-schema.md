@@ -1027,6 +1027,35 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `token_market_price_baselines`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `resolution_id` | `TEXT` | False | `None` |
+| `event_id` | `TEXT` | False | `None` |
+| `target_type` | `TEXT` | False | `None` |
+| `target_id` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | False | `None` |
+| `first_price_observed_at_ms` | `BIGINT` | True | `None` |
+| `first_price_usd` | `DOUBLE PRECISION` | True | `None` |
+| `first_price_quote` | `DOUBLE PRECISION` | True | `None` |
+| `first_price_quote_symbol` | `TEXT` | True | `None` |
+| `first_price_basis` | `TEXT` | True | `None` |
+| `event_price_observation_id` | `TEXT` | True | `None` |
+| `event_price_observation_kind` | `TEXT` | True | `None` |
+| `event_price_provider` | `TEXT` | True | `None` |
+| `event_price_observed_at_ms` | `BIGINT` | True | `None` |
+| `event_price_usd` | `DOUBLE PRECISION` | True | `None` |
+| `event_price_quote` | `DOUBLE PRECISION` | True | `None` |
+| `event_price_quote_symbol` | `TEXT` | True | `None` |
+| `event_price_basis` | `TEXT` | True | `None` |
+| `before_event_price_observed_at_ms` | `BIGINT` | True | `None` |
+| `before_event_price_usd` | `DOUBLE PRECISION` | True | `None` |
+| `before_event_price_quote` | `DOUBLE PRECISION` | True | `None` |
+| `before_event_price_quote_symbol` | `TEXT` | True | `None` |
+| `before_event_price_basis` | `TEXT` | True | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `token_radar_projection_coverage`
 
 | Column | Type | Nullable | Default |
@@ -1041,6 +1070,27 @@
 | `computed_at_ms` | `BIGINT` | True | `None` |
 | `started_at_ms` | `BIGINT` | True | `None` |
 | `finished_at_ms` | `BIGINT` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `token_radar_publications`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `projection_version` | `TEXT` | False | `None` |
+| `window` | `TEXT` | False | `None` |
+| `scope` | `TEXT` | False | `None` |
+| `published_computed_at_ms` | `BIGINT` | True | `None` |
+| `published_row_count` | `BIGINT` | False | `0` |
+| `published_source_rows` | `BIGINT` | False | `0` |
+| `published_source_max_received_at_ms` | `BIGINT` | False | `0` |
+| `refresh_status` | `TEXT` | False | `'missing'::text` |
+| `reason` | `TEXT` | True | `None` |
+| `refresh_computed_at_ms` | `BIGINT` | True | `None` |
+| `refresh_started_at_ms` | `BIGINT` | True | `None` |
+| `refresh_finished_at_ms` | `BIGINT` | True | `None` |
+| `refresh_row_count` | `BIGINT` | False | `0` |
+| `refresh_source_rows` | `BIGINT` | False | `0` |
 | `error` | `TEXT` | True | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
@@ -1101,6 +1151,12 @@
 | `wilson_low` | `DOUBLE PRECISION` | False | `None` |
 | `wilson_high` | `DOUBLE PRECISION` | False | `None` |
 | `generated_at_ms` | `BIGINT` | False | `None` |
+| `sample_start_ms` | `BIGINT` | True | `None` |
+| `sample_end_ms` | `BIGINT` | True | `None` |
+| `spearman_ic` | `DOUBLE PRECISION` | True | `None` |
+| `icir` | `DOUBLE PRECISION` | True | `None` |
+| `score_stddev` | `DOUBLE PRECISION` | True | `None` |
+| `diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `token_social_bucket_authors`
 

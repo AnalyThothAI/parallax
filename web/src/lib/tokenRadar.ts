@@ -1,10 +1,10 @@
 import type {
   AssetFlowData,
   AssetFlowRow,
-  CurrentMarketSnapshot,
   Decision,
   FactorPoint,
-  MarketFieldFact,
+  AnchorPriceSnapshot,
+  LiveMarketSnapshot,
   RadarSortMode,
   ScoreBlock,
   ScoreContribution,
@@ -87,17 +87,26 @@ export function tokenRadarRowToTokenItem(
   const attention = familyFacts(attentionFamily);
   const diffusionFacts = familyFacts(diffusionFamily);
   const timingFacts = familyFacts(timingFamily);
-  const currentMarket = requiredCurrentMarket(row);
-  const marketFields = requiredObject(currentMarket.fields, "current_market.fields") as Record<
+  const snapshotMarket = requiredObject(snapshot.market, "factor_snapshot.market") as Record<
     string,
     unknown
   >;
-  const priceField =
-    marketField(marketFields, "price_usd") ?? marketField(marketFields, "price_quote");
-  const marketCapField = marketField(marketFields, "market_cap_usd");
-  const liquidityField = marketField(marketFields, "liquidity_usd");
-  const holdersField = marketField(marketFields, "holders");
-  const volume24hField = marketField(marketFields, "volume_24h_usd");
+  const anchorPrice = requiredAnchorPrice(row);
+  const liveMarket = requiredLiveMarket(row);
+  const anchorPriceValue =
+    optionalNullableNumber(anchorPrice.price_usd) ?? optionalNullableNumber(anchorPrice.price_quote);
+  const livePriceValue =
+    optionalNullableNumber(liveMarket.price_usd) ?? optionalNullableNumber(liveMarket.price_quote);
+  const displayPrice = livePriceValue ?? anchorPriceValue;
+  const liveMarketHasPrice = livePriceValue !== null;
+  const marketStatus = marketDisplayStatus(anchorPrice, liveMarket, liveMarketHasPrice);
+  const priceChangeSinceSocialPct = liveDeltaFromAnchor(livePriceValue, anchorPriceValue);
+  const priceChangeBeforeSocialPct = null;
+  const priceChangeStatus = priceChangeStatusFromAnchorLive(
+    anchorPrice,
+    liveMarket,
+    priceChangeSinceSocialPct,
+  );
   const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<
     string,
     unknown
@@ -174,25 +183,12 @@ export function tokenRadarRowToTokenItem(
   const candidateCount =
     row.resolution?.candidate_ids?.length ?? row.resolution?.candidates?.length ?? 0;
   const discoveryStatus = discoveryStatusSummary(row.resolution?.discovery);
-  const marketStatus = deriveMarketDisplayStatus(marketFields);
   const marketObservationStatus = marketStatus;
-  const marketHasUsableSnapshot = marketStatus === "fresh";
-  const priceChangeSinceSocialPct = marketFieldNumber(
-    marketFields,
-    "price_change_since_social_pct",
-  );
-  const priceChangeBeforeSocialPct = marketFieldNumber(
-    marketFields,
-    "price_change_before_social_pct",
-  );
-  const priceChangeStatus = priceChangeStatusFromMarketFields(
-    marketStatus,
-    priceChangeSinceSocialPct,
-  );
+  const marketHasUsableSnapshot = liveMarketHasPrice || anchorPrice.status === "ready";
   const heat = scoreBlockFromFamily(attentionFamily, "attention_heat", "social_heat");
   const quality = scoreBlockFromFamily(semanticFamily, "semantic_quality", "discussion_quality");
   const propagation = scoreBlockFromFamily(diffusionFamily, "diffusion_quality", "propagation");
-  const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, marketFields);
+  const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, liveMarket);
   const timing = scoreBlockFromFamily(timingFamily, "timing_response", "timing");
   const recommendedDecision = requiredString(
     optionalString(composite.recommended_decision),
@@ -205,14 +201,8 @@ export function tokenRadarRowToTokenItem(
   const timingStatus = timingStatusFromSnapshot(marketStatus, timing.risks, resolved);
   const chaseRisk =
     timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
-  const marketPrice = optionalNullableNumber(priceField?.value);
-  const marketProvider = firstString(
-    priceField?.provider,
-    marketCapField?.provider,
-    liquidityField?.provider,
-    holdersField?.provider,
-    volume24hField?.provider,
-  );
+  const marketPrice = displayPrice;
+  const marketProvider = firstString(liveMarket.provider, anchorPrice.provider);
   const chain = isSnapshotAsset ? (stringValue(subject.chain) ?? target.chain_id ?? null) : null;
   const blockedReasons = requiredStringArray(
     gates.blocked_reasons ?? [],
@@ -260,34 +250,37 @@ export function tokenRadarRowToTokenItem(
     market: {
       market_status: marketStatus,
       price: marketPrice,
-      price_status: optionalString(priceField?.status),
-      market_cap: optionalNullableNumber(marketCapField?.value),
-      market_cap_status: optionalString(marketCapField?.status),
-      liquidity: optionalNullableNumber(liquidityField?.value),
-      liquidity_status: optionalString(liquidityField?.status),
+      price_status: liveMarketHasPrice ? liveMarket.status : anchorPrice.status,
+      market_cap: optionalNullableNumber(liveMarket.market_cap_usd),
+      market_cap_status: fieldStatusFromNullableValue(liveMarket.market_cap_usd),
+      liquidity: optionalNullableNumber(liveMarket.liquidity_usd),
+      liquidity_status: fieldStatusFromNullableValue(liveMarket.liquidity_usd),
       pool_status: marketHasUsableSnapshot ? "ready" : "missing",
-      holder_count: optionalNullableNumber(holdersField?.value),
-      holder_count_status: optionalString(holdersField?.status),
-      volume_24h: optionalNullableNumber(volume24hField?.value),
-      volume_24h_status: optionalString(volume24hField?.status),
+      holder_count: optionalNullableNumber(liveMarket.holders),
+      holder_count_status: fieldStatusFromNullableValue(liveMarket.holders),
+      volume_24h: optionalNullableNumber(liveMarket.volume_24h_usd),
+      volume_24h_status: fieldStatusFromNullableValue(liveMarket.volume_24h_usd),
       provider: marketProvider,
-      snapshot_age_ms: optionalNullableNumber(priceField?.age_ms),
-      snapshot_received_at_ms: optionalNullableNumber(priceField?.observed_at_ms),
-      social_signal_start_ms: optionalNumber(timingFacts.social_signal_start_ms) ?? latestSeenMs,
+      snapshot_age_ms: optionalNullableNumber(liveMarket.age_ms),
+      snapshot_received_at_ms:
+        optionalNullableNumber(liveMarket.observed_at_ms) ??
+        optionalNullableNumber(anchorPrice.anchor_observed_at_ms),
+      social_signal_start_ms:
+        optionalNullableNumber(anchorPrice.event_received_at_ms) ??
+        optionalNumber(timingFacts.social_signal_start_ms) ??
+        latestSeenMs,
       reference_ms: latestSeenMs,
-      price_at_social_start: marketFieldNumber(marketFields, "price_at_social_start"),
-      price_at_reference: marketFieldNumber(marketFields, "price_at_reference") ?? marketPrice,
+      price_at_social_start: anchorPriceValue,
+      price_at_reference: livePriceValue,
       price_change_since_social_pct: priceChangeSinceSocialPct,
-      price_before_social_start: marketFieldNumber(marketFields, "price_before_social_start"),
+      price_before_social_start: null,
       price_change_before_social_pct: priceChangeBeforeSocialPct,
-      price_at_first_snapshot: marketFieldNumber(marketFields, "price_at_first_snapshot"),
-      first_snapshot_observed_at_ms: optionalNullableNumber(
-        marketField(marketFields, "price_at_first_snapshot")?.observed_at_ms,
-      ),
-      price_change_since_first_snapshot_pct: marketFieldNumber(
-        marketFields,
-        "price_change_since_first_snapshot_pct",
-      ),
+      price_at_first_snapshot:
+        optionalNullableNumber(snapshotMarket.price_at_first_snapshot) ?? anchorPriceValue,
+      first_snapshot_observed_at_ms:
+        optionalNullableNumber(snapshotMarket.first_snapshot_observed_at_ms) ??
+        optionalNullableNumber(anchorPrice.anchor_observed_at_ms),
+      price_change_since_first_snapshot_pct: null,
       market_observation_status: marketObservationStatus,
       price_change_status: priceChangeStatus,
     },
@@ -365,7 +358,10 @@ export function tokenRadarRowToTokenItem(
       score: timing.score,
       score_version: timing.score_version,
       status: timingStatus,
-      social_signal_start_ms: optionalNumber(timingFacts.social_signal_start_ms) ?? latestSeenMs,
+      social_signal_start_ms:
+        optionalNullableNumber(anchorPrice.event_received_at_ms) ??
+        optionalNumber(timingFacts.social_signal_start_ms) ??
+        latestSeenMs,
       price_change_since_social_pct: priceChangeSinceSocialPct,
       price_change_before_social_pct: priceChangeBeforeSocialPct,
       market_observation_status: marketObservationStatus,
@@ -421,15 +417,26 @@ function requiredFactorSnapshot(row: AssetFlowRow): TokenFactorSnapshot {
   }
 }
 
-function requiredCurrentMarket(row: AssetFlowRow): CurrentMarketSnapshot {
-  const currentMarket = row.current_market;
-  if (!currentMarket || typeof currentMarket !== "object") {
-    throw new Error("token_radar_contract:current_market");
+function requiredAnchorPrice(row: AssetFlowRow): AnchorPriceSnapshot {
+  const anchorPrice = row.anchor_price;
+  if (!anchorPrice || typeof anchorPrice !== "object") {
+    throw new Error("token_radar_contract:anchor_price");
   }
-  if (!currentMarket.fields || typeof currentMarket.fields !== "object") {
-    throw new Error("token_radar_contract:current_market.fields");
+  if (typeof anchorPrice.status !== "string" || !anchorPrice.status) {
+    throw new Error("token_radar_contract:anchor_price.status");
   }
-  return currentMarket;
+  return anchorPrice;
+}
+
+function requiredLiveMarket(row: AssetFlowRow): LiveMarketSnapshot {
+  const liveMarket = row.live_market;
+  if (!liveMarket || typeof liveMarket !== "object") {
+    throw new Error("token_radar_contract:live_market");
+  }
+  if (typeof liveMarket.status !== "string" || !liveMarket.status) {
+    throw new Error("token_radar_contract:live_market.status");
+  }
+  return liveMarket;
 }
 
 function requiredFamily(
@@ -447,62 +454,17 @@ function familyFacts(family: FactorFamily): Record<string, unknown> {
   return recordValue(family.facts);
 }
 
-function marketField(fields: Record<string, unknown>, key: string): MarketFieldFact | null {
-  const field = fields[key];
-  return field && typeof field === "object" && !Array.isArray(field)
-    ? (field as MarketFieldFact)
-    : null;
-}
-
-function marketFieldNumber(fields: Record<string, unknown>, key: string): number | null {
-  return optionalNullableNumber(marketField(fields, key)?.value);
-}
-
-function deriveMarketDisplayStatus(fields: Record<string, unknown>): string {
-  const explicitMarketStatus = optionalString(marketField(fields, "market_status")?.value);
-  if (explicitMarketStatus) {
-    return explicitMarketStatus;
+function marketDisplayStatus(
+  anchorPrice: AnchorPriceSnapshot,
+  liveMarket: LiveMarketSnapshot,
+  liveMarketHasPrice: boolean,
+): string {
+  if (liveMarketHasPrice) {
+    return liveMarket.status === "missing" || liveMarket.status === "unsupported"
+      ? "live"
+      : liveMarket.status;
   }
-  const statuses = [
-    "price_usd",
-    "price_quote",
-    "market_cap_usd",
-    "liquidity_usd",
-    "holders",
-    "volume_24h_usd",
-  ]
-    .map((key) => optionalString(marketField(fields, key)?.status))
-    .filter((status): status is string => Boolean(status));
-  const valueStatuses = [
-    "price_usd",
-    "price_quote",
-    "market_cap_usd",
-    "liquidity_usd",
-    "holders",
-    "volume_24h_usd",
-  ]
-    .map((key) => marketField(fields, key))
-    .filter((field): field is MarketFieldFact => hasFieldValue(field))
-    .map((field) => optionalString(field.status))
-    .filter((status): status is string => Boolean(status));
-  const relevantStatuses = valueStatuses.length ? valueStatuses : statuses;
-  if (!relevantStatuses.length) {
-    return "missing";
-  }
-  if (relevantStatuses.some((status) => status === "fresh" || status === "ready")) {
-    return relevantStatuses.every(
-      (status) => status === "fresh" || status === "ready" || status === "unsupported",
-    )
-      ? "fresh"
-      : "partial";
-  }
-  if (relevantStatuses.some((status) => status === "partial")) {
-    return "partial";
-  }
-  if (relevantStatuses.some((status) => status === "stale")) {
-    return "stale";
-  }
-  return relevantStatuses[0] ?? "missing";
+  return anchorPrice.status === "ready" ? "anchored" : "missing";
 }
 
 function scoreBlockFromFamily(
@@ -567,7 +529,7 @@ function scoreBlockFromComposite(
 function tradeabilityFromGatesAndHealth(
   gates: TokenFactorSnapshot["gates"],
   dataHealth: TokenFactorSnapshot["data_health"],
-  marketFields: Record<string, unknown>,
+  liveMarket: LiveMarketSnapshot,
 ): TradeabilityBlock {
   const blockedReasons = requiredStringArray(
     gates.blocked_reasons ?? [],
@@ -575,8 +537,8 @@ function tradeabilityFromGatesAndHealth(
   );
   const riskReasons = stringArray(gates.risk_reasons);
   const marketReady = dataHealth.market === "ready";
-  const marketCapPresent = hasFieldValue(marketField(marketFields, "market_cap_usd"));
-  const liquidityPresent = hasFieldValue(marketField(marketFields, "liquidity_usd"));
+  const marketCapPresent = optionalNullableNumber(liveMarket.market_cap_usd) !== null;
+  const liquidityPresent = optionalNullableNumber(liveMarket.liquidity_usd) !== null;
   const score = gates.eligible_for_high_alert ? 100 : marketReady ? 60 : 0;
   return {
     score,
@@ -665,15 +627,25 @@ function timingStatusFromSnapshot(
   return "neutral";
 }
 
-function priceChangeStatusFromMarketFields(
-  marketStatus: string,
+function liveDeltaFromAnchor(
+  livePrice: number | null,
+  anchorPrice: number | null,
+): number | null {
+  if (livePrice === null || anchorPrice === null || anchorPrice === 0) {
+    return null;
+  }
+  return (livePrice - anchorPrice) / Math.abs(anchorPrice);
+}
+
+function priceChangeStatusFromAnchorLive(
+  anchorPrice: AnchorPriceSnapshot,
+  liveMarket: LiveMarketSnapshot,
   priceChangeSinceSocialPct: number | null,
 ): string {
-  if (marketStatus === "missing") return "missing_market";
-  if (priceChangeSinceSocialPct === null) {
-    return "insufficient_history";
-  }
-  return "ready";
+  if (anchorPrice.status !== "ready") return "missing_anchor";
+  if (priceChangeSinceSocialPct !== null) return "ready";
+  if (liveMarket.status === "missing" || liveMarket.status === "unsupported") return "live_not_persisted";
+  return "missing_live_price";
 }
 
 function requiredNumber(value: unknown, field: string): number {
@@ -756,8 +728,8 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function hasFieldValue(field: MarketFieldFact | null): boolean {
-  return field?.value !== null && field?.value !== undefined;
+function fieldStatusFromNullableValue(value: unknown): string {
+  return optionalNullableNumber(value) === null ? "missing" : "live";
 }
 
 function stringArray(value: unknown): string[] {

@@ -56,7 +56,8 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert ready.json()["pulse_agent"]["enabled"] is True
     assert ready.json()["pulse_agent"]["configured"] is False
     assert ready.json()["pulse_agent"]["worker_running"] is False
-    assert ready.json()["message_market_observation"]["worker_running"] is False
+    assert ready.json()["anchor_price"]["worker_running"] is False
+    assert ready.json()["live_price_gateway"]["worker_running"] is False
     assert "token_resolution" not in ready.json()
     assert "provider_status" not in ready.json()
 
@@ -353,10 +354,10 @@ def _minimal_runtime():
         notification_task=None,
         notification_delivery_worker=None,
         notification_delivery_task=None,
-        asset_market_sync_worker=None,
-        asset_market_sync_task=None,
-        message_market_observation_worker=None,
-        message_market_observation_task=None,
+        anchor_price_worker=None,
+        anchor_price_task=None,
+        live_price_gateway=None,
+        live_price_gateway_task=None,
         token_discovery_worker=None,
         token_discovery_task=None,
         token_radar_projection_worker=None,

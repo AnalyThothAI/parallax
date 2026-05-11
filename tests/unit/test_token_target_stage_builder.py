@@ -56,5 +56,5 @@ def row(event_id: str, handle: str, received_at_ms: int, *, watched: bool = Fals
         "quote_symbol": "USDT",
         "price_observed_at_ms": received_at_ms,
         "price_observation_lag_ms": 0,
-        "price_observation_kind": "message_quote",
+        "price_observation_kind": "message_anchor",
     }

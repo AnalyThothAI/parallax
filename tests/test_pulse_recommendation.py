@@ -353,6 +353,7 @@ def _v2_factor_snapshot() -> dict[str, object]:
     return {
         "schema_version": "token_factor_snapshot_v2_alpha_gated",
         "subject": {"target_type": "Asset", "target_id": "asset:pepe", "symbol": "PEPE"},
+        "market": _market(),
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "max_decision": "high_alert"},
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": {
@@ -391,4 +392,20 @@ def _family(score: int, weight: float, facts: dict[str, object], factors: dict[s
         "data_health": "ready",
         "facts": facts,
         "factors": factors,
+    }
+
+
+def _market() -> dict[str, object]:
+    return {
+        "market_status": "anchored",
+        "price_change_status": "live_not_persisted",
+        "provider": "okx",
+        "anchor_price_usd": 0.42,
+        "anchor_price_quote": None,
+        "anchor_quote_symbol": "USD",
+        "anchor_price_basis": "usd",
+        "anchor_observed_at_ms": 1_700_000_000_000,
+        "social_signal_start_ms": 1_700_000_000_000,
+        "anchor_lag_ms": 0,
+        "event_price_readiness": {"status": "ready"},
     }

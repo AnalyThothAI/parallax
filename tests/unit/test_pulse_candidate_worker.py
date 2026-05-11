@@ -175,6 +175,7 @@ def test_source_seed_factor_snapshot_is_v2_without_legacy_hard_gates() -> None:
     assert set(snapshot) == {
         "schema_version",
         "subject",
+        "market",
         "gates",
         "data_health",
         "families",
@@ -183,6 +184,7 @@ def test_source_seed_factor_snapshot_is_v2_without_legacy_hard_gates() -> None:
         "provenance",
     }
     assert "hard_gates" not in snapshot
+    assert snapshot["market"]["market_status"] == "missing"
     assert snapshot["gates"]["blocked_reasons"] == ["identity_unresolved"]
     assert set(snapshot["families"]) == {
         "attention_heat",
@@ -435,6 +437,14 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
             "target_id": "asset-1",
             "target_market_type": "dex",
             "symbol": "TEST",
+        },
+        "market": {
+            "market_status": "anchored",
+            "price_change_status": "live_not_persisted",
+            "provider": "okx",
+            "anchor_price_usd": 0.42,
+            "social_signal_start_ms": NOW_MS - 20_000,
+            "event_price_readiness": {"status": "ready"},
         },
         "gates": {
             "eligible_for_high_alert": not blocked_reasons,

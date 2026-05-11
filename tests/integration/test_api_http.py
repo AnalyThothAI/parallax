@@ -48,6 +48,19 @@ def _pulse_factor_snapshot(
             "symbol": symbol,
             "chain": "sol",
         },
+        "market": {
+            "market_status": "anchored" if market_status == "fresh" else "missing",
+            "price_change_status": "live_not_persisted",
+            "provider": "okx",
+            "anchor_price_usd": 0.42 if market_status == "fresh" else None,
+            "anchor_price_quote": None,
+            "anchor_quote_symbol": "USD" if market_status == "fresh" else None,
+            "anchor_price_basis": "usd" if market_status == "fresh" else None,
+            "anchor_observed_at_ms": 1_700_000_000_000 if market_status == "fresh" else None,
+            "social_signal_start_ms": 1_700_000_000_000,
+            "anchor_lag_ms": 0 if market_status == "fresh" else None,
+            "event_price_readiness": {"status": "ready" if market_status == "fresh" else "missing"},
+        },
         "gates": {
             "eligible_for_high_alert": not blocked,
             "blocked_reasons": blocked,
@@ -396,15 +409,17 @@ def test_api_removed_token_signal_reads_are_not_registered(tmp_path):
     assert evaluations.status_code == 404
 
 
-def test_api_status_exposes_asset_market_sync_status(tmp_path):
+def test_api_status_exposes_anchor_and_live_market_status(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    asset_market_sync = response.json()["data"]["asset_market_sync"]
-    assert set(asset_market_sync) >= {"worker_running", "last_run_at_ms", "last_result", "providers"}
+    anchor_price = response.json()["data"]["anchor_price"]
+    assert set(anchor_price) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
+    live_price_gateway = response.json()["data"]["live_price_gateway"]
+    assert set(live_price_gateway) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
     token_discovery = response.json()["data"]["token_discovery"]
     assert set(token_discovery) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
     token_radar_projection = response.json()["data"]["token_radar_projection"]
@@ -899,24 +914,22 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
     assert [item["target"]["symbol"] for item in watched_flow.json()["data"]["targets"]] == ["PEPE"]
 
 
-def test_api_current_market_returns_missing_snapshot_for_known_target_shape(tmp_path):
+def test_api_live_market_returns_unsupported_without_live_gateway(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/current-market",
+            "/api/live-market",
             params={"target_type": "Asset", "target_id": "asset:missing"},
             headers={"Authorization": "Bearer secret"},
         )
-        missing = client.get("/api/current-market", headers={"Authorization": "Bearer secret"})
+        missing = client.get("/api/live-market", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["target_type"] == "Asset"
     assert data["target_id"] == "asset:missing"
-    assert data["market_status"] == "missing"
-    assert data["fields"]["price_usd"]["status"] == "missing"
-    assert data["fields"]["market_cap_usd"]["status"] == "missing"
+    assert data["status"] == "unsupported"
     assert missing.status_code == 400
     assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
 

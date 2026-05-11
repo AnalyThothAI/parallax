@@ -383,6 +383,14 @@ def factor_snapshot():
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {"target_type": "Asset", "target_id": "asset:pepe", "symbol": "PEPE"},
+        "market": {
+            "market_status": "anchored",
+            "price_change_status": "live_not_persisted",
+            "provider": "okx",
+            "anchor_price_usd": 0.42,
+            "social_signal_start_ms": 1_700_000_000_000,
+            "event_price_readiness": {"status": "ready"},
+        },
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": families,

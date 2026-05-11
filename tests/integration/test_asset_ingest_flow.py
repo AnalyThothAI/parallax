@@ -68,10 +68,6 @@ def test_ingest_gmgn_payload_writes_identity_without_market_observation(tmp_path
             subject_id=resolution["target_id"],
             at_or_before_ms=event.received_at_ms,
         )
-        current_market = repos.current_market.current_for_subjects(
-            [{"target_type": "Asset", "target_id": resolution["target_id"]}],
-            now_ms=event.received_at_ms,
-        )
     finally:
         conn.close()
 
@@ -80,7 +76,6 @@ def test_ingest_gmgn_payload_writes_identity_without_market_observation(tmp_path
     assert resolution["target_id"] == f"asset:eip155:1:erc20:{address}"
     assert any(item["evidence_kind"] == "gmgn_payload_exact" for item in identity_evidence)
     assert market is None
-    assert current_market == {}
 
 
 def test_ingest_chain_ca_from_gmgn_url_writes_exact_registry_asset(tmp_path):

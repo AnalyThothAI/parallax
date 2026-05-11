@@ -25,11 +25,8 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
-from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.dex_market_stream_worker import DexMarketStreamWorker
-from gmgn_twitter_intel.domains.asset_market.runtime.message_market_observation_worker import (
-    MessageMarketObservationWorker,
-)
+from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import AnchorPriceWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import TokenDiscoveryWorker
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository, HarnessService
 from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
@@ -83,10 +80,9 @@ class CliRuntime:
     harness_ops_worker: HarnessOpsWorker | None = None
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
-    asset_market_sync_worker: AssetMarketSyncWorker | None = None
-    message_market_observation_worker: MessageMarketObservationWorker | None = None
+    anchor_price_worker: AnchorPriceWorker | None = None
     token_discovery_worker: TokenDiscoveryWorker | None = None
-    dex_market_stream_worker: DexMarketStreamWorker | None = None
+    live_price_gateway: LivePriceGateway | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     pulse_candidate_worker: PulseCandidateWorker | None = None
     collector_task: asyncio.Task | None = None
@@ -95,10 +91,9 @@ class CliRuntime:
     harness_ops_task: asyncio.Task | None = None
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
-    asset_market_sync_task: asyncio.Task | None = None
-    message_market_observation_task: asyncio.Task | None = None
+    anchor_price_task: asyncio.Task | None = None
     token_discovery_task: asyncio.Task | None = None
-    dex_market_stream_task: asyncio.Task | None = None
+    live_price_gateway_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
     pulse_candidate_task: asyncio.Task | None = None
 
@@ -324,20 +319,10 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
                 repository_session=lambda: repository_session(db_pool),
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
-    if start_collector and (settings.okx_cex_sync_enabled or settings.okx_dex_configured):
-        runtime.asset_market_sync_worker = AssetMarketSyncWorker(
-            cex_market=providers.asset_market.sync_cex_market,
-            dex_market=providers.asset_market.sync_dex_market,
-            repository_session=lambda: repository_session(db_pool),
-            inst_types=settings.okx_cex_inst_types,
-            interval_seconds=settings.okx_cex_sync_interval_seconds,
-            dex_interval_seconds=settings.okx_dex_sync_interval_seconds,
-            dex_stale_after_ms=int(settings.okx_dex_price_warm_stale_seconds * 1000),
-            dex_hot_stale_after_ms=int(settings.okx_dex_price_hot_stale_seconds * 1000),
-            dex_warm_stale_after_ms=int(settings.okx_dex_price_warm_stale_seconds * 1000),
-            dex_refresh_limit=settings.okx_dex_price_refresh_limit,
-        )
-        runtime.message_market_observation_worker = MessageMarketObservationWorker(
+    if start_collector and (
+        providers.asset_market.message_cex_market is not None or providers.asset_market.message_dex_market is not None
+    ):
+        runtime.anchor_price_worker = AnchorPriceWorker(
             cex_market=providers.asset_market.message_cex_market,
             dex_market=providers.asset_market.message_dex_market,
             repository_session=lambda: repository_session(db_pool),
@@ -349,15 +334,18 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             chain_ids=providers.asset_market.discovery_chain_ids,
             interval_seconds=30.0,
         )
-    if start_collector and providers.asset_market.stream_dex_market is not None:
-        runtime.dex_market_stream_worker = DexMarketStreamWorker(
+    if start_collector and (
+        providers.asset_market.stream_dex_market is not None or providers.asset_market.message_cex_market is not None
+    ):
+        runtime.live_price_gateway = LivePriceGateway(
             stream_provider=providers.asset_market.stream_dex_market,
+            cex_market=providers.asset_market.message_cex_market,
             repository_session=lambda: repository_session(db_pool),
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             subscription_limit=settings.okx_dex_ws_subscription_limit,
             hot_target_ttl_seconds=settings.okx_dex_ws_hot_target_ttl_seconds,
             reconnect_delay_seconds=settings.okx_dex_ws_reconnect_delay_seconds,
-            on_market_update=hub.publish,
+            on_live_market_update=hub.publish,
         )
     if settings.llm_configured:
         runtime.enrichment_worker = EnrichmentWorker(
@@ -378,7 +366,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market),
+        asset_flow=AssetFlowService(token_radar=repos.token_radar),
         harness=HarnessService(repos.harness),
         pulse=repos.pulse,
     )
@@ -393,15 +381,12 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_task = asyncio.create_task(runtime.notification_worker.run())
     if runtime.notification_delivery_worker is not None and runtime.notification_delivery_task is None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
-    if runtime.asset_market_sync_worker is not None and runtime.asset_market_sync_task is None:
-        runtime.asset_market_sync_task = asyncio.create_task(runtime.asset_market_sync_worker.run())
-    if runtime.message_market_observation_worker is not None and runtime.message_market_observation_task is None:
-        runtime.message_market_observation_task = asyncio.create_task(runtime.message_market_observation_worker.run())
+    if runtime.anchor_price_worker is not None and runtime.anchor_price_task is None:
+        runtime.anchor_price_task = asyncio.create_task(runtime.anchor_price_worker.run())
     if runtime.token_discovery_worker is not None and runtime.token_discovery_task is None:
         runtime.token_discovery_task = asyncio.create_task(runtime.token_discovery_worker.run())
-    dex_market_stream_worker = getattr(runtime, "dex_market_stream_worker", None)
-    if dex_market_stream_worker is not None and getattr(runtime, "dex_market_stream_task", None) is None:
-        runtime.dex_market_stream_task = asyncio.create_task(dex_market_stream_worker.run())
+    if runtime.live_price_gateway is not None and runtime.live_price_gateway_task is None:
+        runtime.live_price_gateway_task = asyncio.create_task(runtime.live_price_gateway.run())
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
         runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
     if runtime.pulse_candidate_worker is not None and runtime.pulse_candidate_task is None:
@@ -422,15 +407,12 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_worker.stop()
     if runtime.notification_delivery_worker is not None:
         runtime.notification_delivery_worker.stop()
-    if runtime.asset_market_sync_worker is not None:
-        runtime.asset_market_sync_worker.stop()
-    if runtime.message_market_observation_worker is not None:
-        runtime.message_market_observation_worker.stop()
+    if runtime.anchor_price_worker is not None:
+        runtime.anchor_price_worker.stop()
     if runtime.token_discovery_worker is not None:
         runtime.token_discovery_worker.stop()
-    dex_market_stream_worker = getattr(runtime, "dex_market_stream_worker", None)
-    if dex_market_stream_worker is not None:
-        dex_market_stream_worker.stop()
+    if runtime.live_price_gateway is not None:
+        runtime.live_price_gateway.stop()
     if runtime.token_radar_projection_worker is not None:
         runtime.token_radar_projection_worker.stop()
     if runtime.pulse_candidate_worker is not None:
@@ -445,10 +427,9 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.harness_ops_task,
             runtime.notification_task,
             runtime.notification_delivery_task,
-            runtime.asset_market_sync_task,
-            runtime.message_market_observation_task,
+            runtime.anchor_price_task,
             runtime.token_discovery_task,
-            getattr(runtime, "dex_market_stream_task", None),
+            runtime.live_price_gateway_task,
             runtime.pulse_candidate_task,
         )
         if task is not None
@@ -464,14 +445,12 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             token_radar_projection_task.cancel()
             await asyncio.gather(token_radar_projection_task, return_exceptions=True)
     await runtime.collector.stop()
-    if runtime.asset_market_sync_worker is not None:
-        runtime.asset_market_sync_worker.close()
-    if runtime.message_market_observation_worker is not None:
-        runtime.message_market_observation_worker.close()
+    if runtime.anchor_price_worker is not None:
+        runtime.anchor_price_worker.close()
     if runtime.token_discovery_worker is not None:
         runtime.token_discovery_worker.close()
-    if dex_market_stream_worker is not None:
-        dex_market_stream_worker.close()
+    if runtime.live_price_gateway is not None:
+        runtime.live_price_gateway.close()
     if runtime.token_radar_projection_worker is not None:
         runtime.token_radar_projection_worker.close()
     if runtime.pulse_candidate_worker is not None:
@@ -542,32 +521,19 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_result": runtime.pulse_candidate_worker.last_result if runtime.pulse_candidate_worker else None,
             "last_error": runtime.pulse_candidate_worker.last_error if runtime.pulse_candidate_worker else None,
         },
-        "asset_market_sync": {
-            "okx_cex_sync_enabled": runtime.settings.okx_cex_sync_enabled,
-            "worker_running": _task_running(runtime.asset_market_sync_task),
-            "last_started_at_ms": runtime.asset_market_sync_worker.last_started_at_ms
-            if runtime.asset_market_sync_worker
+        "anchor_price": {
+            "worker_running": _task_running(runtime.anchor_price_task),
+            "last_started_at_ms": runtime.anchor_price_worker.last_started_at_ms
+            if runtime.anchor_price_worker
             else None,
-            "last_run_at_ms": runtime.asset_market_sync_worker.last_run_at_ms
-            if runtime.asset_market_sync_worker
+            "last_run_at_ms": runtime.anchor_price_worker.last_run_at_ms
+            if runtime.anchor_price_worker
             else None,
-            "last_result": runtime.asset_market_sync_worker.last_result if runtime.asset_market_sync_worker else None,
-            "last_error": runtime.asset_market_sync_worker.last_error if runtime.asset_market_sync_worker else None,
-            "providers": runtime.asset_market_sync_worker.provider_states if runtime.asset_market_sync_worker else {},
-        },
-        "message_market_observation": {
-            "worker_running": _task_running(runtime.message_market_observation_task),
-            "last_started_at_ms": runtime.message_market_observation_worker.last_started_at_ms
-            if runtime.message_market_observation_worker
+            "last_result": runtime.anchor_price_worker.last_result
+            if runtime.anchor_price_worker
             else None,
-            "last_run_at_ms": runtime.message_market_observation_worker.last_run_at_ms
-            if runtime.message_market_observation_worker
-            else None,
-            "last_result": runtime.message_market_observation_worker.last_result
-            if runtime.message_market_observation_worker
-            else None,
-            "last_error": runtime.message_market_observation_worker.last_error
-            if runtime.message_market_observation_worker
+            "last_error": runtime.anchor_price_worker.last_error
+            if runtime.anchor_price_worker
             else None,
         },
         "token_discovery": {
@@ -579,21 +545,21 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_result": runtime.token_discovery_worker.last_result if runtime.token_discovery_worker else None,
             "last_error": runtime.token_discovery_worker.last_error if runtime.token_discovery_worker else None,
         },
-        "dex_market_stream": {
+        "live_price_gateway": {
             "configured": getattr(runtime.settings, "okx_dex_ws_configured", False),
-            "worker_running": _task_running(getattr(runtime, "dex_market_stream_task", None)),
+            "worker_running": _task_running(runtime.live_price_gateway_task),
             "subscription_limit": getattr(runtime.settings, "okx_dex_ws_subscription_limit", None),
-            "last_started_at_ms": getattr(runtime, "dex_market_stream_worker", None).last_started_at_ms
-            if getattr(runtime, "dex_market_stream_worker", None)
+            "last_started_at_ms": runtime.live_price_gateway.last_started_at_ms
+            if runtime.live_price_gateway
             else None,
-            "last_run_at_ms": getattr(runtime, "dex_market_stream_worker", None).last_run_at_ms
-            if getattr(runtime, "dex_market_stream_worker", None)
+            "last_run_at_ms": runtime.live_price_gateway.last_run_at_ms
+            if runtime.live_price_gateway
             else None,
-            "last_result": getattr(runtime, "dex_market_stream_worker", None).last_result
-            if getattr(runtime, "dex_market_stream_worker", None)
+            "last_result": runtime.live_price_gateway.last_result
+            if runtime.live_price_gateway
             else None,
-            "last_error": getattr(runtime, "dex_market_stream_worker", None).last_error
-            if getattr(runtime, "dex_market_stream_worker", None)
+            "last_error": runtime.live_price_gateway.last_error
+            if runtime.live_price_gateway
             else None,
         },
     }
@@ -617,17 +583,14 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_worker_stopped")
     if runtime.notification_delivery_worker is not None and not _task_running(runtime.notification_delivery_task):
         reasons.append("notification_delivery_worker_stopped")
-    if runtime.asset_market_sync_worker is not None and not _task_running(runtime.asset_market_sync_task):
-        reasons.append("asset_market_sync_worker_stopped")
-    if runtime.message_market_observation_worker is not None and not _task_running(
-        runtime.message_market_observation_task
+    if runtime.anchor_price_worker is not None and not _task_running(
+        runtime.anchor_price_task
     ):
-        reasons.append("message_market_observation_worker_stopped")
+        reasons.append("anchor_price_worker_stopped")
     if runtime.token_discovery_worker is not None and not _task_running(runtime.token_discovery_task):
         reasons.append("token_discovery_worker_stopped")
-    dex_market_stream_worker = getattr(runtime, "dex_market_stream_worker", None)
-    if dex_market_stream_worker is not None and not _task_running(getattr(runtime, "dex_market_stream_task", None)):
-        reasons.append("dex_market_stream_worker_stopped")
+    if runtime.live_price_gateway is not None and not _task_running(runtime.live_price_gateway_task):
+        reasons.append("live_price_gateway_stopped")
     if runtime.token_radar_projection_worker is not None and not _task_running(runtime.token_radar_projection_task):
         reasons.append("token_radar_projection_worker_stopped")
     if runtime.pulse_candidate_worker is not None and not _task_running(runtime.pulse_candidate_task):

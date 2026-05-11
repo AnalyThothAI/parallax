@@ -26,7 +26,6 @@ from ..identity_evidence_policy import (
     EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
 )
 from ..repositories.discovery_repository import DISCOVERY_PROVIDER
-from ..services.asset_market_sync import _payload_hash
 
 DEFAULT_DISCOVERY_LIMIT = 50
 DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000
@@ -248,8 +247,6 @@ def _process_dex_symbol_lookup(
         result["candidate_ids"].append(asset_id)
         result["search_hits"] += 1
         result["assets_written"] += 1
-        result["pricefeeds_written"] += 1
-        result["price_observations_written"] += 1
     if result["search_hits"]:
         result["affected_lookup_keys"].extend([f"symbol:{symbol}", f"project_symbol:{symbol}", f"cex_token:{symbol}"])
     return result
@@ -296,8 +293,6 @@ def _process_address_lookup(
         result["candidate_ids"].append(asset_id)
         result["search_hits"] += 1
         result["assets_written"] += 1
-        result["pricefeeds_written"] += 1
-        result["price_observations_written"] += 1
         if candidate_chain:
             result["affected_lookup_keys"].append(f"address:{candidate_chain}:{address}")
     if result["search_hits"]:
@@ -341,32 +336,6 @@ def _write_dex_candidate(
         commit=False,
     )
     repos.identity_evidence.recompute_current_identity(str(asset["asset_id"]), now_ms=now_ms, commit=False)
-    pricefeed = repos.registry.upsert_pricefeed(
-        feed_type="dex_token",
-        provider="okx_dex_search",
-        subject_type="Asset",
-        subject_id=str(asset["asset_id"]),
-        observed_at_ms=now_ms,
-        chain_id=str(asset["chain_id"]),
-        address=str(asset["address"]),
-        base_asset_id=str(asset["asset_id"]),
-        base_symbol=symbol,
-        commit=False,
-    )
-    repos.price_observations.insert_observation(
-        provider="okx_dex_search",
-        pricefeed_id=str(pricefeed["pricefeed_id"]),
-        observed_at_ms=now_ms,
-        subject_type="Asset",
-        subject_id=str(asset["asset_id"]),
-        price_usd=getattr(candidate, "price_usd", None),
-        price_basis="usd" if getattr(candidate, "price_usd", None) is not None else "unavailable",
-        market_cap_usd=getattr(candidate, "market_cap_usd", None),
-        liquidity_usd=getattr(candidate, "liquidity_usd", None),
-        holders=getattr(candidate, "holders", None),
-        raw_payload={**getattr(candidate, "raw", {}), "payload_hash": _payload_hash(getattr(candidate, "raw", {}))},
-        commit=False,
-    )
     return str(asset["asset_id"])
 
 
@@ -377,8 +346,6 @@ def _merge_lookup_result(result: dict[str, Any], lookup_result: dict[str, Any]) 
         "search_candidates_seen",
         "search_candidates_rejected",
         "assets_written",
-        "pricefeeds_written",
-        "price_observations_written",
     ):
         result[key] += int(lookup_result.get(key) or 0)
 
@@ -395,8 +362,6 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "search_candidates_seen": 0,
         "search_candidates_rejected": 0,
         "assets_written": 0,
-        "pricefeeds_written": 0,
-        "price_observations_written": 0,
         "reprocessed_intents": 0,
         "reprocess": None,
         "projection": deferred_token_radar_projection(),
@@ -416,8 +381,6 @@ def _lookup_result(
         "search_candidates_seen": 0,
         "search_candidates_rejected": 0,
         "assets_written": 0,
-        "pricefeeds_written": 0,
-        "price_observations_written": 0,
         "candidate_ids": [],
         "affected_lookup_keys": [],
     }
@@ -494,6 +457,11 @@ def _refresh_ms(*, lookup_key: str, status: str) -> int:
 def _result_hash(candidate_ids: list[str]) -> str:
     payload = json.dumps(sorted(set(candidate_ids)), separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _payload_hash(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 def _chain_id(value: Any) -> str | None:

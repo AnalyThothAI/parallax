@@ -196,6 +196,14 @@ function pulse(options: {
         address: options.address ?? null,
         pricefeed_id: options.pricefeedId ?? null,
       },
+      market: {
+        market_status: "anchored",
+        price_change_status: "live_not_persisted",
+        provider: "okx",
+        anchor_price_usd: 1,
+        social_signal_start_ms: 1_700_000_000_000,
+        event_price_readiness: { status: "ready" },
+      },
       gates: {
         eligible_for_high_alert: false,
         max_decision: "watch",

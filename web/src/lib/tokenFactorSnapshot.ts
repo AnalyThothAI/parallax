@@ -4,6 +4,7 @@ export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v2_alpha_gate
 const TOP_LEVEL_KEYS = new Set([
   "schema_version",
   "subject",
+  "market",
   "gates",
   "data_health",
   "families",
@@ -46,6 +47,7 @@ export function requireTokenFactorSnapshotV2(
 
   for (const key of [
     "subject",
+    "market",
     "gates",
     "data_health",
     "families",

@@ -5,7 +5,10 @@ from decimal import Decimal
 import pytest
 
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
+from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_PROJECTION_VERSION,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     _json_payload,
@@ -21,7 +24,7 @@ def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
         migrate(conn)
         repo = TokenRadarRepository(conn)
         repo.mark_coverage(
-            projection_version="token-radar-v10-current-market",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="5m",
             scope="matched",
             status="ready",
@@ -35,7 +38,7 @@ def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
         )
 
         coverage = repo.latest_coverage(
-            projection_version="token-radar-v10-current-market",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=("5m",),
             scopes=("matched",),
         )
@@ -60,7 +63,7 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
         migrate(conn)
         repo = TokenRadarRepository(conn)
         repo.mark_coverage(
-            projection_version="token-radar-v10-current-market",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window="1h",
             scope="all",
             status="failed",
@@ -74,7 +77,7 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
         )
 
         coverage = repo.latest_coverage(
-            projection_version="token-radar-v10-current-market",
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=("1h",),
             scopes=("all",),
         )
@@ -622,6 +625,13 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "BOV"},
+        "market": {
+            "market_status": "anchored",
+            "price_change_status": "live_not_persisted",
+            "event_price_readiness": {"status": "ready"},
+            "anchor_price_usd": 1.0,
+            "social_signal_start_ms": 1_778_000_000_000,
+        },
         "families": {
             "attention_heat": {
                 "raw_score": 80,

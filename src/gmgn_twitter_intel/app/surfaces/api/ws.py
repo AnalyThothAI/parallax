@@ -129,9 +129,11 @@ class PublicWebSocketHub:
     def _payload_matches_subscription(self, payload: dict[str, Any], client: ClientSubscription) -> bool:
         if payload.get("type") == "notification":
             return client.notifications
-        if payload.get("type") == "market_update":
+        if payload.get("type") == "live_market_update":
             target = _market_target(payload)
             return bool(target and target in client.market_targets)
+        if payload.get("type") == "market_update":
+            return False
         has_token_filters = bool(client.cas or client.symbols)
         if client.handles and _event_handle(payload.get("event")) in client.handles:
             return True

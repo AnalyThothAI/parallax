@@ -5,17 +5,17 @@ from typing import Any
 # Inlined to avoid circular import; must stay in sync with TOKEN_RADAR_RESOLVER_POLICY_VERSION
 _RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 
-_MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
+_ANCHOR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
 
 
-class PendingMarketObservationQuery:
-    """Selects token intent resolutions that need a market price observation."""
+class PendingAnchorPriceQuery:
+    """Selects token intent resolutions that need one message anchor price."""
 
     def __init__(self, conn: Any) -> None:
         self.conn = conn
 
     def pending_rows(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
-        hot_since_ms = int(now_ms) - _MESSAGE_MARKET_HOT_LOOKBACK_MS
+        hot_since_ms = int(now_ms) - _ANCHOR_PRICE_HOT_LOOKBACK_MS
         rows = self.conn.execute(
             """
             SELECT
@@ -30,9 +30,6 @@ class PendingMarketObservationQuery:
               registry_assets.address AS asset_address,
               asset_identity_current.canonical_symbol AS asset_symbol,
               asset_identity_current.identity_confidence AS asset_identity_confidence,
-              latest_subject_price.market_cap_usd AS asset_market_cap_usd,
-              latest_subject_price.liquidity_usd AS asset_liquidity_usd,
-              latest_subject_price.holders AS asset_holders,
               cex_tokens.base_symbol AS cex_base_symbol,
               price_feeds.feed_type,
               price_feeds.provider AS pricefeed_provider,
@@ -76,14 +73,6 @@ class PendingMarketObservationQuery:
             ) preferred_price_feed ON true
             LEFT JOIN price_feeds
               ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.subject_type = tir.target_type
-                AND price_observations.subject_id = tir.target_id
-              ORDER BY observed_at_ms DESC, observation_id DESC
-              LIMIT 1
-            ) latest_subject_price ON true
             WHERE tir.is_current = true
               AND tir.resolver_policy_version = %s
               AND tir.target_type IN ('Asset', 'CexToken')
@@ -92,13 +81,7 @@ class PendingMarketObservationQuery:
                 SELECT 1
                 FROM price_observations po
                 WHERE po.source_resolution_id = tir.resolution_id
-                  AND po.subject_type = tir.target_type
-                  AND po.subject_id = tir.target_id
-                  AND (
-                    COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
-                    OR po.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
-                  )
-                  AND po.observation_kind = 'message_quote'
+                  AND po.observation_kind = 'message_anchor'
               )
             ORDER BY
               CASE WHEN events.received_at_ms >= %s THEN 0 ELSE 1 END,

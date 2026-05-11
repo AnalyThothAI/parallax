@@ -11,6 +11,7 @@ TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS = frozenset(
     {
         "schema_version",
         "subject",
+        "market",
         "gates",
         "data_health",
         "families",
@@ -48,7 +49,7 @@ def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_sn
     if extra:
         raise ValueError(f"{field_name}.{extra[0]} is not allowed")
 
-    for key in ("subject", "gates", "data_health", "normalization", "composite", "provenance"):
+    for key in ("subject", "market", "gates", "data_health", "normalization", "composite", "provenance"):
         _required_dict(value.get(key), field_name=f"{field_name}.{key}")
 
     provenance = _required_dict(value.get("provenance"), field_name=f"{field_name}.provenance")

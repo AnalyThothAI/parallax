@@ -267,7 +267,41 @@ def test_websocket_ca_filter_matches_token_intents_without_entities():
     assert hub._payload_matches_subscription(payload, client) is True
 
 
-def test_websocket_routes_market_update_for_explicit_market_target_subscription():
+def test_websocket_routes_live_market_update_for_explicit_market_target_subscription():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(
+        websocket=None,
+        market_targets={("Asset", "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2")},
+    )
+    payload = {
+        "type": "live_market_update",
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+        "live_market": {"status": "live", "price_usd": 1.23},
+        "provider": "okx",
+        "observed_at_ms": 1_700_086_430_000,
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is True
+
+
+def test_websocket_does_not_broadcast_live_market_update_without_matching_subscription():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(
+        websocket=None,
+        market_targets={("Asset", "asset:solana:token:other")},
+    )
+    payload = {
+        "type": "live_market_update",
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+        "live_market": {"status": "live", "price_usd": 1.23},
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is False
+
+
+def test_websocket_ignores_legacy_market_update_even_when_subscribed():
     hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
     client = ClientSubscription(
         websocket=None,
@@ -277,28 +311,6 @@ def test_websocket_routes_market_update_for_explicit_market_target_subscription(
         "type": "market_update",
         "target_type": "Asset",
         "target_id": "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
-        "current_market": {
-            "market_status": "fresh",
-            "fields": {"market_cap_usd": {"value": 110_900_000, "status": "fresh"}},
-        },
-        "provider": "okx_dex_ws_price_info",
-        "observed_at_ms": 1_700_086_430_000,
-    }
-
-    assert hub._payload_matches_subscription(payload, client) is True
-
-
-def test_websocket_does_not_broadcast_market_update_without_matching_subscription():
-    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
-    client = ClientSubscription(
-        websocket=None,
-        market_targets={("Asset", "asset:solana:token:other")},
-    )
-    payload = {
-        "type": "market_update",
-        "target_type": "Asset",
-        "target_id": "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
-        "current_market": {"market_status": "fresh", "fields": {}},
     }
 
     assert hub._payload_matches_subscription(payload, client) is False

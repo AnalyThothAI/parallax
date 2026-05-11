@@ -92,5 +92,5 @@ def post_row(event_id: str, *, received_at_ms: int) -> dict:
         "price_quote_symbol": "USDT",
         "price_observed_at_ms": received_at_ms + 1_000,
         "price_observation_lag_ms": 1_000,
-        "price_observation_kind": "message_quote",
+        "price_observation_kind": "message_anchor",
     }

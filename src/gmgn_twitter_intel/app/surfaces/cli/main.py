@@ -20,9 +20,8 @@ from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_c
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.domains.asset_market.interfaces import CurrentMarketService
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
-from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_universe
+from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
     attribute_harness_credits,
@@ -107,10 +106,6 @@ def build_parser() -> argparse.ArgumentParser:
     asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     asset_flow.add_argument("--limit", type=int, default=20)
     asset_flow.add_argument("--scope", choices=("all", "matched"), default="all")
-
-    current_market = subcommands.add_parser("current-market", help="print field-aware current market snapshot")
-    current_market.add_argument("--target-type", choices=("Asset", "CexToken"), required=True)
-    current_market.add_argument("--target-id", required=True)
 
     account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
     account_alerts.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
@@ -264,11 +259,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="backfill token radar event price baselines from message observations",
     )
     backfill_price_baselines.add_argument("--limit", type=int, default=1000)
-    backfill_market_facts = ops_subcommands.add_parser(
-        "backfill-current-market-field-facts",
-        help="backfill current market field facts from price observations",
-    )
-    backfill_market_facts.add_argument("--limit", type=int, default=1000)
     factor_diagnostics = ops_subcommands.add_parser(
         "factor-diagnostics",
         help="inspect token factor distribution health for latest radar rows",
@@ -461,11 +451,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
-        if command == "ops" and args.ops_command == "backfill-current-market-field-facts":
-            data = repos.price_observations.backfill_current_market_field_facts(limit=args.limit)
-            _emit({"ok": True, "data": data}, stdout)
-            return 0
-
         evidence = repos.evidence
         signals = repos.signals
         assets = repos.assets
@@ -511,22 +496,13 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
                 now_ms=_now_ms(),
             )
             _emit({"ok": True, "data": {"window": args.window, "scope": args.scope, **data}}, stdout)
-            return 0
-
-        if command == "current-market":
-            data = CurrentMarketService(current_market=repos.current_market).current_market_snapshot(
-                target_type=args.target_type,
-                target_id=args.target_id,
-                now_ms=_now_ms(),
-            )
-            _emit({"ok": True, "data": data}, stdout)
             return 0
 
         if command == "account-alerts":
@@ -754,9 +730,8 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 timeout_seconds=settings.okx_timeout_seconds,
             )
             try:
-                data = sync_cex_universe(
+                data = sync_cex_routes(
                     registry=repos.registry,
-                    price_observations=repos.price_observations,
                     cex_market=OkxCexMarketProvider(client),
                     inst_types=inst_types,
                     observed_at_ms=_now_ms(),

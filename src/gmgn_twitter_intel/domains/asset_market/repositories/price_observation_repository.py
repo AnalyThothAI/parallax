@@ -1,17 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-from decimal import Decimal
 from typing import Any
 
 from psycopg.types.json import Jsonb
-
-from gmgn_twitter_intel.domains.asset_market.market_field_facts import (
-    CEX_MARKET_CAPABLE_PROVIDERS,
-    DEX_METADATA_CAPABLE_PROVIDERS,
-    PRICE_CAPABLE_PROVIDERS,
-    VOLUME_24H_CAPABLE_PROVIDERS,
-)
 
 
 class PriceObservationRepository:
@@ -45,6 +37,10 @@ class PriceObservationRepository:
     ) -> dict[str, Any]:
         if provider == "gmgn_payload":
             raise ValueError("GMGN payload token snapshots are identity evidence only, not market observations")
+        if observation_kind != "message_anchor":
+            raise ValueError("price observations are anchor-only; live/refresh prices are not persisted")
+        if not source_event_id or not source_intent_id or not source_resolution_id or event_received_at_ms is None:
+            raise ValueError("message_anchor observations require event, intent, resolution, and event time")
         observation_lag_ms = (
             max(0, int(observed_at_ms) - int(event_received_at_ms)) if event_received_at_ms is not None else None
         )
@@ -113,38 +109,21 @@ class PriceObservationRepository:
                 int(observed_at_ms),
             ),
         )
-        self._write_current_market_field_facts(
+        self._upsert_token_market_price_baseline(
+            resolution_id=source_resolution_id,
+            event_id=source_event_id,
+            target_type=subject_type,
+            target_id=subject_id,
+            event_received_at_ms=int(event_received_at_ms),
             observation_id=observation_id,
+            observation_kind=observation_kind,
             provider=provider,
             observed_at_ms=int(observed_at_ms),
-            subject_type=subject_type,
-            subject_id=subject_id,
             price_usd=price_usd,
             price_quote=price_quote,
             quote_symbol=quote_symbol,
             price_basis=price_basis,
-            market_cap_usd=market_cap_usd,
-            liquidity_usd=liquidity_usd,
-            volume_24h_usd=volume_24h_usd,
-            open_interest_usd=open_interest_usd,
-            holders=holders,
         )
-        if source_resolution_id and source_event_id and event_received_at_ms is not None:
-            self._upsert_token_market_price_baseline(
-                resolution_id=source_resolution_id,
-                event_id=source_event_id,
-                target_type=subject_type,
-                target_id=subject_id,
-                event_received_at_ms=int(event_received_at_ms),
-                observation_id=observation_id,
-                observation_kind=observation_kind,
-                provider=provider,
-                observed_at_ms=int(observed_at_ms),
-                price_usd=price_usd,
-                price_quote=price_quote,
-                quote_symbol=quote_symbol,
-                price_basis=price_basis,
-            )
         if commit:
             self.conn.commit()
         return self.get(observation_id) or {}
@@ -277,7 +256,7 @@ class PriceObservationRepository:
             WHERE source_event_id = %s
               AND subject_type = %s
               AND subject_id = %s
-              AND observation_kind = 'message_quote'
+              AND observation_kind = 'message_anchor'
             ORDER BY
               observed_at_ms DESC,
               observation_id DESC
@@ -295,7 +274,7 @@ class PriceObservationRepository:
             WHERE source_resolution_id IS NOT NULL
               AND source_event_id IS NOT NULL
               AND event_received_at_ms IS NOT NULL
-              AND observation_kind = 'message_quote'
+              AND observation_kind = 'message_anchor'
             ORDER BY event_received_at_ms DESC, observation_id DESC
             LIMIT %s
             """,
@@ -319,119 +298,6 @@ class PriceObservationRepository:
             )
         self.conn.commit()
         return {"baselines_written": len(rows)}
-
-    def backfill_current_market_field_facts(self, *, limit: int = 1000) -> dict[str, int]:
-        rows = self.conn.execute(
-            """
-            SELECT
-              observation_id, provider, observed_at_ms, subject_type, subject_id,
-              price_usd, price_quote, quote_symbol, price_basis, market_cap_usd,
-              liquidity_usd, volume_24h_usd, open_interest_usd, holders
-            FROM price_observations
-            WHERE price_usd IS NOT NULL
-               OR price_quote IS NOT NULL
-               OR market_cap_usd IS NOT NULL
-               OR liquidity_usd IS NOT NULL
-               OR volume_24h_usd IS NOT NULL
-               OR open_interest_usd IS NOT NULL
-               OR holders IS NOT NULL
-            ORDER BY observed_at_ms DESC, observation_id DESC
-            LIMIT %s
-            """,
-            (max(0, int(limit)),),
-        ).fetchall()
-        facts_written = 0
-        for row in rows:
-            facts_written += self._write_current_market_field_facts(
-                observation_id=str(row["observation_id"]),
-                provider=str(row["provider"]),
-                observed_at_ms=int(row["observed_at_ms"]),
-                subject_type=str(row["subject_type"]),
-                subject_id=str(row["subject_id"]),
-                price_usd=row.get("price_usd"),
-                price_quote=row.get("price_quote"),
-                quote_symbol=row.get("quote_symbol"),
-                price_basis=row.get("price_basis"),
-                market_cap_usd=row.get("market_cap_usd"),
-                liquidity_usd=row.get("liquidity_usd"),
-                volume_24h_usd=row.get("volume_24h_usd"),
-                open_interest_usd=row.get("open_interest_usd"),
-                holders=row.get("holders"),
-            )
-        self.conn.commit()
-        return {"observations_scanned": len(rows), "facts_written": facts_written}
-
-    def _write_current_market_field_facts(
-        self,
-        *,
-        observation_id: str,
-        provider: str,
-        observed_at_ms: int,
-        subject_type: str,
-        subject_id: str,
-        price_usd: Any,
-        price_quote: Any,
-        quote_symbol: str | None,
-        price_basis: str | None,
-        market_cap_usd: Any,
-        liquidity_usd: Any,
-        volume_24h_usd: Any,
-        open_interest_usd: Any,
-        holders: int | None,
-    ) -> int:
-        facts: list[tuple[str, Any]] = []
-        has_price = price_usd is not None or price_quote is not None
-        if provider in PRICE_CAPABLE_PROVIDERS and has_price:
-            facts.extend(
-                (key, value)
-                for key, value in (
-                    ("price_usd", price_usd),
-                    ("price_quote", price_quote),
-                    ("quote_symbol", quote_symbol),
-                    ("price_basis", price_basis),
-                )
-                if value is not None
-            )
-        if provider in DEX_METADATA_CAPABLE_PROVIDERS:
-            facts.extend(
-                (key, value)
-                for key, value in (
-                    ("market_cap_usd", market_cap_usd),
-                    ("liquidity_usd", liquidity_usd),
-                    ("holders", holders),
-                )
-                if value is not None
-            )
-        if provider in VOLUME_24H_CAPABLE_PROVIDERS and volume_24h_usd is not None:
-            facts.append(("volume_24h_usd", volume_24h_usd))
-        if provider in CEX_MARKET_CAPABLE_PROVIDERS and open_interest_usd is not None:
-            facts.append(("open_interest_usd", open_interest_usd))
-        for field_key, value in facts:
-            self.conn.execute(
-                """
-                INSERT INTO current_market_field_facts(
-                  subject_type, subject_id, field_key, value_json, observed_at_ms,
-                  provider, source_observation_id, updated_at_ms
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT(subject_type, subject_id, field_key, source_observation_id) DO UPDATE SET
-                  value_json = excluded.value_json,
-                  observed_at_ms = excluded.observed_at_ms,
-                  provider = excluded.provider,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                (
-                    subject_type,
-                    subject_id,
-                    field_key,
-                    Jsonb(_json_value(value)),
-                    int(observed_at_ms),
-                    provider,
-                    observation_id,
-                    int(observed_at_ms),
-                ),
-            )
-        return len(facts)
 
     def _upsert_token_market_price_baseline(
         self,
@@ -564,15 +430,6 @@ def _observation_id(
     source_resolution_id: str | None,
     observation_kind: str,
 ) -> str:
-    if observation_kind == "refresh" and not (source_event_id or source_intent_id or source_resolution_id):
-        return _stable_id(
-            "price-observation",
-            provider,
-            pricefeed_id or "",
-            subject_type,
-            subject_id,
-            str(observed_at_ms),
-        )
     return _stable_id(
         "price-observation",
         observation_kind,
@@ -598,10 +455,3 @@ def _row_value(row: dict[str, Any] | None, key: str) -> Any:
 def _row_int(row: dict[str, Any] | None, key: str) -> int | None:
     value = _row_value(row, key)
     return int(value) if value is not None else None
-
-
-def _json_value(value: Any) -> Any:
-    if isinstance(value, Decimal):
-        numeric = float(value)
-        return int(numeric) if numeric.is_integer() else numeric
-    return value

@@ -891,7 +891,8 @@ def _factor_snapshot(
         **(market_facts or {}),
     }
     resolved_social_facts = {"mentions_1h": 9, "unique_authors": 4, "watched_mentions": 1, **(social_facts or {})}
-    market_ready = "ready" if resolved_market_facts.get("market_status", "fresh") == "fresh" else "partial"
+    market_status = resolved_market_facts.get("market_status", "fresh")
+    market_ready = "ready" if market_status == "fresh" else "partial"
     return {
         "schema_version": "token_factor_snapshot_v2_alpha_gated",
         "subject": {
@@ -899,6 +900,14 @@ def _factor_snapshot(
             "target_type": target_type,
             "target_id": target_id,
             "target_market_type": "dex" if target_id else None,
+        },
+        "market": {
+            "market_status": "anchored" if target_id and market_status == "fresh" else "missing",
+            "price_change_status": "live_not_persisted" if target_id and market_status == "fresh" else "missing_anchor",
+            "provider": "okx" if target_id else None,
+            "anchor_price_usd": 0.42 if target_id else None,
+            "social_signal_start_ms": 1_700_000_000_000,
+            "event_price_readiness": {"status": "ready" if target_id and market_status == "fresh" else "missing"},
         },
         "gates": {
             "eligible_for_high_alert": eligible_for_high_alert and not blocked_reasons,

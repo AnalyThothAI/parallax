@@ -260,57 +260,6 @@
         ]
       }
     },
-    "/api/current-market": {
-      "get": {
-        "operationId": "current_market_api_current_market_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "target_type",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Target Type",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "target_id",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Target Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Current Market",
-        "tags": [
-          "api"
-        ]
-      }
-    },
     "/api/enrichment-jobs": {
       "get": {
         "operationId": "enrichment_jobs_api_enrichment_jobs_get",
@@ -687,6 +636,57 @@
           }
         },
         "summary": "Harness Weights",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/live-market": {
+      "get": {
+        "operationId": "live_market_api_live_market_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Target Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live Market",
         "tags": [
           "api"
         ]

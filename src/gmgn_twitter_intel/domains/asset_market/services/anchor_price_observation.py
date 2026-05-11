@@ -10,16 +10,16 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenPrice,
     DexTokenPriceRequest,
 )
-from gmgn_twitter_intel.domains.asset_market.queries.pending_market_observation_query import (
-    PendingMarketObservationQuery,
+from gmgn_twitter_intel.domains.asset_market.queries.pending_anchor_price_query import (
+    PendingAnchorPriceQuery,
 )
 
-from .asset_market_sync import DEX_PRICE_BATCH_SIZE
+ANCHOR_PRICE_DEX_BATCH_SIZE = 20
 
-MESSAGE_MARKET_HOT_LOOKBACK_MS = 60 * 60 * 1000
+ANCHOR_PRICE_HOT_LOOKBACK_MS = 60 * 60 * 1000
 
 
-def observe_message_market(
+def observe_anchor_prices(
     *,
     repos: Any,
     cex_market: Any = None,
@@ -32,7 +32,7 @@ def observe_message_market(
         "rows_selected": len(rows),
         "cex_ticker_requests": 0,
         "dex_price_requests": 0,
-        "observations_written": 0,
+        "anchor_observations_written": 0,
         "skipped_missing_pricefeed": 0,
         "skipped_missing_provider": 0,
         "skipped_missing_market": 0,
@@ -60,14 +60,14 @@ def observe_message_market(
         else:
             written = False
         if written:
-            result["observations_written"] += 1
-    if result["observations_written"]:
+            result["anchor_observations_written"] += 1
+    if result["anchor_observations_written"]:
         repos.conn.commit()
     return result
 
 
 def _select_pending_rows(conn: Any, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
-    return PendingMarketObservationQuery(conn).pending_rows(now_ms=now_ms, limit=limit)
+    return PendingAnchorPriceQuery(conn).pending_rows(now_ms=now_ms, limit=limit)
 
 
 def _fetch_cex_quotes(
@@ -117,7 +117,7 @@ def _fetch_dex_quotes(
             DexTokenPriceRequest(chain_id=chain_id, address=normalized),
         )
     items = list(request_items.values())
-    for chunk in _chunks(items, DEX_PRICE_BATCH_SIZE):
+    for chunk in _chunks(items, ANCHOR_PRICE_DEX_BATCH_SIZE):
         if not chunk:
             continue
         result["dex_price_requests"] += 1
@@ -139,7 +139,7 @@ def _write_cex_observation(
         return False
     price_basis = _cex_price_basis(quote_symbol)
     repos.price_observations.insert_observation(
-        provider="okx_cex",
+        provider="okx",
         pricefeed_id=pricefeed_id,
         observed_at_ms=now_ms,
         subject_type="CexToken",
@@ -153,7 +153,7 @@ def _write_cex_observation(
         source_event_id=str(row["event_id"]),
         source_intent_id=str(row["intent_id"]),
         source_resolution_id=str(row["resolution_id"]),
-        observation_kind="message_quote",
+        observation_kind="message_anchor",
         event_received_at_ms=int(row["event_received_at_ms"]),
         raw_payload={**ticker.raw, "payload_hash": _payload_hash(ticker.raw)},
         commit=False,
@@ -169,7 +169,7 @@ def _write_dex_observation(
         return False
     pricefeed = repos.registry.upsert_pricefeed(
         feed_type="dex_token",
-        provider="okx_dex_price",
+        provider="okx",
         subject_type="Asset",
         subject_id=str(row["target_id"]),
         observed_at_ms=price.observed_at_ms or now_ms,
@@ -180,7 +180,7 @@ def _write_dex_observation(
         commit=False,
     )
     repos.price_observations.insert_observation(
-        provider="okx_dex_price",
+        provider="okx",
         pricefeed_id=str(pricefeed["pricefeed_id"]),
         observed_at_ms=price.observed_at_ms or now_ms,
         subject_type="Asset",
@@ -195,7 +195,7 @@ def _write_dex_observation(
         source_event_id=str(row["event_id"]),
         source_intent_id=str(row["intent_id"]),
         source_resolution_id=str(row["resolution_id"]),
-        observation_kind="message_quote",
+        observation_kind="message_anchor",
         event_received_at_ms=int(row["event_received_at_ms"]),
         raw_payload={**price.raw, "payload_hash": _payload_hash(price.raw)},
         commit=False,

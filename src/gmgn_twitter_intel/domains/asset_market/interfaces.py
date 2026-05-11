@@ -15,15 +15,12 @@ from .identity_evidence_policy import (
     EVIDENCE_TWEET_CONTRACT_MENTION,
     select_current_identity,
 )
-from .read_models.current_market_service import CurrentMarketService
 from .repositories.asset_repository import AssetRepository
-from .repositories.current_market_repository import CurrentMarketRepository
 from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
 from .repositories.market_repository import MarketRepository
 from .repositories.price_observation_repository import PriceObservationRepository
 from .repositories.registry_repository import RegistryRepository
-from .services.asset_market_sync import sync_dex_prices
 
 __all__ = [
     "CONFIDENCE_MANUAL",
@@ -39,13 +36,10 @@ __all__ = [
     "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
     "EVIDENCE_TWEET_CONTRACT_MENTION",
     "AssetRepository",
-    "CurrentMarketRepository",
-    "CurrentMarketService",
     "DiscoveryRepository",
     "IdentityEvidenceRepository",
     "MarketRepository",
     "PriceObservationRepository",
     "RegistryRepository",
     "select_current_identity",
-    "sync_dex_prices",
 ]

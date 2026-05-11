@@ -4,10 +4,13 @@ import type {
   ApiResponse,
   AssetFlowData,
   AssetFlowRow,
-  MarketUpdatePayload,
+  LiveMarketUpdatePayload,
 } from "../../api/types";
 
-export function patchTokenRadarMarketUpdate(queryClient: QueryClient, update: MarketUpdatePayload) {
+export function patchTokenRadarLiveMarketUpdate(
+  queryClient: QueryClient,
+  update: LiveMarketUpdatePayload,
+) {
   queryClient.setQueriesData<ApiResponse<AssetFlowData>>(
     { queryKey: ["token-radar"] },
     (response) => {
@@ -22,7 +25,7 @@ export function patchTokenRadarMarketUpdate(queryClient: QueryClient, update: Ma
 
 export function patchAssetFlowData(
   data: AssetFlowData,
-  update: MarketUpdatePayload,
+  update: LiveMarketUpdatePayload,
 ): AssetFlowData {
   const targets = patchAssetFlowRows(data.targets, update);
   const attention = patchAssetFlowRows(data.attention, update);
@@ -34,7 +37,7 @@ export function patchAssetFlowData(
 
 export function patchAssetFlowRows(
   rows: AssetFlowRow[],
-  update: MarketUpdatePayload,
+  update: LiveMarketUpdatePayload,
 ): AssetFlowRow[] {
   let changed = false;
   const next = rows.map((row) => {
@@ -42,12 +45,19 @@ export function patchAssetFlowRows(
       return row;
     }
     changed = true;
-    return { ...row, current_market: update.current_market };
+    return {
+      ...row,
+      live_market: {
+        target_type: update.target_type,
+        target_id: update.target_id,
+        ...update.live_market,
+      },
+    };
   });
   return changed ? next : rows;
 }
 
-function assetFlowRowMatchesMarketUpdate(row: AssetFlowRow, update: MarketUpdatePayload): boolean {
+function assetFlowRowMatchesMarketUpdate(row: AssetFlowRow, update: LiveMarketUpdatePayload): boolean {
   return (
     row.target?.target_type === update.target_type && row.target?.target_id === update.target_id
   );

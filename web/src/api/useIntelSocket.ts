@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
 
 import { websocketUrl } from "./client";
-import type { LivePayload, MarketUpdatePayload, NotificationLivePayload } from "./types";
+import type { LiveMarketUpdatePayload, LivePayload, NotificationLivePayload } from "./types";
 
 type SocketStatus = "idle" | "connecting" | "authenticating" | "connected" | "closed" | "error";
 
@@ -24,7 +24,7 @@ export function useIntelSocket({
   const [status, setStatus] = useState<SocketStatus>("idle");
   const [events, setEvents] = useState<LivePayload[]>([]);
   const [notificationEvents, setNotificationEvents] = useState<NotificationLivePayload[]>([]);
-  const [marketUpdates, setMarketUpdates] = useState<MarketUpdatePayload[]>([]);
+  const [liveMarketUpdates, setLiveMarketUpdates] = useState<LiveMarketUpdatePayload[]>([]);
   const [lastMessageAt, setLastMessageAt] = useState<number | null>(null);
   const socketRef = useRef<ReconnectingWebSocket | null>(null);
   const marketTargetKey = JSON.stringify(normalizeMarketTargets(marketTargets));
@@ -34,7 +34,7 @@ export function useIntelSocket({
       setStatus("idle");
       setEvents([]);
       setNotificationEvents([]);
-      setMarketUpdates([]);
+      setLiveMarketUpdates([]);
       setLastMessageAt(null);
       return;
     }
@@ -83,8 +83,10 @@ export function useIntelSocket({
         );
         return;
       }
-      if (payload.type === "market_update") {
-        setMarketUpdates((current) => [payload as MarketUpdatePayload, ...current].slice(0, 100));
+      if (payload.type === "live_market_update") {
+        setLiveMarketUpdates((current) =>
+          [payload as LiveMarketUpdatePayload, ...current].slice(0, 100),
+        );
       }
     });
 
@@ -97,7 +99,7 @@ export function useIntelSocket({
     };
   }, [token, handles, replay, notifications, marketTargetKey]);
 
-  return { status, events, notifications: notificationEvents, marketUpdates, lastMessageAt };
+  return { status, events, notifications: notificationEvents, liveMarketUpdates, lastMessageAt };
 }
 
 function normalizeHandles(value: string): string[] {

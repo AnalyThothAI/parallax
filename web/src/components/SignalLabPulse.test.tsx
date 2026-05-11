@@ -131,6 +131,7 @@ function pulseItem(index: number): SignalPulseItem {
         symbol: `TOKEN${index}`,
         pricefeed_id: `pricefeed:cex:okx:spot:TOKEN${index}-USDT`,
       },
+      market: signalPulseMarketFixture(),
       gates: {
         eligible_for_high_alert: true,
         max_decision: "high_alert",
@@ -242,5 +243,21 @@ function pulseItem(index: number): SignalPulseItem {
     created_at_ms: 1_700_000_000_000 + index,
     updated_at_ms: 1_700_000_000_000 + index,
     playbooks: [],
+  };
+}
+
+function signalPulseMarketFixture() {
+  return {
+    market_status: "anchored",
+    price_change_status: "live_not_persisted",
+    provider: "okx",
+    anchor_price_usd: 1.23,
+    anchor_price_quote: 1.23,
+    anchor_quote_symbol: "USDT",
+    anchor_price_basis: "quote_as_usd",
+    anchor_observed_at_ms: 1_700_000_000_000,
+    social_signal_start_ms: 1_700_000_000_000,
+    anchor_lag_ms: 0,
+    event_price_readiness: { status: "ready" },
   };
 }

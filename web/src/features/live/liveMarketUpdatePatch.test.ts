@@ -5,21 +5,21 @@ import type {
   ApiResponse,
   AssetFlowData,
   AssetFlowRow,
-  MarketUpdatePayload,
+  LiveMarketUpdatePayload,
 } from "../../api/types";
 
-import { patchAssetFlowData, patchTokenRadarMarketUpdate } from "./marketUpdatePatch";
+import { patchAssetFlowData, patchTokenRadarLiveMarketUpdate } from "./liveMarketUpdatePatch";
 
-describe("marketUpdatePatch", () => {
+describe("liveMarketUpdatePatch", () => {
   it("patches matching token radar target rows", () => {
     const row = assetFlowRow("Asset", "asset:solana:token:abc");
     const other = assetFlowRow("Asset", "asset:solana:token:other");
     const data = assetFlowData({ targets: [row], attention: [other] });
-    const update = marketUpdate("Asset", "asset:solana:token:abc", 42);
+    const update = liveMarketUpdate("Asset", "asset:solana:token:abc", 42);
 
     const patched = patchAssetFlowData(data, update);
 
-    expect(patched.targets[0].current_market.fields.price_usd.value).toBe(42);
+    expect(patched.targets[0].live_market.price_usd).toBe(42);
     expect(patched.targets[0]).not.toBe(row);
     expect(patched.attention[0]).toBe(other);
   });
@@ -32,7 +32,7 @@ describe("marketUpdatePatch", () => {
 
     const patched = patchAssetFlowData(
       data,
-      marketUpdate("Asset", "asset:solana:token:missing", 99),
+      liveMarketUpdate("Asset", "asset:solana:token:missing", 99),
     );
 
     expect(patched).toBe(data);
@@ -56,15 +56,18 @@ describe("marketUpdatePatch", () => {
     queryClient.setQueryData(["token-radar", "5m", "all"], second);
     queryClient.setQueryData(["token-radar", "1h", "matched"], unrelated);
 
-    patchTokenRadarMarketUpdate(queryClient, marketUpdate("Asset", "asset:solana:token:abc", 77));
+    patchTokenRadarLiveMarketUpdate(
+      queryClient,
+      liveMarketUpdate("Asset", "asset:solana:token:abc", 77),
+    );
 
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "all"])?.data
-        .targets[0].current_market.fields.price_usd.value,
+        .targets[0].live_market.price_usd,
     ).toBe(77);
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "5m", "all"])?.data
-        .attention[0].current_market.fields.price_usd.value,
+        .attention[0].live_market.price_usd,
     ).toBe(77);
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "matched"]),
@@ -96,33 +99,31 @@ function assetFlowData({
 function assetFlowRow(targetType: string, targetId: string): AssetFlowRow {
   return {
     target: { target_type: targetType, target_id: targetId },
-    current_market: {
+    live_market: {
       target_type: targetType,
       target_id: targetId,
-      market_status: "missing",
-      fields: {},
+      status: "missing",
     },
   } as unknown as AssetFlowRow;
 }
 
-function marketUpdate(targetType: string, targetId: string, price: number): MarketUpdatePayload {
+function liveMarketUpdate(
+  targetType: string,
+  targetId: string,
+  price: number,
+): LiveMarketUpdatePayload {
   return {
-    type: "market_update",
+    type: "live_market_update",
     target_type: targetType,
     target_id: targetId,
-    current_market: {
-      target_type: targetType,
-      target_id: targetId,
-      market_status: "fresh",
-      fields: {
-        price_usd: {
-          value: price,
-          status: "fresh",
-          observed_at_ms: 2,
-          age_ms: 0,
-          provider: "test",
-        },
-      },
+    live_market: {
+      status: "live",
+      price_usd: price,
+      price_basis: "usd",
+      observed_at_ms: 2,
+      received_at_ms: 2,
+      age_ms: 0,
+      provider: "test",
     },
   };
 }

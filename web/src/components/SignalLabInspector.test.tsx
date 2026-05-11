@@ -38,6 +38,7 @@ describe("SignalLabInspector", () => {
                 chain: "eip155:8453",
                 address: "0x920738cbe6ddf7399187ffcf85c4b19154123be4",
               },
+              market: signalPulseMarketFixture(),
               gates: {
                 eligible_for_high_alert: false,
                 max_decision: "watch",
@@ -185,6 +186,7 @@ function signalPulseItem(): SignalPulseItem {
         chain: "eip155:8453",
         address: "0x920738cbe6ddf7399187ffcf85c4b19154123be4",
       },
+      market: signalPulseMarketFixture(),
       gates: {
         eligible_for_high_alert: false,
         max_decision: "watch",
@@ -264,5 +266,21 @@ function signalPulseItem(): SignalPulseItem {
     created_at_ms: 1_700_000_000_000,
     updated_at_ms: 1_700_000_000_000,
     playbooks: [],
+  };
+}
+
+function signalPulseMarketFixture() {
+  return {
+    market_status: "anchored",
+    price_change_status: "live_not_persisted",
+    provider: "okx",
+    anchor_price_usd: 0.42,
+    anchor_price_quote: null,
+    anchor_quote_symbol: "USD",
+    anchor_price_basis: "usd",
+    anchor_observed_at_ms: 1_700_000_000_000,
+    social_signal_start_ms: 1_700_000_000_000,
+    anchor_lag_ms: 0,
+    event_price_readiness: { status: "ready" },
   };
 }
