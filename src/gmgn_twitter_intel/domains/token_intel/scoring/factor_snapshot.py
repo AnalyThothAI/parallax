@@ -524,26 +524,29 @@ def _z_or_new_burst_factor(*, z_value: float | None, new_burst_score: float | No
     if z_value is not None:
         raw_value: Any = z_value
         score = max(0.0, min(100.0, 25.0 + z_value * 22.5))
-        confidence = 0.9
     elif new_burst_score is not None:
         raw_value = new_burst_score
         score = log_points(new_burst_score, scale=2.0, max_points=80.0)
-        confidence = 0.85
     else:
         raw_value = None
         score = 0.0
-        confidence = 0.0
     return _factor_point(
         "social_heat",
         "attention_surprise",
         raw_value=raw_value,
         score=score,
-        confidence=confidence,
+        confidence=0.95 if raw_value is not None else 0.0,
     )
 
 
 def _acceleration_factor(value: float | None) -> dict[str, Any]:
-    return _count_factor("social_heat", "attention_acceleration", value, scale=2)
+    return _factor_point(
+        "social_heat",
+        "attention_acceleration",
+        raw_value=value,
+        score=log_points(safe_float(value), scale=2, max_points=100.0),
+        confidence=0.9 if value is not None else 0.0,
+    )
 
 
 def _propagation_speed_factor(second_ms: int | None, third_ms: int | None) -> dict[str, Any]:

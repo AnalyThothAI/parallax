@@ -148,10 +148,14 @@ def test_social_heat_formula_constants_match_spec() -> None:
     assert factors["source_weighted_mentions"]["score"] == pytest.approx(_log_points(3.0, scale=3))
     assert factors["watched_seed_strength"]["score"] == pytest.approx(_log_points(2, scale=2))
     assert factors["attention_acceleration"]["score"] == pytest.approx(_log_points(2.0, scale=2))
+    assert factors["attention_acceleration"]["confidence"] == pytest.approx(0.9)
     assert factors["attention_surprise"]["score"] == pytest.approx(47.5)
+    assert factors["attention_surprise"]["confidence"] == pytest.approx(0.95)
 
     fallback = _strong_dex_snapshot(attention={"robust_z": None, "z_ewma": None, "z_score": None, "new_burst_score": 2.0})
-    assert fallback["families"]["social_heat"]["factors"]["attention_surprise"]["score"] == pytest.approx(80.0)
+    fallback_surprise = fallback["families"]["social_heat"]["factors"]["attention_surprise"]
+    assert fallback_surprise["score"] == pytest.approx(80.0)
+    assert fallback_surprise["confidence"] == pytest.approx(0.95)
 
 
 def test_social_factor_facts_preserve_auditable_inputs() -> None:
