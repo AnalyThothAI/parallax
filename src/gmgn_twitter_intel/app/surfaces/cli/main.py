@@ -5,6 +5,7 @@ import json
 import secrets
 import sys
 from contextlib import contextmanager
+from decimal import Decimal
 from typing import TextIO
 
 import uvicorn
@@ -255,6 +256,16 @@ def build_parser() -> argparse.ArgumentParser:
     audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     audit_token_radar.add_argument("--limit", type=int, default=100)
     audit_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
+    backfill_price_baselines = ops_subcommands.add_parser(
+        "backfill-token-price-baselines",
+        help="backfill token radar event price baselines from message observations",
+    )
+    backfill_price_baselines.add_argument("--limit", type=int, default=1000)
+    backfill_market_facts = ops_subcommands.add_parser(
+        "backfill-current-market-field-facts",
+        help="backfill current market field facts from price observations",
+    )
+    backfill_market_facts.add_argument("--limit", type=int, default=1000)
     return parser
 
 
@@ -447,7 +458,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
@@ -785,6 +796,16 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
+        if command == "ops" and args.ops_command == "backfill-token-price-baselines":
+            data = repos.price_observations.backfill_token_price_baselines(limit=args.limit)
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "backfill-current-market-field-facts":
+            data = repos.price_observations.backfill_current_market_field_facts(limit=args.limit)
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
         if command == "ops" and args.ops_command == "audit-token-radar":
             data = _audit_token_radar(
                 repos,
@@ -847,7 +868,14 @@ def _repositories(settings):
 
 
 def _emit(payload: dict, stdout: TextIO) -> None:
-    stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n")
+    stdout.write(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=_json_default) + "\n")
+
+
+def _json_default(value):
+    if isinstance(value, Decimal):
+        numeric = float(value)
+        return int(numeric) if numeric.is_integer() else numeric
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _ensure_postgres_password_file(app_home) -> object:

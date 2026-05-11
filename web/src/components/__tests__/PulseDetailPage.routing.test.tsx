@@ -73,10 +73,16 @@ function minimalPulseItem() {
     source_event_ids: [],
     factor_snapshot: {
       schema_version: "token_factor_snapshot_v1",
-      subject: { target_type: "Asset", target_id: "asset:pepe", symbol: "PEPE", chain: "solana", address: "pepe" },
+      subject: {
+        target_type: "Asset",
+        target_id: "asset:pepe",
+        symbol: "PEPE",
+        chain: "solana",
+        address: "pepe",
+      },
       families: {},
       hard_gates: { eligible_for_high_alert: false, blocked_reasons: [] },
-      composite: { rank_score: 82, recommended_decision: "watch" }
+      composite: { rank_score: 82, recommended_decision: "watch" },
     },
     agent_recommendation: {
       schema_version: "pulse_recommendation_v1",
@@ -85,9 +91,14 @@ function minimalPulseItem() {
       primary_reasons: [],
       upgrade_conditions: [],
       invalidation_conditions: [],
-      residual_risks: []
+      residual_risks: [],
     },
-    gate: { pulse_status: "token_watch", candidate_score: 82, score_band: "watch", blocked_reasons: [] },
+    gate: {
+      pulse_status: "token_watch",
+      candidate_score: 82,
+      score_band: "watch",
+      blocked_reasons: [],
+    },
     fact_card: { mentions_1h: 1, unique_authors: 1 },
     agent_run_id: null,
     pulse_version: "v1",

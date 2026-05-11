@@ -48,7 +48,7 @@ function mixedFreshnessToken(): TokenFlowItem {
       chain: "eth",
       address: "0x1111111111111111111111111111111111111111",
       symbol: "TROLL",
-      resolution_reasons: []
+      resolution_reasons: [],
     },
     market: {
       market_status: "partial",
@@ -64,14 +64,14 @@ function mixedFreshnessToken(): TokenFlowItem {
       snapshot_age_ms: 30_000,
       snapshot_received_at_ms: 1_778_426_440_000,
       provider: "okx_dex_price",
-      price_change_status: "insufficient_history"
+      price_change_status: "insufficient_history",
     },
     timing: {
       ...item.timing,
       status: "neutral",
       risks: [],
-      market_observation_status: "partial"
-    }
+      market_observation_status: "partial",
+    },
   };
 }
 

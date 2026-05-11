@@ -77,24 +77,24 @@ class TokenRadarSourceQuery:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol AS pricefeed_quote_symbol,
               price_feeds.status AS pricefeed_status,
-              NULL AS first_price_observed_at_ms,
-              NULL AS first_price_usd,
-              NULL AS first_price_quote,
-              NULL AS first_price_quote_symbol,
-              NULL AS first_price_basis,
-              NULL AS event_price_observation_id,
-              NULL AS event_price_observation_kind,
-              NULL AS event_price_provider,
-              NULL AS event_price_observed_at_ms,
-              NULL AS event_price_usd,
-              NULL AS event_price_quote,
-              NULL AS event_price_quote_symbol,
-              NULL AS event_price_basis,
-              NULL AS before_event_price_observed_at_ms,
-              NULL AS before_event_price_usd,
-              NULL AS before_event_price_quote,
-              NULL AS before_event_price_quote_symbol,
-              NULL AS before_event_price_basis
+              price_baselines.first_price_observed_at_ms,
+              price_baselines.first_price_usd,
+              price_baselines.first_price_quote,
+              price_baselines.first_price_quote_symbol,
+              price_baselines.first_price_basis,
+              price_baselines.event_price_observation_id,
+              price_baselines.event_price_observation_kind,
+              price_baselines.event_price_provider,
+              price_baselines.event_price_observed_at_ms,
+              price_baselines.event_price_usd,
+              price_baselines.event_price_quote,
+              price_baselines.event_price_quote_symbol,
+              price_baselines.event_price_basis,
+              price_baselines.before_event_price_observed_at_ms,
+              price_baselines.before_event_price_usd,
+              price_baselines.before_event_price_quote,
+              price_baselines.before_event_price_quote_symbol,
+              price_baselines.before_event_price_basis
             FROM window_events events
             JOIN token_intents ON token_intents.event_id = events.event_id
             JOIN LATERAL (
@@ -105,6 +105,8 @@ class TokenRadarSourceQuery:
                 AND token_intent_resolutions.resolver_policy_version = %s
               LIMIT 1
             ) token_intent_resolutions ON true
+            LEFT JOIN token_market_price_baselines price_baselines
+              ON price_baselines.resolution_id = token_intent_resolutions.resolution_id
             LEFT JOIN account_profiles ap ON ap.handle = LOWER(events.author_handle)
             LEFT JOIN social_event_extractions see ON see.event_id = events.event_id
             LEFT JOIN registry_assets

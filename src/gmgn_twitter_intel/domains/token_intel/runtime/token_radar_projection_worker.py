@@ -4,7 +4,7 @@ import asyncio
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -61,8 +61,8 @@ class TokenRadarProjectionWorker:
             "source_rows": 0,
             "windows": {},
         }
-        coverage = self._latest_coverage()
-        missing_items = self._missing_work_items(coverage)
+        publications = self._latest_publications()
+        missing_items = self._missing_work_items(publications)
         if missing_items:
             work_items = _dedupe_work_items([*self._hot_work_items(), *missing_items])
             primary_item = missing_items[0]
@@ -89,7 +89,7 @@ class TokenRadarProjectionWorker:
                     "status": "failed",
                     "error": str(exc),
                 }
-                self._mark_failed_coverage(
+                self._mark_failed_refresh(
                     window=window,
                     scope=scope,
                     computed_at_ms=computed_at_ms,
@@ -131,30 +131,31 @@ class TokenRadarProjectionWorker:
     def _hot_work_items(self) -> list[tuple[str, str]]:
         return [(window, scope) for window in self.hot_windows for scope in self.scopes]
 
-    def _latest_coverage(self) -> dict[tuple[str, str], dict[str, Any]]:
+    def _latest_publications(self) -> dict[tuple[str, str], dict[str, Any]]:
         with self.repository_session() as repos:
-            return repos.token_radar.latest_coverage(
+            publications = repos.token_radar.latest_publications(
                 projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                 windows=self.windows,
                 scopes=self.scopes,
             )
+        return cast(dict[tuple[str, str], dict[str, Any]], publications)
 
-    def _missing_work_items(self, coverage: dict[tuple[str, str], dict[str, Any]]) -> list[tuple[str, str]]:
+    def _missing_work_items(self, publications: dict[tuple[str, str], dict[str, Any]]) -> list[tuple[str, str]]:
         return [
             (window, scope)
             for window in self.windows
             for scope in self.scopes
-            if str(coverage.get((window, scope), {}).get("status") or "") != "ready"
+            if publications.get((window, scope), {}).get("published_computed_at_ms") is None
         ]
 
-    def _mark_failed_coverage(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
+    def _mark_failed_refresh(self, *, window: str, scope: str, computed_at_ms: int, error: str) -> None:
         try:
             with self.repository_session() as repos:
-                repos.token_radar.mark_coverage(
+                repos.token_radar.mark_refresh_status(
                     projection_version=TOKEN_RADAR_PROJECTION_VERSION,
                     window=window,
                     scope=scope,
-                    status="failed",
+                    refresh_status="failed",
                     reason="projection_window_failed",
                     source_rows=0,
                     row_count=0,
@@ -165,7 +166,7 @@ class TokenRadarProjectionWorker:
                     commit=True,
                 )
         except Exception as exc:  # pragma: no cover - diagnostic side path
-            logger.exception(f"failed to mark token radar projection coverage failure: {exc}")
+            logger.exception(f"failed to mark token radar projection refresh failure: {exc}")
 
 
 def _now_ms() -> int:
@@ -183,7 +184,7 @@ def _dedupe_work_items(items: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return out
 
 
-def _projection_class():
+def _projection_class() -> type[Any]:
     from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
     return TokenRadarProjection

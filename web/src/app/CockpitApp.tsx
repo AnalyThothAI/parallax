@@ -1,10 +1,14 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+
 import type { SearchData } from "../api/types";
 import { CockpitLayout } from "../components/CockpitLayout";
-import { EvidenceDetailDrawer, type EvidenceDetailDrawerProps } from "../components/EvidenceDetailDrawer";
+import {
+  EvidenceDetailDrawer,
+  type EvidenceDetailDrawerProps,
+} from "../components/EvidenceDetailDrawer";
 import { LivePage } from "../components/LivePage";
 import { LiveRadar } from "../components/LiveRadar";
 import { PulseDetailPage } from "../components/PulseDetailPage";
@@ -57,14 +61,14 @@ export function CockpitApp() {
     assetFlowError,
     token,
     tokenItems,
-    windowKey
+    windowKey,
   } = liveData;
   const selection = useLiveSelection({
     compactSignalPulseItems,
     isSignalLabPulseFetching,
     scope,
     tokenItems,
-    windowKey
+    windowKey,
   });
   const tokenDetail = useTokenDetailData({
     detailWindow: selection.detailWindow,
@@ -72,36 +76,36 @@ export function CockpitApp() {
     postSortMode: selection.postSortMode,
     scope,
     target: selection.drawerTargetRef,
-    token
+    token,
   });
   const selectedEvidenceDetails = useMemo(
     () =>
       resolveEvidenceDetails(selection.selectedSignal, {
         currentSearchData,
         searchError,
-        searchFetching
+        searchFetching,
       }),
-    [currentSearchData, searchError, searchFetching, selection.selectedSignal]
+    [currentSearchData, searchError, searchFetching, selection.selectedSignal],
   );
   const notificationsController = useNotificationsController({
     fallbackSummary: status?.notifications?.summary ?? null,
     setMobileTask: selection.setMobileTask,
     socketNotifications: socket.notifications,
-    token
+    token,
   });
   const watchlistRows = useMemo(
     () =>
       buildWatchlistRows({
         handles: statusHandles.length ? statusHandles : bootstrapHandles,
         accountUnreadCounts: notificationsController.notificationSummary?.account_unread_counts,
-        liveItems
+        liveItems,
       }),
     [
       bootstrapHandles,
       liveItems,
       notificationsController.notificationSummary?.account_unread_counts,
-      statusHandles
-    ]
+      statusHandles,
+    ],
   );
 
   const handleHotkey = (event: KeyboardEvent<HTMLElement>) => {
@@ -266,7 +270,7 @@ function resolveEvidenceDetails(
     currentSearchData: SearchData | null;
     searchError: Error | null;
     searchFetching: boolean;
-  }
+  },
 ): EvidenceDetailDrawerProps | null {
   if (!signal) {
     return null;
@@ -279,7 +283,7 @@ function resolveEvidenceDetails(
       alerts: signal.item.alerts,
       tokenIntents: signal.item.token_intents ?? [],
       tokenResolutions: signal.item.token_resolutions ?? [],
-      sourceLabel: "live"
+      sourceLabel: "live",
     };
   }
   if (signal.kind === "query") {
@@ -288,7 +292,7 @@ function resolveEvidenceDetails(
       query: signal.query,
       data: data.currentSearchData,
       isFetching: data.searchFetching,
-      error: data.searchError
+      error: data.searchError,
     };
   }
   return null;

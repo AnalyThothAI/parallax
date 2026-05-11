@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -526,7 +526,15 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
     scope = _clean(context.get("scope"))
     trigger_signature = _clean(context.get("trigger_signature"))
     timeline_signature = _clean(context.get("timeline_signature"))
-    if not all((candidate_id, candidate_type, subject_key, window, scope, trigger_signature, timeline_signature)):
+    if (
+        candidate_id is None
+        or candidate_type is None
+        or subject_key is None
+        or window is None
+        or scope is None
+        or trigger_signature is None
+        or timeline_signature is None
+    ):
         return None
     factor_snapshot = _mapping(context.get("factor_snapshot"))
     if not factor_snapshot:
@@ -700,7 +708,7 @@ def _cooldown_ms(existing_candidate: dict[str, Any], current_metrics: dict[str, 
     status = _clean(existing_candidate.get("pulse_status") or existing_candidate.get("verdict"))
     if current_metrics.get("trade_candidate_eligible"):
         return _COOLDOWN_MS["trade_candidate"]
-    return _COOLDOWN_MS.get(status, _COOLDOWN_MS["token_watch"])
+    return _COOLDOWN_MS.get(status or "token_watch", _COOLDOWN_MS["token_watch"])
 
 
 def _previous_trigger_metrics(existing_candidate: dict[str, Any]) -> dict[str, Any]:
@@ -824,10 +832,8 @@ def _subject_key(target: dict[str, Any], row: dict[str, Any]) -> str:
 
 def _priority(row: dict[str, Any]) -> int:
     factor_snapshot = _factor_snapshot(row) or {}
-    decision_priority = {"high_alert": 30, "watch": 20}.get(
-        _clean(_nested(factor_snapshot, "composite", "recommended_decision")),
-        0,
-    )
+    decision = _clean(_nested(factor_snapshot, "composite", "recommended_decision")) or ""
+    decision_priority = {"high_alert": 30, "watch": 20}.get(decision, 0)
     return decision_priority + safe_int(_nested(factor_snapshot, "composite", "rank_score"))
 
 
@@ -941,7 +947,7 @@ def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if not all(isinstance(snapshot.get(key), dict) for key in ("subject", "hard_gates", "composite")):
         return None
-    return _jsonable(snapshot)
+    return cast(dict[str, Any], _jsonable(snapshot))
 
 
 def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
@@ -1020,9 +1026,9 @@ def _call_optional(target: Any, method: str, *args: Any) -> Any:
     return func(*args)
 
 
-def _transaction(conn: Any):
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
     if hasattr(conn, "transaction"):
-        return conn.transaction()
+        return cast(AbstractContextManager[Any], conn.transaction())
     return nullcontext()
 
 

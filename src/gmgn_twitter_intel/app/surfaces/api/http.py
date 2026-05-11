@@ -164,7 +164,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
-            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
+            data = AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market).asset_flow(
                 window=parsed_window,
                 limit=_limit(limit),
                 scope=parsed_scope,
