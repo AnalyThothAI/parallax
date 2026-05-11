@@ -26,6 +26,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
+    "pytest-cov>=5.0",
     "ruff>=0.8.6",
     "pre-commit>=3.7",
     "mypy>=1.13",
@@ -139,3 +140,23 @@ disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operat
 [[tool.mypy.overrides]]
 module = ["alembic.*", "loguru.*", "psycopg.*", "apprise.*", "curl_cffi.*", "websockets.*", "openai_agents.*", "solders.*", "eth_hash.*", "eth_utils.*", "testcontainers.*", "yaml"]
 ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/gmgn_twitter_intel"]
+omit = [
+  "src/gmgn_twitter_intel/platform/db/alembic/versions/*",
+  "src/gmgn_twitter_intel/cli.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+precision = 1
+fail_under = 80
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if TYPE_CHECKING:",
+  "\\.\\.\\.",
+]

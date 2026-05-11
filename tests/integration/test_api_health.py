@@ -51,7 +51,9 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert ready.json()["enrichment"]["job_counts"]["pending"] == 0
     assert ready.json()["harness_ops"]["worker_running"] is True
     assert ready.json()["token_radar_projection"]["worker_running"] is True
-    assert ready.json()["pulse_agent"]["enabled"] is False
+    # pulse_agent_enabled defaults to True in LlmConfig; configured stays False without api_key/model.
+    # tracked under docs/TECH_DEBT.md → "integration tests presume legacy defaults".
+    assert ready.json()["pulse_agent"]["enabled"] is True
     assert ready.json()["pulse_agent"]["configured"] is False
     assert ready.json()["pulse_agent"]["worker_running"] is False
     assert ready.json()["message_market_observation"]["worker_running"] is False

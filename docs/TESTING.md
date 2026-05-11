@@ -18,9 +18,15 @@
 
 Before claiming work is complete, run:
 
-- `uv run ruff check .`
-- `uv run pytest`
-- `uv run python -m compileall src tests`
-- (When frontend changed) `cd web && npm run test && npm run build`
+```bash
+make check-all
+```
 
-UI / live-WebSocket flows that cannot be exercised by tests must be exercised manually before completion. Tests verify code correctness, not feature correctness.
+This runs all three gates (lint+type, unit+architecture+contract, integration+e2e+coverage)
+and is the only command whose output may be pasted as evidence in a verification artefact.
+Exit code 0 + the new `Coverage`, `Skipped tests`, and `E2E golden path` sections in
+`docs/superpowers/_templates/verification-template.md` are required.
+
+UI flows that genuinely cannot be exercised by `make check-all` (subjective UX,
+animations, real-network behaviour) must be exercised manually and recorded under
+`Other commands run` in the verification template.

@@ -55,8 +55,8 @@ check-all: ## the only command that may produce verification-artefact evidence (
 	@$(MAKE) test-e2e
 	@$(MAKE) coverage
 
-coverage: ## run coverage report (real config in P6)
-	@echo "[P6] coverage gate not yet wired; place-holder"
+coverage: ## run coverage report (gates fail_under from pyproject.toml [tool.coverage])
+	@uv run python -m pytest --cov --cov-report=term-missing --cov-config=pyproject.toml -q
 
 contract-check: ## verify OpenAPI types are in sync (gate 2)
 	@uv run python -m pytest tests/contract -m contract
