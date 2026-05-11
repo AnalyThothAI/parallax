@@ -31,7 +31,7 @@ def test_missing_factor_snapshot_is_not_enqueued() -> None:
     assert repos.pulse.jobs == []
 
 
-def test_malformed_v2_factor_snapshot_is_not_enqueued() -> None:
+def test_malformed_v3_factor_snapshot_is_not_enqueued() -> None:
     repos = FakeRepos()
     snapshot = _factor_snapshot(rank_score=82)
     snapshot["families"]["market_quality"] = {"facts": {"market_status": "fresh"}}
@@ -151,7 +151,7 @@ def test_source_seed_without_target_is_gated_blocked_after_agent() -> None:
     assert upsert["factor_snapshot_json"]["gates"]["blocked_reasons"] == ["identity_unresolved"]
 
 
-def test_worker_trigger_metrics_use_v2_families_and_gates() -> None:
+def test_worker_trigger_metrics_use_v3_families_and_gates() -> None:
     snapshot = _factor_snapshot(rank_score=82, blocked_reasons=["duplicate_text_share_high"])
     row = _radar_row(factor_snapshot_json=snapshot)
 
@@ -168,10 +168,10 @@ def test_worker_trigger_metrics_use_v2_families_and_gates() -> None:
     }
 
 
-def test_source_seed_factor_snapshot_is_v2_without_legacy_hard_gates() -> None:
+def test_source_seed_factor_snapshot_is_v3_without_legacy_hard_gates() -> None:
     snapshot = _source_seed_factor_snapshot(_source_event())
 
-    assert snapshot["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert snapshot["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert set(snapshot) == {
         "schema_version",
         "subject",
@@ -187,10 +187,10 @@ def test_source_seed_factor_snapshot_is_v2_without_legacy_hard_gates() -> None:
     assert snapshot["market"]["market_status"] == "missing"
     assert snapshot["gates"]["blocked_reasons"] == ["identity_unresolved"]
     assert set(snapshot["families"]) == {
-        "attention_heat",
-        "diffusion_quality",
-        "semantic_quality",
-        "timing_response",
+        "social_heat",
+        "social_propagation",
+        "semantic_catalyst",
+        "timing_risk",
     }
 
 
@@ -385,11 +385,11 @@ class FakeClient:
             recommendation=self.recommendation,
             summary_zh="因子快照显示信号值得继续观察。",
             primary_reasons=[
-                {"factor_key": "diffusion_quality.independent_authors", "explanation_zh": "独立作者数上升。"}
+                {"factor_key": "social_propagation.independent_authors", "explanation_zh": "独立作者数上升。"}
             ],
             upgrade_conditions=[
                 {
-                    "factor_key": "attention_heat.watched_mentions",
+                    "factor_key": "social_heat.watched_mentions",
                     "operator": ">=",
                     "value": 1,
                     "description_zh": "关注账号确认继续出现。",
@@ -397,14 +397,14 @@ class FakeClient:
             ],
             invalidation_conditions=[
                 {
-                    "factor_key": "diffusion_quality.independent_authors",
+                    "factor_key": "social_propagation.independent_authors",
                     "operator": "<",
                     "value": 3,
                     "description_zh": "独立作者数回落。",
                 }
             ],
             residual_risks=[
-                {"factor_key": "timing_response.price_change_status", "description_zh": "价格响应仍可能变化。"}
+                {"factor_key": "timing_risk.price_change_status", "description_zh": "价格响应仍可能变化。"}
             ],
             evidence_event_ids=context.get("source_event_ids") or ["event-1"],
             confidence=0.7,
@@ -431,7 +431,7 @@ def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]
 
 def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = None) -> dict[str, Any]:
     return {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {
             "target_type": "Asset",
             "target_id": "asset-1",
@@ -454,7 +454,7 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
         },
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": {
-            "attention_heat": {
+            "social_heat": {
                 "raw_score": rank_score,
                 "score": rank_score,
                 "weight": 0.35,
@@ -462,13 +462,13 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
                 "facts": {"mentions_1h": 8, "unique_authors": 7, "watched_mentions": 1},
                 "factors": {
                     "watched_mentions": {
-                        "family": "attention_heat",
+                        "family": "social_heat",
                         "key": "watched_mentions",
                         "risk_flags": [],
                     }
                 },
             },
-            "diffusion_quality": {
+            "social_propagation": {
                 "raw_score": rank_score,
                 "score": rank_score,
                 "weight": 0.3,
@@ -476,13 +476,13 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
                 "facts": {"independent_authors": 7},
                 "factors": {
                     "independent_authors": {
-                        "family": "diffusion_quality",
+                        "family": "social_propagation",
                         "key": "independent_authors",
                         "risk_flags": blocked_reasons or [],
                     }
                 },
             },
-            "semantic_quality": {
+            "semantic_catalyst": {
                 "raw_score": rank_score,
                 "score": rank_score,
                 "weight": 0.25,
@@ -490,22 +490,22 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
                 "facts": {"phase": "ignition"},
                 "factors": {},
             },
-            "timing_response": {
+            "timing_risk": {
                 "raw_score": rank_score,
                 "score": rank_score,
                 "weight": 0.1,
                 "data_health": "ready",
                 "facts": {"price_change_status": "ready"},
-                "factors": {"price_change_status": {"family": "timing_response", "key": "price_change_status"}},
+                "factors": {"price_change_status": {"family": "timing_risk", "key": "price_change_status"}},
             },
         },
         "normalization": {"status": "pending_cross_section"},
         "composite": {
             "family_scores": {
-                "attention_heat": rank_score,
-                "diffusion_quality": rank_score,
-                "semantic_quality": rank_score,
-                "timing_response": rank_score,
+                "social_heat": rank_score,
+                "social_propagation": rank_score,
+                "semantic_catalyst": rank_score,
+                "timing_risk": rank_score,
             },
             "rank_score": rank_score,
             "recommended_decision": "high_alert" if rank_score >= 72 else "watch",
