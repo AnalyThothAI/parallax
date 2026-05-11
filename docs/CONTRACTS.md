@@ -97,11 +97,11 @@ commands can evaluate older runs by `computed_at_ms` and score version.
 
 Operational commands:
 
-- `gmgn-twitter-intel ops factor-diagnostics` reports v2 score dispersion,
+- `gmgn-twitter-intel ops factor-diagnostics` reports current factor score dispersion,
   bucket counts, and rank-score diagnostics.
 - `gmgn-twitter-intel ops settle-token-factors` writes point-in-time forward
   return evaluations when sufficient later market observations exist.
-- `gmgn-twitter-intel ops audit-token-radar` is v2-only and flags legacy
+- `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
 
 ## Privacy boundary

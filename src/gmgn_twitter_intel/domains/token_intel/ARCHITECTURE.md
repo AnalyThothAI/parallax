@@ -75,7 +75,7 @@ snapshots and deterministic gates.
 Historical `token_radar_rows` are retained by `computed_at_ms` so
 `TokenFactorEvaluationService` can settle forward returns point-in-time. Latest
 read models select the newest run per target/window/scope; diagnostics use
-`token_score_evaluations` and v2 score-version keys to keep populations
+`token_score_evaluations` and v3 score-version keys to keep populations
 comparable.
 
 ## Identity Boundary
