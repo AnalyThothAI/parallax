@@ -13,12 +13,12 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
 def test_scoring_package_exports_factor_snapshot_contract() -> None:
     from gmgn_twitter_intel.domains.token_intel import scoring
 
-    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v2_alpha_gated"
+    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v3_social_attention"
     assert FACTOR_FAMILIES == (
-        "attention_heat",
-        "diffusion_quality",
-        "semantic_quality",
-        "timing_response",
+        "social_heat",
+        "social_propagation",
+        "semantic_catalyst",
+        "timing_risk",
     )
     assert scoring.TOKEN_FACTOR_SNAPSHOT_VERSION == TOKEN_FACTOR_SNAPSHOT_VERSION
     assert scoring.FACTOR_FAMILIES == FACTOR_FAMILIES

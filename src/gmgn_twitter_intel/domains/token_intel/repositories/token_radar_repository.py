@@ -9,7 +9,7 @@ from psycopg.types.json import Jsonb
 from gmgn_twitter_intel.domains.token_intel._constants import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot_v2
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 
 
 class TokenRadarRepository:
@@ -269,7 +269,7 @@ def _validate_factor_contract(row: dict[str, Any]) -> None:
         raise ValueError("factor_snapshot_json.schema_version must match factor_version")
     if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
         raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
-    require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
+    require_token_factor_snapshot(factor_snapshot, field_name="factor_snapshot_json")
 
 
 def _json_ready(value: Any) -> Any:

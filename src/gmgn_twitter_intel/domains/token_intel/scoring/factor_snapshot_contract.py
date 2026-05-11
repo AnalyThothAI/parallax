@@ -31,11 +31,23 @@ TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
         "factors",
     }
 )
+FORBIDDEN_FACTOR_FAMILY_KEYS = frozenset(
+    {
+        'attention_heat',
+        'diffusion_quality',
+        'semantic_quality',
+        'timing_response',
+        'social_attention',
+        'social_quality',
+        'market_quality',
+        'identity',
+    }
+)
 
 
-def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
+def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
     if not isinstance(value, dict) or not value:
-        raise ValueError(f"{field_name} must be a non-empty v2 factor snapshot")
+        raise ValueError(f"{field_name} must be a non-empty factor snapshot")
     if value.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
         raise ValueError(f"{field_name}.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
     if "hard_gates" in value:
@@ -72,6 +84,9 @@ def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_sn
     if not isinstance(families, dict):
         raise ValueError(f"{field_name}.families is required")
     family_keys = set(str(key) for key in families)
+    forbidden_families = sorted(family_keys & FORBIDDEN_FACTOR_FAMILY_KEYS)
+    if forbidden_families:
+        raise ValueError(f"{field_name}.families.{forbidden_families[0]} is not allowed")
     allowed_families = set(TOKEN_RADAR_FACTOR_FAMILIES)
     missing_families = sorted(allowed_families - family_keys)
     if missing_families:
@@ -97,9 +112,9 @@ def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_sn
     return value
 
 
-def is_token_factor_snapshot_v2(value: Any) -> bool:
+def is_token_factor_snapshot(value: Any) -> bool:
     try:
-        require_token_factor_snapshot_v2(value)
+        require_token_factor_snapshot(value)
     except ValueError:
         return False
     return True

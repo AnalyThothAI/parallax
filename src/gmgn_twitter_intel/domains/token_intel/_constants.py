@@ -4,15 +4,15 @@ from __future__ import annotations
 # This module intentionally has no intra-domain imports to avoid circular dependencies.
 
 TOKEN_RADAR_PROJECTION_NAME = "token-radar"
-TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v12-anchor-live-hard-cut"
+TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v13-social-attention"
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
 TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+anchor_price"
-TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v2_alpha_gated"
+TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v3_social_attention"
 TOKEN_RADAR_FACTOR_FAMILIES = (
-    "attention_heat",
-    "diffusion_quality",
-    "semantic_quality",
-    "timing_response",
+    "social_heat",
+    "social_propagation",
+    "semantic_catalyst",
+    "timing_risk",
 )
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,

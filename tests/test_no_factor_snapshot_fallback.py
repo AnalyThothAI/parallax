@@ -54,6 +54,29 @@ FACTOR_SNAPSHOT_FALLBACK_PATTERNS = (
     "hard_gates",
 )
 
+FACTOR_SNAPSHOT_CONTRACT_SURFACE_FILES = (
+    SRC_ROOT / "domains" / "token_intel" / "_constants.py",
+    SRC_ROOT / "domains" / "token_intel" / "interfaces.py",
+    SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_snapshot_contract.py",
+)
+
+OLD_FACTOR_FAMILY_LITERAL_PATTERNS = (
+    '"attention_heat"',
+    '"diffusion_quality"',
+    '"semantic_quality"',
+    '"timing_response"',
+    '"social_attention"',
+    '"social_quality"',
+    '"market_quality"',
+    '"identity"',
+)
+
+STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS = (
+    "require_token_factor_snapshot_v2",
+    "is_token_factor_snapshot_v2",
+    "requireTokenFactorSnapshotV2",
+)
+
 LEGACY_SCORING_MODULE_PATHS = (
     SRC_ROOT / "domains" / "token_intel" / "scoring" / "social_heat_scoring.py",
     SRC_ROOT / "domains" / "token_intel" / "scoring" / "propagation_scoring.py",
@@ -97,6 +120,33 @@ def test_token_factor_snapshot_producers_have_no_legacy_snapshot_fallback_contra
     offenders = _matches(
         list(FACTOR_SNAPSHOT_PRODUCER_FILES),
         patterns=FACTOR_SNAPSHOT_FALLBACK_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_factor_snapshot_contract_surface_has_no_old_family_literals() -> None:
+    offenders = _matches(
+        list(FACTOR_SNAPSHOT_CONTRACT_SURFACE_FILES),
+        patterns=OLD_FACTOR_FAMILY_LITERAL_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_python_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
+    offenders = _matches(
+        _python_runtime_files(),
+        patterns=STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_frontend_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
+    offenders = _matches(
+        _frontend_runtime_files(),
+        patterns=STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS,
     )
 
     assert offenders == []

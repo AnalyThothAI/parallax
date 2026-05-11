@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_RECOMMENDATION_SCHEMA_VERSION
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_FACTOR_FAMILIES,
-    require_token_factor_snapshot_v2,
+    require_token_factor_snapshot,
 )
 
 Recommendation = Literal["ignore", "watch", "research", "alert", "trade_candidate"]
@@ -218,7 +218,7 @@ def _section_keys(snapshot: dict[str, Any], section_name: str, field_names: tupl
 
 
 def _required_v2_factor_snapshot(value: Any) -> dict[str, Any]:
-    return require_token_factor_snapshot_v2(value)
+    return require_token_factor_snapshot(value)
 
 
 def _validate_max_recommendation(recommendation: str, max_recommendation: str | None) -> None:

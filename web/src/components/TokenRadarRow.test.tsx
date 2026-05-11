@@ -102,7 +102,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       baseline_sample_count: 0,
     },
     social_heat: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
+      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
       score: 44,
       reasons: [],
       risks: [],
@@ -122,7 +122,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       status: "insufficient_history",
     },
     discussion_quality: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
+      score_version: "token_factor_snapshot_v3_social_attention:discussion_quality",
       score: 43,
       reasons: [],
       risks: [],
@@ -136,7 +136,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       watched_source_count: 0,
     },
     propagation: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
+      score_version: "token_factor_snapshot_v3_social_attention:propagation",
       score: 50,
       reasons: [],
       risks: [],
@@ -152,7 +152,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       top_authors: [],
     },
     tradeability: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
+      score_version: "token_factor_snapshot_v3_social_attention:gates",
       score: 0,
       reasons: [],
       risks: ["identity_not_tradeable"],
@@ -165,7 +165,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       pool_present: false,
     },
     timing: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
+      score_version: "token_factor_snapshot_v3_social_attention:timing",
       score: 0,
       status: "market_unavailable",
       chase_risk: false,
@@ -174,7 +174,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       market_observation_status: "no_resolved_target",
     },
     opportunity: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
+      score_version: "token_factor_snapshot_v3_social_attention:composite",
       score: 44,
       decision: "investigate",
       reasons: [],

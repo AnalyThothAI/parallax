@@ -32,7 +32,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
-    require_token_factor_snapshot_v2,
+    require_token_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -1019,7 +1019,7 @@ def _audit_token_radar_rows(
             )
         else:
             try:
-                require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
+                require_token_factor_snapshot(factor_snapshot, field_name="factor_snapshot_json")
             except ValueError as exc:
                 violations.append(
                     {

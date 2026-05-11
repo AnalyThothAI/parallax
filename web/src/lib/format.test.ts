@@ -86,7 +86,7 @@ function sampleToken(): TokenFlowItem {
       baseline_sample_count: 0,
     },
     social_heat: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
+      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
       score: 50,
       reasons: [],
       risks: [],
@@ -106,7 +106,7 @@ function sampleToken(): TokenFlowItem {
       status: "new_burst",
     },
     discussion_quality: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
+      score_version: "token_factor_snapshot_v3_social_attention:discussion_quality",
       score: 50,
       reasons: [],
       risks: [],
@@ -120,7 +120,7 @@ function sampleToken(): TokenFlowItem {
       watched_source_count: 1,
     },
     propagation: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
+      score_version: "token_factor_snapshot_v3_social_attention:propagation",
       score: 50,
       reasons: [],
       risks: [],
@@ -136,7 +136,7 @@ function sampleToken(): TokenFlowItem {
       top_authors: [],
     },
     tradeability: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
+      score_version: "token_factor_snapshot_v3_social_attention:gates",
       score: 50,
       reasons: [],
       risks: [],
@@ -149,7 +149,7 @@ function sampleToken(): TokenFlowItem {
       pool_present: false,
     },
     timing: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
+      score_version: "token_factor_snapshot_v3_social_attention:timing",
       score: 50,
       status: "neutral",
       chase_risk: false,
@@ -157,7 +157,7 @@ function sampleToken(): TokenFlowItem {
       risks: [],
     },
     opportunity: {
-      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
+      score_version: "token_factor_snapshot_v3_social_attention:composite",
       score: 50,
       decision: "watch",
       reasons: [],

@@ -30,7 +30,7 @@ describe("SignalLabInspector", () => {
             evidence_event_ids: [],
             source_event_ids: [],
             factor_snapshot: {
-              schema_version: "token_factor_snapshot_v2_alpha_gated",
+              schema_version: "token_factor_snapshot_v3_social_attention",
               subject: {
                 target_type: "Asset",
                 target_id: "asset:eip155:8453:erc20:0x920738cbe6ddf7399187ffcf85c4b19154123be4",
@@ -52,7 +52,7 @@ describe("SignalLabInspector", () => {
                 alpha: "ready",
               },
               families: {
-                attention_heat: {
+                social_heat: {
                   raw_score: 62,
                   score: 62,
                   weight: 0.35,
@@ -60,7 +60,7 @@ describe("SignalLabInspector", () => {
                   facts: {},
                   factors: {},
                 },
-                diffusion_quality: {
+                social_propagation: {
                   raw_score: 58,
                   score: 58,
                   weight: 0.3,
@@ -68,7 +68,7 @@ describe("SignalLabInspector", () => {
                   facts: {},
                   factors: {},
                 },
-                semantic_quality: {
+                semantic_catalyst: {
                   raw_score: 55,
                   score: 55,
                   weight: 0.25,
@@ -76,7 +76,7 @@ describe("SignalLabInspector", () => {
                   facts: {},
                   factors: {},
                 },
-                timing_response: {
+                timing_risk: {
                   raw_score: 50,
                   score: 50,
                   weight: 0.1,
@@ -96,10 +96,10 @@ describe("SignalLabInspector", () => {
                 rank_score: 62,
                 recommended_decision: "watch",
                 family_scores: {
-                  attention_heat: 62,
-                  diffusion_quality: 58,
-                  semantic_quality: 55,
-                  timing_response: 50,
+                  social_heat: 62,
+                  social_propagation: 58,
+                  semantic_catalyst: 55,
+                  timing_risk: 50,
                 },
               },
               provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },
@@ -178,7 +178,7 @@ function signalPulseItem(): SignalPulseItem {
     evidence_event_ids: [],
     source_event_ids: [],
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v2_alpha_gated",
+      schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
         target_type: "Asset",
         target_id: "asset:eip155:8453:erc20:0x920738cbe6ddf7399187ffcf85c4b19154123be4",
@@ -195,7 +195,7 @@ function signalPulseItem(): SignalPulseItem {
       },
       data_health: { identity: "ready", market: "partial", social: "ready", alpha: "ready" },
       families: {
-        attention_heat: {
+        social_heat: {
           raw_score: 62,
           score: 62,
           weight: 0.35,
@@ -203,7 +203,7 @@ function signalPulseItem(): SignalPulseItem {
           facts: {},
           factors: {},
         },
-        diffusion_quality: {
+        social_propagation: {
           raw_score: 58,
           score: 58,
           weight: 0.3,
@@ -211,7 +211,7 @@ function signalPulseItem(): SignalPulseItem {
           facts: {},
           factors: {},
         },
-        semantic_quality: {
+        semantic_catalyst: {
           raw_score: 55,
           score: 55,
           weight: 0.25,
@@ -219,7 +219,7 @@ function signalPulseItem(): SignalPulseItem {
           facts: {},
           factors: {},
         },
-        timing_response: {
+        timing_risk: {
           raw_score: 50,
           score: 50,
           weight: 0.1,
@@ -239,10 +239,10 @@ function signalPulseItem(): SignalPulseItem {
         rank_score: 62,
         recommended_decision: "watch",
         family_scores: {
-          attention_heat: 62,
-          diffusion_quality: 58,
-          semantic_quality: 55,
-          timing_response: 50,
+          social_heat: 62,
+          social_propagation: 58,
+          semantic_catalyst: 55,
+          timing_risk: 50,
         },
       },
       provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },

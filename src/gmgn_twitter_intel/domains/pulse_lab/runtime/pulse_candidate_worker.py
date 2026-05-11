@@ -33,7 +33,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_VERSION,
-    require_token_factor_snapshot_v2,
+    require_token_factor_snapshot,
     safe_float,
     safe_int,
 )
@@ -513,7 +513,7 @@ def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds
     resolved_thresholds = thresholds or PulseTriggerThresholds()
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
     decision = str(_nested(factor_snapshot, "composite", "recommended_decision") or "")
-    watched_mentions = safe_int(_nested(factor_snapshot, "families", "attention_heat", "facts", "watched_mentions"))
+    watched_mentions = safe_int(_nested(factor_snapshot, "families", "social_heat", "facts", "watched_mentions"))
     return decision in {"high_alert", "watch"} or score >= resolved_thresholds.min_rank_score or watched_mentions > 0
 
 
@@ -647,8 +647,8 @@ def _asset_trigger_metrics(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = _factor_snapshot(row) or {}
     blocked_reasons = _stable_strings(_nested(factor_snapshot, "gates", "blocked_reasons"))
     rank_score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
-    attention_facts = _mapping(_nested(factor_snapshot, "families", "attention_heat", "facts"))
-    diffusion_facts = _mapping(_nested(factor_snapshot, "families", "diffusion_quality", "facts"))
+    attention_facts = _mapping(_nested(factor_snapshot, "families", "social_heat", "facts"))
+    diffusion_facts = _mapping(_nested(factor_snapshot, "families", "social_propagation", "facts"))
     return {
         "rank_score": rank_score,
         "recommended_decision": _clean(_nested(factor_snapshot, "composite", "recommended_decision")),
@@ -949,7 +949,7 @@ def _context_with_gate(context: PulseCandidateContext, gate: PulseGateResult) ->
 def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
     snapshot = row.get("factor_snapshot_json")
     try:
-        valid_snapshot = require_token_factor_snapshot_v2(snapshot, field_name="factor_snapshot_json")
+        valid_snapshot = require_token_factor_snapshot(snapshot, field_name="factor_snapshot_json")
     except ValueError:
         return None
     return _mapping(_jsonable(valid_snapshot))
@@ -1015,8 +1015,8 @@ def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
 def _snapshot_trigger_metrics(snapshot: dict[str, Any]) -> dict[str, Any]:
     rank_score = safe_int(_nested(snapshot, "composite", "rank_score"))
     blocked_reasons = _stable_strings(_nested(snapshot, "gates", "blocked_reasons"))
-    attention_facts = _mapping(_nested(snapshot, "families", "attention_heat", "facts"))
-    diffusion_facts = _mapping(_nested(snapshot, "families", "diffusion_quality", "facts"))
+    attention_facts = _mapping(_nested(snapshot, "families", "social_heat", "facts"))
+    diffusion_facts = _mapping(_nested(snapshot, "families", "social_propagation", "facts"))
     return {
         "rank_score": rank_score,
         "recommended_decision": _clean(_nested(snapshot, "composite", "recommended_decision")),
@@ -1038,8 +1038,8 @@ def _context_trigger_metrics(context: PulseCandidateContext) -> dict[str, Any]:
 
 
 def _social_phase_from_snapshot(factor_snapshot: dict[str, Any]) -> str:
-    semantic_facts = _mapping(_nested(factor_snapshot, "families", "semantic_quality", "facts"))
-    timing_facts = _mapping(_nested(factor_snapshot, "families", "timing_response", "facts"))
+    semantic_facts = _mapping(_nested(factor_snapshot, "families", "semantic_catalyst", "facts"))
+    timing_facts = _mapping(_nested(factor_snapshot, "families", "timing_risk", "facts"))
     return (
         _clean(semantic_facts.get("phase"))
         or _clean(semantic_facts.get("dominant_phase"))

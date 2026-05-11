@@ -25,7 +25,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
     build_token_factor_snapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot_v2
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
     build_radar_features,
@@ -857,8 +857,8 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         return (3, 0.0, 0, 0, 0)
     composite = _dict(snapshot.get("composite"))
     families = _dict(snapshot.get("families"))
-    attention_heat = _dict(families.get("attention_heat"))
-    diffusion_quality = _dict(families.get("diffusion_quality"))
+    attention_heat = _dict(families.get("social_heat"))
+    diffusion_quality = _dict(families.get("social_propagation"))
     attention = _dict(attention_heat.get("facts"))
     diffusion = _dict(diffusion_quality.get("facts"))
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
@@ -882,7 +882,7 @@ def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
 
 def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = row.get("factor_snapshot_json")
-    return require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
+    return require_token_factor_snapshot(factor_snapshot, field_name="factor_snapshot_json")
 
 
 def _dict(value: Any) -> dict[str, Any]:

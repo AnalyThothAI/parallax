@@ -112,8 +112,8 @@ describe("token radar factor snapshot mapper", () => {
 
   it("does not read market display deltas from timing facts", () => {
     const row = productionFactorSnapshotRow();
-    row.factor_snapshot!.families.timing_response.facts = {
-      ...(row.factor_snapshot!.families.timing_response.facts ?? {}),
+    row.factor_snapshot!.families.timing_risk.facts = {
+      ...(row.factor_snapshot!.families.timing_risk.facts ?? {}),
       price_change_since_social_pct: 9.99,
       price_change_before_social_pct: 8.88,
     };
@@ -222,7 +222,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
     },
     resolution: {},
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v2_alpha_gated",
+      schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
         target_type: "CexToken",
         target_id: "cex_token:ZEC",
@@ -251,7 +251,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
       },
       data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
       families: {
-        attention_heat: {
+        social_heat: {
           raw_score: 55,
           score: 55,
           weight: 0.35,
@@ -265,13 +265,13 @@ function productionFactorSnapshotRow(): AssetFlowRow {
             latest_seen_ms: 1_778_425_132_800,
           },
           factors: {
-            mentions_1h: factor("attention_heat", "mentions_1h", 2, 46),
-            unique_authors: factor("attention_heat", "unique_authors", 2, 46),
-            watched_mentions: factor("attention_heat", "watched_mentions", 1, 50),
+            mentions_1h: factor("social_heat", "mentions_1h", 2, 46),
+            unique_authors: factor("social_heat", "unique_authors", 2, 46),
+            watched_mentions: factor("social_heat", "watched_mentions", 1, 50),
           },
           data_health: "ready",
         },
-        diffusion_quality: {
+        social_propagation: {
           raw_score: 58,
           score: 58,
           weight: 0.3,
@@ -282,12 +282,12 @@ function productionFactorSnapshotRow(): AssetFlowRow {
             informative_post_count: 2,
           },
           factors: {
-            mentions: factor("diffusion_quality", "mentions", 2, 36),
-            independent_authors: factor("diffusion_quality", "independent_authors", 2, 46),
+            mentions: factor("social_propagation", "mentions", 2, 36),
+            independent_authors: factor("social_propagation", "independent_authors", 2, 46),
           },
           data_health: "ready",
         },
-        semantic_quality: {
+        semantic_catalyst: {
           raw_score: 84,
           score: 84,
           weight: 0.25,
@@ -297,10 +297,10 @@ function productionFactorSnapshotRow(): AssetFlowRow {
             confidence_mean: 0.9,
             direction_counts: { bullish: 1 },
           },
-          factors: { impact_mean: factor("semantic_quality", "impact_mean", 0.85, 85) },
+          factors: { impact_mean: factor("semantic_catalyst", "impact_mean", 0.85, 85) },
           data_health: "ready",
         },
-        timing_response: {
+        timing_risk: {
           raw_score: 99,
           score: 99,
           weight: 0.1,
@@ -311,7 +311,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
           },
           factors: {
             price_change_since_social_pct: factor(
-              "timing_response",
+              "timing_risk",
               "price_change_since_social_pct",
               0.00131,
               99,
@@ -331,10 +331,10 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         rank_score: 78,
         recommended_decision: "high_alert",
         family_scores: {
-          timing_response: 99,
-          diffusion_quality: 58,
-          attention_heat: 55,
-          semantic_quality: 84,
+          timing_risk: 99,
+          social_propagation: 58,
+          social_heat: 55,
+          semantic_catalyst: 84,
         },
       },
       provenance: {

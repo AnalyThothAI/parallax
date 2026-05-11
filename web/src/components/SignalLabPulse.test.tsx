@@ -124,7 +124,7 @@ function pulseItem(index: number): SignalPulseItem {
     evidence_event_ids: [`evidence-${index}`],
     source_event_ids: [`source-${index}`],
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v2_alpha_gated",
+      schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
         target_type: "CexToken",
         target_id: `asset:cex:okx:TOKEN${index}-USDT`,
@@ -140,7 +140,7 @@ function pulseItem(index: number): SignalPulseItem {
       },
       data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
       families: {
-        attention_heat: {
+        social_heat: {
           raw_score: 81,
           score: 81,
           weight: 0.35,
@@ -148,7 +148,7 @@ function pulseItem(index: number): SignalPulseItem {
           facts: { mentions_1h: index + 1, watched_mentions: 1 },
           factors: {},
         },
-        diffusion_quality: {
+        social_propagation: {
           raw_score: 70,
           score: 70,
           weight: 0.3,
@@ -156,7 +156,7 @@ function pulseItem(index: number): SignalPulseItem {
           facts: { independent_authors: 3 },
           factors: {},
         },
-        semantic_quality: {
+        semantic_catalyst: {
           raw_score: 68,
           score: 68,
           weight: 0.25,
@@ -169,7 +169,7 @@ function pulseItem(index: number): SignalPulseItem {
           },
           factors: {},
         },
-        timing_response: {
+        timing_risk: {
           raw_score: 64,
           score: 64,
           weight: 0.1,
@@ -189,10 +189,10 @@ function pulseItem(index: number): SignalPulseItem {
         rank_score: 82,
         recommended_decision: "watch",
         family_scores: {
-          attention_heat: 81,
-          diffusion_quality: 70,
-          semantic_quality: 68,
-          timing_response: 64,
+          social_heat: 81,
+          social_propagation: 70,
+          semantic_catalyst: 68,
+          timing_risk: 64,
         },
       },
       provenance: {
@@ -205,13 +205,13 @@ function pulseItem(index: number): SignalPulseItem {
       recommendation: "watch",
       summary_zh: `recommendation ${index}`,
       primary_reasons: [
-        { factor_key: "attention_heat.mentions_1h", explanation_zh: "mentions expanding" },
+        { factor_key: "social_heat.mentions_1h", explanation_zh: "mentions expanding" },
       ],
       upgrade_conditions: [],
       invalidation_conditions: [],
       residual_risks: [
         {
-          factor_key: "diffusion_quality.duplicate_text_share",
+          factor_key: "social_propagation.duplicate_text_share",
           description_zh: "liquidity can thin quickly",
         },
       ],

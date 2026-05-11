@@ -187,7 +187,7 @@ function pulse(options: {
     evidence_event_ids: [],
     source_event_ids: [],
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v2_alpha_gated",
+      schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
         target_type: options.targetType,
         target_id: options.targetId,
@@ -212,7 +212,7 @@ function pulse(options: {
       },
       data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
       families: {
-        attention_heat: {
+        social_heat: {
           raw_score: 50,
           score: 50,
           weight: 0.35,
@@ -220,7 +220,7 @@ function pulse(options: {
           facts: {},
           factors: {},
         },
-        diffusion_quality: {
+        social_propagation: {
           raw_score: 50,
           score: 50,
           weight: 0.3,
@@ -228,7 +228,7 @@ function pulse(options: {
           facts: {},
           factors: {},
         },
-        semantic_quality: {
+        semantic_catalyst: {
           raw_score: 50,
           score: 50,
           weight: 0.25,
@@ -236,7 +236,7 @@ function pulse(options: {
           facts: {},
           factors: {},
         },
-        timing_response: {
+        timing_risk: {
           raw_score: 50,
           score: 50,
           weight: 0.1,
@@ -256,10 +256,10 @@ function pulse(options: {
         rank_score: 50,
         recommended_decision: "watch",
         family_scores: {
-          attention_heat: 50,
-          diffusion_quality: 50,
-          semantic_quality: 50,
-          timing_response: 50,
+          social_heat: 50,
+          social_propagation: 50,
+          semantic_catalyst: 50,
+          timing_risk: 50,
         },
       },
       provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },

@@ -25,8 +25,8 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
     reprocess_recent_token_intents,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import (
-    is_token_factor_snapshot_v2,
-    require_token_factor_snapshot_v2,
+    is_token_factor_snapshot,
+    require_token_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.token_intel.scoring.scoring_common import clamp_score, safe_float, safe_int
 from gmgn_twitter_intel.domains.token_intel.services.token_evidence_builder import build_token_evidence
@@ -59,10 +59,10 @@ __all__ = [
     "build_token_target_stages",
     "clamp_score",
     "deferred_token_radar_projection",
-    "is_token_factor_snapshot_v2",
+    "is_token_factor_snapshot",
     "refresh_recent_token_state",
     "reprocess_recent_token_intents",
-    "require_token_factor_snapshot_v2",
+    "require_token_factor_snapshot",
     "safe_float",
     "safe_int",
 ]
