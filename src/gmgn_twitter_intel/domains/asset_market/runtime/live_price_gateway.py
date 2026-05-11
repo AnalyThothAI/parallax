@@ -90,11 +90,20 @@ class LivePriceGateway:
     async def run(self) -> None:
         while not self._stopped:
             try:
-                await self.run_once()
+                result = await self.run_once()
             except Exception as exc:  # pragma: no cover - watchdog path
                 self.last_error = str(exc)
                 logger.exception(f"live price gateway failed: {exc}")
                 await asyncio.sleep(self.reconnect_delay_seconds)
+                continue
+            if self._stopped:
+                break
+            delay_seconds = (
+                self.reconnect_delay_seconds
+                if self.stream_provider is not None and int(result.get("dex_targets_selected") or 0) > 0
+                else self.cex_poll_interval_seconds
+            )
+            await self._sleep(delay_seconds)
 
     async def run_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         received_at_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -109,13 +118,14 @@ class LivePriceGateway:
             "observations_written": 0,
             "live_market_updates_published": 0,
         }
-        targets = self._active_targets(now_ms=received_at_ms)
+        targets = await asyncio.to_thread(self._active_targets, now_ms=received_at_ms)
         result["targets_selected"] = len(targets)
         dex_targets = [target for target in targets if _is_dex_target(target)]
         cex_targets = [target for target in targets if _is_cex_target(target)]
         result["dex_targets_selected"] = len(dex_targets)
         result["cex_targets_selected"] = len(cex_targets)
-        for payload in self._poll_cex(cex_targets, received_at_ms=received_at_ms):
+        cex_payloads = await asyncio.to_thread(self._poll_cex, cex_targets, received_at_ms=received_at_ms)
+        for payload in cex_payloads:
             result["cex_quotes_received"] += 1
             await self._publish(payload)
             result["live_market_updates_published"] += 1
@@ -160,6 +170,13 @@ class LivePriceGateway:
 
     def stop(self) -> None:
         self._stopped = True
+
+    async def _sleep(self, delay_seconds: float) -> None:
+        remaining = max(0.0, float(delay_seconds))
+        while remaining > 0 and not self._stopped:
+            step = min(0.1, remaining)
+            await asyncio.sleep(step)
+            remaining -= step
 
     def close(self) -> None:
         for provider in (self.stream_provider, self.cex_market):

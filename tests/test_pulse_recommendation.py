@@ -226,6 +226,25 @@ def test_condition_values_accept_structured_factor_maps() -> None:
     assert payload.invalidation_conditions[0].value.model_dump() == {"bearish": 10, "neutral": 0, "bullish": 0}
 
 
+def test_condition_operator_accepts_not_equal() -> None:
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(
+            invalidation_conditions=[
+                {
+                    "factor_key": "composite.recommended_decision",
+                    "operator": "!=",
+                    "value": "high_alert",
+                    "description_zh": "如果综合决策不再是高警报，信号应降级。",
+                }
+            ],
+        ),
+        available_factor_keys={*AVAILABLE_FACTOR_KEYS, "composite.recommended_decision"},
+        input_source_event_ids=["event-1", "event-2"],
+    )
+
+    assert payload.invalidation_conditions[0].operator == "!="
+
+
 def test_instructions_require_factor_backing_and_no_fabrication() -> None:
     instructions = pulse_recommendation_agent_instructions()
 

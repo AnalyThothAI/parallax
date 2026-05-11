@@ -13,7 +13,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 )
 
 Recommendation = Literal["ignore", "watch", "research", "alert", "trade_candidate"]
-ConditionOperator = Literal[">=", ">", "<=", "<", "=="]
+ConditionOperator = Literal[">=", ">", "<=", "<", "==", "!="]
 ALPHA_FACTOR_FAMILIES = TOKEN_RADAR_FACTOR_FAMILIES
 
 _RECOMMENDATION_RANK: dict[str, int] = {

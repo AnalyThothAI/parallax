@@ -230,6 +230,7 @@ def test_start_runtime_tasks_starts_pulse_worker_task():
             assert runtime.pulse_candidate_task is not None
             assert not runtime.pulse_candidate_task.done()
         finally:
+            runtime.pulse_candidate_worker.stop()
             runtime.pulse_candidate_task.cancel()
             await asyncio.gather(runtime.pulse_candidate_task, return_exceptions=True)
 
@@ -295,7 +296,8 @@ class FakePulseWorker:
         self.closed = False
 
     async def run(self):
-        await asyncio.Event().wait()
+        while not self.stopped:
+            await asyncio.sleep(0.01)
 
     def stop(self):
         self.stopped = True

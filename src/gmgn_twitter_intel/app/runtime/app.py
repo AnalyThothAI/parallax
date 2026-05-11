@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -390,7 +392,10 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
         runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
     if runtime.pulse_candidate_worker is not None and runtime.pulse_candidate_task is None:
-        runtime.pulse_candidate_task = asyncio.create_task(runtime.pulse_candidate_worker.run())
+        runtime.pulse_candidate_task = _start_threaded_async_worker(
+            runtime.pulse_candidate_worker.run,
+            name="pulse-candidate-worker",
+        )
     if runtime.start_collector:
         if runtime.collector_task is None:
             runtime.collector_task = asyncio.create_task(runtime.collector.run())
@@ -456,6 +461,28 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     if runtime.pulse_candidate_worker is not None:
         await runtime.pulse_candidate_worker.aclose()
     runtime.db_pool.close()
+
+
+def _start_threaded_async_worker(run: Callable[[], Any], *, name: str) -> asyncio.Task:
+    state: dict[str, BaseException | None] = {"error": None}
+
+    def runner() -> None:
+        try:
+            asyncio.run(run())
+        except BaseException as exc:  # pragma: no cover - surfaced by watcher task
+            state["error"] = exc
+
+    thread = threading.Thread(target=runner, name=name, daemon=True)
+    thread.start()
+    return asyncio.create_task(_watch_threaded_worker(thread, state))
+
+
+async def _watch_threaded_worker(thread: threading.Thread, state: dict[str, BaseException | None]) -> None:
+    while thread.is_alive():  # noqa: ASYNC110 - this watcher polls a daemon thread, not an asyncio signal.
+        await asyncio.sleep(1.0)
+    error = state.get("error")
+    if error is not None:
+        raise error
 
 
 def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:

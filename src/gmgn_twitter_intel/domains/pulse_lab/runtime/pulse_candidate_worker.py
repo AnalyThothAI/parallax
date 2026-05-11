@@ -238,7 +238,11 @@ class PulseCandidateWorker:
             try:
                 await self._run_job(job, context, now_ms=resolved_now_ms)
             except Exception as exc:  # pragma: no cover - _run_job records failure before re-raising
-                logger.exception(f"pulse candidate job failed: job_id={job.get('job_id')} error={exc}")
+                logger.warning(
+                    "pulse candidate job failed: job_id={} error={}",
+                    job.get("job_id"),
+                    _compact_error(exc),
+                )
                 result["failed"] += 1
                 continue
             result["processed"] += 1
@@ -562,6 +566,13 @@ def _context_from_job(job: dict[str, Any]) -> PulseCandidateContext | None:
         source_event_ids=_stable_strings(context.get("source_event_ids")),
         evidence_event_ids=_stable_strings(context.get("evidence_event_ids")),
     )
+
+
+def _compact_error(exc: Exception, *, limit: int = 500) -> str:
+    text = " ".join(str(exc).split())
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}..."
 
 
 def _asset_candidate_id(
