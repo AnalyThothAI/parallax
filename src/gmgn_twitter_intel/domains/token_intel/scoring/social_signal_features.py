@@ -6,11 +6,11 @@ from typing import Any, Mapping, Sequence
 
 
 def source_weighted_effective_authors(rows: Sequence[Mapping[str, Any]]) -> float:
-    counts = _author_counts(rows)
-    total = sum(counts.values())
+    weights = _author_weights(rows)
+    total = sum(weights.values())
     if total <= 0:
         return 0.0
-    concentration = sum((count / total) ** 2 for count in counts.values())
+    concentration = sum((weight / total) ** 2 for weight in weights.values())
     if concentration <= 0:
         return 0.0
     return 1.0 / concentration
@@ -79,6 +79,19 @@ def _author_counts(rows: Sequence[Mapping[str, Any]]) -> Counter[str]:
     return counts
 
 
+def _author_weights(rows: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    weights: dict[str, float] = {}
+    for row in rows:
+        handle = _handle(row)
+        if handle is None:
+            continue
+        weight = _source_weight(row)
+        if weight <= 0:
+            continue
+        weights[handle] = weights.get(handle, 0.0) + weight
+    return weights
+
+
 def _ordered_rows(rows: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
     return [
         row
@@ -110,6 +123,21 @@ def _int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _source_weight(row: Mapping[str, Any]) -> float:
+    if "_source_weight" not in row:
+        return 1.0
+    value = row.get("_source_weight")
+    if isinstance(value, bool) or value is None:
+        return 0.0
+    try:
+        weight = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(weight) or weight < 0:
+        return 0.0
+    return weight
 
 
 def _is_watched(row: Mapping[str, Any]) -> bool:

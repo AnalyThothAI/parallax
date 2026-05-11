@@ -28,6 +28,32 @@ def test_source_weighted_effective_authors_penalizes_repeated_single_author_spam
     )
 
 
+def test_source_weighted_effective_authors_uses_source_weight_by_author() -> None:
+    balanced_authors = [
+        {"author_handle": "alice", "_source_weight": 1.0},
+        {"author_handle": "bob", "_source_weight": 1.0},
+        {"author_handle": "carol", "_source_weight": 1.0},
+    ]
+    skewed_authors = [
+        {"author_handle": "alice", "_source_weight": 1.0},
+        {"author_handle": "bob", "_source_weight": 0.05},
+        {"author_handle": "carol", "_source_weight": 0.05},
+    ]
+    repeated_single_author = [
+        {"author_handle": "alice", "_source_weight": 1.0},
+        {"author_handle": "alice", "_source_weight": 0.05},
+        {"author_handle": "alice", "_source_weight": 0.05},
+    ]
+
+    balanced_score = source_weighted_effective_authors(balanced_authors)
+    skewed_score = source_weighted_effective_authors(skewed_authors)
+
+    assert balanced_score == pytest.approx(3.0)
+    assert skewed_score < balanced_score
+    assert skewed_score < 1.25
+    assert source_weighted_effective_authors(repeated_single_author) == pytest.approx(1.0)
+
+
 def test_time_to_nth_independent_author_ms_returns_elapsed_from_first_event() -> None:
     rows = [
         {"author_handle": "alice", "received_at_ms": 1_000},
