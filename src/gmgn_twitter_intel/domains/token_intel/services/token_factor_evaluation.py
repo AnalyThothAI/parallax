@@ -22,6 +22,8 @@ BUCKETS = (
     ("80-100", 80, 100),
 )
 
+FACTOR_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
+
 
 def settle_token_factor_scores(
     *,
@@ -61,6 +63,8 @@ def settle_token_factor_scores(
         "settled_count": len(settled),
         "unsettled_count": len(settlements) - len(settled),
         "unsettled_reasons": _reason_counts(settlements),
+        "family_rank_ic": _family_rank_ics(settled),
+        "family_coverage": _family_coverage(settlements),
     }
     summaries = [
         _bucket_summary(
@@ -102,12 +106,14 @@ def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_a
     subject_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
     computed_at_ms = int(row.get("computed_at_ms") or 0)
     rank_score = _rank_score(snapshot)
+    family_scores = _family_scores(snapshot)
     base = {
         "row_id": row.get("row_id"),
         "subject_type": subject_type,
         "subject_id": subject_id,
         "computed_at_ms": computed_at_ms,
         "rank_score": rank_score,
+        "family_scores": family_scores,
         "bucket_label": _bucket_label(rank_score),
         "status": "unsettled",
         "actual_return": None,
@@ -202,6 +208,21 @@ def _rank_score(snapshot: dict[str, Any]) -> float:
         return 0.0
 
 
+def _family_scores(snapshot: dict[str, Any]) -> dict[str, float | None]:
+    composite = _mapping(snapshot.get("composite"))
+    raw_scores = _mapping(composite.get("family_scores"))
+    return {family: _factor_score(raw_scores.get(family)) for family in FACTOR_FAMILIES}
+
+
+def _factor_score(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return max(0.0, min(100.0, float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
 def _bucket_label(rank_score: float) -> str:
     for label, bucket_min, bucket_max in BUCKETS:
         if bucket_min <= rank_score <= bucket_max:
@@ -245,6 +266,30 @@ def _daily_ics(settled: list[dict[str, Any]]) -> list[float]:
         if ic is not None:
             values.append(ic)
     return values
+
+
+def _family_rank_ics(settled: list[dict[str, Any]]) -> dict[str, float | None]:
+    values: dict[str, float | None] = {}
+    for family in FACTOR_FAMILIES:
+        paired = [
+            (float(family_score), float(item["actual_return"]))
+            for item in settled
+            if (family_score := _mapping(item.get("family_scores")).get(family)) is not None
+        ]
+        values[family] = _spearman([score for score, _ in paired], [actual_return for _, actual_return in paired])
+    return values
+
+
+def _family_coverage(settlements: list[dict[str, Any]]) -> dict[str, float]:
+    if not settlements:
+        return {family: 0.0 for family in FACTOR_FAMILIES}
+    return {
+        family: sum(
+            1 for item in settlements if _mapping(item.get("family_scores")).get(family) is not None
+        )
+        / len(settlements)
+        for family in FACTOR_FAMILIES
+    }
 
 
 def _icir(values: list[float]) -> float | None:

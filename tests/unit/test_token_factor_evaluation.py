@@ -131,6 +131,69 @@ def test_settle_token_factor_scores_computes_daily_icir_when_daily_ics_vary():
     assert result["icir_daily"] == pytest.approx(0.0)
 
 
+def test_settle_token_factor_scores_records_family_rank_ic_diagnostics():
+    base_ms = 1_700_000_000_000
+    horizon_ms = 60 * 60 * 1000
+    rows = [
+        radar_row(
+            "a",
+            score=20,
+            computed_at_ms=base_ms,
+            family_scores={
+                "social_heat": 10,
+                "social_propagation": 90,
+                "semantic_catalyst": 40,
+                "timing_risk": 0,
+            },
+        ),
+        radar_row(
+            "b",
+            score=40,
+            computed_at_ms=base_ms,
+            family_scores={
+                "social_heat": 50,
+                "social_propagation": 50,
+                "semantic_catalyst": 60,
+                "timing_risk": 0,
+            },
+        ),
+        radar_row(
+            "c",
+            score=60,
+            computed_at_ms=base_ms,
+            family_scores={
+                "social_heat": 90,
+                "social_propagation": 10,
+                "semantic_catalyst": 80,
+                "timing_risk": 0,
+            },
+        ),
+    ]
+    repos = FakeRepos(
+        rows=rows,
+        prices={
+            ("Asset", "asset:a"): (100.0, 90.0),
+            ("Asset", "asset:b"): (100.0, 100.0),
+            ("Asset", "asset:c"): (100.0, 110.0),
+        },
+    )
+
+    settle_token_factor_scores(
+        repos=repos,
+        horizon="1h",
+        window="1h",
+        scope="all",
+        generated_at_ms=base_ms + horizon_ms + 1,
+        limit=100,
+    )
+
+    diagnostics = repos.token_factor_evaluations.upserts[0]["diagnostics_json"]
+    assert diagnostics["family_rank_ic"]["social_heat"] == pytest.approx(1.0)
+    assert diagnostics["family_rank_ic"]["social_propagation"] == pytest.approx(-1.0)
+    assert diagnostics["family_rank_ic"]["timing_risk"] is None
+    assert diagnostics["family_coverage"]["social_heat"] == 1.0
+
+
 def test_price_exit_lookup_filters_null_price_usd():
     conn = FakeConn(row=None)
 
@@ -266,7 +329,7 @@ def _summary(*, bucket_label: str, bucket_min: int, bucket_max: int) -> dict:
     }
 
 
-def radar_row(suffix: str, *, score: int, computed_at_ms: int) -> dict:
+def radar_row(suffix: str, *, score: int, computed_at_ms: int, family_scores: dict | None = None) -> dict:
     return {
         "row_id": f"row:{suffix}",
         "window": "1h",
@@ -280,7 +343,7 @@ def radar_row(suffix: str, *, score: int, computed_at_ms: int) -> dict:
             "gates": {},
             "data_health": {},
             "normalization": {},
-            "composite": {"rank_score": score},
+            "composite": {"rank_score": score, "family_scores": family_scores or {}},
             "provenance": {"computed_at_ms": computed_at_ms},
         },
     }
