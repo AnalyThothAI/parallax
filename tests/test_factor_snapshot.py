@@ -26,7 +26,7 @@ def test_scoring_package_exports_factor_snapshot_contract() -> None:
     assert scoring.build_token_factor_snapshot is build_token_factor_snapshot
 
 
-def test_factor_snapshot_outputs_v2_alpha_gated_shape() -> None:
+def test_factor_snapshot_outputs_v3_social_attention_shape() -> None:
     snapshot = _strong_dex_snapshot(attention={"latest_seen_ms": 1_778_000_012_345})
 
     assert set(snapshot) == {
@@ -41,7 +41,7 @@ def test_factor_snapshot_outputs_v2_alpha_gated_shape() -> None:
         "provenance",
     }
     assert "hard_gates" not in snapshot
-    assert snapshot["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert snapshot["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert snapshot["subject"] == {
         "target_type": "Asset",
         "target_id": "asset:solana:token:STRONG",
@@ -51,8 +51,28 @@ def test_factor_snapshot_outputs_v2_alpha_gated_shape() -> None:
         "address": "STRONG",
         "pricefeed_id": "pf-strong",
     }
-    assert set(snapshot["families"]) == set(FACTOR_FAMILIES)
-    assert snapshot["families"]["attention_heat"]["facts"]["latest_seen_ms"] == 1_778_000_012_345
+    assert set(snapshot["families"]) == {
+        "social_heat",
+        "social_propagation",
+        "semantic_catalyst",
+        "timing_risk",
+    }
+    assert not {
+        "attention_heat",
+        "diffusion_quality",
+        "semantic_quality",
+        "timing_response",
+    } & set(snapshot["families"])
+    assert snapshot["families"]["social_heat"]["facts"]["latest_seen_ms"] == 1_778_000_012_345
+    heat_factors = snapshot["families"]["social_heat"]["factors"]
+    assert set(heat_factors) >= {
+        "attention_surprise",
+        "source_weighted_mentions",
+        "attention_acceleration",
+        "watched_seed_strength",
+    }
+    assert "mentions_4h" not in heat_factors
+    assert "mentions_24h" not in heat_factors
     assert snapshot["normalization"] == {
         "status": "pending_cross_section",
         "cohort": {},
@@ -102,8 +122,9 @@ def test_identity_market_and_social_start_presence_do_not_score_as_alpha() -> No
     assert "market_quality" not in snapshot["families"]
     assert snapshot["data_health"]["identity"] == "ready"
     assert snapshot["data_health"]["market"] == "ready"
-    assert snapshot["families"]["timing_response"]["facts"]["social_signal_start_ms"] == 1_778_000_001_000
-    assert "social_signal_start_ms" not in snapshot["families"]["timing_response"]["factors"]
+    assert snapshot["families"]["timing_risk"]["facts"]["social_signal_start_ms"] == 1_778_000_001_000
+    assert snapshot["families"]["timing_risk"]["weight"] == 0
+    assert "social_signal_start_ms" not in snapshot["families"]["timing_risk"]["factors"]
     assert snapshot["data_health"]["alpha"] == "missing"
     assert "alpha_data_missing" in snapshot["gates"]["blocked_reasons"]
     assert snapshot["gates"]["max_decision"] == "discard"
@@ -168,17 +189,26 @@ def test_cex_token_does_not_apply_dex_holder_liquidity_floors_or_native_market_a
 
 def test_duplicate_and_top_author_concentration_are_penalties_not_clean_rewards() -> None:
     clean = _strong_dex_snapshot(social_quality={"duplicate_text_share": 0.0, "top_author_share": 0.20})
-    risky = _strong_dex_snapshot(social_quality={"duplicate_text_share": 0.75, "top_author_share": 0.80})
+    risky = _strong_dex_snapshot(
+        attention={"watched_mentions": 0},
+        social_quality={
+            "duplicate_text_share": 0.75,
+            "top_author_share": 0.80,
+            "independent_authors": 1,
+            "source_weighted_effective_authors": 1.0,
+        },
+    )
 
-    clean_factors = clean["families"]["diffusion_quality"]["factors"]
-    risky_factors = risky["families"]["diffusion_quality"]["factors"]
+    clean_factors = clean["families"]["social_propagation"]["factors"]
+    risky_factors = risky["families"]["social_propagation"]["factors"]
+    assert risky_factors["independent_authors"]["score"] < clean_factors["independent_authors"]["score"]
     assert clean_factors["duplicate_text_share_penalty"]["score"] == 0
     assert clean_factors["top_author_concentration_penalty"]["score"] == 0
     assert risky_factors["duplicate_text_share_penalty"]["score"] < 0
     assert risky_factors["top_author_concentration_penalty"]["score"] < 0
     assert "duplicate_text_share_high" in risky["gates"]["blocked_reasons"]
     assert "author_concentration_high" in risky["gates"]["risk_reasons"]
-    assert risky["families"]["diffusion_quality"]["score"] < clean["families"]["diffusion_quality"]["score"]
+    assert risky["families"]["social_propagation"]["score"] < clean["families"]["social_propagation"]["score"]
 
 
 def test_high_raw_alpha_with_unresolved_identity_is_capped_to_discard() -> None:
@@ -236,20 +266,31 @@ def test_eligible_raw_alpha_35_recommends_watch() -> None:
             "mentions_1h": 0,
             "mentions_4h": 0,
             "mentions_24h": 0,
+            "weighted_mentions": None,
             "unique_authors": 3,
             "watched_mentions": 1,
+            "attention_acceleration": None,
+            "new_burst_score": None,
+            "robust_z": None,
         },
         social_quality={
             "informative_post_count": 2,
             "mentions": 0,
             "independent_authors": 3,
             "effective_authors": None,
+            "source_weighted_effective_authors": None,
+            "time_to_second_author_ms": None,
+            "time_to_third_author_ms": None,
+            "public_followup_author_count": 0,
+            "author_entropy": None,
         },
         social_semantics={
             "direction_counts": {},
             "impact_mean": None,
             "novelty_mean": None,
             "confidence_mean": None,
+            "llm_covered_mentions": None,
+            "mentions": 0,
         },
         timing={
             "price_change_before_social_pct": None,
@@ -259,7 +300,7 @@ def test_eligible_raw_alpha_35_recommends_watch() -> None:
 
     assert snapshot["gates"]["eligible_for_high_alert"] is True
     assert snapshot["gates"]["max_decision"] == "high_alert"
-    assert snapshot["composite"]["raw_alpha_score"] == 39
+    assert 35 <= snapshot["composite"]["raw_alpha_score"] < 70
     assert snapshot["composite"]["recommended_decision"] == "watch"
 
 
@@ -286,10 +327,10 @@ def test_empty_attention_and_social_quality_are_missing_not_ready() -> None:
         computed_at_ms=1_778_000_000_000,
     )
 
-    assert snapshot["families"]["attention_heat"]["data_health"] == "missing"
-    assert snapshot["families"]["diffusion_quality"]["data_health"] == "missing"
-    assert snapshot["families"]["attention_heat"]["facts"]["mentions_1h"] == 0
-    assert snapshot["families"]["diffusion_quality"]["facts"]["independent_authors"] == 0
+    assert snapshot["families"]["social_heat"]["data_health"] == "missing"
+    assert snapshot["families"]["social_propagation"]["data_health"] == "missing"
+    assert snapshot["families"]["social_heat"]["facts"]["mentions_1h"] == 0
+    assert snapshot["families"]["social_propagation"]["facts"]["independent_authors"] == 0
     assert snapshot["data_health"]["social"] == "missing"
     assert snapshot["data_health"]["alpha"] == "missing"
     assert "alpha_data_missing" in snapshot["gates"]["blocked_reasons"]
@@ -322,11 +363,11 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
         timing={"social_signal_start_ms": float("inf")},
     )
 
-    assert snapshot["families"]["attention_heat"]["facts"]["mentions_1h"] == 0
-    assert snapshot["families"]["semantic_quality"]["facts"]["direction_counts"]["bullish"] == 0
-    assert snapshot["families"]["diffusion_quality"]["factors"]["duplicate_text_share_penalty"]["raw_value"] is None
-    assert snapshot["families"]["diffusion_quality"]["factors"]["top_author_concentration_penalty"]["raw_value"] is None
-    assert snapshot["families"]["timing_response"]["facts"]["social_signal_start_ms"] is None
+    assert snapshot["families"]["social_heat"]["facts"]["mentions_1h"] == 0
+    assert snapshot["families"]["semantic_catalyst"]["facts"]["direction_counts"]["bullish"] == 0
+    assert snapshot["families"]["social_propagation"]["factors"]["duplicate_text_share_penalty"]["raw_value"] is None
+    assert snapshot["families"]["social_propagation"]["factors"]["top_author_concentration_penalty"]["raw_value"] is None
+    assert snapshot["families"]["timing_risk"]["facts"]["social_signal_start_ms"] is None
     assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
     assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
@@ -338,6 +379,39 @@ def test_non_finite_computed_at_ms_normalizes_to_zero(computed_at_ms: float) -> 
     snapshot = _strong_dex_snapshot(computed_at_ms=computed_at_ms)
 
     assert snapshot["provenance"]["computed_at_ms"] == 0
+
+
+def test_timing_risk_is_zero_weight_negative_only_and_reports_chase_or_late_risks() -> None:
+    snapshot = _strong_dex_snapshot(
+        timing={
+            "price_change_before_social_pct": 0.30,
+            "price_change_since_social_pct": 0.60,
+        }
+    )
+
+    timing = snapshot["families"]["timing_risk"]
+    assert timing["weight"] == 0
+    assert timing["score"] == 0
+    assert snapshot["composite"]["raw_alpha_score"] == _strong_dex_snapshot(timing={})["composite"]["raw_alpha_score"]
+    assert timing["factors"]["pre_social_chase_risk"]["score"] < 0
+    assert timing["factors"]["post_social_late_risk"]["score"] < 0
+    assert "timing_chase_risk" in snapshot["gates"]["risk_reasons"]
+    assert "timing_late_risk" in snapshot["gates"]["risk_reasons"]
+
+
+def test_timing_risk_preserves_anchor_live_not_persisted_behavior() -> None:
+    snapshot = _strong_dex_snapshot(
+        market={"price_change_status": "live_not_persisted"},
+        timing={"price_change_since_social_pct": 0.50},
+    )
+
+    timing = snapshot["families"]["timing_risk"]
+    assert timing["data_health"] == "anchor_only"
+    assert timing["weight"] == 0
+    assert timing["score"] == 0
+    assert timing["facts"]["price_change_status"] == "live_not_persisted"
+    assert timing["facts"]["price_change_since_social_pct"] == 0.50
+    assert timing["factors"] == {}
 
 
 def _all_factor_keys(snapshot: dict[str, object]) -> set[str]:
@@ -367,11 +441,16 @@ def _strong_dex_snapshot(
     if target is not None:
         base_target.update(target)
     base_attention: dict[str, object] = {
+        "mentions_5m": 6,
         "mentions_1h": 12,
         "mentions_4h": 18,
         "mentions_24h": 32,
+        "weighted_mentions": 8.5,
         "unique_authors": 8,
         "watched_mentions": 2,
+        "attention_acceleration": 2.0,
+        "new_burst_score": 3.0,
+        "robust_z": 4.0,
     }
     if attention is not None:
         base_attention.update(attention)
@@ -390,6 +469,11 @@ def _strong_dex_snapshot(
         "mentions": 12,
         "independent_authors": 8,
         "effective_authors": 6.0,
+        "source_weighted_effective_authors": 6.0,
+        "time_to_second_author_ms": 60_000,
+        "time_to_third_author_ms": 180_000,
+        "public_followup_author_count": 5,
+        "author_entropy": 1.4,
     }
     if social_quality is not None:
         base_social_quality.update(social_quality)
@@ -398,6 +482,8 @@ def _strong_dex_snapshot(
         "impact_mean": 0.7,
         "novelty_mean": 0.5,
         "confidence_mean": 0.9,
+        "llm_covered_mentions": 7,
+        "mentions": 12,
     }
     if social_semantics is not None:
         base_social_semantics.update(social_semantics)
@@ -437,11 +523,15 @@ def _strong_cex_snapshot(
             "pricefeed_id": "pf-blend",
         },
         attention={
+            "mentions_5m": 4,
             "mentions_1h": 7,
             "mentions_4h": 7,
             "mentions_24h": 9,
+            "weighted_mentions": 4.5,
             "unique_authors": 5,
             "watched_mentions": 1,
+            "attention_acceleration": 1.0,
+            "new_burst_score": 1.0,
         },
         social_quality={
             "duplicate_text_share": 0.0,
@@ -450,12 +540,19 @@ def _strong_cex_snapshot(
             "mentions": 7,
             "independent_authors": 5,
             "effective_authors": 4.0,
+            "source_weighted_effective_authors": 4.0,
+            "time_to_second_author_ms": 45_000,
+            "time_to_third_author_ms": 90_000,
+            "public_followup_author_count": 4,
+            "author_entropy": 1.2,
         },
         social_semantics={
             "direction_counts": {"bullish": 3, "neutral": 2},
             "impact_mean": 0.5,
             "novelty_mean": 0.3,
             "confidence_mean": 0.8,
+            "llm_covered_mentions": 5,
+            "mentions": 7,
         },
         market=base_market,
         timing={"price_change_before_social_pct": 0.02, "price_change_since_social_pct": 0.01},
