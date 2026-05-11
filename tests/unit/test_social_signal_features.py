@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import (
@@ -67,6 +69,17 @@ def test_time_to_nth_independent_author_ms_returns_elapsed_from_first_event() ->
     assert time_to_nth_independent_author_ms(rows, 4) is None
 
 
+def test_time_to_nth_independent_author_ms_starts_at_first_valid_distinct_author() -> None:
+    rows = [
+        {"received_at_ms": 500},
+        {"author_handle": "", "received_at_ms": 700},
+        {"author_handle": "alice", "received_at_ms": 1_000},
+        {"author_handle": "bob", "received_at_ms": 1_400},
+    ]
+
+    assert time_to_nth_independent_author_ms(rows, 2) == 400
+
+
 def test_public_followup_author_count_counts_non_watched_authors_after_watched_seed() -> None:
     rows = [
         {"author_handle": "seed", "received_at_ms": 1_000, "is_watched": True},
@@ -74,6 +87,17 @@ def test_public_followup_author_count_counts_non_watched_authors_after_watched_s
         {"author_handle": "bob", "received_at_ms": 1_020, "is_watched": False},
         {"author_handle": "carol", "received_at_ms": 1_030, "is_watched": False},
         {"author_handle": "watched-followup", "received_at_ms": 1_040, "is_watched": True},
+    ]
+
+    assert public_followup_author_count(rows) == 2
+
+
+def test_public_followup_author_count_excludes_watched_seed_authors_from_public_followup() -> None:
+    rows = [
+        {"author_handle": "alice", "received_at_ms": 1_000, "is_watched": True},
+        {"author_handle": "alice", "received_at_ms": 1_010, "is_watched": False},
+        {"author_handle": "bob", "received_at_ms": 1_020, "is_watched": False},
+        {"author_handle": "carol", "received_at_ms": 1_030, "is_watched": False},
     ]
 
     assert public_followup_author_count(rows) == 2
@@ -104,3 +128,14 @@ def test_author_entropy_is_high_for_balanced_authors_and_low_for_dominant_author
 
     assert author_entropy(balanced) > 0.95
     assert author_entropy(dominated) == pytest.approx(0.0)
+
+
+def test_author_entropy_returns_raw_shannon_entropy() -> None:
+    balanced = [
+        {"author_handle": "alice"},
+        {"author_handle": "bob"},
+        {"author_handle": "carol"},
+    ]
+
+    assert author_entropy(balanced) == pytest.approx(math.log(3))
+    assert author_entropy(balanced) > 1.0

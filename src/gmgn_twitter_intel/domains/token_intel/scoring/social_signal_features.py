@@ -23,20 +23,19 @@ def time_to_nth_independent_author_ms(rows: Sequence[Mapping[str, Any]], n: int)
     if not ordered_rows:
         return None
 
-    first_seen_ms = _int(ordered_rows[0].get("received_at_ms"))
-    if first_seen_ms is None:
-        return None
-
+    first_seen_ms: int | None = None
     seen: set[str] = set()
     for row in ordered_rows:
         handle = _handle(row)
         if handle is None or handle in seen:
             continue
+        seen_ms = _int(row.get("received_at_ms"))
+        if seen_ms is None:
+            continue
+        if first_seen_ms is None:
+            first_seen_ms = seen_ms
         seen.add(handle)
         if len(seen) == n:
-            seen_ms = _int(row.get("received_at_ms"))
-            if seen_ms is None:
-                return None
             return max(0, seen_ms - first_seen_ms)
     return None
 
@@ -44,15 +43,23 @@ def time_to_nth_independent_author_ms(rows: Sequence[Mapping[str, Any]], n: int)
 def public_followup_author_count(rows: Sequence[Mapping[str, Any]]) -> int:
     ordered_rows = _ordered_rows(rows)
     seed_seen = False
+    seed_authors: set[str] = set()
     public_authors: set[str] = set()
     for row in ordered_rows:
         if not seed_seen:
             seed_seen = _is_watched(row)
+            if seed_seen:
+                handle = _handle(row)
+                if handle is not None:
+                    seed_authors.add(handle)
             continue
         if _is_watched(row):
+            handle = _handle(row)
+            if handle is not None:
+                seed_authors.add(handle)
             continue
         handle = _handle(row)
-        if handle is not None:
+        if handle is not None and handle not in seed_authors:
             public_authors.add(handle)
     return len(public_authors)
 
@@ -67,7 +74,7 @@ def author_entropy(rows: Sequence[Mapping[str, Any]]) -> float:
     for count in counts.values():
         probability = count / total
         entropy -= probability * math.log(probability)
-    return entropy / math.log(len(counts))
+    return entropy
 
 
 def _author_counts(rows: Sequence[Mapping[str, Any]]) -> Counter[str]:
