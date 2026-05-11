@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -13,10 +14,12 @@ import type {
 import { mergeSignalPulsePages, useSignalPulseList } from "../api/useSignalPulseQueries";
 import { useTraderStore } from "../store/useTraderStore";
 
+=======
+import { Outlet } from "react-router-dom";
+import type { LivePayload, SignalPulseData } from "../api/types";
+import { useSignalLabPage } from "../features/signal-lab/useSignalLabPage";
+>>>>>>> origin/main
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
-
-const SIGNAL_LAB_SCOPE = "all";
-const SIGNAL_LAB_WINDOW = "1h";
 
 type SignalLabPageProps = {
   selectedAccountEventId?: string | null;
@@ -29,6 +32,7 @@ export function SignalLabPage({
   overviewData,
   onSelectAccountEvent,
 }: SignalLabPageProps) {
+<<<<<<< HEAD
   const token = useTraderStore((state) => state.token);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -114,14 +118,18 @@ export function SignalLabPage({
       onSelectAccountEvent(item);
     }
   };
+=======
+  const signalLab = useSignalLabPage({ onSelectAccountEvent });
+>>>>>>> origin/main
 
   return (
     <section
-      className={`mobile-task-surface signal-lab-task-surface signal-lab-layout${isPulseRoute ? " signal-lab-layout-with-detail" : ""}`}
+      className={`mobile-task-surface signal-lab-task-surface signal-lab-layout${signalLab.isPulseRoute ? " signal-lab-layout-with-detail" : ""}`}
       data-mobile-task-panel="lab"
     >
       <div className="signal-lab-list">
         <SignalLabWorkbench
+<<<<<<< HEAD
           data={signalPulseData}
           accountEvents={signalLabAccountEvents}
           handleFilter={handleParam}
@@ -131,19 +139,28 @@ export function SignalLabPage({
           isLoading={signalPulseQuery.isPending}
           isFetchingNextPage={signalPulseQuery.isFetchingNextPage}
           hasNextPage={Boolean(signalPulseQuery.hasNextPage)}
+=======
+          data={signalLab.signalPulseData}
+          accountEvents={signalLab.signalLabAccountEvents}
+          handleFilter={signalLab.routeState.handle}
+          isAccountEventsLoading={signalLab.isAccountEventsLoading}
+          isLoading={signalLab.isSignalPulseLoading}
+          isFetchingNextPage={signalLab.isFetchingNextPage}
+          hasNextPage={signalLab.hasNextPage}
+>>>>>>> origin/main
           overviewData={overviewData}
-          searchFilter={queryParam}
+          searchFilter={signalLab.routeState.q}
           selectedAccountEventId={selectedAccountEventId}
-          selectedItemId={selectedPulseItemId}
-          statusFilter={statusParam}
-          windowLabel={SIGNAL_LAB_WINDOW}
-          onClearFilters={handleClearFilters}
-          onHandleChange={(value) => updateParam("handle", value)}
-          onLoadMore={() => void signalPulseQuery.fetchNextPage()}
-          onSearchChange={(value) => updateParam("q", value)}
-          onSelectAccountEvent={handleSelectAccountEvent}
-          onSelect={handleSelectPulse}
-          onStatusChange={(value) => updateParam("status", value)}
+          selectedItemId={signalLab.selectedPulseItemId}
+          statusFilter={signalLab.routeState.status}
+          windowLabel={signalLab.routeState.window}
+          onClearFilters={signalLab.clearFilters}
+          onHandleChange={signalLab.setHandleFilter}
+          onLoadMore={signalLab.loadMore}
+          onSearchChange={signalLab.setSearchFilter}
+          onSelectAccountEvent={signalLab.selectAccountEvent}
+          onSelect={signalLab.selectPulse}
+          onStatusChange={signalLab.setStatusFilter}
         />
       </div>
       <aside className="signal-lab-inspector-pane">
@@ -152,6 +169,7 @@ export function SignalLabPage({
     </section>
   );
 }
+<<<<<<< HEAD
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
@@ -188,3 +206,5 @@ function pulseStatusRank(item: SignalPulseItem): number {
   if (item.pulse_status === "theme_watch") return 2;
   return 1;
 }
+=======
+>>>>>>> origin/main

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from typing import Annotated, Any
 
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from gmgn_twitter_intel.domains.asset_market.interfaces import CurrentMarketService
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -166,8 +168,27 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 window=parsed_window,
                 limit=_limit(limit),
                 scope=parsed_scope,
+                now_ms=_now_ms(),
             )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
+
+    @router.get("/current-market")
+    async def current_market(
+        request: Request,
+        target_type: Annotated[str, Query()] = "",
+        target_id: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_target_type = _target_type(target_type)
+        if not parsed_target_type or not target_id:
+            raise ApiBadRequest("target_required", field="target_id")
+        with runtime.repositories() as repos:
+            snapshot = CurrentMarketService(current_market=repos.current_market).current_market_snapshot(
+                target_type=parsed_target_type,
+                target_id=target_id,
+                now_ms=_now_ms(),
+            )
+        return _json({"ok": True, "data": snapshot})
 
     @router.get("/target-posts")
     async def target_posts(
@@ -667,6 +688,10 @@ def _delivery_status(value: str | None) -> str | None:
 
 def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(jsonable_encoder(payload), status_code=status_code)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _json_loads(value: Any, default: Any) -> Any:

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 import gmgn_twitter_intel.domains.token_intel.services.token_radar_projection as token_radar_projection_module
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
+    TOKEN_RADAR_FACTOR_FAMILIES,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
@@ -15,6 +18,7 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
     _display_symbol,
     _market,
     _project_group,
+    _rank_key,
 )
 
 
@@ -42,11 +46,103 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
     assert len({all_5m["row_id"], matched_5m["row_id"], all_1h["row_id"]}) == 3
 
 
-def test_token_radar_projection_uses_identity_evidence_contract():
+def test_token_radar_projection_uses_factor_snapshot_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
-    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v8-identity-evidence"
-    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+price_observations"
+    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v10-current-market"
+    assert TOKEN_RADAR_FACTOR_FAMILIES == (
+        "identity",
+        "social_attention",
+        "social_quality",
+        "social_semantics",
+        "market_quality",
+        "timing",
+    )
+    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+current_market"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
+
+
+def test_rank_key_breaks_ties_with_factor_snapshot_latest_seen_ms():
+    older = ranking_row(target_id="older", latest_seen_ms=1_777_800_000_000)
+    newer = ranking_row(target_id="newer", latest_seen_ms=1_777_800_030_000)
+
+    assert [row["target_id"] for row in sorted([older, newer], key=_rank_key)] == ["newer", "older"]
+
+
+def test_rank_key_does_not_promote_malformed_snapshot_from_row_decision():
+    malformed_high_alert = {
+        "target_id": "bad",
+        "decision": "high_alert",
+        "factor_snapshot_json": {},
+    }
+    valid_discard = ranking_row(
+        target_id="valid-discard",
+        latest_seen_ms=1_777_800_030_000,
+        decision="discard",
+        rank_score=1,
+    )
+
+    assert [row["target_id"] for row in sorted([malformed_high_alert, valid_discard], key=_rank_key)] == [
+        "valid-discard",
+        "bad",
+    ]
+
+
+def test_apply_cross_section_rejects_rows_with_malformed_factor_snapshot():
+    rows = [
+        {
+            "target_id": "asset:bad",
+            "target_json": {"symbol": "BAD"},
+            "factor_snapshot_json": {},
+            "_cohort_high_conf_count": 1,
+            "_cohort_kol_count": 0,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="factor_snapshot_json must be non-empty"):
+        TokenRadarProjection._apply_cross_section(rows)
+
+
+def test_project_group_outputs_factor_snapshot_not_score_contract():
+    row = source_row("event-bov", received_at_ms=1_777_800_000_000)
+    row["target_type"] = "Asset"
+    row["target_id"] = "asset:bsc:0x1"
+    row["asset_symbol"] = "BOV"
+    row["asset_chain_id"] = "56"
+    row["asset_address"] = "0x1"
+    row["market_status"] = "fresh"
+    row["market_market_cap_usd"] = 12_087.0
+    row["market_liquidity_usd"] = 6_553.0
+    row["market_holders"] = 46
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
+
+    assert projected is not None
+    assert projected["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v1"
+    assert projected["factor_snapshot_json"]["subject"]["chain"] == "56"
+    assert projected["factor_snapshot_json"]["hard_gates"]["eligible_for_high_alert"] is False
+    assert projected["factor_version"] == "token_factor_snapshot_v1"
+    assert projected["score_json"] == {}
+    assert projected["attention_json"] == {}
+    assert projected["market_json"] == {}
+    assert projected["price_json"] == {}
+
+
+def test_project_group_carries_cex_native_market_id_into_market_quality_snapshot():
+    row = source_row("event-cex", received_at_ms=1_777_800_000_000)
+    row["target_type"] = "CexToken"
+    row["target_id"] = "cex_token:BTC"
+    row["cex_base_symbol"] = "BTC"
+    row["cex_token_status"] = "canonical"
+    row["native_market_id"] = "BTC-USDT"
+    row["market_volume_24h_usd"] = 123_000_000.0
+    row["market_open_interest_usd"] = 45_000_000.0
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
+
+    assert projected is not None
+    facts = projected["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert facts["target_market_type"] == "cex"
+    assert facts["native_market_id"] == "BTC-USDT"
 
 
 def test_analysis_window_loads_baseline_and_attention_history():
@@ -55,10 +151,10 @@ def test_analysis_window_loads_baseline_and_attention_history():
     assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["5m"]) == now_ms - 7 * 5 * 60 * 1000
     assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["1h"]) == now_ms - 7 * 60 * 60 * 1000
     assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["4h"]) == now_ms - 7 * 4 * 60 * 60 * 1000
-    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["24h"]) == now_ms - 7 * 24 * 60 * 60 * 1000
+    assert _analysis_since_ms(computed_at_ms=now_ms, window_ms=WINDOW_MS["24h"]) == now_ms - 48 * 60 * 60 * 1000
 
 
-def test_project_group_persists_baseline_fields_into_attention_and_heat_score():
+def test_project_group_persists_current_runtime_contract_as_factor_snapshot():
     now_ms = 1_777_800_000_000
     window_ms = WINDOW_MS["5m"]
     score_since_ms = now_ms - window_ms
@@ -86,15 +182,14 @@ def test_project_group_persists_baseline_fields_into_attention_and_heat_score():
     )
 
     assert row is not None
-    assert row["attention_json"]["baseline_status"] == "ready"
-    assert row["attention_json"]["baseline_sample_count"] == 6
-    assert row["attention_json"]["baseline_nonzero_sample_count"] == 6
-    assert row["attention_json"]["previous_mentions"] == 1
-    assert row["attention_json"]["mention_delta"] == 3
-    assert row["score_json"]["heat"]["data_health"]["baseline_status"] == "ready"
-    assert row["score_json"]["heat"]["data_health"]["sample_count"] == 6
-    assert row["score_json"]["heat"]["robust_z"] == 3
-    assert row["score_json"]["heat"]["z_score"] == 3
+    snapshot = row["factor_snapshot_json"]
+    assert snapshot["schema_version"] == "token_factor_snapshot_v1"
+    assert snapshot["families"]["social_attention"]["facts"]["mentions_5m"] == 4
+    assert snapshot["families"]["social_attention"]["facts"]["mentions_1h"] == 10
+    assert snapshot["families"]["social_attention"]["facts"]["unique_authors"] == 4
+    assert snapshot["families"]["social_quality"]["facts"]["mentions"] == 4
+    assert row["attention_json"] == {}
+    assert row["score_json"] == {}
 
 
 def test_projection_display_symbol_ignores_address_like_labels():
@@ -218,7 +313,11 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
         "ProjectionRepository",
         lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
     )
-    monkeypatch.setattr(TokenRadarProjection, "_source_rows", lambda self, since_ms, scope, now_ms: [source_row])
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_source_rows",
+        lambda self, since_ms, scope, now_ms: [source_row],
+    )
 
     result = TokenRadarProjection(repos=repos).rebuild(
         window="5m",
@@ -259,8 +358,16 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
 def test_short_window_projection_reads_existing_market_state_without_preflight(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
     now_ms = 1_777_800_060_000
+    current_market = FakeCurrentMarket(
+        {
+            ("Asset", "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"): _current_market_snapshot(
+                now_ms=now_ms,
+                market_status="fresh",
+            )
+        }
+    )
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
 
     def source_rows(self, since_ms, scope, now_ms):
         return [source_row("event-1", received_at_ms=now_ms - 60_000)]
@@ -275,13 +382,111 @@ def test_short_window_projection_reads_existing_market_state_without_preflight(m
     result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
 
     assert "market_hydration" not in result
-    assert token_radar.rows[0]["market_json"]["market_status"] == "fresh"
+    market_facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert market_facts["market_status"] == "fresh"
+    assert current_market.calls
+    assert token_radar.rows[0]["market_json"] == {}
+
+
+def test_projection_hydrates_market_from_current_market_read_model(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    now_ms = 1_777_800_060_000
+    current_market = FakeCurrentMarket(
+        {
+            ("Asset", "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933"): _current_market_snapshot(
+                now_ms=now_ms,
+                market_status="partial",
+                price_status="fresh",
+                market_cap_status="stale",
+                liquidity_status="stale",
+                holders_status="stale",
+            )
+        }
+    )
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
+
+    def source_rows(self, since_ms, scope, now_ms):
+        row = source_row("event-1", received_at_ms=now_ms - 60_000)
+        for key in list(row):
+            if key.startswith("market_"):
+                row.pop(key)
+        return [row]
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(TokenRadarProjection, "_source_rows", source_rows)
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert facts["market_status"] == "partial"
+    assert facts["field_statuses"]["price_usd"] == "fresh"
+    assert facts["field_statuses"]["market_cap_usd"] == "stale"
+    assert current_market.calls == [
+        {
+            "subjects": [
+                {
+                    "target_type": "Asset",
+                    "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+                }
+            ],
+            "now_ms": now_ms,
+        }
+    ]
+
+
+def test_projection_hydrates_current_market_only_for_scored_window_rows(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    now_ms = 1_777_800_060_000
+    window_row = source_row("event-window", received_at_ms=now_ms - 60_000)
+    context_row = {
+        **source_row("event-context", received_at_ms=now_ms - 20 * 60_000),
+        "target_id": "asset:eip155:1:erc20:0xcontext",
+        "asset_address": "0xcontext",
+    }
+    current_market = FakeCurrentMarket(
+        {
+            ("Asset", window_row["target_id"]): _current_market_snapshot(
+                now_ms=now_ms,
+                market_status="fresh",
+            )
+        }
+    )
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_source_rows",
+        lambda self, since_ms, scope, now_ms: [context_row, window_row],
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    assert current_market.calls == [
+        {
+            "subjects": [{"target_type": "Asset", "target_id": window_row["target_id"]}],
+            "now_ms": now_ms,
+        }
+    ]
 
 
 def test_projection_marks_market_pending_when_no_external_price_refresh_has_arrived(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
-    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
+    current_market = FakeCurrentMarket()
+    repos = type("Repos", (), {"conn": object(), "token_radar": token_radar, "current_market": current_market})()
     now_ms = 1_777_800_060_000
 
     def source_rows(self, since_ms, scope, now_ms):
@@ -312,7 +517,10 @@ def test_projection_marks_market_pending_when_no_external_price_refresh_has_arri
 
     assert result["status"] == "ready"
     assert "market_hydration" not in result
-    assert token_radar.rows[0]["market_json"]["market_observation_status"] == "pending_refresh"
+    market_facts = token_radar.rows[0]["factor_snapshot_json"]["families"]["market_quality"]["facts"]
+    assert market_facts["market_status"] == "missing"
+    assert current_market.calls
+    assert token_radar.rows[0]["market_json"] == {}
 
 
 def test_projection_market_uses_latest_market_snapshot_fields():
@@ -419,23 +627,57 @@ def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefe
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
-def test_source_rows_keeps_price_observation_laterals_index_friendly():
+def test_source_rows_does_not_read_historical_price_observations():
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
     TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
-    assert "latest_feed_price" in conn.sql
-    assert "latest_subject_price" in conn.sql
-    assert "message_event_price" in conn.sql
-    assert "event_history_price" in conn.sql
+    assert "latest_feed_price" not in conn.sql
+    assert "latest_subject_price" not in conn.sql
+    assert "price_observations" not in conn.sql
+    assert "message_event_price" not in conn.sql
+    assert "event_history_price" not in conn.sql
     assert "latest_price" not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
-    assert conn.params == (TOKEN_RADAR_RESOLVER_POLICY_VERSION, 2, 2, 1)
+    assert "WITH window_events AS MATERIALIZED" in conn.sql
+    assert "events.received_at_ms <= %s" in conn.sql
+    assert conn.params == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
 
 
-def test_resolved_pending_market_never_projects_as_driver():
+def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypatch):
+    recorder = FakeProjectionRecorder()
+    token_radar = FakeTokenRadar()
+    repos = type(
+        "Repos",
+        (),
+        {"conn": object(), "token_radar": token_radar, "current_market": FakeCurrentMarket()},
+    )()
+    now_ms = 1_777_800_060_000
+
+    monkeypatch.setattr(
+        token_radar_projection_module,
+        "ProjectionRepository",
+        lambda conn: FakeProjectionRepository(conn=conn, recorder=recorder),
+    )
+    monkeypatch.setattr(
+        TokenRadarProjection,
+        "_source_rows",
+        lambda self, since_ms, scope, now_ms: [
+            source_row("event-1", received_at_ms=now_ms - 60_000)
+        ],
+    )
+
+    result = TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=now_ms, limit=20)
+
+    assert result["status"] == "ready"
+    assert recorder.finish_calls[-1]["commit"] is False
+    assert token_radar.coverage[-1]["status"] == "ready"
+    assert token_radar.coverage[-1]["commit"] is True
+
+
+def test_resolved_pending_market_never_projects_as_high_alert():
     rows = [
         {
             "event_id": f"event-{index}",
@@ -459,21 +701,24 @@ def test_resolved_pending_market_never_projects_as_driver():
 
     row = _project_group(rows, now_ms=1_777_800_060_000, window="5m", scope="all")
 
-    assert row["market_json"]["market_observation_status"] == "pending_refresh"
+    snapshot = row["factor_snapshot_json"]
+    market_facts = snapshot["families"]["market_quality"]["facts"]
+    assert market_facts["market_status"] == "missing"
     assert row["decision"] == "discard"
-    assert row["market_json"]["market_readiness"]["status"] == "missing"
-    assert row["market_json"]["event_price_readiness"]["status"] == "missing"
-    assert row["data_health_json"]["market"] == "pending_refresh"
-    assert row["data_health_json"]["market_readiness"]["status"] == "missing"
-    assert row["data_health_json"]["event_price_readiness"]["status"] == "missing"
-    assert set(row["score_json"]) == {"heat", "quality", "propagation", "tradeability", "timing", "opportunity"}
-    assert "price_health" not in row["score_json"]
-    for block in row["score_json"].values():
-        assert block["score_version"]
-        assert block["contributions"]
+    assert snapshot["composite"]["recommended_decision"] == "discard"
+    assert "market_freshness_missing" in snapshot["hard_gates"]["blocked_reasons"]
+    assert row["data_health_json"] == {
+        "factor_snapshot": "ready",
+        "identity": "ready",
+        "market": "partial",
+    }
+    assert row["attention_json"] == {}
+    assert row["market_json"] == {}
+    assert row["price_json"] == {}
+    assert row["score_json"] == {}
 
 
-def test_demoted_search_asset_does_not_project_as_resolved_driver():
+def test_demoted_search_asset_does_not_project_as_resolved_high_alert():
     row = source_row(
         "event-1",
         received_at_ms=1_777_800_000_000,
@@ -483,8 +728,9 @@ def test_demoted_search_asset_does_not_project_as_resolved_driver():
     projected = _project_group([row], now_ms=1_777_800_060_000, window="5m", scope="all")
 
     assert projected["lane"] == "attention"
-    assert projected["market_json"]["market_observation_status"] == "no_resolved_target"
-    assert projected["data_health_json"]["identity"] == "EXACT"
+    assert projected["factor_snapshot_json"]["families"]["market_quality"]["facts"]["market_status"] == "missing"
+    assert projected["data_health_json"]["identity"] == "ready"
+    assert projected["market_json"] == {}
 
 
 def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> dict:
@@ -519,6 +765,44 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "first_price_observed_at_ms": received_at_ms,
         "market_market_cap_usd": 1_000_000,
         "market_liquidity_usd": 250_000,
+        "market_holders": 1_000,
+    }
+
+
+def ranking_row(
+    *,
+    target_id: str,
+    latest_seen_ms: int,
+    decision: str = "watch",
+    rank_score: float = 42,
+) -> dict:
+    return {
+        "target_id": target_id,
+        "decision": decision,
+        "factor_snapshot_json": {
+            "schema_version": "token_factor_snapshot_v1",
+            "composite": {
+                "recommended_decision": decision,
+                "rank_score": rank_score,
+            },
+            "families": {
+                "identity": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "social_attention": {
+                    "score": 80,
+                    "data_health": "ready",
+                    "facts": {
+                        "watched_mentions": 1,
+                        "mentions_1h": 5,
+                        "latest_seen_ms": latest_seen_ms,
+                    },
+                    "factors": {},
+                },
+                "social_quality": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "social_semantics": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "market_quality": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+                "timing": {"score": 80, "data_health": "ready", "facts": {}, "factors": {}},
+            },
+        },
     }
 
 
@@ -562,6 +846,12 @@ class FakeProjectionRepository:
 
 
 class FakeRejectingTokenRadar:
+    def __init__(self):
+        self.coverage: list[dict[str, object]] = []
+
+    def mark_coverage(self, **kwargs):
+        self.coverage.append(kwargs)
+
     def replace_rows(self, **kwargs):
         return False
 
@@ -569,7 +859,73 @@ class FakeRejectingTokenRadar:
 class FakeTokenRadar:
     def __init__(self):
         self.rows: list[dict[str, object]] = []
+        self.coverage: list[dict[str, object]] = []
+
+    def mark_coverage(self, **kwargs):
+        self.coverage.append(kwargs)
 
     def replace_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True
+
+
+class FakeCurrentMarket:
+    def __init__(self, snapshots: dict[tuple[str, str], dict[str, object]] | None = None):
+        self.snapshots = snapshots or {}
+        self.calls: list[dict[str, object]] = []
+
+    def current_for_subjects(self, subjects, *, now_ms):
+        self.calls.append({"subjects": list(subjects), "now_ms": now_ms})
+        return {
+            key: snapshot
+            for key, snapshot in self.snapshots.items()
+            if {"target_type": key[0], "target_id": key[1]} in subjects
+        }
+
+
+def _current_market_snapshot(
+    *,
+    now_ms: int,
+    market_status: str,
+    price_status: str = "fresh",
+    market_cap_status: str = "fresh",
+    liquidity_status: str = "fresh",
+    holders_status: str = "fresh",
+) -> dict[str, object]:
+    stale_ms = now_ms - 86_400_000
+    fresh_ms = now_ms - 30_000
+    return {
+        "target_type": "Asset",
+        "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+        "market_status": market_status,
+        "fields": {
+            "price_usd": {
+                "value": 0.104,
+                "status": price_status,
+                "observed_at_ms": fresh_ms,
+                "age_ms": 30_000,
+                "provider": "okx_dex_price",
+            },
+            "market_cap_usd": {
+                "value": 51_000_000,
+                "status": market_cap_status,
+                "observed_at_ms": stale_ms if market_cap_status == "stale" else fresh_ms,
+                "age_ms": 86_400_000 if market_cap_status == "stale" else 30_000,
+                "provider": "okx_dex_search",
+            },
+            "liquidity_usd": {
+                "value": 3_000_000,
+                "status": liquidity_status,
+                "observed_at_ms": stale_ms if liquidity_status == "stale" else fresh_ms,
+                "age_ms": 86_400_000 if liquidity_status == "stale" else 30_000,
+                "provider": "okx_dex_search",
+            },
+            "holders": {
+                "value": 52_000,
+                "status": holders_status,
+                "observed_at_ms": stale_ms if holders_status == "stale" else fresh_ms,
+                "age_ms": 86_400_000 if holders_status == "stale" else 30_000,
+                "provider": "okx_dex_search",
+            },
+        },
+    }

@@ -192,6 +192,102 @@ def test_registry_repository_writes_cex_token_asset_pricefeed_and_observation(tm
     assert latest_price["price_basis"] == "usd_like"
 
 
+def test_symbol_lookup_ignores_okx_price_only_market_metadata_for_dominance(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        identity = IdentityEvidenceRepository(conn)
+        observations = PriceObservationRepository(conn)
+        asset = registry.upsert_chain_asset(
+            chain_id="solana",
+            address="5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+            observed_at_ms=1_700_000_000_000,
+        )
+        _write_identity(identity, asset, symbol="TROLL", observed_at_ms=1_700_000_000_000)
+        observations.insert_observation(
+            provider="okx_dex_search",
+            pricefeed_id=None,
+            observed_at_ms=1_700_000_000_000,
+            subject_type="Asset",
+            subject_id=asset["asset_id"],
+            price_usd=0.051,
+            price_basis="usd",
+            market_cap_usd=51_000_000,
+            liquidity_usd=3_000_000,
+            holders=52_000,
+        )
+        observations.insert_observation(
+            provider="okx_dex_price",
+            pricefeed_id=None,
+            observed_at_ms=1_700_086_400_000,
+            subject_type="Asset",
+            subject_id=asset["asset_id"],
+            price_usd=0.104,
+            price_basis="usd",
+            market_cap_usd=100_000_000,
+            liquidity_usd=4_000_000,
+            holders=55_000,
+        )
+        row = registry.find_assets_by_symbol_with_latest_observation("TROLL")[0]
+    finally:
+        conn.close()
+
+    assert row["price_usd"] == Decimal("0.104")
+    assert row["market_cap_usd"] == Decimal("51000000")
+    assert row["market_cap_observed_at_ms"] == 1_700_000_000_000
+    assert row["market_cap_provider"] == "okx_dex_search"
+
+
+def test_symbol_lookup_reads_okx_dex_ws_price_info_as_metadata_provider(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        identity = IdentityEvidenceRepository(conn)
+        observations = PriceObservationRepository(conn)
+        asset = registry.upsert_chain_asset(
+            chain_id="solana",
+            address="5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+            observed_at_ms=1_700_000_000_000,
+        )
+        _write_identity(identity, asset, symbol="TROLL", observed_at_ms=1_700_000_000_000)
+        observations.insert_observation(
+            provider="okx_dex_search",
+            pricefeed_id=None,
+            observed_at_ms=1_700_000_000_000,
+            subject_type="Asset",
+            subject_id=asset["asset_id"],
+            price_usd=0.051,
+            price_basis="usd",
+            market_cap_usd=51_000_000,
+            liquidity_usd=3_000_000,
+            holders=52_000,
+        )
+        observations.insert_observation(
+            provider="okx_dex_ws_price_info",
+            pricefeed_id=None,
+            observed_at_ms=1_700_086_400_000,
+            subject_type="Asset",
+            subject_id=asset["asset_id"],
+            price_usd=0.111,
+            price_basis="usd",
+            market_cap_usd=110_900_000,
+            liquidity_usd=4_820_000,
+            volume_24h_usd=27_400_000,
+            holders=57_141,
+        )
+        row = registry.find_assets_by_symbol_with_latest_observation("TROLL")[0]
+    finally:
+        conn.close()
+
+    assert row["price_usd"] == Decimal("0.111")
+    assert row["market_cap_usd"] == Decimal("110900000")
+    assert row["liquidity_usd"] == Decimal("4820000")
+    assert row["holders"] == 57_141
+    assert row["market_cap_provider"] == "okx_dex_ws_price_info"
+
+
 def test_okx_search_reactivates_demoted_search_asset(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

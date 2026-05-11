@@ -2,7 +2,7 @@
 
 The cross-section pass is otherwise only covered by the live-PG idempotency
 test. These tests construct synthetic projected rows and verify the
-classify-rank-rewrite-strip flow without requiring a database.
+classify-rank-normalize-strip flow without requiring a database.
 """
 
 from __future__ import annotations
@@ -18,16 +18,24 @@ def _row(
     *,
     target_id: str,
     symbol: str,
-    opportunity_score: float | None = 50.0,
+    rank_score: float | None = 50.0,
     high_conf: int = 1,
     kol_count: int = 0,
 ) -> dict[str, Any]:
     return {
         "target_id": target_id,
         "target_json": {"symbol": symbol},
-        "score_json": {
-            "opportunity": {"score": opportunity_score, "score_version": "social_opportunity_v4"},
+        "factor_snapshot_json": {
+            "schema_version": "token_factor_snapshot_v1",
+            "composite": {
+                "rank_score": rank_score,
+                "recommended_decision": "watch",
+            },
+            "families": {
+                "social_attention": {"facts": {}},
+            },
         },
+        "score_json": {},
         "_cohort_high_conf_count": high_conf,
         "_cohort_kol_count": kol_count,
     }
@@ -35,16 +43,16 @@ def _row(
 
 def test_cross_section_ranks_cohort_members_and_excludes_stablecoins():
     rows = [
-        _row(target_id="asset:pepe", symbol="PEPE", opportunity_score=30.0),
-        _row(target_id="asset:wif", symbol="WIF", opportunity_score=70.0),
-        _row(target_id="asset:bonk", symbol="BONK", opportunity_score=50.0),
-        _row(target_id="cex_token:USDT", symbol="USDT", opportunity_score=99.0),
-        _row(target_id="cex_token:USDC", symbol="USDC", opportunity_score=99.0),
+        _row(target_id="asset:pepe", symbol="PEPE", rank_score=30.0),
+        _row(target_id="asset:wif", symbol="WIF", rank_score=70.0),
+        _row(target_id="asset:bonk", symbol="BONK", rank_score=50.0),
+        _row(target_id="cex_token:USDT", symbol="USDT", rank_score=99.0),
+        _row(target_id="cex_token:USDC", symbol="USDC", rank_score=99.0),
     ]
 
     result = TokenRadarProjection._apply_cross_section(rows)
 
-    by_id = {r["target_id"]: r["score_json"] for r in result}
+    by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
 
     assert by_id["asset:wif"]["cross_section_rank"] == 1.0
     assert by_id["asset:bonk"]["cross_section_rank"] == 2 / 3
@@ -61,7 +69,7 @@ def test_cross_section_writes_cohort_metadata_with_versions():
 
     result = TokenRadarProjection._apply_cross_section(rows)
 
-    cohort = result[0]["score_json"]["cohort"]
+    cohort = result[0]["factor_snapshot_json"]["normalization"]["cohort"]
     assert cohort["in_cohort"] is True
     assert cohort["size"] == 1
     assert cohort["definition_version"] == COHORT_DEFINITION_VERSION
@@ -83,14 +91,19 @@ def test_cross_section_strips_internal_cohort_fields():
 
 def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
     """Rows with empty/missing target_id (attention lane) should still get
-    score_json.cross_section_rank=None and cohort metadata, just without
+    factor_snapshot.normalization.cross_section_rank=None and cohort metadata, just without
     being added to the cohort itself."""
     rows = [
         _row(target_id="asset:pepe", symbol="PEPE"),
         {
             "target_id": None,
             "target_json": None,
-            "score_json": {"opportunity": {"score": 40.0}},
+            "factor_snapshot_json": {
+                "schema_version": "token_factor_snapshot_v1",
+                "composite": {"rank_score": 40.0, "recommended_decision": "watch"},
+                "families": {"social_attention": {"facts": {}}},
+            },
+            "score_json": {},
             "_cohort_high_conf_count": 0,
             "_cohort_kol_count": 0,
         },
@@ -98,7 +111,7 @@ def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
 
     result = TokenRadarProjection._apply_cross_section(rows)
 
-    attention_row = result[1]["score_json"]
+    attention_row = result[1]["factor_snapshot_json"]["normalization"]
     assert attention_row["cross_section_rank"] is None
     assert attention_row["cohort"]["in_cohort"] is False
     assert attention_row["cohort"]["size"] == 1
@@ -106,14 +119,14 @@ def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
 
 def test_cross_section_skips_non_qualifying_tokens_from_cohort():
     """Token with no high-conf mentions, no KOL mentions, no first-seen-global
-    should be excluded from cohort even though it has an opportunity score."""
+    should be excluded from cohort even though it has a rank score."""
     rows = [
         _row(target_id="asset:noise", symbol="NOISE", high_conf=0, kol_count=0),
         _row(target_id="asset:real", symbol="REAL", high_conf=2, kol_count=0),
     ]
 
     result = TokenRadarProjection._apply_cross_section(rows)
-    by_id = {r["target_id"]: r["score_json"] for r in result}
+    by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
 
     assert by_id["asset:noise"]["cohort"]["in_cohort"] is False
     assert by_id["asset:noise"]["cross_section_rank"] is None
@@ -121,14 +134,14 @@ def test_cross_section_skips_non_qualifying_tokens_from_cohort():
     assert by_id["asset:real"]["cross_section_rank"] == 1.0
 
 
-def test_cross_section_handles_none_opportunity_score():
+def test_cross_section_handles_none_rank_score():
     rows = [
-        _row(target_id="asset:has_score", symbol="HAS", opportunity_score=42.0),
-        _row(target_id="asset:no_score", symbol="NONE", opportunity_score=None),
+        _row(target_id="asset:has_score", symbol="HAS", rank_score=42.0),
+        _row(target_id="asset:no_score", symbol="NONE", rank_score=None),
     ]
 
     result = TokenRadarProjection._apply_cross_section(rows)
-    by_id = {r["target_id"]: r["score_json"] for r in result}
+    by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
 
     assert by_id["asset:has_score"]["cross_section_rank"] == 1.0
     assert by_id["asset:no_score"]["cross_section_rank"] is None

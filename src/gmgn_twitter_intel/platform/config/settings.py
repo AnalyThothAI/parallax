@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, app_log_path, config_path
 
@@ -81,16 +81,11 @@ class LlmConfig(BaseModel):
     pulse_agent_batch_size: int = 10
     pulse_agent_max_attempts: int = 3
     pulse_agent_model: str | None = None
-    pulse_agent_asset_heat_min: int = 80
-    pulse_agent_asset_propagation_min: int = 70
-    pulse_agent_trade_heat_min: int = 75
-    pulse_agent_trade_quality_min: int = 62
-    pulse_agent_trade_propagation_min: int = 62
-    pulse_agent_tradeability_min: int = 70
-    pulse_agent_timing_min: int = 50
-    pulse_agent_confidence_min: float = 0.65
-    pulse_agent_token_watch_signal_min: int = 45
-    pulse_agent_high_conviction_min: int = 78
+    pulse_agent_trigger_min_rank_score: int = 70
+    pulse_agent_gate_trade_candidate_min: int = 72
+    pulse_agent_gate_token_watch_min: int = 45
+    pulse_agent_gate_high_info_rejection_min: int = 30
+    pulse_agent_gate_high_conviction_min: int = 78
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -295,6 +290,15 @@ class OkxProviderConfig(BaseModel):
     cex_inst_types: tuple[str, ...] = ("SPOT", "SWAP")
     dex_base_url: str = "https://web3.okx.com"
     dex_chain_indexes: tuple[str, ...] = ("501", "1", "56", "8453", "607")
+    dex_sync_interval_seconds: float = Field(default=30.0, gt=0)
+    dex_price_hot_stale_seconds: float = Field(default=90.0, gt=0)
+    dex_price_warm_stale_seconds: float = Field(default=300.0, gt=0)
+    dex_price_refresh_limit: int = Field(default=160, gt=0)
+    dex_ws_enabled: bool = False
+    dex_ws_url: str = "wss://wsdex.okx.com/ws/v6/dex"
+    dex_ws_subscription_limit: int = Field(default=100, gt=0)
+    dex_ws_hot_target_ttl_seconds: float = Field(default=300.0, gt=0)
+    dex_ws_reconnect_delay_seconds: float = Field(default=3.0, gt=0)
     dex_api_key: str | None = None
     dex_secret_key: str | None = None
     dex_passphrase: str | None = None
@@ -318,6 +322,17 @@ class OkxProviderConfig(BaseModel):
             return None
         normalized = str(value).strip()
         return normalized or None
+
+    @field_validator("dex_ws_url", mode="before")
+    @classmethod
+    def parse_ws_url(cls, value: Any) -> str:
+        return str(value or "wss://wsdex.okx.com/ws/v6/dex").strip()
+
+    @model_validator(mode="after")
+    def validate_dex_ws_credentials(self) -> OkxProviderConfig:
+        if self.dex_ws_enabled and not (self.dex_api_key and self.dex_secret_key and self.dex_passphrase):
+            raise ValueError("dex_ws_enabled requires dex_api_key, dex_secret_key, and dex_passphrase")
+        return self
 
 
 class ProvidersConfig(BaseModel):
@@ -452,44 +467,24 @@ class Settings(BaseModel):
         return bool(self.llm_api_key and self.pulse_agent_model)
 
     @property
-    def pulse_agent_asset_heat_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_asset_heat_min, low=0, high=100)
+    def pulse_agent_trigger_min_rank_score(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_trigger_min_rank_score, low=0, high=100)
 
     @property
-    def pulse_agent_asset_propagation_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_asset_propagation_min, low=0, high=100)
+    def pulse_agent_gate_trade_candidate_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_trade_candidate_min, low=0, high=100)
 
     @property
-    def pulse_agent_trade_heat_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trade_heat_min, low=0, high=100)
+    def pulse_agent_gate_token_watch_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_token_watch_min, low=0, high=100)
 
     @property
-    def pulse_agent_trade_quality_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trade_quality_min, low=0, high=100)
+    def pulse_agent_gate_high_info_rejection_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_high_info_rejection_min, low=0, high=100)
 
     @property
-    def pulse_agent_trade_propagation_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_trade_propagation_min, low=0, high=100)
-
-    @property
-    def pulse_agent_tradeability_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_tradeability_min, low=0, high=100)
-
-    @property
-    def pulse_agent_timing_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_timing_min, low=0, high=100)
-
-    @property
-    def pulse_agent_confidence_min(self) -> float:
-        return _clamp_float(self.llm.pulse_agent_confidence_min, low=0.0, high=1.0)
-
-    @property
-    def pulse_agent_token_watch_signal_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_token_watch_signal_min, low=0, high=100)
-
-    @property
-    def pulse_agent_high_conviction_min(self) -> int:
-        return _clamp_int(self.llm.pulse_agent_high_conviction_min, low=0, high=100)
+    def pulse_agent_gate_high_conviction_min(self) -> int:
+        return _clamp_int(self.llm.pulse_agent_gate_high_conviction_min, low=0, high=100)
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -562,6 +557,42 @@ class Settings(BaseModel):
         return self.providers.okx.dex_chain_indexes or ("501", "1", "56", "8453", "607")
 
     @property
+    def okx_dex_sync_interval_seconds(self) -> float:
+        return self.providers.okx.dex_sync_interval_seconds
+
+    @property
+    def okx_dex_price_hot_stale_seconds(self) -> float:
+        return self.providers.okx.dex_price_hot_stale_seconds
+
+    @property
+    def okx_dex_price_warm_stale_seconds(self) -> float:
+        return self.providers.okx.dex_price_warm_stale_seconds
+
+    @property
+    def okx_dex_price_refresh_limit(self) -> int:
+        return self.providers.okx.dex_price_refresh_limit
+
+    @property
+    def okx_dex_ws_enabled(self) -> bool:
+        return bool(self.providers.okx.dex_ws_enabled)
+
+    @property
+    def okx_dex_ws_url(self) -> str:
+        return self.providers.okx.dex_ws_url
+
+    @property
+    def okx_dex_ws_subscription_limit(self) -> int:
+        return self.providers.okx.dex_ws_subscription_limit
+
+    @property
+    def okx_dex_ws_hot_target_ttl_seconds(self) -> float:
+        return self.providers.okx.dex_ws_hot_target_ttl_seconds
+
+    @property
+    def okx_dex_ws_reconnect_delay_seconds(self) -> float:
+        return self.providers.okx.dex_ws_reconnect_delay_seconds
+
+    @property
     def okx_dex_api_key(self) -> str | None:
         return self.providers.okx.dex_api_key
 
@@ -580,6 +611,16 @@ class Settings(BaseModel):
     @property
     def okx_dex_configured(self) -> bool:
         return bool(self.okx_dex_base_url)
+
+    @property
+    def okx_dex_ws_configured(self) -> bool:
+        return bool(
+            self.okx_dex_ws_enabled
+            and self.okx_dex_ws_url
+            and self.okx_dex_api_key
+            and self.okx_dex_secret_key
+            and self.okx_dex_passphrase
+        )
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:
@@ -710,16 +751,11 @@ llm:
   pulse_agent_batch_size: 10
   pulse_agent_max_attempts: 3
   pulse_agent_model:
-  pulse_agent_asset_heat_min: 80
-  pulse_agent_asset_propagation_min: 70
-  pulse_agent_trade_heat_min: 75
-  pulse_agent_trade_quality_min: 62
-  pulse_agent_trade_propagation_min: 62
-  pulse_agent_tradeability_min: 70
-  pulse_agent_timing_min: 50
-  pulse_agent_confidence_min: 0.65
-  pulse_agent_token_watch_signal_min: 45
-  pulse_agent_high_conviction_min: 78
+  pulse_agent_trigger_min_rank_score: 70
+  pulse_agent_gate_trade_candidate_min: 72
+  pulse_agent_gate_token_watch_min: 45
+  pulse_agent_gate_high_info_rejection_min: 30
+  pulse_agent_gate_high_conviction_min: 78
 
 gmgn:
   api_key:
@@ -735,6 +771,15 @@ providers:
     cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
     dex_chain_indexes: ["501", "1", "56", "8453", "607"]
+    dex_sync_interval_seconds: 30
+    dex_price_hot_stale_seconds: 90
+    dex_price_warm_stale_seconds: 300
+    dex_price_refresh_limit: 160
+    dex_ws_enabled: false
+    dex_ws_url: "wss://wsdex.okx.com/ws/v6/dex"
+    dex_ws_subscription_limit: 100
+    dex_ws_hot_target_ttl_seconds: 300
+    dex_ws_reconnect_delay_seconds: 3
     dex_api_key:
     dex_secret_key:
     dex_passphrase:

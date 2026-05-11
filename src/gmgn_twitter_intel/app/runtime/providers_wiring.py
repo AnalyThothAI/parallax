@@ -2,24 +2,30 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from threading import Lock
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.providers import (
     CexMarketProvider,
     CexTicker,
+    DexMarketFactUpdate,
     DexMarketProvider,
+    DexMarketStreamProvider,
     DexTokenCandidate,
     DexTokenPrice,
     DexTokenPriceRequest,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseThesisProvider, PulseThesisResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider, PulseRecommendationResult
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
-from gmgn_twitter_intel.integrations.openai_agents.pulse_thesis_agent_client import OpenAIAgentsPulseThesisClient
+from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
+from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_client import (
+    OpenAIAgentsPulseRecommendationClient,
+)
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 from gmgn_twitter_intel.platform.config.settings import Settings
 
@@ -39,6 +45,7 @@ class AssetMarketProviders:
     message_cex_market: CexMarketProvider | None = None
     message_dex_market: DexMarketProvider | None = None
     discovery_dex_market: DexMarketProvider | None = None
+    stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
 
 
@@ -49,7 +56,7 @@ class SocialEnrichmentProviders:
 
 @dataclass(frozen=True, slots=True)
 class PulseLabProviders:
-    thesis_provider: PulseThesisProvider | None = None
+    recommendation_provider: PulseRecommendationProvider | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +110,58 @@ class OkxDexMarketProvider:
         self._client.close()
 
 
-class OpenAIPulseThesisProvider:
-    def __init__(self, client: OpenAIAgentsPulseThesisClient) -> None:
+class _SerializedDexMarketProvider:
+    def __init__(self, provider: DexMarketProvider) -> None:
+        self._provider = provider
+        self._lock = Lock()
+        self._closed = False
+
+    def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]) -> list[DexTokenCandidate]:
+        with self._lock:
+            return self._provider.search_tokens(query=query, chain_ids=chain_ids)
+
+    def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]:
+        with self._lock:
+            return self._provider.token_prices(tokens)
+
+    def close(self) -> None:
+        close = getattr(self._provider, "close", None)
+        if not close:
+            return
+        with self._lock:
+            if self._closed:
+                return
+            close()
+            self._closed = True
+
+
+class OkxDexWebSocketMarketProviderAdapter:
+    def __init__(self, provider: OkxDexWebSocketMarketProvider) -> None:
+        self._provider = provider
+
+    async def stream_price_info(self, targets):
+        mapped_targets = []
+        for target in targets:
+            chain_index = okx_chain_index(target.chain_id)
+            if not chain_index:
+                continue
+            mapped_targets.append(
+                {
+                    "chainIndex": chain_index,
+                    "tokenContractAddress": _normalize_address(target.address),
+                }
+            )
+        async for update in self._provider.stream_price_info(mapped_targets):
+            yield _domain_dex_market_fact_update(update)
+
+    def close(self) -> None:
+        close = getattr(self._provider, "close", None)
+        if close:
+            close()
+
+
+class OpenAIPulseRecommendationProvider:
+    def __init__(self, client: OpenAIAgentsPulseRecommendationClient) -> None:
         self._client = client
 
     @property
@@ -126,15 +183,15 @@ class OpenAIPulseThesisProvider:
     def request_audit(self, *, context: dict[str, Any], run_id: str, job: dict[str, Any]) -> dict[str, Any]:
         return self._client.request_audit(context=context, run_id=run_id, job=job)
 
-    async def write_thesis(
+    async def write_recommendation(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisResult:
-        result = await self._client.write_thesis(context=context, run_id=run_id, job=job)
-        return PulseThesisResult(payload=result.payload, agent_run_audit=result.agent_run_audit)
+    ) -> PulseRecommendationResult:
+        result = await self._client.write_recommendation(context=context, run_id=run_id, job=job)
+        return PulseRecommendationResult(payload=result.payload, agent_run_audit=result.agent_run_audit)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -150,7 +207,7 @@ def wire_providers(settings: Settings, *, start_collector: bool) -> WiredProvide
             event_enrichment=_openai_social_event_provider(settings) if settings.llm_configured else None,
         ),
         pulse_lab=PulseLabProviders(
-            thesis_provider=_openai_pulse_thesis_provider(settings)
+            recommendation_provider=_openai_pulse_recommendation_provider(settings)
             if settings.pulse_agent_enabled and settings.pulse_agent_configured
             else None,
         ),
@@ -190,13 +247,14 @@ def okx_chain_index(chain_id: Any) -> str | None:
 def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
     if not start_collector:
         return AssetMarketProviders()
+    dex_market = _SerializedDexMarketProvider(_okx_dex_market(settings)) if settings.okx_dex_configured else None
     return AssetMarketProviders(
-        projection_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
         sync_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        sync_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
+        sync_dex_market=dex_market,
         message_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        message_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
-        discovery_dex_market=_okx_dex_market(settings) if settings.okx_dex_configured else None,
+        message_dex_market=dex_market,
+        discovery_dex_market=dex_market,
+        stream_dex_market=_okx_dex_ws_market(settings) if settings.okx_dex_ws_configured else None,
         discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
     )
 
@@ -238,6 +296,18 @@ def _okx_dex_market(settings: Settings) -> OkxDexMarketProvider:
     )
 
 
+def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapter:
+    return OkxDexWebSocketMarketProviderAdapter(
+        OkxDexWebSocketMarketProvider(
+            url=settings.okx_dex_ws_url,
+            api_key=settings.okx_dex_api_key or "",
+            secret_key=settings.okx_dex_secret_key or "",
+            passphrase=settings.okx_dex_passphrase or "",
+            subscription_limit=settings.okx_dex_ws_subscription_limit,
+        )
+    )
+
+
 def _openai_social_event_provider(settings: Settings) -> OpenAIAgentsSocialEventClient:
     return OpenAIAgentsSocialEventClient(
         api_key=settings.llm_api_key or "",
@@ -250,9 +320,9 @@ def _openai_social_event_provider(settings: Settings) -> OpenAIAgentsSocialEvent
     )
 
 
-def _openai_pulse_thesis_provider(settings: Settings) -> OpenAIPulseThesisProvider:
-    return OpenAIPulseThesisProvider(
-        OpenAIAgentsPulseThesisClient(
+def _openai_pulse_recommendation_provider(settings: Settings) -> OpenAIPulseRecommendationProvider:
+    return OpenAIPulseRecommendationProvider(
+        OpenAIAgentsPulseRecommendationClient(
             api_key=settings.llm_api_key or "",
             model=settings.pulse_agent_model or "",
             base_url=settings.llm_base_url,
@@ -300,6 +370,21 @@ def _dex_token_price(price: Any) -> DexTokenPrice:
     )
 
 
+def _domain_dex_market_fact_update(update: Any) -> DexMarketFactUpdate:
+    return DexMarketFactUpdate(
+        chain_id=okx_index_to_chain_id(update.chain_id) or update.chain_id,
+        address=_normalize_address(update.address),
+        observed_at_ms=update.observed_at_ms,
+        price_usd=update.price_usd,
+        market_cap_usd=update.market_cap_usd,
+        liquidity_usd=update.liquidity_usd,
+        volume_24h_usd=update.volume_24h_usd,
+        open_interest_usd=update.open_interest_usd,
+        holders=update.holders,
+        raw=update.raw,
+    )
+
+
 def _domain_chain_id(value: Any) -> str | None:
     normalized = str(value or "").strip().lower()
     if not normalized:
@@ -329,6 +414,7 @@ __all__ = [
     "IngestionProviders",
     "OkxCexMarketProvider",
     "OkxDexMarketProvider",
+    "OkxDexWebSocketMarketProviderAdapter",
     "PulseLabProviders",
     "SocialEnrichmentProviders",
     "WiredProviders",

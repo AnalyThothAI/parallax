@@ -174,6 +174,55 @@ def test_symbol_without_dominance_returns_ambiguous_with_candidates():
     assert "symbol:TIE" in result.lookup_keys
 
 
+def test_symbol_dominance_requires_field_freshness():
+    registry = FakeRegistry(
+        symbol_assets={
+            "TROLL": [
+                {
+                    "asset_id": "asset:solana:token:TROLL-A",
+                    "chain_id": "solana",
+                    "symbol": "TROLL",
+                    "market_cap_usd": Decimal("100000000"),
+                    "liquidity_usd": Decimal("4000000"),
+                    "holders": 55_000,
+                    "market_cap_observed_at_ms": 1_700_000_000_000,
+                    "liquidity_observed_at_ms": 1_700_000_000_000,
+                    "holders_observed_at_ms": 1_700_000_000_000,
+                    "market_cap_status": "stale",
+                    "liquidity_status": "stale",
+                    "holders_status": "stale",
+                },
+                {
+                    "asset_id": "asset:solana:token:TROLL-B",
+                    "chain_id": "solana",
+                    "symbol": "TROLL",
+                    "market_cap_usd": Decimal("500000"),
+                    "liquidity_usd": Decimal("200000"),
+                    "holders": 2_000,
+                    "market_cap_observed_at_ms": 1_700_000_000_000,
+                    "liquidity_observed_at_ms": 1_700_000_000_000,
+                    "holders_observed_at_ms": 1_700_000_000_000,
+                    "market_cap_status": "stale",
+                    "liquidity_status": "stale",
+                    "holders_status": "stale",
+                },
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-troll",
+        event_id="event-troll",
+        keys=MentionKeys(symbol="TROLL"),
+        decision_time_ms=1_700_086_430_000,
+    )
+
+    assert result.resolution_status == "AMBIGUOUS"
+    assert result.target_type is None
+    assert result.target_id is None
+    assert result.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
+
+
 def test_symbol_selects_market_dominant_asset_when_lead_is_clear_but_not_extreme():
     registry = FakeRegistry(
         symbol_assets={
@@ -373,7 +422,7 @@ class FakeRegistry:
         return self.preferred_cex_pricefeeds.get(str(base_symbol).upper())
 
     def find_assets_by_symbol_with_latest_observation(self, symbol):
-        return list(self.symbol_assets.get(str(symbol).upper(), []))
+        return [_registry_asset_row(row) for row in self.symbol_assets.get(str(symbol).upper(), [])]
 
     def find_assets_by_address(self, *, chain_id=None, address):
         normalized = str(address).lower()
@@ -383,3 +432,21 @@ class FakeRegistry:
         return [
             row for (_stored_chain, stored_address), row in self.address_assets.items() if stored_address == normalized
         ]
+
+
+def _registry_asset_row(row):
+    if row.get("market_cap_observed_at_ms") is not None:
+        return row
+    observed_at_ms = row.get("observed_at_ms")
+    if observed_at_ms is None:
+        return row
+    return {
+        **row,
+        "price_observed_at_ms": observed_at_ms,
+        "market_cap_observed_at_ms": observed_at_ms,
+        "liquidity_observed_at_ms": observed_at_ms,
+        "holders_observed_at_ms": observed_at_ms,
+        "market_cap_status": "fresh",
+        "liquidity_status": "fresh",
+        "holders_status": "fresh",
+    }

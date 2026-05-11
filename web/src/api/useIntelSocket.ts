@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
+<<<<<<< HEAD
 
+=======
+import type { LivePayload, MarketUpdatePayload, NotificationLivePayload } from "./types";
+>>>>>>> origin/main
 import { websocketUrl } from "./client";
 import type { LivePayload, NotificationLivePayload } from "./types";
 
@@ -11,23 +15,28 @@ type Options = {
   handles: string;
   replay: number;
   notifications?: boolean;
+  marketTargets?: Array<{ target_type?: string | null; target_id?: string | null }>;
 };
 
-export function useIntelSocket({ token, handles, replay, notifications = false }: Options) {
+export function useIntelSocket({ token, handles, replay, notifications = false, marketTargets = [] }: Options) {
   const [status, setStatus] = useState<SocketStatus>("idle");
   const [events, setEvents] = useState<LivePayload[]>([]);
   const [notificationEvents, setNotificationEvents] = useState<NotificationLivePayload[]>([]);
+  const [marketUpdates, setMarketUpdates] = useState<MarketUpdatePayload[]>([]);
   const [lastMessageAt, setLastMessageAt] = useState<number | null>(null);
   const socketRef = useRef<ReconnectingWebSocket | null>(null);
+  const marketTargetKey = JSON.stringify(normalizeMarketTargets(marketTargets));
 
   useEffect(() => {
     if (!token) {
       setStatus("idle");
       setEvents([]);
       setNotificationEvents([]);
+      setMarketUpdates([]);
       setLastMessageAt(null);
       return;
     }
+    const normalizedMarketTargets = JSON.parse(marketTargetKey) as Array<{ target_type: string; target_id: string }>;
 
     const ws = new ReconnectingWebSocket(websocketUrl(), [], {
       connectionTimeout: 4_000,
@@ -53,8 +62,14 @@ export function useIntelSocket({ token, handles, replay, notifications = false }
             type: "subscribe",
             handles: normalizeHandles(handles),
             notifications,
+<<<<<<< HEAD
             replay,
           }),
+=======
+            market_targets: normalizedMarketTargets,
+            replay
+          })
+>>>>>>> origin/main
         );
         return;
       }
@@ -63,9 +78,17 @@ export function useIntelSocket({ token, handles, replay, notifications = false }
         return;
       }
       if (payload.type === "notification") {
+<<<<<<< HEAD
         setNotificationEvents((current) =>
           [payload as NotificationLivePayload, ...current].slice(0, 50),
         );
+=======
+        setNotificationEvents((current) => [payload as NotificationLivePayload, ...current].slice(0, 50));
+        return;
+      }
+      if (payload.type === "market_update") {
+        setMarketUpdates((current) => [payload as MarketUpdatePayload, ...current].slice(0, 100));
+>>>>>>> origin/main
       }
     });
 
@@ -76,9 +99,9 @@ export function useIntelSocket({ token, handles, replay, notifications = false }
       socketRef.current = null;
       ws.close();
     };
-  }, [token, handles, replay, notifications]);
+  }, [token, handles, replay, notifications, marketTargetKey]);
 
-  return { status, events, notifications: notificationEvents, lastMessageAt };
+  return { status, events, notifications: notificationEvents, marketUpdates, lastMessageAt };
 }
 
 function normalizeHandles(value: string): string[] {
@@ -86,4 +109,25 @@ function normalizeHandles(value: string): string[] {
     .split(",")
     .map((item) => item.trim().replace(/^@/, "").toLowerCase())
     .filter(Boolean);
+}
+
+function normalizeMarketTargets(
+  values: Array<{ target_type?: string | null; target_id?: string | null }>
+): Array<{ target_type: string; target_id: string }> {
+  const seen = new Set<string>();
+  const targets = [];
+  for (const value of values) {
+    const targetType = String(value.target_type ?? "").trim();
+    const targetId = String(value.target_id ?? "").trim();
+    if (!targetType || !targetId) {
+      continue;
+    }
+    const key = `${targetType}:${targetId}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    targets.push({ target_type: targetType, target_id: targetId });
+  }
+  return targets.sort((left, right) => `${left.target_type}:${left.target_id}`.localeCompare(`${right.target_type}:${right.target_id}`));
 }

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import type { LivePayload, TokenFlowItem } from "../api/types";
 import {
   compactNumber,
@@ -7,16 +8,11 @@ import {
   formatScore,
   tokenLabel,
 } from "../lib/format";
-
-type LiveSignalTapeBase = {
-  score?: number | null;
-  reason: string;
-  body?: string | null;
-};
-
-export type LiveSignalTapeItem =
-  | (LiveSignalTapeBase & { kind: "event"; payload: LivePayload })
-  | (LiveSignalTapeBase & { kind: "token"; token: TokenFlowItem; event?: LivePayload | null });
+=======
+import type { LiveSignalTapeItem } from "../features/live/liveTapeModel";
+import { tapeItemId, tokenTapeReason } from "../features/live/liveTapeModel";
+import { compactNumber, eventHandle, eventText, formatRelativeTime, formatScore, tokenLabel } from "../lib/format";
+>>>>>>> origin/main
 
 type LiveSignalTapeProps = {
   items: LiveSignalTapeItem[];
@@ -78,13 +74,6 @@ export function LiveSignalTape({
   );
 }
 
-function tapeItemId(item: LiveSignalTapeItem): string {
-  if (item.kind === "token") {
-    return item.event?.event.event_id ?? item.token.identity.identity_key;
-  }
-  return item.payload.event.event_id;
-}
-
 function tapeTitle(item: LiveSignalTapeItem): string {
   if (item.kind === "token") {
     const handle = item.event ? `@${eventHandle(item.event.event)} -> ` : "";
@@ -124,6 +113,7 @@ function tapeBody(item: LiveSignalTapeItem): string {
   }
   return eventText(item.payload.event) || "public stream event";
 }
+<<<<<<< HEAD
 
 export function tokenTapeReason(token: TokenFlowItem): string {
   const reason =
@@ -132,3 +122,5 @@ export function tokenTapeReason(token: TokenFlowItem): string {
     ? reason.replaceAll("_", " ")
     : `${compactNumber(token.social_heat.mentions)} mentions`;
 }
+=======
+>>>>>>> origin/main

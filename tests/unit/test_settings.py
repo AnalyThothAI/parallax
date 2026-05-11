@@ -43,19 +43,22 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.pulse_agent_max_attempts == 3
     assert settings.pulse_agent_model is None
     assert settings.pulse_agent_configured is False
-    assert settings.pulse_agent_asset_heat_min == 80
-    assert settings.pulse_agent_asset_propagation_min == 70
-    assert settings.pulse_agent_trade_heat_min == 75
-    assert settings.pulse_agent_trade_quality_min == 62
-    assert settings.pulse_agent_trade_propagation_min == 62
-    assert settings.pulse_agent_tradeability_min == 70
-    assert settings.pulse_agent_timing_min == 50
-    assert settings.pulse_agent_confidence_min == 0.65
-    assert settings.pulse_agent_token_watch_signal_min == 45
-    assert settings.pulse_agent_high_conviction_min == 78
+    assert settings.pulse_agent_trigger_min_rank_score == 70
+    assert settings.pulse_agent_gate_trade_candidate_min == 72
+    assert settings.pulse_agent_gate_token_watch_min == 45
+    assert settings.pulse_agent_gate_high_info_rejection_min == 30
+    assert settings.pulse_agent_gate_high_conviction_min == 78
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
+    assert settings.okx_dex_sync_interval_seconds == 30.0
+    assert settings.okx_dex_price_hot_stale_seconds == 90.0
+    assert settings.okx_dex_price_warm_stale_seconds == 300.0
+    assert settings.okx_dex_price_refresh_limit == 160
+    assert settings.okx_dex_ws_enabled is False
+    assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
+    assert settings.okx_dex_ws_subscription_limit == 100
+    assert settings.okx_dex_ws_configured is False
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):
@@ -113,16 +116,11 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 "pulse_agent_batch_size": 999,
                 "pulse_agent_max_attempts": 0,
                 "pulse_agent_model": " ",
-                "pulse_agent_asset_heat_min": 70,
-                "pulse_agent_asset_propagation_min": 60,
-                "pulse_agent_trade_heat_min": 70,
-                "pulse_agent_trade_quality_min": 58,
-                "pulse_agent_trade_propagation_min": 58,
-                "pulse_agent_tradeability_min": 65,
-                "pulse_agent_timing_min": 45,
-                "pulse_agent_confidence_min": 0.6,
-                "pulse_agent_token_watch_signal_min": 40,
-                "pulse_agent_high_conviction_min": 74,
+                "pulse_agent_trigger_min_rank_score": 60,
+                "pulse_agent_gate_trade_candidate_min": 70,
+                "pulse_agent_gate_token_watch_min": 40,
+                "pulse_agent_gate_high_info_rejection_min": 25,
+                "pulse_agent_gate_high_conviction_min": 74,
             },
         },
     )
@@ -151,16 +149,11 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.pulse_agent_max_attempts == 1
     assert settings.pulse_agent_model == "gpt-test"
     assert settings.pulse_agent_configured is True
-    assert settings.pulse_agent_asset_heat_min == 70
-    assert settings.pulse_agent_asset_propagation_min == 60
-    assert settings.pulse_agent_trade_heat_min == 70
-    assert settings.pulse_agent_trade_quality_min == 58
-    assert settings.pulse_agent_trade_propagation_min == 58
-    assert settings.pulse_agent_tradeability_min == 65
-    assert settings.pulse_agent_timing_min == 45
-    assert settings.pulse_agent_confidence_min == 0.6
-    assert settings.pulse_agent_token_watch_signal_min == 40
-    assert settings.pulse_agent_high_conviction_min == 74
+    assert settings.pulse_agent_trigger_min_rank_score == 60
+    assert settings.pulse_agent_gate_trade_candidate_min == 70
+    assert settings.pulse_agent_gate_token_watch_min == 40
+    assert settings.pulse_agent_gate_high_info_rejection_min == 25
+    assert settings.pulse_agent_gate_high_conviction_min == 74
 
 
 def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
@@ -251,6 +244,18 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
                     "cex_inst_types": ["SPOT"],
                     "dex_base_url": "https://web3-okx.example.test/",
                     "dex_chain_indexes": ["501", "1"],
+                    "dex_sync_interval_seconds": 12,
+                    "dex_price_hot_stale_seconds": 45,
+                    "dex_price_warm_stale_seconds": 180,
+                    "dex_price_refresh_limit": 25,
+                    "dex_ws_enabled": True,
+                    "dex_ws_url": "wss://okx-ws.example.test/ws/v6/dex",
+                    "dex_ws_subscription_limit": 20,
+                    "dex_ws_hot_target_ttl_seconds": 120,
+                    "dex_ws_reconnect_delay_seconds": 2,
+                    "dex_api_key": "okx-key",
+                    "dex_secret_key": "okx-secret",
+                    "dex_passphrase": "okx-pass",
                     "timeout_seconds": 9,
                 }
             },
@@ -270,7 +275,85 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     assert settings.okx_cex_inst_types == ("SPOT",)
     assert settings.okx_dex_base_url == "https://web3-okx.example.test"
     assert settings.okx_dex_chain_indexes == ("501", "1")
+    assert settings.okx_dex_sync_interval_seconds == 12
+    assert settings.okx_dex_price_hot_stale_seconds == 45
+    assert settings.okx_dex_price_warm_stale_seconds == 180
+    assert settings.okx_dex_price_refresh_limit == 25
+    assert settings.okx_dex_ws_enabled is True
+    assert settings.okx_dex_ws_url == "wss://okx-ws.example.test/ws/v6/dex"
+    assert settings.okx_dex_ws_subscription_limit == 20
+    assert settings.okx_dex_ws_hot_target_ttl_seconds == 120
+    assert settings.okx_dex_ws_reconnect_delay_seconds == 2
+    assert settings.okx_dex_ws_configured is True
     assert settings.okx_timeout_seconds == 9
+
+
+def test_okx_dex_ws_enabled_requires_all_credentials(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {
+                "okx": {
+                    "dex_ws_enabled": True,
+                    "dex_api_key": "okx-key",
+                    "dex_secret_key": "okx-secret",
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="dex_ws_enabled requires dex_api_key, dex_secret_key, and dex_passphrase"):
+        load_settings()
+
+
+def test_okx_provider_rejects_unknown_dex_keys(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {
+                "okx": {
+                    "dex_price_refresh_limit": 160,
+                    "dex_surprise_budget": 10,
+                }
+            },
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("dex_sync_interval_seconds", 0),
+        ("dex_price_hot_stale_seconds", -1),
+        ("dex_price_warm_stale_seconds", 0),
+        ("dex_price_refresh_limit", -10),
+        ("dex_ws_subscription_limit", 0),
+        ("dex_ws_hot_target_ttl_seconds", 0),
+        ("dex_ws_reconnect_delay_seconds", -1),
+    ],
+)
+def test_okx_provider_rejects_invalid_dex_refresh_knobs(tmp_path, monkeypatch, key, value):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "providers": {"okx": {key: value}},
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        load_settings()
 
 
 def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path, monkeypatch):

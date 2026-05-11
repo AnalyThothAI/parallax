@@ -39,6 +39,16 @@ llm:
   trace_enabled: true
   trace_api_key:
   trace_include_sensitive_data: false
+  pulse_agent_enabled: true
+  pulse_agent_interval_seconds: 60
+  pulse_agent_batch_size: 10
+  pulse_agent_max_attempts: 3
+  pulse_agent_model:
+  pulse_agent_trigger_min_rank_score: 70
+  pulse_agent_gate_trade_candidate_min: 72
+  pulse_agent_gate_token_watch_min: 45
+  pulse_agent_gate_high_info_rejection_min: 30
+  pulse_agent_gate_high_conviction_min: 78
 
 gmgn:
   api_key:
@@ -53,7 +63,11 @@ providers:
     cex_sync_interval_seconds: 300
     cex_inst_types: ["SPOT", "SWAP"]
     dex_base_url: "https://web3.okx.com"
-    dex_chain_indexes: ["501", "1", "56", "8453"]
+    dex_chain_indexes: ["501", "1", "56", "8453", "607"]
+    dex_sync_interval_seconds: 30
+    dex_price_hot_stale_seconds: 90
+    dex_price_warm_stale_seconds: 300
+    dex_price_refresh_limit: 160
     timeout_seconds: 15
 
 upstream:

@@ -12,7 +12,13 @@ The only application config source.
 - `ws_token` — public WebSocket API token.
 - `api` — FastAPI bind address and replay settings.
 - `storage.postgres` — DSN, password file, pool, timeout.
-- `llm.openai_api_key` / `llm.openai_model` — optional, only for watched-account social-event extraction.
+- `llm.api_key` / `llm.model` — optional, for watched-account social-event extraction.
+- `llm.pulse_agent_*` — optional Signal Pulse recommendation worker config. Current gate knobs are:
+  `pulse_agent_trigger_min_rank_score`, `pulse_agent_gate_trade_candidate_min`,
+  `pulse_agent_gate_token_watch_min`,
+  `pulse_agent_gate_high_info_rejection_min`, and
+  `pulse_agent_gate_high_conviction_min`. Older heat / quality / propagation /
+  tradeability / timing Pulse threshold keys are rejected.
 - Optional market-related groups (OKX, GMGN OpenAPI) for the asset / price pipelines.
 
 ## WebSocket at `/ws`
@@ -25,13 +31,37 @@ The only application config source.
 
 `/healthz`, `/readyz`, `/api/*`. Each endpoint owns its own response schema.
 
+Token Radar market contract:
+
+- `/api/token-radar` rows expose `current_market`, a field-aware snapshot from
+  `domains/asset_market`. Frontends must read live price, market cap, liquidity,
+  holders, volume, provider, and freshness from `current_market.fields`.
+- `/api/token-radar` rows do not expose `price` or `market` aliases derived from
+  `factor_snapshot.families.market_quality.facts`.
+- `/api/current-market?target_type=Asset|CexToken&target_id=...` returns one
+  current-market snapshot:
+  `{"target_type": "...", "target_id": "...", "market_status": "...", "fields": {...}}`.
+- `fields.<field>` values include `value`, `status`, optional
+  `observed_at_ms`, optional `age_ms`, optional `provider`, and optional
+  `source_observation_id`. A DEX price-only observation may refresh
+  `price_usd` while `market_cap_usd`, `liquidity_usd`, and `holders` remain
+  stale or missing until a metadata-capable provider refreshes them.
+
 ## CLI
 
 `gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.
 
-## `score_version` discipline
+`gmgn-twitter-intel current-market --target-type ... --target-id ...` prints the
+same field-aware current-market snapshot used by the HTTP contract.
 
-`score_version` is bumped on any scoring change. Downstream evaluation services filter by version, otherwise A/B comparisons silently mix populations. Every ranking score returned by the API includes its component breakdown. No black-box scores.
+## Token Radar Factor Snapshot Discipline
+
+`projection_version` and `factor_version` are bumped on any Token Radar factor
+or ranking-contract change. Current runtime explanations come from
+`factor_snapshot_json`; public Signal Pulse payloads expose `factor_snapshot`,
+`agent_recommendation`, `gate`, and `fact_card`, not old score/thesis JSON
+fields. Downstream evaluation services filter by version, otherwise A/B
+comparisons silently mix populations. No black-box scores.
 
 ## Privacy boundary
 

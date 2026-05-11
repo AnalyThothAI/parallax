@@ -8,6 +8,14 @@ import { SignalLabPulse } from "./SignalLabPulse";
 afterEach(() => cleanup());
 
 describe("SignalLabPulse", () => {
+  it("renders structural skeleton rows while loading", () => {
+    render(<SignalLabPulse isLoading data={undefined} onOpenLab={vi.fn()} onSelect={vi.fn()} />);
+
+    const skeleton = screen.getByLabelText("loading signal pulse");
+    expect(skeleton.querySelectorAll(".skeleton-row")).toHaveLength(5);
+    expect(screen.queryByText("loading signal pulse")).not.toBeInTheDocument();
+  });
+
   it("shows every pulse item with the Signal Pulse row budget", () => {
     const items = Array.from({ length: 7 }, (_, index) => pulseItem(index));
 
@@ -44,12 +52,11 @@ describe("SignalLabPulse", () => {
     expect(screen.getByRole("button", { name: /TOKEN6/ })).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(7);
     expect(screen.getAllByText("trade").length).toBeGreaterThan(0);
-    expect(screen.getByText("why now 6")).toBeInTheDocument();
-    expect(screen.getAllByText("ignition").length).toBeGreaterThan(0);
+    expect(screen.getByText("recommendation 6")).toBeInTheDocument();
+    expect(screen.getByText(/mentions 7/)).toBeInTheDocument();
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("liquidity thin").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("confirm: volume confirms").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("invalidate: author concentration fades").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("liq $75K").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/authors 3/).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Open TOKEN6 on OKX" })).toHaveAttribute(
       "href",
       "https://www.okx.com/trade-spot/token6-usdt",
@@ -60,6 +67,7 @@ describe("SignalLabPulse", () => {
     expect(screen.queryByText(["NO", "TRADE"].join("_"))).not.toBeInTheDocument();
   });
 
+<<<<<<< HEAD
   it("keeps sparse pulse rows renderable while backend jobs are catching up", () => {
     const sparse = {
       ...pulseItem(0),
@@ -68,6 +76,9 @@ describe("SignalLabPulse", () => {
       invalidation_triggers_zh: undefined,
     } as unknown as SignalPulseItem;
 
+=======
+  it("renders rows from the factor snapshot contract without legacy fields", () => {
+>>>>>>> origin/main
     render(
       <SignalLabPulse
         data={{
@@ -81,7 +92,7 @@ describe("SignalLabPulse", () => {
             market_ready_rate: 1,
             settlement_coverage: null,
           },
-          items: [sparse],
+          items: [pulseItem(0)],
           summary: {
             trade_candidate: 1,
             token_watch: 0,
@@ -99,7 +110,9 @@ describe("SignalLabPulse", () => {
     );
 
     expect(screen.getByRole("button", { name: "open Signal Pulse TOKEN0" })).toBeInTheDocument();
-    expect(screen.getByText("why now 0")).toBeInTheDocument();
+    expect(screen.getByText("recommendation 0")).toBeInTheDocument();
+    expect(screen.queryByText("radar_score_json")).not.toBeInTheDocument();
+    expect(screen.queryByText("market_context_json")).not.toBeInTheDocument();
   });
 });
 
@@ -119,20 +132,66 @@ function pulseItem(index: number): SignalPulseItem {
     narrative_type: "token",
     candidate_score: 82,
     score_band: "A",
-    summary_zh: `summary ${index}`,
-    why_now_zh: `why now ${index}`,
-    bull_case_zh: ["watched account led"],
-    bear_case_zh: ["crowded"],
-    confirmation_triggers_zh: ["volume confirms"],
-    invalidation_triggers_zh: ["author concentration fades"],
-    top_risks: ["liquidity thin"],
-    gate_reasons: [],
-    risk_reasons: [],
     evidence_event_ids: [`evidence-${index}`],
     source_event_ids: [`source-${index}`],
-    radar_score_json: { score: 82 },
-    market_context_json: { market: "ready" },
-    thesis_json: { setup: "momentum" },
+    factor_snapshot: {
+      schema_version: "token_factor_snapshot_v1",
+      subject: {
+        target_type: "CexToken",
+        target_id: `asset:cex:okx:TOKEN${index}-USDT`,
+        symbol: `TOKEN${index}`
+      },
+      families: {
+        market_quality: {
+          score: 76,
+          data_health: "ready",
+          facts: {
+            native_market_id: `pricefeed:cex:okx:spot:TOKEN${index}-USDT`,
+            liquidity_usd: 75_000,
+            market_cap_usd: 2_500_000,
+            holders: 1200,
+            volume_24h_usd: 430_000
+          },
+          factors: {}
+        },
+        social_attention: {
+          score: 81,
+          data_health: "ready",
+          facts: { mentions_1h: index + 1, watched_mentions: 1 },
+          factors: {}
+        },
+        social_quality: {
+          score: 70,
+          data_health: "ready",
+          facts: { independent_authors: 3 },
+          factors: {}
+        }
+      },
+      hard_gates: { eligible_for_high_alert: true, blocked_reasons: [] },
+      composite: { rank_score: 82, recommended_decision: "watch" }
+    },
+    agent_recommendation: {
+      schema_version: "pulse_recommendation_v1",
+      recommendation: "watch",
+      summary_zh: `recommendation ${index}`,
+      primary_reasons: [{ factor_key: "social_attention.mentions_1h", explanation_zh: "mentions expanding" }],
+      upgrade_conditions: [],
+      invalidation_conditions: [],
+      residual_risks: [{ factor_key: "market_quality.liquidity_usd", description_zh: "liquidity can thin quickly" }]
+    },
+    gate: { pulse_status: "trade_candidate", candidate_score: 82, score_band: "A", eligible_for_high_alert: true, blocked_reasons: [] },
+    fact_card: {
+      market_cap_usd: 2_500_000,
+      liquidity_usd: 75_000,
+      holders: 1200,
+      volume_24h_usd: 430_000,
+      market_status: "ready",
+      mentions_1h: index + 1,
+      unique_authors: 3,
+      watched_mentions: 1,
+      eligible_for_high_alert: true,
+      blocked_reasons: []
+    },
     agent_run_id: "run-1",
     pulse_version: "pulse-v10",
     gate_version: "gate-v10",

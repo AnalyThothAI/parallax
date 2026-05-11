@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -43,6 +44,29 @@ class DexTokenPriceRequest:
     address: str
 
 
+@dataclass(frozen=True, slots=True)
+class DexMarketStreamTarget:
+    chain_id: str
+    address: str
+    subject_type: str
+    subject_id: str
+    pricefeed_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DexMarketFactUpdate:
+    chain_id: str
+    address: str
+    observed_at_ms: int
+    price_usd: float | None = None
+    market_cap_usd: float | None = None
+    liquidity_usd: float | None = None
+    volume_24h_usd: float | None = None
+    open_interest_usd: float | None = None
+    holders: int | None = None
+    raw: dict[str, Any] | None = None
+
+
 class CexMarketProvider(Protocol):
     def tickers(self, *, inst_type: str) -> list[CexTicker]: ...
 
@@ -55,10 +79,17 @@ class DexMarketProvider(Protocol):
     def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]: ...
 
 
+class DexMarketStreamProvider(Protocol):
+    def stream_price_info(self, targets: list[DexMarketStreamTarget]) -> AsyncIterator[DexMarketFactUpdate]: ...
+
+
 __all__ = [
     "CexMarketProvider",
     "CexTicker",
     "DexMarketProvider",
+    "DexMarketFactUpdate",
+    "DexMarketStreamProvider",
+    "DexMarketStreamTarget",
     "DexTokenCandidate",
     "DexTokenPrice",
     "DexTokenPriceRequest",

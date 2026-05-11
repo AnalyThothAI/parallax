@@ -5,6 +5,7 @@ import time
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel._constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_NAME,
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_SOURCE_TABLE,
@@ -16,26 +17,24 @@ from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer imp
     NORMALIZER_VERSION,
     rank_within_cohort,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.discussion_quality_scoring import discussion_quality_score
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
     COHORT_DEFINITION_VERSION,
     is_active_cohort_member,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.opportunity_scoring import opportunity_score
-from gmgn_twitter_intel.domains.token_intel.scoring.propagation_scoring import propagation_score
-from gmgn_twitter_intel.domains.token_intel.scoring.social_heat_scoring import social_heat_score
-from gmgn_twitter_intel.domains.token_intel.scoring.timing_scoring import timing_score
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
+    build_token_factor_snapshot,
+)
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
     RadarFeatureSet,
     build_radar_features,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.tradeability_scoring import tradeability_score
 from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_CONF_RESOLUTION_STATUSES, KOL_TIER_TAGS
 
 MARKET_FRESH_MS = 5 * 60 * 1000
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
+MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
 
 
 class TokenRadarProjection:
@@ -51,6 +50,7 @@ class TokenRadarProjection:
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
+<<<<<<< HEAD
         source_rows = self._source_rows(since_ms=analysis_since_ms, scope=scope, now_ms=computed_at_ms)
         grouped = self._group_rows(source_rows)
         total_window_events = len(
@@ -101,57 +101,204 @@ class TokenRadarProjection:
             commit=False,
         )
         rows_replaced = self.repos.token_radar.replace_rows(
+=======
+        self.repos.token_radar.mark_coverage(
+>>>>>>> origin/main
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
+            status="running",
+            reason="projection_window_running",
+            source_rows=0,
+            row_count=0,
             computed_at_ms=computed_at_ms,
-            rows=rows,
-            commit=False,
+            started_at_ms=computed_at_ms,
+            finished_at_ms=None,
+            error=None,
+            commit=True,
         )
-        if not rows_replaced:
+        try:
+            source_rows = self._source_rows(
+                since_ms=analysis_since_ms,
+                scope=scope,
+                now_ms=computed_at_ms,
+            )
+            source_rows = self._hydrate_current_market(
+                source_rows,
+                now_ms=computed_at_ms,
+                score_since_ms=score_since_ms,
+            )
+            grouped = self._group_rows(source_rows)
+            total_window_events = len(
+                {
+                    str(row["event_id"])
+                    for row in source_rows
+                    if int(row.get("received_at_ms") or 0) >= score_since_ms
+                }
+            )
+            projected = [
+                row
+                for group in grouped.values()
+                if (row := _project_group(
+                    group,
+                    now_ms=computed_at_ms,
+                    window=window,
+                    scope=scope,
+                    score_since_ms=score_since_ms,
+                    window_ms=window_ms,
+                    total_window_events=total_window_events,
+                ))
+            ]
+            projected = self._apply_cross_section(projected)
+            resolved = [row for row in projected if row["lane"] == "resolved"]
+            attention = [row for row in projected if row["lane"] == "attention"]
+            resolved.sort(key=_rank_key)
+            attention.sort(key=_rank_key)
+            rows = []
+            for lane_rows in (resolved, attention):
+                for rank, row in enumerate(lane_rows[:limit], start=1):
+                    rows.append({**row, "rank": rank})
+            source_max_received_at_ms = max(
+                (int(row.get("source_max_received_at_ms") or 0) for row in rows),
+                default=0,
+            )
+            projection_repo = ProjectionRepository(self.repos.conn)
+            projection_repo.mark_stale_running_runs(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=PROJECTION_VERSION,
+                stale_before_ms=computed_at_ms - STALE_RUNNING_PROJECTION_MS,
+                finished_at_ms=computed_at_ms,
+                commit=False,
+            )
+            run = projection_repo.start_run(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=PROJECTION_VERSION,
+                mode="rebuild",
+                source_start_ms=analysis_since_ms,
+                source_end_ms=computed_at_ms,
+                commit=False,
+            )
+            rows_replaced = self.repos.token_radar.replace_rows(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                computed_at_ms=computed_at_ms,
+                rows=rows,
+                commit=False,
+            )
+            if not rows_replaced:
+                projection_repo.finish_run(
+                    run_id=str(run["run_id"]),
+                    status="stale_skipped",
+                    rows_read=len(source_rows),
+                    rows_written=0,
+                    dirty_ranges_written=0,
+                    error="newer_projection_exists",
+                    commit=True,
+                )
+                return {
+                    "rows_written": 0,
+                    "source_rows": len(source_rows),
+                    "computed_at_ms": computed_at_ms,
+                    "status": "stale_skipped",
+                }
+            projection_repo.advance_offset(
+                projection_name=TOKEN_RADAR_PROJECTION_NAME,
+                projection_version=PROJECTION_VERSION,
+                source_table=TOKEN_RADAR_SOURCE_TABLE,
+                source_max_received_at_ms=source_max_received_at_ms,
+                source_max_id=str(rows[0]["row_id"]) if rows else "",
+                last_run_id=str(run["run_id"]),
+                lag_ms=max(0, computed_at_ms - source_max_received_at_ms) if source_max_received_at_ms else 0,
+                status="ready",
+                commit=False,
+            )
             projection_repo.finish_run(
                 run_id=str(run["run_id"]),
-                status="stale_skipped",
+                status="ready",
                 rows_read=len(source_rows),
-                rows_written=0,
+                rows_written=len(rows),
                 dirty_ranges_written=0,
-                error="newer_projection_exists",
+                commit=False,
+            )
+            self.repos.token_radar.mark_coverage(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                status="ready",
+                reason=None,
+                source_rows=len(source_rows),
+                row_count=len(rows),
+                computed_at_ms=computed_at_ms,
+                started_at_ms=computed_at_ms,
+                finished_at_ms=_now_ms(),
+                error=None,
                 commit=True,
             )
             return {
-                "rows_written": 0,
+                "rows_written": len(rows),
                 "source_rows": len(source_rows),
                 "computed_at_ms": computed_at_ms,
-                "status": "stale_skipped",
+                "status": "ready",
             }
-        projection_repo.advance_offset(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=PROJECTION_VERSION,
-            source_table=TOKEN_RADAR_SOURCE_TABLE,
-            source_max_received_at_ms=source_max_received_at_ms,
-            source_max_id=str(rows[0]["row_id"]) if rows else "",
-            last_run_id=str(run["run_id"]),
-            lag_ms=max(0, computed_at_ms - source_max_received_at_ms) if source_max_received_at_ms else 0,
-            status="ready",
-            commit=False,
-        )
-        projection_repo.finish_run(
-            run_id=str(run["run_id"]),
-            status="ready",
-            rows_read=len(source_rows),
-            rows_written=len(rows),
-            dirty_ranges_written=0,
-            commit=True,
-        )
-        return {
-            "rows_written": len(rows),
-            "source_rows": len(source_rows),
-            "computed_at_ms": computed_at_ms,
-            "status": "ready",
-        }
+        except Exception as exc:
+            self.repos.token_radar.mark_coverage(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                status="failed",
+                reason="projection_window_failed",
+                source_rows=0,
+                row_count=0,
+                computed_at_ms=computed_at_ms,
+                started_at_ms=computed_at_ms,
+                finished_at_ms=_now_ms(),
+                error=str(exc),
+                commit=True,
+            )
+            raise
 
-    def _source_rows(self, *, since_ms: int, scope: str, now_ms: int) -> list[dict[str, Any]]:
-        return TokenRadarSourceQuery(self.repos.conn).source_rows(since_ms=since_ms, scope=scope, now_ms=now_ms)
+    def _source_rows(
+        self,
+        *,
+        since_ms: int,
+        scope: str,
+        now_ms: int,
+    ) -> list[dict[str, Any]]:
+        return TokenRadarSourceQuery(self.repos.conn).source_rows(
+            since_ms=since_ms,
+            scope=scope,
+            now_ms=now_ms,
+        )
+
+    def _hydrate_current_market(
+        self,
+        rows: list[dict[str, Any]],
+        *,
+        now_ms: int,
+        score_since_ms: int,
+    ) -> list[dict[str, Any]]:
+        subjects = [
+            {"target_type": row.get("target_type"), "target_id": row.get("target_id")}
+            for row in rows
+            if row.get("target_type")
+            and row.get("target_id")
+            and int(row.get("received_at_ms") or 0) >= score_since_ms
+        ]
+        if not subjects:
+            return rows
+        snapshots = self.repos.current_market.current_for_subjects(subjects, now_ms=now_ms)
+        return [
+            (
+                _row_with_current_market(
+                    row,
+                    snapshots.get((str(row.get("target_type")), str(row.get("target_id")))),
+                )
+                if int(row.get("received_at_ms") or 0) >= score_since_ms
+                else row
+            )
+            for row in rows
+        ]
 
     @staticmethod
     def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
@@ -172,17 +319,17 @@ class TokenRadarProjection:
         cohort_metadata: dict[str, dict[str, Any]] = {}
 
         for row in projected:
+            factor_snapshot = _factor_snapshot_or_raise(row)
             target_id = str(row.get("target_id") or "")
             if not target_id:
                 continue
-            score_json = row.get("score_json") or {}
-            opportunity = (score_json.get("opportunity") or {}).get("score")
-            scores[target_id] = float(opportunity) if opportunity is not None else None
+            composite = factor_snapshot["composite"]
+            rank_score = composite.get("rank_score")
+            scores[target_id] = float(rank_score) if rank_score is not None else None
 
             high_conf = _count_high_conf(row)
             kol_count = _count_kol_authors(row)
             first_seen_global = bool(row.get("first_seen_global_24h", False))
-            # symbol lives in target_json since score_json has no symbol field
             symbol = (
                 (row.get("target_json") or {}).get("symbol")
                 or (row.get("intent_json") or {}).get("display_symbol")
@@ -206,16 +353,18 @@ class TokenRadarProjection:
 
         for row in projected:
             target_id = str(row.get("target_id") or "")
-            score_json = dict(row.get("score_json") or {})
-            score_json["cross_section_rank"] = ranks.get(target_id)
-            score_json["cohort"] = {
-                "in_cohort": target_id in cohort,
-                "size": len(cohort),
-                "definition_version": COHORT_DEFINITION_VERSION,
-                "normalizer_version": NORMALIZER_VERSION,
-                **(cohort_metadata.get(target_id, {})),
+            factor_snapshot = _factor_snapshot_or_raise(row)
+            factor_snapshot["normalization"] = {
+                "cross_section_rank": ranks.get(target_id),
+                "cohort": {
+                    "in_cohort": target_id in cohort,
+                    "size": len(cohort),
+                    "definition_version": COHORT_DEFINITION_VERSION,
+                    "normalizer_version": NORMALIZER_VERSION,
+                    **(cohort_metadata.get(target_id, {})),
+                },
             }
-            row["score_json"] = score_json
+            row["factor_snapshot_json"] = factor_snapshot
             row.pop("_cohort_high_conf_count", None)
             row.pop("_cohort_kol_count", None)
 
@@ -224,7 +373,12 @@ class TokenRadarProjection:
 
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
     score_since_ms = computed_at_ms - window_ms
-    return score_since_ms - BASELINE_SLOT_COUNT * window_ms
+    baseline_since_ms = score_since_ms - BASELINE_SLOT_COUNT * window_ms
+    return max(baseline_since_ms, computed_at_ms - MAX_ANALYSIS_LOOKBACK_MS)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _project_group(
@@ -268,8 +422,17 @@ def _project_group(
         window_ms=resolved_window_ms,
         total_window_events=total_window_events or len(event_ids),
     )
-    score = _score(features)
-    decision = str(score["opportunity"].get("decision") or "discard")
+    factor_snapshot = build_token_factor_snapshot(
+        target=target,
+        attention=features.attention,
+        social_quality={**features.quality, **features.propagation},
+        social_semantics=_social_semantics(window_rows),
+        market=market,
+        timing=features.timing,
+        source_event_ids=event_ids,
+        computed_at_ms=now_ms,
+    )
+    decision = str(factor_snapshot["composite"]["recommended_decision"])
     # Cohort accounting fields — consumed by _apply_cross_section after all groups settle.
     # These internal fields use the _cohort_* prefix and are stripped before persistence.
     cohort_high_conf_count = sum(
@@ -301,10 +464,9 @@ def _project_group(
         "asset_json": target if target_type == "Asset" else {},
         "target_json": target,
         "primary_venue_json": None,
-        "attention_json": {
-            **features.attention,
-            "latest_seen_ms": latest_seen_ms,
-        },
+        "factor_snapshot_json": factor_snapshot,
+        "factor_version": factor_snapshot["schema_version"],
+        "attention_json": {},
         "resolution_json": {
             "status": resolution_status,
             "target_type": target_type,
@@ -315,16 +477,14 @@ def _project_group(
             "lookup_keys": latest.get("lookup_keys_json") or [],
             "discovery": _resolution_discovery(latest),
         },
-        "market_json": market,
-        "price_json": market,
-        "score_json": score,
+        "market_json": {},
+        "price_json": {},
+        "score_json": {},
         "decision": decision,
         "data_health_json": {
-            "identity": resolution_status,
-            "market": market["market_observation_status"],
-            "market_readiness": market["market_readiness"],
-            "event_price_readiness": market["event_price_readiness"],
-            "coverage": "public_stream",
+            "factor_snapshot": "ready",
+            "identity": factor_snapshot["families"]["identity"]["data_health"],
+            "market": factor_snapshot["families"]["market_quality"]["data_health"],
         },
         "source_event_ids_json": event_ids,
         "created_at_ms": now_ms,
@@ -332,6 +492,53 @@ def _project_group(
         "_cohort_high_conf_count": cohort_high_conf_count,
         "_cohort_kol_count": cohort_kol_count,
     }
+
+
+def _social_semantics(window_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    direction_counts: dict[str, int] = {}
+    impact_values: list[float] = []
+    novelty_values: list[float] = []
+    confidence_values: list[float] = []
+
+    for row in window_rows:
+        direction = _semantic_direction(row.get("llm_direction_hint"))
+        if direction:
+            direction_counts[direction] = direction_counts.get(direction, 0) + 1
+        impact = _float_or_none(row.get("llm_impact_hint"))
+        if impact is not None:
+            impact_values.append(impact)
+        novelty = _float_or_none(row.get("llm_semantic_novelty_hint"))
+        if novelty is not None:
+            novelty_values.append(novelty)
+        confidence = _float_or_none(row.get("llm_label_confidence"))
+        if confidence is not None:
+            confidence_values.append(confidence)
+
+    return {
+        "direction_counts": direction_counts,
+        "impact_mean": _mean_or_none(impact_values),
+        "novelty_mean": _mean_or_none(novelty_values),
+        "confidence_mean": _mean_or_none(confidence_values),
+    }
+
+
+def _semantic_direction(value: Any) -> str | None:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    if text in {"bullish", "positive", "attention_positive"} or "positive" in text:
+        return "bullish"
+    if text in {"bearish", "negative", "attention_negative"} or "negative" in text:
+        return "bearish"
+    if text == "neutral" or "neutral" in text:
+        return "neutral"
+    return text
+
+
+def _mean_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 6)
 
 
 def _has_resolved_target(row: dict[str, Any]) -> bool:
@@ -430,6 +637,7 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
         "target_id": target_id,
         "symbol": _target_symbol(row),
         "name": row.get("asset_name"),
+        "chain": row.get("asset_chain_id"),
         "chain_id": row.get("asset_chain_id"),
         "token_standard": row.get("asset_token_standard"),
         "address": row.get("asset_address"),
@@ -443,9 +651,81 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | None) -> dict[str, Any]:
+    if not snapshot:
+        return {
+            **row,
+            "current_market_snapshot": None,
+            **_missing_current_market_fields(),
+        }
+    fields = snapshot.get("fields") if isinstance(snapshot.get("fields"), dict) else {}
+    price = _market_field(fields, "price_usd")
+    price_quote = _market_field(fields, "price_quote")
+    quote_symbol = _market_field(fields, "quote_symbol")
+    price_basis = _market_field(fields, "price_basis")
+    market_cap = _market_field(fields, "market_cap_usd")
+    liquidity = _market_field(fields, "liquidity_usd")
+    volume_24h = _market_field(fields, "volume_24h_usd")
+    open_interest = _market_field(fields, "open_interest_usd")
+    holders = _market_field(fields, "holders")
+    return {
+        **row,
+        "current_market_snapshot": snapshot,
+        "market_provider": price.get("provider"),
+        "market_observed_at_ms": price.get("observed_at_ms"),
+        "market_price_usd": price.get("value"),
+        "market_price_status": price.get("status"),
+        "market_price_quote": price_quote.get("value"),
+        "market_quote_symbol": quote_symbol.get("value"),
+        "market_price_basis": price_basis.get("value"),
+        "market_market_cap_usd": market_cap.get("value"),
+        "market_market_cap_status": market_cap.get("status"),
+        "market_liquidity_usd": liquidity.get("value"),
+        "market_liquidity_status": liquidity.get("status"),
+        "market_volume_24h_usd": volume_24h.get("value"),
+        "market_open_interest_usd": open_interest.get("value"),
+        "market_holders": holders.get("value"),
+        "market_holders_status": holders.get("status"),
+        "market_status_from_current": snapshot.get("market_status"),
+        "market_field_statuses": {
+            key: value.get("status")
+            for key, value in fields.items()
+            if isinstance(value, dict)
+        },
+    }
+
+
+def _market_field(fields: dict[str, Any], key: str) -> dict[str, Any]:
+    value = fields.get(key)
+    return value if isinstance(value, dict) else {}
+
+
+def _missing_current_market_fields() -> dict[str, Any]:
+    return {
+        "market_provider": None,
+        "market_observed_at_ms": None,
+        "market_price_usd": None,
+        "market_price_status": "missing",
+        "market_price_quote": None,
+        "market_quote_symbol": None,
+        "market_price_basis": None,
+        "market_market_cap_usd": None,
+        "market_market_cap_status": "missing",
+        "market_liquidity_usd": None,
+        "market_liquidity_status": "missing",
+        "market_volume_24h_usd": None,
+        "market_open_interest_usd": None,
+        "market_holders": None,
+        "market_holders_status": "missing",
+        "market_status_from_current": "missing",
+        "market_field_statuses": {},
+    }
+
+
 def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
-        return _missing_market("no_resolved_target")
+        latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0)) if window_rows else {}
+        return _missing_market("no_resolved_target", native_market_id=latest.get("native_market_id"))
     if not window_rows:
         return _missing_market("pending_refresh")
     latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
@@ -454,6 +734,8 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
     if observed_at_ms is not None:
         snapshot_age_ms = max(0, int(now_ms) - observed_at_ms)
         fresh = snapshot_age_ms <= MARKET_FRESH_MS
+        current_status = str(latest.get("market_status_from_current") or "")
+        market_status = current_status or ("fresh" if fresh else "stale")
         reference_value, social_value, social_basis = _comparable_price(
             _price_values(latest, "market"),
             _price_values(social_start, "event"),
@@ -472,11 +754,12 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         if social_basis == "basis_mismatch":
             price_change_status = "basis_mismatch"
         market = {
-            "market_status": "fresh" if fresh else "stale",
+            "market_status": market_status,
             "market_observation_status": "ready" if fresh else "stale",
             "price_change_status": price_change_status,
             "provider": latest.get("market_provider"),
             "pricefeed_id": latest.get("pricefeed_id"),
+            "native_market_id": latest.get("native_market_id"),
             "price_usd": latest.get("market_price_usd"),
             "price_quote": latest.get("market_price_quote"),
             "quote_symbol": latest.get("market_quote_symbol") or latest.get("pricefeed_quote_symbol"),
@@ -486,6 +769,11 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             "volume_24h_usd": latest.get("market_volume_24h_usd"),
             "open_interest_usd": latest.get("market_open_interest_usd"),
             "holders": latest.get("market_holders"),
+            "field_statuses": latest.get("market_field_statuses") or {},
+            "price_status": latest.get("market_price_status"),
+            "market_cap_status": latest.get("market_market_cap_status"),
+            "liquidity_status": latest.get("market_liquidity_status"),
+            "holders_status": latest.get("market_holders_status"),
             "snapshot_age_ms": snapshot_age_ms,
             "snapshot_observed_at_ms": observed_at_ms,
             "social_signal_start_ms": social_start.get("received_at_ms"),
@@ -504,18 +792,19 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
             else None,
         }
         return _with_readiness(market)
-    missing = _missing_market("pending_refresh")
+    missing = _missing_market("pending_refresh", native_market_id=latest.get("native_market_id"))
     missing["social_signal_start_ms"] = min((int(row.get("received_at_ms") or 0) for row in window_rows), default=None)
     return _with_readiness(missing)
 
 
-def _missing_market(status: str) -> dict[str, Any]:
+def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, Any]:
     market = {
         "market_status": "missing",
         "market_observation_status": status,
         "price_change_status": status,
         "provider": None,
         "pricefeed_id": None,
+        "native_market_id": native_market_id,
         "price_usd": None,
         "price_quote": None,
         "quote_symbol": None,
@@ -525,6 +814,11 @@ def _missing_market(status: str) -> dict[str, Any]:
         "volume_24h_usd": None,
         "open_interest_usd": None,
         "holders": None,
+        "field_statuses": {},
+        "price_status": None,
+        "market_cap_status": None,
+        "liquidity_status": None,
+        "holders_status": None,
         "snapshot_age_ms": None,
         "snapshot_observed_at_ms": None,
         "social_signal_start_ms": None,
@@ -570,6 +864,7 @@ def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+<<<<<<< HEAD
 def _score(features: RadarFeatureSet) -> dict[str, Any]:
     components = {
         "heat": social_heat_score(features.heat),
@@ -581,6 +876,8 @@ def _score(features: RadarFeatureSet) -> dict[str, Any]:
     return {**components, "opportunity": opportunity_score(components)}
 
 
+=======
+>>>>>>> origin/main
 def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
     return {
         "market_status": market.get("market_status"),
@@ -697,6 +994,7 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+<<<<<<< HEAD
 def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
     attention = row["attention_json"]
     raw_score = row.get("score_json")
@@ -706,12 +1004,49 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, int, int, int]:
     opportunity: dict[str, Any] = raw_opp if isinstance(raw_opp, dict) else {}
     raw_heat = score.get("heat")
     heat: dict[str, Any] = raw_heat if isinstance(raw_heat, dict) else {}
+=======
+def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
+    snapshot = _factor_snapshot_for_ranking(row)
+    if snapshot is None:
+        return (3, 0.0, 0, 0, 0)
+    composite = snapshot["composite"]
+    families = snapshot["families"]
+    social_attention = families.get("social_attention") if isinstance(families.get("social_attention"), dict) else {}
+    attention = social_attention.get("facts") if isinstance(social_attention.get("facts"), dict) else {}
+    decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
+    decision = composite.get("recommended_decision") or "discard"
+    rank_score = _float_or_none(composite.get("rank_score")) or 0.0
+>>>>>>> origin/main
     return (
-        decision_priority.get(str(row.get("decision") or "discard"), 3),
-        -int(opportunity.get("score") or 0),
-        -int(heat.get("score") or 0),
-        -int(attention["latest_seen_ms"]),
+        decision_priority.get(str(decision), 2),
+        -rank_score,
+        -int(attention.get("watched_mentions") or 0),
+        -int(attention.get("mentions_1h") or 0),
+        -int(attention.get("latest_seen_ms") or 0),
     )
+
+
+def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
+    try:
+        return _factor_snapshot_or_raise(row)
+    except ValueError:
+        return None
+
+
+def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
+    factor_snapshot = row.get("factor_snapshot_json")
+    if not isinstance(factor_snapshot, dict) or not factor_snapshot:
+        raise ValueError("factor_snapshot_json must be non-empty for token radar projection")
+    schema_version = str(factor_snapshot.get("schema_version") or "").strip()
+    if schema_version != TOKEN_FACTOR_SNAPSHOT_VERSION:
+        raise ValueError(f"factor_snapshot_json.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
+    families = factor_snapshot.get("families")
+    if not isinstance(families, dict):
+        raise ValueError("factor_snapshot_json.families is required for token radar projection")
+    composite = factor_snapshot.get("composite")
+    if not isinstance(composite, dict):
+        raise ValueError("factor_snapshot_json.composite is required for token radar projection")
+    return factor_snapshot
 
 
 def _stable_id(*parts: str) -> str:

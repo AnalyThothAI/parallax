@@ -115,7 +115,7 @@ export function TokenTargetPage() {
           : null;
       return rowTarget && targetRefEquals(rowTarget, target);
     });
-    if (!matchedRow) return fallbackTokenItemFromTarget(target, windowKey, scope);
+    if (!matchedRow) return null;
     return tokenRadarRowToTokenItem(matchedRow, windowKey, scope);
   }, [assetFlowQuery.data?.data, scope, target, windowKey]);
 
@@ -144,6 +144,75 @@ export function TokenTargetPage() {
   }
 
   if (!tokenItem) {
+    if (!assetFlowQuery.isPending && target) {
+      const stages = timeline?.stages ?? [];
+      const selectedStageFilter = selectedStageId && stages.some((stage) => stage.stage_id === selectedStageId) ? selectedStageId : null;
+      return (
+        <section className="mobile-task-surface" data-mobile-task-panel="radar">
+          <section className="token-target-page" aria-label="Token audit page">
+            <header className="token-case-header">
+              <button className="ghost-icon-button" type="button" onClick={() => navigate(-1)} aria-label="Back to Token Radar">
+                <ArrowLeft aria-hidden />
+                <span>Radar</span>
+              </button>
+              <div className="token-case-title">
+                <span>{target.target_type} · {target.target_id}</span>
+                <h2>{targetDisplayLabel(target)}</h2>
+              </div>
+              <div className="token-case-actions">
+                <div className="segmented mini range" aria-label="audit page window">
+                  {OBSERVATION_WINDOWS.map((item) => (
+                    <button key={item} className={windowKey === item ? "active" : ""} type="button" onClick={() => setWindowKey(item)}>
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </header>
+
+            <div className="route-state-panel">
+              <b>Not in current radar window</b>
+              <p>This route target has no Token Radar row for {windowKey}. Timeline and posts can still load, but no score audit is shown without a real radar row.</p>
+            </div>
+
+            <section className="case-section stage-tape-section">
+              <header>
+                <span>stage tape</span>
+                <b>{timelineQuery.isFetching ? "loading" : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}</b>
+                {selectedStageFilter ? (
+                  <button className="inline-clear-button" type="button" onClick={() => setSelectedStageId(null)}>
+                    clear filter
+                  </button>
+                ) : null}
+              </header>
+              <StageTape stages={stages} selectedStageId={selectedStageFilter} timeline={timeline} onSelect={setSelectedStageId} />
+            </section>
+
+            <section className="case-section">
+              <header>
+                <span>message evidence</span>
+                <b>{selectedStageFilter ? "stage filtered" : "all loaded posts"}</b>
+              </header>
+              <TokenPostsPanel
+                hideDuplicateClusters={hideDuplicateClusters}
+                isFetchingNextPage={postsQuery.isFetchingNextPage}
+                isLoading={postsQuery.isLoading}
+                posts={posts}
+                postRange={postRange}
+                postSortMode={postSortMode}
+                selectedStageId={selectedStageFilter}
+                watchedPostsOnly={watchedPostsOnly}
+                onHideDuplicateClustersChange={setHideDuplicateClusters}
+                onLoadMorePosts={() => void postsQuery.fetchNextPage()}
+                onPostRangeChange={setPostRange}
+                onPostSortModeChange={setPostSortMode}
+                onWatchedPostsOnlyChange={setWatchedPostsOnly}
+              />
+            </section>
+          </section>
+        </section>
+      );
+    }
     return (
       <section className="mobile-task-surface" data-mobile-task-panel="radar">
         <section className="token-target-page" aria-label="Token audit page">
@@ -414,6 +483,7 @@ function parseScopeKey(value: string | null): TokenFlowItem["posts_query"]["scop
   return value === "all" || value === "matched" ? value : null;
 }
 
+<<<<<<< HEAD
 function fallbackTokenItemFromTarget(
   target: TargetRef,
   window: WindowKey,
@@ -597,6 +667,8 @@ function routeOnlyScoreBlock(component: string) {
   };
 }
 
+=======
+>>>>>>> origin/main
 function symbolFromTarget(target: TargetRef): string | null {
   if (target.target_type !== "CexToken") {
     return null;
@@ -613,23 +685,22 @@ function symbolFromTarget(target: TargetRef): string | null {
   return symbol || null;
 }
 
+<<<<<<< HEAD
 function parseAssetTargetId(
   targetId: string,
 ): { chain: string | null; address: string | null } | null {
   const parts = targetId.trim().split(":");
   if (parts[0] !== "asset" || parts.length < 3) {
     return null;
+=======
+function targetDisplayLabel(target: TargetRef): string {
+  if (target.target_type === "CexToken") {
+    const symbol = symbolFromTarget(target);
+    return symbol ? `$${symbol}` : target.target_id;
+>>>>>>> origin/main
   }
-  if (parts[1] === "solana") {
-    return { chain: "solana", address: parts.at(-1) ?? null };
-  }
-  if (parts[1] === "eip155" && parts[2]) {
-    return { chain: `eip155:${parts[2]}`, address: parts.at(-1) ?? null };
-  }
-  if (parts[1] === "dex" && parts[2]) {
-    return { chain: parts[2], address: parts.at(-1) ?? null };
-  }
-  return { chain: null, address: parts.at(-1) ?? null };
+  const address = target.target_id.split(":").at(-1);
+  return address ? shortAddress(address) : target.target_id;
 }
 
 function identityLine(token: TokenFlowItem): string {

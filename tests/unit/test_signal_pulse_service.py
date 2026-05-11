@@ -135,19 +135,19 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         "candidate-token",
         pulse_status="token_watch",
         verdict="token_watch",
-        market_context_json={"market_status": "fresh"},
+        market_status="fresh",
     )
     blocked = _candidate_row(
         "candidate-blocked",
         pulse_status="blocked_low_information",
         verdict="blocked_low_information",
-        market_context_json={"market_status": "fresh"},
+        market_status="fresh",
     )
     trade = _candidate_row(
         "candidate-trade",
         pulse_status="trade_candidate",
         verdict="trade_candidate",
-        market_context_json={"market_status": "stale"},
+        market_status="stale",
     )
     pulse = FakePulseRepository(
         pages={
@@ -217,6 +217,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "candidate_id": "candidate-token",
             "candidate_type": "token_target",
             "subject_key": "toly",
+            "subject": {"symbol": "PEPE", "target_type": "Asset", "target_id": "asset:pepe"},
             "target_type": "Asset",
             "target_id": "asset:pepe",
             "symbol": "PEPE",
@@ -228,27 +229,35 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "narrative_type": "direct_token",
             "candidate_score": 0.82,
             "score_band": "watch",
-            "summary_zh": "PEPE 社交热度显著上升。",
-            "why_now_zh": "多源讨论同步出现。",
-            "bull_case_zh": ["新增独立作者扩散"],
-            "bear_case_zh": ["市场确认不足"],
-            "confirmation_triggers_zh": ["更多独立账号确认"],
-            "invalidation_triggers_zh": ["讨论迅速降温"],
-            "top_risks": ["public_stream_coverage"],
             "gate_reasons": ["fresh_attention"],
             "risk_reasons": ["thin_liquidity"],
             "evidence_event_ids": ["event-1"],
             "source_event_ids": ["event-1"],
-            "radar_score_json": {"score": 0.82},
-            "market_context_json": {"market_status": "fresh"},
-            "thesis_json": {
-                "summary_zh": "PEPE 社交热度显著上升。",
-                "why_now_zh": "多源讨论同步出现。",
-                "bull_case_zh": ["新增独立作者扩散"],
-                "bear_case_zh": ["市场确认不足"],
-                "confirmation_triggers_zh": ["更多独立账号确认"],
-                "invalidation_triggers_zh": ["讨论迅速降温"],
-                "top_risks": ["public_stream_coverage"],
+            "factor_snapshot": _factor_snapshot(market_status="fresh"),
+            "agent_recommendation": {
+                "schema_version": "pulse_recommendation_v1",
+                "recommendation": "watch",
+                "summary_zh": "链上质量允许继续观察。",
+            },
+            "gate": {
+                "pulse_status": "token_watch",
+                "candidate_score": 82.0,
+                "score_band": "watch",
+                "max_recommendation": "watch",
+                "eligible_for_high_alert": True,
+                "blocked_reasons": [],
+            },
+            "fact_card": {
+                "market_cap_usd": 120_000,
+                "liquidity_usd": 55_000,
+                "holders": 800,
+                "volume_24h_usd": 33_000,
+                "market_status": "fresh",
+                "mentions_1h": 9,
+                "unique_authors": 4,
+                "watched_mentions": 1,
+                "eligible_for_high_alert": True,
+                "blocked_reasons": [],
             },
             "agent_run_id": "run-1",
             "pulse_version": "pulse-v1",
@@ -267,13 +276,13 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
         "candidate-fresh",
         pulse_status="token_watch",
         verdict="token_watch",
-        market_context_json={"market_status": "fresh"},
+        market_status="fresh",
     )
     missing_market = _candidate_row(
         "candidate-missing-market",
         pulse_status="trade_candidate",
         verdict="trade_candidate",
-        market_context_json={},
+        market_status=None,
     )
     pulse = FakePulseRepository(
         pages={None: {"items": [fresh], "next_cursor": "after-first-visible"}},
@@ -303,7 +312,7 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
         agent_worker_running=False,
     )
 
-    assert missing_market["market_context_json"] == {}
+    assert missing_market["factor_snapshot_json"]["families"]["market_quality"]["facts"]["market_status"] is None
     assert result["summary"]["trade_candidate"] == 1
     assert result["summary"]["blocked_low_information"] == 1
     assert result["health"]["candidate_count"] == 3
@@ -317,7 +326,7 @@ def _candidate_row(
     *,
     pulse_status: str,
     verdict: str,
-    market_context_json: dict[str, Any],
+    market_status: str | None,
 ) -> dict[str, Any]:
     return {
         "candidate_id": candidate_id,
@@ -344,7 +353,21 @@ def _candidate_row(
             "top_risks": ["public_stream_coverage"],
         },
         "radar_score_json": {"score": 0.82},
-        "market_context_json": market_context_json,
+        "market_context_json": {"market_status": market_status} if market_status else {},
+        "factor_snapshot_json": _factor_snapshot(market_status=market_status),
+        "agent_recommendation_json": {
+            "schema_version": "pulse_recommendation_v1",
+            "recommendation": "watch",
+            "summary_zh": "链上质量允许继续观察。",
+        },
+        "gate_json": {
+            "pulse_status": pulse_status,
+            "candidate_score": 82.0,
+            "score_band": "watch",
+            "max_recommendation": "watch" if pulse_status == "token_watch" else "trade_candidate",
+            "eligible_for_high_alert": True,
+            "blocked_reasons": [],
+        },
         "gate_reasons_json": ["fresh_attention"],
         "risk_reasons_json": ["thin_liquidity"],
         "evidence_event_ids_json": ["event-1"],
@@ -364,7 +387,7 @@ def test_candidate_returns_full_item() -> None:
         "cand-1",
         pulse_status="token_watch",
         verdict="token_watch",
-        market_context_json={"market_status": "fresh"},
+        market_status="fresh",
     )
     pulse = FakePulseRepository()
     pulse.candidate_rows = {"cand-1": row}
@@ -374,7 +397,8 @@ def test_candidate_returns_full_item() -> None:
     assert result is not None
     assert result["candidate_id"] == "cand-1"
     assert result["pulse_status"] == "token_watch"
-    assert result["thesis_json"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert result["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v1"
+    assert result["agent_recommendation"]["summary_zh"] == "链上质量允许继续观察。"
     assert result["playbooks"] == []
 
 
@@ -390,9 +414,96 @@ def test_candidate_returns_none_when_blocked() -> None:
         "cand-blocked",
         pulse_status="blocked_low_information",
         verdict="blocked_low_information",
-        market_context_json={},
+        market_status=None,
     )
     pulse = FakePulseRepository()
     pulse.candidate_rows = {"cand-blocked": row}
     result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).candidate(candidate_id="cand-blocked")
     assert result is None
+
+
+def test_signal_pulse_missing_factor_snapshot_does_not_fallback_to_legacy_runtime_fields() -> None:
+    row = _candidate_row(
+        "candidate-legacy",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["factor_snapshot_json"] = {}
+    pulse = FakePulseRepository(
+        pages={None: {"items": [row], "next_cursor": None}},
+        health={"candidate_count": 1, "summary": {"token_watch": 1}},
+    )
+
+    result = SignalPulseService(pulse=pulse).pulse(
+        window="1h",
+        scope="all",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+    )
+
+    assert result["items"] == []
+    assert result["returned_count"] == 0
+
+
+def test_signal_pulse_item_contains_factor_snapshot_contract_without_legacy_display_fields() -> None:
+    row = _candidate_row(
+        "candidate-token",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["radar_score_json"] = {"score": 999, "old": "must_not_render"}
+    row["thesis_json"] = {
+        "summary_zh": "旧 thesis 不应展示",
+        "confirmation_triggers_zh": ["旧确认"],
+        "top_risks": ["旧风险"],
+    }
+
+    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
+    item = SignalPulseService(pulse=pulse).pulse(
+        window="1h",
+        scope="all",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+    )["items"][0]
+
+    assert "radar_score_json" not in item
+    assert "market_context_json" not in item
+    assert "thesis_json" not in item
+    assert "confirmation_triggers_zh" not in item
+    assert "top_risks" not in item
+    assert item["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v1"
+    assert item["fact_card"]["market_status"] == "fresh"
+
+
+def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
+    return {
+        "schema_version": "token_factor_snapshot_v1",
+        "subject": {"symbol": "PEPE", "target_type": "Asset", "target_id": "asset:pepe"},
+        "families": {
+            "market_quality": {
+                "facts": {
+                    "market_cap_usd": 120_000,
+                    "liquidity_usd": 55_000,
+                    "holders": 800,
+                    "volume_24h_usd": 33_000,
+                    "market_status": market_status,
+                }
+            },
+            "social_attention": {
+                "facts": {"mentions_1h": 9, "unique_authors": 3, "watched_mentions": 1}
+            },
+            "social_quality": {"facts": {"independent_authors": 4}},
+        },
+        "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
+        "composite": {"rank_score": 82},
+    }

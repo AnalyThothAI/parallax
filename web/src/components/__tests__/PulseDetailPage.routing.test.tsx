@@ -26,6 +26,13 @@ function renderAt(url: string) {
 }
 
 describe("PulseDetailPage", () => {
+  it("renders a structural skeleton while the candidate request is pending", () => {
+    vi.spyOn(client, "getApi").mockReturnValue(new Promise(() => undefined) as any);
+    renderAt("/signal-lab/pulse/cand-1");
+
+    expect(screen.getByLabelText("loading pulse detail")).toBeInTheDocument();
+  });
+
   it("renders inspector when candidate exists", async () => {
     vi.spyOn(client, "getApi").mockResolvedValue({
       ok: true,
@@ -62,20 +69,26 @@ function minimalPulseItem() {
     narrative_type: "direct_token",
     candidate_score: 0.82,
     score_band: "watch",
-    summary_zh: "summary",
-    why_now_zh: "why",
-    bull_case_zh: [],
-    bear_case_zh: [],
-    confirmation_triggers_zh: [],
-    invalidation_triggers_zh: [],
-    top_risks: [],
-    gate_reasons: [],
-    risk_reasons: [],
     evidence_event_ids: [],
     source_event_ids: [],
-    radar_score_json: {},
-    market_context_json: {},
-    thesis_json: {},
+    factor_snapshot: {
+      schema_version: "token_factor_snapshot_v1",
+      subject: { target_type: "Asset", target_id: "asset:pepe", symbol: "PEPE", chain: "solana", address: "pepe" },
+      families: {},
+      hard_gates: { eligible_for_high_alert: false, blocked_reasons: [] },
+      composite: { rank_score: 82, recommended_decision: "watch" }
+    },
+    agent_recommendation: {
+      schema_version: "pulse_recommendation_v1",
+      recommendation: "watch",
+      summary_zh: "summary",
+      primary_reasons: [],
+      upgrade_conditions: [],
+      invalidation_conditions: [],
+      residual_risks: []
+    },
+    gate: { pulse_status: "token_watch", candidate_score: 82, score_band: "watch", blocked_reasons: [] },
+    fact_card: { mentions_1h: 1, unique_authors: 1 },
     agent_run_id: null,
     pulse_version: "v1",
     gate_version: "v1",

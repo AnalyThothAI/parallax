@@ -14,7 +14,8 @@ from ..providers import CexMarketProvider, DexMarketProvider
 from ..services.asset_market_sync import sync_cex_universe, sync_dex_prices
 
 DEX_PRICE_STALE_MS = 5 * 60 * 1000
-DEX_PRICE_REFRESH_LIMIT = 80
+DEX_PRICE_HOT_STALE_MS = 90 * 1000
+DEX_PRICE_REFRESH_LIMIT = 160
 
 
 class AssetMarketSyncWorker:
@@ -26,13 +27,24 @@ class AssetMarketSyncWorker:
         dex_market: DexMarketProvider | None = None,
         inst_types: tuple[str, ...],
         interval_seconds: float = 300.0,
+        dex_interval_seconds: float = 30.0,
+        dex_stale_after_ms: int = DEX_PRICE_STALE_MS,
+        dex_hot_stale_after_ms: int = DEX_PRICE_HOT_STALE_MS,
+        dex_warm_stale_after_ms: int = DEX_PRICE_STALE_MS,
+        dex_refresh_limit: int = DEX_PRICE_REFRESH_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
     ) -> None:
         self.cex_market = cex_market
         self.dex_market = dex_market
         self.repository_session = repository_session
         self.inst_types = tuple(str(item).strip().upper() for item in inst_types if str(item).strip())
-        self.interval_seconds = interval_seconds
+        self.cex_interval_seconds = max(1.0, float(interval_seconds))
+        self.dex_interval_seconds = max(1.0, float(dex_interval_seconds))
+        self.interval_seconds = min(self.cex_interval_seconds, self.dex_interval_seconds)
+        self.dex_stale_after_ms = int(dex_stale_after_ms)
+        self.dex_hot_stale_after_ms = int(dex_hot_stale_after_ms)
+        self.dex_warm_stale_after_ms = int(dex_warm_stale_after_ms)
+        self.dex_refresh_limit = max(0, int(dex_refresh_limit))
         self.reprocess_limit = max(1, int(reprocess_limit))
         self._stopped = False
         self._cex_task: asyncio.Task[None] | None = None
@@ -49,11 +61,11 @@ class AssetMarketSyncWorker:
     async def run(self) -> None:
         while not self._stopped:
             now_ms = _now_ms()
-            if self.dex_market is not None:
+            if self.dex_market is not None and self._provider_due("dex", now_ms=now_ms):
                 self._dex_task = self._start_provider_task("dex", self._dex_task, self._sync_dex_once, now_ms=now_ms)
-            if self.cex_market is not None and self.inst_types:
+            if self.cex_market is not None and self.inst_types and self._provider_due("cex", now_ms=now_ms):
                 self._cex_task = self._start_provider_task("cex", self._cex_task, self._sync_cex_once, now_ms=now_ms)
-            await asyncio.sleep(max(1.0, float(self.interval_seconds)))
+            await asyncio.sleep(self._sleep_interval_seconds())
 
     def sync_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         observed_at_ms = int(now_ms or _now_ms())
@@ -100,8 +112,10 @@ class AssetMarketSyncWorker:
             price_observations=repos.price_observations,
             dex_market=self.dex_market,
             observed_at_ms=now_ms,
-            stale_after_ms=DEX_PRICE_STALE_MS,
-            limit=DEX_PRICE_REFRESH_LIMIT,
+            stale_after_ms=self.dex_stale_after_ms,
+            hot_stale_after_ms=self.dex_hot_stale_after_ms,
+            warm_stale_after_ms=self.dex_warm_stale_after_ms,
+            limit=self.dex_refresh_limit,
         )
         return self._with_resolution_refresh(result, repos=repos, now_ms=now_ms)
 
@@ -145,7 +159,26 @@ class AssetMarketSyncWorker:
             return task
         return asyncio.create_task(self._run_provider(name, func, now_ms=now_ms))
 
+<<<<<<< HEAD
     async def _run_provider(self, name: str, func: Callable[..., dict[str, Any]], *, now_ms: int) -> None:
+=======
+    def _provider_due(self, name: str, *, now_ms: int) -> bool:
+        interval_seconds = self.dex_interval_seconds if name == "dex" else self.cex_interval_seconds
+        last_started_at_ms = self.provider_states[name]["last_started_at_ms"]
+        if last_started_at_ms is None:
+            return True
+        return int(now_ms) - int(last_started_at_ms) >= int(interval_seconds * 1000)
+
+    def _sleep_interval_seconds(self) -> float:
+        intervals = []
+        if self.dex_market is not None:
+            intervals.append(self.dex_interval_seconds)
+        if self.cex_market is not None and self.inst_types:
+            intervals.append(self.cex_interval_seconds)
+        return max(1.0, min(intervals)) if intervals else 1.0
+
+    async def _run_provider(self, name: str, func, *, now_ms: int) -> None:
+>>>>>>> origin/main
         state = self.provider_states[name]
         state["running"] = True
         state["last_started_at_ms"] = now_ms

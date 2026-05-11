@@ -3,29 +3,29 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_thesis import PulseThesisPayload
+from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
 
 
 @dataclass(frozen=True, slots=True)
-class PulseThesisResult:
-    payload: PulseThesisPayload
+class PulseRecommendationResult:
+    payload: PulseRecommendationPayload
     agent_run_audit: dict[str, Any]
 
 
-class PulseThesisProvider(Protocol):
+class PulseRecommendationProvider(Protocol):
     provider: str
     model: str
     timeout_seconds: float
 
     def request_audit(self, *, context: dict[str, Any], run_id: str, job: dict[str, Any]) -> dict[str, Any]: ...
 
-    async def write_thesis(
+    async def write_recommendation(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseThesisResult: ...
+    ) -> PulseRecommendationResult: ...
 
 
-__all__ = ["PulseThesisProvider", "PulseThesisResult"]
+__all__ = ["PulseRecommendationProvider", "PulseRecommendationResult"]

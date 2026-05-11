@@ -29,7 +29,7 @@ ROUTER_FILES = ("AGENTS.md", "CLAUDE.md")
 
 RULE_PHRASES = {
     "Single ASGI worker": "RELIABILITY.md",
-    "`score_version` is bumped on any scoring change": "CONTRACTS.md",
+    "`projection_version` and `factor_version` are bumped": "CONTRACTS.md",
     "Integration tests should hit a real PostgreSQL": "TESTING.md",
     "git worktree add .worktrees": "WORKFLOW.md",
     "Audit before design": "DESIGN_DISCIPLINE.md",

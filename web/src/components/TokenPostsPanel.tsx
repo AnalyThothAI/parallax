@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+<<<<<<< HEAD
 
 import type {
   TokenPostItem,
@@ -15,6 +16,11 @@ import {
   formatScore,
   formatSignedPercent,
 } from "../lib/format";
+=======
+import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData } from "../api/types";
+import { compactNumber, eventText, formatReason, formatRelativeTime, formatRisk, formatScore, formatSignedPercent } from "../lib/format";
+import { SkeletonRows } from "../shared/ui/RemoteState";
+>>>>>>> origin/main
 
 type TokenPostsPanelProps = {
   posts?: TokenPostsData | null;
@@ -145,10 +151,15 @@ export function TokenPostsPanel({
         <div className="filter-note">history does not all participate in current score</div>
       ) : null}
       {hideDuplicateClusters ? <div className="filter-note">已隐藏重复文本簇</div> : null}
+<<<<<<< HEAD
       {isLoading ? <div className="empty-state">加载 token posts 中</div> : null}
       {!isLoading && items.length === 0 ? (
         <div className="empty-state">该窗口暂无 token-attributed posts</div>
       ) : null}
+=======
+      {isLoading ? <SkeletonRows count={4} label="loading token posts" /> : null}
+      {!isLoading && items.length === 0 ? <div className="empty-state">该窗口暂无 token-attributed posts</div> : null}
+>>>>>>> origin/main
       <div className="post-list">
         {items.map((item) => (
           <PostCard key={item.event_id} item={item} />

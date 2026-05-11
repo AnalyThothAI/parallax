@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
@@ -971,4 +972,10 @@ function resolveEvidenceDetails(
     };
   }
   return null;
+=======
+import { CockpitApp } from "./app/CockpitApp";
+
+export function App() {
+  return <CockpitApp />;
+>>>>>>> origin/main
 }

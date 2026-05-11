@@ -15,7 +15,9 @@ from .identity_evidence_policy import (
     EVIDENCE_TWEET_CONTRACT_MENTION,
     select_current_identity,
 )
+from .read_models.current_market_service import CurrentMarketService
 from .repositories.asset_repository import AssetRepository
+from .repositories.current_market_repository import CurrentMarketRepository
 from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
 from .repositories.market_repository import MarketRepository
@@ -29,6 +31,12 @@ __all__ = [
     "CONFIDENCE_PROVIDER_CANDIDATE",
     "CONFIDENCE_PROVIDER_EXACT",
     "CONFIDENCE_UNKNOWN",
+<<<<<<< HEAD
+=======
+    "CurrentMarketRepository",
+    "CurrentMarketService",
+    "DiscoveryRepository",
+>>>>>>> origin/main
     "EVIDENCE_GMGN_OPENAPI_EXACT",
     "EVIDENCE_GMGN_PAYLOAD_EXACT",
     "EVIDENCE_MANUAL_IDENTITY_REPAIR",

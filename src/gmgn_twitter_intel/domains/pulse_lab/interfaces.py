@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Literal
 
-PULSE_VERSION = "signal-pulse-v2-agent-thesis"
-PULSE_THESIS_SCHEMA_VERSION = "pulse_thesis_v1"
-PULSE_THESIS_PROMPT_VERSION = "pulse-thesis-agents-sdk-v1"
-PULSE_GATE_VERSION = "pulse-candidate-gate-v1"
+PULSE_VERSION = "signal-pulse-v3-factor-snapshot"
+PULSE_RECOMMENDATION_SCHEMA_VERSION = "pulse_recommendation_v1"
+PULSE_RECOMMENDATION_PROMPT_VERSION = "pulse-recommendation-agents-sdk-v1"
+PULSE_GATE_VERSION = "pulse-factor-gate-v1"
 PULSE_PLAYBOOK_VERSION = "shadow-playbook-v1"
 BACKEND = "openai_agents_sdk"
-WORKFLOW_NAME = "gmgn-twitter-intel.pulse_thesis"
-AGENT_NAME = "PulseThesisAgent"
+WORKFLOW_NAME = "gmgn-twitter-intel.pulse_recommendation"
+AGENT_NAME = "PulseRecommendationAgent"
 
 CANDIDATE_TYPES = {"source_seed", "token_target"}
 TARGET_TYPES = {"Asset", "CexToken"}
@@ -71,8 +71,8 @@ __all__ = [
     "PULSE_GATE_VERSION",
     "PULSE_PLAYBOOK_VERSION",
     "PULSE_STATUSES",
-    "PULSE_THESIS_PROMPT_VERSION",
-    "PULSE_THESIS_SCHEMA_VERSION",
+    "PULSE_RECOMMENDATION_PROMPT_VERSION",
+    "PULSE_RECOMMENDATION_SCHEMA_VERSION",
     "PULSE_VERSION",
     "SCORE_BANDS",
     "SOCIAL_PHASES",

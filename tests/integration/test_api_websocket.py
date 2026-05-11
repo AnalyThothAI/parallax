@@ -267,6 +267,43 @@ def test_websocket_ca_filter_matches_token_intents_without_entities():
     assert hub._payload_matches_subscription(payload, client) is True
 
 
+def test_websocket_routes_market_update_for_explicit_market_target_subscription():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(
+        websocket=None,
+        market_targets={("Asset", "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2")},
+    )
+    payload = {
+        "type": "market_update",
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+        "current_market": {
+            "market_status": "fresh",
+            "fields": {"market_cap_usd": {"value": 110_900_000, "status": "fresh"}},
+        },
+        "provider": "okx_dex_ws_price_info",
+        "observed_at_ms": 1_700_086_430_000,
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is True
+
+
+def test_websocket_does_not_broadcast_market_update_without_matching_subscription():
+    hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
+    client = ClientSubscription(
+        websocket=None,
+        market_targets={("Asset", "asset:solana:token:other")},
+    )
+    payload = {
+        "type": "market_update",
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:5UUH9RTDiSpq6HKS6bp4NdU9PNJpXRXuiw6ShBTBhgH2",
+        "current_market": {"market_status": "fresh", "fields": {}},
+    }
+
+    assert hub._payload_matches_subscription(payload, client) is False
+
+
 def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
     result = client.app.state.service.ingest.ingest_event(event, is_watched=is_watched)
     return {

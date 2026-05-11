@@ -6,7 +6,11 @@ import type {
   SignalPulseStatusFilter,
 } from "../api/types";
 import { eventHandle, eventText, formatRelativeTime } from "../lib/format";
+<<<<<<< HEAD
 
+=======
+import { SkeletonRows } from "../shared/ui/RemoteState";
+>>>>>>> origin/main
 import { SignalPulseList } from "./SignalLabPulse";
 
 const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; description: string }> = [
@@ -218,7 +222,7 @@ function AccountEventList({
   onSelect: (item: LivePayload) => void;
 }) {
   if (isLoading && !items.length) {
-    return <div className="empty-state">loading watched account events</div>;
+    return <SkeletonRows count={5} label="loading watched account events" />;
   }
   return (
     <div className="signal-chain-list signal-account-event-list">

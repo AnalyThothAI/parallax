@@ -1,8 +1,13 @@
 import { Outlet } from "react-router-dom";
 
 import type { SignalPulseData, SignalPulseItem } from "../api/types";
+<<<<<<< HEAD
 
 import { LiveSignalTape, type LiveSignalTapeItem } from "./LiveSignalTape";
+=======
+import type { LiveSignalTapeItem } from "../features/live/liveTapeModel";
+import { LiveSignalTape } from "./LiveSignalTape";
+>>>>>>> origin/main
 import { SignalLabPulse } from "./SignalLabPulse";
 
 type LivePageProps = {

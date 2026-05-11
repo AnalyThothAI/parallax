@@ -159,6 +159,15 @@ export type NotificationLivePayload = {
   notification: NotificationItem;
 };
 
+export type MarketUpdatePayload = {
+  type: "market_update";
+  target_type: string;
+  target_id: string;
+  provider?: string | null;
+  observed_at_ms?: number | null;
+  current_market: CurrentMarketSnapshot;
+};
+
 export type RecentData = {
   scope: ScopeKey;
   events: EventRecord[];
@@ -283,40 +292,28 @@ export type TokenRadarDataHealth = {
   [key: string]: unknown;
 };
 
+export type MarketFieldFact = {
+  value?: number | string | null;
+  status: "fresh" | "partial" | "stale" | "missing" | "unsupported" | "rate_limited" | "provider_error" | string;
+  observed_at_ms?: number | null;
+  age_ms?: number | null;
+  provider?: string | null;
+  source_observation_id?: string | null;
+};
+
+export type CurrentMarketSnapshot = {
+  target_type?: string | null;
+  target_id?: string | null;
+  market_status: "fresh" | "partial" | "stale" | "missing" | string;
+  fields: Record<string, MarketFieldFact>;
+};
+
 export type AssetFlowRow = {
   intent?: TokenRadarIntentBlock;
   target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
   source_event_ids?: string[];
-  price?: {
-    market_status: "fresh" | "stale" | "missing" | string;
-    provider?: string | null;
-    price_usd?: number | null;
-    price_quote?: number | null;
-    quote_symbol?: string | null;
-    price_basis?: string | null;
-    market_cap_usd?: number | null;
-    liquidity_usd?: number | null;
-    volume_24h_usd?: number | null;
-    open_interest_usd?: number | null;
-    holders?: number | null;
-    snapshot_age_ms?: number | null;
-    snapshot_observed_at_ms?: number | null;
-    social_signal_start_ms?: number | null;
-    price_change_5m_pct?: number | null;
-    price_change_1h_pct?: number | null;
-    price_change_24h_pct?: number | null;
-    price_at_social_start?: number | null;
-    price_at_reference?: number | null;
-    price_before_social_start?: number | null;
-    price_change_since_social_pct?: number | null;
-    price_change_before_social_pct?: number | null;
-    price_at_first_snapshot?: number | null;
-    first_snapshot_observed_at_ms?: number | null;
-    price_change_since_first_snapshot_pct?: number | null;
-    market_observation_status?: string | null;
-    price_change_status?: string | null;
-  };
+  current_market: CurrentMarketSnapshot;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
@@ -333,6 +330,7 @@ export type AssetFlowRow = {
     candidates?: unknown[];
   };
   score: TokenRadarScoreSet;
+  factor_snapshot?: TokenFactorSnapshot;
   decision: Decision | string;
   data_health?: TokenRadarDataHealth;
 };
@@ -354,11 +352,15 @@ export type AssetFlowData = {
   targets: AssetFlowRow[];
   attention: AssetFlowRow[];
   projection: {
-    status: "fresh" | "stale" | string;
+    status: "fresh" | "stale" | "pending" | string;
     version: string;
     source: string;
+    reason?: string | null;
+    row_count?: number | null;
+    source_rows?: number | null;
     source_max_received_at_ms?: number | null;
     computed_at_ms?: number | null;
+    error?: string | null;
   };
 };
 
@@ -404,13 +406,19 @@ export type TokenIdentityBlock = {
 };
 
 export type TokenMarketBlock = {
-  market_status: "fresh" | "stale" | "missing" | string;
+  market_status: "fresh" | "partial" | "stale" | "missing" | string;
   price?: number | null;
+  price_status?: string | null;
   market_cap?: number | null;
+  market_cap_status?: string | null;
   liquidity?: number | null;
+  liquidity_status?: string | null;
   pool_status?: "ready" | "missing" | string;
   holder_count?: number | null;
+  holder_count_status?: string | null;
   volume_24h?: number | null;
+  volume_24h_status?: string | null;
+  provider?: string | null;
   snapshot_age_ms?: number | null;
   snapshot_received_at_ms?: number | null;
   social_signal_start_ms?: number | null;
@@ -806,6 +814,64 @@ export type SignalPulseHealth = {
 
 export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number>;
 
+export type FactorPoint = {
+  family: string;
+  key: string;
+  raw_value?: unknown;
+  score?: number | null;
+  confidence?: number | null;
+  data_health?: string | null;
+  freshness_ms?: number | null;
+  source_refs?: string[];
+  risk_flags?: string[];
+  hard_gate?: string | null;
+};
+
+export type TokenFactorSnapshot = {
+  schema_version: "token_factor_snapshot_v1" | string;
+  subject: {
+    target_type?: string | null;
+    target_id?: string | null;
+    symbol?: string | null;
+    chain?: string | null;
+    address?: string | null;
+  };
+  families: Record<
+    string,
+    {
+      score?: number | null;
+      facts?: Record<string, unknown>;
+      factors?: Record<string, FactorPoint>;
+      data_health?: string | null;
+    }
+  >;
+  hard_gates: {
+    eligible_for_high_alert: boolean;
+    blocked_reasons: string[];
+  };
+  composite: {
+    rank_score?: number | null;
+    recommended_decision?: string | null;
+    family_scores?: Record<string, number | null | undefined>;
+  };
+  provenance?: {
+    source_event_ids?: string[];
+    computed_at_ms?: number | null;
+  };
+};
+
+export type PulseAgentRecommendation = {
+  schema_version: "pulse_recommendation_v1" | string;
+  recommendation: "ignore" | "watch" | "research" | "alert" | "trade_candidate" | string;
+  summary_zh: string;
+  primary_reasons: Array<{ factor_key: string; explanation_zh: string }>;
+  upgrade_conditions: Array<{ factor_key: string; operator: string; value: unknown; description_zh: string }>;
+  invalidation_conditions: Array<{ factor_key: string; operator: string; value: unknown; description_zh: string }>;
+  residual_risks: Array<{ factor_key: string; description_zh: string }>;
+  evidence_event_ids?: string[];
+  confidence?: number | null;
+};
+
 export type SignalPulseItem = {
   candidate_id: string;
   candidate_type: string;
@@ -821,20 +887,12 @@ export type SignalPulseItem = {
   narrative_type?: string | null;
   candidate_score?: number | null;
   score_band?: string | null;
-  summary_zh?: string | null;
-  why_now_zh?: string | null;
-  bull_case_zh: string[];
-  bear_case_zh: string[];
-  confirmation_triggers_zh: string[];
-  invalidation_triggers_zh: string[];
-  top_risks: string[];
-  gate_reasons: unknown[];
-  risk_reasons: unknown[];
   evidence_event_ids: string[];
   source_event_ids: string[];
-  radar_score_json: Record<string, unknown>;
-  market_context_json: Record<string, unknown>;
-  thesis_json: Record<string, unknown>;
+  factor_snapshot: TokenFactorSnapshot;
+  agent_recommendation: PulseAgentRecommendation;
+  gate: Record<string, unknown>;
+  fact_card: Record<string, unknown>;
   agent_run_id?: string | null;
   pulse_version?: string | null;
   gate_version?: string | null;

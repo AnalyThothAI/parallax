@@ -29,8 +29,6 @@ def build_pulse_timeline_context(
     window: str = "1h",
     scope: str = "all",
     now_ms: int | None = None,
-    radar_score: dict[str, Any] | None = None,
-    market_overlay: dict[str, Any] | None = None,
     max_selected_posts: int = 24,
     max_post_clusters: int = 16,
     max_raw_text_chars_per_post: int = 280,
@@ -70,10 +68,6 @@ def build_pulse_timeline_context(
         "stage_segments": stage_segments,
         "post_clusters": post_clusters,
         "selected_posts": selected_posts,
-        "market_overlay": (
-            _jsonable(market_overlay) if market_overlay is not None else _market_overlay(active_rows, target)
-        ),
-        "radar_score": _jsonable(radar_score) if radar_score is not None else None,
         "timeline_signature": _timeline_signature(
             target_id=_target_id(target),
             window=window,
@@ -495,26 +489,6 @@ def _summary_phase(rows: list[dict[str, Any]]) -> str:
     if len(rows) >= 4 and authors >= 3:
         return "expansion"
     return "ignition"
-
-
-def _market_overlay(rows: list[dict[str, Any]], target: dict[str, Any]) -> dict[str, Any] | None:
-    source = rows[0] if rows else target
-    if not source and not target:
-        return None
-    keys = (
-        "target_type",
-        "target_id",
-        "chain_id",
-        "address",
-        "symbol",
-        "provider",
-        "native_market_id",
-        "quote_symbol",
-        "feed_type",
-        "pricefeed_id",
-    )
-    overlay = {key: source.get(key, target.get(key)) for key in keys if source.get(key, target.get(key)) is not None}
-    return overlay or None
 
 
 def _active_phase(stage_segments: list[dict[str, Any]]) -> str:
