@@ -4,15 +4,15 @@ from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projectio
 
 
 class FakeTokenRadar:
-    def __init__(self, coverage):
-        self.coverage = coverage
-        self.failed_coverage: list[dict[str, object]] = []
+    def __init__(self, publications):
+        self.publications = publications
+        self.failed_refreshes: list[dict[str, object]] = []
 
-    def latest_coverage(self, *, projection_version, windows, scopes):
-        return dict(self.coverage)
+    def latest_publications(self, *, projection_version, windows, scopes):
+        return dict(self.publications)
 
-    def mark_coverage(self, **kwargs):
-        self.failed_coverage.append(kwargs)
+    def mark_refresh_status(self, **kwargs):
+        self.failed_refreshes.append(kwargs)
 
 
 class FakeRepos:
@@ -33,12 +33,13 @@ class FakeSession:
 
 def test_projection_worker_refreshes_hot_windows_before_missing_current_version_windows(monkeypatch):
     calls: list[dict[str, object]] = []
-    coverage = {
+    publications = {
         ("5m", "all"): {
             "status": "ready",
             "row_count": 0,
             "source_rows": 0,
             "computed_at_ms": 1_777_799_000_000,
+            "published_computed_at_ms": 1_777_799_000_000,
         }
     }
 
@@ -52,7 +53,7 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
 
     monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
     worker = module.TokenRadarProjectionWorker(
-        repository_session=lambda: FakeSession(coverage),
+        repository_session=lambda: FakeSession(publications),
         windows=("5m", "1h", "4h"),
         scopes=("all", "matched"),
         limit=7,
@@ -73,7 +74,7 @@ def test_projection_worker_refreshes_hot_windows_before_missing_current_version_
     assert worker.last_result == result
 
 
-def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():
+def test_projection_worker_does_not_treat_ready_empty_publication_as_missing():
     worker = module.TokenRadarProjectionWorker(
         repository_session=lambda: FakeSession({}),
         windows=("5m", "1h"),
@@ -82,10 +83,10 @@ def test_projection_worker_does_not_treat_ready_empty_coverage_as_missing():
 
     missing = worker._missing_work_items(
         {
-            ("5m", "all"): {"status": "ready", "row_count": 0},
-            ("5m", "matched"): {"status": "ready", "row_count": 0},
-            ("1h", "all"): {"status": "ready", "row_count": 0},
-            ("1h", "matched"): {"status": "ready", "row_count": 0},
+            ("5m", "all"): {"status": "ready", "row_count": 0, "published_computed_at_ms": 1},
+            ("5m", "matched"): {"status": "ready", "row_count": 0, "published_computed_at_ms": 1},
+            ("1h", "all"): {"status": "ready", "row_count": 0, "published_computed_at_ms": 1},
+            ("1h", "matched"): {"status": "ready", "row_count": 0, "published_computed_at_ms": 1},
         }
     )
 

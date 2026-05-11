@@ -36,104 +36,120 @@ class TokenTargetRepository:
         params.append(max(0, int(limit)))
         rows = self.conn.execute(
             f"""
-            SELECT
-              events.event_id,
-              events.tweet_id,
-              events.canonical_url,
-              events.author_handle,
-              events.text,
-              events.text_clean,
-              events.reference_json,
-              events.is_watched,
-              events.received_at_ms,
-              tir.target_type,
-              tir.target_id,
-              tir.resolution_status,
-              tir.resolution_status AS attribution_status,
-              CASE
-                WHEN tir.resolution_status = 'EXACT' THEN 1.0
-                WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 0.9
-                WHEN tir.resolution_status = 'AMBIGUOUS' THEN 0.45
-                ELSE 0.0
-              END AS confidence,
-              registry_assets.chain_id,
-              registry_assets.token_standard,
-              registry_assets.address,
-              asset_identity_current.canonical_symbol AS asset_symbol,
-              asset_identity_current.canonical_name AS asset_name,
-              asset_identity_current.identity_confidence AS asset_identity_confidence,
-              cex_tokens.base_symbol AS cex_base_symbol,
-              COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) AS pricefeed_id,
-              price_feeds.provider,
-              price_feeds.native_market_id,
-              price_feeds.base_symbol AS pricefeed_base_symbol,
-              price_feeds.quote_symbol,
-              price_feeds.feed_type,
-              message_price.observation_id AS price_observation_id,
-              message_price.provider AS price_provider,
-              message_price.observed_at_ms AS price_observed_at_ms,
-              message_price.price_usd,
-              message_price.price_quote,
-              message_price.quote_symbol AS price_quote_symbol,
-              message_price.observation_kind AS price_observation_kind,
-              message_price.observation_lag_ms AS price_observation_lag_ms
-            FROM token_intent_resolutions tir
-            JOIN events ON events.event_id = tir.event_id
-            LEFT JOIN registry_assets
-              ON tir.target_type = 'Asset'
-             AND registry_assets.asset_id = tir.target_id
-            LEFT JOIN asset_identity_current
-              ON tir.target_type = 'Asset'
-             AND asset_identity_current.asset_id = tir.target_id
-            LEFT JOIN cex_tokens
-              ON tir.target_type = 'CexToken'
-             AND cex_tokens.cex_token_id = tir.target_id
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_feeds
-              WHERE tir.target_type = 'CexToken'
-                AND price_feeds.subject_type = 'CexToken'
-                AND price_feeds.subject_id = tir.target_id
-                AND price_feeds.feed_type LIKE 'cex_%%'
-                AND price_feeds.status IN ('candidate', 'canonical')
-              ORDER BY
+            WITH candidate_posts AS (
+              SELECT
+                events.event_id,
+                events.tweet_id,
+                events.canonical_url,
+                events.author_handle,
+                events.text,
+                events.text_clean,
+                events.reference_json,
+                events.is_watched,
+                events.received_at_ms,
+                tir.target_type,
+                tir.target_id,
+                tir.resolution_status,
+                tir.resolution_status AS attribution_status,
                 CASE
-                  WHEN price_feeds.feed_type = 'cex_spot' THEN 0
-                  WHEN price_feeds.feed_type = 'cex_swap' THEN 1
-                  ELSE 2
-                END,
-                CASE
-                  WHEN price_feeds.quote_symbol = 'USDT' THEN 0
-                  WHEN price_feeds.quote_symbol = 'USD' THEN 1
-                  WHEN price_feeds.quote_symbol = 'USDC' THEN 2
-                  ELSE 9
-                END,
-                price_feeds.updated_at_ms DESC,
-                price_feeds.native_market_id ASC
-              LIMIT 1
-            ) preferred_price_feed ON true
-            LEFT JOIN price_feeds
-              ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
-            LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.source_event_id = events.event_id
-                AND price_observations.source_resolution_id = tir.resolution_id
-                AND price_observations.subject_type = tir.target_type
-                AND price_observations.subject_id = tir.target_id
-                AND (
-                  COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
-                  OR price_observations.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
-                )
-                AND price_observations.observation_kind IN ('message_payload', 'message_quote')
-              ORDER BY
-                CASE WHEN price_observations.observation_kind = 'message_payload' THEN 0 ELSE 1 END,
-                price_observations.observed_at_ms DESC,
-                price_observations.observation_id DESC
-              LIMIT 1
-            ) message_price ON true
-            WHERE {" AND ".join(clauses)}
-            ORDER BY events.received_at_ms DESC, events.event_id DESC
+                  WHEN tir.resolution_status = 'EXACT' THEN 1.0
+                  WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 0.9
+                  WHEN tir.resolution_status = 'AMBIGUOUS' THEN 0.45
+                  ELSE 0.0
+                END AS confidence,
+                registry_assets.chain_id,
+                registry_assets.token_standard,
+                registry_assets.address,
+                asset_identity_current.canonical_symbol AS asset_symbol,
+                asset_identity_current.canonical_name AS asset_name,
+                asset_identity_current.identity_confidence AS asset_identity_confidence,
+                cex_tokens.base_symbol AS cex_base_symbol,
+                COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) AS pricefeed_id,
+                price_feeds.provider,
+                price_feeds.native_market_id,
+                price_feeds.base_symbol AS pricefeed_base_symbol,
+                price_feeds.quote_symbol,
+                price_feeds.feed_type,
+                message_price.observation_id AS price_observation_id,
+                message_price.provider AS price_provider,
+                message_price.observed_at_ms AS price_observed_at_ms,
+                message_price.price_usd,
+                message_price.price_quote,
+                message_price.quote_symbol AS price_quote_symbol,
+                message_price.observation_kind AS price_observation_kind,
+                message_price.observation_lag_ms AS price_observation_lag_ms,
+                ROW_NUMBER() OVER (
+                  PARTITION BY events.event_id
+                  ORDER BY
+                    CASE
+                      WHEN tir.resolution_status = 'EXACT' THEN 0
+                      WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 1
+                      WHEN tir.resolution_status = 'AMBIGUOUS' THEN 2
+                      ELSE 9
+                    END,
+                    tir.resolution_id ASC
+                ) AS target_post_rank
+              FROM token_intent_resolutions tir
+              JOIN events ON events.event_id = tir.event_id
+              LEFT JOIN registry_assets
+                ON tir.target_type = 'Asset'
+               AND registry_assets.asset_id = tir.target_id
+              LEFT JOIN asset_identity_current
+                ON tir.target_type = 'Asset'
+               AND asset_identity_current.asset_id = tir.target_id
+              LEFT JOIN cex_tokens
+                ON tir.target_type = 'CexToken'
+               AND cex_tokens.cex_token_id = tir.target_id
+              LEFT JOIN LATERAL (
+                SELECT *
+                FROM price_feeds
+                WHERE tir.target_type = 'CexToken'
+                  AND price_feeds.subject_type = 'CexToken'
+                  AND price_feeds.subject_id = tir.target_id
+                  AND price_feeds.feed_type LIKE 'cex_%%'
+                  AND price_feeds.status IN ('candidate', 'canonical')
+                ORDER BY
+                  CASE
+                    WHEN price_feeds.feed_type = 'cex_spot' THEN 0
+                    WHEN price_feeds.feed_type = 'cex_swap' THEN 1
+                    ELSE 2
+                  END,
+                  CASE
+                    WHEN price_feeds.quote_symbol = 'USDT' THEN 0
+                    WHEN price_feeds.quote_symbol = 'USD' THEN 1
+                    WHEN price_feeds.quote_symbol = 'USDC' THEN 2
+                    ELSE 9
+                  END,
+                  price_feeds.updated_at_ms DESC,
+                  price_feeds.native_market_id ASC
+                LIMIT 1
+              ) preferred_price_feed ON true
+              LEFT JOIN price_feeds
+                ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
+              LEFT JOIN LATERAL (
+                SELECT *
+                FROM price_observations
+                WHERE price_observations.source_event_id = events.event_id
+                  AND price_observations.source_resolution_id = tir.resolution_id
+                  AND price_observations.subject_type = tir.target_type
+                  AND price_observations.subject_id = tir.target_id
+                  AND (
+                    COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
+                    OR price_observations.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
+                  )
+                  AND price_observations.observation_kind IN ('message_payload', 'message_quote')
+                ORDER BY
+                  CASE WHEN price_observations.observation_kind = 'message_payload' THEN 0 ELSE 1 END,
+                  price_observations.observed_at_ms DESC,
+                  price_observations.observation_id DESC
+                LIMIT 1
+              ) message_price ON true
+              WHERE {" AND ".join(clauses)}
+            )
+            SELECT *
+            FROM candidate_posts
+            WHERE target_post_rank = 1
+            ORDER BY received_at_ms DESC, event_id DESC
             LIMIT %s
             """,
             params,

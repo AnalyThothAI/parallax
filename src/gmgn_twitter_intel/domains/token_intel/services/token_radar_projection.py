@@ -49,11 +49,11 @@ class TokenRadarProjection:
         window_ms = WINDOW_MS.get(window, WINDOW_MS["1h"])
         score_since_ms = computed_at_ms - window_ms
         analysis_since_ms = _analysis_since_ms(computed_at_ms=computed_at_ms, window_ms=window_ms)
-        self.repos.token_radar.mark_coverage(
+        self.repos.token_radar.mark_refresh_status(
             projection_version=PROJECTION_VERSION,
             window=window,
             scope=scope,
-            status="running",
+            refresh_status="running",
             reason="projection_window_running",
             source_rows=0,
             row_count=0,
@@ -165,18 +165,16 @@ class TokenRadarProjection:
                 dirty_ranges_written=0,
                 commit=False,
             )
-            self.repos.token_radar.mark_coverage(
+            self.repos.token_radar.publish_rows(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
-                status="ready",
-                reason=None,
                 source_rows=len(source_rows),
                 row_count=len(rows),
                 computed_at_ms=computed_at_ms,
+                source_max_received_at_ms=source_max_received_at_ms,
                 started_at_ms=computed_at_ms,
                 finished_at_ms=_now_ms(),
-                error=None,
                 commit=True,
             )
             return {
@@ -186,11 +184,11 @@ class TokenRadarProjection:
                 "status": "ready",
             }
         except Exception as exc:
-            self.repos.token_radar.mark_coverage(
+            self.repos.token_radar.mark_refresh_status(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
-                status="failed",
+                refresh_status="failed",
                 reason="projection_window_failed",
                 source_rows=0,
                 row_count=0,
@@ -630,7 +628,9 @@ def _row_with_current_market(row: dict[str, Any], snapshot: dict[str, Any] | Non
         "market_holders": holders.get("value"),
         "market_holders_status": holders.get("status"),
         "market_status_from_current": snapshot.get("market_status"),
-        "market_field_statuses": {key: value.get("status") for key, value in fields.items() if isinstance(value, dict)},
+        "market_field_statuses": {
+            str(key): value.get("status") for key, value in fields.items() if isinstance(value, dict)
+        },
     }
 
 
@@ -923,8 +923,10 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
     snapshot = _factor_snapshot_for_ranking(row)
     if snapshot is None:
         return (3, 0.0, 0, 0, 0)
-    composite = snapshot["composite"]
-    families = snapshot["families"]
+    raw_composite = snapshot.get("composite")
+    composite: dict[str, Any] = raw_composite if isinstance(raw_composite, dict) else {}
+    raw_families = snapshot.get("families")
+    families: dict[str, Any] = raw_families if isinstance(raw_families, dict) else {}
     raw_social_attention = families.get("social_attention")
     social_attention: dict[str, Any] = raw_social_attention if isinstance(raw_social_attention, dict) else {}
     raw_attention = social_attention.get("facts")

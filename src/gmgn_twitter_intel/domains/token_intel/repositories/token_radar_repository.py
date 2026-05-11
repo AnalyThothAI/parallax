@@ -49,9 +49,9 @@ class TokenRadarRepository:
         self.conn.execute(
             """
             DELETE FROM token_radar_rows
-            WHERE projection_version = %s AND "window" = %s AND scope = %s
+            WHERE projection_version = %s AND "window" = %s AND scope = %s AND computed_at_ms = %s
             """,
-            (projection_version, window, scope),
+            (projection_version, window, scope, int(computed_at_ms)),
         )
         for row in rows:
             self.conn.execute(
@@ -96,18 +96,20 @@ class TokenRadarRepository:
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
-            WITH latest AS (
-              SELECT MAX(computed_at_ms) AS computed_at_ms
-              FROM token_radar_rows
-              WHERE projection_version = %s AND "window" = %s AND scope = %s
-            ),
-            ranked AS (
+            WITH published AS (
+              SELECT published_computed_at_ms AS computed_at_ms
+              FROM token_radar_publications
+              WHERE projection_version = %s
+                AND "window" = %s
+                AND scope = %s
+                AND published_computed_at_ms IS NOT NULL
+            ), ranked AS (
               SELECT
                 token_radar_rows.*,
                 row_number() OVER (PARTITION BY lane ORDER BY rank ASC) AS lane_rank
               FROM token_radar_rows
-              JOIN latest
-                ON token_radar_rows.computed_at_ms = latest.computed_at_ms
+              JOIN published
+                ON token_radar_rows.computed_at_ms = published.computed_at_ms
               WHERE token_radar_rows.projection_version = %s
                 AND token_radar_rows."window" = %s
                 AND token_radar_rows.scope = %s
@@ -131,13 +133,13 @@ class TokenRadarRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def mark_coverage(
+    def mark_refresh_status(
         self,
         *,
         projection_version: str,
         window: str,
         scope: str,
-        status: str,
+        refresh_status: str,
         reason: str | None = None,
         source_rows: int = 0,
         row_count: int = 0,
@@ -150,30 +152,31 @@ class TokenRadarRepository:
         now_ms = _now_ms()
         self.conn.execute(
             """
-            INSERT INTO token_radar_projection_coverage(
-              projection_version, "window", scope, status, reason, source_rows, row_count,
-              computed_at_ms, started_at_ms, finished_at_ms, error, updated_at_ms
+            INSERT INTO token_radar_publications(
+              projection_version, "window", scope, refresh_status, reason,
+              refresh_source_rows, refresh_row_count, refresh_computed_at_ms,
+              refresh_started_at_ms, refresh_finished_at_ms, error, updated_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(projection_version, "window", scope) DO UPDATE SET
-              status = excluded.status,
+              refresh_status = excluded.refresh_status,
               reason = excluded.reason,
-              source_rows = excluded.source_rows,
-              row_count = excluded.row_count,
-              computed_at_ms = excluded.computed_at_ms,
-              started_at_ms = excluded.started_at_ms,
-              finished_at_ms = excluded.finished_at_ms,
+              refresh_source_rows = excluded.refresh_source_rows,
+              refresh_row_count = excluded.refresh_row_count,
+              refresh_computed_at_ms = excluded.refresh_computed_at_ms,
+              refresh_started_at_ms = excluded.refresh_started_at_ms,
+              refresh_finished_at_ms = excluded.refresh_finished_at_ms,
               error = excluded.error,
               updated_at_ms = excluded.updated_at_ms
-            WHERE token_radar_projection_coverage.computed_at_ms IS NULL
-               OR excluded.computed_at_ms IS NULL
-               OR token_radar_projection_coverage.computed_at_ms <= excluded.computed_at_ms
+            WHERE token_radar_publications.refresh_computed_at_ms IS NULL
+               OR excluded.refresh_computed_at_ms IS NULL
+               OR token_radar_publications.refresh_computed_at_ms <= excluded.refresh_computed_at_ms
             """,
             (
                 projection_version,
                 window,
                 scope,
-                status,
+                refresh_status,
                 reason,
                 max(0, int(source_rows)),
                 max(0, int(row_count)),
@@ -187,7 +190,67 @@ class TokenRadarRepository:
         if commit:
             self.conn.commit()
 
-    def latest_coverage(
+    def publish_rows(
+        self,
+        *,
+        projection_version: str,
+        window: str,
+        scope: str,
+        source_rows: int,
+        row_count: int,
+        computed_at_ms: int,
+        source_max_received_at_ms: int = 0,
+        started_at_ms: int | None = None,
+        finished_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> None:
+        now_ms = _now_ms()
+        self.conn.execute(
+            """
+            INSERT INTO token_radar_publications(
+              projection_version, "window", scope, published_computed_at_ms,
+              published_row_count, published_source_rows, published_source_max_received_at_ms,
+              refresh_status, reason, refresh_computed_at_ms, refresh_started_at_ms,
+              refresh_finished_at_ms, refresh_row_count, refresh_source_rows, error, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, 'ready', NULL, %s, %s, %s, %s, %s, NULL, %s)
+            ON CONFLICT(projection_version, "window", scope) DO UPDATE SET
+              published_computed_at_ms = excluded.published_computed_at_ms,
+              published_row_count = excluded.published_row_count,
+              published_source_rows = excluded.published_source_rows,
+              published_source_max_received_at_ms = excluded.published_source_max_received_at_ms,
+              refresh_status = excluded.refresh_status,
+              reason = excluded.reason,
+              refresh_computed_at_ms = excluded.refresh_computed_at_ms,
+              refresh_started_at_ms = excluded.refresh_started_at_ms,
+              refresh_finished_at_ms = excluded.refresh_finished_at_ms,
+              refresh_row_count = excluded.refresh_row_count,
+              refresh_source_rows = excluded.refresh_source_rows,
+              error = excluded.error,
+              updated_at_ms = excluded.updated_at_ms
+            WHERE token_radar_publications.published_computed_at_ms IS NULL
+               OR token_radar_publications.published_computed_at_ms <= excluded.published_computed_at_ms
+            """,
+            (
+                projection_version,
+                window,
+                scope,
+                int(computed_at_ms),
+                max(0, int(row_count)),
+                max(0, int(source_rows)),
+                max(0, int(source_max_received_at_ms)),
+                int(computed_at_ms),
+                int(started_at_ms) if started_at_ms is not None else None,
+                int(finished_at_ms) if finished_at_ms is not None else None,
+                max(0, int(row_count)),
+                max(0, int(source_rows)),
+                now_ms,
+            ),
+        )
+        if commit:
+            self.conn.commit()
+
+    def latest_publications(
         self,
         *,
         projection_version: str,
@@ -204,22 +267,35 @@ class TokenRadarRepository:
         rows = self.conn.execute(
             f"""
             WITH requested("window", scope) AS (VALUES {values_sql})
-            SELECT coverage.*
+            SELECT publications.*
             FROM requested
-            JOIN token_radar_projection_coverage coverage
-              ON coverage."window" = requested."window"
-             AND coverage.scope = requested.scope
-            WHERE coverage.projection_version = %s
+            JOIN token_radar_publications publications
+              ON publications."window" = requested."window"
+             AND publications.scope = requested.scope
+            WHERE publications.projection_version = %s
             """,
             [*params, projection_version],
         ).fetchall()
         return {
             (str(row["window"]), str(row["scope"])): {
-                "status": str(row["status"]),
+                "status": "ready" if row.get("published_computed_at_ms") is not None else str(row["refresh_status"]),
+                "refresh_status": str(row["refresh_status"]),
                 "reason": row.get("reason"),
-                "source_rows": int(row.get("source_rows") or 0),
-                "row_count": int(row.get("row_count") or 0),
-                "computed_at_ms": int(row["computed_at_ms"]) if row.get("computed_at_ms") is not None else None,
+                "source_rows": int(row.get("published_source_rows") or 0),
+                "row_count": int(row.get("published_row_count") or 0),
+                "source_max_received_at_ms": int(row.get("published_source_max_received_at_ms") or 0),
+                "computed_at_ms": (
+                    int(row["published_computed_at_ms"]) if row.get("published_computed_at_ms") is not None else None
+                ),
+                "published_computed_at_ms": (
+                    int(row["published_computed_at_ms"]) if row.get("published_computed_at_ms") is not None else None
+                ),
+                "refresh_started_at_ms": (
+                    int(row["refresh_started_at_ms"]) if row.get("refresh_started_at_ms") is not None else None
+                ),
+                "refresh_finished_at_ms": (
+                    int(row["refresh_finished_at_ms"]) if row.get("refresh_finished_at_ms") is not None else None
+                ),
                 "error": row.get("error"),
             }
             for row in rows

@@ -26,11 +26,11 @@ Known production finding before implementation:
 
 Live implementation amendment after 2026-05-11 verification:
 
-- `/api/token-radar` must not hydrate `current_market` during the request path. HTTP returns the projection row's persisted market facts; live changes arrive through backend WebSocket `market_update` deltas.
-- `TokenRadarSourceQuery` must not read historical `price_observations` through per-row LATERAL joins. Projection market context comes from `current_market` hydration only; historical event-price deltas are intentionally absent instead of being a slow compatibility layer.
+- `/api/token-radar` hydrates `current_market` from `current_market_field_facts` during the request path. It must not reconstruct live market values from factor snapshots or legacy row aliases.
+- `TokenRadarSourceQuery` must not read historical `price_observations` through per-row LATERAL joins. Historical event-price deltas come from `token_market_price_baselines`.
 - The source query materializes the bounded `events.received_at_ms` window with the event columns needed by scoring, then resolves intents through the current resolver row. Do not rejoin the full `events` table after materialization.
 - `24h/all` analysis lookback is capped at 48h. This preserves the current and previous 24h windows while avoiding 7-day source scans that can starve hot `5m` refreshes.
-- Coverage readiness and projection-run completion are committed atomically. Rows without `ready` coverage are not considered public-ready, even if `token_radar_rows` contains partial output.
+- Public readiness is owned by `token_radar_publications`. Running or failed refreshes do not hide the last published rows.
 
 ## Required Amendments From Engineering Review
 

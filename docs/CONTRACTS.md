@@ -38,6 +38,11 @@ Token Radar market contract:
   holders, volume, provider, and freshness from `current_market.fields`.
 - `/api/token-radar` rows do not expose `price` or `market` aliases derived from
   `factor_snapshot.families.market_quality.facts`.
+- `/api/token-radar` is served from the current-version Token Radar publication
+  pointer. A background refresh may report `projection.refresh_status=running`
+  or `failed` while the endpoint still returns the last successful published
+  rows. Only the absence of a current-version publication returns
+  `projection.status=pending`.
 - `/api/current-market?target_type=Asset|CexToken&target_id=...` returns one
   current-market snapshot:
   `{"target_type": "...", "target_id": "...", "market_status": "...", "fields": {...}}`.
@@ -53,6 +58,14 @@ Token Radar market contract:
 
 `gmgn-twitter-intel current-market --target-type ... --target-id ...` prints the
 same field-aware current-market snapshot used by the HTTP contract.
+
+`gmgn-twitter-intel ops backfill-token-price-baselines --limit ...` backfills
+Token Radar event price baselines from existing message-level market
+observations. It does not call providers.
+
+`gmgn-twitter-intel ops backfill-current-market-field-facts --limit ...`
+backfills current-market field facts from existing price observations. It does
+not call providers.
 
 ## Token Radar Factor Snapshot Discipline
 

@@ -7,6 +7,7 @@ import type {
   MarketFieldFact,
   RadarSortMode,
   RiskCap,
+  ScoreBlock,
   ScoreContribution,
   TimingBlock,
   TokenFactorSnapshot,
@@ -172,6 +173,7 @@ export function tokenRadarRowToTokenItem(
   const quality = scoreBlockFromFamily(qualityFamily, "social_quality", "discussion_quality");
   const propagation = scoreBlockFromFamily(qualityFamily, "social_quality", "propagation");
   const tradeability = scoreBlockFromFamily(marketFamily, "market_quality", "tradeability");
+  const tradeabilityHardRisks = stringArray(tradeability.hard_risks);
   const timing = scoreBlockFromFamily(timingFamily, "timing", "timing");
   const decision = decisionFromRecommendation(
     optionalString(composite.recommended_decision) ?? optionalString(row.decision),
@@ -344,7 +346,7 @@ export function tokenRadarRowToTokenItem(
       market_cap_present: Boolean(tradeability.market_cap_present ?? hasFieldValue(marketCapField)),
       liquidity_present: Boolean(tradeability.liquidity_present ?? hasFieldValue(liquidityField)),
       pool_present: Boolean(tradeability.pool_present ?? marketHasUsableSnapshot),
-      hard_risks: tradeability.hard_risks ?? tradeability.risks,
+      hard_risks: tradeabilityHardRisks.length ? tradeabilityHardRisks : tradeability.risks,
     },
     timing: {
       score: timing.score,
@@ -392,6 +394,7 @@ export function tokenRadarRowToTokenItem(
 }
 
 type FactorFamily = TokenFactorSnapshot["families"][string];
+type DerivedScoreBlock = ScoreBlock & Record<string, unknown>;
 
 type SnapshotRow = AssetFlowRow & {
   factor_snapshot?: TokenFactorSnapshot;
@@ -438,12 +441,11 @@ function marketField(fields: Record<string, unknown>, key: string): MarketFieldF
     : null;
 }
 
-/* eslint-disable @typescript-eslint/no-explicit-any -- internal normalizers return opaque objects; typed at call sites */
 function scoreBlockFromFamily(
   family: FactorFamily,
   factorFamily: string,
   scoreVersionFamily: string,
-): any {
+): DerivedScoreBlock {
   const score = Math.round(requiredNumber(family.score, `factor_snapshot.${factorFamily}.score`));
   const points = factorPoints(family);
   const risks = uniqueStrings(
@@ -477,7 +479,10 @@ function reasonsFromFamily(factorFamily: string, points: FactorPoint[], risks: s
   return uniqueStrings(points.map((point) => `${point.family}.${point.key}`));
 }
 
-function scoreBlockFromComposite(snapshot: TokenFactorSnapshot, blockedReasons: string[]): any {
+function scoreBlockFromComposite(
+  snapshot: TokenFactorSnapshot,
+  blockedReasons: string[],
+): DerivedScoreBlock {
   const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<
     string,
     unknown
@@ -499,8 +504,6 @@ function scoreBlockFromComposite(snapshot: TokenFactorSnapshot, blockedReasons: 
     risk_caps: blockedReasons.map((risk) => ({ risk, cap: 39 })),
   };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */
-
 function factorPoints(family: FactorFamily): FactorPoint[] {
   const factors = recordValue(family.factors);
   return Object.values(factors).filter((value): value is FactorPoint =>

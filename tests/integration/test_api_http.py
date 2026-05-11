@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
+from gmgn_twitter_intel.app.runtime.repository_session import repository_session
 from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
     ApiUnauthorized,
@@ -23,6 +24,7 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     SocialEventExtraction,
     SocialTokenCandidate,
 )
+from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from gmgn_twitter_intel.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
@@ -309,6 +311,16 @@ def make_token_event(
     )
 
 
+def rebuild_token_radar_for_test(client, *, window: str = "5m", scope: str = "all") -> None:
+    with repository_session(client.app.state.service.db_pool) as repos:
+        TokenRadarProjection(repos=repos).rebuild(
+            window=window,
+            scope=scope,
+            now_ms=int(time.time() * 1000),
+            limit=100,
+        )
+
+
 def test_api_bootstrap_exposes_frontend_runtime_config_without_token(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
@@ -371,7 +383,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
         client.app.state.service.ingest.ingest_event(event, is_watched=True)
         HarnessSnapshotBuilder(
             client.app.state.service.harness,
-            tokens=client.app.state.service.tokens,
+            assets=client.app.state.service.assets,
         ).materialize(
             event=event.to_dict(),
             extraction=SocialEventExtraction(
@@ -402,6 +414,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
             run_id="run-event-1",
             model_version="fake-model",
         )
+        rebuild_token_radar_for_test(client, window="5m", scope="all")
 
         headers = {"Authorization": "Bearer secret"}
         recent = client.get("/api/recent?limit=5", headers=headers)
@@ -424,7 +437,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
-    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "resolved"
+    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "UNIQUE_BY_CONTEXT"
 
 
 def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
@@ -706,7 +719,6 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 risk_reasons_json=["thin_liquidity"],
                 evidence_event_ids_json=["event-api-1"],
                 source_event_ids_json=["event-api-1"],
-                agent_run_id="run-api-1",
                 pulse_version="pulse-v1",
                 gate_version="gate-v1",
                 prompt_version="prompt-v1",
@@ -839,6 +851,8 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
         )
         client.app.state.service.ingest.ingest_event(watched_event, is_watched=True)
         client.app.state.service.ingest.ingest_event(public_event, is_watched=False)
+        rebuild_token_radar_for_test(client, window="5m", scope="all")
+        rebuild_token_radar_for_test(client, window="5m", scope="matched")
 
         headers = {"Authorization": "Bearer secret"}
         all_flow = client.get("/api/token-radar", params={"window": "5m", "scope": "all"}, headers=headers)
@@ -889,6 +903,7 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
                 received_at_ms=base_ms - index * 1_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
+        rebuild_token_radar_for_test(client, window="5m", scope="all")
 
         asset_flow = client.get(
             "/api/token-radar",
@@ -926,7 +941,7 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
     assert first_body["has_more"] is True
     assert first_body["query"]["target_type"] == target_type
     assert first_body["query"]["target_id"] == target_id
-    assert first_body["items"][0]["post_quality"]["score_version"] == "token_target_post_quality_v1"
+    assert first_body["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
     assert first_body["items"][0]["post_quality"]["contributions"]
     assert "score" not in first_body["items"][0]
     assert second_page.status_code == 200
@@ -967,6 +982,7 @@ def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):
                 received_at_ms=base_ms - index * 30_000,
             )
             client.app.state.service.ingest.ingest_event(event, is_watched=index == 0)
+        rebuild_token_radar_for_test(client, window="5m", scope="all")
 
         asset_flow = client.get(
             "/api/token-radar",

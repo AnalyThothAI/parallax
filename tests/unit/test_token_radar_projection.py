@@ -186,6 +186,7 @@ def test_project_group_persists_current_runtime_contract_as_factor_snapshot():
     assert snapshot["schema_version"] == "token_factor_snapshot_v1"
     assert snapshot["families"]["social_attention"]["facts"]["mentions_5m"] == 4
     assert snapshot["families"]["social_attention"]["facts"]["mentions_1h"] == 10
+    assert snapshot["families"]["social_attention"]["facts"]["mentions_window"] == 4
     assert snapshot["families"]["social_attention"]["facts"]["unique_authors"] == 4
     assert snapshot["families"]["social_quality"]["facts"]["mentions"] == 4
     assert row["attention_json"] == {}
@@ -627,12 +628,16 @@ def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefe
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
-def test_source_rows_does_not_read_historical_price_observations():
+def test_source_rows_reads_price_baselines_without_price_observations():
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
     TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
+    assert "token_market_price_baselines" in conn.sql
+    assert "event_price_usd" in conn.sql
+    assert "before_event_price_usd" in conn.sql
+    assert "first_price_usd" in conn.sql
     assert "latest_feed_price" not in conn.sql
     assert "latest_subject_price" not in conn.sql
     assert "price_observations" not in conn.sql
@@ -646,7 +651,7 @@ def test_source_rows_does_not_read_historical_price_observations():
     assert conn.params == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
 
 
-def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypatch):
+def test_projection_publishes_ready_rows_atomically_with_finished_run(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
     repos = type(
@@ -671,8 +676,9 @@ def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypa
 
     assert result["status"] == "ready"
     assert recorder.finish_calls[-1]["commit"] is False
-    assert token_radar.coverage[-1]["status"] == "ready"
-    assert token_radar.coverage[-1]["commit"] is True
+    assert token_radar.publications[-1]["computed_at_ms"] == now_ms
+    assert token_radar.publications[-1]["commit"] is True
+    assert token_radar.refreshes[0]["refresh_status"] == "running"
 
 
 def test_resolved_pending_market_never_projects_as_high_alert():
@@ -845,10 +851,14 @@ class FakeProjectionRepository:
 
 class FakeRejectingTokenRadar:
     def __init__(self):
-        self.coverage: list[dict[str, object]] = []
+        self.refreshes: list[dict[str, object]] = []
+        self.publications: list[dict[str, object]] = []
 
-    def mark_coverage(self, **kwargs):
-        self.coverage.append(kwargs)
+    def mark_refresh_status(self, **kwargs):
+        self.refreshes.append(kwargs)
+
+    def publish_rows(self, **kwargs):
+        self.publications.append(kwargs)
 
     def replace_rows(self, **kwargs):
         return False
@@ -857,10 +867,14 @@ class FakeRejectingTokenRadar:
 class FakeTokenRadar:
     def __init__(self):
         self.rows: list[dict[str, object]] = []
-        self.coverage: list[dict[str, object]] = []
+        self.refreshes: list[dict[str, object]] = []
+        self.publications: list[dict[str, object]] = []
 
-    def mark_coverage(self, **kwargs):
-        self.coverage.append(kwargs)
+    def mark_refresh_status(self, **kwargs):
+        self.refreshes.append(kwargs)
+
+    def publish_rows(self, **kwargs):
+        self.publications.append(kwargs)
 
     def replace_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])

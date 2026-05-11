@@ -24,6 +24,7 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
 )
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
+from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_market_sync_worker import AssetMarketSyncWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.dex_market_stream_worker import DexMarketStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.message_market_observation_worker import (
@@ -64,6 +65,7 @@ class CliRuntime:
     evidence: object
     entities: object
     signals: object
+    assets: object
     enrichment: object
     harness: object
     notifications: object
@@ -239,6 +241,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     evidence = PooledRepository(db_pool, EvidenceRepository)
     entities = PooledRepository(db_pool, EntityRepository)
     signals = PooledRepository(db_pool, SignalRepository)
+    assets = PooledRepository(db_pool, AssetRepository)
     enrichment = PooledRepository(db_pool, EnrichmentRepository)
     harness = PooledRepository(db_pool, HarnessRepository)
     notifications = PooledRepository(db_pool, NotificationRepository)
@@ -267,6 +270,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         evidence=evidence,
         entities=entities,
         signals=signals,
+        assets=assets,
         enrichment=enrichment,
         harness=harness,
         notifications=notifications,
@@ -375,7 +379,7 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(token_radar=repos.token_radar),
+        asset_flow=AssetFlowService(token_radar=repos.token_radar, current_market=repos.current_market),
         harness=HarnessService(repos.harness),
         pulse=repos.pulse,
     )

@@ -163,13 +163,13 @@ export function useLiveData() {
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
 
-  const socketMarketUpdates = useMemo(() => socket.marketUpdates ?? [], [socket.marketUpdates]);
   useEffect(() => {
+    const socketMarketUpdates = socket.marketUpdates ?? [];
     if (!socketMarketUpdates.length) {
       return;
     }
     patchTokenRadarMarketUpdate(queryClient, socketMarketUpdates[0]);
-  }, [assetFlowQuery.dataUpdatedAt, queryClient, socketMarketUpdates]);
+  }, [assetFlowQuery.dataUpdatedAt, queryClient, socket.marketUpdates]);
 
   return {
     assetFlowError: assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null,

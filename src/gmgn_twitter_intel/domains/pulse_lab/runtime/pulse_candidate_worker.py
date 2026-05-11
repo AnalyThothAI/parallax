@@ -7,7 +7,7 @@ import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -832,10 +832,8 @@ def _subject_key(target: dict[str, Any], row: dict[str, Any]) -> str:
 
 def _priority(row: dict[str, Any]) -> int:
     factor_snapshot = _factor_snapshot(row) or {}
-    decision_priority = {"high_alert": 30, "watch": 20}.get(
-        _clean(_nested(factor_snapshot, "composite", "recommended_decision")) or "",
-        0,
-    )
+    decision = _clean(_nested(factor_snapshot, "composite", "recommended_decision")) or ""
+    decision_priority = {"high_alert": 30, "watch": 20}.get(decision, 0)
     return decision_priority + safe_int(_nested(factor_snapshot, "composite", "rank_score"))
 
 
@@ -949,8 +947,7 @@ def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
         return None
     if not all(isinstance(snapshot.get(key), dict) for key in ("subject", "hard_gates", "composite")):
         return None
-    result: dict[str, Any] = _jsonable(snapshot)
-    return result
+    return cast(dict[str, Any], _jsonable(snapshot))
 
 
 def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
@@ -1029,9 +1026,9 @@ def _call_optional(target: Any, method: str, *args: Any) -> Any:
     return func(*args)
 
 
-def _transaction(conn: Any) -> Any:
+def _transaction(conn: Any) -> AbstractContextManager[Any]:
     if hasattr(conn, "transaction"):
-        return conn.transaction()
+        return cast(AbstractContextManager[Any], conn.transaction())
     return nullcontext()
 
 

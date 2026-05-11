@@ -4,34 +4,34 @@ from decimal import Decimal
 
 import pytest
 
+from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     _json_payload,
 )
+from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
+def test_projection_publication_round_trips_ready_zero_rows(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = TokenRadarRepository(conn)
-        repo.mark_coverage(
+        repo.publish_rows(
             projection_version="token-radar-v10-current-market",
             window="5m",
             scope="matched",
-            status="ready",
-            reason=None,
             source_rows=17,
             row_count=0,
             computed_at_ms=1_778_000_000_000,
+            source_max_received_at_ms=1_777_999_900_000,
             started_at_ms=1_777_999_990_000,
             finished_at_ms=1_778_000_000_000,
-            error=None,
         )
 
-        coverage = repo.latest_coverage(
+        publications = repo.latest_publications(
             projection_version="token-radar-v10-current-market",
             windows=("5m",),
             scopes=("matched",),
@@ -39,28 +39,44 @@ def test_projection_coverage_round_trips_ready_zero_rows(tmp_path):
     finally:
         conn.close()
 
-    assert coverage == {
+    assert publications == {
         ("5m", "matched"): {
             "status": "ready",
+            "refresh_status": "ready",
             "reason": None,
             "source_rows": 17,
             "row_count": 0,
             "computed_at_ms": 1_778_000_000_000,
+            "published_computed_at_ms": 1_778_000_000_000,
+            "source_max_received_at_ms": 1_777_999_900_000,
+            "refresh_started_at_ms": 1_777_999_990_000,
+            "refresh_finished_at_ms": 1_778_000_000_000,
             "error": None,
         }
     }
 
 
-def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
+def test_failed_refresh_preserves_published_computed_at(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = TokenRadarRepository(conn)
-        repo.mark_coverage(
+        repo.publish_rows(
             projection_version="token-radar-v10-current-market",
             window="1h",
             scope="all",
-            status="failed",
+            source_rows=10,
+            row_count=3,
+            computed_at_ms=1_778_000_000_000,
+            source_max_received_at_ms=1_777_999_900_000,
+            started_at_ms=1_777_999_990_000,
+            finished_at_ms=1_778_000_000_000,
+        )
+        repo.mark_refresh_status(
+            projection_version="token-radar-v10-current-market",
+            window="1h",
+            scope="all",
+            refresh_status="failed",
             reason="query_timeout",
             source_rows=0,
             row_count=0,
@@ -70,7 +86,7 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
             error="statement timeout",
         )
 
-        coverage = repo.latest_coverage(
+        publications = repo.latest_publications(
             projection_version="token-radar-v10-current-market",
             windows=("1h",),
             scopes=("all",),
@@ -78,9 +94,72 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
     finally:
         conn.close()
 
-    assert coverage[("1h", "all")]["status"] == "failed"
-    assert coverage[("1h", "all")]["reason"] == "query_timeout"
-    assert coverage[("1h", "all")]["error"] == "statement timeout"
+    assert publications[("1h", "all")]["status"] == "ready"
+    assert publications[("1h", "all")]["refresh_status"] == "failed"
+    assert publications[("1h", "all")]["reason"] == "query_timeout"
+    assert publications[("1h", "all")]["error"] == "statement timeout"
+    assert publications[("1h", "all")]["published_computed_at_ms"] == 1_778_000_000_000
+
+
+def test_latest_rows_reads_last_published_rows_while_refresh_running(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    old_row = _valid_factor_row()
+    old_row["row_id"] = "row-old"
+    old_row["target_json"] = {"symbol": "OLD"}
+    old_row["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=11)
+    new_row = _valid_factor_row()
+    new_row["row_id"] = "row-new"
+    new_row["target_json"] = {"symbol": "NEW"}
+    new_row["factor_snapshot_json"] = _valid_factor_snapshot(rank_score=99)
+    try:
+        migrate(conn)
+        _insert_event_intent(conn)
+        repo = TokenRadarRepository(conn)
+        assert repo.replace_rows(
+            projection_version="token-radar-v10-current-market",
+            window="24h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[old_row],
+        )
+        repo.publish_rows(
+            projection_version="token-radar-v10-current-market",
+            window="24h",
+            scope="all",
+            source_rows=1,
+            row_count=1,
+            computed_at_ms=1_778_000_000_000,
+            source_max_received_at_ms=1_777_999_900_000,
+            started_at_ms=1_777_999_990_000,
+            finished_at_ms=1_778_000_000_000,
+        )
+        repo.mark_refresh_status(
+            projection_version="token-radar-v10-current-market",
+            window="24h",
+            scope="all",
+            refresh_status="running",
+            reason="projection_window_running",
+            computed_at_ms=1_778_000_100_000,
+            started_at_ms=1_778_000_100_000,
+        )
+        assert repo.replace_rows(
+            projection_version="token-radar-v10-current-market",
+            window="24h",
+            scope="all",
+            computed_at_ms=1_778_000_100_000,
+            rows=[new_row],
+        )
+
+        latest = repo.latest_rows(
+            window="24h",
+            scope="all",
+            limit=10,
+            projection_version="token-radar-v10-current-market",
+        )
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in latest] == ["row-old"]
 
 
 def test_json_payload_converts_decimal_values_before_jsonb_binding():
@@ -114,7 +193,7 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
         "event_id": "event-1",
         "target_type": "Asset",
         "target_id": "asset-1",
-        "pricefeed_id": "feed-1",
+        "pricefeed_id": None,
         "intent_json": {"display_symbol": "BOV"},
         "asset_json": {},
         "primary_venue_json": None,
@@ -128,6 +207,7 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
     }
     try:
         migrate(conn)
+        _insert_event_intent(conn)
         repo = TokenRadarRepository(conn)
         repo.replace_rows(
             projection_version="token-radar-v9-factor-snapshot",
@@ -135,6 +215,15 @@ def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
             scope="all",
             computed_at_ms=1_778_000_000_000,
             rows=[row],
+        )
+        repo.publish_rows(
+            projection_version="token-radar-v9-factor-snapshot",
+            window="1h",
+            scope="all",
+            source_rows=1,
+            row_count=1,
+            computed_at_ms=1_778_000_000_000,
+            source_max_received_at_ms=1_778_000_000_000,
         )
 
         latest = repo.latest_rows(
@@ -160,7 +249,7 @@ def test_replace_rows_insert_uses_factor_snapshot_columns_without_legacy_score_c
         "event_id": "event-1",
         "target_type": "Asset",
         "target_id": "asset-1",
-        "pricefeed_id": "feed-1",
+        "pricefeed_id": None,
         "intent_json": {"display_symbol": "BOV"},
         "asset_json": {},
         "primary_venue_json": None,
@@ -185,6 +274,27 @@ def test_replace_rows_insert_uses_factor_snapshot_columns_without_legacy_score_c
     assert "factor_snapshot_json" in conn.insert_sql
     assert "factor_version" in conn.insert_sql
     assert "score_json" not in conn.insert_sql
+
+
+def _insert_event_intent(conn) -> None:
+    EvidenceRepository(conn).insert_event(
+        make_event("event-1", text="$BOV", received_at_ms=1_778_000_000_000),
+        is_watched=True,
+    )
+    conn.execute(
+        """
+        INSERT INTO token_intents(
+          intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
+          display_symbol, display_name, chain_hint, address_hint, intent_status,
+          intent_confidence, created_at_ms, updated_at_ms
+        )
+        VALUES (
+          'intent-1', 'event-1', 'symbol:BOV', 'test', NULL,
+          'BOV', NULL, NULL, NULL, 'pending', 1.0, 1_778_000_000_000, 1_778_000_000_000
+        )
+        """
+    )
+    conn.commit()
 
 
 def test_replace_rows_requires_factor_snapshot_json_before_insert():
@@ -366,7 +476,7 @@ def _valid_factor_row() -> dict[str, object]:
         "event_id": "event-1",
         "target_type": "Asset",
         "target_id": "asset-1",
-        "pricefeed_id": "feed-1",
+        "pricefeed_id": None,
         "intent_json": {"display_symbol": "BOV"},
         "asset_json": {},
         "primary_venue_json": None,

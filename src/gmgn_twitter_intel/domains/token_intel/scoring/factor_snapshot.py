@@ -97,6 +97,7 @@ def _social_attention_family(*, attention: dict[str, Any]) -> dict[str, Any]:
         "mentions_1h": _count_int(attention.get("mentions_1h")),
         "mentions_4h": _count_int(attention.get("mentions_4h")),
         "mentions_24h": _count_int(attention.get("mentions_24h")),
+        "mentions_window": _count_int(attention.get("mentions_window")),
         "unique_authors": _count_int(attention.get("unique_authors")),
         "watched_mentions": _count_int(attention.get("watched_mentions")),
         "latest_seen_ms": _optional_int(attention.get("latest_seen_ms")),
@@ -108,6 +109,7 @@ def _social_attention_family(*, attention: dict[str, Any]) -> dict[str, Any]:
             _count_factor("social_attention", "mentions_1h", facts["mentions_1h"], scale=10),
             _count_factor("social_attention", "mentions_4h", facts["mentions_4h"], scale=20),
             _count_factor("social_attention", "mentions_24h", facts["mentions_24h"], scale=40),
+            _count_factor("social_attention", "mentions_window", facts["mentions_window"], scale=10),
             _count_factor("social_attention", "unique_authors", facts["unique_authors"], scale=10),
             _count_factor("social_attention", "watched_mentions", facts["watched_mentions"], scale=3),
         ],
@@ -162,7 +164,7 @@ def _social_semantics_family(*, social_semantics: dict[str, Any]) -> dict[str, A
             _ratio_factor("social_semantics", "impact_mean", impact_mean),
             _ratio_factor("social_semantics", "novelty_mean", novelty_mean),
             _ratio_factor("social_semantics", "confidence_mean", confidence_mean),
-            _direction_factor(facts["direction_counts"]),
+            _direction_factor(direction_counts),
         ],
     )
 
@@ -171,19 +173,26 @@ def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) ->
     target_market_type = _target_market_type(target)
     raw_field_statuses = market.get("field_statuses")
     field_statuses: dict[str, Any] = raw_field_statuses if isinstance(raw_field_statuses, dict) else {}
+    market_status = _optional_str(market.get("market_status") or market.get("market_observation_status"))
+    volume_24h_usd = _optional_float(market.get("volume_24h_usd"))
+    open_interest_usd = _optional_float(market.get("open_interest_usd"))
+    native_market_id = _optional_str(market.get("native_market_id"))
+    holders = _optional_int(market.get("holders"))
+    liquidity_usd = _optional_float(market.get("liquidity_usd"))
+    market_cap_usd = _optional_float(market.get("market_cap_usd"))
     facts: dict[str, Any] = {
         "target_market_type": target_market_type,
-        "market_status": _optional_str(market.get("market_status") or market.get("market_observation_status")),
+        "market_status": market_status,
         "price_usd": _optional_float(market.get("price_usd")),
         "price_quote": _optional_float(market.get("price_quote")),
         "quote_symbol": _optional_str(market.get("quote_symbol")),
         "price_basis": _optional_str(market.get("price_basis")),
-        "holders": _optional_int(market.get("holders")),
-        "liquidity_usd": _optional_float(market.get("liquidity_usd")),
-        "market_cap_usd": _optional_float(market.get("market_cap_usd")),
-        "volume_24h_usd": _optional_float(market.get("volume_24h_usd")),
-        "open_interest_usd": _optional_float(market.get("open_interest_usd")),
-        "native_market_id": _optional_str(market.get("native_market_id")),
+        "holders": holders,
+        "liquidity_usd": liquidity_usd,
+        "market_cap_usd": market_cap_usd,
+        "volume_24h_usd": volume_24h_usd,
+        "open_interest_usd": open_interest_usd,
+        "native_market_id": native_market_id,
         "field_statuses": {
             "price_usd": _optional_str(field_statuses.get("price_usd")),
             "market_cap_usd": _optional_str(field_statuses.get("market_cap_usd") or market.get("market_cap_status")),
@@ -193,17 +202,17 @@ def _market_quality_family(*, target: dict[str, Any], market: dict[str, Any]) ->
     }
     if target_market_type == "cex":
         factors = [
-            _market_status_factor(facts["market_status"]),
-            _count_factor("market_quality", "volume_24h_usd", facts["volume_24h_usd"], scale=5_000_000),
-            _count_factor("market_quality", "open_interest_usd", facts["open_interest_usd"], scale=2_000_000),
-            _presence_factor("market_quality", "native_market_id", facts["native_market_id"]),
+            _market_status_factor(market_status),
+            _count_factor("market_quality", "volume_24h_usd", volume_24h_usd, scale=5_000_000),
+            _count_factor("market_quality", "open_interest_usd", open_interest_usd, scale=2_000_000),
+            _presence_factor("market_quality", "native_market_id", native_market_id),
         ]
     else:
         factors = [
-            _market_status_factor(facts["market_status"]),
-            _dex_market_factor("holders", facts["holders"]),
-            _dex_market_factor("liquidity_usd", facts["liquidity_usd"]),
-            _dex_market_factor("market_cap_usd", facts["market_cap_usd"]),
+            _market_status_factor(market_status),
+            _dex_market_factor("holders", holders),
+            _dex_market_factor("liquidity_usd", liquidity_usd),
+            _dex_market_factor("market_cap_usd", market_cap_usd),
         ]
     return _family(
         "market_quality",

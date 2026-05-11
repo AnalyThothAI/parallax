@@ -139,6 +139,8 @@ class CliTests(unittest.TestCase):
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
             ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
+            ["ops", "backfill-token-price-baselines", "--limit", "25"],
+            ["ops", "backfill-current-market-field-facts", "--limit", "25"],
             ["current-market", "--target-type", "Asset", "--target-id", f"asset:eip155:1:erc20:{PEPE}"],
         ]
 
@@ -163,8 +165,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[10].ops_command, "audit-token-intent")
         self.assertEqual(parsed[11].ops_command, "rebuild-token-radar")
         self.assertEqual(parsed[12].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[13].command, "current-market")
-        self.assertEqual(parsed[13].target_type, "Asset")
+        self.assertEqual(parsed[13].ops_command, "backfill-token-price-baselines")
+        self.assertEqual(parsed[13].limit, 25)
+        self.assertEqual(parsed[14].ops_command, "backfill-current-market-field-facts")
+        self.assertEqual(parsed[14].limit, 25)
+        self.assertEqual(parsed[15].command, "current-market")
+        self.assertEqual(parsed[15].target_type, "Asset")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -269,7 +275,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[2]["data"]["scope"], "all")
         self.assertEqual(lines[2]["data"]["targets"][0]["target"]["symbol"], "PEPE")
         self.assertEqual(lines[2]["data"]["targets"][0]["attention"]["mentions_window"], 1)
-        self.assertEqual(lines[3]["data"]["market_status"], "fresh")
+        self.assertEqual(lines[3]["data"]["market_status"], "partial")
         self.assertEqual(lines[3]["data"]["fields"]["price_usd"]["status"], "fresh")
         self.assertEqual(
             {item["alert_type"] for item in lines[4]["data"]["items"]},

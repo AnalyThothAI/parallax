@@ -63,12 +63,12 @@ export function TokenTargetPage() {
   const targetType = params.targetType as TargetRef["target_type"] | undefined;
   const isValidTargetType = Boolean(targetType && VALID_TARGET_TYPES.has(targetType));
   const isValidParams = isValidTargetType && Boolean(params.targetId);
-  const target: TargetRef | null = useMemo(
+  const target = useMemo<TargetRef | null>(
     () =>
       isValidParams && targetType && params.targetId
         ? { target_type: targetType, target_id: params.targetId }
         : null,
-    [isValidParams, targetType, params.targetId],
+    [isValidParams, params.targetId, targetType],
   );
 
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";

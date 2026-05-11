@@ -9,7 +9,7 @@ SUBJECT_TYPE = "Asset"
 SUBJECT_ID = "asset:solana:token:TROLL"
 
 
-def test_current_market_sql_bounds_field_reads_to_read_time():
+def test_current_market_sql_reads_field_facts_not_price_observations():
     conn = _CaptureConnection()
 
     CurrentMarketRepository(conn).current_for_subjects(
@@ -18,8 +18,9 @@ def test_current_market_sql_bounds_field_reads_to_read_time():
     )
 
     assert conn.params == [SUBJECT_TYPE, SUBJECT_ID, 1_700_086_430_000]
-    assert "clock(now_ms) AS (VALUES (%s))" in conn.sql
-    assert conn.sql.count("observed_at_ms <= clock.now_ms") == 6
+    assert "current_market_field_facts" in conn.sql
+    assert "price_observations" not in conn.sql
+    assert "observed_at_ms <= %s" in conn.sql
 
 
 def test_current_market_keeps_price_fresh_while_market_cap_stale(tmp_path):
@@ -29,7 +30,7 @@ def test_current_market_keeps_price_fresh_while_market_cap_stale(tmp_path):
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
-            pricefeed_id="feed-search",
+            pricefeed_id=None,
             observed_at_ms=1_700_000_000_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -41,7 +42,7 @@ def test_current_market_keeps_price_fresh_while_market_cap_stale(tmp_path):
         )
         observations.insert_observation(
             provider="okx_dex_price",
-            pricefeed_id="feed-price",
+            pricefeed_id=None,
             observed_at_ms=1_700_086_400_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -74,7 +75,7 @@ def test_current_market_updates_market_cap_from_full_metadata_provider(tmp_path)
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
-            pricefeed_id="feed-search",
+            pricefeed_id=None,
             observed_at_ms=1_700_086_420_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -103,7 +104,7 @@ def test_current_market_reads_okx_dex_ws_price_info_as_metadata_provider(tmp_pat
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
-            pricefeed_id="feed-search",
+            pricefeed_id=None,
             observed_at_ms=1_700_000_000_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -115,7 +116,7 @@ def test_current_market_reads_okx_dex_ws_price_info_as_metadata_provider(tmp_pat
         )
         observations.insert_observation(
             provider="okx_dex_ws_price_info",
-            pricefeed_id="feed-ws",
+            pricefeed_id=None,
             observed_at_ms=1_700_086_420_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -149,7 +150,7 @@ def test_current_market_ignores_observations_after_read_time(tmp_path):
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_dex_search",
-            pricefeed_id="feed-search-before",
+            pricefeed_id=None,
             observed_at_ms=1_700_000_000_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -161,7 +162,7 @@ def test_current_market_ignores_observations_after_read_time(tmp_path):
         )
         observations.insert_observation(
             provider="okx_dex_search",
-            pricefeed_id="feed-search-future",
+            pricefeed_id=None,
             observed_at_ms=1_700_086_440_000,
             subject_type=SUBJECT_TYPE,
             subject_id=SUBJECT_ID,
@@ -191,7 +192,7 @@ def test_current_market_reads_cex_ticker_fields(tmp_path):
         observations = PriceObservationRepository(conn)
         observations.insert_observation(
             provider="okx_cex",
-            pricefeed_id="feed-btc",
+            pricefeed_id=None,
             observed_at_ms=1_700_086_420_000,
             subject_type="CexToken",
             subject_id="cex_token:BTC",
