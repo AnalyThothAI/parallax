@@ -58,6 +58,9 @@ def _build_external_arbiter(*, settings=None):
     settings = settings or load_settings(require_ws_token=False)
     okx = OkxDexClient(
         base_url=settings.okx_dex_base_url if hasattr(settings, "okx_dex_base_url") else "https://web3.okx.com",
+        api_key=settings.okx_dex_api_key,
+        secret_key=settings.okx_dex_secret_key,
+        passphrase=settings.okx_dex_passphrase,
     )
     cg = CoingeckoSearchClient()
     return ExternalArbiter(okx_client=okx, coingecko_client=cg)
