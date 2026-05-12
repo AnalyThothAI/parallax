@@ -17,13 +17,13 @@ class AnchorPriceWorker:
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
         cex_market: Any = None,
-        dex_market: Any = None,
+        dex_quote_market: Any = None,
         interval_seconds: float = 5.0,
         limit: int = 100,
     ) -> None:
         self.repository_session = repository_session
         self.cex_market = cex_market
-        self.dex_market = dex_market
+        self.dex_quote_market = dex_quote_market
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.limit = max(1, int(limit))
         self.last_started_at_ms: int | None = None
@@ -49,7 +49,7 @@ class AnchorPriceWorker:
             result = observe_anchor_prices(
                 repos=repos,
                 cex_market=self.cex_market,
-                dex_market=self.dex_market,
+                dex_quote_market=self.dex_quote_market,
                 now_ms=observed_at_ms,
                 limit=self.limit,
             )
@@ -61,7 +61,7 @@ class AnchorPriceWorker:
         self._stopped = True
 
     def close(self) -> None:
-        for provider in (self.cex_market, self.dex_market):
+        for provider in (self.cex_market, self.dex_quote_market):
             close = getattr(provider, "close", None)
             if close:
                 close()

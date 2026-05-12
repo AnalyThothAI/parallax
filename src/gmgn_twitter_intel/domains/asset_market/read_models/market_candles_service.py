@@ -6,9 +6,9 @@ from gmgn_twitter_intel.domains.asset_market.providers import MarketCandle
 
 
 class MarketCandlesService:
-    def __init__(self, *, cex_market: Any | None, dex_market: Any | None) -> None:
+    def __init__(self, *, cex_market: Any | None, dex_candle_market: Any | None) -> None:
         self.cex_market = cex_market
-        self.dex_market = dex_market
+        self.dex_candle_market = dex_candle_market
 
     def enrich_overlay(self, overlay: dict[str, Any] | None, *, window: str) -> dict[str, Any]:
         base = dict(overlay) if isinstance(overlay, dict) else {"status": "missing"}
@@ -43,21 +43,20 @@ class MarketCandlesService:
         chain_id = _text(overlay.get("chain_id"))
         address = _text(overlay.get("address"))
         if not chain_id or not address:
-            return _anchor_overlay(overlay, status="missing_identity", bar=bar, source="okx_dex_candles")
-        candles = getattr(self.dex_market, "token_candles", None)
-        if not candles:
-            return _anchor_overlay(overlay, status="unsupported", bar=bar, source="okx_dex_candles")
+            return _anchor_overlay(overlay, status="missing_identity", bar=bar, source="gmgn_dex_candles")
+        if self.dex_candle_market is None:
+            return _anchor_overlay(overlay, status="unsupported", bar=bar, source="gmgn_dex_candles")
         try:
-            rows = candles(chain_id=chain_id, address=address, bar=bar, limit=limit)
+            rows = self.dex_candle_market.token_candles(chain_id=chain_id, address=address, bar=bar, limit=limit)
         except Exception as exc:
             return _anchor_overlay(
                 overlay,
                 status="error",
                 bar=bar,
-                source="okx_dex_candles",
+                source="gmgn_dex_candles",
                 error=type(exc).__name__,
             )
-        return _ohlc_overlay(overlay, candles=rows, bar=bar, source="okx_dex_candles")
+        return _ohlc_overlay(overlay, candles=rows, bar=bar, source="gmgn_dex_candles")
 
 
 def _ohlc_overlay(

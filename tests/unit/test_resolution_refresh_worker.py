@@ -34,7 +34,7 @@ def test_symbol_lookup_writes_provider_rank_to_identity_payload():
     result = _process_dex_symbol_lookup(
         repos=repos,
         lookup_key="symbol:SPARSE",
-        dex_market=FakeDexMarket(
+        dex_discovery_market=FakeDexMarket(
             candidates=[
                 _candidate(chain_id="eip155:1", address="0x1111111111111111111111111111111111111111"),
                 _candidate(chain_id="eip155:56", address="0x2222222222222222222222222222222222222222"),

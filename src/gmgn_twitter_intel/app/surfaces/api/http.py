@@ -637,7 +637,7 @@ def _enrich_search_inspect_market_overlay(runtime: Any, data: dict[str, Any], *,
     providers = runtime.providers.asset_market
     token_result["market_overlay"] = MarketCandlesService(
         cex_market=providers.message_cex_market,
-        dex_market=providers.message_dex_market,
+        dex_candle_market=providers.dex_candle_market,
     ).enrich_overlay(token_result.get("market_overlay"), window=window)
 
 

@@ -196,16 +196,18 @@ def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypa
         lambda settings, *, start_collector: SimpleNamespace(
             ingestion=SimpleNamespace(upstream_client_factory=None),
             asset_market=SimpleNamespace(
-                projection_dex_market=None,
                 sync_cex_market=None,
-                sync_dex_market=None,
                 message_cex_market=None,
-                message_dex_market=None,
-                discovery_dex_market=None,
+                dex_discovery_market=None,
+                dex_quote_market=None,
+                dex_candle_market=None,
+                dex_profile_market=None,
+                stream_dex_market=None,
                 discovery_chain_ids=(),
             ),
             social_enrichment=SimpleNamespace(event_enrichment=None),
             pulse_lab=SimpleNamespace(recommendation_provider=FakePulseProvider(model=settings.pulse_agent_model)),
+            marketlane=SimpleNamespace(stock_quote_provider=None),
         ),
     )
 
