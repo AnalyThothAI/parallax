@@ -218,6 +218,76 @@ def test_anchor_price_observation_stops_current_dex_round_on_provider_cooldown()
     assert repos.conn.commits == 0
 
 
+def test_anchor_price_observation_isolates_non_cooldown_dex_token_errors():
+    repos = FakeRepos(
+        rows=[
+            {
+                "event_id": "event-good-1",
+                "intent_id": "intent-good-1",
+                "resolution_id": "resolution-good-1",
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:good-1",
+                "pricefeed_id": None,
+                "event_received_at_ms": 1_700_000_000_001,
+                "asset_chain_id": "solana",
+                "asset_address": "good-1",
+                "asset_symbol": "GOOD1",
+            },
+            {
+                "event_id": "event-bad",
+                "intent_id": "intent-bad",
+                "resolution_id": "resolution-bad",
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:bad",
+                "pricefeed_id": None,
+                "event_received_at_ms": 1_700_000_000_002,
+                "asset_chain_id": "solana",
+                "asset_address": "bad",
+                "asset_symbol": "BAD",
+            },
+            {
+                "event_id": "event-good-2",
+                "intent_id": "intent-good-2",
+                "resolution_id": "resolution-good-2",
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:good-2",
+                "pricefeed_id": None,
+                "event_received_at_ms": 1_700_000_000_003,
+                "asset_chain_id": "solana",
+                "asset_address": "good-2",
+                "asset_symbol": "GOOD2",
+            },
+        ]
+    )
+    dex_market = SingleTokenFailingDexMarket(error_address="bad")
+
+    result = observe_anchor_prices(
+        repos=repos,
+        cex_market=None,
+        dex_quote_market=dex_market,
+        now_ms=1_700_000_001_000,
+        limit=100,
+    )
+
+    assert result["rows_selected"] == 3
+    assert result["dex_price_requests"] == 4
+    assert result["provider_errors"] == 1
+    assert result["errors"] == [
+        {
+            "provider": "gmgn_dex_quote",
+            "error": "GET /v1/token/info failed: invalid argument",
+            "tokens": 1,
+        }
+    ]
+    assert result["anchor_observations_written"] == 2
+    assert result["skipped_missing_market"] == 1
+    assert [item["source_event_id"] for item in repos.price_observations.observations] == [
+        "event-good-1",
+        "event-good-2",
+    ]
+    assert repos.conn.commits == 1
+
+
 class FakeRepos:
     def __init__(self, rows):
         self.conn = FakeConn(rows)
@@ -288,3 +358,30 @@ class FailingDexMarket:
     def token_quotes(self, tokens):
         self.calls.append(tokens)
         raise self.error
+
+
+class SingleTokenFailingDexMarket:
+    def __init__(self, *, error_address):
+        self.error_address = error_address
+        self.calls = []
+
+    def token_quotes(self, tokens):
+        self.calls.append(tokens)
+        if len(tokens) > 1:
+            raise RuntimeError("GET /v1/token/info failed: invalid argument")
+        token = tokens[0]
+        if token.address == self.error_address:
+            raise RuntimeError("GET /v1/token/info failed: invalid argument")
+        return [
+            DexTokenQuote(
+                chain_id=token.chain_id,
+                address=token.address,
+                observed_at_ms=1_700_000_001_000,
+                price_usd=1.0,
+                market_cap_usd=10_000.0,
+                liquidity_usd=5_000.0,
+                volume_24h_usd=2_000.0,
+                holders=10,
+                raw={"address": token.address},
+            )
+        ]

@@ -126,20 +126,45 @@ def _fetch_dex_quotes(
         try:
             chunk_quotes = dex_quote_market.token_quotes(chunk)
         except Exception as exc:
-            result["provider_errors"] += 1
-            result["errors"].append(
-                {
-                    "provider": "gmgn_dex_quote",
-                    "error": str(exc),
-                    "tokens": len(chunk),
-                }
-            )
             if _is_provider_cooldown_error(exc):
+                _record_dex_provider_error(result, exc=exc, tokens=len(chunk))
                 break
-            continue
+            chunk_quotes, should_stop = _fetch_dex_quotes_individually(
+                chunk,
+                dex_quote_market=dex_quote_market,
+                result=result,
+            )
+            if should_stop:
+                break
         for price in chunk_quotes:
             quotes[(str(price.chain_id), _normalize_address(price.address))] = price
     return quotes
+
+
+def _fetch_dex_quotes_individually(
+    items: list[DexTokenQuoteRequest], *, dex_quote_market: Any, result: dict[str, Any]
+) -> tuple[list[DexTokenQuote], bool]:
+    quotes: list[DexTokenQuote] = []
+    for item in items:
+        result["dex_price_requests"] += 1
+        try:
+            quotes.extend(dex_quote_market.token_quotes([item]))
+        except Exception as exc:
+            _record_dex_provider_error(result, exc=exc, tokens=1)
+            if _is_provider_cooldown_error(exc):
+                return quotes, True
+    return quotes, False
+
+
+def _record_dex_provider_error(result: dict[str, Any], *, exc: Exception, tokens: int) -> None:
+    result["provider_errors"] += 1
+    result["errors"].append(
+        {
+            "provider": "gmgn_dex_quote",
+            "error": str(exc),
+            "tokens": tokens,
+        }
+    )
 
 
 def _write_cex_observation(
