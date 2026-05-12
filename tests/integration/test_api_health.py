@@ -57,6 +57,7 @@ def test_healthz_and_readyz_return_status(tmp_path):
     assert ready.json()["pulse_agent"]["configured"] is False
     assert ready.json()["pulse_agent"]["worker_running"] is False
     assert ready.json()["anchor_price"]["worker_running"] is False
+    assert ready.json()["asset_profile_refresh"]["worker_running"] is False
     assert ready.json()["live_price_gateway"]["worker_running"] is False
     assert "token_resolution" not in ready.json()
     assert "provider_status" not in ready.json()
@@ -272,6 +273,31 @@ def test_readiness_includes_pulse_agent_fields(monkeypatch):
     assert payload["pulse_agent"]["last_result"] == {"processed": 1}
 
 
+def test_readiness_includes_asset_profile_refresh_fields(monkeypatch):
+    runtime = _minimal_runtime()
+    runtime.asset_profile_refresh_worker = SimpleNamespace(
+        last_started_at_ms=1_000,
+        last_run_at_ms=2_000,
+        last_result={"selected": 1, "ready": 1},
+        last_error=None,
+    )
+    runtime.asset_profile_refresh_task = RunningTask()
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+    monkeypatch.setattr(app_module, "_enrichment_job_counts", lambda _: {})
+    monkeypatch.setattr(app_module, "_notification_summary", lambda _: {})
+
+    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+
+    assert status_code == 200
+    assert payload["asset_profile_refresh"] == {
+        "worker_running": True,
+        "last_started_at_ms": 1_000,
+        "last_run_at_ms": 2_000,
+        "last_result": {"selected": 1, "ready": 1},
+        "last_error": None,
+    }
+
+
 def test_stop_runtime_closes_pulse_worker_client():
     async def scenario():
         runtime = _minimal_runtime()
@@ -360,6 +386,8 @@ def _minimal_runtime():
         notification_delivery_task=None,
         anchor_price_worker=None,
         anchor_price_task=None,
+        asset_profile_refresh_worker=None,
+        asset_profile_refresh_task=None,
         live_price_gateway=None,
         live_price_gateway_task=None,
         resolution_refresh_worker=None,

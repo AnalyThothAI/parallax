@@ -28,6 +28,7 @@ from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import AnchorPriceWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository, HarnessService
@@ -83,6 +84,7 @@ class CliRuntime:
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
     anchor_price_worker: AnchorPriceWorker | None = None
+    asset_profile_refresh_worker: AssetProfileRefreshWorker | None = None
     resolution_refresh_worker: ResolutionRefreshWorker | None = None
     live_price_gateway: LivePriceGateway | None = None
     stock_quote_provider: object | None = None
@@ -95,6 +97,7 @@ class CliRuntime:
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
     anchor_price_task: asyncio.Task | None = None
+    asset_profile_refresh_task: asyncio.Task | None = None
     resolution_refresh_task: asyncio.Task | None = None
     live_price_gateway_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
@@ -338,6 +341,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             if runtime.token_radar_projection_worker is not None
             else None,
         )
+    if start_collector and providers.asset_market.dex_profile_market is not None:
+        runtime.asset_profile_refresh_worker = AssetProfileRefreshWorker(
+            dex_profile_market=providers.asset_market.dex_profile_market,
+            repository_session=lambda: repository_session(db_pool),
+            interval_seconds=60.0,
+            limit=50,
+        )
     if start_collector and providers.asset_market.dex_discovery_market is not None:
         runtime.resolution_refresh_worker = ResolutionRefreshWorker(
             dex_discovery_market=providers.asset_market.dex_discovery_market,
@@ -395,6 +405,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
     if runtime.anchor_price_worker is not None and runtime.anchor_price_task is None:
         runtime.anchor_price_task = asyncio.create_task(runtime.anchor_price_worker.run())
+    if runtime.asset_profile_refresh_worker is not None and runtime.asset_profile_refresh_task is None:
+        runtime.asset_profile_refresh_task = asyncio.create_task(runtime.asset_profile_refresh_worker.run())
     if runtime.resolution_refresh_worker is not None and runtime.resolution_refresh_task is None:
         runtime.resolution_refresh_task = asyncio.create_task(runtime.resolution_refresh_worker.run())
     if runtime.live_price_gateway is not None and runtime.live_price_gateway_task is None:
@@ -424,6 +436,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_delivery_worker.stop()
     if runtime.anchor_price_worker is not None:
         runtime.anchor_price_worker.stop()
+    if runtime.asset_profile_refresh_worker is not None:
+        runtime.asset_profile_refresh_worker.stop()
     if runtime.resolution_refresh_worker is not None:
         runtime.resolution_refresh_worker.stop()
     if runtime.live_price_gateway is not None:
@@ -443,6 +457,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.notification_task,
             runtime.notification_delivery_task,
             runtime.anchor_price_task,
+            runtime.asset_profile_refresh_task,
             runtime.resolution_refresh_task,
             runtime.live_price_gateway_task,
             runtime.pulse_candidate_task,
@@ -462,6 +477,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.anchor_price_worker is not None:
         runtime.anchor_price_worker.close()
+    if runtime.asset_profile_refresh_worker is not None:
+        runtime.asset_profile_refresh_worker.close()
     if runtime.resolution_refresh_worker is not None:
         runtime.resolution_refresh_worker.close()
     if runtime.live_price_gateway is not None:
@@ -567,6 +584,21 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_result": runtime.anchor_price_worker.last_result if runtime.anchor_price_worker else None,
             "last_error": runtime.anchor_price_worker.last_error if runtime.anchor_price_worker else None,
         },
+        "asset_profile_refresh": {
+            "worker_running": _task_running(runtime.asset_profile_refresh_task),
+            "last_started_at_ms": runtime.asset_profile_refresh_worker.last_started_at_ms
+            if runtime.asset_profile_refresh_worker
+            else None,
+            "last_run_at_ms": runtime.asset_profile_refresh_worker.last_run_at_ms
+            if runtime.asset_profile_refresh_worker
+            else None,
+            "last_result": runtime.asset_profile_refresh_worker.last_result
+            if runtime.asset_profile_refresh_worker
+            else None,
+            "last_error": runtime.asset_profile_refresh_worker.last_error
+            if runtime.asset_profile_refresh_worker
+            else None,
+        },
         "resolution_refresh": {
             "worker_running": _task_running(runtime.resolution_refresh_task),
             "last_started_at_ms": runtime.resolution_refresh_worker.last_started_at_ms
@@ -610,6 +642,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_delivery_worker_stopped")
     if runtime.anchor_price_worker is not None and not _task_running(runtime.anchor_price_task):
         reasons.append("anchor_price_worker_stopped")
+    if runtime.asset_profile_refresh_worker is not None and not _task_running(runtime.asset_profile_refresh_task):
+        reasons.append("asset_profile_refresh_worker_stopped")
     if runtime.resolution_refresh_worker is not None and not _task_running(runtime.resolution_refresh_task):
         reasons.append("resolution_refresh_worker_stopped")
     if runtime.live_price_gateway is not None and not _task_running(runtime.live_price_gateway_task):
