@@ -621,6 +621,11 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         if anchor_observed_at_ms is not None and event_received_at_ms is not None
         else None
     )
+    market_cap_usd = social_start.get("event_price_market_cap_usd")
+    liquidity_usd = social_start.get("event_price_liquidity_usd")
+    volume_24h_usd = social_start.get("event_price_volume_24h_usd")
+    open_interest_usd = social_start.get("event_price_open_interest_usd")
+    holders = social_start.get("event_price_holders")
     market: dict[str, Any] = {
         "market_status": "anchored",
         "market_observation_status": "ready",
@@ -632,16 +637,21 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         "price_quote": None,
         "quote_symbol": social_start.get("event_price_quote_symbol"),
         "price_basis": social_start.get("event_price_basis"),
-        "market_cap_usd": None,
-        "liquidity_usd": None,
-        "volume_24h_usd": None,
-        "open_interest_usd": None,
-        "holders": None,
-        "field_statuses": {},
+        "market_cap_usd": market_cap_usd,
+        "liquidity_usd": liquidity_usd,
+        "volume_24h_usd": volume_24h_usd,
+        "open_interest_usd": open_interest_usd,
+        "holders": holders,
+        "field_statuses": {
+            "market_cap_usd": _field_status(market_cap_usd),
+            "liquidity_usd": _field_status(liquidity_usd),
+            "volume_24h_usd": _field_status(volume_24h_usd),
+            "holders": _field_status(holders),
+        },
         "price_status": "anchor_only",
-        "market_cap_status": "missing",
-        "liquidity_status": "missing",
-        "holders_status": "missing",
+        "market_cap_status": _field_status(market_cap_usd),
+        "liquidity_status": _field_status(liquidity_usd),
+        "holders_status": _field_status(holders),
         "snapshot_age_ms": None,
         "snapshot_observed_at_ms": None,
         "social_signal_start_ms": event_received_at_ms,
@@ -743,6 +753,11 @@ def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
     return {
         "market_status": market.get("market_status"),
         "market_observation_status": market.get("market_observation_status"),
+        "market_market_cap_usd": market.get("market_cap_usd"),
+        "market_liquidity_usd": market.get("liquidity_usd"),
+        "market_volume_24h_usd": market.get("volume_24h_usd"),
+        "market_open_interest_usd": market.get("open_interest_usd"),
+        "market_holders": market.get("holders"),
         "price_change_since_social_pct": market.get("price_change_since_social_pct"),
         "price_change_before_social_pct": market.get("price_change_before_social_pct"),
     }
@@ -789,6 +804,10 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _field_status(value: Any) -> str:
+    return "ready" if value is not None else "missing"
 
 
 def _display_symbol(row: dict[str, Any]) -> str | None:

@@ -90,6 +90,11 @@ class TokenRadarSourceQuery:
               price_baselines.event_price_quote,
               price_baselines.event_price_quote_symbol,
               price_baselines.event_price_basis,
+              event_price_observation.market_cap_usd AS event_price_market_cap_usd,
+              event_price_observation.liquidity_usd AS event_price_liquidity_usd,
+              event_price_observation.volume_24h_usd AS event_price_volume_24h_usd,
+              event_price_observation.open_interest_usd AS event_price_open_interest_usd,
+              event_price_observation.holders AS event_price_holders,
               price_baselines.before_event_price_observed_at_ms,
               price_baselines.before_event_price_usd,
               price_baselines.before_event_price_quote,
@@ -108,6 +113,8 @@ class TokenRadarSourceQuery:
             ) token_intent_resolutions ON true
             LEFT JOIN token_market_price_baselines price_baselines
               ON price_baselines.resolution_id = token_intent_resolutions.resolution_id
+            LEFT JOIN price_observations event_price_observation
+              ON event_price_observation.observation_id = price_baselines.event_price_observation_id
             LEFT JOIN account_profiles ap ON ap.handle = LOWER(events.author_handle)
             LEFT JOIN social_event_extractions see ON see.event_id = events.event_id
             LEFT JOIN registry_assets

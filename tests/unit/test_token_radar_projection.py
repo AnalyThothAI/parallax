@@ -419,7 +419,7 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
 
     assert result["status"] == "ready"
     snapshot = token_radar.rows[0]["factor_snapshot_json"]
-    assert snapshot["data_health"]["market"] == "partial"
+    assert snapshot["data_health"]["market"] == "ready"
     assert snapshot["families"]["timing_risk"]["data_health"] == "anchor_only"
     assert not hasattr(repos, "current_market")
     assert token_radar.rows[0]["market_json"] == {}
@@ -468,22 +468,16 @@ def test_projection_market_uses_latest_market_snapshot_fields():
                 "target_type": "Asset",
                 "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
                 "received_at_ms": 1_777_800_000_000,
-                "market_provider": "okx_dex_search",
-                "market_observed_at_ms": 1_777_800_000_000,
-                "market_price_usd": 0.01,
-                "market_price_quote": None,
-                "market_quote_symbol": None,
-                "market_price_basis": "usd",
-                "market_market_cap_usd": 1_000_000,
-                "market_liquidity_usd": 250_000,
-                "market_volume_24h_usd": None,
-                "market_open_interest_usd": None,
-                "market_holders": 1000,
                 "event_price_usd": 0.01,
-                "event_price_provider": "okx",
+                "event_price_provider": "gmgn_dex_quote",
                 "event_price_observed_at_ms": 1_777_800_000_500,
                 "event_price_basis": "usd",
                 "event_price_quote_symbol": "USD",
+                "event_price_market_cap_usd": 1_000_000,
+                "event_price_liquidity_usd": 250_000,
+                "event_price_volume_24h_usd": 12_000,
+                "event_price_open_interest_usd": None,
+                "event_price_holders": 1000,
                 "before_event_price_usd": None,
                 "first_price_usd": 0.01,
                 "first_price_observed_at_ms": 1_777_800_000_000,
@@ -495,8 +489,15 @@ def test_projection_market_uses_latest_market_snapshot_fields():
 
     assert market["market_status"] == "anchored"
     assert market["market_observation_status"] == "ready"
-    assert market["provider"] == "okx"
+    assert market["provider"] == "gmgn_dex_quote"
     assert market["price_usd"] is None
+    assert market["market_cap_usd"] == 1_000_000
+    assert market["liquidity_usd"] == 250_000
+    assert market["volume_24h_usd"] == 12_000
+    assert market["holders"] == 1000
+    assert market["market_cap_status"] == "ready"
+    assert market["liquidity_status"] == "ready"
+    assert market["holders_status"] == "ready"
     assert market["anchor_price_usd"] == 0.01
     assert market["price_at_social_start"] == 0.01
     assert market["price_change_since_social_pct"] is None
@@ -505,7 +506,7 @@ def test_projection_market_uses_latest_market_snapshot_fields():
     assert market["market_readiness"] == {
         "status": "anchored",
         "observation_status": "ready",
-        "provider": "okx",
+        "provider": "gmgn_dex_quote",
         "snapshot_age_ms": None,
         "snapshot_observed_at_ms": None,
     }
@@ -576,7 +577,8 @@ def test_source_rows_does_not_read_historical_price_observations():
 
     assert "latest_feed_price" not in conn.sql
     assert "latest_subject_price" not in conn.sql
-    assert "price_observations" not in conn.sql
+    assert "LEFT JOIN price_observations event_price_observation" in conn.sql
+    assert "event_price_observation.observation_id = price_baselines.event_price_observation_id" in conn.sql
     assert "message_event_price" not in conn.sql
     assert "event_history_price" not in conn.sql
     assert "latest_price" not in conn.sql
@@ -704,11 +706,13 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "event_price_quote": None,
         "event_price_quote_symbol": "USD",
         "event_price_basis": "usd",
+        "event_price_market_cap_usd": 1_000_000,
+        "event_price_liquidity_usd": 250_000,
+        "event_price_volume_24h_usd": None,
+        "event_price_open_interest_usd": None,
+        "event_price_holders": 1_000,
         "first_price_usd": 0.01,
         "first_price_observed_at_ms": received_at_ms,
-        "market_market_cap_usd": 1_000_000,
-        "market_liquidity_usd": 250_000,
-        "market_holders": 1_000,
     }
 
 
