@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useRef } from "react";
 import {
   CandlestickSeries,
   ColorType,
@@ -11,6 +10,7 @@ import {
   type LineData,
   type UTCTimestamp,
 } from "lightweight-charts";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { MarketCandle, SearchTokenResult, TokenSocialTimelineData } from "../api/types";
 import {
@@ -42,11 +42,18 @@ export function SearchTimelinePanel({
   activeStageId,
   onStageSelect,
 }: SearchTimelinePanelProps) {
-  const chartData = useMemo(() => buildChartData(timeline, marketOverlay), [timeline, marketOverlay]);
+  const chartData = useMemo(
+    () => buildChartData(timeline, marketOverlay),
+    [timeline, marketOverlay],
+  );
   const priceSeriesType = String(marketOverlay.price_series_type ?? "anchor_line");
-  const candleStatus = String(marketOverlay.candle_status ?? (chartData.candles.length ? "ready" : "anchor"));
+  const candleStatus = String(
+    marketOverlay.candle_status ?? (chartData.candles.length ? "ready" : "anchor"),
+  );
   const candleBar = String(marketOverlay.candle_bar ?? timeline.query.bucket ?? "");
-  const marketLabel = chartData.candles.length ? `${candleBar} OHLC` : `${priceSeriesType} · ${candleStatus}`;
+  const marketLabel = chartData.candles.length
+    ? `${candleBar} OHLC`
+    : `${priceSeriesType} · ${candleStatus}`;
 
   return (
     <section className="search-panel search-timeline-panel" id="timeline">
@@ -90,7 +97,11 @@ export function SearchTimelinePanel({
             <i className="legend-social" />
             social posts
           </span>
-          <b>{chartData.latestPrice === null ? "price -" : formatTokenPriceUsd(chartData.latestPrice)}</b>
+          <b>
+            {chartData.latestPrice === null
+              ? "price -"
+              : formatTokenPriceUsd(chartData.latestPrice)}
+          </b>
         </div>
         <TimelineChart data={chartData} />
         {!chartData.hasMarket ? (
@@ -108,7 +119,10 @@ export function SearchTimelinePanel({
         <span>{formatPropagationPhase(timeline.summary.phase)}</span>
         <span>top {formatPercentShare(timeline.summary.top_author_share)}</span>
         <span>
-          latest {timeline.summary.latest_seen_ms ? `${formatRelativeTime(timeline.summary.latest_seen_ms)} ago` : "-"}
+          latest{" "}
+          {timeline.summary.latest_seen_ms
+            ? `${formatRelativeTime(timeline.summary.latest_seen_ms)} ago`
+            : "-"}
         </span>
       </div>
     </section>
@@ -177,7 +191,13 @@ function TimelineChart({ data }: { data: TimelineChartData }) {
     };
   }, [data]);
 
-  return <div ref={containerRef} className="search-lightweight-chart" aria-label="market candles and social posts" />;
+  return (
+    <div
+      ref={containerRef}
+      className="search-lightweight-chart"
+      aria-label="market candles and social posts"
+    />
+  );
 }
 
 function createSearchChart(container: HTMLDivElement): IChartApi {

@@ -113,7 +113,12 @@ function searchInspectData() {
           peak_new_authors_per_bucket: 5,
           reproduction_rate: null,
         },
-        market_overlay: { price_series_type: "ohlc", candle_status: "ready", candle_bar: "1H", candles: [] },
+        market_overlay: {
+          price_series_type: "ohlc",
+          candle_status: "ready",
+          candle_bar: "1H",
+          candles: [],
+        },
         stages: [],
         buckets: [
           {

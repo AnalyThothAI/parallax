@@ -103,7 +103,10 @@ function SearchIntelSidebar({
   const selectedKey = candidateKey(data.resolver.selected_target ?? null);
   const navItems = navForResult(data.query.result_kind);
   const visibleCandidates = data.resolver.target_candidates.slice(0, 6);
-  const hiddenCandidateCount = Math.max(0, data.resolver.target_candidates.length - visibleCandidates.length);
+  const hiddenCandidateCount = Math.max(
+    0,
+    data.resolver.target_candidates.length - visibleCandidates.length,
+  );
 
   return (
     <aside className="search-intel-sidebar" aria-label="Search Intel controls">
@@ -170,7 +173,9 @@ function SearchIntelSidebar({
                 }
                 key={candidateKey(candidate)}
               >
-                <b>{candidate.symbol ? `$${candidate.symbol}` : shortTarget(candidate.target_id)}</b>
+                <b>
+                  {candidate.symbol ? `$${candidate.symbol}` : shortTarget(candidate.target_id)}
+                </b>
                 <small>{candidate.target_type}</small>
                 <code>{candidate.status}</code>
               </div>
@@ -216,7 +221,11 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
       <section className="search-case-header" id="overview">
         <div>
           <span>token case</span>
-          <h3>{result.target.symbol ? `$${result.target.symbol}` : shortTarget(result.target.target_id)}</h3>
+          <h3>
+            {result.target.symbol
+              ? `$${result.target.symbol}`
+              : shortTarget(result.target.target_id)}
+          </h3>
         </div>
         <div className="search-case-meta">
           <code>{result.target.target_type}</code>
@@ -231,7 +240,9 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
           {
             label: "decision",
             value: radar.decision ?? result.agent_brief.bull_bear.stance,
-            detail: radar.rankScore ? `${formatScore(radar.rankScore)} / 100` : "deterministic brief",
+            detail: radar.rankScore
+              ? `${formatScore(radar.rankScore)} / 100`
+              : "deterministic brief",
             tone: "positive",
           },
           {
@@ -265,7 +276,10 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
             label: "market",
             value: radar.marketHealth,
             detail: radar.marketVenue ?? "anchor only",
-            tone: radar.marketHealth === "ready" || radar.marketHealth === "live" ? "positive" : "warning",
+            tone:
+              radar.marketHealth === "ready" || radar.marketHealth === "live"
+                ? "positive"
+                : "warning",
           },
           {
             label: "data health",
@@ -319,9 +333,21 @@ function TopicResult({ data, result }: { data: SearchInspectData; result: Search
       <MetricStrip
         metrics={[
           { label: "result", value: "topic", detail: "no unique target" },
-          { label: `${data.query.window} posts`, value: compactNumber(result.summary.posts), detail: "search hits" },
-          { label: "authors", value: compactNumber(result.summary.authors), detail: "unique handles" },
-          { label: "resolver", value: `${Math.round(data.resolver.confidence * 100)}%`, detail: "topic confidence" },
+          {
+            label: `${data.query.window} posts`,
+            value: compactNumber(result.summary.posts),
+            detail: "search hits",
+          },
+          {
+            label: "authors",
+            value: compactNumber(result.summary.authors),
+            detail: "unique handles",
+          },
+          {
+            label: "resolver",
+            value: `${Math.round(data.resolver.confidence * 100)}%`,
+            detail: "topic confidence",
+          },
         ]}
       />
 
@@ -620,7 +646,9 @@ function candidateKey(candidate: SearchTargetCandidate | null) {
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function nonEmptyRecord(value: unknown): Record<string, unknown> | null {

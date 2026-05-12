@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 
+import { useTraderStore } from "../store/useTraderStore";
+
 import { getApi } from "./client";
 import type { ScopeKey, SearchInspectData, WindowKey } from "./types";
-import { useTraderStore } from "../store/useTraderStore";
 
 type SearchInspectArgs = {
   q: string;

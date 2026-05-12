@@ -73,9 +73,7 @@ class OkxDexClient:
         bar: str = "1m",
         limit: int = 100,
     ) -> list[OkxCandle]:
-        request_item = _price_request_item(
-            {"chainIndex": chain_index, "tokenContractAddress": token_contract_address}
-        )
+        request_item = _price_request_item({"chainIndex": chain_index, "tokenContractAddress": token_contract_address})
         if request_item is None:
             return []
         rows = self._get_items(
