@@ -74,6 +74,7 @@ class GmgnOpenApiClient:
         timeout_seconds: float = 5.0,
         cache_ttl_seconds: int = 60,
         force_ipv4: bool = True,
+        min_request_interval_seconds: float = 0.12,
         transport: httpx.BaseTransport | None = None,
     ):
         self.api_key = api_key
@@ -81,6 +82,8 @@ class GmgnOpenApiClient:
         self.cache_ttl_seconds = max(0, int(cache_ttl_seconds))
         self._cache: dict[tuple[str, str], tuple[float, GmgnTokenInfo | None]] = {}
         self._timeout_seconds = timeout_seconds
+        self._min_request_interval_seconds = max(0.0, float(min_request_interval_seconds))
+        self._last_request_monotonic = 0.0
         self._headers = {"X-APIKEY": api_key, "Content-Type": "application/json"}
         self._curl_session: curl_requests.Session | None = None
         self._httpx_client: httpx.Client | None = None
@@ -158,6 +161,7 @@ class GmgnOpenApiClient:
             "timestamp": str(int(time.time())),
             "client_id": str(uuid.uuid4()),
         }
+        self._throttle()
         response = self._send(method, path, query)
         text = response["text"]
         try:
@@ -170,6 +174,17 @@ class GmgnOpenApiClient:
             message = payload.get("message") or payload.get("error") or text
             raise GmgnOpenApiError(f"{method} {path} failed: {message}")
         return payload.get("data")
+
+    def _throttle(self) -> None:
+        if self._min_request_interval_seconds <= 0:
+            return
+        now = time.monotonic()
+        next_allowed = self._last_request_monotonic + self._min_request_interval_seconds
+        wait_seconds = next_allowed - now
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+            now = time.monotonic()
+        self._last_request_monotonic = now
 
     def _send(self, method: str, path: str, query: dict[str, str]) -> dict[str, Any]:
         if self._httpx_client is not None:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 from curl_cffi import CurlOpt
 
+import gmgn_twitter_intel.integrations.gmgn.openapi_client as gmgn_openapi_client_module
 from gmgn_twitter_intel.integrations.gmgn.openapi_client import CURL_IPRESOLVE_V4, GmgnOpenApiClient
 
 
@@ -104,6 +106,56 @@ def test_gmgn_openapi_client_force_ipv4_sets_curl_ipresolve(monkeypatch):
             "curl_options": {CurlOpt.IPRESOLVE: CURL_IPRESOLVE_V4},
         }
     ]
+
+
+def test_gmgn_openapi_client_throttles_openapi_requests(monkeypatch):
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(str(request.url.params["address"]))
+        return httpx.Response(
+            200,
+            json={
+                "code": 0,
+                "data": {
+                    "address": str(request.url.params["address"]),
+                    "symbol": "TEST",
+                    "price": "1",
+                },
+            },
+        )
+
+    clock = {"value": 100.0}
+    sleeps: list[float] = []
+
+    def monotonic() -> float:
+        return clock["value"]
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        clock["value"] += seconds
+
+    monkeypatch.setattr(gmgn_openapi_client_module.time, "monotonic", monotonic)
+    monkeypatch.setattr(gmgn_openapi_client_module.time, "sleep", sleep)
+
+    client = GmgnOpenApiClient(
+        api_key="gmgn-test",
+        base_url="https://openapi.example.test",
+        transport=httpx.MockTransport(handler),
+        min_request_interval_seconds=0.5,
+    )
+    try:
+        client.lookup_token_info(chain="sol", address="So11111111111111111111111111111111111111112")
+        clock["value"] += 0.1
+        client.lookup_token_info(chain="sol", address="DezXAZ8z7PnrnRJjz3FjN9xQ9uK5a5n5xbHGbQHpump")
+    finally:
+        client.close()
+
+    assert requests == [
+        "So11111111111111111111111111111111111111112",
+        "DezXAZ8z7PnrnRJjz3FjN9xQ9uK5a5n5xbHGbQHpump",
+    ]
+    assert sleeps == [pytest.approx(0.4)]
 
 
 def test_gmgn_openapi_client_maps_internal_solana_chain_to_openapi_sol():
