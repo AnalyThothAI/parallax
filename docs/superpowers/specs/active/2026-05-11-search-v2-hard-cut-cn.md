@@ -12,7 +12,7 @@
 
 和原计划相比，核心搜索问题仍然存在：`/api/search` 仍是旧 `symbol/ca/chain/handle` 参数和 `AssetSearchService`，text route 仍依赖 `EvidenceRepository.search_fts/count_fts`，前端仍无 cursor 分页且 drawer 只展示前 8 条。因此 hard cut 方向没有过时。
 
-需要调整的地方只有落地细节：最新 `main` 已经新增 Alembic revision `20260511_0030`，所以本次迁移改为 `20260512_0031_search_v2_hard_cut.py`，`down_revision = "20260511_0030"`；另外 registry chain id 已标准化为 `eip155:1/eip155:8453/eip155:56/solana/ton`，CA search 必须做 chain alias 映射，不能继续假设 `eth/base/bsc` 是库内原始 chain id。
+需要调整的地方只有落地细节：最新 `main` 已经新增 Alembic revision `20260511_0030`，合并时又已包含 `20260512_0031_prune_legacy_pulse_factor_contracts.py`，所以本次搜索迁移最终改为 `20260512_0032_search_v2_hard_cut.py`，`down_revision = "20260512_0031"`；另外 registry chain id 已标准化为 `eip155:1/eip155:8453/eip155:56/solana/ton`，CA search 必须做 chain alias 映射，不能继续假设 `eth/base/bsc` 是库内原始 chain id。
 
 ## Background
 

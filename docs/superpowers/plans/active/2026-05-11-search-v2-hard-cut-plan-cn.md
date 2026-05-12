@@ -28,7 +28,7 @@ Known-failing baseline tests:
 ## Latest Main Reconciliation
 
 - [x] Latest local `main` was newer than `origin/main`; implementation branched from local `main` commit `1e0fa9013a1675fbac68b863f433451cc7a9f603`.
-- [x] Original plan migration number was stale. Latest main already had `20260511_0030`, so search v2 migration is `20260512_0031_search_v2_hard_cut.py` with `down_revision = "20260511_0030"`.
+- [x] Original plan migration number was stale. Latest main already had `20260511_0030`, and merge-time main also had `20260512_0031_prune_legacy_pulse_factor_contracts.py`; search v2 migration is therefore `20260512_0032_search_v2_hard_cut.py` with `down_revision = "20260512_0031"`.
 - [x] Registry chain ids on latest main are normalized. CA search maps user-facing aliases (`eth`, `base`, `bsc`, `sol`, `ton`) to registry ids (`eip155:1`, `eip155:8453`, `eip155:56`, `solana`, `ton`).
 - [x] Core plan remained current: latest main still had legacy `/api/search` params, `AssetSearchService`, old evidence FTS helpers, no cursor pagination, and frontend result truncation.
 
@@ -478,9 +478,9 @@ Known-failing baseline tests:
   ```
 - Delete CLI `_search_query(args)` helper at `main.py:943` after removing old flags.
 
-### `src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0031_search_v2_hard_cut.py`
+### `src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0032_search_v2_hard_cut.py`
 
-- Create migration with revision id `20260512_0031` and `down_revision = "20260511_0030"`.
+- Create migration with revision id `20260512_0032` and `down_revision = "20260512_0031"`.
 - Upgrade SQL:
   ```sql
   CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -822,7 +822,7 @@ These PRs may be landed as one branch if review bandwidth is small, but each sli
 1. If code has not shipped, revert the search branch commits and remove `.worktrees/search-v2-hard-cut/`.
 2. If migration has been applied locally before merge, run:
    ```bash
-  uv run alembic downgrade 20260511_0030
+  uv run alembic downgrade 20260512_0031
    ```
 3. If migration shipped and index rebuild caused production issues, rollback app deploy and run downgrade during maintenance. The downgrade restores old `search_tsv` expression and drops the trigram index.
 4. If API hard cut shipped and external callers still use removed params, do not add compatibility code in-place. Either communicate the new `q` contract or create a separate approved spec for a compatibility gateway outside this service.

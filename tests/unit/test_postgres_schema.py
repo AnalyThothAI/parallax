@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 MIGRATION = Path("src/gmgn_twitter_intel/platform/db/alembic/versions/20260506_0001_initial_postgresql.py")
@@ -62,6 +63,7 @@ TOKEN_FACTOR_PULSE_CLEANUP_MIGRATION = Path(
 PULSE_FACTOR_CONTRACT_CLEANUP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0031_prune_legacy_pulse_factor_contracts.py"
 )
+ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -71,6 +73,19 @@ def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
     assert "BOOLEAN" in text
     assert "tsvector" in text
     assert "USING GIN" in text
+
+
+def test_alembic_revision_ids_are_unique() -> None:
+    revisions: dict[str, Path] = {}
+    duplicates: dict[str, list[str]] = {}
+    for path in sorted(ALEMBIC_VERSIONS.glob("*.py")):
+        match = re.search(r'^revision = "([^"]+)"', path.read_text(), flags=re.MULTILINE)
+        assert match is not None, f"{path} missing revision"
+        revision = match.group(1)
+        if revision in revisions:
+            duplicates.setdefault(revision, [str(revisions[revision])]).append(str(path))
+        revisions[revision] = path
+    assert duplicates == {}
 
 
 def test_initial_postgres_schema_has_no_sqlite_pragmas_or_fts5() -> None:
