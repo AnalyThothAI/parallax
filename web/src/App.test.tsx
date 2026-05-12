@@ -16,6 +16,7 @@ import type {
   NotificationItem,
   NotificationLivePayload,
   ScoreBlock,
+  SearchInspectData,
   SignalPulseData,
   StatusData,
   TokenFactorSnapshot,
@@ -168,7 +169,6 @@ describe("App Token Radar social heat cockpit", () => {
       scope: "all",
       handles: "",
       search: "",
-      submittedSearch: "",
       radarSortMode: "opportunity",
       detailTab: "timeline",
       detailWindow: "1h",
@@ -253,26 +253,38 @@ describe("App Token Radar social heat cockpit", () => {
     expect(container.querySelectorAll(".token-radar-table .radar-row")).toHaveLength(1);
   });
 
-  it("keeps search results in the evidence drawer instead of a bottom panel", async () => {
-    mockApi({ searchResult: true });
+  it("routes text search into the Search Intel page instead of the old evidence drawer", async () => {
     const { container } = renderWithQuery(<App />);
 
     const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
     fireEvent.change(input, { target: { value: "PEPE ignition" } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
 
-    await waitFor(() => expect(screen.getByText("selected evidence")).toBeInTheDocument());
+    expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
+    expect(await screen.findByText("PEPE ignition from search")).toBeInTheDocument();
+    expect(screen.getByText("Agent Brief")).toBeInTheDocument();
+    expect(screen.getByText("项目总结")).toBeInTheDocument();
+    expect(screen.queryByText("selected evidence")).not.toBeInTheDocument();
     expect(screen.queryByText("检索结果")).not.toBeInTheDocument();
-    const drawer = container.querySelector(".evidence-drawer") as HTMLElement;
     await waitFor(() =>
-      expect(within(drawer).getByText("PEPE ignition from search")).toBeInTheDocument(),
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/search/inspect" &&
+            options?.params?.q === "PEPE ignition" &&
+            options?.params?.window === "1h" &&
+            options?.params?.scope === "all" &&
+            options?.params?.limit === 200,
+        ),
+      ).toBe(true),
     );
-    expect(within(drawer).getByText("@searcher")).toBeInTheDocument();
+    expect(container.querySelector(".search-intel-page")).toBeInTheDocument();
     expect(screen.queryByText("Select Token")).not.toBeInTheDocument();
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
-  it("selects the current radar token instead of running evidence search for token-like input", async () => {
-    const { container } = renderWithQuery(<App />);
+  it("routes cashtag input to Search Intel instead of selecting the current radar token", async () => {
+    renderWithQuery(<App />);
 
     const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
     await screen.findByRole("button", { name: "select token $UPEG" });
@@ -281,16 +293,19 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.change(input, { target: { value: "$UPEG" } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
 
+    expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
     await waitFor(() => {
-      const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-      expect(drawer.querySelector(".drawer-title .eyebrow")).toHaveTextContent("selected token");
-      expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/search/inspect" && options?.params?.q === "$UPEG",
+        ),
+      ).toBe(true);
     });
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
-  it("treats bare uppercase as token lookup only when the current radar has a unique match", async () => {
-    const { container } = renderWithQuery(<App />);
+  it("routes bare uppercase input through Search Intel without local token matching", async () => {
+    renderWithQuery(<App />);
 
     const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
     await screen.findByRole("button", { name: "select token $UPEG" });
@@ -299,15 +314,14 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.change(input, { target: { value: "UPEG" } });
     fireEvent.submit(input.closest("form") as HTMLFormElement);
 
+    expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
     await waitFor(() => {
-      const drawer = container.querySelector(".detail-drawer") as HTMLElement;
-      expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/search/inspect" && options?.params?.q === "UPEG",
+        ),
+      ).toBe(true);
     });
-    const mobileNav = screen.getByRole("navigation", { name: "mobile cockpit tasks" });
-    expect(within(mobileNav).getByRole("button", { name: "Detail" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
@@ -1400,7 +1414,6 @@ function mockApi(
     duplicateSymbol?: boolean;
     insufficientTiming?: boolean;
     windowSwapToken?: boolean;
-    searchResult?: boolean;
     signalPulse?: SignalPulseData;
     signalPulseCompact?: SignalPulseData;
     signalPulseWorkbench?: SignalPulseData;
@@ -1515,6 +1528,9 @@ function mockApi(
       }
       return ok(options.signalPulse ?? signalPulseData());
     }
+    if (path === "/api/search/inspect") {
+      return ok<SearchInspectData>(searchInspectData(String(requestOptions?.params?.q ?? "")));
+    }
     if (path.startsWith("/api/signal-lab/pulse/")) {
       const candidateId = decodeURIComponent(path.slice("/api/signal-lab/pulse/".length));
       const sources: SignalPulseData[] = [];
@@ -1534,47 +1550,137 @@ function mockApi(
     }
     if (path === "/api/enrichment-jobs")
       return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
-    if (path === "/api/search") {
-      if (options.searchResult) {
-        return ok({
-          query: { kind: "text", text: String(requestOptions?.params?.q ?? ""), scope: "all" },
-          page: { returned_count: 1, has_more: false, next_cursor: null },
-          target_candidates: [],
-          items: [
-            {
-              event: {
-                event_id: "event-pepe-search",
-                canonical_url: "https://x.com/searcher/status/42",
-                author_handle: "searcher",
-                received_at_ms: 1_777_746_080_000,
-                text_clean: "PEPE ignition from search",
-                cashtags: ["PEPE"],
-                hashtags: ["alpha"],
-                mentions: ["watcher"],
-                is_watched: 0,
-              },
-              match_type: "lexical",
-              score: -2.1,
-              match_reasons: ["fts"],
-              target: null,
-              route_scores: { lexical: -2.1 },
-            },
-          ],
-        });
-      }
-      return ok({
-        query: {
-          kind: "symbol",
-          text: String(requestOptions?.params?.q ?? ""),
-          scope: "all",
-          symbol: "PEPE",
-        },
-        page: { returned_count: 0, has_more: false, next_cursor: null },
-        target_candidates: [],
-        items: [],
-      });
-    }
     throw new Error(`unexpected path ${path}`);
+  };
+}
+
+function searchInspectData(query: string): SearchInspectData {
+  const normalized = query.trim().toLowerCase();
+  const agentBrief = searchAgentBrief(query);
+  if (query.includes(" ")) {
+    return {
+      query: {
+        q: query,
+        normalized_q: normalized,
+        window: "1h",
+        scope: "all",
+        result_kind: "topic_result",
+      },
+      resolver: {
+        confidence: 0.65,
+        target_candidates: [],
+        selected_target: null,
+        reasons: ["keyword_corpus_result"],
+      },
+      token_result: null,
+      topic_result: {
+        summary: { posts: 1, authors: 1 },
+        items: [
+          {
+            event: {
+              event_id: "event-pepe-search",
+              canonical_url: "https://x.com/searcher/status/42",
+              author_handle: "searcher",
+              received_at_ms: 1_777_746_080_000,
+              text_clean: "PEPE ignition from search",
+              cashtags: ["PEPE"],
+              hashtags: ["alpha"],
+              mentions: ["watcher"],
+              is_watched: 0,
+            },
+            match_type: "lexical",
+            score: -2.1,
+            match_reasons: ["fts"],
+            target: null,
+            route_scores: { lexical: -2.1 },
+          },
+        ],
+        agent_brief: agentBrief,
+      },
+      ambiguous_result: null,
+    };
+  }
+  const symbol = query.replace(/^\$/, "").trim().toUpperCase() || "UPEG";
+  const target = {
+    target_type: "Asset",
+    target_id: "asset:dex:eth:0x6982508145454ce325ddbe47a25d4ec3d2311933",
+    symbol,
+    chain_id: "eip155:1",
+    address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
+    status: "resolved",
+    source: "test",
+    reason: "unique_mock_target",
+  };
+  return {
+    query: {
+      q: query,
+      normalized_q: normalized,
+      window: "1h",
+      scope: "all",
+      result_kind: "token_result",
+    },
+    resolver: {
+      confidence: 0.94,
+      target_candidates: [target],
+      selected_target: target,
+      reasons: ["one_resolved_target"],
+    },
+    token_result: {
+      target,
+      timeline: timelineData({ symbol }),
+      posts: postsData({ symbol }),
+      radar_item: null,
+      market_overlay: { price_series_type: "anchor_line", status: "test" },
+      agent_brief: agentBrief,
+    },
+    topic_result: null,
+    ambiguous_result: null,
+  };
+}
+
+function searchAgentBrief(
+  query: string,
+): NonNullable<SearchInspectData["token_result"]>["agent_brief"] {
+  return {
+    schema_version: "search_agent_brief_v1",
+    generated_by: "deterministic",
+    project_summary: {
+      one_liner: `${query || "query"} 过去 24h 有可复盘的社交传播。`,
+      summary_zh: "Agent 对过去 24h 推文做出项目总结，保留事件证据用于回放。",
+      current_state: "watch",
+      data_gaps: ["market data still needs confirmation"],
+      evidence_event_ids: ["event-pepe-search"],
+    },
+    propagation: {
+      summary_zh: "传播从早期提及进入多账户复述阶段。",
+      phases: [
+        {
+          phase: "trend",
+          window_label: "24h",
+          tweets: 3,
+          authors: 2,
+          lead_accounts: ["searcher"],
+          read_zh: "搜索结果已聚合到二级页面。",
+          evidence_event_ids: ["event-pepe-search"],
+        },
+      ],
+      key_accounts: [
+        { handle: "searcher", role: "lead", posts: 1, first_seen_ms: 1_777_746_080_000 },
+      ],
+    },
+    bull_bear: {
+      stance: "watch",
+      bull: {
+        thesis_zh: "多头观点来自传播继续扩散和推文证据密度上升。",
+        evidence_event_ids: ["event-pepe-search"],
+        triggers_zh: ["新增高质量账户提及"],
+      },
+      bear: {
+        thesis_zh: "空头观点来自样本仍少且市场数据需要确认。",
+        evidence_event_ids: ["event-pepe-search"],
+        invalidations_zh: ["出现稳定市场锚点"],
+      },
+    },
   };
 }
 

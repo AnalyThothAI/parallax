@@ -125,6 +125,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const isSignalLab = location.pathname.startsWith(SIGNAL_LAB_PATH);
+  const isSearch = location.pathname.startsWith("/search");
   const isLive = location.pathname === "/";
   const activeWatchHandle = isSignalLab ? (searchParams.get("handle") ?? "") : "";
 
@@ -201,7 +202,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
       </header>
 
       <div
-        className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""}`}
+        className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""} ${isSearch ? "search-focus-mode" : ""}`}
       >
         <aside className="side-rail desktop-side-rail">
           <RailSection label="views">

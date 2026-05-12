@@ -4,47 +4,26 @@ import type {
   AlertRecord,
   EntityRecord,
   EventRecord,
-  SearchData,
   TokenIntentRecord,
   TokenResolutionRecord,
 } from "../api/types";
 import { eventHandle, eventText, formatRelativeTime, shortAddress } from "../lib/format";
 
-import {
-  DetailDrawerHeader,
-  DetailDrawerMetric,
-  DetailDrawerMetricGrid,
-  DetailDrawerSection,
-  DetailDrawerShell,
-} from "./DetailDrawer";
+import { DetailDrawerHeader, DetailDrawerSection, DetailDrawerShell } from "./DetailDrawer";
 
-export type EvidenceDetailDrawerProps =
-  | {
-      mode: "event";
-      event: EventRecord;
-      entities: EntityRecord[];
-      alerts: AlertRecord[];
-      tokenIntents: TokenIntentRecord[];
-      tokenResolutions: TokenResolutionRecord[];
-      matchType?: string | null;
-      score?: number | null;
-      sourceLabel: string;
-    }
-  | {
-      mode: "query";
-      query: string;
-      data: SearchData | null;
-      isFetching: boolean;
-      error?: Error | null;
-      hasMore: boolean;
-      isFetchingNextPage: boolean;
-      onLoadMore: () => void;
-    };
+export type EvidenceDetailDrawerProps = {
+  mode: "event";
+  event: EventRecord;
+  entities: EntityRecord[];
+  alerts: AlertRecord[];
+  tokenIntents: TokenIntentRecord[];
+  tokenResolutions: TokenResolutionRecord[];
+  matchType?: string | null;
+  score?: number | null;
+  sourceLabel: string;
+};
 
 export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
-  if (props.mode === "query") {
-    return <SearchQueryDrawer {...props} />;
-  }
   const chips = evidenceChips(props.event, props.entities);
   return (
     <DetailDrawerShell className="evidence-drawer">
@@ -150,95 +129,6 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
         ) : (
           <div className="empty-state compact">no watched-account alert</div>
         )}
-      </DetailDrawerSection>
-    </DetailDrawerShell>
-  );
-}
-
-function SearchQueryDrawer({
-  query,
-  data,
-  isFetching,
-  error,
-  hasMore,
-  isFetchingNextPage,
-  onLoadMore,
-}: Extract<EvidenceDetailDrawerProps, { mode: "query" }>) {
-  const returned = data?.items.length ?? 0;
-  const items = data?.items ?? [];
-  const pageState = data?.page.has_more ? "more" : "end";
-  return (
-    <DetailDrawerShell className="evidence-drawer">
-      <DetailDrawerHeader
-        badge={isFetching ? "..." : returned}
-        eyebrow="selected evidence"
-        metrics={
-          <DetailDrawerMetricGrid className="evidence-query-kv">
-            <DetailDrawerMetric label="returned" value={returned} />
-            <DetailDrawerMetric label="page" value={pageState} />
-            <DetailDrawerMetric
-              label="state"
-              value={error ? "error" : isFetching ? "loading" : "ready"}
-            />
-          </DetailDrawerMetricGrid>
-        }
-        subtitle={query || "empty query"}
-        title="Search"
-      />
-      <DetailDrawerSection title="search context">
-        <p className="ledger-note">
-          {error
-            ? error.message
-            : returned
-              ? "命中项已收进当前 Evidence，上下文不再散落到底部面板。"
-              : "没有命中时，尝试 CA、$SYMBOL、@handle 或更具体的文本。"}
-        </p>
-      </DetailDrawerSection>
-
-      <DetailDrawerSection title="matches">
-        {isFetching ? <div className="empty-state compact">检索中</div> : null}
-        {!isFetching && items.length === 0 ? (
-          <div className="empty-state compact">no matches</div>
-        ) : null}
-        {!isFetching && items.length ? (
-          <div className="evidence-list">
-            {items.map((item) => (
-              <article
-                className="evidence-match-row"
-                key={`${item.match_type}:${item.event.event_id}`}
-              >
-                <header>
-                  <strong>@{eventHandle(item.event)}</strong>
-                  <span>
-                    {item.match_type} · {formatRelativeTime(item.event.received_at_ms)}
-                  </span>
-                </header>
-                <p>{eventText(item.event) || "no text"}</p>
-                {item.event.canonical_url ? (
-                  <a
-                    className="external-row"
-                    href={item.event.canonical_url}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    <ExternalLink aria-hidden />
-                    Open source post
-                  </a>
-                ) : null}
-              </article>
-            ))}
-          </div>
-        ) : null}
-        {hasMore ? (
-          <button
-            className="secondary-action"
-            disabled={isFetchingNextPage}
-            onClick={onLoadMore}
-            type="button"
-          >
-            {isFetchingNextPage ? "Loading" : "Load more"}
-          </button>
-        ) : null}
       </DetailDrawerSection>
     </DetailDrawerShell>
   );

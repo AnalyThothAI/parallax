@@ -58,7 +58,8 @@ Token Radar market contract:
 
 Search V2 contract:
 
-- `/api/search` accepts `q`, `limit`, `scope`, and `cursor`.
+- `/api/search` accepts `q`, `limit`, `scope`, `cursor`, and `window`. Search is
+  window-scoped; the default window is `24h`.
 - `symbol`, `ca`, `chain`, and `handle` query params are rejected. Callers express
   those searches in `q` as `$BTC`, `eth:0x...`, `0x...`, or `@handle`.
 - Responses return `data.query`, `data.page`, `data.target_candidates`, and
@@ -68,6 +69,26 @@ Search V2 contract:
   `token_intent_resolutions`, `cex_tokens`, `registry_assets`, and
   `asset_identity_current`; it does not resolve identity through legacy
   `assets / asset_aliases / asset_venues`.
+
+### Search Intel Inspect
+
+- `/api/search/inspect` accepts `q`, `window`, `scope`, and `limit`.
+- Response shape:
+  - `data.query.result_kind`: `token_result`, `topic_result`,
+    `ambiguous_result`, or `empty_result`.
+  - `data.resolver`: confidence, target candidates, selected target when there
+    is exactly one resolved target, and deterministic resolver reasons.
+  - `data.token_result`: target, `target-social-timeline`, `target-posts`,
+    matched radar row when available, market overlay, and `agent_brief`.
+  - `data.topic_result`: 24h search items, post/author summary, and
+    `agent_brief`.
+  - `data.ambiguous_result`: candidates plus topic evidence; callers must not
+    silently pick a token.
+- `agent_brief.schema_version` is `search_agent_brief_v1`. The brief has three
+  product sections: project/topic summary, propagation, and bull/bear views.
+  It is deterministic in the first release and must cite visible evidence ids.
+- Market overlay uses `price_series_type = "anchor_line"` until a real OHLC
+  endpoint exists. The UI must not present message-anchor prices as candles.
 
 ## CLI
 

@@ -11,7 +11,6 @@ import type {
 import type { MobileTask } from "../../components/MobileTaskNav";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { tokenKey } from "../../lib/format";
-import { tokenForSearchQuery } from "../../lib/searchIntent";
 import { useTraderStore } from "../../store/useTraderStore";
 import { requiredMobileTaskForPathname } from "../cockpit/mobileRouteTask";
 
@@ -21,7 +20,6 @@ export type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }
   | { kind: "event"; item: LivePayload }
   | { kind: "pulse"; item: SignalPulseItem }
-  | { kind: "query"; query: string }
   | null;
 
 type UseLiveSelectionArgs = {
@@ -52,7 +50,6 @@ export function useLiveSelection({
   const postSortMode = useTraderStore((state) => state.postSortMode);
   const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
   const watchedPostsOnly = useTraderStore((state) => state.watchedPostsOnly);
-  const submitSearch = useTraderStore((state) => state.submitSearch);
   const setDetailTab = useTraderStore((state) => state.setDetailTab);
   const setDetailWindow = useTraderStore((state) => state.setDetailWindow);
   const setDetailMode = useTraderStore((state) => state.setDetailMode);
@@ -185,11 +182,6 @@ export function useLiveSelection({
 
   const submitEvidenceSearch = () => {
     const query = search.trim();
-    const tokenMatch = tokenForSearchQuery(query, tokenItems);
-    if (tokenMatch) {
-      selectToken(tokenMatch);
-      return;
-    }
     if (isSignalLabRoute) {
       const next = new URLSearchParams(location.search);
       if (query) {
@@ -204,13 +196,18 @@ export function useLiveSelection({
       setMobileTask("lab");
       return;
     }
-    submitSearch();
-    setSelectedSignal(query ? { kind: "query", query } : null);
-    setDetailMode("compact");
+    const next = new URLSearchParams();
+    if (query) {
+      next.set("q", query);
+    }
+    next.set("window", windowKey);
+    next.set("scope", scope);
+    navigate(`/search?${next.toString()}`);
+    setSelectedSignal(null);
     setSelectedBucketStartMs(null);
     setSelectedEventId(null);
     setSelectedTapeEventId(null);
-    setMobileTask(query ? "detail" : "radar");
+    setMobileTask("radar");
   };
 
   const handleTapeSelect = (item: LiveSignalTapeItem) => {

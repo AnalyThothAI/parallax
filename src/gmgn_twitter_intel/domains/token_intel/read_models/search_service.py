@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import asdict, dataclass, field, replace
 from typing import Any
 
@@ -10,6 +11,8 @@ from gmgn_twitter_intel.domains.token_intel.services.search_aliases import (
     fuzzy_canonical_symbol_for_query,
     target_symbols_for_or_query,
 )
+
+from .asset_flow_service import WINDOW_MS
 
 RRF_K = 60.0
 ROUTE_WEIGHTS = {
@@ -54,10 +57,13 @@ class SearchService:
         limit: int = 20,
         scope: str = "all",
         cursor: str | None = None,
+        window: str = "24h",
+        now_ms: int | None = None,
     ) -> SearchPage:
         requested_limit = max(0, int(limit))
+        since_ms = _since_ms(window=window, now_ms=now_ms)
         intent = parse_search_query(query, scope=scope)
-        query_payload = _query_payload(intent)
+        query_payload = _query_payload(intent) | {"window": window, "since_ms": since_ms}
         if intent.kind == "empty":
             return SearchPage(
                 ok=False,
@@ -77,12 +83,14 @@ class SearchService:
                 watched_only=scope == "matched",
                 limit=requested_limit,
                 cursor_state=cursor_state,
+                since_ms=since_ms,
             )
         route_hits = self.search_query.route_hits(
             intent=route_intent,
             target_candidates=target_candidates,
             watched_only=scope == "matched",
             route_limit=_route_limit(lexical_query=lexical_query, requested_limit=requested_limit),
+            since_ms=since_ms,
         )
         items = _items_from_hits(route_hits)
         if cursor_state is not None:
@@ -108,6 +116,7 @@ class SearchService:
         watched_only: bool,
         limit: int,
         cursor_state: _CursorState | None,
+        since_ms: int,
     ) -> SearchPage:
         after = cursor_state.target_after if cursor_state else None
         hits = self.search_query.target_hits_page(
@@ -115,6 +124,7 @@ class SearchService:
             watched_only=watched_only,
             limit=limit + 1,
             after=after,
+            since_ms=since_ms,
         )
         items = _items_from_hits(hits)
         page_items = items[: limit + 1]
@@ -152,6 +162,12 @@ def _target_intent(intent: SearchIntent) -> SearchIntent:
     if alias_symbol and intent.kind in {"symbol", "text"}:
         return replace(intent, kind="symbol", symbol=alias_symbol)
     return intent
+
+
+def _since_ms(*, window: str, now_ms: int | None) -> int:
+    resolved_now_ms = int(now_ms or time.time() * 1000)
+    window_ms = WINDOW_MS.get(window, WINDOW_MS["24h"])
+    return resolved_now_ms - window_ms
 
 
 def _resolved_targets(target_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:

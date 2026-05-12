@@ -12,11 +12,11 @@
 
 ## Status
 
-**Status:** Draft  
-**Date:** 2026-05-12  
-**Owning spec:** `docs/superpowers/specs/active/2026-05-12-search-intel-page-kiss-cn.md`  
-**Prototype:** `docs/prototypes/search-intel-page-prototype.html`  
-**Worktree:** `.worktrees/search-intel-page/`  
+**Status:** Completed
+**Date:** 2026-05-12
+**Owning spec:** `docs/superpowers/specs/completed/2026-05-12-search-intel-page-kiss-cn.md`
+**Prototype:** `docs/prototypes/search-intel-page-prototype.html`
+**Worktree:** `.worktrees/search-intel-page/`
 **Branch:** `codex/search-intel-page`
 
 ## Product Shape
@@ -117,7 +117,7 @@ Backend payload rules:
 - Modify `src/gmgn_twitter_intel/domains/token_intel/read_models/search_service.py`
   - Add optional `window: str = "24h"` and `now_ms: int | None = None`.
   - Pass `since_ms` into `SearchEventsQuery` so keyword results are actually 24h-scoped.
-  - Keep `/api/search` backward-compatible by defaulting to no explicit window if not supplied.
+  - Hard-cut old unwindowed search behavior; default `/api/search` to `window=24h`.
 
 - Modify `src/gmgn_twitter_intel/domains/token_intel/queries/search_events_query.py`
   - Add optional `since_ms` to `route_hits`, `target_hits_page`, `_target_hits`, `_handle_hits`, `_lexical_hits`, `_substring_hits`, `_trigram_hits`.

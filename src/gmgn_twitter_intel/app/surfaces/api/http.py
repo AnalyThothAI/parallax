@@ -16,6 +16,7 @@ from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSer
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
+from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_cursor import TokenTargetCursorError
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_service import (
@@ -122,11 +123,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         limit: Annotated[int, Query()] = 20,
         scope: Annotated[str, Query()] = "all",
         cursor: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "24h",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         for removed in ("symbol", "ca", "chain", "handle"):
             if removed in request.query_params:
                 raise ApiBadRequest("unsupported_query_param", field=removed)
+        parsed_window = _window(window)
         try:
             with runtime.repositories() as repos:
                 results = SearchService(search_query=SearchEventsQuery(repos.conn)).search(
@@ -134,6 +137,8 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                     limit=_limit(limit, maximum=200),
                     scope=_scope(scope),
                     cursor=cursor or None,
+                    window=parsed_window,
+                    now_ms=_now_ms(),
                 )
         except SearchCursorError:
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
@@ -149,6 +154,31 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 "error": results.error,
             }
         )
+
+    @router.get("/search/inspect")
+    async def search_inspect(
+        request: Request,
+        q: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "24h",
+        scope: Annotated[str, Query()] = "all",
+        limit: Annotated[int, Query()] = 200,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_window = _window(window)
+        parsed_scope = _scope(scope)
+        with runtime.repositories() as repos:
+            data = SearchInspectService(
+                search_query=SearchEventsQuery(repos.conn),
+                token_radar=repos.token_radar,
+                targets=repos.token_targets,
+            ).inspect(
+                q,
+                window=parsed_window,
+                scope=parsed_scope,
+                limit=_limit(limit, maximum=200),
+                now_ms=_now_ms(),
+            )
+        return _json({"ok": True, "data": data})
 
     @router.get("/token-radar")
     async def token_radar(
