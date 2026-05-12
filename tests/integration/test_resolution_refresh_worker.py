@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate, DexTokenPrice
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate, DexTokenQuote
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
     ResolutionRefreshWorker,
     _process_address_lookup,
@@ -74,7 +74,7 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp
 
         worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_market=FakeDexMarket(
+            dex_discovery_market=FakeDexMarket(
                 candidates=[
                     DexTokenCandidate(
                         chain_id="eip155:1",
@@ -135,7 +135,7 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
         )
         worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_market=FakeDexMarket(
+            dex_discovery_market=FakeDexMarket(
                 candidates=[
                     DexTokenCandidate(
                         chain_id="eip155:1",
@@ -202,7 +202,8 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         )
         worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_market=dex_market,
+            dex_discovery_market=dex_market,
+            dex_quote_market=dex_market,
             chain_ids=("eip155:1",),
             interval_seconds=60,
         )
@@ -282,7 +283,7 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
         )
         worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_market=FakeDexMarket(
+            dex_discovery_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(
                         chain_id="solana",
@@ -419,7 +420,7 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
         )
         worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
-            dex_market=FakeDexMarket(
+            dex_discovery_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(
                         chain_id="eip155:56",
@@ -469,7 +470,7 @@ def test_address_discovery_remains_uncapped(tmp_path):
         result = _process_address_lookup(
             repos=repositories_for_connection(conn),
             lookup_key=f"address:eip155:56:{address}",
-            dex_market=FakeDexMarket(
+            dex_discovery_market=FakeDexMarket(
                 candidates=[
                     _dex_candidate(chain_id="eip155:56", address=_evm_address(1), market_cap_usd=1, liquidity_usd=1),
                     _dex_candidate(chain_id="eip155:56", address=address, market_cap_usd=2, liquidity_usd=2),
@@ -498,16 +499,19 @@ class FakeDexMarket:
         self.search_requests.append({"query": query, "chain_ids": tuple(chain_ids)})
         return list(self.candidates)
 
-    def token_prices(self, requests):
+    def token_quotes(self, requests):
         self.price_requests.append(list(requests))
         prices = []
         for request in requests:
             prices.extend(
-                DexTokenPrice(
+                DexTokenQuote(
                     chain_id=candidate.chain_id,
                     address=candidate.address,
                     observed_at_ms=1_778_145_220_000,
                     price_usd=candidate.price_usd,
+                    market_cap_usd=candidate.market_cap_usd,
+                    liquidity_usd=candidate.liquidity_usd,
+                    holders=candidate.holders,
                     raw={"priceUsd": candidate.price_usd},
                 )
                 for candidate in self.candidates

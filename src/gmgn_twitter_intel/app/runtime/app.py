@@ -328,16 +328,17 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
     if start_collector and (
-        providers.asset_market.message_cex_market is not None or providers.asset_market.message_dex_market is not None
+        providers.asset_market.message_cex_market is not None or providers.asset_market.dex_quote_market is not None
     ):
         runtime.anchor_price_worker = AnchorPriceWorker(
             cex_market=providers.asset_market.message_cex_market,
-            dex_market=providers.asset_market.message_dex_market,
+            dex_quote_market=providers.asset_market.dex_quote_market,
             repository_session=lambda: repository_session(db_pool),
         )
-    if start_collector and settings.okx_dex_configured:
+    if start_collector and providers.asset_market.dex_discovery_market is not None:
         runtime.resolution_refresh_worker = ResolutionRefreshWorker(
-            dex_market=providers.asset_market.discovery_dex_market,
+            dex_discovery_market=providers.asset_market.dex_discovery_market,
+            dex_quote_market=providers.asset_market.dex_quote_market,
             repository_session=lambda: repository_session(db_pool),
             chain_ids=providers.asset_market.discovery_chain_ids,
             interval_seconds=30.0,

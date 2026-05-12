@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenPrice
+from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote
 from gmgn_twitter_intel.domains.asset_market.services.anchor_price_observation import observe_anchor_prices
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
@@ -35,7 +35,7 @@ def test_anchor_price_observation_writes_cex_message_anchor():
                 )
             }
         ),
-        dex_market=None,
+        dex_quote_market=None,
         now_ms=1_700_000_001_000,
         limit=10,
     )
@@ -98,13 +98,17 @@ def test_anchor_price_observation_writes_dex_message_anchor_per_message():
     result = observe_anchor_prices(
         repos=repos,
         cex_market=None,
-        dex_market=FakeDexMarket(
+        dex_quote_market=FakeDexMarket(
             [
-                DexTokenPrice(
+                DexTokenQuote(
                     chain_id="eip155:1",
                     address="0xabc",
                     observed_at_ms=1_700_000_001_000,
                     price_usd=1.23,
+                    market_cap_usd=23_000.0,
+                    liquidity_usd=10_000.0,
+                    volume_24h_usd=5_000.0,
+                    holders=124,
                     raw={"price": "1.23"},
                 )
             ]
@@ -124,13 +128,14 @@ def test_anchor_price_observation_writes_dex_message_anchor_per_message():
     dex_quote_observations = [
         item
         for item in repos.price_observations.observations
-        if item["provider"] == "okx" and item["observation_kind"] == "message_anchor"
+        if item["provider"] == "gmgn_dex_quote" and item["observation_kind"] == "message_anchor"
     ]
     assert len(dex_quote_observations) == 2
     assert all(item["price_usd"] == 1.23 for item in dex_quote_observations)
     assert [
-        (item.get("market_cap_usd"), item.get("liquidity_usd"), item.get("holders")) for item in dex_quote_observations
-    ] == [(None, None, None), (None, None, None)]
+        (item.get("market_cap_usd"), item.get("liquidity_usd"), item.get("volume_24h_usd"), item.get("holders"))
+        for item in dex_quote_observations
+    ] == [(23_000.0, 10_000.0, 5_000.0, 124), (23_000.0, 10_000.0, 5_000.0, 124)]
 
 
 class FakeRepos:
@@ -190,6 +195,6 @@ class FakeDexMarket:
         self.prices = prices
         self.calls = []
 
-    def token_prices(self, tokens):
+    def token_quotes(self, tokens):
         self.calls.append(tokens)
         return self.prices

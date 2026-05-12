@@ -30,18 +30,39 @@ class DexTokenCandidate:
 
 
 @dataclass(frozen=True, slots=True)
-class DexTokenPrice:
+class DexTokenQuote:
     chain_id: str
     address: str
     observed_at_ms: int
     price_usd: float | None
     raw: dict[str, Any]
+    market_cap_usd: float | None = None
+    liquidity_usd: float | None = None
+    volume_24h_usd: float | None = None
+    holders: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class DexTokenPriceRequest:
+class DexTokenQuoteRequest:
     chain_id: str
     address: str
+
+
+@dataclass(frozen=True, slots=True)
+class DexTokenProfile:
+    chain_id: str
+    address: str
+    symbol: str | None
+    name: str | None
+    logo_url: str | None
+    banner_url: str | None
+    website: str | None
+    twitter_username: str | None
+    telegram: str | None
+    gmgn_url: str | None
+    geckoterminal_url: str | None
+    description: str | None
+    raw: dict[str, Any]
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,12 +110,20 @@ class CexMarketProvider(Protocol):
     def candles(self, *, inst_id: str, bar: str, limit: int) -> list[MarketCandle]: ...
 
 
-class DexMarketProvider(Protocol):
+class DexTokenDiscoveryProvider(Protocol):
     def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]) -> list[DexTokenCandidate]: ...
 
-    def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]: ...
 
+class DexTokenQuoteProvider(Protocol):
+    def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]: ...
+
+
+class DexTokenCandleProvider(Protocol):
     def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]: ...
+
+
+class DexTokenProfileProvider(Protocol):
+    def token_profile(self, *, chain_id: str, address: str) -> DexTokenProfile | None: ...
 
 
 class DexMarketStreamProvider(Protocol):
@@ -105,11 +134,15 @@ __all__ = [
     "CexMarketProvider",
     "CexTicker",
     "DexMarketFactUpdate",
-    "DexMarketProvider",
     "DexMarketStreamProvider",
     "DexMarketStreamTarget",
     "DexTokenCandidate",
-    "DexTokenPrice",
-    "DexTokenPriceRequest",
+    "DexTokenCandleProvider",
+    "DexTokenDiscoveryProvider",
+    "DexTokenProfile",
+    "DexTokenProfileProvider",
+    "DexTokenQuote",
+    "DexTokenQuoteProvider",
+    "DexTokenQuoteRequest",
     "MarketCandle",
 ]

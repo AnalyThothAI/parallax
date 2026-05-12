@@ -17,9 +17,38 @@ class GmgnTokenInfo:
     symbol: str
     name: str | None
     icon_url: str | None
+    banner_url: str | None
+    decimals: int | None
     price: float | None
     previous_price: float | None
     market_cap: float | None
+    liquidity: float | None
+    holder_count: int | None
+    circulating_supply: float | None
+    total_supply: float | None
+    max_supply: float | None
+    website: str | None
+    twitter_username: str | None
+    telegram: str | None
+    gmgn_url: str | None
+    geckoterminal_url: str | None
+    description: str | None
+    pool: dict[str, Any] | None
+    dev: dict[str, Any] | None
+    stat: dict[str, Any] | None
+    link: dict[str, Any] | None
+    raw: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class GmgnTokenKlineCandle:
+    time_ms: int
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    volume: float | None
+    volume_usd: float | None
     raw: dict[str, Any]
 
 
@@ -83,6 +112,40 @@ class GmgnOpenApiClient:
         self._cache[key] = (now, info)
         return GmgnTokenInfoLookup(info=info, cache_status="miss")
 
+    def token_kline(
+        self,
+        *,
+        chain: str,
+        address: str,
+        resolution: str,
+        limit: int,
+        now_ms: int | None = None,
+    ) -> list[GmgnTokenKlineCandle]:
+        api_chain = _api_chain(chain)
+        api_address = _api_address(chain=api_chain, address=address)
+        to_seconds = int((now_ms if now_ms is not None else time.time() * 1000) // 1000)
+        from_seconds = to_seconds - _resolution_seconds(resolution) * max(1, int(limit))
+        data = self._request(
+            "GET",
+            "/v1/market/token_kline",
+            {
+                "chain": api_chain,
+                "address": api_address,
+                "resolution": _api_resolution(resolution),
+                "from": str(from_seconds),
+                "to": str(to_seconds),
+            },
+        )
+        rows = data.get("list") if isinstance(data, dict) else data
+        if not isinstance(rows, list):
+            return []
+        candles: list[GmgnTokenKlineCandle] = []
+        for row in rows:
+            candle = _kline_candle_from_response(row)
+            if candle is not None:
+                candles.append(candle)
+        return candles
+
     def _request(self, method: str, path: str, params: dict[str, str]) -> Any:
         query = {
             **params,
@@ -126,21 +189,45 @@ def _token_info_from_response(*, chain: str, address: str, data: Any) -> GmgnTok
         return None
     price = _float_or_none(data.get("price"))
     market_cap = _market_cap(data, price=price)
+    link = data.get("link") if isinstance(data.get("link"), dict) else None
     return GmgnTokenInfo(
         chain=_internal_chain(chain),
         address=_string(data.get("address")) or address,
         symbol=symbol.strip().lstrip("$").upper() if symbol.isascii() else symbol.strip().lstrip("$"),
         name=_string(data.get("name")),
         icon_url=_string(data.get("logo")) or _string(data.get("icon_url")),
+        banner_url=_string(data.get("banner")),
+        decimals=_int_or_none(data.get("decimals")),
         price=price,
         previous_price=_float_or_none(data.get("previous_price")),
         market_cap=market_cap,
+        liquidity=_float_or_none(data.get("liquidity")),
+        holder_count=_int_or_none(data.get("holder_count") or data.get("holders")),
+        circulating_supply=_float_or_none(data.get("circulating_supply")),
+        total_supply=_float_or_none(data.get("total_supply")),
+        max_supply=_float_or_none(data.get("max_supply")),
+        website=_link_string(link, "website"),
+        twitter_username=_link_string(link, "twitter_username") or _link_string(link, "twitter"),
+        telegram=_link_string(link, "telegram"),
+        gmgn_url=_link_string(link, "gmgn"),
+        geckoterminal_url=_link_string(link, "geckoterminal"),
+        description=_link_string(link, "description") or _string(data.get("description")),
+        pool=dict(data["pool"]) if isinstance(data.get("pool"), dict) else None,
+        dev=dict(data["dev"]) if isinstance(data.get("dev"), dict) else None,
+        stat=dict(data["stat"]) if isinstance(data.get("stat"), dict) else None,
+        link=dict(link) if link is not None else None,
         raw=dict(data),
     )
 
 
 def _api_chain(chain: str) -> str:
     normalized = chain.strip().lower()
+    if normalized == "eip155:1":
+        return "eth"
+    if normalized == "eip155:56":
+        return "bsc"
+    if normalized == "eip155:8453":
+        return "base"
     if normalized == "solana":
         return "sol"
     return normalized
@@ -181,3 +268,55 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _link_string(link: dict[str, Any] | None, key: str) -> str | None:
+    if link is None:
+        return None
+    return _string(link.get(key))
+
+
+def _api_resolution(value: str) -> str:
+    text = str(value or "").strip()
+    return text.lower() or "1m"
+
+
+def _resolution_seconds(value: str) -> int:
+    text = _api_resolution(value)
+    unit = text[-1:]
+    try:
+        amount = int(text[:-1])
+    except ValueError:
+        return 60
+    if unit == "m":
+        return amount * 60
+    if unit == "h":
+        return amount * 60 * 60
+    if unit == "d":
+        return amount * 24 * 60 * 60
+    return 60
+
+
+def _kline_candle_from_response(row: Any) -> GmgnTokenKlineCandle | None:
+    if not isinstance(row, dict):
+        return None
+    time_ms = _int_or_none(row.get("time") or row.get("time_ms"))
+    if time_ms is None:
+        return None
+    return GmgnTokenKlineCandle(
+        time_ms=time_ms,
+        open=_float_or_none(row.get("open")),
+        high=_float_or_none(row.get("high")),
+        low=_float_or_none(row.get("low")),
+        close=_float_or_none(row.get("close")),
+        volume=_float_or_none(row.get("amount")),
+        volume_usd=_float_or_none(row.get("volume")),
+        raw=dict(row),
+    )

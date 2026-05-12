@@ -7,8 +7,8 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.providers import (
     CexTicker,
-    DexTokenPrice,
-    DexTokenPriceRequest,
+    DexTokenQuote,
+    DexTokenQuoteRequest,
 )
 from gmgn_twitter_intel.domains.asset_market.queries.pending_anchor_price_query import (
     PendingAnchorPriceQuery,
@@ -23,7 +23,7 @@ def observe_anchor_prices(
     *,
     repos: Any,
     cex_market: Any = None,
-    dex_market: Any = None,
+    dex_quote_market: Any = None,
     now_ms: int,
     limit: int = 100,
 ) -> dict[str, Any]:
@@ -38,7 +38,7 @@ def observe_anchor_prices(
         "skipped_missing_market": 0,
     }
     cex_quotes = _fetch_cex_quotes(rows, cex_market=cex_market, result=result)
-    dex_quotes = _fetch_dex_quotes(rows, dex_market=dex_market, result=result)
+    dex_quotes = _fetch_dex_quotes(rows, dex_quote_market=dex_quote_market, result=result)
     for row in rows:
         target_type = str(row.get("target_type") or "")
         if target_type == "CexToken":
@@ -95,14 +95,14 @@ def _fetch_cex_quotes(
 
 
 def _fetch_dex_quotes(
-    rows: list[dict[str, Any]], *, dex_market: Any, result: dict[str, Any]
-) -> dict[tuple[str, str], DexTokenPrice]:
-    quotes: dict[tuple[str, str], DexTokenPrice] = {}
-    if dex_market is None:
+    rows: list[dict[str, Any]], *, dex_quote_market: Any, result: dict[str, Any]
+) -> dict[tuple[str, str], DexTokenQuote]:
+    quotes: dict[tuple[str, str], DexTokenQuote] = {}
+    if dex_quote_market is None:
         if any(row.get("target_type") == "Asset" for row in rows):
             result["skipped_missing_provider"] += 1
         return quotes
-    request_items: dict[tuple[str, str], DexTokenPriceRequest] = {}
+    request_items: dict[tuple[str, str], DexTokenQuoteRequest] = {}
     for row in rows:
         if row.get("target_type") != "Asset":
             continue
@@ -114,14 +114,14 @@ def _fetch_dex_quotes(
         normalized = _normalize_address(address)
         request_items.setdefault(
             (chain_id, normalized),
-            DexTokenPriceRequest(chain_id=chain_id, address=normalized),
+            DexTokenQuoteRequest(chain_id=chain_id, address=normalized),
         )
     items = list(request_items.values())
     for chunk in _chunks(items, ANCHOR_PRICE_DEX_BATCH_SIZE):
         if not chunk:
             continue
         result["dex_price_requests"] += 1
-        for price in dex_market.token_prices(chunk):
+        for price in dex_quote_market.token_quotes(chunk):
             quotes[(str(price.chain_id), _normalize_address(price.address))] = price
     return quotes
 
@@ -162,14 +162,14 @@ def _write_cex_observation(
 
 
 def _write_dex_observation(
-    *, repos: Any, row: dict[str, Any], price: DexTokenPrice | None, now_ms: int, result: dict[str, Any]
+    *, repos: Any, row: dict[str, Any], price: DexTokenQuote | None, now_ms: int, result: dict[str, Any]
 ) -> bool:
     if price is None:
         result["skipped_missing_market"] += 1
         return False
     pricefeed = repos.registry.upsert_pricefeed(
         feed_type="dex_token",
-        provider="okx",
+        provider="gmgn_dex_quote",
         subject_type="Asset",
         subject_id=str(row["target_id"]),
         observed_at_ms=price.observed_at_ms or now_ms,
@@ -180,18 +180,18 @@ def _write_dex_observation(
         commit=False,
     )
     repos.price_observations.insert_observation(
-        provider="okx",
+        provider="gmgn_dex_quote",
         pricefeed_id=str(pricefeed["pricefeed_id"]),
         observed_at_ms=price.observed_at_ms or now_ms,
         subject_type="Asset",
         subject_id=str(row["target_id"]),
         price_usd=price.price_usd,
         price_basis="usd",
-        market_cap_usd=None,
-        liquidity_usd=None,
-        volume_24h_usd=None,
+        market_cap_usd=price.market_cap_usd,
+        liquidity_usd=price.liquidity_usd,
+        volume_24h_usd=price.volume_24h_usd,
         open_interest_usd=None,
-        holders=None,
+        holders=price.holders,
         source_event_id=str(row["event_id"]),
         source_intent_id=str(row["intent_id"]),
         source_resolution_id=str(row["resolution_id"]),
@@ -221,6 +221,6 @@ def _payload_hash(payload: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _chunks(items: list[DexTokenPriceRequest], size: int) -> Iterator[list[DexTokenPriceRequest]]:
+def _chunks(items: list[DexTokenQuoteRequest], size: int) -> Iterator[list[DexTokenQuoteRequest]]:
     for index in range(0, len(items), max(1, int(size))):
         yield items[index : index + size]

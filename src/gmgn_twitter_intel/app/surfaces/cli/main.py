@@ -12,8 +12,9 @@ import uvicorn
 
 from gmgn_twitter_intel.app.runtime.app import create_app
 from gmgn_twitter_intel.app.runtime.providers_wiring import (
+    GmgnDexMarketProvider,
     OkxCexMarketProvider,
-    OkxDexMarketProvider,
+    OkxDexDiscoveryProvider,
     okx_chain_indexes_to_chain_ids,
 )
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
@@ -52,6 +53,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_diagnostics import fa
 from gmgn_twitter_intel.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection import WINDOW_MS, TokenRadarProjection
 from gmgn_twitter_intel.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
+from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.dex_client import OkxDexClient
 from gmgn_twitter_intel.platform.config.settings import load_settings, write_default_config
@@ -779,24 +781,37 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0
 
         if command == "ops" and args.ops_command == "run-resolution-refresh":
-            client = OkxDexClient(
+            okx_client = OkxDexClient(
                 base_url=settings.okx_dex_base_url,
                 api_key=settings.okx_dex_api_key,
                 secret_key=settings.okx_dex_secret_key,
                 passphrase=settings.okx_dex_passphrase,
                 timeout_seconds=settings.okx_timeout_seconds,
             )
+            gmgn_client = (
+                GmgnOpenApiClient(
+                    api_key=settings.gmgn_api_key or "",
+                    base_url=settings.gmgn_openapi_base_url,
+                    timeout_seconds=settings.gmgn_timeout_seconds,
+                    cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
+                )
+                if settings.gmgn_configured
+                else None
+            )
             try:
                 data = run_resolution_refresh_once(
                     repos=repos,
-                    dex_market=OkxDexMarketProvider(client),
+                    dex_discovery_market=OkxDexDiscoveryProvider(okx_client),
+                    dex_quote_market=GmgnDexMarketProvider(gmgn_client) if gmgn_client is not None else None,
                     chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
                     now_ms=_now_ms(),
                     lookup_limit=args.limit,
                     reprocess_limit=args.reprocess_limit,
                 )
             finally:
-                client.close()
+                okx_client.close()
+                if gmgn_client is not None:
+                    gmgn_client.close()
             _emit({"ok": True, "data": data}, stdout)
             return 0
 

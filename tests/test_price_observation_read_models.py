@@ -107,7 +107,7 @@ def test_insert_message_anchor_is_idempotent_by_resolution(tmp_path):
 
     assert second["observation_id"] == first["observation_id"]
     assert row["count"] == 1
-    assert row["price_usd"] == 0.43
+    assert float(row["price_usd"]) == 0.43
     assert row["observed_at_ms"] == 1_700_000_002_000
     assert baseline["event_price_observation_id"] == first["observation_id"]
     assert baseline["event_price_usd"] == 0.43

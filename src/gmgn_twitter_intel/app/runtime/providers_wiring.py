@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Lock
@@ -9,17 +10,19 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     CexMarketProvider,
     CexTicker,
     DexMarketFactUpdate,
-    DexMarketProvider,
     DexMarketStreamProvider,
     DexTokenCandidate,
-    DexTokenPrice,
-    DexTokenPriceRequest,
+    DexTokenDiscoveryProvider,
+    DexTokenProfile,
+    DexTokenQuote,
+    DexTokenQuoteRequest,
     MarketCandle,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider, PulseRecommendationResult
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
+from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
 from gmgn_twitter_intel.integrations.marketlane import MarketlaneQuoteProvider
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
@@ -41,12 +44,12 @@ class IngestionProviders:
 
 @dataclass(frozen=True, slots=True)
 class AssetMarketProviders:
-    projection_dex_market: DexMarketProvider | None = None
     sync_cex_market: CexMarketProvider | None = None
-    sync_dex_market: DexMarketProvider | None = None
     message_cex_market: CexMarketProvider | None = None
-    message_dex_market: DexMarketProvider | None = None
-    discovery_dex_market: DexMarketProvider | None = None
+    dex_discovery_market: DexTokenDiscoveryProvider | None = None
+    dex_quote_market: object | None = None
+    dex_candle_market: object | None = None
+    dex_profile_market: object | None = None
     stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
 
@@ -93,7 +96,7 @@ class OkxCexMarketProvider:
         self._client.close()
 
 
-class OkxDexMarketProvider:
+class OkxDexDiscoveryProvider:
     def __init__(self, client: OkxDexClient) -> None:
         self._client = client
 
@@ -106,37 +109,81 @@ class OkxDexMarketProvider:
             for candidate in self._client.search_tokens(query=query, chain_indexes=chain_indexes)
         ]
 
-    def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]:
-        request_items = [
-            {
-                "chainIndex": chain_index,
-                "tokenContractAddress": _normalize_address(token.address),
-            }
-            for token in tokens
-            if (chain_index := okx_chain_index(token.chain_id))
-        ]
-        return [_dex_token_price(price) for price in self._client.token_prices(request_items)]
+    def close(self) -> None:
+        self._client.close()
+
+
+class GmgnDexMarketProvider:
+    def __init__(self, client: GmgnOpenApiClient) -> None:
+        self._client = client
+
+    def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]:
+        observed_at_ms = int(time.time() * 1000)
+        quotes: list[DexTokenQuote] = []
+        for token in tokens:
+            lookup = self._client.lookup_token_info(chain=token.chain_id, address=token.address)
+            info = lookup.info
+            if info is None:
+                continue
+            raw = {**info.raw, "cache_status": lookup.cache_status}
+            quotes.append(
+                DexTokenQuote(
+                    chain_id=info.chain,
+                    address=_normalize_address(info.address),
+                    observed_at_ms=observed_at_ms,
+                    price_usd=info.price,
+                    raw=raw,
+                    market_cap_usd=info.market_cap,
+                    liquidity_usd=info.liquidity,
+                    volume_24h_usd=_number_from_mapping(info.raw, "volume_24h_usd", "volume24hUsd", "volume_24h"),
+                    holders=info.holder_count,
+                )
+            )
+        return quotes
 
     def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]:
-        chain_index = okx_chain_index(chain_id)
-        if not chain_index:
-            return []
         return [
-            _market_candle(candle)
-            for candle in self._client.token_candles(
-                chain_index=chain_index,
-                token_contract_address=_normalize_address(address),
-                bar=bar,
-                limit=limit,
+            MarketCandle(
+                time_ms=candle.time_ms,
+                open=candle.open,
+                high=candle.high,
+                low=candle.low,
+                close=candle.close,
+                volume=candle.volume,
+                volume_quote=None,
+                volume_usd=candle.volume_usd,
+                confirmed=None,
+                raw=candle.raw,
             )
+            for candle in self._client.token_kline(chain=chain_id, address=address, resolution=bar, limit=limit)
         ]
+
+    def token_profile(self, *, chain_id: str, address: str) -> DexTokenProfile | None:
+        info = self._client.lookup_token_info(chain=chain_id, address=address).info
+        if info is None:
+            return None
+        return DexTokenProfile(
+            chain_id=info.chain,
+            address=_normalize_address(info.address),
+            symbol=info.symbol,
+            name=info.name,
+            logo_url=info.icon_url,
+            banner_url=info.banner_url,
+            website=info.website,
+            twitter_username=info.twitter_username,
+            telegram=info.telegram,
+            gmgn_url=info.gmgn_url,
+            geckoterminal_url=info.geckoterminal_url,
+            description=info.description,
+            raw=info.raw,
+        )
 
     def close(self) -> None:
         self._client.close()
 
 
-class _SerializedDexMarketProvider:
-    def __init__(self, provider: DexMarketProvider) -> None:
+class _SerializedDiscoveryProvider:
+    def __init__(self, provider: DexTokenDiscoveryProvider) -> None:
         self._provider = provider
         self._lock = Lock()
         self._closed = False
@@ -144,14 +191,6 @@ class _SerializedDexMarketProvider:
     def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]) -> list[DexTokenCandidate]:
         with self._lock:
             return self._provider.search_tokens(query=query, chain_ids=chain_ids)
-
-    def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]:
-        with self._lock:
-            return self._provider.token_prices(tokens)
-
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]:
-        with self._lock:
-            return self._provider.token_candles(chain_id=chain_id, address=address, bar=bar, limit=limit)
 
     def close(self) -> None:
         close = getattr(self._provider, "close", None)
@@ -277,13 +316,17 @@ def okx_chain_index(chain_id: Any) -> str | None:
 def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
     if not start_collector:
         return AssetMarketProviders()
-    dex_market = _SerializedDexMarketProvider(_okx_dex_market(settings)) if settings.okx_dex_configured else None
+    dex_discovery_market = (
+        _SerializedDiscoveryProvider(_okx_dex_discovery_market(settings)) if settings.okx_dex_configured else None
+    )
+    gmgn_dex_market = _gmgn_dex_market(settings) if settings.gmgn_configured else None
     return AssetMarketProviders(
         sync_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        sync_dex_market=dex_market,
         message_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        message_dex_market=dex_market,
-        discovery_dex_market=dex_market,
+        dex_discovery_market=dex_discovery_market,
+        dex_quote_market=gmgn_dex_market,
+        dex_candle_market=gmgn_dex_market,
+        dex_profile_market=gmgn_dex_market,
         stream_dex_market=_okx_dex_ws_market(settings) if settings.okx_dex_ws_configured else None,
         discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
     )
@@ -325,14 +368,25 @@ def _okx_cex_market(settings: Settings) -> OkxCexMarketProvider:
     )
 
 
-def _okx_dex_market(settings: Settings) -> OkxDexMarketProvider:
-    return OkxDexMarketProvider(
+def _okx_dex_discovery_market(settings: Settings) -> OkxDexDiscoveryProvider:
+    return OkxDexDiscoveryProvider(
         OkxDexClient(
             base_url=settings.okx_dex_base_url,
             api_key=settings.okx_dex_api_key,
             secret_key=settings.okx_dex_secret_key,
             passphrase=settings.okx_dex_passphrase,
             timeout_seconds=settings.okx_timeout_seconds,
+        )
+    )
+
+
+def _gmgn_dex_market(settings: Settings) -> GmgnDexMarketProvider:
+    return GmgnDexMarketProvider(
+        GmgnOpenApiClient(
+            api_key=settings.gmgn_api_key or "",
+            base_url=settings.gmgn_openapi_base_url,
+            timeout_seconds=settings.gmgn_timeout_seconds,
+            cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
         )
     )
 
@@ -401,16 +455,6 @@ def _dex_token_candidate(candidate: Any) -> DexTokenCandidate:
     )
 
 
-def _dex_token_price(price: Any) -> DexTokenPrice:
-    return DexTokenPrice(
-        chain_id=okx_index_to_chain_id(price.chain_index) or str(price.chain_index),
-        address=_normalize_address(price.address),
-        observed_at_ms=price.observed_at_ms,
-        price_usd=price.price_usd,
-        raw=price.raw,
-    )
-
-
 def _market_candle(candle: Any) -> MarketCandle:
     return MarketCandle(
         time_ms=int(candle.time_ms),
@@ -465,12 +509,25 @@ def _normalize_address(address: Any) -> str:
     return text.lower() if EVM_ADDRESS_RE.match(text) else text
 
 
+def _number_from_mapping(payload: dict[str, Any], *keys: str) -> float | None:
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 __all__ = [
     "AssetMarketProviders",
+    "GmgnDexMarketProvider",
     "IngestionProviders",
     "MarketlaneProviders",
     "OkxCexMarketProvider",
-    "OkxDexMarketProvider",
+    "OkxDexDiscoveryProvider",
     "OkxDexWebSocketMarketProviderAdapter",
     "PulseLabProviders",
     "SocialEnrichmentProviders",

@@ -48,14 +48,16 @@ class ResolutionRefreshWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        dex_market: Any = None,
+        dex_discovery_market: Any = None,
+        dex_quote_market: Any = None,
         chain_ids: tuple[str, ...] | list[str] = ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton"),
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
     ) -> None:
         self.repository_session = repository_session
-        self.dex_market = dex_market
+        self.dex_discovery_market = dex_discovery_market
+        self.dex_quote_market = dex_quote_market
         self.chain_ids = tuple(str(item).strip() for item in chain_ids if str(item).strip())
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.lookup_limit = max(1, int(lookup_limit))
@@ -83,7 +85,8 @@ class ResolutionRefreshWorker:
             with self.repository_session() as repos:
                 result = run_resolution_refresh_once(
                     repos=repos,
-                    dex_market=self.dex_market,
+                    dex_discovery_market=self.dex_discovery_market,
+                    dex_quote_market=self.dex_quote_market,
                     chain_ids=self.chain_ids,
                     now_ms=observed_at_ms,
                     lookup_limit=self.lookup_limit,
@@ -100,15 +103,17 @@ class ResolutionRefreshWorker:
         self._stopped = True
 
     def close(self) -> None:
-        close = getattr(self.dex_market, "close", None)
-        if close:
-            close()
+        for provider in (self.dex_discovery_market, self.dex_quote_market):
+            close = getattr(provider, "close", None)
+            if close:
+                close()
 
 
 def run_resolution_refresh_once(
     *,
     repos: Any,
-    dex_market: Any,
+    dex_discovery_market: Any,
+    dex_quote_market: Any = None,
     chain_ids: tuple[str, ...] | list[str],
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
@@ -141,7 +146,7 @@ def run_resolution_refresh_once(
                 repos=repos,
                 lookup_key=lookup_key,
                 lookup_type=lookup_type,
-                dex_market=dex_market,
+                dex_discovery_market=dex_discovery_market,
                 chain_ids=tuple(chain_ids),
                 now_ms=now_ms,
             )
@@ -195,7 +200,7 @@ def run_resolution_refresh_once(
             result["anchor"] = observe_anchor_prices(
                 repos=repos,
                 cex_market=None,
-                dex_market=dex_market,
+                dex_quote_market=dex_quote_market,
                 now_ms=now_ms,
                 limit=max(20, int(reprocess_result["resolved_intents"]) * 2),
             )
@@ -215,7 +220,7 @@ def _process_lookup(
     repos: Any,
     lookup_key: str,
     lookup_type: str,
-    dex_market: Any,
+    dex_discovery_market: Any,
     chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
@@ -223,7 +228,7 @@ def _process_lookup(
         return _process_dex_symbol_lookup(
             repos=repos,
             lookup_key=lookup_key,
-            dex_market=dex_market,
+            dex_discovery_market=dex_discovery_market,
             chain_ids=chain_ids,
             now_ms=now_ms,
         )
@@ -231,7 +236,7 @@ def _process_lookup(
         return _process_address_lookup(
             repos=repos,
             lookup_key=lookup_key,
-            dex_market=dex_market,
+            dex_discovery_market=dex_discovery_market,
             chain_ids=chain_ids,
             now_ms=now_ms,
         )
@@ -242,16 +247,16 @@ def _process_dex_symbol_lookup(
     *,
     repos: Any,
     lookup_key: str,
-    dex_market: Any,
+    dex_discovery_market: Any,
     chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
-    if dex_market is None:
+    if dex_discovery_market is None:
         raise RuntimeError("dex discovery client is not configured")
     symbol = _normalize_symbol(lookup_key.removeprefix("symbol:"))
     if not symbol:
         return _lookup_result()
-    candidates = dex_market.search_tokens(query=symbol, chain_ids=chain_ids)
+    candidates = dex_discovery_market.search_tokens(query=symbol, chain_ids=chain_ids)
     provider_ranks = _provider_ranks(candidates)
     result = _lookup_result(search_requests=1)
     matched_candidates = [
@@ -289,11 +294,11 @@ def _process_address_lookup(
     *,
     repos: Any,
     lookup_key: str,
-    dex_market: Any,
+    dex_discovery_market: Any,
     chain_ids: tuple[str, ...],
     now_ms: int,
 ) -> dict[str, Any]:
-    if dex_market is None:
+    if dex_discovery_market is None:
         raise RuntimeError("dex discovery client is not configured")
     parsed = _parse_address_lookup_key(lookup_key)
     address = parsed["address"]
@@ -304,7 +309,7 @@ def _process_address_lookup(
     requested_chains = tuple(chain for chain in requested_chains if chain)
     if not requested_chains:
         return _lookup_result()
-    candidates = dex_market.search_tokens(query=address, chain_ids=requested_chains)
+    candidates = dex_discovery_market.search_tokens(query=address, chain_ids=requested_chains)
     result = _lookup_result(search_requests=1)
     for candidate in candidates:
         candidate_address = _normalize_address(getattr(candidate, "address", None))
