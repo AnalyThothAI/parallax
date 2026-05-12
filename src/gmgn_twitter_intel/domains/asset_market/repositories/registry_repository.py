@@ -3,6 +3,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from psycopg.types.json import Jsonb
+
 
 class RegistryRepository:
     def __init__(self, conn: Any):
@@ -158,6 +160,103 @@ class RegistryRepository:
         if commit:
             self.conn.commit()
         return self._row_by_id("price_feeds", "pricefeed_id", pricefeed_id) or {}
+
+    def upsert_us_equity_symbol(
+        self,
+        *,
+        symbol: str,
+        exchange: str | None,
+        security_name: str | None,
+        instrument_type: str,
+        source: str,
+        source_updated_at_ms: int,
+        raw_payload: dict[str, Any] | None,
+        observed_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        normalized_symbol = _symbol(symbol)
+        market_instrument_id = f"market_instrument:us_equity:{normalized_symbol}"
+        self.conn.execute(
+            """
+            INSERT INTO us_equity_symbols(
+              symbol, market_instrument_id, exchange, security_name, instrument_type, status, source,
+              source_updated_at_ms, raw_payload_json, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, 'active', %s, %s, %s, %s, %s)
+            ON CONFLICT(symbol) DO UPDATE SET
+              market_instrument_id = excluded.market_instrument_id,
+              exchange = excluded.exchange,
+              security_name = excluded.security_name,
+              instrument_type = excluded.instrument_type,
+              status = 'active',
+              source = excluded.source,
+              source_updated_at_ms = excluded.source_updated_at_ms,
+              raw_payload_json = excluded.raw_payload_json,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                normalized_symbol,
+                market_instrument_id,
+                _optional_text(exchange),
+                _optional_text(security_name),
+                str(instrument_type or "equity").strip().lower() or "equity",
+                source,
+                int(source_updated_at_ms),
+                Jsonb(raw_payload or {}),
+                int(observed_at_ms),
+                int(observed_at_ms),
+            ),
+        )
+        if commit:
+            self.conn.commit()
+        return self._row_by_id("us_equity_symbols", "symbol", normalized_symbol) or {}
+
+    def find_us_equity_symbol(self, symbol: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM us_equity_symbols
+            WHERE symbol = %s AND status = 'active'
+            """,
+            (_symbol(symbol),),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def deactivate_missing_us_equity_symbols(
+        self,
+        *,
+        source: str,
+        active_symbols: set[str],
+        observed_at_ms: int,
+        commit: bool = True,
+    ) -> int:
+        normalized_symbols = sorted({_symbol(symbol) for symbol in active_symbols if _symbol(symbol)})
+        if normalized_symbols:
+            row = self.conn.execute(
+                """
+                UPDATE us_equity_symbols
+                SET status = 'inactive', updated_at_ms = %s
+                WHERE source = %s
+                  AND status = 'active'
+                  AND NOT (symbol = ANY(%s))
+                RETURNING symbol
+                """,
+                (int(observed_at_ms), source, normalized_symbols),
+            ).fetchall()
+        else:
+            row = self.conn.execute(
+                """
+                UPDATE us_equity_symbols
+                SET status = 'inactive', updated_at_ms = %s
+                WHERE source = %s
+                  AND status = 'active'
+                RETURNING symbol
+                """,
+                (int(observed_at_ms), source),
+            ).fetchall()
+        if commit:
+            self.conn.commit()
+        return len(row)
 
     def find_cex_token(self, base_symbol: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -393,6 +492,11 @@ def _pricefeed_id(
 
 def _symbol(value: str | None) -> str:
     return str(value or "").strip().lstrip("$").upper()
+
+
+def _optional_text(value: str | None) -> str | None:
+    text = str(value or "").strip()
+    return text or None
 
 
 def _chain(value: str) -> str:

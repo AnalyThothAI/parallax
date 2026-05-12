@@ -22,6 +22,10 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_serv
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
+from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
+    NasdaqTraderSymbolClient,
+    sync_us_equity_symbols,
+)
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_ops import (
     attribute_harness_credits,
@@ -209,6 +213,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_projections.add_argument("--sample", type=int, default=100)
     sync_okx_cex = ops_subcommands.add_parser("sync-okx-cex-universe", help="sync OKX public CEX instruments")
     sync_okx_cex.add_argument("--inst-type", action="append", choices=("SPOT", "SWAP"), default=[])
+    ops_subcommands.add_parser("sync-us-equity-symbols", help="sync Nasdaq Trader US equity symbols")
     sync_gmgn_directory = ops_subcommands.add_parser(
         "sync-gmgn-directory",
         help="one-shot sync of GMGN twitter directory into account_profiles",
@@ -736,6 +741,19 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                     registry=repos.registry,
                     cex_market=OkxCexMarketProvider(client),
                     inst_types=inst_types,
+                    observed_at_ms=_now_ms(),
+                )
+            finally:
+                client.close()
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
+        if command == "ops" and args.ops_command == "sync-us-equity-symbols":
+            client = NasdaqTraderSymbolClient(timeout_seconds=settings.okx_timeout_seconds)
+            try:
+                data = sync_us_equity_symbols(
+                    registry=repos.registry,
+                    client=client,
                     observed_at_ms=_now_ms(),
                 )
             finally:

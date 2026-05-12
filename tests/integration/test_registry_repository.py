@@ -106,6 +106,40 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
     assert preferred_feed["pricefeed_id"] == "pricefeed:cex:okx:spot:PEPE-USDT"
 
 
+def test_registry_repository_writes_and_deactivates_us_equity_symbols(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+
+        row = registry.upsert_us_equity_symbol(
+            symbol="aaoi",
+            exchange="NASDAQ",
+            security_name="Applied Optoelectronics, Inc. Common Stock",
+            instrument_type="equity",
+            source="nasdaq_trader",
+            source_updated_at_ms=1_778_000_000_000,
+            raw_payload={"Symbol": "AAOI"},
+            observed_at_ms=1_778_000_000_000,
+        )
+        found = registry.find_us_equity_symbol("AAOI")
+        deactivated = registry.deactivate_missing_us_equity_symbols(
+            source="nasdaq_trader",
+            active_symbols=set(),
+            observed_at_ms=1_778_000_060_000,
+        )
+        missing_after_deactivate = registry.find_us_equity_symbol("AAOI")
+    finally:
+        conn.close()
+
+    assert row["symbol"] == "AAOI"
+    assert row["market_instrument_id"] == "market_instrument:us_equity:AAOI"
+    assert found["security_name"] == "Applied Optoelectronics, Inc. Common Stock"
+    assert found["status"] == "active"
+    assert deactivated == 1
+    assert missing_after_deactivate is None
+
+
 def test_symbol_lookup_reads_market_metadata_from_okx_identity_evidence(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

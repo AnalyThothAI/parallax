@@ -60,7 +60,7 @@ def test_ingest_gmgn_payload_writes_identity_without_market_observation(tmp_path
             token_snapshot=snapshot,
         )
         result = ingest.ingest_event(event, is_watched=True)
-        resolution = result.token_resolutions[0]
+        resolution = next(item for item in result.token_resolutions if item["resolution_status"] == "EXACT")
         asset = repos.registry.find_assets_by_address(chain_id="eth", address=address)[0]
         identity_evidence = repos.identity_evidence.list_identity_evidence(asset["asset_id"])
         market = repos.price_observations.latest_for_subject(

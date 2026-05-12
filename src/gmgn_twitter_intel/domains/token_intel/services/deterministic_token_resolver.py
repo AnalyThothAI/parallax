@@ -310,6 +310,20 @@ class DeterministicTokenResolver:
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
+        us_equity = self.registry.find_us_equity_symbol(symbol)
+        if us_equity:
+            target_id = str(us_equity["market_instrument_id"])
+            return _resolution(
+                intent_id=intent_id,
+                event_id=event_id,
+                status="NON_CRYPTO",
+                target_type="MarketInstrument",
+                target_id=target_id,
+                reason_codes=["CONFIRMED_US_EQUITY"],
+                lookup_keys=[],
+                candidate_ids=[target_id],
+                decision_time_ms=decision_time_ms,
+            )
         return _resolution(
             intent_id=intent_id,
             event_id=event_id,

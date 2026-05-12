@@ -60,10 +60,10 @@ options:
 
 ```
 usage: gmgn-twitter-intel ops [-h]
-                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,factor-diagnostics,settle-token-factors} ...
+                              {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-us-equity-symbols,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,factor-diagnostics,settle-token-factors} ...
 
 positional arguments:
-  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,backfill-harness-jobs,settle-harness,attribute-harness-credits,update-harness-weights,projection-status,validate-projections,sync-okx-cex-universe,sync-us-equity-symbols,sync-gmgn-directory,run-token-discovery,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,backfill-token-price-baselines,factor-diagnostics,settle-token-factors}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
@@ -82,6 +82,8 @@ positional arguments:
                         facts
     sync-okx-cex-universe
                         sync OKX public CEX instruments
+    sync-us-equity-symbols
+                        sync Nasdaq Trader US equity symbols
     sync-gmgn-directory
                         one-shot sync of GMGN twitter directory into
                         account_profiles

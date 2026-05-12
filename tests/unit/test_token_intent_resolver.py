@@ -138,6 +138,9 @@ class FakeRegistry:
     def find_assets_by_symbol_with_identity_metadata(self, symbol):
         return list(self.symbol_assets.get(str(symbol).upper(), []))
 
+    def find_us_equity_symbol(self, symbol):
+        return None
+
     def find_assets_by_address(self, *, chain_id=None, address):
         key = (chain_id, str(address).lower())
         if chain_id:

@@ -67,6 +67,94 @@ def test_symbol_cex_token_binds_preferred_usdt_pricefeed():
     assert result.candidate_ids == ["pricefeed:cex:okx:spot:PEPE-USDT", "cex_token:PEPE"]
 
 
+def test_symbol_prefers_confirmed_cex_token_before_us_equity_symbol():
+    registry = FakeRegistry(
+        cex_tokens={"COIN": {"cex_token_id": "cex_token:COIN", "base_symbol": "COIN"}},
+        us_equities={
+            "COIN": {
+                "market_instrument_id": "market_instrument:us_equity:COIN",
+                "symbol": "COIN",
+                "status": "active",
+            }
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-coin",
+        event_id="event-coin",
+        keys=MentionKeys(symbol="COIN"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "CexToken"
+    assert result.target_id == "cex_token:COIN"
+    assert result.reason_codes == ["CONFIRMED_CEX_TOKEN"]
+
+
+def test_symbol_prefers_existing_chain_asset_before_us_equity_symbol():
+    registry = FakeRegistry(
+        symbol_assets={
+            "ON": [
+                {
+                    "asset_id": "asset:solana:token:onchain",
+                    "chain_id": "solana",
+                    "symbol": "ON",
+                    "market_cap_usd": Decimal("500000"),
+                    "holders": 2_000,
+                    "liquidity_usd": Decimal("120000"),
+                    "observed_at_ms": 1_778_145_000_000,
+                }
+            ],
+        },
+        us_equities={
+            "ON": {
+                "market_instrument_id": "market_instrument:us_equity:ON",
+                "symbol": "ON",
+                "status": "active",
+            }
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-on",
+        event_id="event-on",
+        keys=MentionKeys(symbol="ON"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:solana:token:onchain"
+    assert result.reason_codes == ["SINGLE_ACTIVE_CHAIN_ASSET"]
+
+
+def test_symbol_without_crypto_candidates_resolves_confirmed_us_equity_as_non_crypto():
+    registry = FakeRegistry(
+        us_equities={
+            "AAOI": {
+                "market_instrument_id": "market_instrument:us_equity:AAOI",
+                "symbol": "AAOI",
+                "status": "active",
+            }
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-aaoi",
+        event_id="event-aaoi",
+        keys=MentionKeys(symbol="AAOI"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "NON_CRYPTO"
+    assert result.target_type == "MarketInstrument"
+    assert result.target_id == "market_instrument:us_equity:AAOI"
+    assert result.reason_codes == ["CONFIRMED_US_EQUITY"]
+    assert result.candidate_ids == ["market_instrument:us_equity:AAOI"]
+    assert result.lookup_keys == []
+
+
 def test_cex_native_pricefeed_is_exact_before_symbol_resolution():
     registry = FakeRegistry(
         cex_pricefeeds={
@@ -633,12 +721,14 @@ class FakeRegistry:
         preferred_cex_pricefeeds=None,
         symbol_assets=None,
         address_assets=None,
+        us_equities=None,
     ):
         self.cex_tokens = cex_tokens or {}
         self.cex_pricefeeds = cex_pricefeeds or {}
         self.preferred_cex_pricefeeds = preferred_cex_pricefeeds or {}
         self.symbol_assets = symbol_assets or {}
         self.address_assets = address_assets or {}
+        self.us_equities = us_equities or {}
 
     def find_cex_token(self, symbol):
         return self.cex_tokens.get(str(symbol).upper())
@@ -651,6 +741,9 @@ class FakeRegistry:
 
     def find_assets_by_symbol_with_identity_metadata(self, symbol):
         return [_registry_asset_row(row) for row in self.symbol_assets.get(str(symbol).upper(), [])]
+
+    def find_us_equity_symbol(self, symbol):
+        return self.us_equities.get(str(symbol).upper())
 
     def find_assets_by_address(self, *, chain_id=None, address):
         normalized = str(address).lower()

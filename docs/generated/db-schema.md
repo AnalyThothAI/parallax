@@ -352,9 +352,9 @@
 | `matched_at_ms` | `BIGINT` | False | `0` |
 | `raw_json` | `JSONB` | False | `None` |
 | `event_json` | `JSONB` | False | `None` |
-| `search_tsv` | `TSVECTOR` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+| `search_tsv` | `TSVECTOR` | True | `None` |
 
 ## `harness_credits`
 
@@ -1127,7 +1127,7 @@
 | `target_json` | `JSONB` | False | `'{}'::jsonb` |
 | `price_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
-| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v3_social_attention'::text` |
+| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v1'::text` |
 
 ## `token_score_evaluations`
 
@@ -1206,3 +1206,20 @@
 | `source_attribution_ids_json` | `JSONB` | False | `'[]'::jsonb` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `us_equity_symbols`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `symbol` | `TEXT` | False | `None` |
+| `market_instrument_id` | `TEXT` | False | `None` |
+| `exchange` | `TEXT` | True | `None` |
+| `security_name` | `TEXT` | True | `None` |
+| `instrument_type` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `'active'::text` |
+| `source` | `TEXT` | False | `None` |
+| `source_updated_at_ms` | `BIGINT` | False | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+

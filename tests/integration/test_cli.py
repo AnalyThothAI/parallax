@@ -155,6 +155,7 @@ class CliTests(unittest.TestCase):
                 "--now-ms",
                 "1700000000000",
             ],
+            ["ops", "sync-us-equity-symbols"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -182,6 +183,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[13].limit, 200)
         self.assertEqual(parsed[14].ops_command, "settle-token-factors")
         self.assertEqual(parsed[14].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[15].ops_command, "sync-us-equity-symbols")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -251,7 +253,7 @@ class CliTests(unittest.TestCase):
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
                 recent_code = main(["recent", "--limit", "5"], stdout=stdout)
-                search_code = main(["search", "--symbol", "PEPE", "--limit", "5"], stdout=stdout)
+                search_code = main(["search", "$PEPE", "--limit", "5"], stdout=stdout)
                 asset_flow_code = main(
                     ["asset-flow", "--window", "5m", "--limit", "5", "--scope", "all"],
                     stdout=stdout,

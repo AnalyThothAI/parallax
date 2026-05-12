@@ -103,6 +103,7 @@ class TokenRadarSourceQuery:
               WHERE token_intent_resolutions.intent_id = token_intents.intent_id
                 AND token_intent_resolutions.is_current = true
                 AND token_intent_resolutions.resolver_policy_version = %s
+                AND COALESCE(token_intent_resolutions.target_type, 'Asset') IN ('Asset', 'CexToken')
               LIMIT 1
             ) token_intent_resolutions ON true
             LEFT JOIN token_market_price_baselines price_baselines
@@ -167,6 +168,7 @@ class TokenRadarSourceQuery:
               ON token_intent_resolutions.intent_id = token_intents.intent_id
              AND token_intent_resolutions.is_current = true
              AND token_intent_resolutions.resolver_policy_version = %s
+             AND COALESCE(token_intent_resolutions.target_type, 'Asset') IN ('Asset', 'CexToken')
             JOIN events ON events.event_id = token_intents.event_id
             WHERE events.received_at_ms >= %s {watched_clause}
             """,

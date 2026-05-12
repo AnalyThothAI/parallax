@@ -63,6 +63,9 @@ TOKEN_FACTOR_PULSE_CLEANUP_MIGRATION = Path(
 PULSE_FACTOR_CONTRACT_CLEANUP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0031_prune_legacy_pulse_factor_contracts.py"
 )
+US_EQUITY_SYMBOL_UNIVERSE_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0033_us_equity_symbol_universe.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 
 
@@ -211,6 +214,17 @@ def test_pulse_factor_contract_cleanup_migration_prunes_non_current_contracts() 
     assert "token_factor_snapshot_v3_social_attention" in text
     assert "UPDATE pulse_agent_jobs" not in text
     assert "mark" not in text.lower()
+
+
+def test_us_equity_symbol_universe_migration_adds_market_instrument_lookup_table() -> None:
+    text = US_EQUITY_SYMBOL_UNIVERSE_MIGRATION.read_text()
+
+    assert 'revision = "20260512_0033"' in text
+    assert 'down_revision = "20260512_0032"' in text
+    assert "CREATE TABLE IF NOT EXISTS us_equity_symbols" in text
+    assert "market_instrument_id TEXT NOT NULL UNIQUE" in text
+    assert "raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb" in text
+    assert "idx_us_equity_symbols_active_lookup" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:
