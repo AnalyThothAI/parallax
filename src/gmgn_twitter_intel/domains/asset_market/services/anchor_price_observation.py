@@ -134,6 +134,8 @@ def _fetch_dex_quotes(
                     "tokens": len(chunk),
                 }
             )
+            if _is_provider_cooldown_error(exc):
+                break
             continue
         for price in chunk_quotes:
             quotes[(str(price.chain_id), _normalize_address(price.address))] = price
@@ -228,6 +230,11 @@ def _normalize_address(address: str) -> str:
 
 def _cex_price_basis(quote_symbol: str | None) -> str:
     return "quote_as_usd" if str(quote_symbol or "").upper() in {"USD", "USDT", "USDC"} else "quote"
+
+
+def _is_provider_cooldown_error(exc: Exception) -> bool:
+    message = str(exc)
+    return "HTTP 403" in message or "HTTP 429" in message or "RATE_LIMIT_BANNED" in message
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:

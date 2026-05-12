@@ -180,6 +180,44 @@ def test_anchor_price_observation_records_dex_provider_error_without_fallback():
     assert repos.conn.commits == 0
 
 
+def test_anchor_price_observation_stops_current_dex_round_on_provider_cooldown():
+    rows = [
+        {
+            "event_id": f"event-{index}",
+            "intent_id": f"intent-{index}",
+            "resolution_id": f"resolution-{index}",
+            "target_type": "Asset",
+            "target_id": f"asset:solana:token:token-{index}",
+            "pricefeed_id": None,
+            "event_received_at_ms": 1_700_000_000_000 + index,
+            "asset_chain_id": "solana",
+            "asset_address": f"token-{index}",
+            "asset_symbol": f"T{index}",
+        }
+        for index in range(21)
+    ]
+    repos = FakeRepos(rows=rows)
+    dex_market = FailingDexMarket(RuntimeError("GET /v1/token/info returned non-json HTTP 403"))
+
+    result = observe_anchor_prices(
+        repos=repos,
+        cex_market=None,
+        dex_quote_market=dex_market,
+        now_ms=1_700_000_001_000,
+        limit=100,
+    )
+
+    assert result["rows_selected"] == 21
+    assert result["dex_price_requests"] == 1
+    assert result["provider_errors"] == 1
+    assert result["errors"][0]["tokens"] == 20
+    assert len(dex_market.calls) == 1
+    assert result["anchor_observations_written"] == 0
+    assert result["skipped_missing_market"] == 21
+    assert repos.price_observations.observations == []
+    assert repos.conn.commits == 0
+
+
 class FakeRepos:
     def __init__(self, rows):
         self.conn = FakeConn(rows)
