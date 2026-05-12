@@ -15,14 +15,14 @@ def upgrade() -> None:
         """
         DELETE FROM pulse_agent_jobs
         WHERE COALESCE(context_json #>> '{factor_snapshot,schema_version}', '')
-          <> 'token_factor_snapshot_v2_alpha_gated'
+          <> 'token_factor_snapshot_v3_social_attention'
         """
     )
     op.execute(
         """
         DELETE FROM pulse_candidates
         WHERE COALESCE(factor_snapshot_json->>'schema_version', '')
-          <> 'token_factor_snapshot_v2_alpha_gated'
+          <> 'token_factor_snapshot_v3_social_attention'
         """
     )
 

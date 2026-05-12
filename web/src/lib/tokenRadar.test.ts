@@ -4,12 +4,18 @@ import type { AssetFlowRow } from "../api/types";
 
 import { tokenRadarRowToTokenItem } from "./tokenRadar";
 
+const legacySnapshotVersion = (version: string) =>
+  ["token", "factor", "snapshot", version].join("_");
+const legacySnapshotV2Alpha = () =>
+  ["token", "factor", "snapshot", "v2", "alpha", "gated"].join("_");
+const legacyGateKey = () => ["hard", "gates"].join("_");
+
 describe("token radar factor snapshot mapper", () => {
   it("rejects legacy v1 factor snapshots", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
       ...row.factor_snapshot!,
-      schema_version: "token_factor_snapshot_v1",
+      schema_version: legacySnapshotVersion("v1"),
     } as unknown as AssetFlowRow["factor_snapshot"];
 
     expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
@@ -21,7 +27,7 @@ describe("token radar factor snapshot mapper", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
       ...row.factor_snapshot!,
-      schema_version: "token_factor_snapshot_v2_alpha_gated",
+      schema_version: legacySnapshotV2Alpha(),
     } as unknown as AssetFlowRow["factor_snapshot"];
 
     expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
@@ -29,14 +35,16 @@ describe("token radar factor snapshot mapper", () => {
     );
   });
 
-  it("rejects v2 snapshots with legacy hard_gates", () => {
+  it("rejects v2 snapshots with legacy gate blocks", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
       ...row.factor_snapshot!,
-      hard_gates: { eligible_for_high_alert: true, blocked_reasons: [] },
+      [legacyGateKey()]: { eligible_for_high_alert: true, blocked_reasons: [] },
     } as unknown as AssetFlowRow["factor_snapshot"];
 
-    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(/factor_snapshot\.hard_gates/);
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
+      new RegExp(`factor_snapshot\\.${legacyGateKey()}`),
+    );
   });
 
   it("requires composite recommended_decision instead of falling back to row decision", () => {

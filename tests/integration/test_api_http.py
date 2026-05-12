@@ -40,7 +40,7 @@ def _pulse_factor_snapshot(
     blocked = blocked_reasons or []
     market_health = "ready" if market_status == "fresh" else "partial"
     return {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {
             "target_type": "Asset",
             "target_id": target_id,
@@ -69,34 +69,34 @@ def _pulse_factor_snapshot(
         },
         "data_health": {"identity": "ready", "market": market_health, "social": "ready", "alpha": "ready"},
         "families": {
-            "attention_heat": {
+            "social_heat": {
                 "raw_score": 82,
                 "score": 82,
-                "weight": 0.35,
+                "weight": 0.45,
                 "data_health": "ready",
                 "facts": {"mentions_1h": 8, "unique_authors": 4, "watched_mentions": 1},
                 "factors": {},
             },
-            "diffusion_quality": {
+            "social_propagation": {
                 "raw_score": 78,
                 "score": 78,
-                "weight": 0.3,
+                "weight": 0.4,
                 "data_health": "ready",
                 "facts": {"independent_authors": 4},
                 "factors": {},
             },
-            "semantic_quality": {
+            "semantic_catalyst": {
                 "raw_score": 72,
                 "score": 72,
-                "weight": 0.25,
+                "weight": 0.15,
                 "data_health": "ready",
                 "facts": {"phase": "ignition"},
                 "factors": {},
             },
-            "timing_response": {
+            "timing_risk": {
                 "raw_score": 65,
                 "score": 65,
-                "weight": 0.1,
+                "weight": 0.0,
                 "data_health": "ready",
                 "facts": {"price_change_status": market_status},
                 "factors": {},
@@ -107,10 +107,10 @@ def _pulse_factor_snapshot(
             "rank_score": score,
             "recommended_decision": "watch",
             "family_scores": {
-                "attention_heat": 82,
-                "diffusion_quality": 78,
-                "semantic_quality": 72,
-                "timing_response": 65,
+                "social_heat": 82,
+                "social_propagation": 78,
+                "semantic_catalyst": 72,
+                "timing_risk": 65,
             },
         },
         "provenance": {"source_event_ids": ["event-api-1"], "computed_at_ms": 2_000},
@@ -144,11 +144,11 @@ def _pulse_recommendation(summary: str = "PEPE 社交热度显著上升。") -> 
         "recommendation": "research",
         "summary_zh": summary,
         "primary_reasons": [
-            {"factor_key": "diffusion_quality.independent_authors", "explanation_zh": "独立作者扩散正在增加。"}
+            {"factor_key": "social_propagation.independent_authors", "explanation_zh": "独立作者扩散正在增加。"}
         ],
         "upgrade_conditions": [
             {
-                "factor_key": "attention_heat.watched_mentions",
+                "factor_key": "social_heat.watched_mentions",
                 "operator": ">=",
                 "value": 1,
                 "description_zh": "关注账号继续确认。",
@@ -156,15 +156,13 @@ def _pulse_recommendation(summary: str = "PEPE 社交热度显著上升。") -> 
         ],
         "invalidation_conditions": [
             {
-                "factor_key": "attention_heat.mentions_1h",
+                "factor_key": "social_heat.mentions_1h",
                 "operator": "<",
                 "value": 3,
                 "description_zh": "讨论快速降温。",
             }
         ],
-        "residual_risks": [
-            {"factor_key": "timing_response.price_change_status", "description_zh": "价格响应仍可能变化。"}
-        ],
+        "residual_risks": [{"factor_key": "timing_risk.price_change_status", "description_zh": "价格响应仍可能变化。"}],
         "evidence_event_ids": ["event-api-1"],
         "confidence": 0.72,
     }
@@ -710,7 +708,7 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
     assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
-    assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert "radar_score_json" not in data["items"][0]
     assert "market_context_json" not in data["items"][0]
     assert "thesis_json" not in data["items"][0]

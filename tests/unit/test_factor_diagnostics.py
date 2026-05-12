@@ -46,7 +46,7 @@ def test_factor_distribution_report_accepts_v3_family_keys() -> None:
     report = factor_distribution_report([_row()])
 
     assert report["ok"] is True
-    assert not any(item["code"] == "old_factor_family_keys" for item in report["violations"])
+    assert not any(item["code"] == "unexpected_factor_family_keys" for item in report["violations"])
 
 
 def test_factor_distribution_report_flags_old_v2_family_keys_and_hard_gates() -> None:
@@ -60,7 +60,9 @@ def test_factor_distribution_report_flags_old_v2_family_keys_and_hard_gates() ->
     report = factor_distribution_report([{"factor_snapshot_json": snapshot}])
 
     assert report["ok"] is False
-    old_family_violation = next(item for item in report["violations"] if item["code"] == "old_factor_family_keys")
+    old_family_violation = next(
+        item for item in report["violations"] if item["code"] == "unexpected_factor_family_keys"
+    )
     assert old_family_violation["families"] == [
         "attention_heat",
         "diffusion_quality",
@@ -78,7 +80,9 @@ def test_factor_distribution_report_flags_old_v1ish_family_keys() -> None:
     report = factor_distribution_report([{"factor_snapshot_json": snapshot}])
 
     assert report["ok"] is False
-    old_family_violation = next(item for item in report["violations"] if item["code"] == "old_factor_family_keys")
+    old_family_violation = next(
+        item for item in report["violations"] if item["code"] == "unexpected_factor_family_keys"
+    )
     assert old_family_violation["families"] == ["market_quality", "social_attention"]
 
 

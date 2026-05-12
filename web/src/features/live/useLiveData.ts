@@ -15,8 +15,8 @@ import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/tokenRadar";
 import { useTraderStore } from "../../store/useTraderStore";
 
-import { buildLiveSignalTapeItems } from "./liveTapeModel";
 import { patchTokenRadarLiveMarketUpdate } from "./liveMarketUpdatePatch";
+import { buildLiveSignalTapeItems } from "./liveTapeModel";
 
 const SIGNAL_LAB_COMPACT_WINDOW = "1h";
 const SIGNAL_LAB_COMPACT_SCOPE = "all";

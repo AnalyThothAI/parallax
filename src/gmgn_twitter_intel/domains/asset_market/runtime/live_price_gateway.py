@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import Any
@@ -170,11 +170,12 @@ class LivePriceGateway:
     def _active_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
         since_ms = int(now_ms) - int(self.hot_target_ttl_seconds * 1000)
         with self.repository_session() as repos:
-            return repos.registry.active_live_market_targets(
+            targets: Sequence[Mapping[str, Any]] = repos.registry.active_live_market_targets(
                 projection_version=self.projection_version,
                 since_ms=since_ms,
                 limit=self.subscription_limit,
             )
+        return [dict(target) for target in targets]
 
     def _poll_cex(self, targets: list[dict[str, Any]], *, received_at_ms: int) -> list[dict[str, Any]]:
         if self.cex_market is None:
@@ -195,7 +196,7 @@ class LivePriceGateway:
         targets: list[dict[str, Any]],
         *,
         received_at_ms: int,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
         if self.stream_provider is None or not targets:
             return
         stream_targets = [

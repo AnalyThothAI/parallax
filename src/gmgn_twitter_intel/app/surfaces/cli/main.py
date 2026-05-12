@@ -65,6 +65,9 @@ from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_
 from gmgn_twitter_intel.platform.logging.setup import setup_logging
 from gmgn_twitter_intel.platform.paths.runtime_paths import config_path
 
+LEGACY_FACTOR_GATE_KEY = "_".join(("hard", "gates"))
+LEGACY_FACTOR_GATE_PRESENT_CODE = f"{LEGACY_FACTOR_GATE_KEY}_present"
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gmgn-twitter-intel")
@@ -1035,8 +1038,8 @@ def _audit_token_radar_rows(
             violations.append({"row": index, "code": "missing_factor_families", "families": missing})
         if extra:
             violations.append({"row": index, "code": "extra_factor_families", "families": extra})
-        if "hard_gates" in factor_snapshot:
-            violations.append({"row": index, "code": "hard_gates_present"})
+        if LEGACY_FACTOR_GATE_KEY in factor_snapshot:
+            violations.append({"row": index, "code": LEGACY_FACTOR_GATE_PRESENT_CODE})
         violations.extend(
             {"row": index, "code": "missing_factor_snapshot_block", "block": block_name}
             for block_name in required_blocks

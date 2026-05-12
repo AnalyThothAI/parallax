@@ -94,7 +94,8 @@ export function tokenRadarRowToTokenItem(
   const anchorPrice = requiredAnchorPrice(row);
   const liveMarket = requiredLiveMarket(row);
   const anchorPriceValue =
-    optionalNullableNumber(anchorPrice.price_usd) ?? optionalNullableNumber(anchorPrice.price_quote);
+    optionalNullableNumber(anchorPrice.price_usd) ??
+    optionalNullableNumber(anchorPrice.price_quote);
   const livePriceValue =
     optionalNullableNumber(liveMarket.price_usd) ?? optionalNullableNumber(liveMarket.price_quote);
   const displayPrice = livePriceValue ?? anchorPriceValue;
@@ -627,10 +628,7 @@ function timingStatusFromSnapshot(
   return "neutral";
 }
 
-function liveDeltaFromAnchor(
-  livePrice: number | null,
-  anchorPrice: number | null,
-): number | null {
+function liveDeltaFromAnchor(livePrice: number | null, anchorPrice: number | null): number | null {
   if (livePrice === null || anchorPrice === null || anchorPrice === 0) {
     return null;
   }
@@ -644,7 +642,8 @@ function priceChangeStatusFromAnchorLive(
 ): string {
   if (anchorPrice.status !== "ready") return "missing_anchor";
   if (priceChangeSinceSocialPct !== null) return "ready";
-  if (liveMarket.status === "missing" || liveMarket.status === "unsupported") return "live_not_persisted";
+  if (liveMarket.status === "missing" || liveMarket.status === "unsupported")
+    return "live_not_persisted";
   return "missing_live_price";
 }
 

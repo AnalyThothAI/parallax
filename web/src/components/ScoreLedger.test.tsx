@@ -123,7 +123,11 @@ function token(): TokenFlowItem {
       risk_caps: [],
     },
     opportunity: {
-      ...scoreBlock("token_factor_snapshot_v3_social_attention:composite", 67, "factor_family_score"),
+      ...scoreBlock(
+        "token_factor_snapshot_v3_social_attention:composite",
+        67,
+        "factor_family_score",
+      ),
       decision: "watch",
       hard_risks: ["legacy_should_not_win"],
       components: { heat: 76, quality: 64, propagation: 58, timing: 42 },

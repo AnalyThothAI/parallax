@@ -2064,7 +2064,10 @@ function liveMarketFromPriceFixture({
   return {
     target_type: targetType,
     target_id: targetId,
-    status: price.market_status === "fresh" || price.market_status === "ready" ? "live" : price.market_status,
+    status:
+      price.market_status === "fresh" || price.market_status === "ready"
+        ? "live"
+        : price.market_status,
     price_usd: price.price_usd ?? null,
     price_quote: price.price_quote ?? null,
     quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,

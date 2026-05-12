@@ -71,7 +71,7 @@ comparisons silently mix populations. No black-box scores.
 
 Current factor snapshots use `schema_version =
 "token_factor_snapshot_v3_social_attention"` only. Runtime readers reject old
-v1/v2 shapes and reject `hard_gates`. The v3 contract separates:
+v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
 
 - `subject`: deterministic identity and target-market facts.
 - `gates`: high-alert eligibility, maximum decision, blocked reasons, and risk

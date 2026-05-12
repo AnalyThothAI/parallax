@@ -25,6 +25,7 @@ BUCKETS = (
     ("80-100", 80, 100),
 )
 
+
 def settle_token_factor_scores(
     *,
     repos: Any,
@@ -284,9 +285,7 @@ def _family_coverage(settlements: list[dict[str, Any]]) -> dict[str, float]:
     if not settlements:
         return {family: 0.0 for family in TOKEN_RADAR_FACTOR_FAMILIES}
     return {
-        family: sum(
-            1 for item in settlements if _mapping(item.get("family_scores")).get(family) is not None
-        )
+        family: sum(1 for item in settlements if _mapping(item.get("family_scores")).get(family) is not None)
         / len(settlements)
         for family in TOKEN_RADAR_FACTOR_FAMILIES
     }

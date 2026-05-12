@@ -1127,7 +1127,7 @@
 | `target_json` | `JSONB` | False | `'{}'::jsonb` |
 | `price_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
-| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v1'::text` |
+| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v3_social_attention'::text` |
 
 ## `token_score_evaluations`
 
@@ -1206,4 +1206,3 @@
 | `source_attribution_ids_json` | `JSONB` | False | `'[]'::jsonb` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
-

@@ -23,8 +23,7 @@ def main() -> None:
         rel = path.relative_to(ROOT).as_posix()
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             for pattern in PATTERNS:
-                for match in pattern.finditer(line):
-                    rows.append((match.group(1), rel, lineno, line.strip()))
+                rows.extend((match.group(1), rel, lineno, line.strip()) for match in pattern.finditer(line))
     body = ["# Score Versions", "", "| Version | File | Line | Context |", "|---------|------|------|---------|"]
     for version, rel, lineno, context in sorted(rows):
         body.append(f"| `{version}` | `{rel}` | {lineno} | `{context}` |")

@@ -152,7 +152,9 @@ def test_social_heat_formula_constants_match_spec() -> None:
     assert factors["attention_surprise"]["score"] == pytest.approx(47.5)
     assert factors["attention_surprise"]["confidence"] == pytest.approx(0.95)
 
-    fallback = _strong_dex_snapshot(attention={"robust_z": None, "z_ewma": None, "z_score": None, "new_burst_score": 2.0})
+    fallback = _strong_dex_snapshot(
+        attention={"robust_z": None, "z_ewma": None, "z_score": None, "new_burst_score": 2.0}
+    )
     fallback_surprise = fallback["families"]["social_heat"]["factors"]["attention_surprise"]
     assert fallback_surprise["score"] == pytest.approx(80.0)
     assert fallback_surprise["confidence"] == pytest.approx(0.95)
@@ -225,7 +227,9 @@ def test_social_propagation_formula_constants_and_speed_match_spec() -> None:
     expected_third = 100 - 45 / 60 * 40
     assert factors["propagation_speed"]["score"] == pytest.approx(expected_second * 0.65 + expected_third * 0.35)
 
-    missing_second = _strong_dex_snapshot(social_quality={"time_to_second_author_ms": None, "time_to_third_author_ms": 45_000})
+    missing_second = _strong_dex_snapshot(
+        social_quality={"time_to_second_author_ms": None, "time_to_third_author_ms": 45_000}
+    )
     assert missing_second["families"]["social_propagation"]["factors"]["propagation_speed"]["raw_value"] is None
     assert missing_second["families"]["social_propagation"]["factors"]["propagation_speed"]["score"] == 0
 
@@ -501,7 +505,8 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
     assert snapshot["families"]["social_heat"]["facts"]["mentions_1h"] == 0
     assert snapshot["families"]["semantic_catalyst"]["facts"]["direction_counts"]["bullish"] == 0
     assert snapshot["families"]["social_propagation"]["factors"]["duplicate_text_share_penalty"]["raw_value"] is None
-    assert snapshot["families"]["social_propagation"]["factors"]["top_author_concentration_penalty"]["raw_value"] is None
+    concentration_penalty = snapshot["families"]["social_propagation"]["factors"]["top_author_concentration_penalty"]
+    assert concentration_penalty["raw_value"] is None
     assert snapshot["families"]["timing_risk"]["facts"]["social_signal_start_ms"] is None
     assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
     assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]

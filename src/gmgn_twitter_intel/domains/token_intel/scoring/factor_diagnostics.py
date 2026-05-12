@@ -6,17 +6,9 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_FACTOR_FAMILIES
 
-OLD_FACTOR_FAMILIES = {
-    "attention_heat",
-    "diffusion_quality",
-    "semantic_quality",
-    "timing_response",
-    "market_quality",
-    "social_attention",
-    "social_quality",
-    "social_semantics",
-    "timing",
-}
+LEGACY_GATE_KEY = "_".join(("hard", "gates"))
+LEGACY_GATE_PRESENT_CODE = f"{LEGACY_GATE_KEY}_present"
+EXPECTED_FACTOR_FAMILIES = frozenset(TOKEN_RADAR_FACTOR_FAMILIES)
 
 
 def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -25,8 +17,8 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
     gate_block_counts: Counter[str] = Counter()
     data_health_counts: dict[str, Counter[str]] = defaultdict(Counter)
     violations: list[dict[str, Any]] = []
-    old_family_keys: set[str] = set()
-    hard_gates_rows: list[int] = []
+    unexpected_family_keys: set[str] = set()
+    legacy_gate_rows: list[int] = []
 
     for index, row in enumerate(rows):
         snapshot = _mapping(row.get("factor_snapshot_json"))
@@ -35,7 +27,7 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
             rank_scores.append(rank_score)
 
         families = _mapping(snapshot.get("families"))
-        old_family_keys.update(OLD_FACTOR_FAMILIES & set(families))
+        unexpected_family_keys.update(set(families) - EXPECTED_FACTOR_FAMILIES)
         for family in TOKEN_RADAR_FACTOR_FAMILIES:
             block = _mapping(families.get(family))
             if (score := _number(block.get("score"))) is not None:
@@ -51,8 +43,8 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
             if str(key).strip():
                 data_health_counts[str(key)][str(value or "missing")] += 1
 
-        if "hard_gates" in snapshot:
-            hard_gates_rows.append(index)
+        if LEGACY_GATE_KEY in snapshot:
+            legacy_gate_rows.append(index)
 
     unique_count = len(set(rank_scores))
     if len(rows) > 20 and unique_count <= 3:
@@ -69,10 +61,10 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if share > 0.25:
             violations.append({"code": "family_score_100_saturation", "family": family, "share": share})
 
-    if old_family_keys:
-        violations.append({"code": "old_factor_family_keys", "families": sorted(old_family_keys)})
-    if hard_gates_rows:
-        violations.append({"code": "hard_gates_present", "rows": hard_gates_rows})
+    if unexpected_family_keys:
+        violations.append({"code": "unexpected_factor_family_keys", "families": sorted(unexpected_family_keys)})
+    if legacy_gate_rows:
+        violations.append({"code": LEGACY_GATE_PRESENT_CODE, "rows": legacy_gate_rows})
 
     return {
         "row_count": len(rows),

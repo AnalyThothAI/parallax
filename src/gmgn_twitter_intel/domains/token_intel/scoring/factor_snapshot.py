@@ -238,9 +238,8 @@ def _semantic_catalyst_family(*, social_semantics: dict[str, Any], social_qualit
         if social_semantics.get("llm_covered_mentions") is not None
         else social_semantics.get("covered_mentions")
     )
-    mentions = _optional_int(
-        social_semantics.get("mentions") if social_semantics.get("mentions") is not None else social_quality.get("mentions")
-    )
+    semantic_mentions = social_semantics.get("mentions")
+    mentions = _optional_int(semantic_mentions if semantic_mentions is not None else social_quality.get("mentions"))
     semantic_coverage = None
     if covered_mentions is not None and mentions is not None and mentions > 0:
         semantic_coverage = covered_mentions / mentions
@@ -335,7 +334,10 @@ def _gates(
                 blocked_reasons.append(reason)
         if metadata_missing:
             risk_reasons.append("market_metadata_missing")
-    independent_sources = max(_count_int(attention.get("unique_authors")), _count_int(social_quality.get("independent_authors")))
+    independent_sources = max(
+        _count_int(attention.get("unique_authors")),
+        _count_int(social_quality.get("independent_authors")),
+    )
     credible_sources = _optional_float(social_quality.get("source_weighted_effective_authors"))
     if credible_sources is None:
         credible_sources = _optional_float(social_quality.get("effective_authors"))

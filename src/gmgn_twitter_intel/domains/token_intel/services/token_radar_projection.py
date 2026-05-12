@@ -621,7 +621,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         if anchor_observed_at_ms is not None and event_received_at_ms is not None
         else None
     )
-    market = {
+    market: dict[str, Any] = {
         "market_status": "anchored",
         "market_observation_status": "ready",
         "price_change_status": "live_not_persisted",
