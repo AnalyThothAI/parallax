@@ -72,6 +72,11 @@ AVAILABLE_FACTOR_KEYS = {
     "timing_risk.score",
     "timing_risk.weight",
 }
+AGENT_AVAILABLE_FACTOR_KEYS = {
+    *AVAILABLE_FACTOR_KEYS,
+    "gate_result",
+    "gate_result.max_recommendation",
+}
 
 
 def _valid_payload(**overrides: object) -> dict[str, object]:
@@ -125,6 +130,25 @@ def test_valid_recommendation_passes_with_factor_and_event_backing() -> None:
     assert payload.schema_version == "pulse_recommendation_v1"
     assert payload.recommendation == "research"
     assert payload.evidence_event_ids == ["event-1", "event-2"]
+
+
+def test_gate_result_keys_are_available_for_bounded_recommendation_reasons() -> None:
+    keys = collect_factor_keys(_v3_factor_snapshot(), gate_result={"max_recommendation": "research"})
+    payload = validate_pulse_recommendation_payload(
+        _valid_payload(
+            primary_reasons=[
+                {
+                    "factor_key": "gate_result.max_recommendation",
+                    "explanation_zh": "Pulse gate 将推荐上限限制为 research。",
+                }
+            ]
+        ),
+        available_factor_keys=keys,
+        input_source_event_ids={"event-1"},
+        max_recommendation="research",
+    )
+
+    assert payload.primary_reasons[0].factor_key == "gate_result.max_recommendation"
 
 
 def test_extra_fields_are_forbidden_on_payload_and_nested_items() -> None:
@@ -287,7 +311,7 @@ def test_agent_input_json_is_stable_and_contract_scoped() -> None:
 
     assert encoded == pulse_recommendation_agent_input(context)
     assert decoded == {
-        "available_factor_keys": sorted(AVAILABLE_FACTOR_KEYS),
+        "available_factor_keys": sorted(AGENT_AVAILABLE_FACTOR_KEYS),
         "factor_snapshot": _v3_factor_snapshot(),
         "gate_result": {"max_recommendation": "research"},
         "selected_posts": [{"event_id": "event-1", "text": "PEPE heat"}],
