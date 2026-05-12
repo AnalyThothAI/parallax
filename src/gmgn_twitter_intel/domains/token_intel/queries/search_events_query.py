@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from gmgn_twitter_intel.domains.evidence.interfaces import decode_event_row
@@ -8,6 +9,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLV
 
 _MIN_TRIGRAM_QUERY_LEN = 4
 _TRIGRAM_THRESHOLD = 0.18
+_SUBSTRING_QUERY_RE = re.compile(r"^[A-Za-z0-9_]{4,32}$")
 _EVM_REGISTRY_CHAINS = ("eip155:1", "eip155:8453", "eip155:56")
 _REGISTRY_CHAIN_ALIASES = {
     "eth": "eip155:1",
@@ -54,9 +56,28 @@ class SearchEventsQuery:
         lexical_query = (intent.lexical_query or intent.normalized_text or "").strip()
         if intent.kind in {"symbol", "text", "ca"} and lexical_query:
             hits.extend(self._lexical_hits(lexical_query, watched_only=watched_only, limit=limit))
-        if len(hits) < limit and _safe_trigram_query(lexical_query):
+        substring_hits: list[dict[str, Any]] = []
+        if len(hits) < limit and _safe_substring_query(lexical_query):
+            substring_hits = self._substring_hits(lexical_query, watched_only=watched_only, limit=limit)
+            hits.extend(substring_hits)
+        if len(hits) < limit and not substring_hits and _safe_trigram_query(lexical_query):
             hits.extend(self._trigram_hits(lexical_query, watched_only=watched_only, limit=limit))
         return hits
+
+    def target_hits_page(
+        self,
+        target_candidates: list[dict[str, Any]],
+        *,
+        watched_only: bool,
+        limit: int,
+        after: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        resolved_targets = [
+            candidate for candidate in target_candidates if str(candidate.get("status") or "") == "resolved"
+        ]
+        if not resolved_targets:
+            return []
+        return self._target_hits_page(resolved_targets, watched_only=watched_only, limit=limit, after=after)
 
     def _resolve_symbol(self, symbol: str) -> list[dict[str, Any]]:
         normalized = symbol.strip().lstrip("$").upper()
@@ -195,6 +216,104 @@ class SearchEventsQuery:
         ).fetchall()
         return [_hit(row) for row in rows]
 
+    def _target_hits_page(
+        self,
+        target_candidates: list[dict[str, Any]],
+        *,
+        watched_only: bool,
+        limit: int,
+        after: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
+        params: list[Any] = []
+        for candidate in target_candidates:
+            params.extend([candidate["target_type"], candidate["target_id"], candidate.get("symbol")])
+        after_rank = int(after["status_rank"]) if after else None
+        after_received = int(after["received_at_ms"]) if after else None
+        after_event_id = str(after["event_id"]) if after else None
+        params.extend(
+            [
+                TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                watched_only,
+                after_rank,
+                after_rank,
+                after_rank,
+                after_received,
+                after_rank,
+                after_received,
+                after_event_id,
+                max(0, int(limit)),
+            ]
+        )
+        rows = self.conn.execute(
+            f"""
+            WITH target_candidates(target_type, target_id, target_symbol) AS (
+              VALUES {values_sql}
+            ),
+            ranked AS (
+              SELECT
+                events.*,
+                tir.target_type,
+                tir.target_id,
+                target_candidates.target_symbol,
+                CASE
+                  WHEN tir.resolution_status = 'EXACT' THEN 0
+                  WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 1
+                  WHEN tir.resolution_status = 'AMBIGUOUS' THEN 2
+                  ELSE 3
+                END AS target_status_rank,
+                CASE
+                  WHEN tir.resolution_status = 'EXACT' THEN 1.0
+                  WHEN tir.resolution_status = 'UNIQUE_BY_CONTEXT' THEN 0.9
+                  WHEN tir.resolution_status = 'AMBIGUOUS' THEN 0.45
+                  ELSE 0.1
+                END AS route_score
+              FROM target_candidates
+              JOIN token_intent_resolutions tir
+                ON tir.target_type = target_candidates.target_type
+               AND tir.target_id = target_candidates.target_id
+               AND tir.is_current = true
+               AND tir.resolver_policy_version = %s
+              JOIN events ON events.event_id = tir.event_id
+              WHERE (%s = false OR events.is_watched = true)
+            ),
+            deduped AS (
+              SELECT *
+              FROM (
+                SELECT
+                  ranked.*,
+                  row_number() OVER (
+                    PARTITION BY event_id
+                    ORDER BY target_status_rank ASC, target_id ASC
+                  ) AS target_event_rank
+                FROM ranked
+              ) unique_ranked
+              WHERE target_event_rank = 1
+            ),
+            page AS (
+              SELECT *
+              FROM deduped
+              WHERE (
+                  %s::integer IS NULL
+                  OR target_status_rank > %s::integer
+                  OR (target_status_rank = %s::integer AND received_at_ms < %s::bigint)
+                  OR (target_status_rank = %s::integer AND received_at_ms = %s::bigint AND event_id < %s::text)
+                )
+              ORDER BY target_status_rank ASC, received_at_ms DESC, event_id DESC
+              LIMIT %s
+            )
+            SELECT
+              *,
+              row_number() OVER (ORDER BY target_status_rank ASC, received_at_ms DESC, event_id DESC) AS route_rank,
+              'target' AS route,
+              jsonb_build_array('target:' || target_type) AS match_reasons_json
+            FROM page
+            ORDER BY target_status_rank ASC, received_at_ms DESC, event_id DESC
+            """,
+            params,
+        ).fetchall()
+        return [_hit(row) for row in rows]
+
     def _handle_hits(self, handle: str, *, watched_only: bool, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -280,6 +399,28 @@ class SearchEventsQuery:
         ).fetchall()
         return [_hit(row) for row in rows]
 
+    def _substring_hits(self, query: str, *, watched_only: bool, limit: int) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT
+              events.*,
+              NULL::text AS target_type,
+              NULL::text AS target_id,
+              NULL::text AS target_symbol,
+              0.45 AS route_score,
+              row_number() OVER (ORDER BY events.received_at_ms DESC, events.event_id DESC) AS route_rank,
+              'substring' AS route,
+              jsonb_build_array('substring') AS match_reasons_json
+            FROM events
+            WHERE events.search_text ILIKE %s ESCAPE '\\'
+              AND (%s = false OR events.is_watched = true)
+            ORDER BY events.received_at_ms DESC, events.event_id DESC
+            LIMIT %s
+            """,
+            (_substring_pattern(query), watched_only, max(0, int(limit))),
+        ).fetchall()
+        return [_hit(row) for row in rows]
+
 
 def _candidate(row: Any) -> dict[str, Any]:
     data = dict(row)
@@ -315,6 +456,7 @@ def _hit(row: Any) -> dict[str, Any]:
         "route_score": float(data.get("route_score") or 0.0),
         "match_reasons": _json_array(data.get("match_reasons_json")),
         "target": target,
+        "target_status_rank": int(data.get("target_status_rank") or 0),
         "received_at_ms": int(data.get("received_at_ms") or 0),
     }
 
@@ -338,6 +480,15 @@ def _registry_chain(chain: str | None) -> str | None:
     if not chain:
         return None
     return _REGISTRY_CHAIN_ALIASES.get(chain.strip().lower())
+
+
+def _safe_substring_query(query: str) -> bool:
+    return bool(_SUBSTRING_QUERY_RE.fullmatch(query.strip()))
+
+
+def _substring_pattern(query: str) -> str:
+    escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 def _safe_trigram_query(query: str) -> bool:

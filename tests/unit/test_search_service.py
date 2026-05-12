@@ -11,7 +11,7 @@ def test_search_merges_target_and_lexical_hits_by_event_id():
         ]
     )
 
-    result = SearchService(search_query=query).search("btc", limit=20)
+    result = SearchService(search_query=query).search("macro market", limit=20)
 
     assert result.ok is True
     assert len(result.items) == 1
@@ -22,7 +22,7 @@ def test_search_merges_target_and_lexical_hits_by_event_id():
 
 def test_search_paginates_with_next_cursor():
     query = FakeSearchQuery(
-        route_hits=[
+        target_hits=[
             hit("event-1", route="target", route_rank=1, received_at_ms=3000),
             hit("event-2", route="target", route_rank=2, received_at_ms=2000),
         ]
@@ -34,11 +34,12 @@ def test_search_paginates_with_next_cursor():
     assert first.page["has_more"] is True
     assert first.items[0]["event"]["event_id"] == "event-1"
     assert second.items[0]["event"]["event_id"] == "event-2"
+    assert query.target_after_values == [None, {"status_rank": 0, "received_at_ms": 3000, "event_id": "event-1"}]
 
 
-def test_search_cursor_expands_route_window_for_later_pages():
+def test_search_target_cursor_does_not_expand_route_window_from_the_top():
     query = FakeSearchQuery(
-        route_hits=[
+        target_hits=[
             hit(f"event-{index}", route="target", route_rank=index, received_at_ms=10_000 - index)
             for index in range(1, 500)
         ]
@@ -47,8 +48,12 @@ def test_search_cursor_expands_route_window_for_later_pages():
     first = SearchService(search_query=query).search("btc", limit=50)
     SearchService(search_query=query).search("btc", limit=50, cursor=first.page["next_cursor"])
 
-    assert query.route_limits[0] == 204
-    assert query.route_limits[1] == 404
+    assert query.target_limits == [51, 51]
+    assert query.target_after_values[1] == {
+        "status_rank": 0,
+        "received_at_ms": 9950,
+        "event_id": "event-50",
+    }
 
 
 def test_search_rejects_invalid_cursor():
@@ -69,21 +74,42 @@ def test_search_routes_symbol_and_cashtag_to_same_target_candidates():
     assert cashtag_query.resolved_symbols == ["BTC"]
 
 
+def test_search_routes_symbol_or_query_to_targets():
+    query = FakeSearchQuery(target_hits=[hit("event-1", route="target", route_rank=1, received_at_ms=3000)])
+
+    result = SearchService(search_query=query).search("btc OR eth", limit=20)
+
+    assert result.items[0]["event"]["event_id"] == "event-1"
+    assert query.resolved_symbols == ["BTC", "ETH"]
+
+
 def test_search_expands_known_symbol_aliases_for_lexical_route():
     query = FakeSearchQuery(route_hits=[])
 
-    SearchService(search_query=query).search("bitcoin", limit=20)
+    result = SearchService(search_query=query).search("bitcoin", limit=20)
 
-    assert query.route_intents[-1].lexical_query == "btc OR bitcoin OR bitcoins OR 比特币 OR xbt"
+    assert result.query["lexical_query"] == "btc OR bitcoin OR bitcoins OR 比特币 OR xbt"
     assert query.resolved_symbols == ["BTC"]
 
 
+def test_search_fuzzy_alias_typo_routes_to_target():
+    query = FakeSearchQuery(target_hits=[hit("event-1", route="target", route_rank=1, received_at_ms=3000)])
+
+    result = SearchService(search_query=query).search("bitcon", limit=20)
+
+    assert result.items[0]["event"]["event_id"] == "event-1"
+    assert query.resolved_symbols == ["BITCON", "BTC"]
+
+
 class FakeSearchQuery:
-    def __init__(self, *, route_hits):
-        self._route_hits = route_hits
+    def __init__(self, *, route_hits=None, target_hits=None):
+        self._route_hits = route_hits or []
+        self._target_hits = target_hits if target_hits is not None else self._route_hits
         self.resolved_symbols: list[str | None] = []
         self.route_intents = []
         self.route_limits: list[int] = []
+        self.target_limits: list[int] = []
+        self.target_after_values: list[dict | None] = []
 
     def resolve_targets(self, intent):
         self.resolved_symbols.append(intent.symbol)
@@ -104,6 +130,16 @@ class FakeSearchQuery:
         self.route_intents.append(intent)
         self.route_limits.append(route_limit)
         return self._route_hits[:route_limit]
+
+    def target_hits_page(self, target_candidates, *, watched_only, limit, after):
+        self.target_limits.append(limit)
+        self.target_after_values.append(after)
+        hits = self._target_hits
+        if after:
+            event_ids = [str(item["event_id"]) for item in hits]
+            start = event_ids.index(str(after["event_id"])) + 1
+            hits = hits[start:]
+        return hits[:limit]
 
 
 def hit(
@@ -134,5 +170,6 @@ def hit(
         "route_score": route_score,
         "match_reasons": reasons,
         "target": target,
+        "target_status_rank": 0,
         "received_at_ms": received_at_ms,
     }

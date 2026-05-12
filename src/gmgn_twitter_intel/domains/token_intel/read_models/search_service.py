@@ -7,6 +7,8 @@ from gmgn_twitter_intel.domains.token_intel.services.query_parser import SearchI
 from gmgn_twitter_intel.domains.token_intel.services.search_aliases import (
     canonical_symbol_for_query,
     expanded_lexical_query,
+    fuzzy_canonical_symbol_for_query,
+    target_symbols_for_or_query,
 )
 
 RRF_K = 60.0
@@ -14,10 +16,10 @@ ROUTE_WEIGHTS = {
     "target": 1.0,
     "handle": 0.85,
     "lexical": 0.65,
+    "substring": 0.45,
     "trigram": 0.35,
 }
-_ROUTE_LIMIT_MIN = 100
-_ROUTE_LIMIT_MULTIPLIER = 4
+_ROUTE_LIMIT = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,8 +38,9 @@ class SearchCursorError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class _CursorState:
-    sort_tuple: tuple[float, int, str]
-    offset: int
+    phase: str
+    sort_tuple: tuple[float, int, str] | None = None
+    target_after: dict[str, Any] | None = None
 
 
 class SearchService:
@@ -59,24 +62,32 @@ class SearchService:
             return SearchPage(
                 ok=False,
                 query=query_payload,
-                page=_page([], requested_limit, offset=0, has_more=False),
+                page=_fused_page([], requested_limit, has_more=False),
                 error="empty_query",
             )
         cursor_state = _decode_cursor(cursor) if cursor else None
-        cursor_offset = cursor_state.offset if cursor_state else 0
         target_intent = _target_intent(intent)
-        target_candidates = self.search_query.resolve_targets(target_intent)
+        target_candidates = self._resolve_target_candidates(intent=intent, target_intent=target_intent)
         lexical_query = expanded_lexical_query(intent, target_candidates)
         route_intent = replace(target_intent, lexical_query=lexical_query)
-        route_limit = _route_limit(requested_limit=requested_limit, cursor_offset=cursor_offset)
+        if _resolved_targets(target_candidates) and (cursor_state is None or cursor_state.phase == "target"):
+            return self._target_page(
+                query_payload=query_payload | {"lexical_query": lexical_query},
+                target_candidates=target_candidates,
+                watched_only=scope == "matched",
+                limit=requested_limit,
+                cursor_state=cursor_state,
+            )
         route_hits = self.search_query.route_hits(
             intent=route_intent,
             target_candidates=target_candidates,
             watched_only=scope == "matched",
-            route_limit=route_limit,
+            route_limit=_route_limit(lexical_query=lexical_query, requested_limit=requested_limit),
         )
         items = _items_from_hits(route_hits)
         if cursor_state is not None:
+            if cursor_state.phase != "fused" or cursor_state.sort_tuple is None:
+                raise SearchCursorError("invalid_cursor")
             items = [item for item in items if _sort_tuple(item) > cursor_state.sort_tuple]
         page_items = items[: requested_limit + 1]
         has_more = len(page_items) > requested_limit
@@ -86,8 +97,54 @@ class SearchService:
             query=query_payload | {"lexical_query": lexical_query},
             items=[_public_item(item) for item in returned],
             target_candidates=target_candidates,
-            page=_page(returned, requested_limit, offset=cursor_offset, has_more=has_more),
+            page=_fused_page(returned, requested_limit, has_more=has_more),
         )
+
+    def _target_page(
+        self,
+        *,
+        query_payload: dict[str, Any],
+        target_candidates: list[dict[str, Any]],
+        watched_only: bool,
+        limit: int,
+        cursor_state: _CursorState | None,
+    ) -> SearchPage:
+        after = cursor_state.target_after if cursor_state else None
+        hits = self.search_query.target_hits_page(
+            target_candidates,
+            watched_only=watched_only,
+            limit=limit + 1,
+            after=after,
+        )
+        items = _items_from_hits(hits)
+        page_items = items[: limit + 1]
+        has_more = len(page_items) > limit
+        returned = page_items[:limit]
+        return SearchPage(
+            ok=True,
+            query=query_payload,
+            items=[_public_item(item) for item in returned],
+            target_candidates=target_candidates,
+            page=_target_page_payload(returned, limit, has_more=has_more),
+        )
+
+    def _resolve_target_candidates(self, *, intent: SearchIntent, target_intent: SearchIntent) -> list[dict[str, Any]]:
+        or_symbols = target_symbols_for_or_query(intent.normalized_text)
+        if or_symbols:
+            candidates: list[dict[str, Any]] = []
+            for symbol in or_symbols:
+                symbol_intent = replace(target_intent, kind="symbol", symbol=symbol)
+                candidates.extend(self.search_query.resolve_targets(symbol_intent))
+            resolved = _resolved_targets(candidates)
+            if resolved:
+                return _dedupe_candidates(candidates)
+        candidates = self.search_query.resolve_targets(target_intent)
+        if not _resolved_targets(candidates) and intent.kind in {"symbol", "text"}:
+            fuzzy_symbol = fuzzy_canonical_symbol_for_query(intent.normalized_text or intent.text)
+            if fuzzy_symbol and fuzzy_symbol != target_intent.symbol:
+                target_intent = replace(target_intent, kind="symbol", symbol=fuzzy_symbol)
+                candidates = self.search_query.resolve_targets(target_intent)
+        return candidates
 
 
 def _target_intent(intent: SearchIntent) -> SearchIntent:
@@ -95,6 +152,33 @@ def _target_intent(intent: SearchIntent) -> SearchIntent:
     if alias_symbol and intent.kind in {"symbol", "text"}:
         return replace(intent, kind="symbol", symbol=alias_symbol)
     return intent
+
+
+def _resolved_targets(target_candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [candidate for candidate in target_candidates if str(candidate.get("status") or "") == "resolved"]
+
+
+def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, Any]] = []
+    for candidate in candidates:
+        key = (str(candidate.get("target_type") or ""), str(candidate.get("target_id") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+    return unique
+
+
+def _route_limit(*, lexical_query: str, requested_limit: int) -> int:
+    if _substring_like_query(lexical_query):
+        return max(requested_limit + 1, min(_ROUTE_LIMIT, 50))
+    return max(requested_limit + 1, _ROUTE_LIMIT)
+
+
+def _substring_like_query(query: str) -> bool:
+    normalized = query.strip()
+    return 4 <= len(normalized) <= 32 and normalized.replace("_", "").isalnum() and normalized.isascii()
 
 
 def _items_from_hits(route_hits: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -124,12 +208,24 @@ def _item_from_event_hits(hits: list[dict[str, Any]]) -> dict[str, Any]:
         "match_reasons": list(dict.fromkeys(reasons)),
         "target": target,
         "route_scores": route_scores,
+        "_target_cursor": _target_cursor(hits),
         "_sort": {
             "rank_score": score,
             "received_at_ms": int(first.get("received_at_ms") or 0),
             "event_id": str(first["event_id"]),
         },
     }
+
+
+def _target_cursor(hits: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for hit in hits:
+        if str(hit.get("route")) == "target":
+            return {
+                "status_rank": int(hit.get("target_status_rank") or 0),
+                "received_at_ms": int(hit.get("received_at_ms") or 0),
+                "event_id": str(hit["event_id"]),
+            }
+    return None
 
 
 def _fused_score(route_hits: list[dict[str, Any]]) -> float:
@@ -152,13 +248,17 @@ def _sort_tuple(item: dict[str, Any]) -> tuple[float, int, str]:
     return (-float(sort["rank_score"]), -int(sort["received_at_ms"]), str(sort["event_id"]))
 
 
-def _route_limit(*, requested_limit: int, cursor_offset: int) -> int:
-    window = max(0, int(cursor_offset)) + max(0, int(requested_limit)) + 1
-    return max(window * _ROUTE_LIMIT_MULTIPLIER, _ROUTE_LIMIT_MIN)
+def _target_page_payload(items: list[dict[str, Any]], limit: int, *, has_more: bool) -> dict[str, Any]:
+    next_cursor = _encode_target_cursor(items[-1]) if has_more and items else None
+    return {
+        "returned_count": min(len(items), max(0, int(limit))),
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+    }
 
 
-def _page(items: list[dict[str, Any]], limit: int, *, offset: int, has_more: bool) -> dict[str, Any]:
-    next_cursor = _encode_cursor(items[-1], offset=offset + len(items)) if has_more and items else None
+def _fused_page(items: list[dict[str, Any]], limit: int, *, has_more: bool) -> dict[str, Any]:
+    next_cursor = _encode_fused_cursor(items[-1]) if has_more and items else None
     return {
         "returned_count": min(len(items), max(0, int(limit))),
         "has_more": has_more,
@@ -167,24 +267,42 @@ def _page(items: list[dict[str, Any]], limit: int, *, offset: int, has_more: boo
 
 
 def _public_item(item: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in item.items() if key != "_sort"}
+    return {key: value for key, value in item.items() if key not in {"_sort", "_target_cursor"}}
 
 
-def _encode_cursor(item: dict[str, Any], *, offset: int) -> str:
+def _encode_fused_cursor(item: dict[str, Any]) -> str:
     sort = item["_sort"]
-    return f"v2:{max(0, int(offset))}:{float(sort['rank_score']):.17g}:{int(sort['received_at_ms'])}:{sort['event_id']}"
+    return f"fused:{float(sort['rank_score']):.17g}:{int(sort['received_at_ms'])}:{sort['event_id']}"
+
+
+def _encode_target_cursor(item: dict[str, Any]) -> str:
+    cursor = item.get("_target_cursor")
+    if not cursor:
+        raise SearchCursorError("invalid_cursor")
+    return f"target:{int(cursor['status_rank'])}:{int(cursor['received_at_ms'])}:{cursor['event_id']}"
 
 
 def _decode_cursor(cursor: str | None) -> _CursorState:
     if not cursor:
         raise SearchCursorError("invalid_cursor")
     try:
-        version, offset_raw, score_raw, received_raw, event_id = cursor.split(":", 4)
-        if version != "v2":
-            raise ValueError("unsupported cursor version")
+        phase, rest = cursor.split(":", 1)
+        if phase == "target":
+            status_rank_raw, received_raw, event_id = rest.split(":", 2)
+            return _CursorState(
+                phase="target",
+                target_after={
+                    "status_rank": int(status_rank_raw),
+                    "received_at_ms": int(received_raw),
+                    "event_id": event_id,
+                },
+            )
+        if phase != "fused":
+            raise ValueError("unsupported cursor phase")
+        score_raw, received_raw, event_id = rest.split(":", 2)
         return _CursorState(
+            phase="fused",
             sort_tuple=(-float(score_raw), -int(received_raw), event_id),
-            offset=max(0, int(offset_raw)),
         )
     except (TypeError, ValueError) as exc:
         raise SearchCursorError("invalid_cursor") from exc
