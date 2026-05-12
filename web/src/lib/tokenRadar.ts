@@ -197,7 +197,22 @@ export function tokenRadarRowToTokenItem(
   const heat = scoreBlockFromFamily(attentionFamily, "social_heat", "social_heat");
   const quality = scoreBlockFromFamily(semanticFamily, "semantic_catalyst", "discussion_quality");
   const propagation = scoreBlockFromFamily(diffusionFamily, "social_propagation", "propagation");
-  const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, liveMarket);
+  const anchoredMarketCap = optionalNullableNumber(snapshotMarket.market_cap_usd);
+  const anchoredLiquidity = optionalNullableNumber(snapshotMarket.liquidity_usd);
+  const anchoredHolders = optionalNullableNumber(snapshotMarket.holders);
+  const anchoredVolume24h = optionalNullableNumber(snapshotMarket.volume_24h_usd);
+  const displayMarketCap = isCexToken
+    ? null
+    : (optionalNullableNumber(liveMarket.market_cap_usd) ?? anchoredMarketCap);
+  const displayLiquidity = optionalNullableNumber(liveMarket.liquidity_usd) ?? anchoredLiquidity;
+  const displayHolders = optionalNullableNumber(liveMarket.holders) ?? anchoredHolders;
+  const displayVolume24h = optionalNullableNumber(liveMarket.volume_24h_usd) ?? anchoredVolume24h;
+  const marketFactsForTradeability = {
+    ...liveMarket,
+    market_cap_usd: displayMarketCap,
+    liquidity_usd: displayLiquidity,
+  };
+  const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, marketFactsForTradeability);
   const timing = scoreBlockFromFamily(timingFamily, "timing_risk", "timing");
   const recommendedDecision = requiredString(
     optionalString(composite.recommended_decision),
@@ -212,7 +227,6 @@ export function tokenRadarRowToTokenItem(
     timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
   const marketPrice = displayPrice;
   const marketProvider = firstString(liveMarket.provider, anchorPrice.provider);
-  const displayMarketCap = isCexToken ? null : optionalNullableNumber(liveMarket.market_cap_usd);
   const chain = isSnapshotAsset ? (stringValue(subject.chain) ?? target.chain_id ?? null) : null;
   const blockedReasons = requiredStringArray(
     gates.blocked_reasons ?? [],
@@ -265,13 +279,13 @@ export function tokenRadarRowToTokenItem(
       price_status: liveMarketHasPrice ? liveMarket.status : anchorPrice.status,
       market_cap: displayMarketCap,
       market_cap_status: fieldStatusFromNullableValue(displayMarketCap),
-      liquidity: optionalNullableNumber(liveMarket.liquidity_usd),
-      liquidity_status: fieldStatusFromNullableValue(liveMarket.liquidity_usd),
+      liquidity: displayLiquidity,
+      liquidity_status: fieldStatusFromNullableValue(displayLiquidity),
       pool_status: marketHasUsableSnapshot ? "ready" : "missing",
-      holder_count: optionalNullableNumber(liveMarket.holders),
-      holder_count_status: fieldStatusFromNullableValue(liveMarket.holders),
-      volume_24h: optionalNullableNumber(liveMarket.volume_24h_usd),
-      volume_24h_status: fieldStatusFromNullableValue(liveMarket.volume_24h_usd),
+      holder_count: displayHolders,
+      holder_count_status: fieldStatusFromNullableValue(displayHolders),
+      volume_24h: displayVolume24h,
+      volume_24h_status: fieldStatusFromNullableValue(displayVolume24h),
       provider: marketProvider,
       snapshot_age_ms: optionalNullableNumber(liveMarket.age_ms),
       snapshot_received_at_ms:

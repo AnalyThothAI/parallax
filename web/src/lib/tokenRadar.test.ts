@@ -163,6 +163,47 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.market.market_cap_status).toBe("live");
   });
 
+  it("uses anchored GMGN market metadata for chain asset rows when live stream is missing", () => {
+    const row = productionChainAssetRow();
+    row.live_market = {
+      ...row.live_market,
+      status: "missing",
+      price_usd: null,
+      price_quote: null,
+      market_cap_usd: null,
+      liquidity_usd: null,
+      holders: null,
+      volume_24h_usd: null,
+      provider: null,
+      observed_at_ms: null,
+      received_at_ms: null,
+      age_ms: null,
+    };
+    row.factor_snapshot!.market = {
+      ...row.factor_snapshot!.market,
+      provider: "gmgn_dex_quote",
+      market_cap_usd: 33_000_000,
+      liquidity_usd: 1_800_000,
+      holders: 22_000,
+      volume_24h_usd: 9_100_000,
+    };
+    row.anchor_price = {
+      ...row.anchor_price,
+      provider: "gmgn_dex_quote",
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.market.price).toBe(0.1);
+    expect(item.market.provider).toBe("gmgn_dex_quote");
+    expect(item.market.market_cap).toBe(33_000_000);
+    expect(item.market.liquidity).toBe(1_800_000);
+    expect(item.market.holder_count).toBe(22_000);
+    expect(item.market.volume_24h).toBe(9_100_000);
+    expect(item.tradeability.market_cap_present).toBe(true);
+    expect(item.tradeability.liquidity_present).toBe(true);
+  });
+
   it("does not read market display deltas from timing facts", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot!.families.timing_risk.facts = {
