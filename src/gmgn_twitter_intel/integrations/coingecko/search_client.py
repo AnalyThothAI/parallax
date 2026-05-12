@@ -31,11 +31,13 @@ class CoingeckoSearchClient:
         *,
         base_url: str = "https://api.coingecko.com",
         timeout_seconds: float = 10.0,
-        min_interval_seconds: float = 2.0,
+        min_interval_seconds: float = 6.0,
+        max_429_retries: int = 3,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._client = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout_seconds, transport=transport)
         self._min_interval = min_interval_seconds
+        self._max_429_retries = max_429_retries
         self._last_call_at: float = 0.0
 
     def close(self) -> None:
@@ -49,12 +51,25 @@ class CoingeckoSearchClient:
             time.sleep(self._min_interval - elapsed)
         self._last_call_at = time.monotonic()
 
+    def _get_with_retry(self, params: dict[str, str]) -> httpx.Response | None:
+        """Return response, or None when we give up due to persistent 429s."""
+        for attempt in range(self._max_429_retries + 1):
+            self._pace()
+            response = self._client.get("/api/v3/search", params=params)
+            if response.status_code != 429:
+                return response
+            retry_after = response.headers.get("retry-after")
+            backoff = float(retry_after) if retry_after and retry_after.isdigit() else 60.0
+            time.sleep(backoff)
+        return None
+
     def search(self, *, symbol: str, chain: str) -> list[CoingeckoSearchHit]:
         platform = CHAIN_TO_COINGECKO_PLATFORM.get(chain)
         if platform is None:
             return []
-        self._pace()
-        response = self._client.get("/api/v3/search", params={"query": symbol})
+        response = self._get_with_retry({"query": symbol})
+        if response is None:
+            return []  # gave up after retries; treat as no-hit so audit continues
         response.raise_for_status()
         payload: dict[str, Any] = response.json() or {}
         hits: list[CoingeckoSearchHit] = []
