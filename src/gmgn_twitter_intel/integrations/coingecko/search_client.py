@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,22 +24,36 @@ class CoingeckoSearchHit:
 
 
 class CoingeckoSearchClient:
+    """CoinGecko free tier allows ~30 req/min; client paces requests at >= 2s apart."""
+
     def __init__(
         self,
         *,
         base_url: str = "https://api.coingecko.com",
         timeout_seconds: float = 10.0,
+        min_interval_seconds: float = 2.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self._client = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout_seconds, transport=transport)
+        self._min_interval = min_interval_seconds
+        self._last_call_at: float = 0.0
 
     def close(self) -> None:
         self._client.close()
+
+    def _pace(self) -> None:
+        if self._min_interval <= 0:
+            return
+        elapsed = time.monotonic() - self._last_call_at
+        if elapsed < self._min_interval:
+            time.sleep(self._min_interval - elapsed)
+        self._last_call_at = time.monotonic()
 
     def search(self, *, symbol: str, chain: str) -> list[CoingeckoSearchHit]:
         platform = CHAIN_TO_COINGECKO_PLATFORM.get(chain)
         if platform is None:
             return []
+        self._pace()
         response = self._client.get("/api/v3/search", params={"query": symbol})
         response.raise_for_status()
         payload: dict[str, Any] = response.json() or {}
