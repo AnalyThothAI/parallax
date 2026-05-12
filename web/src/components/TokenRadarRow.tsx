@@ -1,5 +1,4 @@
 import type { TokenFlowItem } from "../api/types";
-import { targetRefFromTokenItem } from "../domain/tokenTarget";
 import {
   compactNumber,
   formatPercentShare,
@@ -20,20 +19,18 @@ type TokenRadarRowProps = {
   item: TokenFlowItem;
   selected: boolean;
   onSelect: (item: TokenFlowItem) => void;
-  onOpenPage?: (item: TokenFlowItem) => void;
 };
 
-export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRadarRowProps) {
+export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) {
   const delta = formatSignedPercent(
     item.market.price_change_since_social_pct ?? item.market.price_change_since_first_snapshot_pct,
   );
   const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
   const venueAction = tokenVenueAction(item);
-  const targetRef = targetRefFromTokenItem(item);
   return (
     <div className={`radar-row ${selected ? "selected" : ""}`}>
       <button
-        aria-label={`select token ${tokenLabel(item)}`}
+        aria-label={`open Search Intel ${tokenLabel(item)}`}
         className={`radar-row-select ${selected ? "selected" : ""}`}
         type="button"
         onClick={() => onSelect(item)}
@@ -90,17 +87,7 @@ export function TokenRadarRow({ item, selected, onSelect, onOpenPage }: TokenRad
             {venueAction.label}
           </a>
         ) : null}
-        {onOpenPage && targetRef ? (
-          <button
-            type="button"
-            className="page-open-button"
-            aria-label={`open token audit page ${tokenLabel(item)}`}
-            onClick={() => onOpenPage(item)}
-          >
-            &gt;
-          </button>
-        ) : null}
-        {!venueAction && !(onOpenPage && targetRef) ? <span className="muted">-</span> : null}
+        {!venueAction ? <span className="muted">-</span> : null}
       </span>
     </div>
   );

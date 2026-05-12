@@ -13,6 +13,7 @@ import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { tokenKey } from "../../lib/format";
 import { useTraderStore } from "../../store/useTraderStore";
 import { requiredMobileTaskForPathname } from "../cockpit/mobileRouteTask";
+import { tokenSearchPath } from "../search/tokenSearchRoute";
 
 import { tapeItemId, type LiveSignalTapeItem } from "./liveTapeModel";
 
@@ -40,6 +41,9 @@ export function useLiveSelection({
   const navigate = useNavigate();
   const location = useLocation();
   const isSignalLabRoute = location.pathname.startsWith("/signal-lab");
+  const isTokenRadarRoute = location.pathname === "/";
+  const suppressTokenDetailRoute =
+    location.pathname.startsWith("/search") || location.pathname.startsWith("/stocks");
   const search = useTraderStore((state) => state.search);
   const detailTab = useTraderStore((state) => state.detailTab);
   const detailWindow = useTraderStore((state) => state.detailWindow);
@@ -90,11 +94,14 @@ export function useLiveSelection({
   }, [location.pathname, mobileTask]);
 
   useEffect(() => {
+    if (!isTokenRadarRoute) {
+      return;
+    }
     if (!selectedSignal && tokenItems.length) {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
       resetTokenDetail(windowKey);
     }
-  }, [resetTokenDetail, selectedSignal, tokenItems, windowKey]);
+  }, [isTokenRadarRoute, resetTokenDetail, selectedSignal, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "token") {
@@ -132,7 +139,9 @@ export function useLiveSelection({
   }, [compactSignalPulseItems, isSignalLabPulseFetching, selectedSignal]);
 
   const selectedToken =
-    selectedSignal?.kind === "token" ? latestTokenForSelection(selectedSignal, tokenItems) : null;
+    !suppressTokenDetailRoute && selectedSignal?.kind === "token"
+      ? latestTokenForSelection(selectedSignal, tokenItems)
+      : null;
   const selectedTokenKey = selectedToken ? tokenKey(selectedToken) : null;
   const drawerTargetRef = targetRefFromTokenItem(selectedToken);
   const selectedPulseItemId =
@@ -151,17 +160,13 @@ export function useLiveSelection({
     setMobileTask("detail");
   };
 
-  const openTokenPage = (item: TokenFlowItem) => {
-    const target = targetRefFromTokenItem(item);
-    if (!target || !target.target_type || !target.target_id) {
-      return;
-    }
-    setSelectedSignal({ kind: "token", key: tokenKey(item), item });
-    setDetailWindow(windowKey);
+  const openTokenSearchPage = (item: TokenFlowItem) => {
+    setSelectedSignal(null);
+    setSelectedBucketStartMs(null);
+    setSelectedEventId(null);
+    setSelectedTapeEventId(null);
     setMobileTask("radar");
-    navigate(
-      `/token/${target.target_type}/${encodeURIComponent(target.target_id)}?window=${windowKey}&scope=${scope}`,
-    );
+    navigate(tokenSearchPath(item, windowKey, scope));
   };
 
   const selectPulseItem = (item: SignalPulseItem, options: { openLab?: boolean } = {}) => {
@@ -200,7 +205,7 @@ export function useLiveSelection({
     if (query) {
       next.set("q", query);
     }
-    next.set("window", windowKey);
+    next.set("window", "24h");
     next.set("scope", scope);
     navigate(`/search?${next.toString()}`);
     setSelectedSignal(null);
@@ -258,8 +263,8 @@ export function useLiveSelection({
   };
 
   const detailAvailable = useMemo(
-    () => Boolean(selectedSignal || selectedToken),
-    [selectedSignal, selectedToken],
+    () => !suppressTokenDetailRoute && Boolean(selectedSignal || selectedToken),
+    [selectedSignal, selectedToken, suppressTokenDetailRoute],
   );
 
   return {
@@ -277,7 +282,7 @@ export function useLiveSelection({
     hideDuplicateClusters,
     mobileTask,
     onOpenLab,
-    openTokenPage,
+    openTokenSearchPage,
     postRange,
     postSortMode,
     selectAccountEvent,

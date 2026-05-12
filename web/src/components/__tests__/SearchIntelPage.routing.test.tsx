@@ -4,9 +4,11 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as client from "../../api/client";
+import { useTraderStore } from "../../store/useTraderStore";
 import { SearchIntelPage } from "../SearchIntelPage";
 
 beforeEach(() => {
+  useTraderStore.setState({ token: "test-token" });
   vi.spyOn(client, "getApi").mockResolvedValue({ ok: true, data: searchInspectData() });
 });
 
@@ -36,7 +38,8 @@ describe("SearchIntelPage", () => {
     expect(screen.getByText("传播")).toBeInTheDocument();
     expect(screen.getByText("多头观点")).toBeInTheDocument();
     expect(screen.getByText("空头观点")).toBeInTheDocument();
-    expect(screen.getByText("24h Twitter Results")).toBeInTheDocument();
+    expect(screen.getByText("1H OHLC")).toBeInTheDocument();
+    expect(screen.getByText("24h Evidence Stream")).toBeInTheDocument();
     expect(screen.getByText(/Runtime narrative/)).toBeInTheDocument();
 
     await waitFor(() => {
@@ -110,7 +113,7 @@ function searchInspectData() {
           peak_new_authors_per_bucket: 5,
           reproduction_rate: null,
         },
-        market_overlay: { price_series_type: "anchor_line" },
+        market_overlay: { price_series_type: "ohlc", candle_status: "ready", candle_bar: "1H", candles: [] },
         stages: [],
         buckets: [
           {
@@ -159,7 +162,24 @@ function searchInspectData() {
         ],
       },
       radar_item: null,
-      market_overlay: { price_series_type: "anchor_line" },
+      market_overlay: {
+        price_series_type: "ohlc",
+        candle_status: "ready",
+        candle_bar: "1H",
+        candles: [
+          {
+            time_ms: 1_700_000_000_000,
+            open: 0.007,
+            high: 0.008,
+            low: 0.006,
+            close: 0.0078,
+            volume: 1000,
+            volume_quote: null,
+            volume_usd: 7800,
+            confirmed: true,
+          },
+        ],
+      },
       agent_brief: {
         schema_version: "search_agent_brief_v1",
         generated_by: "deterministic",

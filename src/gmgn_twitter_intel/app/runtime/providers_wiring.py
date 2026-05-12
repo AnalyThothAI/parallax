@@ -14,6 +14,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenCandidate,
     DexTokenPrice,
     DexTokenPriceRequest,
+    MarketCandle,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider, PulseRecommendationResult
@@ -85,6 +86,9 @@ class OkxCexMarketProvider:
         ticker = self._client.ticker(inst_id=inst_id)
         return _cex_ticker(ticker) if ticker is not None else None
 
+    def candles(self, *, inst_id: str, bar: str, limit: int) -> list[MarketCandle]:
+        return [_market_candle(candle) for candle in self._client.candles(inst_id=inst_id, bar=bar, limit=limit)]
+
     def close(self) -> None:
         self._client.close()
 
@@ -113,6 +117,20 @@ class OkxDexMarketProvider:
         ]
         return [_dex_token_price(price) for price in self._client.token_prices(request_items)]
 
+    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]:
+        chain_index = okx_chain_index(chain_id)
+        if not chain_index:
+            return []
+        return [
+            _market_candle(candle)
+            for candle in self._client.token_candles(
+                chain_index=chain_index,
+                token_contract_address=_normalize_address(address),
+                bar=bar,
+                limit=limit,
+            )
+        ]
+
     def close(self) -> None:
         self._client.close()
 
@@ -130,6 +148,10 @@ class _SerializedDexMarketProvider:
     def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]:
         with self._lock:
             return self._provider.token_prices(tokens)
+
+    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]:
+        with self._lock:
+            return self._provider.token_candles(chain_id=chain_id, address=address, bar=bar, limit=limit)
 
     def close(self) -> None:
         close = getattr(self._provider, "close", None)
@@ -386,6 +408,21 @@ def _dex_token_price(price: Any) -> DexTokenPrice:
         observed_at_ms=price.observed_at_ms,
         price_usd=price.price_usd,
         raw=price.raw,
+    )
+
+
+def _market_candle(candle: Any) -> MarketCandle:
+    return MarketCandle(
+        time_ms=int(candle.time_ms),
+        open=candle.open,
+        high=candle.high,
+        low=candle.low,
+        close=candle.close,
+        volume=candle.volume,
+        volume_quote=candle.volume_quote,
+        volume_usd=candle.volume_usd,
+        confirmed=candle.confirmed,
+        raw=candle.raw,
     )
 
 

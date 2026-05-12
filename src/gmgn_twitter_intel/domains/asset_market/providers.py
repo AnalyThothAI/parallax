@@ -45,6 +45,20 @@ class DexTokenPriceRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketCandle:
+    time_ms: int
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    volume: float | None
+    volume_quote: float | None
+    volume_usd: float | None
+    confirmed: bool | None
+    raw: dict[str, Any] | list[Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class DexMarketStreamTarget:
     chain_id: str
     address: str
@@ -72,11 +86,15 @@ class CexMarketProvider(Protocol):
 
     def ticker(self, *, inst_id: str) -> CexTicker | None: ...
 
+    def candles(self, *, inst_id: str, bar: str, limit: int) -> list[MarketCandle]: ...
+
 
 class DexMarketProvider(Protocol):
     def search_tokens(self, *, query: str, chain_ids: tuple[str, ...]) -> list[DexTokenCandidate]: ...
 
     def token_prices(self, tokens: list[DexTokenPriceRequest]) -> list[DexTokenPrice]: ...
+
+    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]: ...
 
 
 class DexMarketStreamProvider(Protocol):
@@ -93,4 +111,5 @@ __all__ = [
     "DexTokenCandidate",
     "DexTokenPrice",
     "DexTokenPriceRequest",
+    "MarketCandle",
 ]

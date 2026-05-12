@@ -21,7 +21,7 @@ describe("TokenRadarRow", () => {
   it("renders fresh price with stale market cap as partial market freshness", () => {
     render(<TokenRadarRow item={mixedFreshnessToken()} selected={false} onSelect={vi.fn()} />);
 
-    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const row = screen.getByRole("button", { name: "open Search Intel $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
     expect(market).toHaveTextContent("partial");

@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
@@ -179,6 +180,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 limit=_limit(limit, maximum=200),
                 now_ms=_now_ms(),
             )
+        _enrich_search_inspect_market_overlay(runtime, data, window=parsed_window)
         return _json({"ok": True, "data": data})
 
     @router.get("/token-radar")
@@ -626,6 +628,17 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         )
 
     return router
+
+
+def _enrich_search_inspect_market_overlay(runtime: Any, data: dict[str, Any], *, window: str) -> None:
+    token_result = data.get("token_result")
+    if not isinstance(token_result, dict):
+        return
+    providers = runtime.providers.asset_market
+    token_result["market_overlay"] = MarketCandlesService(
+        cex_market=providers.message_cex_market,
+        dex_market=providers.message_dex_market,
+    ).enrich_overlay(token_result.get("market_overlay"), window=window)
 
 
 def _runtime(request: Request) -> Any:

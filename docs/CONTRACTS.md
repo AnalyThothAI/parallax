@@ -100,8 +100,17 @@ Search V2 contract:
 - `agent_brief.schema_version` is `search_agent_brief_v1`. The brief has three
   product sections: project/topic summary, propagation, and bull/bear views.
   It is deterministic in the first release and must cite visible evidence ids.
-- Market overlay uses `price_series_type = "anchor_line"` until a real OHLC
-  endpoint exists. The UI must not present message-anchor prices as candles.
+- Market overlay is enriched by the asset-market layer when provider candles
+  are available:
+  - `price_series_type = "ohlc"` with `candle_status = "ready"`,
+    `candle_source`, `candle_bar`, and `candles[]` rows shaped as
+    `{time_ms, open, high, low, close, volume, volume_quote, volume_usd,
+    confirmed}`.
+  - `price_series_type = "anchor_line"` with `candle_status` such as
+    `unsupported`, `missing_market_id`, `missing_identity`, `empty`, or
+    `error` when provider OHLC cannot be fetched.
+  - The UI must never synthesize candlesticks from sparse message-anchor
+    prices.
 
 ## CLI
 

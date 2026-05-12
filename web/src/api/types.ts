@@ -259,7 +259,14 @@ export type SearchTokenResult = {
   timeline: TokenSocialTimelineData;
   posts: TokenPostsData;
   radar_item?: Record<string, unknown> | null;
-  market_overlay: Record<string, unknown> & { price_series_type: "anchor_line" | string };
+  market_overlay: Record<string, unknown> & TokenTimelineMarketOverlay & {
+    price_series_type: "anchor_line" | "ohlc" | string;
+    candle_status?: string | null;
+    candle_source?: string | null;
+    candle_bar?: string | null;
+    candle_error?: string | null;
+    candles?: MarketCandle[];
+  };
   agent_brief: SearchAgentBrief;
 };
 
@@ -892,6 +899,18 @@ export type TokenTimelineMarketOverlay = {
   native_market_id?: string | null;
   quote_symbol?: string | null;
   feed_type?: string | null;
+};
+
+export type MarketCandle = {
+  time_ms: number;
+  open?: number | null;
+  high?: number | null;
+  low?: number | null;
+  close?: number | null;
+  volume?: number | null;
+  volume_quote?: number | null;
+  volume_usd?: number | null;
+  confirmed?: boolean | null;
 };
 
 export type TokenTimelineStage = {

@@ -1,4 +1,4 @@
-import { Clock3, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
+import { Clock3, Home, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
 import type { KeyboardEvent, ReactNode, RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -132,7 +132,11 @@ export function CockpitLayout(props: CockpitLayoutProps) {
   const detailEnabled = detailAvailable && !isStocks;
 
   return (
-    <main className="cockpit-shell" onKeyDown={onHotkey} tabIndex={-1}>
+    <main
+      className={`cockpit-shell ${isSearch ? "search-shell" : ""}`.trim()}
+      onKeyDown={onHotkey}
+      tabIndex={-1}
+    >
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark" aria-hidden />
@@ -140,6 +144,12 @@ export function CockpitLayout(props: CockpitLayoutProps) {
             <h1>intel.cockpit</h1>
             <p>/ws · localhost:8765</p>
           </div>
+          {isSearch ? (
+            <button className="main-route-button" type="button" onClick={() => navigate("/")}>
+              <Home aria-hidden />
+              Main
+            </button>
+          ) : null}
         </div>
 
         <StatusPills
@@ -206,121 +216,129 @@ export function CockpitLayout(props: CockpitLayoutProps) {
       <div
         className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""} ${isStocks ? "stocks-main-nav-mode" : ""} ${isSearch ? "search-focus-mode" : ""}`}
       >
-        <aside className="side-rail desktop-side-rail">
-          <RailSection label="views">
-            <RailButton
-              active={isLive}
-              label="Token"
-              value={tokenItemsCount}
-              index="1"
-              onClick={() => navigate("/")}
-            />
-            <RailButton
-              active={isStocks}
-              label="Stocks"
-              index="2"
-              onClick={() => navigate(STOCKS_PATH)}
-            />
-            <RailButton
-              active={isSignalLab}
-              label="Signal Labs"
-              value={signalLabPulseTotal}
-              index="3"
-              onClick={() => {
-                navigate(SIGNAL_LAB_PATH);
-                onMobileTaskChange("lab");
-              }}
-            />
-          </RailSection>
-
-          <RailSection label="scope">
-            <div className="scope-stack">
-              <button
-                className={scope === "matched" ? "active" : ""}
-                onClick={() => onScopeChange("matched")}
-                type="button"
-              >
-                watched
-              </button>
-              <button
-                className={scope === "all" ? "active" : ""}
-                onClick={() => onScopeChange("all")}
-                type="button"
-              >
-                all stream
-              </button>
-            </div>
-            <label className="handle-filter">
-              <UserRound aria-hidden />
-              <input
-                value={handles}
-                onChange={(event) => onHandlesChange(event.target.value)}
-                placeholder="toly, ansem"
+        {!isSearch ? (
+          <aside className="side-rail desktop-side-rail">
+            <RailSection label="views">
+              <RailButton
+                active={isLive}
+                label="Token"
+                value={tokenItemsCount}
+                index="1"
+                onClick={() => navigate("/")}
               />
-            </label>
-          </RailSection>
+              <RailButton
+                active={isStocks}
+                label="Stocks"
+                index="2"
+                onClick={() => navigate(STOCKS_PATH)}
+              />
+              <RailButton
+                active={isSignalLab}
+                label="Signal Labs"
+                value={signalLabPulseTotal}
+                index="3"
+                onClick={() => {
+                  navigate(SIGNAL_LAB_PATH);
+                  onMobileTaskChange("lab");
+                }}
+              />
+            </RailSection>
 
-          <RailSection label="decisions">
-            <DecisionCount decision="driver" count={decisionCounts.driver} />
-            <DecisionCount decision="watch" count={decisionCounts.watch} />
-            <DecisionCount decision="investigate" count={decisionCounts.investigate} />
-            <DecisionCount decision="discard" count={decisionCounts.discard} />
-          </RailSection>
-
-          <RailSection label="watchlist" className="watchlist-section">
-            <div className="watchlist">
-              {watchlistRows.map((row) => (
-                <Link
-                  className={`watchlist-row ${isSignalLab && activeWatchHandle === row.handle ? "active" : ""}`.trim()}
-                  key={row.handle}
-                  to={`/signal-lab?handle=${encodeURIComponent(row.handle)}`}
+            <RailSection label="scope">
+              <div className="scope-stack">
+                <button
+                  className={scope === "matched" ? "active" : ""}
+                  onClick={() => onScopeChange("matched")}
+                  type="button"
                 >
-                  <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
-                  <span className="watchlist-copy">
-                    <b>@{row.handle}</b>
-                    <small>
-                      {row.lastSeenAtMs
-                        ? `${formatRelativeTime(row.lastSeenAtMs)} ago`
-                        : "no recent"}
-                    </small>
-                  </span>
-                  <WatchlistNotificationDot count={row.unreadCount} />
-                </Link>
-              ))}
+                  watched
+                </button>
+                <button
+                  className={scope === "all" ? "active" : ""}
+                  onClick={() => onScopeChange("all")}
+                  type="button"
+                >
+                  all stream
+                </button>
+              </div>
+              <label className="handle-filter">
+                <UserRound aria-hidden />
+                <input
+                  value={handles}
+                  onChange={(event) => onHandlesChange(event.target.value)}
+                  placeholder="toly, ansem"
+                />
+              </label>
+            </RailSection>
+
+            <RailSection label="decisions">
+              <DecisionCount decision="driver" count={decisionCounts.driver} />
+              <DecisionCount decision="watch" count={decisionCounts.watch} />
+              <DecisionCount decision="investigate" count={decisionCounts.investigate} />
+              <DecisionCount decision="discard" count={decisionCounts.discard} />
+            </RailSection>
+
+            <RailSection label="watchlist" className="watchlist-section">
+              <div className="watchlist">
+                {watchlistRows.map((row) => (
+                  <Link
+                    className={`watchlist-row ${isSignalLab && activeWatchHandle === row.handle ? "active" : ""}`.trim()}
+                    key={row.handle}
+                    to={`/signal-lab?handle=${encodeURIComponent(row.handle)}`}
+                  >
+                    <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
+                    <span className="watchlist-copy">
+                      <b>@{row.handle}</b>
+                      <small>
+                        {row.lastSeenAtMs
+                          ? `${formatRelativeTime(row.lastSeenAtMs)} ago`
+                          : "no recent"}
+                      </small>
+                    </span>
+                    <WatchlistNotificationDot count={row.unreadCount} />
+                  </Link>
+                ))}
+              </div>
+            </RailSection>
+
+            <div className="rail-footer">
+              <span>kbd · 1-4 radar · / search</span>
             </div>
-          </RailSection>
+          </aside>
+        ) : null}
 
-          <div className="rail-footer">
-            <span>kbd · 1-4 radar · / search</span>
-          </div>
-        </aside>
-
-        <section className="responsive-control-panel" aria-label="cockpit controls">
-          <RadarControls
-            handles={handles}
-            handlePlaceholder="handles"
-            scope={scope}
-            windowKey={windowKey}
-            onHandlesChange={onHandlesChange}
-            onScopeChange={onScopeChange}
-            onWindowChange={onWindowChange}
-          />
-        </section>
+        {!isSearch ? (
+          <section className="responsive-control-panel" aria-label="cockpit controls">
+            <RadarControls
+              handles={handles}
+              handlePlaceholder="handles"
+              scope={scope}
+              windowKey={windowKey}
+              onHandlesChange={onHandlesChange}
+              onScopeChange={onScopeChange}
+              onWindowChange={onWindowChange}
+            />
+          </section>
+        ) : null}
 
         <section className="center-column">
           <Outlet />
         </section>
 
-        <section className="detail-task-panel" data-mobile-task-panel="detail">
-          {detailPanel}
-        </section>
+        {!isSearch ? (
+          <section className="detail-task-panel" data-mobile-task-panel="detail">
+            {detailPanel}
+          </section>
+        ) : null}
       </div>
 
-      <MobileTaskNav
-        activeTask={mobileTask}
-        detailAvailable={detailEnabled}
-        onTaskChange={onMobileTaskChange}
-      />
+      {!isSearch ? (
+        <MobileTaskNav
+          activeTask={mobileTask}
+          detailAvailable={detailEnabled}
+          onTaskChange={onMobileTaskChange}
+        />
+      ) : null}
       <NotificationDrawer
         loading={notificationsLoading}
         notifications={notifications}

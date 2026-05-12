@@ -18,7 +18,9 @@
 
 - **Payload contract.** Component props that mirror API payloads share their type names with `api/` clients. A breaking API change updates `api/`, `domain/`, and `components/` together.
 - **State discipline.** Live subscriptions live in `store/`. Route-level pages may call typed React Query hooks from `api/`; leaf components receive payloads as props. Tests for `store/` may stub the WebSocket.
-- **Search route.** `/search` is a focus route: no left `views` rail and no right detail drawer. It renders resolver-selected `token_result`, `topic_result`, or `ambiguous_result` payloads from `/api/search/inspect`.
+- **Search route.** `/search` reuses the global cockpit topbar but does not render the main left `views` rail or right detail drawer. The topbar exposes a `Main` button back to `/`, while the page owns a search-local case rail for query/window/scope/candidates/section navigation. It renders resolver-selected `token_result`, `topic_result`, or `ambiguous_result` payloads from `/api/search/inspect`.
+- **Search market chart.** Token-mode Search Intel uses `lightweight-charts` for the market panel. Render candlesticks only when `market_overlay.price_series_type = "ohlc"` and `market_overlay.candles` contains provider OHLC rows; otherwise render anchor-line/social fallback states honestly.
+- **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>` so the richer Search Intel page owns K-line, social timeline, evidence, resolver, and brief details. The row action column is reserved for external venue links.
 - **Score display.** Any displayed ranking score includes its component breakdown (per the rule in `DESIGN_DISCIPLINE.md`); the breakdown comes from the API, not local recomputation.
 - **No business logic in JSX.** Decisions move into `domain/`; `components/` only renders.
 

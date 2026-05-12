@@ -6,7 +6,7 @@ type SearchAgentBriefProps = {
 
 export function SearchAgentBrief({ brief }: SearchAgentBriefProps) {
   return (
-    <section className="search-agent-brief" aria-label="Agent Brief">
+    <section className="search-agent-brief" id="agent-brief" aria-label="Agent Brief">
       <header>
         <h3>Agent Brief</h3>
         <span>{brief.schema_version}</span>

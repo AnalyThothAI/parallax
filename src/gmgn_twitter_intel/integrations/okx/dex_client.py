@@ -10,8 +10,8 @@ from typing import Any
 
 import httpx
 
-from gmgn_twitter_intel.integrations.okx.cex_client import OkxClientError, _rows_from_response
-from gmgn_twitter_intel.integrations.okx.models import OkxDexTokenCandidate, OkxDexTokenPrice
+from gmgn_twitter_intel.integrations.okx.cex_client import OkxClientError, _items_from_response, _rows_from_response
+from gmgn_twitter_intel.integrations.okx.models import OkxCandle, OkxDexTokenCandidate, OkxDexTokenPrice
 
 EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$", re.IGNORECASE)
 
@@ -65,11 +65,42 @@ class OkxDexClient:
                 prices.append(price)
         return prices
 
+    def token_candles(
+        self,
+        *,
+        chain_index: str,
+        token_contract_address: str,
+        bar: str = "1m",
+        limit: int = 100,
+    ) -> list[OkxCandle]:
+        request_item = _price_request_item(
+            {"chainIndex": chain_index, "tokenContractAddress": token_contract_address}
+        )
+        if request_item is None:
+            return []
+        rows = self._get_items(
+            "/api/v6/dex/market/candles",
+            params={
+                **request_item,
+                "bar": _bar(bar),
+                "limit": str(_limit(limit, maximum=299)),
+            },
+        )
+        candles: list[OkxCandle] = []
+        for row in rows:
+            candle = _dex_candle_from_row(row)
+            if candle is not None:
+                candles.append(candle)
+        return candles
+
     def _get(self, path: str, *, params: dict[str, str]) -> list[dict[str, Any]]:
+        return [row for row in self._get_items(path, params=params) if isinstance(row, dict)]
+
+    def _get_items(self, path: str, *, params: dict[str, str]) -> list[Any]:
         request = self._client.build_request("GET", path, params={key: value for key, value in params.items() if value})
         self._sign_request(request, body="")
         response = self._client.send(request)
-        return _rows_from_response(response, endpoint=path)
+        return _items_from_response(response, endpoint=path)
 
     def _post(self, path: str, *, body: list[dict[str, str]]) -> list[dict[str, Any]]:
         raw_body = json.dumps(body, ensure_ascii=False, separators=(",", ":"))
@@ -137,6 +168,26 @@ def _price_from_row(row: dict[str, Any]) -> OkxDexTokenPrice | None:
     )
 
 
+def _dex_candle_from_row(row: Any) -> OkxCandle | None:
+    if not isinstance(row, (list, tuple)) or len(row) < 8:
+        return None
+    time_ms = _int(row[0])
+    if time_ms is None:
+        return None
+    return OkxCandle(
+        time_ms=time_ms,
+        open=_float(row[1]),
+        high=_float(row[2]),
+        low=_float(row[3]),
+        close=_float(row[4]),
+        volume=_float(row[5]),
+        volume_quote=None,
+        volume_usd=_float(row[6]),
+        confirmed=_bool_or_none(row[7]),
+        raw=list(row),
+    )
+
+
 def _search_keyword(query: str) -> str:
     stripped = query.strip().lstrip("$")
     if not stripped:
@@ -176,6 +227,19 @@ def _int(value: Any) -> int | None:
         return int(float(value))
     except (TypeError, ValueError):
         return None
+
+
+def _bar(value: Any) -> str:
+    text = str(value or "").strip()
+    return text or "1m"
+
+
+def _limit(value: Any, *, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = 100
+    return max(1, min(maximum, parsed))
 
 
 def _bool_or_none(value: Any) -> bool | None:

@@ -18,7 +18,6 @@ type TokenRadarTableProps = {
   isLoading: boolean;
   error?: Error | null;
   onSelect: (item: TokenFlowItem) => void;
-  onOpenPage?: (item: TokenFlowItem) => void;
   onSortModeChange: (mode: RadarSortMode) => void;
 };
 
@@ -29,7 +28,6 @@ export function TokenRadarTable({
   isLoading,
   error,
   onSelect,
-  onOpenPage,
   onSortModeChange,
 }: TokenRadarTableProps) {
   return (
@@ -66,7 +64,7 @@ export function TokenRadarTable({
           <span>Market</span>
           <span>Timing</span>
           <span>Decision</span>
-          <span>Open</span>
+          <span>Venue</span>
         </div>
         {isLoading ? <RadarSkeleton /> : null}
         {error ? <div className="table-state">Token Radar 暂不可用 · {error.message}</div> : null}
@@ -82,7 +80,6 @@ export function TokenRadarTable({
                   item={item}
                   selected={selectedKey === key}
                   onSelect={onSelect}
-                  onOpenPage={onOpenPage}
                 />
               );
             })

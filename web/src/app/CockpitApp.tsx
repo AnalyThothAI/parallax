@@ -222,8 +222,7 @@ export function CockpitApp() {
       assetFlowError={assetFlowError}
       selectedTokenKey={selection.selectedTokenKey}
       radarSortMode={radarSortMode}
-      onSelectToken={selection.selectToken}
-      onOpenToken={selection.openTokenPage}
+      onSelectToken={selection.openTokenSearchPage}
       onSortModeChange={setRadarSortMode}
       scope={scope}
       windowKey={windowKey}

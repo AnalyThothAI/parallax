@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from gmgn_twitter_intel.integrations.okx.models import OkxCexInstrument, OkxCexTicker
+from gmgn_twitter_intel.integrations.okx.models import OkxCandle, OkxCexInstrument, OkxCexTicker
 
 
 class OkxClientError(RuntimeError):
@@ -52,12 +52,27 @@ class OkxCexClient:
                 return ticker
         return None
 
+    def candles(self, *, inst_id: str, bar: str = "1m", limit: int = 100) -> list[OkxCandle]:
+        rows = self._get_items(
+            "/api/v5/market/candles",
+            params={"instId": inst_id.strip().upper(), "bar": _bar(bar), "limit": str(_limit(limit, maximum=300))},
+        )
+        candles: list[OkxCandle] = []
+        for row in rows:
+            candle = _cex_candle_from_row(row)
+            if candle is not None:
+                candles.append(candle)
+        return candles
+
     def _get(self, path: str, *, params: dict[str, str]) -> list[dict[str, Any]]:
+        return [row for row in self._get_items(path, params=params) if isinstance(row, dict)]
+
+    def _get_items(self, path: str, *, params: dict[str, str]) -> list[Any]:
         response = self._client.get(path, params=params)
-        return _rows_from_response(response, endpoint=path)
+        return _items_from_response(response, endpoint=path)
 
 
-def _rows_from_response(response: httpx.Response, *, endpoint: str) -> list[dict[str, Any]]:
+def _items_from_response(response: httpx.Response, *, endpoint: str) -> list[Any]:
     if response.status_code >= 400:
         raise OkxClientError(f"OKX {endpoint} returned HTTP {response.status_code}")
     try:
@@ -71,12 +86,16 @@ def _rows_from_response(response: httpx.Response, *, endpoint: str) -> list[dict
         raise OkxClientError(f"OKX {endpoint} failed: {message}")
     data = payload.get("data")
     if isinstance(data, list):
-        return [row for row in data if isinstance(row, dict)]
+        return list(data)
     if isinstance(data, dict):
         nested = data.get("data") or data.get("list") or data.get("tokens")
         if isinstance(nested, list):
-            return [row for row in nested if isinstance(row, dict)]
+            return list(nested)
     return []
+
+
+def _rows_from_response(response: httpx.Response, *, endpoint: str) -> list[dict[str, Any]]:
+    return [row for row in _items_from_response(response, endpoint=endpoint) if isinstance(row, dict)]
 
 
 def _instrument_from_row(row: dict[str, Any]) -> OkxCexInstrument | None:
@@ -115,6 +134,26 @@ def _ticker_from_row(row: dict[str, Any], *, default_inst_type: str = "UNKNOWN")
     )
 
 
+def _cex_candle_from_row(row: Any) -> OkxCandle | None:
+    if not isinstance(row, (list, tuple)) or len(row) < 9:
+        return None
+    time_ms = _int(row[0])
+    if time_ms is None:
+        return None
+    return OkxCandle(
+        time_ms=time_ms,
+        open=_float(row[1]),
+        high=_float(row[2]),
+        low=_float(row[3]),
+        close=_float(row[4]),
+        volume=_float(row[5]),
+        volume_quote=_float(row[7]),
+        volume_usd=None,
+        confirmed=_bool(row[8]),
+        raw=list(row),
+    )
+
+
 def _text(value: Any) -> str | None:
     if value is None:
         return None
@@ -134,3 +173,34 @@ def _float(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _int(value: Any) -> int | None:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes"}:
+        return True
+    if normalized in {"0", "false", "no"}:
+        return False
+    return None
+
+
+def _bar(value: Any) -> str:
+    text = str(value or "").strip()
+    return text or "1m"
+
+
+def _limit(value: Any, *, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = 100
+    return max(1, min(maximum, parsed))

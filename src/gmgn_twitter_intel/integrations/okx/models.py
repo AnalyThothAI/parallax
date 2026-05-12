@@ -25,6 +25,20 @@ class OkxCexTicker:
 
 
 @dataclass(frozen=True, slots=True)
+class OkxCandle:
+    time_ms: int
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    volume: float | None
+    volume_quote: float | None
+    volume_usd: float | None
+    confirmed: bool | None
+    raw: dict[str, Any] | list[Any]
+
+
+@dataclass(frozen=True, slots=True)
 class OkxDexTokenCandidate:
     chain_index: str
     chain: str | None

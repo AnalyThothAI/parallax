@@ -178,6 +178,95 @@ def test_okx_dex_client_fetches_batch_prices_with_lowercase_evm_addresses():
     assert prices[0].observed_at_ms == 1_778_085_000_000
 
 
+def test_okx_cex_client_fetches_candles_from_market_endpoint():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v5/market/candles"
+        assert request.url.params["instId"] == "BONK-USDT"
+        assert request.url.params["bar"] == "1H"
+        assert request.url.params["limit"] == "24"
+        return httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    [
+                        "1778083200000",
+                        "0.0000270",
+                        "0.0000285",
+                        "0.0000268",
+                        "0.0000281",
+                        "1000",
+                        "0.0281",
+                        "0.0281",
+                        "1",
+                    ]
+                ],
+            },
+        )
+
+    client = OkxCexClient(base_url="https://www.okx.com", transport=httpx.MockTransport(handler))
+    try:
+        candles = client.candles(inst_id="bonk-usdt", bar="1H", limit=24)
+    finally:
+        client.close()
+
+    assert candles[0].time_ms == 1_778_083_200_000
+    assert candles[0].open == 0.000027
+    assert candles[0].high == 0.0000285
+    assert candles[0].low == 0.0000268
+    assert candles[0].close == 0.0000281
+    assert candles[0].volume == 1000.0
+    assert candles[0].volume_quote == 0.0281
+    assert candles[0].confirmed is True
+
+
+def test_okx_dex_client_fetches_token_candles_with_lowercase_evm_address():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/v6/dex/market/candles"
+        assert request.url.params["chainIndex"] == "56"
+        assert request.url.params["tokenContractAddress"] == "0x8f32420f2e3728c49399b00dd0a796602d984444"
+        assert request.url.params["bar"] == "5m"
+        assert request.url.params["limit"] == "12"
+        return httpx.Response(
+            200,
+            json={
+                "code": "0",
+                "data": [
+                    [
+                        "1778085000000",
+                        "0.12",
+                        "0.13",
+                        "0.11",
+                        "0.125",
+                        "5000",
+                        "625",
+                        "0",
+                    ]
+                ],
+            },
+        )
+
+    client = OkxDexClient(base_url="https://web3.okx.com", transport=httpx.MockTransport(handler))
+    try:
+        candles = client.token_candles(
+            chain_index="56",
+            token_contract_address="0x8F32420F2E3728C49399b00DD0A796602d984444",
+            bar="5m",
+            limit=12,
+        )
+    finally:
+        client.close()
+
+    assert candles[0].time_ms == 1_778_085_000_000
+    assert candles[0].open == 0.12
+    assert candles[0].high == 0.13
+    assert candles[0].low == 0.11
+    assert candles[0].close == 0.125
+    assert candles[0].volume == 5000.0
+    assert candles[0].volume_usd == 625.0
+    assert candles[0].confirmed is False
+
+
 def test_okx_dex_client_signs_web3_requests_when_credentials_are_configured():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["OK-ACCESS-KEY"] == "api-key"
