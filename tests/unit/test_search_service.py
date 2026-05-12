@@ -101,6 +101,32 @@ def test_search_fuzzy_alias_typo_routes_to_target():
     assert query.resolved_symbols == ["BITCON", "BTC"]
 
 
+def test_search_applies_requested_window_to_target_route():
+    query = FakeSearchQuery(target_hits=[hit("event-1", route="target", route_rank=1, received_at_ms=3000)])
+
+    SearchService(search_query=query).search(
+        "btc",
+        limit=20,
+        window="24h",
+        now_ms=1_700_086_400_000,
+    )
+
+    assert query.target_since_values == [1_700_000_000_000]
+
+
+def test_search_applies_requested_window_to_keyword_route():
+    query = FakeSearchQuery(route_hits=[hit("event-1", route="lexical", route_rank=1, received_at_ms=3000)])
+
+    SearchService(search_query=query).search(
+        "挖矿",
+        limit=20,
+        window="4h",
+        now_ms=1_700_014_400_000,
+    )
+
+    assert query.route_since_values == [1_700_000_000_000]
+
+
 class FakeSearchQuery:
     def __init__(self, *, route_hits=None, target_hits=None):
         self._route_hits = route_hits or []
@@ -110,6 +136,8 @@ class FakeSearchQuery:
         self.route_limits: list[int] = []
         self.target_limits: list[int] = []
         self.target_after_values: list[dict | None] = []
+        self.route_since_values: list[int] = []
+        self.target_since_values: list[int] = []
 
     def resolve_targets(self, intent):
         self.resolved_symbols.append(intent.symbol)
@@ -126,14 +154,16 @@ class FakeSearchQuery:
             ]
         return []
 
-    def route_hits(self, *, intent, target_candidates, watched_only, route_limit):
+    def route_hits(self, *, intent, target_candidates, watched_only, route_limit, since_ms):
         self.route_intents.append(intent)
         self.route_limits.append(route_limit)
+        self.route_since_values.append(since_ms)
         return self._route_hits[:route_limit]
 
-    def target_hits_page(self, target_candidates, *, watched_only, limit, after):
+    def target_hits_page(self, target_candidates, *, watched_only, limit, after, since_ms):
         self.target_limits.append(limit)
         self.target_after_values.append(after)
+        self.target_since_values.append(since_ms)
         hits = self._target_hits
         if after:
             event_ids = [str(item["event_id"]) for item in hits]

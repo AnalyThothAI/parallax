@@ -3,7 +3,6 @@ import { useMemo, useRef } from "react";
 import type { KeyboardEvent } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import type { SearchData } from "../api/types";
 import { CockpitLayout } from "../components/CockpitLayout";
 import {
   EvidenceDetailDrawer,
@@ -12,6 +11,7 @@ import {
 import { LivePage } from "../components/LivePage";
 import { LiveRadar } from "../components/LiveRadar";
 import { PulseDetailPage } from "../components/PulseDetailPage";
+import { SearchIntelPage } from "../components/SearchIntelPage";
 import { SignalLabInspector } from "../components/SignalLabInspector";
 import { SignalLabPage } from "../components/SignalLabPage";
 import { TokenDetailDrawer } from "../components/TokenDetailDrawer";
@@ -37,7 +37,6 @@ export function CockpitApp() {
   const {
     bootstrapHandles,
     compactSignalPulseItems,
-    currentSearchData,
     decisionCounts,
     handles,
     isAssetFlowLoading,
@@ -48,11 +47,6 @@ export function CockpitApp() {
     liveSignalTapeItems,
     radarSortMode,
     scope,
-    searchError,
-    searchFetching,
-    fetchNextSearchPage,
-    searchFetchingNextPage,
-    searchHasNextPage,
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal,
@@ -82,24 +76,8 @@ export function CockpitApp() {
     token,
   });
   const selectedEvidenceDetails = useMemo(
-    () =>
-      resolveEvidenceDetails(selection.selectedSignal, {
-        currentSearchData,
-        fetchNextSearchPage,
-        searchError,
-        searchFetching,
-        searchFetchingNextPage,
-        searchHasNextPage,
-      }),
-    [
-      currentSearchData,
-      fetchNextSearchPage,
-      searchError,
-      searchFetching,
-      searchFetchingNextPage,
-      searchHasNextPage,
-      selection.selectedSignal,
-    ],
+    () => resolveEvidenceDetails(selection.selectedSignal),
+    [selection.selectedSignal],
   );
   const notificationsController = useNotificationsController({
     fallbackSummary: status?.notifications?.summary ?? null,
@@ -260,6 +238,7 @@ export function CockpitApp() {
           <Route index element={liveRadarElement} />
           <Route path="token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Route>
+        <Route path="search" element={<SearchIntelPage />} />
         <Route
           path="signal-lab"
           element={
@@ -278,17 +257,7 @@ export function CockpitApp() {
   );
 }
 
-function resolveEvidenceDetails(
-  signal: SelectedSignal,
-  data: {
-    currentSearchData: SearchData | null;
-    fetchNextSearchPage: () => void;
-    searchError: Error | null;
-    searchFetching: boolean;
-    searchFetchingNextPage: boolean;
-    searchHasNextPage: boolean;
-  },
-): EvidenceDetailDrawerProps | null {
+function resolveEvidenceDetails(signal: SelectedSignal): EvidenceDetailDrawerProps | null {
   if (!signal) {
     return null;
   }
@@ -301,18 +270,6 @@ function resolveEvidenceDetails(
       tokenIntents: signal.item.token_intents ?? [],
       tokenResolutions: signal.item.token_resolutions ?? [],
       sourceLabel: "live",
-    };
-  }
-  if (signal.kind === "query") {
-    return {
-      mode: "query",
-      query: signal.query,
-      data: data.currentSearchData,
-      isFetching: data.searchFetching,
-      error: data.searchError,
-      hasMore: data.searchHasNextPage,
-      isFetchingNextPage: data.searchFetchingNextPage,
-      onLoadMore: data.fetchNextSearchPage,
     };
   }
   return null;

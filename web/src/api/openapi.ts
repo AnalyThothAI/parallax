@@ -327,6 +327,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/search/inspect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Inspect */
+        get: operations["search_inspect_api_search_inspect_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/signal-lab/pulse": {
         parameters: {
             query?: never;
@@ -1057,6 +1074,41 @@ export interface operations {
                 limit?: number;
                 scope?: string;
                 cursor?: string;
+                window?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_inspect_api_search_inspect_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                window?: string;
+                scope?: string;
+                limit?: number;
             };
             header?: never;
             path?: never;

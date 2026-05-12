@@ -1,0 +1,208 @@
+from __future__ import annotations
+
+from typing import Any
+
+from .asset_flow_service import AssetFlowService
+from .search_agent_brief import build_token_agent_brief, build_topic_agent_brief
+from .search_service import SearchService
+from .token_target_posts_service import TokenTargetPostsService
+from .token_target_social_timeline_service import TokenTargetSocialTimelineService
+
+
+class SearchInspectService:
+    def __init__(self, *, search_query: Any, token_radar: Any, targets: Any) -> None:
+        self.search_query = search_query
+        self.token_radar = token_radar
+        self.targets = targets
+
+    def inspect(
+        self,
+        q: str,
+        *,
+        window: str,
+        scope: str,
+        limit: int,
+        now_ms: int | None = None,
+    ) -> dict[str, Any]:
+        search_page = SearchService(search_query=self.search_query).search(
+            q,
+            limit=limit,
+            scope=scope,
+            window=window,
+            now_ms=now_ms,
+        )
+        candidates = list(search_page.target_candidates)
+        resolved = [candidate for candidate in candidates if str(candidate.get("status") or "") == "resolved"]
+        selected = resolved[0] if len(resolved) == 1 else None
+        result_kind = _result_kind(search_ok=search_page.ok, selected=selected, candidates=candidates)
+        payload: dict[str, Any] = {
+            "query": {
+                "q": q.strip(),
+                "normalized_q": str(
+                    search_page.query.get("normalized_text") or search_page.query.get("text") or q
+                ).strip(),
+                "window": window,
+                "scope": scope,
+                "result_kind": result_kind,
+            },
+            "resolver": {
+                "confidence": _resolver_confidence(result_kind),
+                "target_candidates": candidates,
+                "selected_target": selected,
+                "reasons": _resolver_reasons(result_kind=result_kind, candidates=candidates),
+            },
+            "token_result": None,
+            "topic_result": None,
+            "ambiguous_result": None,
+        }
+        if result_kind == "empty_result":
+            return payload
+        if result_kind == "token_result" and selected:
+            payload["token_result"] = self._token_result(
+                selected=selected,
+                window=window,
+                scope=scope,
+                now_ms=now_ms,
+                limit=limit,
+            )
+            return payload
+        topic_result = self._topic_result(query=q.strip(), items=search_page.items)
+        if result_kind == "ambiguous_result":
+            payload["ambiguous_result"] = {
+                "candidates": candidates,
+                "summary": topic_result["summary"],
+                "items": topic_result["items"],
+                "agent_brief": topic_result["agent_brief"],
+            }
+            return payload
+        payload["topic_result"] = topic_result
+        return payload
+
+    def _token_result(
+        self,
+        *,
+        selected: dict[str, Any],
+        window: str,
+        scope: str,
+        now_ms: int | None,
+        limit: int,
+    ) -> dict[str, Any]:
+        target_type = str(selected["target_type"])
+        target_id = str(selected["target_id"])
+        timeline = TokenTargetSocialTimelineService(targets=self.targets).timeline(
+            target_type=target_type,
+            target_id=target_id,
+            window=window,
+            scope=scope,
+            limit=min(max(1, int(limit)), 200),
+            now_ms=now_ms,
+        )
+        posts = TokenTargetPostsService(targets=self.targets).target_posts(
+            target_type=target_type,
+            target_id=target_id,
+            window=window,
+            scope=scope,
+            post_range="current_window",
+            sort="recent",
+            limit=min(max(1, int(limit)), 200),
+            now_ms=now_ms,
+        )
+        radar = AssetFlowService(token_radar=self.token_radar).asset_flow(
+            window=window,
+            scope=scope,
+            limit=96,
+            now_ms=now_ms,
+        )
+        radar_item = _radar_item(radar=radar, selected=selected)
+        return {
+            "target": selected,
+            "timeline": timeline,
+            "posts": posts,
+            "radar_item": radar_item,
+            "market_overlay": _market_overlay(timeline.get("market_overlay")),
+            "agent_brief": build_token_agent_brief(
+                target=selected,
+                timeline=timeline,
+                posts=posts,
+                radar_item=radar_item,
+            ),
+        }
+
+    def _topic_result(self, *, query: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "summary": _topic_summary(items),
+            "items": items,
+            "agent_brief": build_topic_agent_brief(query=query, items=items),
+        }
+
+
+def _result_kind(
+    *,
+    search_ok: bool,
+    selected: dict[str, Any] | None,
+    candidates: list[dict[str, Any]],
+) -> str:
+    if not search_ok:
+        return "empty_result"
+    if selected is not None:
+        return "token_result"
+    if candidates:
+        return "ambiguous_result"
+    return "topic_result"
+
+
+def _resolver_confidence(result_kind: str) -> float:
+    return {
+        "token_result": 0.94,
+        "topic_result": 0.65,
+        "ambiguous_result": 0.42,
+        "empty_result": 0.0,
+    }.get(result_kind, 0.0)
+
+
+def _resolver_reasons(*, result_kind: str, candidates: list[dict[str, Any]]) -> list[str]:
+    if result_kind == "token_result":
+        return ["one_resolved_target", "route_backed_result"]
+    if result_kind == "ambiguous_result":
+        return [f"{len(candidates)}_candidate_targets", "no_auto_selection"]
+    if result_kind == "topic_result":
+        return ["no_unique_target", "keyword_corpus_result"]
+    return ["empty_query"]
+
+
+def _market_overlay(value: Any) -> dict[str, Any]:
+    overlay = dict(value) if isinstance(value, dict) else {"status": "missing"}
+    overlay["price_series_type"] = "anchor_line"
+    return overlay
+
+
+def _radar_item(*, radar: dict[str, Any], selected: dict[str, Any]) -> dict[str, Any] | None:
+    for row in [*_list(radar.get("targets")), *_list(radar.get("attention"))]:
+        if not isinstance(row, dict):
+            continue
+        row_dict: dict[str, Any] = dict(row)
+        target = row_dict.get("target")
+        if not isinstance(target, dict):
+            continue
+        if target.get("target_type") == selected.get("target_type") and target.get("target_id") == selected.get(
+            "target_id"
+        ):
+            return row_dict
+    return None
+
+
+def _topic_summary(items: list[dict[str, Any]]) -> dict[str, int]:
+    authors = {
+        str(_dict(item.get("event")).get("author_handle") or "")
+        for item in items
+        if _dict(item.get("event")).get("author_handle")
+    }
+    return {"posts": len(items), "authors": len(authors)}
+
+
+def _dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []

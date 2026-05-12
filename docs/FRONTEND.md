@@ -10,13 +10,15 @@
 | `domain/` | Pure TypeScript domain models, score-decomposition helpers, and time-window arithmetic. Framework-free; unit-testable in isolation. |
 | `store/` | Reactive state holders that bridge `api/` push frames into UI state. Owns subscription lifecycle and replay-window plumbing. |
 | `components/` | React components. Composed from `domain/` types and `store/` state; do not call `api/` directly — go through `store/`. |
+| `features/search/` | Route-state helpers for `/search`; parsing and serialization stay outside JSX. |
 | `lib/` | Cross-cutting utilities (formatting, classnames, env). No domain knowledge. |
 | `test/` | Vitest suites. Mirror the layer they test (`api/`, `domain/`, `store/`, `components/`). |
 
 ## Conventions
 
 - **Payload contract.** Component props that mirror API payloads share their type names with `api/` clients. A breaking API change updates `api/`, `domain/`, and `components/` together.
-- **State discipline.** No component reads from `api/` directly; subscriptions live in `store/`. Tests for `store/` may stub the WebSocket.
+- **State discipline.** Live subscriptions live in `store/`. Route-level pages may call typed React Query hooks from `api/`; leaf components receive payloads as props. Tests for `store/` may stub the WebSocket.
+- **Search route.** `/search` is a focus route: no left `views` rail and no right detail drawer. It renders resolver-selected `token_result`, `topic_result`, or `ambiguous_result` payloads from `/api/search/inspect`.
 - **Score display.** Any displayed ranking score includes its component breakdown (per the rule in `DESIGN_DISCIPLINE.md`); the breakdown comes from the API, not local recomputation.
 - **No business logic in JSX.** Decisions move into `domain/`; `components/` only renders.
 

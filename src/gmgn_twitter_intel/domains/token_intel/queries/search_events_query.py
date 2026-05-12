@@ -41,6 +41,7 @@ class SearchEventsQuery:
         target_candidates: list[dict[str, Any]],
         watched_only: bool,
         route_limit: int,
+        since_ms: int,
     ) -> list[dict[str, Any]]:
         limit = max(0, int(route_limit))
         if limit <= 0:
@@ -50,18 +51,20 @@ class SearchEventsQuery:
             candidate for candidate in target_candidates if str(candidate.get("status") or "") == "resolved"
         ]
         if resolved_targets:
-            hits.extend(self._target_hits(resolved_targets, watched_only=watched_only, limit=limit))
+            hits.extend(self._target_hits(resolved_targets, watched_only=watched_only, limit=limit, since_ms=since_ms))
         if intent.kind == "handle" and intent.handle:
-            hits.extend(self._handle_hits(intent.handle, watched_only=watched_only, limit=limit))
+            hits.extend(self._handle_hits(intent.handle, watched_only=watched_only, limit=limit, since_ms=since_ms))
         lexical_query = (intent.lexical_query or intent.normalized_text or "").strip()
         if intent.kind in {"symbol", "text", "ca"} and lexical_query:
-            hits.extend(self._lexical_hits(lexical_query, watched_only=watched_only, limit=limit))
+            hits.extend(self._lexical_hits(lexical_query, watched_only=watched_only, limit=limit, since_ms=since_ms))
         substring_hits: list[dict[str, Any]] = []
         if len(hits) < limit and _safe_substring_query(lexical_query):
-            substring_hits = self._substring_hits(lexical_query, watched_only=watched_only, limit=limit)
+            substring_hits = self._substring_hits(
+                lexical_query, watched_only=watched_only, limit=limit, since_ms=since_ms
+            )
             hits.extend(substring_hits)
         if len(hits) < limit and not substring_hits and _safe_trigram_query(lexical_query):
-            hits.extend(self._trigram_hits(lexical_query, watched_only=watched_only, limit=limit))
+            hits.extend(self._trigram_hits(lexical_query, watched_only=watched_only, limit=limit, since_ms=since_ms))
         return hits
 
     def target_hits_page(
@@ -71,13 +74,16 @@ class SearchEventsQuery:
         watched_only: bool,
         limit: int,
         after: dict[str, Any] | None = None,
+        since_ms: int,
     ) -> list[dict[str, Any]]:
         resolved_targets = [
             candidate for candidate in target_candidates if str(candidate.get("status") or "") == "resolved"
         ]
         if not resolved_targets:
             return []
-        return self._target_hits_page(resolved_targets, watched_only=watched_only, limit=limit, after=after)
+        return self._target_hits_page(
+            resolved_targets, watched_only=watched_only, limit=limit, after=after, since_ms=since_ms
+        )
 
     def _resolve_symbol(self, symbol: str) -> list[dict[str, Any]]:
         normalized = symbol.strip().lstrip("$").upper()
@@ -164,12 +170,13 @@ class SearchEventsQuery:
         *,
         watched_only: bool,
         limit: int,
+        since_ms: int,
     ) -> list[dict[str, Any]]:
         values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
         params: list[Any] = []
         for candidate in target_candidates:
             params.extend([candidate["target_type"], candidate["target_id"], candidate.get("symbol")])
-        params.extend([TOKEN_RADAR_RESOLVER_POLICY_VERSION, watched_only, max(0, int(limit))])
+        params.extend([TOKEN_RADAR_RESOLVER_POLICY_VERSION, watched_only, since_ms, max(0, int(limit))])
         rows = self.conn.execute(
             f"""
             WITH target_candidates(target_type, target_id, target_symbol) AS (
@@ -206,6 +213,7 @@ class SearchEventsQuery:
                AND tir.resolver_policy_version = %s
               JOIN events ON events.event_id = tir.event_id
               WHERE (%s = false OR events.is_watched = true)
+                AND events.received_at_ms >= %s
             )
             SELECT *, 'target' AS route, jsonb_build_array('target:' || target_type) AS match_reasons_json
             FROM ranked
@@ -223,6 +231,7 @@ class SearchEventsQuery:
         watched_only: bool,
         limit: int,
         after: dict[str, Any] | None,
+        since_ms: int,
     ) -> list[dict[str, Any]]:
         values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
         params: list[Any] = []
@@ -235,6 +244,7 @@ class SearchEventsQuery:
             [
                 TOKEN_RADAR_RESOLVER_POLICY_VERSION,
                 watched_only,
+                since_ms,
                 after_rank,
                 after_rank,
                 after_rank,
@@ -276,6 +286,7 @@ class SearchEventsQuery:
                AND tir.resolver_policy_version = %s
               JOIN events ON events.event_id = tir.event_id
               WHERE (%s = false OR events.is_watched = true)
+                AND events.received_at_ms >= %s
             ),
             deduped AS (
               SELECT *
@@ -314,7 +325,7 @@ class SearchEventsQuery:
         ).fetchall()
         return [_hit(row) for row in rows]
 
-    def _handle_hits(self, handle: str, *, watched_only: bool, limit: int) -> list[dict[str, Any]]:
+    def _handle_hits(self, handle: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT
@@ -329,14 +340,15 @@ class SearchEventsQuery:
             FROM events
             WHERE events.author_handle = %s
               AND (%s = false OR events.is_watched = true)
+              AND events.received_at_ms >= %s
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (handle.strip().lstrip("@").lower(), watched_only, max(0, int(limit))),
+            (handle.strip().lstrip("@").lower(), watched_only, since_ms, max(0, int(limit))),
         ).fetchall()
         return [_hit(row) for row in rows]
 
-    def _lexical_hits(self, query: str, *, watched_only: bool, limit: int) -> list[dict[str, Any]]:
+    def _lexical_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             WITH query AS (
@@ -360,6 +372,7 @@ class SearchEventsQuery:
                   OR events.search_tsv @@ query.english_q
                 )
                 AND (%s = false OR events.is_watched = true)
+                AND events.received_at_ms >= %s
             )
             SELECT
               *,
@@ -370,11 +383,11 @@ class SearchEventsQuery:
             ORDER BY route_score DESC, received_at_ms DESC, event_id DESC
             LIMIT %s
             """,
-            (query, query, watched_only, max(0, int(limit))),
+            (query, query, watched_only, since_ms, max(0, int(limit))),
         ).fetchall()
         return [_hit(row) for row in rows]
 
-    def _trigram_hits(self, query: str, *, watched_only: bool, limit: int) -> list[dict[str, Any]]:
+    def _trigram_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT
@@ -392,14 +405,15 @@ class SearchEventsQuery:
             WHERE events.search_text %% %s
               AND similarity(events.search_text, %s) >= %s
               AND (%s = false OR events.is_watched = true)
+              AND events.received_at_ms >= %s
             ORDER BY route_score DESC, events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (query, query, query, query, _TRIGRAM_THRESHOLD, watched_only, max(0, int(limit))),
+            (query, query, query, query, _TRIGRAM_THRESHOLD, watched_only, since_ms, max(0, int(limit))),
         ).fetchall()
         return [_hit(row) for row in rows]
 
-    def _substring_hits(self, query: str, *, watched_only: bool, limit: int) -> list[dict[str, Any]]:
+    def _substring_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT
@@ -414,10 +428,11 @@ class SearchEventsQuery:
             FROM events
             WHERE events.search_text ILIKE %s ESCAPE '\\'
               AND (%s = false OR events.is_watched = true)
+              AND events.received_at_ms >= %s
             ORDER BY events.received_at_ms DESC, events.event_id DESC
             LIMIT %s
             """,
-            (_substring_pattern(query), watched_only, max(0, int(limit))),
+            (_substring_pattern(query), watched_only, since_ms, max(0, int(limit))),
         ).fetchall()
         return [_hit(row) for row in rows]
 

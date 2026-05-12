@@ -205,6 +205,102 @@ export type SearchData = {
   items: SearchItem[];
 };
 
+export type SearchInspectResultKind =
+  | "token_result"
+  | "topic_result"
+  | "ambiguous_result"
+  | "empty_result";
+
+export type SearchAgentBrief = {
+  schema_version: "search_agent_brief_v1" | string;
+  generated_by: "deterministic" | string;
+  project_summary: {
+    one_liner: string;
+    summary_zh: string;
+    current_state: string;
+    data_gaps: string[];
+    evidence_event_ids: string[];
+  };
+  propagation: {
+    summary_zh: string;
+    phases: Array<{
+      phase: string;
+      window_label: string;
+      tweets: number;
+      authors: number;
+      lead_accounts: string[];
+      read_zh: string;
+      evidence_event_ids: string[];
+    }>;
+    key_accounts: Array<{
+      handle: string;
+      role: string;
+      posts: number;
+      first_seen_ms?: number | null;
+    }>;
+  };
+  bull_bear: {
+    stance: "watch" | "research" | "avoid" | "unknown" | string;
+    bull: {
+      thesis_zh: string;
+      evidence_event_ids: string[];
+      triggers_zh: string[];
+    };
+    bear: {
+      thesis_zh: string;
+      evidence_event_ids: string[];
+      invalidations_zh: string[];
+    };
+  };
+};
+
+export type SearchTokenResult = {
+  target: SearchTargetCandidate;
+  timeline: TokenSocialTimelineData;
+  posts: TokenPostsData;
+  radar_item?: Record<string, unknown> | null;
+  market_overlay: Record<string, unknown> & { price_series_type: "anchor_line" | string };
+  agent_brief: SearchAgentBrief;
+};
+
+export type SearchTopicResult = {
+  summary: {
+    posts: number;
+    authors: number;
+  };
+  items: SearchItem[];
+  agent_brief: SearchAgentBrief;
+};
+
+export type SearchAmbiguousResult = {
+  candidates: SearchTargetCandidate[];
+  summary: {
+    posts: number;
+    authors: number;
+  };
+  items: SearchItem[];
+  agent_brief: SearchAgentBrief;
+};
+
+export type SearchInspectData = {
+  query: {
+    q: string;
+    normalized_q: string;
+    window: WindowKey;
+    scope: ScopeKey;
+    result_kind: SearchInspectResultKind;
+  };
+  resolver: {
+    confidence: number;
+    target_candidates: SearchTargetCandidate[];
+    selected_target?: SearchTargetCandidate | null;
+    reasons: string[];
+  };
+  token_result?: SearchTokenResult | null;
+  topic_result?: SearchTopicResult | null;
+  ambiguous_result?: SearchAmbiguousResult | null;
+};
+
 export type AssetFlowAssetBlock = {
   asset_id?: string | null;
   symbol?: string | null;
@@ -663,6 +759,7 @@ export type TokenTimelinePost = {
   event_id: string;
   tweet_id?: string | null;
   handle?: string | null;
+  author_handle?: string | null;
   received_at_ms?: number | null;
   bucket_start_ms?: number | null;
   text?: string | null;
