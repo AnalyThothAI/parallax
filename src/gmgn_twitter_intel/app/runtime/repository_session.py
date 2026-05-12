@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
+    AssetProfileRepository,
     AssetRepository,
     DiscoveryRepository,
     IdentityEvidenceRepository,
@@ -42,6 +43,7 @@ class RepositorySession:
     entities: EntityRepository
     signals: SignalRepository
     assets: AssetRepository
+    asset_profiles: AssetProfileRepository
     token_evidence: TokenEvidenceRepository
     token_intents: TokenIntentRepository
     intent_resolutions: IntentResolutionRepository
@@ -71,6 +73,7 @@ def repositories_for_connection(conn: Any) -> RepositorySession:
         entities=EntityRepository(conn),
         signals=SignalRepository(conn),
         assets=AssetRepository(conn),
+        asset_profiles=AssetProfileRepository(conn),
         token_evidence=TokenEvidenceRepository(conn),
         token_intents=TokenIntentRepository(conn),
         intent_resolutions=IntentResolutionRepository(conn),
