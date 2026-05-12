@@ -4,6 +4,8 @@ import type { AssetFlowRow } from "../api/types";
 
 import { tokenRadarRowToTokenItem } from "./tokenRadar";
 
+const PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933";
+
 const legacySnapshotVersion = (version: string) =>
   ["token", "factor", "snapshot", version].join("_");
 const legacySnapshotV2Alpha = () =>
@@ -125,9 +127,20 @@ describe("token radar factor snapshot mapper", () => {
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
     expect(item.market.price).toBe(0.104);
-    expect(item.market.market_cap).toBe(51_000_000);
+    expect(item.market.market_cap).toBeNull();
     expect(item.market.market_status).toBe("live");
     expect(item.market.snapshot_age_ms).toBe(30_000);
+  });
+
+  it("keeps usable market cap for chain asset rows", () => {
+    const row = productionChainAssetRow();
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.identity.target_type).toBe("Asset");
+    expect(item.market.price).toBe(0.104);
+    expect(item.market.market_cap).toBe(51_000_000);
+    expect(item.market.market_cap_status).toBe("live");
   });
 
   it("does not read market display deltas from timing facts", () => {
@@ -365,6 +378,57 @@ function productionFactorSnapshotRow(): AssetFlowRow {
     data_health: { factor_snapshot: "ready", market: "partial", identity: "ready" },
     source_event_ids: ["event-1", "event-2"],
   } as unknown as AssetFlowRow;
+}
+
+function productionChainAssetRow(): AssetFlowRow {
+  const row = productionFactorSnapshotRow();
+  row.intent = {
+    intent_id: "intent-pepe",
+    display_symbol: "PEPE",
+    display_name: null,
+    evidence: [],
+  };
+  row.target = {
+    target_type: "Asset",
+    target_id: `asset:eip155:1:erc20:${PEPE}`,
+    symbol: "PEPE",
+    chain_id: "eip155:1",
+    address: PEPE,
+  };
+  row.anchor_price = {
+    ...row.anchor_price,
+    target_type: "Asset",
+    target_id: `asset:eip155:1:erc20:${PEPE}`,
+    price_usd: 0.1,
+    price_quote: null,
+    quote_symbol: "USD",
+    price_basis: "usd",
+  };
+  row.live_market = {
+    target_type: "Asset",
+    target_id: `asset:eip155:1:erc20:${PEPE}`,
+    status: "live",
+    price_usd: 0.104,
+    price_quote: null,
+    quote_symbol: "USD",
+    price_basis: "usd",
+    market_cap_usd: 51_000_000,
+    liquidity_usd: 5_000_000,
+    holders: 12_000,
+    volume_24h_usd: 1_200_000,
+    observed_at_ms: 1_778_426_440_000,
+    received_at_ms: 1_778_426_440_000,
+    age_ms: 30_000,
+    provider: "okx_dex",
+  };
+  row.factor_snapshot!.subject = {
+    target_type: "Asset",
+    target_id: `asset:eip155:1:erc20:${PEPE}`,
+    symbol: "PEPE",
+    chain: "eip155:1",
+    address: PEPE,
+  };
+  return row;
 }
 
 function factor(family: string, key: string, rawValue: unknown, score: number) {

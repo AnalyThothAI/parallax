@@ -19,6 +19,7 @@ from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtoco
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider, PulseRecommendationResult
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
+from gmgn_twitter_intel.integrations.marketlane import MarketlaneQuoteProvider
 from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
@@ -60,11 +61,17 @@ class PulseLabProviders:
 
 
 @dataclass(frozen=True, slots=True)
+class MarketlaneProviders:
+    stock_quote_provider: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
     social_enrichment: SocialEnrichmentProviders
     pulse_lab: PulseLabProviders
+    marketlane: MarketlaneProviders
 
 
 class OkxCexMarketProvider:
@@ -211,6 +218,7 @@ def wire_providers(settings: Settings, *, start_collector: bool) -> WiredProvide
             if settings.pulse_agent_enabled and settings.pulse_agent_configured
             else None,
         ),
+        marketlane=_wire_marketlane(settings),
     )
 
 
@@ -256,6 +264,17 @@ def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMar
         discovery_dex_market=dex_market,
         stream_dex_market=_okx_dex_ws_market(settings) if settings.okx_dex_ws_configured else None,
         discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
+    )
+
+
+def _wire_marketlane(settings: Settings) -> MarketlaneProviders:
+    if not settings.marketlane_enabled:
+        return MarketlaneProviders()
+    return MarketlaneProviders(
+        stock_quote_provider=MarketlaneQuoteProvider(
+            timeout_seconds=settings.marketlane_quote_timeout_seconds,
+            cache_ttl_seconds=settings.marketlane_quote_cache_ttl_seconds,
+        )
     )
 
 
@@ -412,6 +431,7 @@ def _normalize_address(address: Any) -> str:
 __all__ = [
     "AssetMarketProviders",
     "IngestionProviders",
+    "MarketlaneProviders",
     "OkxCexMarketProvider",
     "OkxDexMarketProvider",
     "OkxDexWebSocketMarketProviderAdapter",

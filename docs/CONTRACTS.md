@@ -19,8 +19,9 @@ The only application config source.
   `pulse_agent_gate_high_info_rejection_min`, and
   `pulse_agent_gate_high_conviction_min`. Older heat / quality / propagation /
   tradeability / timing Pulse threshold keys are rejected.
-- Optional market-related groups (OKX, GMGN OpenAPI) for identity discovery,
-  route sync, anchor-price lookup, and the process-local live price gateway.
+- Optional market-related groups (OKX, GMGN OpenAPI, Marketlane) for identity
+  discovery, route sync, anchor-price lookup, the process-local live price
+  gateway, and request-time US equity quote snapshots.
 
 ## WebSocket at `/ws`
 
@@ -55,6 +56,18 @@ Token Radar market contract:
   token snapshot carries address / chain / symbol metadata. Embedded price /
   market-cap values are not written during ingest; anchor prices are written by
   the anchor worker using provider payloads or delayed OKX lookup.
+
+US Stocks radar contract:
+
+- `/api/stocks-radar` accepts authenticated `window`, `scope`, and `limit`
+  query params with the same validation semantics as `/api/token-radar`.
+- Rows are current `MarketInstrument` resolutions with
+  `resolution_status = NON_CRYPTO` and `CONFIRMED_US_EQUITY`; `Asset` and
+  `CexToken` rows are not part of this response.
+- Rows expose social attention facts, latest evidence, source event ids, and a
+  request-time `quote` snapshot from Marketlane. Quote lookup is per-row: a quote
+  failure returns `quote.status = "unavailable"` and does not fail the whole
+  response.
 
 Search V2 contract:
 

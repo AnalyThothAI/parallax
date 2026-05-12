@@ -18,16 +18,21 @@ def test_asset_flow_returns_anchor_price_and_no_current_market():
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
     btc = result["targets"][0]
-    mirror = result["attention"][0]
     assert btc["target"]["symbol"] == "BTC"
     assert btc["anchor_price"]["status"] == "ready"
     assert btc["anchor_price"]["price_usd"] == 70_000.0
     assert btc["live_market"]["status"] == "missing"
     assert "current_market" not in btc
-    assert mirror["target"]["symbol"] == "MIRROR"
+    assert result["attention"] == []
     assert result["projection"]["version"] == TOKEN_RADAR_PROJECTION_VERSION
     assert result["projection"]["source"] == "token_radar_rows"
-    assert result["projection"]["anchor_coverage"] == {"status": "partial", "ready": 1, "missing": 1, "total": 2}
+    assert result["projection"]["anchor_coverage"] == {"status": "ready", "ready": 1, "missing": 0, "total": 1}
+    assert result["projection"]["unresolved"] == {
+        "identity_missing_count": 1,
+        "nil_count": 1,
+        "ambiguous_count": 0,
+        "sample_symbols": ["MIRROR"],
+    }
 
 
 def test_asset_flow_marks_ready_empty_projection_without_missing_rows():
@@ -64,12 +69,9 @@ def test_asset_flow_does_not_fallback_to_legacy_payloads_when_snapshot_missing()
 
     result = service.asset_flow(window="1h", limit=20, scope="all", now_ms=1_700_000_060_000)
 
-    target = result["targets"][0]
-    assert target["anchor_price"]["status"] == "missing"
-    assert target["score"] == {}
-    assert "current_market" not in target
-    assert "price" not in target
-    assert "market" not in target
+    assert result["targets"] == []
+    assert result["attention"] == []
+    assert result["projection"]["anchor_coverage"] == {"status": "missing", "ready": 0, "missing": 0, "total": 0}
 
 
 def test_asset_flow_uses_backend_symbol_without_inventing_contract_label():

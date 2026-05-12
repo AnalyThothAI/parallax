@@ -335,10 +335,19 @@ class OkxProviderConfig(BaseModel):
         return self
 
 
+class MarketlaneProviderConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = True
+    quote_timeout_seconds: float = Field(default=5.0, gt=0)
+    quote_cache_ttl_seconds: float = Field(default=30.0, ge=0)
+
+
 class ProvidersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     okx: OkxProviderConfig = Field(default_factory=OkxProviderConfig)
+    marketlane: MarketlaneProviderConfig = Field(default_factory=MarketlaneProviderConfig)
 
 
 class Settings(BaseModel):
@@ -621,6 +630,18 @@ class Settings(BaseModel):
             and self.okx_dex_secret_key
             and self.okx_dex_passphrase
         )
+
+    @property
+    def marketlane_enabled(self) -> bool:
+        return bool(self.providers.marketlane.enabled)
+
+    @property
+    def marketlane_quote_timeout_seconds(self) -> float:
+        return self.providers.marketlane.quote_timeout_seconds
+
+    @property
+    def marketlane_quote_cache_ttl_seconds(self) -> float:
+        return self.providers.marketlane.quote_cache_ttl_seconds
 
     @property
     def upstream_chains(self) -> tuple[str, ...]:

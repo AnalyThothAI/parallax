@@ -42,8 +42,7 @@ class AssetFlowService:
         )
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
         public_rows = [
-            _overlay_live_market(_public_row(row), gateway=self.live_market_gateway, now_ms=now_ms)
-            for row in rows
+            _overlay_live_market(_public_row(row), gateway=self.live_market_gateway, now_ms=now_ms) for row in rows
         ]
         unresolved = _unresolved_diagnostics(rows)
         targetful_rows = [row for row in public_rows if _mapping(row.get("target")).get("target_id")]
@@ -189,9 +188,7 @@ def _unresolved_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         target = _mapping(row.get("target_json"))
         intent = _mapping(row.get("intent_json"))
         resolution = _mapping(row.get("resolution_json"))
-        status = str(
-            target.get("status") or resolution.get("status") or row.get("resolution_status") or ""
-        ).strip()
+        status = str(target.get("status") or resolution.get("status") or row.get("resolution_status") or "").strip()
         if status == "NIL":
             nil_count += 1
         elif status == "AMBIGUOUS":

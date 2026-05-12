@@ -97,7 +97,13 @@ account-alerts: ## print watched-account token alerts
 	@$(GMGN) account-alerts --window 24h --limit 50
 
 docker-up: init ## build and start container service
-	@docker compose up -d --build app
+	@if [ -n "$${GITHUB_TOKEN:-}" ]; then \
+		docker compose up -d --build app; \
+	elif command -v gh >/dev/null 2>&1 && GITHUB_TOKEN=$$(gh auth token 2>/dev/null); then \
+		GITHUB_TOKEN="$$GITHUB_TOKEN" docker compose up -d --build app; \
+	else \
+		docker compose up -d --build app; \
+	fi
 
 docker-status: ## show container and readiness
 	@docker compose ps

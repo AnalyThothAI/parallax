@@ -17,9 +17,9 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     DEFAULT_REPROCESS_WINDOW,
     WINDOW_MS,
     deferred_token_radar_projection,
+    rebuild_token_radar_windows,
     reprocess_recent_token_intents,
 )
-from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import rebuild_token_radar_windows
 
 from ..identity_evidence_policy import (
     CONFIDENCE_PROVIDER_CANDIDATE,

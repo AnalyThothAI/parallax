@@ -18,6 +18,7 @@ from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import S
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
+from gmgn_twitter_intel.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_cursor import TokenTargetCursorError
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_service import (
     TokenTargetPostsCursorError,
@@ -201,6 +202,28 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 now_ms=_now_ms(),
             )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
+
+    @router.get("/stocks-radar")
+    async def stocks_radar(
+        request: Request,
+        window: Annotated[str, Query()] = "1h",
+        limit: Annotated[int, Query()] = 20,
+        scope: Annotated[str, Query()] = "all",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_window = _window(window)
+        parsed_scope = _scope(scope)
+        with runtime.repositories() as repos:
+            data = await StocksRadarService(
+                conn=repos.conn,
+                quote_provider=getattr(runtime, "stock_quote_provider", None),
+            ).stocks_radar(
+                window=parsed_window,
+                limit=_limit(limit),
+                scope=parsed_scope,
+                now_ms=_now_ms(),
+            )
+        return _json({"ok": True, "data": data})
 
     @router.get("/live-market")
     async def live_market(

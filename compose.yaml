@@ -24,7 +24,10 @@ services:
       start_period: 20s
 
   migrate:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
     restart: "no"
     depends_on:
       postgres:
@@ -34,7 +37,10 @@ services:
     command: ["gmgn-twitter-intel", "db", "migrate"]
 
   app:
-    build: .
+    build:
+      context: .
+      secrets:
+        - github_token
     init: true
     restart: unless-stopped
     depends_on:
@@ -65,3 +71,5 @@ volumes:
 secrets:
   postgres_password:
     file: ${HOME}/.gmgn-twitter-intel/postgres_password
+  github_token:
+    environment: GITHUB_TOKEN

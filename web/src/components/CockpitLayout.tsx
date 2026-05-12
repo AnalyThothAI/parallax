@@ -76,6 +76,7 @@ type CockpitLayoutProps = {
 };
 
 const SIGNAL_LAB_PATH = "/signal-lab";
+const STOCKS_PATH = "/stocks";
 
 export function CockpitLayout(props: CockpitLayoutProps) {
   const {
@@ -89,7 +90,6 @@ export function CockpitLayout(props: CockpitLayoutProps) {
     statusLoading,
     statusError,
     configReady,
-    liveItemsCount,
     tokenItemsCount,
     windowKey,
     signalLabSummaryTrade,
@@ -125,9 +125,11 @@ export function CockpitLayout(props: CockpitLayoutProps) {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const isSignalLab = location.pathname.startsWith(SIGNAL_LAB_PATH);
+  const isStocks = location.pathname.startsWith(STOCKS_PATH);
   const isSearch = location.pathname.startsWith("/search");
   const isLive = location.pathname === "/";
   const activeWatchHandle = isSignalLab ? (searchParams.get("handle") ?? "") : "";
+  const detailEnabled = detailAvailable && !isStocks;
 
   return (
     <main className="cockpit-shell" onKeyDown={onHotkey} tabIndex={-1}>
@@ -202,22 +204,28 @@ export function CockpitLayout(props: CockpitLayoutProps) {
       </header>
 
       <div
-        className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""} ${isSearch ? "search-focus-mode" : ""}`}
+        className={`cockpit-grid mobile-task-${mobileTask} ${isSignalLab ? "signal-lab-mode" : ""} ${isStocks ? "stocks-main-nav-mode" : ""} ${isSearch ? "search-focus-mode" : ""}`}
       >
         <aside className="side-rail desktop-side-rail">
           <RailSection label="views">
             <RailButton
               active={isLive}
-              label="Live"
-              value={liveItemsCount}
+              label="Token"
+              value={tokenItemsCount}
               index="1"
               onClick={() => navigate("/")}
             />
             <RailButton
-              active={isSignalLab}
-              label="Signal Lab"
-              value={signalLabPulseTotal}
+              active={isStocks}
+              label="Stocks"
               index="2"
+              onClick={() => navigate(STOCKS_PATH)}
+            />
+            <RailButton
+              active={isSignalLab}
+              label="Signal Labs"
+              value={signalLabPulseTotal}
+              index="3"
               onClick={() => {
                 navigate(SIGNAL_LAB_PATH);
                 onMobileTaskChange("lab");
@@ -310,7 +318,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
 
       <MobileTaskNav
         activeTask={mobileTask}
-        detailAvailable={detailAvailable}
+        detailAvailable={detailEnabled}
         onTaskChange={onMobileTaskChange}
       />
       <NotificationDrawer
@@ -357,7 +365,7 @@ function RailButton({
 }: {
   active?: boolean;
   label: string;
-  value: number;
+  value?: number;
   index: string;
   onClick: () => void;
 }) {
@@ -365,7 +373,7 @@ function RailButton({
     <button className={`rail-button ${active ? "active" : ""}`} type="button" onClick={onClick}>
       <span>{index}</span>
       <b>{label}</b>
-      <em>{compactNumber(value)}</em>
+      {value !== undefined ? <em>{compactNumber(value)}</em> : <em />}
     </button>
   );
 }

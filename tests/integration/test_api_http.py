@@ -629,6 +629,101 @@ def test_token_radar_overlays_live_gateway_snapshot(tmp_path):
     assert row["live_market"]["provider"] == "test_live"
 
 
+def test_stocks_radar_returns_us_equity_market_instruments_with_partial_quotes(tmp_path):
+    class FakeStockQuoteProvider:
+        async def quote(self, symbol: str):
+            if symbol == "RKLB":
+                raise RuntimeError("quote unavailable")
+            return {
+                "status": "ready",
+                "price": 291.87,
+                "reference_close_price": 293.257,
+                "change_pct": (291.87 - 293.257) / 293.257,
+                "asof": "2026-05-12T08:45:45+00:00",
+                "provider": "yahoo",
+                "provider_symbol": symbol,
+                "latency_class": "delayed_15m",
+            }
+
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    now_ms = int(time.time() * 1000)
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        runtime.stock_quote_provider = FakeStockQuoteProvider()
+        with runtime.repositories() as repos:
+            repos.registry.upsert_us_equity_symbol(
+                symbol="AAPL",
+                exchange="NASDAQ",
+                security_name="Apple Inc. Common Stock",
+                instrument_type="equity",
+                source="test",
+                source_updated_at_ms=now_ms,
+                raw_payload={"Symbol": "AAPL"},
+                observed_at_ms=now_ms,
+            )
+            repos.registry.upsert_us_equity_symbol(
+                symbol="RKLB",
+                exchange="NASDAQ",
+                security_name="Rocket Lab USA, Inc. Common Stock",
+                instrument_type="equity",
+                source="test",
+                source_updated_at_ms=now_ms,
+                raw_payload={"Symbol": "RKLB"},
+                observed_at_ms=now_ms,
+            )
+
+        runtime.ingest.ingest_event(
+            make_event("event-aapl-1", handle="toly", text="$AAPL breakout", received_at_ms=now_ms - 10_000),
+            is_watched=True,
+        )
+        runtime.ingest.ingest_event(
+            make_event("event-aapl-2", handle="elonmusk", text="$AAPL still bid", received_at_ms=now_ms - 5_000),
+            is_watched=False,
+        )
+        runtime.ingest.ingest_event(
+            make_event("event-rklb-1", handle="toly", text="$RKLB launch cadence", received_at_ms=now_ms - 3_000),
+            is_watched=True,
+        )
+        runtime.ingest.ingest_event(
+            make_token_event(
+                "event-pepe-stock-radar-exclusion",
+                symbol="PEPE",
+                address=PEPE,
+                text=f"$PEPE {PEPE}",
+                received_at_ms=now_ms - 1_000,
+            ),
+            is_watched=True,
+        )
+
+        response = client.get(
+            "/api/stocks-radar",
+            params={"window": "1h", "scope": "all", "limit": 10},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    rows = data["rows"]
+    symbols = {row["target"]["symbol"] for row in rows}
+    assert symbols == {"AAPL", "RKLB"}
+    assert all(row["target"]["target_type"] == "MarketInstrument" for row in rows)
+    assert all(row["target"]["target_id"].startswith("market_instrument:us_equity:") for row in rows)
+    assert "PEPE" not in symbols
+    assert data["health"] == {
+        "returned_count": 2,
+        "quote_ready_count": 1,
+        "quote_unavailable_count": 1,
+    }
+    by_symbol = {row["target"]["symbol"]: row for row in rows}
+    assert by_symbol["AAPL"]["attention"]["mentions"] == 2
+    assert by_symbol["AAPL"]["attention"]["unique_authors"] == 2
+    assert by_symbol["AAPL"]["quote"]["price"] == 291.87
+    assert by_symbol["AAPL"]["quote"]["provider"] == "yahoo"
+    assert by_symbol["RKLB"]["quote"]["status"] == "unavailable"
+    assert by_symbol["RKLB"]["row_health"] == ["quote_unavailable"]
+
+
 def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

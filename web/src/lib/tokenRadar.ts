@@ -204,6 +204,7 @@ export function tokenRadarRowToTokenItem(
     timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
   const marketPrice = displayPrice;
   const marketProvider = firstString(liveMarket.provider, anchorPrice.provider);
+  const displayMarketCap = isCexToken ? null : optionalNullableNumber(liveMarket.market_cap_usd);
   const chain = isSnapshotAsset ? (stringValue(subject.chain) ?? target.chain_id ?? null) : null;
   const blockedReasons = requiredStringArray(
     gates.blocked_reasons ?? [],
@@ -252,8 +253,8 @@ export function tokenRadarRowToTokenItem(
       market_status: marketStatus,
       price: marketPrice,
       price_status: liveMarketHasPrice ? liveMarket.status : anchorPrice.status,
-      market_cap: optionalNullableNumber(liveMarket.market_cap_usd),
-      market_cap_status: fieldStatusFromNullableValue(liveMarket.market_cap_usd),
+      market_cap: displayMarketCap,
+      market_cap_status: fieldStatusFromNullableValue(displayMarketCap),
       liquidity: optionalNullableNumber(liveMarket.liquidity_usd),
       liquidity_status: fieldStatusFromNullableValue(liveMarket.liquidity_usd),
       pool_status: marketHasUsableSnapshot ? "ready" : "missing",

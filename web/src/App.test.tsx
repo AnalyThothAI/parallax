@@ -19,6 +19,7 @@ import type {
   SearchInspectData,
   SignalPulseData,
   StatusData,
+  StocksRadarData,
   TokenFactorSnapshot,
   TokenFlowItem,
   TokenPostsData,
@@ -646,6 +647,18 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(await screen.findByRole("button", { name: "open Signal Pulse BNB" }));
     expect(await screen.findByText("selected Signal Pulse")).toBeInTheDocument();
     expect(container.querySelector(".signal-lab-workbench")).toBeInTheDocument();
+  });
+
+  it("opens Stocks from the main navigation without the token detail layout", async () => {
+    const { container } = renderWithQuery(<App />);
+
+    const rail = container.querySelector(".side-rail") as HTMLElement;
+    fireEvent.click(await within(rail).findByRole("button", { name: /Stocks/ }));
+
+    expect(await screen.findByRole("heading", { name: "US Stocks" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("stock AAPL")).toBeInTheDocument();
+    expect(container.querySelector(".cockpit-grid.stocks-main-nav-mode")).toBeInTheDocument();
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/stocks-radar")).toBe(true);
   });
 
   it("marks the desktop watchlist as the left rail fill section", async () => {
@@ -1473,6 +1486,9 @@ function mockApi(
         projection: assetFlowProjection(options.projectionVersion),
       });
     }
+    if (path === "/api/stocks-radar") {
+      return ok<StocksRadarData>(stocksRadarData());
+    }
     if (path === "/api/target-social-timeline") {
       return ok<TokenSocialTimelineData>(
         timelineData(targetFixtureOptions(requestOptions?.params?.target_id)),
@@ -1551,6 +1567,64 @@ function mockApi(
     if (path === "/api/enrichment-jobs")
       return ok({ items: [], counts: { pending: 1, running: 0, failed: 0, dead: 0, done: 8 } });
     throw new Error(`unexpected path ${path}`);
+  };
+}
+
+function stocksRadarData(): StocksRadarData {
+  return {
+    window: "1h",
+    scope: "all",
+    query: {
+      window: "1h",
+      scope: "all",
+      limit: 48,
+      window_start_ms: 1_777_746_000_000,
+      window_end_ms: 1_777_749_600_000,
+    },
+    rows: [
+      {
+        target: {
+          target_type: "MarketInstrument",
+          target_id: "market_instrument:us_equity:AAPL",
+          symbol: "AAPL",
+          market: "us_equity",
+          exchange: "NASDAQ",
+          instrument_type: "equity",
+          name: "Apple Inc. Common Stock",
+        },
+        attention: {
+          mentions: 2,
+          unique_authors: 2,
+          watched_mentions: 1,
+          latest_seen_ms: 1_777_749_500_000,
+        },
+        latest_event: {
+          event_id: "event-aapl",
+          author_handle: "toly",
+          text: "$AAPL breakout",
+          received_at_ms: 1_777_749_500_000,
+        },
+        quote: {
+          status: "ready",
+          price: 291.87,
+          reference_close_price: 293.257,
+          change_pct: -0.004729,
+          asof: "2026-05-12T08:45:45+00:00",
+          provider: "yahoo",
+          provider_symbol: "AAPL",
+          latency_class: "delayed_15m",
+          freshness_class: "delayed_15m",
+          error: null,
+        },
+        source_event_ids: ["event-aapl"],
+        row_health: [],
+      },
+    ],
+    health: {
+      returned_count: 1,
+      quote_ready_count: 1,
+      quote_unavailable_count: 0,
+    },
   };
 }
 

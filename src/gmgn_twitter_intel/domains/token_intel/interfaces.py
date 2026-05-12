@@ -21,6 +21,7 @@ from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh imp
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
     deferred_token_radar_projection,
+    rebuild_token_radar_windows,
     refresh_recent_token_state,
     reprocess_recent_token_intents,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "clamp_score",
     "deferred_token_radar_projection",
     "is_token_factor_snapshot",
+    "rebuild_token_radar_windows",
     "refresh_recent_token_state",
     "reprocess_recent_token_intents",
     "require_token_factor_snapshot",

@@ -69,6 +69,10 @@ providers:
     dex_price_warm_stale_seconds: 300
     dex_price_refresh_limit: 160
     timeout_seconds: 15
+  marketlane:
+    enabled: true
+    quote_timeout_seconds: 5
+    quote_cache_ttl_seconds: 30
 
 upstream:
   chains: ["sol", "eth", "base", "bsc"]

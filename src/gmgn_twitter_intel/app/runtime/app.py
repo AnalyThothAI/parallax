@@ -85,6 +85,7 @@ class CliRuntime:
     anchor_price_worker: AnchorPriceWorker | None = None
     resolution_refresh_worker: ResolutionRefreshWorker | None = None
     live_price_gateway: LivePriceGateway | None = None
+    stock_quote_provider: object | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     pulse_candidate_worker: PulseCandidateWorker | None = None
     collector_task: asyncio.Task | None = None
@@ -175,6 +176,8 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
     app.add_api_route("/app/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/signal-lab", frontend_index, include_in_schema=False)
     app.add_api_route("/signal-lab/{path:path}", frontend_index, include_in_schema=False)
+    app.add_api_route("/stocks", frontend_index, include_in_schema=False)
+    app.add_api_route("/stocks/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/token", frontend_index, include_in_schema=False)
     app.add_api_route("/token/{path:path}", frontend_index, include_in_schema=False)
 
@@ -280,6 +283,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         hub=hub,
         collector=collector,
         start_collector=start_collector,
+        stock_quote_provider=providers.marketlane.stock_quote_provider,
     )
     runtime.harness_ops_worker = HarnessOpsWorker(
         repository_session=lambda: repository_session(db_pool),
@@ -565,12 +569,8 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_run_at_ms": runtime.resolution_refresh_worker.last_run_at_ms
             if runtime.resolution_refresh_worker
             else None,
-            "last_result": runtime.resolution_refresh_worker.last_result
-            if runtime.resolution_refresh_worker
-            else None,
-            "last_error": runtime.resolution_refresh_worker.last_error
-            if runtime.resolution_refresh_worker
-            else None,
+            "last_result": runtime.resolution_refresh_worker.last_result if runtime.resolution_refresh_worker else None,
+            "last_error": runtime.resolution_refresh_worker.last_error if runtime.resolution_refresh_worker else None,
         },
         "live_price_gateway": {
             "configured": getattr(runtime.settings, "okx_dex_ws_configured", False),

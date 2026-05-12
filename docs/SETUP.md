@@ -24,6 +24,7 @@ The full CLI surface is documented by `uv run gmgn-twitter-intel --help`. Treat 
 ## Docker Compose
 
 ```bash
+export GITHUB_TOKEN="$(gh auth token)"  # required when GitHub dependencies are private
 docker compose up -d --build app
 docker compose ps
 docker compose logs -f --tail=100 app

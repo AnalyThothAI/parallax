@@ -14,6 +14,7 @@ import { PulseDetailPage } from "../components/PulseDetailPage";
 import { SearchIntelPage } from "../components/SearchIntelPage";
 import { SignalLabInspector } from "../components/SignalLabInspector";
 import { SignalLabPage } from "../components/SignalLabPage";
+import { StocksRadarPage } from "../components/StocksRadarPage";
 import { TokenDetailDrawer } from "../components/TokenDetailDrawer";
 import { TokenTargetPage } from "../components/TokenTargetPage";
 import { useLiveData } from "../features/live/useLiveData";
@@ -239,6 +240,10 @@ export function CockpitApp() {
           <Route path="token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Route>
         <Route path="search" element={<SearchIntelPage />} />
+        <Route
+          path="stocks"
+          element={<StocksRadarPage token={token ?? ""} windowKey={windowKey} scope={scope} />}
+        />
         <Route
           path="signal-lab"
           element={
