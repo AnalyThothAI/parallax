@@ -36,6 +36,8 @@ def observe_anchor_prices(
         "skipped_missing_pricefeed": 0,
         "skipped_missing_provider": 0,
         "skipped_missing_market": 0,
+        "provider_errors": 0,
+        "errors": [],
     }
     cex_quotes = _fetch_cex_quotes(rows, cex_market=cex_market, result=result)
     dex_quotes = _fetch_dex_quotes(rows, dex_quote_market=dex_quote_market, result=result)
@@ -121,7 +123,19 @@ def _fetch_dex_quotes(
         if not chunk:
             continue
         result["dex_price_requests"] += 1
-        for price in dex_quote_market.token_quotes(chunk):
+        try:
+            chunk_quotes = dex_quote_market.token_quotes(chunk)
+        except Exception as exc:
+            result["provider_errors"] += 1
+            result["errors"].append(
+                {
+                    "provider": "gmgn_dex_quote",
+                    "error": str(exc),
+                    "tokens": len(chunk),
+                }
+            )
+            continue
+        for price in chunk_quotes:
             quotes[(str(price.chain_id), _normalize_address(price.address))] = price
     return quotes
 

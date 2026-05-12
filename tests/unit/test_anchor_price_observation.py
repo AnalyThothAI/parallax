@@ -138,6 +138,48 @@ def test_anchor_price_observation_writes_dex_message_anchor_per_message():
     ] == [(23_000.0, 10_000.0, 5_000.0, 124), (23_000.0, 10_000.0, 5_000.0, 124)]
 
 
+def test_anchor_price_observation_records_dex_provider_error_without_fallback():
+    repos = FakeRepos(
+        rows=[
+            {
+                "event_id": "event-1",
+                "intent_id": "intent-1",
+                "resolution_id": "resolution-1",
+                "target_type": "Asset",
+                "target_id": "asset:solana:token:abc",
+                "pricefeed_id": None,
+                "event_received_at_ms": 1_700_000_000_000,
+                "asset_chain_id": "solana",
+                "asset_address": "abc",
+                "asset_symbol": "ABC",
+            }
+        ]
+    )
+
+    result = observe_anchor_prices(
+        repos=repos,
+        cex_market=None,
+        dex_quote_market=FailingDexMarket(RuntimeError("GET /v1/token/info returned non-json HTTP 403")),
+        now_ms=1_700_000_001_000,
+        limit=10,
+    )
+
+    assert result["rows_selected"] == 1
+    assert result["dex_price_requests"] == 1
+    assert result["provider_errors"] == 1
+    assert result["errors"] == [
+        {
+            "provider": "gmgn_dex_quote",
+            "error": "GET /v1/token/info returned non-json HTTP 403",
+            "tokens": 1,
+        }
+    ]
+    assert result["anchor_observations_written"] == 0
+    assert result["skipped_missing_market"] == 1
+    assert repos.price_observations.observations == []
+    assert repos.conn.commits == 0
+
+
 class FakeRepos:
     def __init__(self, rows):
         self.conn = FakeConn(rows)
@@ -198,3 +240,13 @@ class FakeDexMarket:
     def token_quotes(self, tokens):
         self.calls.append(tokens)
         return self.prices
+
+
+class FailingDexMarket:
+    def __init__(self, error):
+        self.error = error
+        self.calls = []
+
+    def token_quotes(self, tokens):
+        self.calls.append(tokens)
+        raise self.error
