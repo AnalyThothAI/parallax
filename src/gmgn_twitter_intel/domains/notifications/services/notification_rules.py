@@ -6,7 +6,7 @@ import time
 from typing import Any
 from urllib.parse import quote
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot_v2
+from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
 from gmgn_twitter_intel.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
@@ -29,7 +29,7 @@ SIGNAL_PULSE_COOLDOWN_MS = {
     "theme_watch": 2 * 60 * 60_000,
     "risk_rejected_high_info": 60 * 60_000,
 }
-ALPHA_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality", "timing_response")
+ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
 
 
 class NotificationRuleEngine:
@@ -446,9 +446,9 @@ def _score_value(item: dict[str, Any], key: str) -> int:
     if factor_snapshot is None:
         return 0
     if key == "heat":
-        return _int(_dict(_dict(factor_snapshot.get("families")).get("attention_heat")).get("score"))
+        return _int(_dict(_dict(factor_snapshot.get("families")).get("social_heat")).get("score"))
     if key == "quality":
-        return _int(_dict(_dict(factor_snapshot.get("families")).get("semantic_quality")).get("score"))
+        return _int(_dict(_dict(factor_snapshot.get("families")).get("semantic_catalyst")).get("score"))
     if key == "opportunity":
         return _int(_dict(factor_snapshot.get("composite")).get("rank_score"))
     return 0
@@ -456,7 +456,7 @@ def _score_value(item: dict[str, Any], key: str) -> int:
 
 def _asset_flow_factor_snapshot(item: dict[str, Any]) -> dict[str, Any] | None:
     value = item.get("factor_snapshot")
-    if not is_token_factor_snapshot_v2(value):
+    if not is_token_factor_snapshot(value):
         return None
     return _dict(value)
 
@@ -628,8 +628,8 @@ def _alpha_fact_line(snapshot: dict[str, Any]) -> str:
 
 
 def _social_fact_line(snapshot: dict[str, Any]) -> str:
-    attention = _family_facts(snapshot, "attention_heat")
-    quality = _family_facts(snapshot, "diffusion_quality")
+    attention = _family_facts(snapshot, "social_heat")
+    quality = _family_facts(snapshot, "social_propagation")
     mentions = _int(attention.get("mentions_1h"))
     authors = _int(quality.get("independent_authors") or attention.get("unique_authors"))
     watched = _int(attention.get("watched_mentions"))
@@ -643,7 +643,7 @@ def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
 
 
 def _valid_factor_snapshot(value: Any) -> bool:
-    return is_token_factor_snapshot_v2(value)
+    return is_token_factor_snapshot(value)
 
 
 def _alpha_family_scores(snapshot: dict[str, Any]) -> dict[str, Any]:

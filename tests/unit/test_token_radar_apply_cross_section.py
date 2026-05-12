@@ -21,16 +21,24 @@ def _row(
     target_id: str,
     symbol: str,
     rank_score: float | None = 50.0,
+    family_scores: dict[str, float | None] | None = None,
     high_conf: int = 2,
     kol_count: int = 0,
     first_seen_global_24h: bool = False,
+    public_followup_authors: int = 0,
 ) -> dict[str, Any]:
+    resolved_family_scores = family_scores or {
+        "social_heat": rank_score,
+        "social_propagation": rank_score,
+        "semantic_catalyst": rank_score,
+        "timing_risk": rank_score,
+    }
     return {
         "target_id": target_id,
         "decision": "watch",
         "target_json": {"symbol": symbol},
         "factor_snapshot_json": {
-            "schema_version": "token_factor_snapshot_v2_alpha_gated",
+            "schema_version": "token_factor_snapshot_v3_social_attention",
             "subject": {"target_id": target_id},
             "market": _market(),
             "gates": {"max_decision": "high_alert", "blocked_reasons": []},
@@ -39,18 +47,13 @@ def _row(
                 "raw_alpha_score": rank_score,
                 "rank_score": rank_score,
                 "recommended_decision": "watch",
-                "family_scores": {
-                    "attention_heat": rank_score,
-                    "diffusion_quality": rank_score,
-                    "semantic_quality": rank_score,
-                    "timing_response": rank_score,
-                },
+                "family_scores": resolved_family_scores,
             },
             "families": {
-                "attention_heat": _family(rank_score, 0.35),
-                "diffusion_quality": _family(rank_score, 0.30),
-                "semantic_quality": _family(rank_score, 0.25),
-                "timing_response": _family(rank_score, 0.10),
+                "social_heat": _family(resolved_family_scores["social_heat"], 0.45),
+                "social_propagation": _family(resolved_family_scores["social_propagation"], 0.40),
+                "semantic_catalyst": _family(resolved_family_scores["semantic_catalyst"], 0.15),
+                "timing_risk": _family(resolved_family_scores["timing_risk"], 0.0),
             },
             "normalization": {"status": "pending_cross_section", "cohort": {}, "factor_ranks": {}, "alpha_rank": None},
             "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},
@@ -59,6 +62,7 @@ def _row(
         "_cohort_high_conf_count": high_conf,
         "_cohort_kol_count": kol_count,
         "_cohort_first_seen_global_24h": first_seen_global_24h,
+        "_cohort_public_followup_count": public_followup_authors,
     }
 
 
@@ -109,7 +113,7 @@ def test_cross_section_ranks_cohort_members_and_excludes_stablecoins():
 
 
 def test_cross_section_writes_cohort_metadata_with_versions():
-    rows = [_row(target_id="asset:pepe", symbol="PEPE", high_conf=3, kol_count=1)]
+    rows = [_row(target_id="asset:pepe", symbol="PEPE", high_conf=3, kol_count=1, public_followup_authors=2)]
 
     result = TokenRadarProjection._apply_cross_section(rows)
 
@@ -120,6 +124,7 @@ def test_cross_section_writes_cohort_metadata_with_versions():
     assert cohort["normalizer_version"] == NORMALIZER_VERSION
     assert cohort["high_confidence_mentions"] == 3
     assert cohort["kol_mentions"] == 1
+    assert cohort["public_followup_authors"] == 2
     assert cohort["symbol"] == "PEPE"
     assert cohort["first_seen_global_24h"] is False
 
@@ -132,6 +137,7 @@ def test_cross_section_strips_internal_cohort_fields():
     assert "_cohort_high_conf_count" not in result[0]
     assert "_cohort_kol_count" not in result[0]
     assert "_cohort_first_seen_global_24h" not in result[0]
+    assert "_cohort_public_followup_count" not in result[0]
 
 
 def test_cross_section_includes_first_seen_only_tokens_in_cohort():
@@ -154,6 +160,27 @@ def test_cross_section_includes_first_seen_only_tokens_in_cohort():
     assert cohort["kol_mentions"] == 0
 
 
+def test_cross_section_keeps_public_followup_metadata_out_of_active_cohort_condition():
+    rows = [
+        _row(
+            target_id="asset:public",
+            symbol="PUBLIC",
+            high_conf=0,
+            kol_count=0,
+            first_seen_global_24h=False,
+            public_followup_authors=4,
+        ),
+        _row(target_id="asset:real", symbol="REAL", high_conf=2, kol_count=0),
+    ]
+
+    result = TokenRadarProjection._apply_cross_section(rows)
+    by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
+
+    assert by_id["asset:public"]["cohort"]["in_cohort"] is False
+    assert by_id["asset:public"]["cohort"]["public_followup_authors"] == 4
+    assert by_id["asset:public"]["alpha_rank"] is None
+
+
 def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
     """Rows with empty/missing target_id (attention lane) should still get
     factor_snapshot.normalization.cross_section_rank=None and cohort metadata, just without
@@ -164,7 +191,7 @@ def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
             "target_id": None,
             "target_json": None,
             "factor_snapshot_json": {
-                "schema_version": "token_factor_snapshot_v2_alpha_gated",
+                "schema_version": "token_factor_snapshot_v3_social_attention",
                 "subject": {"target_id": None},
                 "market": _market(status="missing"),
                 "gates": {"max_decision": "high_alert", "blocked_reasons": []},
@@ -174,17 +201,17 @@ def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
                     "rank_score": 40.0,
                     "recommended_decision": "watch",
                     "family_scores": {
-                        "attention_heat": 40.0,
-                        "diffusion_quality": 40.0,
-                        "semantic_quality": 40.0,
-                        "timing_response": 40.0,
+                        "social_heat": 40.0,
+                        "social_propagation": 40.0,
+                        "semantic_catalyst": 40.0,
+                        "timing_risk": 40.0,
                     },
                 },
                 "families": {
-                    "attention_heat": _family(40.0, 0.35),
-                    "diffusion_quality": _family(40.0, 0.30),
-                    "semantic_quality": _family(40.0, 0.25),
-                    "timing_response": _family(40.0, 0.10),
+                    "social_heat": _family(40.0, 0.45),
+                    "social_propagation": _family(40.0, 0.40),
+                    "semantic_catalyst": _family(40.0, 0.15),
+                    "timing_risk": _family(40.0, 0.0),
                 },
                 "normalization": {
                     "status": "pending_cross_section",
@@ -197,6 +224,7 @@ def test_cross_section_leaves_attention_lane_rows_with_no_target_id_alone():
             "score_json": {},
             "_cohort_high_conf_count": 0,
             "_cohort_kol_count": 0,
+            "_cohort_public_followup_count": 0,
         },
     ]
 
@@ -250,17 +278,50 @@ def test_cross_section_updates_family_scores_composite_and_decision_from_factor_
     cold = next(r for r in result if r["target_id"] == "asset:cold")
 
     assert hot["factor_snapshot_json"]["normalization"]["status"] == "ranked"
-    assert hot["factor_snapshot_json"]["families"]["attention_heat"]["score"] == 100
+    assert hot["factor_snapshot_json"]["families"]["social_heat"]["score"] == 100
     assert hot["factor_snapshot_json"]["composite"]["rank_score"] == 100
     assert hot["factor_snapshot_json"]["composite"]["recommended_decision"] == "high_alert"
     assert hot["decision"] == "high_alert"
-    assert cold["factor_snapshot_json"]["families"]["attention_heat"]["score"] == 50
+    assert cold["factor_snapshot_json"]["families"]["social_heat"]["score"] == 50
     assert cold["factor_snapshot_json"]["composite"]["rank_score"] == 50
     assert cold["factor_snapshot_json"]["composite"]["recommended_decision"] == "watch"
     assert cold["decision"] == "watch"
 
 
-def test_cross_section_rejects_v2_snapshot_with_legacy_hard_gates():
+def test_cross_section_zero_weight_timing_risk_cannot_dominate_alpha_rank():
+    rows = [
+        _row(
+            target_id="asset:social",
+            symbol="SOCIAL",
+            rank_score=50.0,
+            family_scores={
+                "social_heat": 100.0,
+                "social_propagation": 100.0,
+                "semantic_catalyst": 100.0,
+                "timing_risk": 0.0,
+            },
+        ),
+        _row(
+            target_id="asset:timing",
+            symbol="TIMING",
+            rank_score=50.0,
+            family_scores={
+                "social_heat": 0.0,
+                "social_propagation": 0.0,
+                "semantic_catalyst": 0.0,
+                "timing_risk": 100.0,
+            },
+        ),
+    ]
+
+    result = TokenRadarProjection._apply_cross_section(rows)
+    by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
+
+    assert by_id["asset:social"]["alpha_rank"] == 1.0
+    assert by_id["asset:timing"]["alpha_rank"] == 0.5
+
+
+def test_cross_section_rejects_snapshot_with_legacy_hard_gates():
     row = _row(target_id="asset:legacy", symbol="OLD")
     row["factor_snapshot_json"]["hard_gates"] = {"eligible_for_high_alert": True}
 

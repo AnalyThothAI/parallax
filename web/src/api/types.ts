@@ -813,7 +813,7 @@ export type FactorPoint = {
   risk_flags?: string[];
 };
 
-export type TokenFactorFamilyKey = "attention_heat" | "diffusion_quality" | "semantic_quality" | "timing_response";
+export type TokenFactorFamilyKey = "social_heat" | "social_propagation" | "semantic_catalyst" | "timing_risk";
 
 export type TokenFactorFamily = {
   raw_score: number;
@@ -825,7 +825,7 @@ export type TokenFactorFamily = {
 };
 
 export type TokenFactorSnapshot = {
-  schema_version: "token_factor_snapshot_v2_alpha_gated";
+  schema_version: "token_factor_snapshot_v3_social_attention";
   subject: {
     target_type?: string | null;
     target_id?: string | null;

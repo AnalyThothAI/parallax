@@ -91,7 +91,7 @@ def test_projection_coverage_round_trips_failed_state_without_rows(tmp_path):
 
 def test_json_payload_converts_decimal_values_before_jsonb_binding():
     snapshot = _valid_factor_snapshot(rank_score=Decimal("12.5"))
-    snapshot["families"]["attention_heat"]["facts"]["volume_24h_usd"] = Decimal("123.45")
+    snapshot["families"]["social_heat"]["facts"]["volume_24h_usd"] = Decimal("123.45")
     payload = _json_payload(
         {
             "factor_snapshot_json": snapshot,
@@ -106,7 +106,7 @@ def test_json_payload_converts_decimal_values_before_jsonb_binding():
     )
 
     assert payload["factor_snapshot_json"].obj["composite"]["rank_score"] == 12.5
-    assert payload["factor_snapshot_json"].obj["families"]["attention_heat"]["facts"]["volume_24h_usd"] == 123.45
+    assert payload["factor_snapshot_json"].obj["families"]["social_heat"]["facts"]["volume_24h_usd"] == 123.45
 
 
 def test_replace_and_latest_rows_persist_factor_snapshot_json(tmp_path):
@@ -316,7 +316,7 @@ def test_replace_rows_rejects_hard_gates_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_requires_v2_top_level_sections_before_insert():
+def test_replace_rows_requires_v3_top_level_sections_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
     del row["factor_snapshot_json"]["data_health"]
@@ -334,12 +334,12 @@ def test_replace_rows_requires_v2_top_level_sections_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_requires_v2_factor_families_before_insert():
+def test_replace_rows_requires_v3_factor_families_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
-    del row["factor_snapshot_json"]["families"]["semantic_quality"]
+    del row["factor_snapshot_json"]["families"]["semantic_catalyst"]
 
-    with pytest.raises(ValueError, match=r"factor_snapshot_json\.families\.semantic_quality is required"):
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.families\.semantic_catalyst is required"):
         TokenRadarRepository(conn).replace_rows(
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
@@ -352,7 +352,7 @@ def test_replace_rows_requires_v2_factor_families_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_rejects_empty_v2_provenance_before_insert():
+def test_replace_rows_rejects_empty_v3_provenance_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
     row["factor_snapshot_json"]["provenance"] = {}
@@ -370,7 +370,7 @@ def test_replace_rows_rejects_empty_v2_provenance_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_rejects_empty_v2_source_event_ids_before_insert():
+def test_replace_rows_rejects_empty_v3_source_event_ids_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
     row["factor_snapshot_json"]["provenance"]["source_event_ids"] = []
@@ -388,12 +388,12 @@ def test_replace_rows_rejects_empty_v2_source_event_ids_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_rejects_empty_v2_family_block_before_insert():
+def test_replace_rows_rejects_empty_v3_family_block_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
-    row["factor_snapshot_json"]["families"]["attention_heat"] = {}
+    row["factor_snapshot_json"]["families"]["social_heat"] = {}
 
-    with pytest.raises(ValueError, match=r"factor_snapshot_json\.families\.attention_heat\.data_health is required"):
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.families\.social_heat\.data_health is required"):
         TokenRadarRepository(conn).replace_rows(
             projection_version="token-radar-v11-factor-alpha-gated",
             window="1h",
@@ -406,7 +406,7 @@ def test_replace_rows_rejects_empty_v2_family_block_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_rejects_extra_v2_top_level_keys_before_insert():
+def test_replace_rows_rejects_extra_v3_top_level_keys_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
     row["factor_snapshot_json"]["nested"] = {"volume_24h_usd": 123.45}
@@ -424,7 +424,7 @@ def test_replace_rows_rejects_extra_v2_top_level_keys_before_insert():
     assert conn.insert_sql == ""
 
 
-def test_replace_rows_rejects_extra_v2_family_keys_before_insert():
+def test_replace_rows_rejects_extra_v3_family_keys_before_insert():
     conn = FakeReplaceConn()
     row = _valid_factor_row()
     row["factor_snapshot_json"]["families"]["market_quality"] = {"facts": {"market_status": "fresh"}}
@@ -633,7 +633,7 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "social_signal_start_ms": 1_778_000_000_000,
         },
         "families": {
-            "attention_heat": {
+            "social_heat": {
                 "raw_score": 80,
                 "score": 80,
                 "weight": 0.35,
@@ -641,7 +641,7 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "facts": {},
                 "factors": {},
             },
-            "diffusion_quality": {
+            "social_propagation": {
                 "raw_score": 80,
                 "score": 80,
                 "weight": 0.30,
@@ -649,7 +649,7 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "facts": {},
                 "factors": {},
             },
-            "semantic_quality": {
+            "semantic_catalyst": {
                 "raw_score": 80,
                 "score": 80,
                 "weight": 0.25,
@@ -657,7 +657,7 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "facts": {},
                 "factors": {},
             },
-            "timing_response": {
+            "timing_risk": {
                 "raw_score": 80,
                 "score": 80,
                 "weight": 0.10,
@@ -676,10 +676,10 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
         "normalization": {"status": "ready", "cohort": {}, "factor_ranks": {}, "alpha_rank": None},
         "composite": {
             "family_scores": {
-                "attention_heat": 80,
-                "diffusion_quality": 80,
-                "semantic_quality": 80,
-                "timing_response": 80,
+                "social_heat": 80,
+                "social_propagation": 80,
+                "semantic_catalyst": 80,
+                "timing_risk": 80,
             },
             "rank_score": rank_score,
             "recommended_decision": "discard",

@@ -5,6 +5,8 @@ import re
 from collections import Counter, defaultdict
 from typing import Any
 
+from gmgn_twitter_intel.domains.token_intel.scoring.social_signal_features import author_entropy
+
 TOP_AUTHOR_CONCENTRATION = 0.70
 DUPLICATE_TEXT_CLUSTER = 0.50
 MIN_HEALTHY_AUTHORS = 2
@@ -96,6 +98,7 @@ def diffusion_health(mentions: list[dict[str, Any]], watched_author_handles: set
         "effective_authors": effective_authors,
         "top_author_share": top_author_share,
         "duplicate_text_share": duplicate_text_share,
+        "author_entropy": author_entropy(mentions),
         "repeated_cluster_count": repeated_cluster_count,
         "shill_author_count": shill_author_count,
         "top_authors": _top_authors(author_counts, author_followers, author_watched_counts, author_latest_seen),

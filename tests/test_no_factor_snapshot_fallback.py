@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = ROOT / "src" / "gmgn_twitter_intel"
 WEB_SRC_ROOT = ROOT / "web" / "src"
@@ -54,6 +58,12 @@ FACTOR_SNAPSHOT_FALLBACK_PATTERNS = (
     "hard_gates",
 )
 
+STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS = (
+    "require_token_factor_snapshot_v2",
+    "is_token_factor_snapshot_v2",
+    "requireTokenFactorSnapshotV2",
+)
+
 LEGACY_SCORING_MODULE_PATHS = (
     SRC_ROOT / "domains" / "token_intel" / "scoring" / "social_heat_scoring.py",
     SRC_ROOT / "domains" / "token_intel" / "scoring" / "propagation_scoring.py",
@@ -97,6 +107,32 @@ def test_token_factor_snapshot_producers_have_no_legacy_snapshot_fallback_contra
     offenders = _matches(
         list(FACTOR_SNAPSHOT_PRODUCER_FILES),
         patterns=FACTOR_SNAPSHOT_FALLBACK_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_factor_snapshot_contract_rejects_old_family_before_missing_new_family() -> None:
+    snapshot = _valid_factor_snapshot()
+    snapshot["families"]["attention_heat"] = _family_block()
+
+    with pytest.raises(ValueError, match=r"^factor_snapshot\.families\.attention_heat is not allowed$"):
+        require_token_factor_snapshot(snapshot)
+
+
+def test_python_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
+    offenders = _matches(
+        _python_runtime_files(),
+        patterns=STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS,
+    )
+
+    assert offenders == []
+
+
+def test_frontend_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
+    offenders = _matches(
+        _frontend_runtime_files(),
+        patterns=STALE_FACTOR_SNAPSHOT_VALIDATOR_PATTERNS,
     )
 
     assert offenders == []
@@ -146,3 +182,33 @@ def _matches(files: list[Path], *, patterns: tuple[str, ...]) -> list[str]:
         text = path.read_text()
         offenders.extend(f"{path.relative_to(ROOT).as_posix()}: {pattern}" for pattern in patterns if pattern in text)
     return offenders
+
+
+def _valid_factor_snapshot() -> dict[str, object]:
+    return {
+        "schema_version": "token_factor_snapshot_v3_social_attention",
+        "subject": {"target_type": "Asset", "target_id": "asset:test"},
+        "market": {},
+        "gates": {},
+        "data_health": {},
+        "families": {
+            "social_heat": _family_block(),
+            "social_propagation": _family_block(),
+            "semantic_catalyst": _family_block(),
+            "timing_risk": _family_block(),
+        },
+        "normalization": {},
+        "composite": {},
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1},
+    }
+
+
+def _family_block() -> dict[str, object]:
+    return {
+        "raw_score": 0,
+        "score": 0,
+        "weight": 0,
+        "data_health": "missing",
+        "facts": {},
+        "factors": {},
+    }

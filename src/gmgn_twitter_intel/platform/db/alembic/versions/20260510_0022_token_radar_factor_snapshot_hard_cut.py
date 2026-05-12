@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.execute(
         """
         ALTER TABLE token_radar_rows
-          ADD COLUMN IF NOT EXISTS factor_version TEXT NOT NULL DEFAULT 'token_factor_snapshot_v1'
+          ADD COLUMN IF NOT EXISTS factor_version TEXT NOT NULL DEFAULT 'token_factor_snapshot_v3_social_attention'
         """
     )
     op.execute(

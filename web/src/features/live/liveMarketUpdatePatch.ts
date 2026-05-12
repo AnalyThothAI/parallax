@@ -57,7 +57,10 @@ export function patchAssetFlowRows(
   return changed ? next : rows;
 }
 
-function assetFlowRowMatchesMarketUpdate(row: AssetFlowRow, update: LiveMarketUpdatePayload): boolean {
+function assetFlowRowMatchesMarketUpdate(
+  row: AssetFlowRow,
+  update: LiveMarketUpdatePayload,
+): boolean {
   return (
     row.target?.target_type === update.target_type && row.target?.target_id === update.target_id
   );

@@ -31,15 +31,16 @@ TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
         "factors",
     }
 )
+LEGACY_GATE_KEY = "_".join(("hard", "gates"))
 
 
-def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
+def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
     if not isinstance(value, dict) or not value:
-        raise ValueError(f"{field_name} must be a non-empty v2 factor snapshot")
+        raise ValueError(f"{field_name} must be a non-empty factor snapshot")
     if value.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
         raise ValueError(f"{field_name}.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
-    if "hard_gates" in value:
-        raise ValueError(f"{field_name}.hard_gates is not allowed")
+    if LEGACY_GATE_KEY in value:
+        raise ValueError(f"{field_name}.{LEGACY_GATE_KEY} is not allowed")
 
     keys = set(value)
     missing = sorted(TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS - keys)
@@ -73,12 +74,12 @@ def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_sn
         raise ValueError(f"{field_name}.families is required")
     family_keys = set(str(key) for key in families)
     allowed_families = set(TOKEN_RADAR_FACTOR_FAMILIES)
-    missing_families = sorted(allowed_families - family_keys)
-    if missing_families:
-        raise ValueError(f"{field_name}.families.{missing_families[0]} is required")
     extra_families = sorted(family_keys - allowed_families)
     if extra_families:
         raise ValueError(f"{field_name}.families.{extra_families[0]} is not allowed")
+    missing_families = sorted(allowed_families - family_keys)
+    if missing_families:
+        raise ValueError(f"{field_name}.families.{missing_families[0]} is required")
     for family in TOKEN_RADAR_FACTOR_FAMILIES:
         family_block = _required_dict(families.get(family), field_name=f"{field_name}.families.{family}")
         _require_exact_keys(
@@ -97,9 +98,9 @@ def require_token_factor_snapshot_v2(value: Any, *, field_name: str = "factor_sn
     return value
 
 
-def is_token_factor_snapshot_v2(value: Any) -> bool:
+def is_token_factor_snapshot(value: Any) -> bool:
     try:
-        require_token_factor_snapshot_v2(value)
+        require_token_factor_snapshot(value)
     except ValueError:
         return False
     return True

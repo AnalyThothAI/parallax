@@ -47,34 +47,34 @@ def _snapshot(
             "alpha": "ready",
         },
         "families": {
-            "attention_heat": _family(
+            "social_heat": _family(
                 raw_score=rank_score,
                 score=rank_score,
                 weight=0.35,
                 facts={"mentions_1h": 8, "unique_authors": 4, "watched_mentions": 1},
                 factors={},
             ),
-            "diffusion_quality": _family(
+            "social_propagation": _family(
                 raw_score=rank_score,
                 score=rank_score,
                 weight=0.3,
                 facts={"independent_authors": 4},
                 factors={
                     "independent_authors": {
-                        "family": "diffusion_quality",
+                        "family": "social_propagation",
                         "key": "independent_authors",
                         "risk_flags": risk_reasons or [],
                     },
                 },
             ),
-            "semantic_quality": _family(
+            "semantic_catalyst": _family(
                 raw_score=rank_score,
                 score=rank_score,
                 weight=0.25,
                 facts={"phase": "ignition"},
                 factors={},
             ),
-            "timing_response": _family(
+            "timing_risk": _family(
                 raw_score=rank_score,
                 score=rank_score,
                 weight=0.1,
@@ -85,10 +85,10 @@ def _snapshot(
         "normalization": {"status": "pending_cross_section"},
         "composite": {
             "family_scores": {
-                "attention_heat": rank_score,
-                "diffusion_quality": rank_score,
-                "semantic_quality": rank_score,
-                "timing_response": rank_score,
+                "social_heat": rank_score,
+                "social_propagation": rank_score,
+                "semantic_catalyst": rank_score,
+                "timing_risk": rank_score,
             },
             "rank_score": rank_score,
             "recommended_decision": "high_alert" if rank_score >= 70 else "watch",
@@ -240,7 +240,7 @@ def test_rejects_factor_snapshot_with_legacy_hard_gates() -> None:
         gate_pulse_candidate_from_factor_snapshot(factor_snapshot=snapshot)
 
 
-def test_rejects_factor_snapshot_missing_v2_keys() -> None:
+def test_rejects_factor_snapshot_missing_v3_keys() -> None:
     snapshot = _snapshot(rank_score=80)
     snapshot.pop("data_health")
 
@@ -257,7 +257,7 @@ def test_rejects_factor_snapshot_missing_v2_keys() -> None:
         (lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}), "legacy_score"),
     ],
 )
-def test_rejects_malformed_v2_snapshot_shape(mutate, match: str) -> None:
+def test_rejects_malformed_v3_snapshot_shape(mutate, match: str) -> None:
     snapshot = _snapshot(rank_score=80)
     mutate(snapshot)
 

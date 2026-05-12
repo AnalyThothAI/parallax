@@ -6,7 +6,7 @@ from typing import Any
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import ScoreBand
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     clamp_score,
-    require_token_factor_snapshot_v2,
+    require_token_factor_snapshot,
     safe_float,
 )
 
@@ -81,7 +81,7 @@ def gate_pulse_candidate_from_factor_snapshot(
 
 
 def _valid_snapshot(factor_snapshot: dict[str, Any]) -> dict[str, Any]:
-    return require_token_factor_snapshot_v2(factor_snapshot)
+    return require_token_factor_snapshot(factor_snapshot)
 
 
 def _pulse_status(

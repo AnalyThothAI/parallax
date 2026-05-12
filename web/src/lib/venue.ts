@@ -1,7 +1,7 @@
 import type { SignalPulseItem, TokenFlowItem } from "../api/types";
 
 import { gmgnTokenUrl } from "./gmgn";
-import { requireTokenFactorSnapshotV2 } from "./tokenFactorSnapshot";
+import { requireTokenFactorSnapshot } from "./tokenFactorSnapshot";
 
 export type VenueAction = {
   label: string;
@@ -30,7 +30,7 @@ export function signalPulseVenueActions(item: SignalPulseItem): VenueAction[] {
 }
 
 function signalPulseDexVenueAction(item: SignalPulseItem): VenueAction | null {
-  const subject = requireTokenFactorSnapshotV2(item.factor_snapshot).subject;
+  const subject = requireTokenFactorSnapshot(item.factor_snapshot).subject;
   const chain = subject.chain;
   const address = subject.address;
   if (!chain || !address) {
@@ -45,7 +45,7 @@ function signalPulseDexVenueAction(item: SignalPulseItem): VenueAction | null {
 }
 
 function signalPulseCexVenueAction(item: SignalPulseItem): VenueAction | null {
-  const subject = requireTokenFactorSnapshotV2(item.factor_snapshot).subject;
+  const subject = requireTokenFactorSnapshot(item.factor_snapshot).subject;
   const targetType = subject.target_type ?? item.target_type;
   const targetId = subject.target_id ?? item.target_id;
   if (

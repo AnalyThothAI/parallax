@@ -553,15 +553,9 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_started_at_ms": runtime.anchor_price_worker.last_started_at_ms
             if runtime.anchor_price_worker
             else None,
-            "last_run_at_ms": runtime.anchor_price_worker.last_run_at_ms
-            if runtime.anchor_price_worker
-            else None,
-            "last_result": runtime.anchor_price_worker.last_result
-            if runtime.anchor_price_worker
-            else None,
-            "last_error": runtime.anchor_price_worker.last_error
-            if runtime.anchor_price_worker
-            else None,
+            "last_run_at_ms": runtime.anchor_price_worker.last_run_at_ms if runtime.anchor_price_worker else None,
+            "last_result": runtime.anchor_price_worker.last_result if runtime.anchor_price_worker else None,
+            "last_error": runtime.anchor_price_worker.last_error if runtime.anchor_price_worker else None,
         },
         "token_discovery": {
             "worker_running": _task_running(runtime.token_discovery_task),
@@ -576,18 +570,10 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "configured": getattr(runtime.settings, "okx_dex_ws_configured", False),
             "worker_running": _task_running(runtime.live_price_gateway_task),
             "subscription_limit": getattr(runtime.settings, "okx_dex_ws_subscription_limit", None),
-            "last_started_at_ms": runtime.live_price_gateway.last_started_at_ms
-            if runtime.live_price_gateway
-            else None,
-            "last_run_at_ms": runtime.live_price_gateway.last_run_at_ms
-            if runtime.live_price_gateway
-            else None,
-            "last_result": runtime.live_price_gateway.last_result
-            if runtime.live_price_gateway
-            else None,
-            "last_error": runtime.live_price_gateway.last_error
-            if runtime.live_price_gateway
-            else None,
+            "last_started_at_ms": runtime.live_price_gateway.last_started_at_ms if runtime.live_price_gateway else None,
+            "last_run_at_ms": runtime.live_price_gateway.last_run_at_ms if runtime.live_price_gateway else None,
+            "last_result": runtime.live_price_gateway.last_result if runtime.live_price_gateway else None,
+            "last_error": runtime.live_price_gateway.last_error if runtime.live_price_gateway else None,
         },
     }
     return payload, 503 if reasons else 200
@@ -610,9 +596,7 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_worker_stopped")
     if runtime.notification_delivery_worker is not None and not _task_running(runtime.notification_delivery_task):
         reasons.append("notification_delivery_worker_stopped")
-    if runtime.anchor_price_worker is not None and not _task_running(
-        runtime.anchor_price_task
-    ):
+    if runtime.anchor_price_worker is not None and not _task_running(runtime.anchor_price_task):
         reasons.append("anchor_price_worker_stopped")
     if runtime.token_discovery_worker is not None and not _task_running(runtime.token_discovery_task):
         reasons.append("token_discovery_worker_stopped")

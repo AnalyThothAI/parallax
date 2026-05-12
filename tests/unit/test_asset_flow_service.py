@@ -216,11 +216,11 @@ def factor_snapshot_json(
         "anchor_lag_ms": 500 if ready_anchor else None,
     }
     families = {
-        "attention_heat": family("attention_heat", {"mentions_1h": 1}, weight=0.35),
-        "diffusion_quality": family("diffusion_quality", {"mentions": 1}, weight=0.30),
-        "semantic_quality": family("semantic_quality", {"direction_counts": {}}, weight=0.25),
-        "timing_response": family(
-            "timing_response",
+        "social_heat": family("social_heat", {"mentions_1h": 1}, weight=0.35),
+        "social_propagation": family("social_propagation", {"mentions": 1}, weight=0.30),
+        "semantic_catalyst": family("semantic_catalyst", {"direction_counts": {}}, weight=0.25),
+        "timing_risk": family(
+            "timing_risk",
             {"price_change_status": "live_not_persisted", "social_signal_start_ms": 1_700_000_000_000},
             weight=0.0,
         ),

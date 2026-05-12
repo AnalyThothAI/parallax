@@ -257,10 +257,10 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                 "target_market_type": "dex",
                 "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
                 "alpha_family_scores": {
-                    "attention_heat": 80,
-                    "diffusion_quality": 76,
-                    "semantic_quality": 72,
-                    "timing_response": 65,
+                    "social_heat": 80,
+                    "social_propagation": 76,
+                    "semantic_catalyst": 72,
+                    "timing_risk": 65,
                 },
                 "market_status": "ready",
                 "mentions_1h": 9,
@@ -407,7 +407,7 @@ def test_candidate_returns_full_item() -> None:
     assert result is not None
     assert result["candidate_id"] == "cand-1"
     assert result["pulse_status"] == "token_watch"
-    assert result["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert result["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert result["agent_recommendation"]["summary_zh"] == "链上质量允许继续观察。"
     assert result["playbooks"] == []
 
@@ -491,7 +491,7 @@ def test_signal_pulse_item_contains_factor_snapshot_contract_without_legacy_disp
     assert "thesis_json" not in item
     assert "confirmation_triggers_zh" not in item
     assert "top_risks" not in item
-    assert item["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert item["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert item["fact_card"]["market_status"] == "ready"
 
 
@@ -540,7 +540,7 @@ def test_signal_pulse_fact_card_reads_market_facts_from_anchor_row_only() -> Non
         "holders": 999_000_000,
         "volume_24h_usd": 999_000_000,
     }
-    row["factor_snapshot_json"]["families"]["timing_response"]["facts"] = {
+    row["factor_snapshot_json"]["families"]["timing_risk"]["facts"] = {
         "market_cap_usd": 888_000_000,
         "liquidity_usd": 888_000_000,
         "holders": 888_000_000,
@@ -605,7 +605,7 @@ def test_signal_pulse_rejects_v1_factor_snapshot_with_hard_gates() -> None:
         (lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}), "legacy_score"),
     ],
 )
-def test_signal_pulse_rejects_malformed_v2_snapshot_shape(mutate, match: str) -> None:
+def test_signal_pulse_rejects_malformed_v3_snapshot_shape(mutate, match: str) -> None:
     row = _candidate_row(
         "candidate-malformed-v2",
         pulse_status="token_watch",
@@ -645,7 +645,7 @@ def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
         "anchor_lag_ms": 500 if market_status else None,
     }
     return {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {
             "symbol": "PEPE",
             "target_type": "Asset",
@@ -656,20 +656,20 @@ def _factor_snapshot(*, market_status: str | None) -> dict[str, Any]:
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
         "data_health": {"identity": "ready", "market": market_health, "social": "ready", "alpha": "ready"},
         "families": {
-            "attention_heat": _family(80, 0.35, {"mentions_1h": 9, "unique_authors": 3, "watched_mentions": 1}),
-            "diffusion_quality": _family(76, 0.3, {"independent_authors": 4}),
-            "semantic_quality": _family(72, 0.25, {"phase": "ignition"}),
-            "timing_response": _family(65, 0.1, {"price_change_status": market_status}),
+            "social_heat": _family(80, 0.35, {"mentions_1h": 9, "unique_authors": 3, "watched_mentions": 1}),
+            "social_propagation": _family(76, 0.3, {"independent_authors": 4}),
+            "semantic_catalyst": _family(72, 0.25, {"phase": "ignition"}),
+            "timing_risk": _family(65, 0.1, {"price_change_status": market_status}),
         },
         "normalization": {"status": "pending_cross_section"},
         "composite": {
             "rank_score": 82,
             "recommended_decision": "high_alert",
             "family_scores": {
-                "attention_heat": 80,
-                "diffusion_quality": 76,
-                "semantic_quality": 72,
-                "timing_response": 65,
+                "social_heat": 80,
+                "social_propagation": 76,
+                "semantic_catalyst": 72,
+                "timing_risk": 65,
             },
         },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},

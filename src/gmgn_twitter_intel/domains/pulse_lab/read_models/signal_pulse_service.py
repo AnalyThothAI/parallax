@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot_v2
+from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_snapshot
 
 SUMMARY_STATUSES = (
     "trade_candidate",
@@ -12,7 +12,7 @@ SUMMARY_STATUSES = (
     "blocked_low_information",
 )
 DISPLAY_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
-ALPHA_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality", "timing_response")
+ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
 
 
 class SignalPulseService:
@@ -156,15 +156,15 @@ def _dict(value: Any) -> dict[str, Any]:
 
 
 def _valid_factor_snapshot(value: Any) -> bool:
-    return is_token_factor_snapshot_v2(value)
+    return is_token_factor_snapshot(value)
 
 
 def _fact_card(*, row: dict[str, Any], factor_snapshot: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
     subject = _dict(factor_snapshot.get("subject"))
     data_health = _dict(factor_snapshot.get("data_health"))
     composite = _dict(factor_snapshot.get("composite"))
-    attention_facts = _family_facts(factor_snapshot, "attention_heat")
-    diffusion_facts = _family_facts(factor_snapshot, "diffusion_quality")
+    attention_facts = _family_facts(factor_snapshot, "social_heat")
+    diffusion_facts = _family_facts(factor_snapshot, "social_propagation")
     return {
         "rank_score": composite.get("rank_score"),
         "recommended_decision": composite.get("recommended_decision"),

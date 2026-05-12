@@ -48,12 +48,12 @@ def test_token_radar_row_id_is_unique_per_window_and_scope():
 
 def test_token_radar_projection_uses_factor_snapshot_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
-    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v12-anchor-live-hard-cut"
+    assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v13-social-attention"
     assert TOKEN_RADAR_FACTOR_FAMILIES == (
-        "attention_heat",
-        "diffusion_quality",
-        "semantic_quality",
-        "timing_response",
+        "social_heat",
+        "social_propagation",
+        "semantic_catalyst",
+        "timing_risk",
     )
     assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+anchor_price"
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
@@ -96,7 +96,7 @@ def test_apply_cross_section_rejects_rows_with_malformed_factor_snapshot():
         }
     ]
 
-    with pytest.raises(ValueError, match="factor_snapshot_json must be a non-empty v2 factor snapshot"):
+    with pytest.raises(ValueError, match="factor_snapshot_json must be a non-empty factor snapshot"):
         TokenRadarProjection._apply_cross_section(rows)
 
 
@@ -115,17 +115,17 @@ def test_project_group_outputs_factor_snapshot_not_score_contract():
     projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
 
     assert projected is not None
-    assert projected["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert projected["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert projected["factor_snapshot_json"]["subject"]["chain"] == "56"
     assert projected["factor_snapshot_json"]["gates"]["eligible_for_high_alert"] is False
-    assert projected["factor_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert projected["factor_version"] == "token_factor_snapshot_v3_social_attention"
     assert projected["score_json"] == {}
     assert projected["attention_json"] == {}
     assert projected["market_json"] == {}
     assert projected["price_json"] == {}
 
 
-def test_project_group_populates_v2_data_health_from_top_level_snapshot():
+def test_project_group_populates_v3_data_health_from_top_level_snapshot():
     row = source_row("event-cex", received_at_ms=1_777_800_000_000)
     row["target_type"] = "CexToken"
     row["target_id"] = "cex_token:BTC"
@@ -158,13 +158,35 @@ def test_project_group_carries_first_seen_global_into_cross_section_cohort():
     assert projected["_cohort_high_conf_count"] == 1
     assert projected["_cohort_kol_count"] == 0
     assert projected["_cohort_first_seen_global_24h"] is True
+    assert projected["_cohort_public_followup_count"] == 0
 
     result = TokenRadarProjection._apply_cross_section([projected])
 
     cohort = result[0]["factor_snapshot_json"]["normalization"]["cohort"]
     assert cohort["in_cohort"] is True
     assert cohort["first_seen_global_24h"] is True
+    assert cohort["public_followup_authors"] == 0
     assert "_cohort_first_seen_global_24h" not in result[0]
+    assert "_cohort_public_followup_count" not in result[0]
+
+
+def test_project_group_carries_public_followup_count_as_cohort_metadata_only():
+    rows = [
+        source_row("event-seed", received_at_ms=1_777_800_000_000, author="alice"),
+        source_row("event-bob", received_at_ms=1_777_800_060_000, author="bob"),
+        source_row("event-carol", received_at_ms=1_777_800_120_000, author="carol"),
+    ]
+
+    projected = _project_group(rows, now_ms=1_777_800_180_000, window="5m", scope="all")
+
+    assert projected is not None
+    assert projected["_cohort_public_followup_count"] == 2
+
+    result = TokenRadarProjection._apply_cross_section([projected])
+
+    cohort = result[0]["factor_snapshot_json"]["normalization"]["cohort"]
+    assert cohort["public_followup_authors"] == 2
+    assert "_cohort_public_followup_count" not in result[0]
 
 
 def test_analysis_window_loads_baseline_and_attention_history():
@@ -205,11 +227,11 @@ def test_project_group_persists_current_runtime_contract_as_factor_snapshot():
 
     assert row is not None
     snapshot = row["factor_snapshot_json"]
-    assert snapshot["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
-    assert snapshot["families"]["attention_heat"]["facts"]["mentions_5m"] == 4
-    assert snapshot["families"]["attention_heat"]["facts"]["mentions_1h"] == 10
-    assert snapshot["families"]["attention_heat"]["facts"]["unique_authors"] == 4
-    assert snapshot["families"]["diffusion_quality"]["facts"]["mentions"] == 4
+    assert snapshot["schema_version"] == "token_factor_snapshot_v3_social_attention"
+    assert snapshot["families"]["social_heat"]["facts"]["mentions_5m"] == 4
+    assert snapshot["families"]["social_heat"]["facts"]["mentions_1h"] == 10
+    assert snapshot["families"]["social_heat"]["facts"]["unique_authors"] == 4
+    assert snapshot["families"]["social_propagation"]["facts"]["mentions"] == 4
     assert row["attention_json"] == {}
     assert row["score_json"] == {}
 
@@ -398,7 +420,7 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     assert result["status"] == "ready"
     snapshot = token_radar.rows[0]["factor_snapshot_json"]
     assert snapshot["data_health"]["market"] == "partial"
-    assert snapshot["families"]["timing_response"]["data_health"] == "anchor_only"
+    assert snapshot["families"]["timing_risk"]["data_health"] == "anchor_only"
     assert not hasattr(repos, "current_market")
     assert token_radar.rows[0]["market_json"] == {}
 
@@ -701,7 +723,7 @@ def ranking_row(
         "target_id": target_id,
         "decision": decision,
         "factor_snapshot_json": {
-            "schema_version": "token_factor_snapshot_v2_alpha_gated",
+            "schema_version": "token_factor_snapshot_v3_social_attention",
             "subject": {"target_id": target_id},
             "market": {},
             "gates": {"max_decision": "high_alert"},
@@ -712,10 +734,10 @@ def ranking_row(
                 "rank_score": rank_score,
             },
             "families": {
-                "attention_heat": {
+                "social_heat": {
                     "score": 80,
                     "raw_score": 80,
-                    "weight": 0.35,
+                    "weight": 0.45,
                     "data_health": "ready",
                     "facts": {
                         "watched_mentions": 1,
@@ -724,26 +746,26 @@ def ranking_row(
                     },
                     "factors": {},
                 },
-                "diffusion_quality": {
+                "social_propagation": {
                     "score": 80,
                     "raw_score": 80,
-                    "weight": 0.30,
+                    "weight": 0.40,
                     "data_health": "ready",
                     "facts": {},
                     "factors": {},
                 },
-                "semantic_quality": {
+                "semantic_catalyst": {
                     "score": 80,
                     "raw_score": 80,
-                    "weight": 0.25,
+                    "weight": 0.15,
                     "data_health": "ready",
                     "facts": {},
                     "factors": {},
                 },
-                "timing_response": {
+                "timing_risk": {
                     "score": 80,
                     "raw_score": 80,
-                    "weight": 0.10,
+                    "weight": 0.0,
                     "data_health": "ready",
                     "facts": {},
                     "factors": {},
@@ -815,4 +837,3 @@ class FakeTokenRadar:
     def replace_rows(self, **kwargs):
         self.rows = list(kwargs["rows"])
         return True
-

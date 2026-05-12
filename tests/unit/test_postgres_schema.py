@@ -176,7 +176,7 @@ def test_token_factor_pulse_cleanup_migration_prunes_legacy_jobs_and_candidates(
     assert "DELETE FROM pulse_candidates" in text
     assert "context_json #>> '{factor_snapshot,schema_version}'" in text
     assert "factor_snapshot_json->>'schema_version'" in text
-    assert "token_factor_snapshot_v2_alpha_gated" in text
+    assert "token_factor_snapshot_v3_social_attention" in text
     assert "UPDATE pulse_agent_jobs" not in text
     assert "mark" not in text.lower()
 

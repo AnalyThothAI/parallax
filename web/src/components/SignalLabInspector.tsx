@@ -1,6 +1,6 @@
 import type { SignalPulseItem } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
-import { requireTokenFactorSnapshotV2 } from "../lib/tokenFactorSnapshot";
+import { requireTokenFactorSnapshot } from "../lib/tokenFactorSnapshot";
 import { signalPulseVenueActions } from "../lib/venue";
 
 import {
@@ -20,7 +20,7 @@ type SignalLabInspectorProps = {
 };
 
 export function SignalLabInspector({ item }: SignalLabInspectorProps) {
-  const factorSnapshot = requireTokenFactorSnapshotV2(item.factor_snapshot);
+  const factorSnapshot = requireTokenFactorSnapshot(item.factor_snapshot);
   const venueActions = signalPulseVenueActions(item);
   const sourceEventIds = stringList(item.source_event_ids);
   const evidenceEventIds = stringList(item.evidence_event_ids);
@@ -250,10 +250,10 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
 }
 
 const ALPHA_FAMILY_ORDER = [
-  "attention_heat",
-  "diffusion_quality",
-  "semantic_quality",
-  "timing_response",
+  "social_heat",
+  "social_propagation",
+  "semantic_catalyst",
+  "timing_risk",
 ] as const;
 
 function alphaFamilyEntries(families: SignalPulseItem["factor_snapshot"]["families"]) {

@@ -64,9 +64,7 @@ def test_live_price_gateway_publishes_update_without_writing_observation():
         }
     ]
     assert (
-        gateway.snapshot(target_type="Asset", target_id="asset:solana:token:abc", now_ms=1_778_000_001_500)[
-            "status"
-        ]
+        gateway.snapshot(target_type="Asset", target_id="asset:solana:token:abc", now_ms=1_778_000_001_500)["status"]
         == "live"
     )
 

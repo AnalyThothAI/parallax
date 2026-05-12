@@ -86,7 +86,7 @@ def test_audit_token_radar_rows_accepts_empty_projection_when_current_scope_is_e
 
 def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
     snapshot = factor_snapshot()
-    del snapshot["families"]["attention_heat"]
+    del snapshot["families"]["social_heat"]
     audit = _audit_token_radar_rows(
         [
             {
@@ -168,7 +168,7 @@ def test_audit_token_radar_rows_rejects_hard_gates_key():
     )
 
 
-def test_audit_token_radar_rows_rejects_malformed_v2_contract():
+def test_audit_token_radar_rows_rejects_malformed_v3_contract():
     snapshot = factor_snapshot()
     snapshot["nested"] = {"volume_24h_usd": 123.45}
 
@@ -197,7 +197,7 @@ def test_audit_token_radar_rows_rejects_malformed_v2_contract():
     )
 
 
-def test_audit_token_radar_rows_rejects_empty_v2_provenance():
+def test_audit_token_radar_rows_rejects_empty_v3_provenance():
     snapshot = factor_snapshot()
     snapshot["provenance"] = {}
 
@@ -227,7 +227,7 @@ def test_audit_token_radar_rows_rejects_empty_v2_provenance():
     )
 
 
-def test_audit_token_radar_rows_rejects_empty_v2_source_event_ids():
+def test_audit_token_radar_rows_rejects_empty_v3_source_event_ids():
     snapshot = factor_snapshot()
     snapshot["provenance"]["source_event_ids"] = []
 
@@ -257,9 +257,9 @@ def test_audit_token_radar_rows_rejects_empty_v2_source_event_ids():
     )
 
 
-def test_audit_token_radar_rows_rejects_empty_v2_family_block():
+def test_audit_token_radar_rows_rejects_empty_v3_family_block():
     snapshot = factor_snapshot()
-    snapshot["families"]["attention_heat"] = {}
+    snapshot["families"]["social_heat"] = {}
 
     audit = _audit_token_radar_rows(
         [
@@ -282,7 +282,7 @@ def test_audit_token_radar_rows_rejects_empty_v2_family_block():
 
     assert audit["ok"] is False
     assert any(
-        item["code"] == "invalid_factor_snapshot_contract" and "families.attention_heat.data_health" in item["error"]
+        item["code"] == "invalid_factor_snapshot_contract" and "families.social_heat.data_health" in item["error"]
         for item in audit["violations"]
     )
 
@@ -365,7 +365,7 @@ def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch)
         source_max_price_observed_at_ms=1_699_999_999_500,
     )
 
-    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v2_alpha_gated"
+    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v3_social_attention"
     assert audit["ok"] is False
     assert any(
         item["code"] == "invalid_factor_snapshot_contract" and "schema_version" in item["error"]
@@ -375,10 +375,10 @@ def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch)
 
 def factor_snapshot():
     families = {
-        "attention_heat": family({"mentions_1h": 4, "unique_authors": 3}),
-        "diffusion_quality": family({"duplicate_text_share": 0.0}),
-        "semantic_quality": family({"direction_counts": {"bullish": 1}}),
-        "timing_response": family({"social_signal_start_ms": 1_700_000_000_000}),
+        "social_heat": family({"mentions_1h": 4, "unique_authors": 3}),
+        "social_propagation": family({"duplicate_text_share": 0.0}),
+        "semantic_catalyst": family({"direction_counts": {"bullish": 1}}),
+        "timing_risk": family({"social_signal_start_ms": 1_700_000_000_000}),
     }
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,

@@ -25,7 +25,7 @@ from gmgn_twitter_intel.domains.token_intel.scoring.factor_cohort import (
 from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot import (
     build_token_factor_snapshot,
 )
-from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot_v2
+from gmgn_twitter_intel.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 from gmgn_twitter_intel.domains.token_intel.scoring.token_radar_feature_builder import (
     BASELINE_SLOT_COUNT,
     build_radar_features,
@@ -245,6 +245,7 @@ class TokenRadarProjection:
 
             high_conf = _count_high_conf(row)
             kol_count = _count_kol_authors(row)
+            public_followup_count = _count_public_followup(row)
             first_seen_global = _cohort_first_seen_global(row)
             symbol = (
                 (row.get("target_json") or {}).get("symbol")
@@ -262,6 +263,7 @@ class TokenRadarProjection:
             cohort_metadata[target_id] = {
                 "high_confidence_mentions": high_conf,
                 "kol_mentions": kol_count,
+                "public_followup_authors": public_followup_count,
                 "first_seen_global_24h": first_seen_global,
                 "symbol": symbol,
             }
@@ -382,6 +384,7 @@ def _project_group(
     )
     cohort_kol_count = sum(1 for r in window_rows if set(r.get("gmgn_user_tags") or ()) & KOL_TIER_TAGS)
     cohort_first_seen_global_24h = any(row.get("first_seen_global_24h") is True for row in window_rows)
+    cohort_public_followup_count = int(features.propagation.get("public_followup_author_count") or 0)
     return {
         "row_id": _stable_id(
             "token-radar-row",
@@ -437,6 +440,7 @@ def _project_group(
         "_cohort_high_conf_count": cohort_high_conf_count,
         "_cohort_kol_count": cohort_kol_count,
         "_cohort_first_seen_global_24h": cohort_first_seen_global_24h,
+        "_cohort_public_followup_count": cohort_public_followup_count,
     }
 
 
@@ -617,7 +621,7 @@ def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -
         if anchor_observed_at_ms is not None and event_received_at_ms is not None
         else None
     )
-    market = {
+    market: dict[str, Any] = {
         "market_status": "anchored",
         "market_observation_status": "ready",
         "price_change_status": "live_not_persisted",
@@ -857,10 +861,10 @@ def _rank_key(row: dict[str, Any]) -> tuple[int, float, int, int, int]:
         return (3, 0.0, 0, 0, 0)
     composite = _dict(snapshot.get("composite"))
     families = _dict(snapshot.get("families"))
-    attention_heat = _dict(families.get("attention_heat"))
-    diffusion_quality = _dict(families.get("diffusion_quality"))
-    attention = _dict(attention_heat.get("facts"))
-    diffusion = _dict(diffusion_quality.get("facts"))
+    social_heat = _dict(families.get("social_heat"))
+    social_propagation = _dict(families.get("social_propagation"))
+    attention = _dict(social_heat.get("facts"))
+    diffusion = _dict(social_propagation.get("facts"))
     decision_priority = {"high_alert": 0, "watch": 1, "discard": 2}
     decision = composite.get("recommended_decision") or "discard"
     rank_score = _float_or_none(composite.get("rank_score")) or 0.0
@@ -882,7 +886,7 @@ def _factor_snapshot_for_ranking(row: dict[str, Any]) -> dict[str, Any] | None:
 
 def _factor_snapshot_or_raise(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = row.get("factor_snapshot_json")
-    return require_token_factor_snapshot_v2(factor_snapshot, field_name="factor_snapshot_json")
+    return require_token_factor_snapshot(factor_snapshot, field_name="factor_snapshot_json")
 
 
 def _dict(value: Any) -> dict[str, Any]:
@@ -942,6 +946,10 @@ def _count_high_conf(row: dict[str, Any]) -> int:
 
 def _count_kol_authors(row: dict[str, Any]) -> int:
     return int(row.get("_cohort_kol_count") or 0)
+
+
+def _count_public_followup(row: dict[str, Any]) -> int:
+    return int(row.get("_cohort_public_followup_count") or 0)
 
 
 def _cohort_first_seen_global(row: dict[str, Any]) -> bool:

@@ -24,17 +24,11 @@ from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_cl
 )
 
 AVAILABLE_FACTOR_KEYS = [
-    "attention_heat",
-    "attention_heat.data_health",
-    "attention_heat.raw_score",
-    "attention_heat.score",
-    "attention_heat.unique_authors",
-    "attention_heat.weight",
     "composite",
-    "composite.family_scores.attention_heat",
-    "composite.family_scores.diffusion_quality",
-    "composite.family_scores.semantic_quality",
-    "composite.family_scores.timing_response",
+    "composite.family_scores.semantic_catalyst",
+    "composite.family_scores.social_heat",
+    "composite.family_scores.social_propagation",
+    "composite.family_scores.timing_risk",
     "composite.rank_score",
     "composite.recommended_decision",
     "data_health",
@@ -42,31 +36,37 @@ AVAILABLE_FACTOR_KEYS = [
     "data_health.identity",
     "data_health.market",
     "data_health.social",
-    "diffusion_quality",
-    "diffusion_quality.data_health",
-    "diffusion_quality.duplicate_text_share",
-    "diffusion_quality.independent_authors",
-    "diffusion_quality.raw_score",
-    "diffusion_quality.score",
-    "diffusion_quality.weight",
     "gates",
     "gates.blocked_reasons",
     "gates.eligible_for_high_alert",
     "gates.max_decision",
     "normalization",
     "normalization.status",
-    "semantic_quality",
-    "semantic_quality.data_health",
-    "semantic_quality.phase",
-    "semantic_quality.raw_score",
-    "semantic_quality.score",
-    "semantic_quality.weight",
-    "timing_response",
-    "timing_response.data_health",
-    "timing_response.price_change_status",
-    "timing_response.raw_score",
-    "timing_response.score",
-    "timing_response.weight",
+    "semantic_catalyst",
+    "semantic_catalyst.data_health",
+    "semantic_catalyst.raw_score",
+    "semantic_catalyst.score",
+    "semantic_catalyst.semantic_coverage",
+    "semantic_catalyst.weight",
+    "social_heat",
+    "social_heat.data_health",
+    "social_heat.raw_score",
+    "social_heat.score",
+    "social_heat.unique_authors",
+    "social_heat.weight",
+    "social_propagation",
+    "social_propagation.data_health",
+    "social_propagation.duplicate_text_share",
+    "social_propagation.independent_authors",
+    "social_propagation.raw_score",
+    "social_propagation.score",
+    "social_propagation.weight",
+    "timing_risk",
+    "timing_risk.data_health",
+    "timing_risk.price_change_status",
+    "timing_risk.raw_score",
+    "timing_risk.score",
+    "timing_risk.weight",
 ]
 
 
@@ -89,7 +89,7 @@ class FakeRunner:
 
 def _factor_snapshot() -> dict[str, object]:
     return {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {"target_type": "CexToken", "target_id": "cex-token:PEPE", "symbol": "PEPE"},
         "market": {
             "market_status": "anchored",
@@ -102,8 +102,8 @@ def _factor_snapshot() -> dict[str, object]:
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "max_decision": "high_alert"},
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": {
-            "attention_heat": _family(76, 0.35, {"unique_authors": 4}, {}),
-            "diffusion_quality": {
+            "social_heat": _family(76, 0.35, {"unique_authors": 4}, {}),
+            "social_propagation": {
                 "raw_score": 76,
                 "score": 76,
                 "weight": 0.3,
@@ -111,18 +111,18 @@ def _factor_snapshot() -> dict[str, object]:
                 "facts": {"independent_authors": 4},
                 "factors": {"duplicate_text_share": {"value": 0.12}},
             },
-            "semantic_quality": _family(76, 0.25, {"phase": "ignition"}, {}),
-            "timing_response": _family(76, 0.1, {"price_change_status": "ready"}, {}),
+            "semantic_catalyst": _family(76, 0.25, {"semantic_coverage": 0.75}, {}),
+            "timing_risk": _family(76, 0.1, {"price_change_status": "ready"}, {}),
         },
         "normalization": {"status": "pending_cross_section"},
         "composite": {
             "rank_score": 76,
             "recommended_decision": "watch",
             "family_scores": {
-                "attention_heat": 76,
-                "diffusion_quality": 76,
-                "semantic_quality": 76,
-                "timing_response": 76,
+                "social_heat": 76,
+                "social_propagation": 76,
+                "semantic_catalyst": 76,
+                "timing_risk": 76,
             },
         },
         "provenance": {"source_event_ids": ["event-evidence"], "computed_at_ms": 1_700_000_000_000},
@@ -177,13 +177,13 @@ def _payload(**overrides: object) -> PulseRecommendationPayload:
         "summary_zh": "PEPE 社交扩散有效，但行情和重复文本风险仍需确认。",
         "primary_reasons": [
             {
-                "factor_key": "attention_heat.unique_authors",
+                "factor_key": "social_heat.unique_authors",
                 "explanation_zh": "独立作者扩散正在增加。",
             }
         ],
         "upgrade_conditions": [
             {
-                "factor_key": "diffusion_quality.independent_authors",
+                "factor_key": "social_propagation.independent_authors",
                 "operator": ">=",
                 "value": 4,
                 "description_zh": "继续观察独立作者扩散是否增加。",
@@ -191,7 +191,7 @@ def _payload(**overrides: object) -> PulseRecommendationPayload:
         ],
         "invalidation_conditions": [
             {
-                "factor_key": "diffusion_quality.duplicate_text_share",
+                "factor_key": "social_propagation.duplicate_text_share",
                 "operator": ">=",
                 "value": 0.5,
                 "description_zh": "重复文本继续升高会削弱信号。",
@@ -199,7 +199,7 @@ def _payload(**overrides: object) -> PulseRecommendationPayload:
         ],
         "residual_risks": [
             {
-                "factor_key": "diffusion_quality.duplicate_text_share",
+                "factor_key": "social_propagation.duplicate_text_share",
                 "description_zh": "重复文本可能放大噪声。",
             }
         ],

@@ -32,12 +32,15 @@ _DEX_FLOOR_REASONS = {
 }
 
 _FAMILY_WEIGHTS = {
-    "attention_heat": 0.35,
-    "diffusion_quality": 0.30,
-    "semantic_quality": 0.25,
-    "timing_response": 0.0,
+    "social_heat": 0.45,
+    "social_propagation": 0.40,
+    "semantic_catalyst": 0.15,
+    "timing_risk": 0.0,
 }
-_ALPHA_RANK_FAMILIES = ("attention_heat", "diffusion_quality", "semantic_quality")
+_ALPHA_RANK_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst")
+
+_PRE_SOCIAL_CHASE_RISK_PCT = 0.10
+_POST_SOCIAL_LATE_RISK_PCT = 0.20
 
 
 def build_token_factor_snapshot(
@@ -62,15 +65,19 @@ def build_token_factor_snapshot(
         market=market,
     )
     families = {
-        "attention_heat": _attention_heat_family(attention=attention),
-        "diffusion_quality": _diffusion_quality_family(social_quality=social_quality),
-        "semantic_quality": _semantic_quality_family(social_semantics=social_semantics),
-        "timing_response": _timing_response_family(timing=timing, market=market),
+        "social_heat": _social_heat_family(attention=attention),
+        "social_propagation": _social_propagation_family(social_quality=social_quality),
+        "semantic_catalyst": _semantic_catalyst_family(
+            social_semantics=social_semantics,
+            social_quality=social_quality,
+        ),
+        "timing_risk": _timing_risk_family(timing=timing, market=market),
     }
     gates = _gates(
         subject=subject,
         attention=attention,
         social_quality=social_quality,
+        families=families,
         market=market,
         alpha_health=alpha_health,
         raw_alpha_score=_raw_alpha_score(families),
@@ -101,65 +108,117 @@ def build_token_factor_snapshot(
     }
 
 
-def _attention_heat_family(*, attention: dict[str, Any]) -> dict[str, Any]:
+def _social_heat_family(*, attention: dict[str, Any]) -> dict[str, Any]:
     mentions_5m = _optional_int(attention.get("mentions_5m"))
     mentions_1h = _optional_int(attention.get("mentions_1h"))
     mentions_4h = _optional_int(attention.get("mentions_4h"))
     mentions_24h = _optional_int(attention.get("mentions_24h"))
     unique_authors = _optional_int(attention.get("unique_authors"))
     watched_mentions = _optional_int(attention.get("watched_mentions"))
+    weighted_mentions = _optional_float(attention.get("weighted_mentions"))
+    attention_acceleration = _optional_float(attention.get("attention_acceleration"))
+    z_score = _optional_float(attention.get("z_score"))
+    z_ewma = _optional_float(attention.get("z_ewma"))
+    robust_z = _optional_float(attention.get("robust_z"))
+    new_burst_score = _optional_float(attention.get("new_burst_score"))
+    attention_surprise = _first_float(attention, ("robust_z", "z_ewma", "z_score"))
     facts = {
         "mentions_5m": mentions_5m,
         "mentions_1h": _count_int(mentions_1h),
         "mentions_4h": _count_int(mentions_4h),
         "mentions_24h": _count_int(mentions_24h),
+        "mentions_window": _optional_int(attention.get("mentions_window")),
+        "previous_mentions": _optional_int(attention.get("previous_mentions")),
+        "mention_delta": _optional_int(attention.get("mention_delta")),
+        "mention_delta_pct": _optional_float(attention.get("mention_delta_pct")),
+        "stream_share": _optional_float(attention.get("stream_share")),
+        "weighted_mentions": weighted_mentions,
         "unique_authors": _count_int(unique_authors),
         "watched_mentions": _count_int(watched_mentions),
+        "attention_surprise": attention_surprise,
+        "attention_acceleration": attention_acceleration,
+        "z_score": z_score,
+        "z_ewma": z_ewma,
+        "robust_z": robust_z,
+        "new_burst_score": new_burst_score,
+        "baseline_status": _optional_str(attention.get("baseline_status")),
+        "baseline_sample_count": _optional_int(attention.get("baseline_sample_count")),
+        "baseline_nonzero_sample_count": _optional_int(attention.get("baseline_nonzero_sample_count")),
+        "zero_slot_count": _optional_int(attention.get("zero_slot_count")),
         "latest_seen_ms": _optional_int(attention.get("latest_seen_ms")),
     }
     return _family(
-        "attention_heat",
+        "social_heat",
         facts=facts,
         factors=[
-            _count_factor("attention_heat", "mentions_1h", mentions_1h, scale=10),
-            _count_factor("attention_heat", "mentions_4h", mentions_4h, scale=20),
-            _count_factor("attention_heat", "mentions_24h", mentions_24h, scale=40),
-            _count_factor("attention_heat", "unique_authors", unique_authors, scale=10),
-            _count_factor("attention_heat", "watched_mentions", watched_mentions, scale=3),
+            _z_or_new_burst_factor(z_value=attention_surprise, new_burst_score=new_burst_score),
+            _count_factor("social_heat", "source_weighted_mentions", weighted_mentions, scale=3),
+            _acceleration_factor(attention_acceleration),
+            _count_factor("social_heat", "watched_seed_strength", watched_mentions, scale=2),
         ],
     )
 
 
-def _diffusion_quality_family(*, social_quality: dict[str, Any]) -> dict[str, Any]:
+def _social_propagation_family(*, social_quality: dict[str, Any]) -> dict[str, Any]:
     duplicate_text_share = _optional_float(social_quality.get("duplicate_text_share"))
     top_author_share = _optional_float(social_quality.get("top_author_share"))
-    informative_post_count = _optional_int(social_quality.get("informative_post_count"))
     mentions = _optional_int(social_quality.get("mentions"))
     independent_authors = _optional_int(social_quality.get("independent_authors"))
+    source_weighted_effective_authors = _optional_float(
+        social_quality.get("source_weighted_effective_authors")
+        if social_quality.get("source_weighted_effective_authors") is not None
+        else social_quality.get("effective_authors")
+    )
+    time_to_second_author_ms = _optional_int(social_quality.get("time_to_second_author_ms"))
+    time_to_third_author_ms = _optional_int(social_quality.get("time_to_third_author_ms"))
+    public_followup_author_count = _optional_int(social_quality.get("public_followup_author_count"))
+    informative_post_count = _optional_int(social_quality.get("informative_post_count"))
+    new_authors = _optional_int(social_quality.get("new_authors"))
+    watched_author_count = _optional_int(social_quality.get("watched_author_count"))
+    reproduction_rate = _optional_float(social_quality.get("reproduction_rate"))
     facts = {
         "duplicate_text_share": duplicate_text_share,
         "top_author_share": top_author_share,
-        "informative_post_count": _count_int(informative_post_count),
         "mentions": _count_int(mentions),
         "independent_authors": _count_int(independent_authors),
+        "informative_post_count": _count_int(informative_post_count),
         "effective_authors": _optional_float(social_quality.get("effective_authors")),
+        "new_authors": _count_int(new_authors),
+        "watched_author_count": _count_int(watched_author_count),
+        "reproduction_rate": reproduction_rate,
+        "source_weighted_effective_authors": source_weighted_effective_authors,
+        "time_to_second_author_ms": time_to_second_author_ms,
+        "time_to_third_author_ms": time_to_third_author_ms,
+        "public_followup_author_count": _count_int(public_followup_author_count),
+        "author_entropy": _optional_float(social_quality.get("author_entropy")),
     }
     return _family(
-        "diffusion_quality",
+        "social_propagation",
         facts=facts,
         factors=[
-            _count_factor("diffusion_quality", "independent_authors", independent_authors, scale=10),
-            _ratio_factor("diffusion_quality", "effective_authors", facts["effective_authors"], max_ratio=8.0),
-            _count_factor("diffusion_quality", "informative_post_count", informative_post_count, scale=8),
+            _count_factor("social_propagation", "independent_authors", independent_authors, scale=4),
+            _ratio_factor(
+                "social_propagation",
+                "source_weighted_effective_authors",
+                source_weighted_effective_authors,
+                max_ratio=5.0,
+            ),
+            _propagation_speed_factor(time_to_second_author_ms, time_to_third_author_ms),
+            _count_factor(
+                "social_propagation",
+                "watched_to_public_followup",
+                public_followup_author_count,
+                scale=2,
+            ),
             _penalty_factor(
-                "diffusion_quality",
+                "social_propagation",
                 "duplicate_text_share_penalty",
                 raw_value=duplicate_text_share,
                 threshold=DEX_HIGH_ALERT_FLOORS["duplicate_text_share"],
                 risk_flag="duplicate_text_share_high",
             ),
             _penalty_factor(
-                "diffusion_quality",
+                "social_propagation",
                 "top_author_concentration_penalty",
                 raw_value=top_author_share,
                 threshold=DEX_HIGH_ALERT_FLOORS["top_author_share"],
@@ -169,30 +228,43 @@ def _diffusion_quality_family(*, social_quality: dict[str, Any]) -> dict[str, An
     )
 
 
-def _semantic_quality_family(*, social_semantics: dict[str, Any]) -> dict[str, Any]:
+def _semantic_catalyst_family(*, social_semantics: dict[str, Any], social_quality: dict[str, Any]) -> dict[str, Any]:
     direction_counts = _count_map(social_semantics.get("direction_counts"))
     impact_mean = _optional_float(social_semantics.get("impact_mean"))
     novelty_mean = _optional_float(social_semantics.get("novelty_mean"))
     confidence_mean = _optional_float(social_semantics.get("confidence_mean"))
+    covered_mentions = _optional_int(
+        social_semantics.get("llm_covered_mentions")
+        if social_semantics.get("llm_covered_mentions") is not None
+        else social_semantics.get("covered_mentions")
+    )
+    semantic_mentions = social_semantics.get("mentions")
+    mentions = _optional_int(semantic_mentions if semantic_mentions is not None else social_quality.get("mentions"))
+    semantic_coverage = None
+    if covered_mentions is not None and mentions is not None and mentions > 0:
+        semantic_coverage = covered_mentions / mentions
     facts = {
         "direction_counts": direction_counts,
         "impact_mean": impact_mean,
         "novelty_mean": novelty_mean,
         "confidence_mean": confidence_mean,
+        "llm_covered_mentions": _count_int(covered_mentions),
+        "mentions": _count_int(mentions),
+        "semantic_coverage": semantic_coverage,
     }
     return _family(
-        "semantic_quality",
+        "semantic_catalyst",
         facts=facts,
         factors=[
-            _ratio_factor("semantic_quality", "impact_mean", impact_mean),
-            _ratio_factor("semantic_quality", "novelty_mean", novelty_mean),
-            _ratio_factor("semantic_quality", "confidence_mean", confidence_mean),
-            _direction_factor(direction_counts),
+            _coverage_weighted_ratio_factor("semantic_impact", impact_mean, confidence_mean, semantic_coverage),
+            _coverage_weighted_ratio_factor("semantic_novelty", novelty_mean, confidence_mean, semantic_coverage),
+            _ratio_factor("semantic_catalyst", "semantic_coverage", semantic_coverage),
+            _direction_factor("semantic_catalyst", direction_counts),
         ],
     )
 
 
-def _timing_response_family(*, timing: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
+def _timing_risk_family(*, timing: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
     social_signal_start_ms = timing.get("social_signal_start_ms") or market.get("social_signal_start_ms")
     price_change_before_social_pct = _optional_float(timing.get("price_change_before_social_pct"))
     price_change_since_social_pct = _optional_float(timing.get("price_change_since_social_pct"))
@@ -207,17 +279,27 @@ def _timing_response_family(*, timing: dict[str, Any], market: dict[str, Any]) -
         return {
             "raw_score": 0,
             "score": 0,
-            "weight": _FAMILY_WEIGHTS["timing_response"],
+            "weight": _FAMILY_WEIGHTS["timing_risk"],
             "data_health": "anchor_only",
             "facts": facts,
             "factors": {},
         }
     return _family(
-        "timing_response",
+        "timing_risk",
         facts=facts,
         factors=[
-            _timing_change_factor("price_change_before_social_pct", price_change_before_social_pct),
-            _timing_change_factor("price_change_since_social_pct", price_change_since_social_pct),
+            _timing_risk_factor(
+                "pre_social_chase_risk",
+                price_change_before_social_pct,
+                threshold=_PRE_SOCIAL_CHASE_RISK_PCT,
+                risk_flag="timing_chase_risk",
+            ),
+            _timing_risk_factor(
+                "post_social_late_risk",
+                price_change_since_social_pct,
+                threshold=_POST_SOCIAL_LATE_RISK_PCT,
+                risk_flag="timing_late_risk",
+            ),
         ],
     )
 
@@ -227,6 +309,7 @@ def _gates(
     subject: dict[str, Any],
     attention: dict[str, Any],
     social_quality: dict[str, Any],
+    families: dict[str, dict[str, Any]],
     market: dict[str, Any],
     alpha_health: str,
     raw_alpha_score: int,
@@ -255,15 +338,27 @@ def _gates(
         _count_int(attention.get("unique_authors")),
         _count_int(social_quality.get("independent_authors")),
     )
+    credible_sources = _optional_float(social_quality.get("source_weighted_effective_authors"))
+    if credible_sources is None:
+        credible_sources = _optional_float(social_quality.get("effective_authors"))
     watched_mentions = _count_int(attention.get("watched_mentions"))
-    if independent_sources < DEX_HIGH_ALERT_FLOORS["unique_authors"] and watched_mentions <= 0:
+    if independent_sources < 2 and watched_mentions <= 0:
         blocked_reasons.append("insufficient_independent_social_sources")
         risk_reasons.append("thin_author_set")
+    if credible_sources is not None and credible_sources < 1.5 and watched_mentions <= 0:
+        blocked_reasons.append("insufficient_credible_social_sources")
+        risk_reasons.append("thin_credible_author_set")
     if _is_at_or_above(_optional_float(social_quality.get("duplicate_text_share")), "duplicate_text_share"):
         blocked_reasons.append("duplicate_text_share_high")
         risk_reasons.append("duplicate_text_share_high")
     if _is_at_or_above(_optional_float(social_quality.get("top_author_share")), "top_author_share"):
         risk_reasons.append("author_concentration_high")
+    timing_family = families.get("timing_risk") or {}
+    timing_factors = timing_family.get("factors") or {}
+    if isinstance(timing_factors, dict):
+        for factor in timing_factors.values():
+            if isinstance(factor, dict):
+                risk_reasons.extend(factor.get("risk_flags") or [])
 
     blocked_reasons = _dedupe_strings(blocked_reasons)
     if discard_cap_reasons:
@@ -411,7 +506,7 @@ def _penalty_factor(
     )
 
 
-def _direction_factor(direction_counts: dict[str, Any]) -> dict[str, Any]:
+def _direction_factor(family: str, direction_counts: dict[str, Any]) -> dict[str, Any]:
     total = sum(_count_int(value) for value in direction_counts.values())
     bullish = _count_int(direction_counts.get("bullish"))
     neutral = _count_int(direction_counts.get("neutral"))
@@ -419,23 +514,116 @@ def _direction_factor(direction_counts: dict[str, Any]) -> dict[str, Any]:
     if total > 0:
         score = (bullish + neutral * 0.5) / total * 100.0
     return _factor_point(
-        "semantic_quality",
-        "direction_counts",
+        family,
+        "direction_mix",
         raw_value=direction_counts,
         score=score,
         confidence=0.85 if total > 0 else 0.0,
     )
 
 
-def _timing_change_factor(key: str, value: float | None) -> dict[str, Any]:
-    score = 0.0 if value is None else max(0.0, min(100.0, (value + 0.05) * 1_000.0))
+def _z_or_new_burst_factor(*, z_value: float | None, new_burst_score: float | None) -> dict[str, Any]:
+    if z_value is not None:
+        raw_value: Any = z_value
+        score = max(0.0, min(100.0, 25.0 + z_value * 22.5))
+    elif new_burst_score is not None:
+        raw_value = new_burst_score
+        score = log_points(new_burst_score, scale=2.0, max_points=80.0)
+    else:
+        raw_value = None
+        score = 0.0
     return _factor_point(
-        "timing_response",
+        "social_heat",
+        "attention_surprise",
+        raw_value=raw_value,
+        score=score,
+        confidence=0.95 if raw_value is not None else 0.0,
+    )
+
+
+def _acceleration_factor(value: float | None) -> dict[str, Any]:
+    return _factor_point(
+        "social_heat",
+        "attention_acceleration",
+        raw_value=value,
+        score=log_points(safe_float(value), scale=2, max_points=100.0),
+        confidence=0.9 if value is not None else 0.0,
+    )
+
+
+def _propagation_speed_factor(second_ms: int | None, third_ms: int | None) -> dict[str, Any]:
+    if second_ms is None:
+        raw_value = None
+        score = 0.0
+        confidence = 0.0
+    else:
+        raw_value = {"time_to_second_author_ms": second_ms, "time_to_third_author_ms": third_ms}
+        second_minutes = second_ms / 60_000
+        second_score = max(0.0, 100.0 - min(60.0, second_minutes) / 60.0 * 60.0)
+        if third_ms is None:
+            third_score = 0.0
+        else:
+            third_minutes = third_ms / 60_000
+            third_score = max(0.0, 100.0 - min(60.0, third_minutes) / 60.0 * 40.0)
+        score = second_score * 0.65 + third_score * 0.35
+        confidence = 0.9
+    return _factor_point(
+        "social_propagation",
+        "propagation_speed",
+        raw_value=raw_value,
+        score=score,
+        confidence=confidence,
+    )
+
+
+def _coverage_weighted_ratio_factor(
+    key: str,
+    value: float | None,
+    confidence: float | None,
+    coverage: float | None,
+) -> dict[str, Any]:
+    if value is None or confidence is None or coverage is None:
+        raw_value = None
+        score_value = None
+        factor_confidence = 0.0
+    else:
+        bounded_confidence = max(0.0, min(1.0, confidence))
+        bounded_coverage = max(0.0, min(1.0, coverage))
+        factor_confidence = bounded_confidence * bounded_coverage
+        score_value = max(0.0, min(1.0, value)) * factor_confidence
+        raw_value = {
+            "value": value,
+            "confidence_mean": confidence,
+            "semantic_coverage": coverage,
+        }
+    return _factor_point(
+        "semantic_catalyst",
+        key,
+        raw_value=raw_value,
+        score=safe_float(score_value) * 100.0,
+        confidence=factor_confidence,
+    )
+
+
+def _timing_risk_factor(key: str, value: float | None, *, threshold: float, risk_flag: str) -> dict[str, Any]:
+    risk_flags = [risk_flag] if value is not None and value >= threshold else []
+    score = 0.0 if value is None else -min(100.0, max(0.0, value - threshold) / max(0.01, threshold) * 50.0)
+    return _factor_point(
+        "timing_risk",
         key,
         raw_value=value,
         score=score,
         confidence=0.8 if value is not None else 0.0,
+        risk_flags=risk_flags,
     )
+
+
+def _first_float(source: dict[str, Any], keys: tuple[str, ...]) -> float | None:
+    for key in keys:
+        value = _optional_float(source.get(key))
+        if value is not None:
+            return value
+    return None
 
 
 def _subject(*, target: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:

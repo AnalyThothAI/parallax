@@ -370,7 +370,7 @@ def test_hot_quality_token_candidate_uses_asset_flow_contract():
     assert hot[0].payload["target_id"] == "asset:eip155:1:erc20:0xpepe"
     assert hot[0].payload["social_heat_score"] == 82
     assert hot[0].payload["decision"] == "driver"
-    assert hot[0].payload["score_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert hot[0].payload["score_version"] == "token_factor_snapshot_v3_social_attention"
 
 
 def test_investigate_token_radar_rows_do_not_fire_tradeable_token_alerts():
@@ -685,7 +685,7 @@ def test_signal_pulse_eligible_token_watch_can_emit_high_notification():
     assert "- **Status:** token watch" in candidate.body
     assert "- **Gate:** clear" in candidate.body
     assert "- **Market:** dex · market ready" in candidate.body
-    assert "- **Alpha:** attention heat 82 · diffusion quality 78" in candidate.body
+    assert "- **Alpha:** social heat 82 · social propagation 78" in candidate.body
     assert "- **Social:** 6 mentions · 4 authors · watched 1" in candidate.body
     assert "链上质量达标" in candidate.body
 
@@ -740,7 +740,7 @@ def test_signal_pulse_notification_rejects_malformed_factor_snapshot_contract():
         lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}),
     ],
 )
-def test_signal_pulse_notification_rejects_malformed_v2_snapshot_shape(mutate):
+def test_signal_pulse_notification_rejects_malformed_v3_snapshot_shape(mutate):
     row = pulse_candidate("pulse-malformed-v2", status="token_watch", eligible_for_high_alert=True)
     mutate(row["factor_snapshot_json"])
 
@@ -894,7 +894,7 @@ def _factor_snapshot(
     market_status = resolved_market_facts.get("market_status", "fresh")
     market_ready = "ready" if market_status == "fresh" else "partial"
     return {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {
             "symbol": symbol,
             "target_type": target_type,
@@ -922,23 +922,23 @@ def _factor_snapshot(
             "alpha": "ready",
         },
         "families": {
-            "attention_heat": {
+            "social_heat": {
                 "raw_score": 82,
                 "score": 82,
                 "weight": 0.35,
                 "data_health": "ready",
                 "facts": resolved_social_facts,
-                "factors": {"mentions_1h": {"family": "attention_heat", "key": "mentions_1h"}},
+                "factors": {"mentions_1h": {"family": "social_heat", "key": "mentions_1h"}},
             },
-            "diffusion_quality": {
+            "social_propagation": {
                 "raw_score": 78,
                 "score": 78,
                 "weight": 0.3,
                 "data_health": "ready",
                 "facts": {"independent_authors": resolved_social_facts.get("unique_authors")},
-                "factors": {"independent_authors": {"family": "diffusion_quality", "key": "independent_authors"}},
+                "factors": {"independent_authors": {"family": "social_propagation", "key": "independent_authors"}},
             },
-            "semantic_quality": {
+            "semantic_catalyst": {
                 "raw_score": 70,
                 "score": 70,
                 "weight": 0.25,
@@ -946,7 +946,7 @@ def _factor_snapshot(
                 "facts": {"phase": "ignition"},
                 "factors": {},
             },
-            "timing_response": {
+            "timing_risk": {
                 "raw_score": 64,
                 "score": 64,
                 "weight": 0.1,
@@ -960,10 +960,10 @@ def _factor_snapshot(
             "rank_score": rank_score,
             "recommended_decision": "high_alert" if rank_score >= 70 else "watch",
             "family_scores": {
-                "attention_heat": 82,
-                "diffusion_quality": 78,
-                "semantic_quality": 70,
-                "timing_response": 64,
+                "social_heat": 82,
+                "social_propagation": 78,
+                "semantic_catalyst": 70,
+                "timing_risk": 64,
             },
         },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},

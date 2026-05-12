@@ -70,8 +70,8 @@ fields. Downstream evaluation services filter by version, otherwise A/B
 comparisons silently mix populations. No black-box scores.
 
 Current factor snapshots use `schema_version =
-"token_factor_snapshot_v2_alpha_gated"` only. Runtime readers reject the old v1
-shape and reject `hard_gates`. The v2 contract separates:
+"token_factor_snapshot_v3_social_attention"` only. Runtime readers reject old
+v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
 
 - `subject`: deterministic identity and target-market facts.
 - `gates`: high-alert eligibility, maximum decision, blocked reasons, and risk
@@ -79,10 +79,12 @@ shape and reject `hard_gates`. The v2 contract separates:
   liquidity / market-cap floors, and data availability live here or in
   `data_health`; they do not score alpha.
 - `market`: immutable anchor-price/readiness context. It is not a live price
-  cache.
+  cache and remains context/gate input, not an alpha family.
 - `data_health`: explicit readiness for identity, market, social, and alpha.
-- `families`: alpha families only: `attention_heat`, `diffusion_quality`,
-  `semantic_quality`, and `timing_response`.
+- `families`: social attention families only: `social_heat`,
+  `social_propagation`, `semantic_catalyst`, and `timing_risk`.
+  `timing_risk.weight = 0.0`, so timing contributes risk/gate context without
+  positive alpha.
 - `normalization`: cohort metadata, per-family cross-section ranks, alpha rank,
   and status.
 - `composite`: raw alpha score, rank score, family scores, and
@@ -95,11 +97,11 @@ commands can evaluate older runs by `computed_at_ms` and score version.
 
 Operational commands:
 
-- `gmgn-twitter-intel ops factor-diagnostics` reports v2 score dispersion,
+- `gmgn-twitter-intel ops factor-diagnostics` reports current factor score dispersion,
   bucket counts, and rank-score diagnostics.
 - `gmgn-twitter-intel ops settle-token-factors` writes point-in-time forward
   return evaluations when sufficient later market observations exist.
-- `gmgn-twitter-intel ops audit-token-radar` is v2-only and flags legacy
+- `gmgn-twitter-intel ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
 
 ## Privacy boundary

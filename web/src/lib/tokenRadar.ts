@@ -15,7 +15,7 @@ import type {
   TradeabilityBlock,
 } from "../api/types";
 
-import { TOKEN_FACTOR_SNAPSHOT_SCHEMA, requireTokenFactorSnapshotV2 } from "./tokenFactorSnapshot";
+import { TOKEN_FACTOR_SNAPSHOT_SCHEMA, requireTokenFactorSnapshot } from "./tokenFactorSnapshot";
 
 export function sortTokenItems(items: TokenFlowItem[], mode: RadarSortMode): TokenFlowItem[] {
   const copy = [...items];
@@ -80,10 +80,10 @@ export function tokenRadarRowToTokenItem(
     snapshot.normalization,
     "factor_snapshot.normalization",
   ) as TokenFactorSnapshot["normalization"];
-  const attentionFamily = requiredFamily(snapshot, "attention_heat");
-  const diffusionFamily = requiredFamily(snapshot, "diffusion_quality");
-  const semanticFamily = requiredFamily(snapshot, "semantic_quality");
-  const timingFamily = requiredFamily(snapshot, "timing_response");
+  const attentionFamily = requiredFamily(snapshot, "social_heat");
+  const diffusionFamily = requiredFamily(snapshot, "social_propagation");
+  const semanticFamily = requiredFamily(snapshot, "semantic_catalyst");
+  const timingFamily = requiredFamily(snapshot, "timing_risk");
   const attention = familyFacts(attentionFamily);
   const diffusionFacts = familyFacts(diffusionFamily);
   const timingFacts = familyFacts(timingFamily);
@@ -94,7 +94,8 @@ export function tokenRadarRowToTokenItem(
   const anchorPrice = requiredAnchorPrice(row);
   const liveMarket = requiredLiveMarket(row);
   const anchorPriceValue =
-    optionalNullableNumber(anchorPrice.price_usd) ?? optionalNullableNumber(anchorPrice.price_quote);
+    optionalNullableNumber(anchorPrice.price_usd) ??
+    optionalNullableNumber(anchorPrice.price_quote);
   const livePriceValue =
     optionalNullableNumber(liveMarket.price_usd) ?? optionalNullableNumber(liveMarket.price_quote);
   const displayPrice = livePriceValue ?? anchorPriceValue;
@@ -115,35 +116,35 @@ export function tokenRadarRowToTokenItem(
   const provenance = recordValue(snapshot.provenance);
   const mentions5m = requiredNumber(
     attention.mentions_5m,
-    "factor_snapshot.attention_heat.mentions_5m",
+    "factor_snapshot.social_heat.mentions_5m",
   );
   const mentions1h = requiredNumber(
     attention.mentions_1h,
-    "factor_snapshot.attention_heat.mentions_1h",
+    "factor_snapshot.social_heat.mentions_1h",
   );
   const mentions4h = requiredNumber(
     attention.mentions_4h,
-    "factor_snapshot.attention_heat.mentions_4h",
+    "factor_snapshot.social_heat.mentions_4h",
   );
   const mentions24h = requiredNumber(
     attention.mentions_24h,
-    "factor_snapshot.attention_heat.mentions_24h",
+    "factor_snapshot.social_heat.mentions_24h",
   );
   const mentions = requiredNumber(
     attention[`mentions_${window}`],
-    `factor_snapshot.attention_heat.mentions_${window}`,
+    `factor_snapshot.social_heat.mentions_${window}`,
   );
   const authors = requiredNumber(
     attention.unique_authors,
-    "factor_snapshot.attention_heat.unique_authors",
+    "factor_snapshot.social_heat.unique_authors",
   );
   const watched = requiredNumber(
     attention.watched_mentions,
-    "factor_snapshot.attention_heat.watched_mentions",
+    "factor_snapshot.social_heat.watched_mentions",
   );
   const latestSeenMs = requiredNumber(
     attention.latest_seen_ms,
-    "factor_snapshot.attention_heat.latest_seen_ms",
+    "factor_snapshot.social_heat.latest_seen_ms",
   );
   const previousMentions = optionalNumber(attention.previous_mentions) ?? 0;
   const mentionDelta = optionalNumber(attention.mention_delta) ?? mentions - previousMentions;
@@ -185,11 +186,11 @@ export function tokenRadarRowToTokenItem(
   const discoveryStatus = discoveryStatusSummary(row.resolution?.discovery);
   const marketObservationStatus = marketStatus;
   const marketHasUsableSnapshot = liveMarketHasPrice || anchorPrice.status === "ready";
-  const heat = scoreBlockFromFamily(attentionFamily, "attention_heat", "social_heat");
-  const quality = scoreBlockFromFamily(semanticFamily, "semantic_quality", "discussion_quality");
-  const propagation = scoreBlockFromFamily(diffusionFamily, "diffusion_quality", "propagation");
+  const heat = scoreBlockFromFamily(attentionFamily, "social_heat", "social_heat");
+  const quality = scoreBlockFromFamily(semanticFamily, "semantic_catalyst", "discussion_quality");
+  const propagation = scoreBlockFromFamily(diffusionFamily, "social_propagation", "propagation");
   const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, liveMarket);
-  const timing = scoreBlockFromFamily(timingFamily, "timing_response", "timing");
+  const timing = scoreBlockFromFamily(timingFamily, "timing_risk", "timing");
   const recommendedDecision = requiredString(
     optionalString(composite.recommended_decision),
     "factor_snapshot.composite.recommended_decision",
@@ -218,10 +219,10 @@ export function tokenRadarRowToTokenItem(
     decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
     hard_risks: blockedReasons,
     components: {
-      heat: scoreFromFamilyScores(familyScores, "attention_heat", heat.score),
-      quality: scoreFromFamilyScores(familyScores, "semantic_quality", quality.score),
-      propagation: scoreFromFamilyScores(familyScores, "diffusion_quality", propagation.score),
-      timing: scoreFromFamilyScores(familyScores, "timing_response", timing.score),
+      heat: scoreFromFamilyScores(familyScores, "social_heat", heat.score),
+      quality: scoreFromFamilyScores(familyScores, "semantic_catalyst", quality.score),
+      propagation: scoreFromFamilyScores(familyScores, "social_propagation", propagation.score),
+      timing: scoreFromFamilyScores(familyScores, "timing_risk", timing.score),
     },
     score: opportunityScore,
   };
@@ -406,7 +407,7 @@ type ScoreBlockWithHardRisks = ScoreBlock & { hard_risks: string[] };
 
 function requiredFactorSnapshot(row: AssetFlowRow): TokenFactorSnapshot {
   try {
-    return requireTokenFactorSnapshotV2(row.factor_snapshot, "factor_snapshot");
+    return requireTokenFactorSnapshot(row.factor_snapshot, "factor_snapshot");
   } catch (error) {
     if (error instanceof Error) {
       throw new Error(
@@ -491,11 +492,11 @@ function scoreBlockFromFamily(
 }
 
 function reasonsFromFamily(factorFamily: string, points: FactorPoint[], risks: string[]): string[] {
-  if (factorFamily === "timing_response") {
+  if (factorFamily === "timing_risk") {
     return risks.length ? risks : [];
   }
-  if (factorFamily === "semantic_quality") {
-    return ["semantic_quality_snapshot"];
+  if (factorFamily === "semantic_catalyst") {
+    return ["semantic_catalyst_snapshot"];
   }
   return uniqueStrings(points.map((point) => `${point.family}.${point.key}`));
 }
@@ -627,10 +628,7 @@ function timingStatusFromSnapshot(
   return "neutral";
 }
 
-function liveDeltaFromAnchor(
-  livePrice: number | null,
-  anchorPrice: number | null,
-): number | null {
+function liveDeltaFromAnchor(livePrice: number | null, anchorPrice: number | null): number | null {
   if (livePrice === null || anchorPrice === null || anchorPrice === 0) {
     return null;
   }
@@ -644,7 +642,8 @@ function priceChangeStatusFromAnchorLive(
 ): string {
   if (anchorPrice.status !== "ready") return "missing_anchor";
   if (priceChangeSinceSocialPct !== null) return "ready";
-  if (liveMarket.status === "missing" || liveMarket.status === "unsupported") return "live_not_persisted";
+  if (liveMarket.status === "missing" || liveMarket.status === "unsupported")
+    return "live_not_persisted";
   return "missing_live_price";
 }
 

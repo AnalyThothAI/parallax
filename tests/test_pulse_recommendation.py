@@ -16,17 +16,17 @@ from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import (
 )
 
 AVAILABLE_FACTOR_KEYS = {
-    "attention_heat",
-    "attention_heat.data_health",
-    "attention_heat.raw_score",
-    "attention_heat.score",
-    "attention_heat.unique_authors",
-    "attention_heat.weight",
+    "social_heat",
+    "social_heat.data_health",
+    "social_heat.raw_score",
+    "social_heat.score",
+    "social_heat.unique_authors",
+    "social_heat.weight",
     "composite",
-    "composite.family_scores.attention_heat",
-    "composite.family_scores.diffusion_quality",
-    "composite.family_scores.semantic_quality",
-    "composite.family_scores.timing_response",
+    "composite.family_scores.social_heat",
+    "composite.family_scores.social_propagation",
+    "composite.family_scores.semantic_catalyst",
+    "composite.family_scores.timing_risk",
     "composite.rank_score",
     "composite.recommended_decision",
     "data_health",
@@ -34,31 +34,31 @@ AVAILABLE_FACTOR_KEYS = {
     "data_health.identity",
     "data_health.market",
     "data_health.social",
-    "diffusion_quality",
-    "diffusion_quality.data_health",
-    "diffusion_quality.independent_authors",
-    "diffusion_quality.duplicate_text_share",
-    "diffusion_quality.raw_score",
-    "diffusion_quality.score",
-    "diffusion_quality.weight",
+    "social_propagation",
+    "social_propagation.data_health",
+    "social_propagation.independent_authors",
+    "social_propagation.duplicate_text_share",
+    "social_propagation.raw_score",
+    "social_propagation.score",
+    "social_propagation.weight",
     "gates",
     "gates.blocked_reasons",
     "gates.eligible_for_high_alert",
     "gates.max_decision",
     "normalization",
     "normalization.status",
-    "semantic_quality",
-    "semantic_quality.data_health",
-    "semantic_quality.phase",
-    "semantic_quality.raw_score",
-    "semantic_quality.score",
-    "semantic_quality.weight",
-    "timing_response",
-    "timing_response.data_health",
-    "timing_response.price_change_status",
-    "timing_response.raw_score",
-    "timing_response.score",
-    "timing_response.weight",
+    "semantic_catalyst",
+    "semantic_catalyst.data_health",
+    "semantic_catalyst.raw_score",
+    "semantic_catalyst.score",
+    "semantic_catalyst.semantic_coverage",
+    "semantic_catalyst.weight",
+    "timing_risk",
+    "timing_risk.data_health",
+    "timing_risk.price_change_status",
+    "timing_risk.raw_score",
+    "timing_risk.score",
+    "timing_risk.weight",
 }
 
 
@@ -69,13 +69,13 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
         "summary_zh": "PEPE 的社交扩散有效，但成交质量和重复文本风险仍需继续确认。",
         "primary_reasons": [
             {
-                "factor_key": "attention_heat.unique_authors",
+                "factor_key": "social_heat.unique_authors",
                 "explanation_zh": "独立作者数量增加，扩散不只来自单一来源。",
             }
         ],
         "upgrade_conditions": [
             {
-                "factor_key": "diffusion_quality.independent_authors",
+                "factor_key": "social_propagation.independent_authors",
                 "operator": ">=",
                 "value": 4,
                 "description_zh": "独立作者扩散继续增加。",
@@ -83,7 +83,7 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
         ],
         "invalidation_conditions": [
             {
-                "factor_key": "diffusion_quality.duplicate_text_share",
+                "factor_key": "social_propagation.duplicate_text_share",
                 "operator": ">=",
                 "value": 0.5,
                 "description_zh": "重复文本继续升高。",
@@ -91,7 +91,7 @@ def _valid_payload(**overrides: object) -> dict[str, object]:
         ],
         "residual_risks": [
             {
-                "factor_key": "diffusion_quality.duplicate_text_share",
+                "factor_key": "social_propagation.duplicate_text_share",
                 "description_zh": "重复文本比例仍可能放大噪声。",
             }
         ],
@@ -129,7 +129,7 @@ def test_factor_keys_must_be_available_for_reasons_conditions_and_risks() -> Non
     with pytest.raises(ValueError, match="factor_key"):
         validate_pulse_recommendation_payload(
             _valid_payload(),
-            available_factor_keys={"attention_heat", "diffusion_quality.independent_authors"},
+            available_factor_keys={"social_heat", "social_propagation.independent_authors"},
             input_source_event_ids={"event-1", "event-2", "event-3"},
         )
 
@@ -187,7 +187,7 @@ def test_family_level_factor_keys_are_valid_but_still_bounded_to_available_conte
         _valid_payload(
             primary_reasons=[
                 {
-                    "factor_key": "attention_heat",
+                    "factor_key": "social_heat",
                     "explanation_zh": "热度 family 已经进入可解释集合。",
                 }
             ],
@@ -198,12 +198,12 @@ def test_family_level_factor_keys_are_valid_but_still_bounded_to_available_conte
                 }
             ],
         ),
-        available_factor_keys=collect_factor_keys(_v2_factor_snapshot()),
+        available_factor_keys=collect_factor_keys(_v3_factor_snapshot()),
         input_source_event_ids={"event-1", "event-2", "event-3"},
         max_recommendation="research",
     )
 
-    assert payload.primary_reasons[0].factor_key == "attention_heat"
+    assert payload.primary_reasons[0].factor_key == "social_heat"
     assert payload.residual_risks[0].factor_key == "gates.blocked_reasons"
 
 
@@ -212,14 +212,14 @@ def test_condition_values_accept_structured_factor_maps() -> None:
         _valid_payload(
             invalidation_conditions=[
                 {
-                    "factor_key": "semantic_quality.direction_counts",
+                    "factor_key": "semantic_catalyst.direction_counts",
                     "operator": "==",
                     "value": {"bearish": 10, "neutral": 0, "bullish": 0},
                     "description_zh": "方向计数转弱会降低信号质量。",
                 }
             ],
         ),
-        available_factor_keys={*AVAILABLE_FACTOR_KEYS, "semantic_quality.direction_counts"},
+        available_factor_keys={*AVAILABLE_FACTOR_KEYS, "semantic_catalyst.direction_counts"},
         input_source_event_ids=["event-1", "event-2"],
     )
 
@@ -263,7 +263,7 @@ def test_instructions_require_factor_backing_and_no_fabrication() -> None:
 
 def test_agent_input_json_is_stable_and_contract_scoped() -> None:
     context = {
-        "factor_snapshot": _v2_factor_snapshot(),
+        "factor_snapshot": _v3_factor_snapshot(),
         "gate_result": {"max_recommendation": "research"},
         "available_factor_keys": ["manual.key_should_not_be_used"],
         "selected_posts": [{"event_id": "event-1", "text": "PEPE heat"}],
@@ -275,52 +275,8 @@ def test_agent_input_json_is_stable_and_contract_scoped() -> None:
 
     assert encoded == pulse_recommendation_agent_input(context)
     assert decoded == {
-        "available_factor_keys": [
-            "attention_heat",
-            "attention_heat.data_health",
-            "attention_heat.raw_score",
-            "attention_heat.score",
-            "attention_heat.unique_authors",
-            "attention_heat.weight",
-            "composite",
-            "composite.family_scores.attention_heat",
-            "composite.family_scores.diffusion_quality",
-            "composite.family_scores.semantic_quality",
-            "composite.family_scores.timing_response",
-            "composite.rank_score",
-            "composite.recommended_decision",
-            "data_health",
-            "data_health.alpha",
-            "data_health.identity",
-            "data_health.market",
-            "data_health.social",
-            "diffusion_quality",
-            "diffusion_quality.data_health",
-            "diffusion_quality.duplicate_text_share",
-            "diffusion_quality.independent_authors",
-            "diffusion_quality.raw_score",
-            "diffusion_quality.score",
-            "diffusion_quality.weight",
-            "gates",
-            "gates.blocked_reasons",
-            "gates.eligible_for_high_alert",
-            "gates.max_decision",
-            "normalization",
-            "normalization.status",
-            "semantic_quality",
-            "semantic_quality.data_health",
-            "semantic_quality.phase",
-            "semantic_quality.raw_score",
-            "semantic_quality.score",
-            "semantic_quality.weight",
-            "timing_response",
-            "timing_response.data_health",
-            "timing_response.price_change_status",
-            "timing_response.raw_score",
-            "timing_response.score",
-            "timing_response.weight",
-        ],
-        "factor_snapshot": _v2_factor_snapshot(),
+        "available_factor_keys": sorted(AVAILABLE_FACTOR_KEYS),
+        "factor_snapshot": _v3_factor_snapshot(),
         "gate_result": {"max_recommendation": "research"},
         "selected_posts": [{"event_id": "event-1", "text": "PEPE heat"}],
         "task": "write_pulse_recommendation_v1",
@@ -328,7 +284,7 @@ def test_agent_input_json_is_stable_and_contract_scoped() -> None:
 
 
 def test_collect_factor_keys_reads_family_facts_and_factors() -> None:
-    assert collect_factor_keys(_v2_factor_snapshot()) == AVAILABLE_FACTOR_KEYS
+    assert collect_factor_keys(_v3_factor_snapshot()) == AVAILABLE_FACTOR_KEYS
 
 
 def test_agent_input_rejects_legacy_v1_factor_snapshot() -> None:
@@ -354,8 +310,8 @@ def test_agent_input_rejects_legacy_v1_factor_snapshot() -> None:
         (lambda snapshot: snapshot.__setitem__("legacy_score", {"score": 100}), "legacy_score"),
     ],
 )
-def test_agent_input_rejects_malformed_v2_factor_snapshot(mutate, match: str) -> None:
-    snapshot = _v2_factor_snapshot()
+def test_agent_input_rejects_malformed_v3_factor_snapshot(mutate, match: str) -> None:
+    snapshot = _v3_factor_snapshot()
     mutate(snapshot)
 
     with pytest.raises(ValueError, match=match):
@@ -368,16 +324,16 @@ def test_agent_input_rejects_malformed_v2_factor_snapshot(mutate, match: str) ->
         )
 
 
-def _v2_factor_snapshot() -> dict[str, object]:
+def _v3_factor_snapshot() -> dict[str, object]:
     return {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {"target_type": "Asset", "target_id": "asset:pepe", "symbol": "PEPE"},
         "market": _market(),
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "max_decision": "high_alert"},
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
         "families": {
-            "attention_heat": _family(76, 0.35, {"unique_authors": 4}, {}),
-            "diffusion_quality": {
+            "social_heat": _family(76, 0.35, {"unique_authors": 4}, {}),
+            "social_propagation": {
                 "raw_score": 76,
                 "score": 76,
                 "weight": 0.3,
@@ -385,18 +341,18 @@ def _v2_factor_snapshot() -> dict[str, object]:
                 "facts": {"independent_authors": 4},
                 "factors": {"duplicate_text_share": {"value": 0.12}},
             },
-            "semantic_quality": _family(76, 0.25, {"phase": "ignition"}, {}),
-            "timing_response": _family(76, 0.1, {"price_change_status": "ready"}, {}),
+            "semantic_catalyst": _family(76, 0.25, {"semantic_coverage": 0.75}, {}),
+            "timing_risk": _family(76, 0.1, {"price_change_status": "ready"}, {}),
         },
         "normalization": {"status": "pending_cross_section"},
         "composite": {
             "rank_score": 76,
             "recommended_decision": "watch",
             "family_scores": {
-                "attention_heat": 76,
-                "diffusion_quality": 76,
-                "semantic_quality": 76,
-                "timing_response": 76,
+                "social_heat": 76,
+                "social_propagation": 76,
+                "semantic_catalyst": 76,
+                "timing_risk": 76,
             },
         },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},

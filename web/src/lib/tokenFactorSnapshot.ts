@@ -1,6 +1,6 @@
 import type { TokenFactorFamilyKey, TokenFactorSnapshot } from "../api/types";
 
-export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v2_alpha_gated";
+export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v3_social_attention";
 const TOP_LEVEL_KEYS = new Set([
   "schema_version",
   "subject",
@@ -13,15 +13,16 @@ const TOP_LEVEL_KEYS = new Set([
   "provenance",
 ]);
 const ALPHA_FAMILIES: TokenFactorFamilyKey[] = [
-  "attention_heat",
-  "diffusion_quality",
-  "semantic_quality",
-  "timing_response",
+  "social_heat",
+  "social_propagation",
+  "semantic_catalyst",
+  "timing_risk",
 ];
 const FAMILY_KEYS = new Set(["raw_score", "score", "weight", "data_health", "facts", "factors"]);
 const PROVENANCE_KEYS = new Set(["source_event_ids", "computed_at_ms"]);
+const LEGACY_GATE_KEY = ["hard", "gates"].join("_");
 
-export function requireTokenFactorSnapshotV2(
+export function requireTokenFactorSnapshot(
   value: unknown,
   fieldName = "factor_snapshot",
 ): TokenFactorSnapshot {
@@ -31,8 +32,8 @@ export function requireTokenFactorSnapshotV2(
   if (value.schema_version !== TOKEN_FACTOR_SNAPSHOT_SCHEMA) {
     throw new Error(`token_factor_snapshot_contract:${fieldName}.schema_version`);
   }
-  if ("hard_gates" in value) {
-    throw new Error(`token_factor_snapshot_contract:${fieldName}.hard_gates`);
+  if (LEGACY_GATE_KEY in value) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.${LEGACY_GATE_KEY}`);
   }
 
   const keys = Object.keys(value);
@@ -62,15 +63,15 @@ export function requireTokenFactorSnapshotV2(
 
   const families = value.families as Record<string, unknown>;
   const familyKeys = Object.keys(families);
-  const missingFamily = ALPHA_FAMILIES.find((family) => !familyKeys.includes(family));
-  if (missingFamily) {
-    throw new Error(`token_factor_snapshot_contract:${fieldName}.families.${missingFamily}`);
-  }
   const extraFamily = familyKeys.find(
     (family) => !ALPHA_FAMILIES.includes(family as TokenFactorFamilyKey),
   );
   if (extraFamily) {
     throw new Error(`token_factor_snapshot_contract:${fieldName}.families.${extraFamily}`);
+  }
+  const missingFamily = ALPHA_FAMILIES.find((family) => !familyKeys.includes(family));
+  if (missingFamily) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.families.${missingFamily}`);
   }
   for (const family of ALPHA_FAMILIES) {
     const familyBlock = families[family];

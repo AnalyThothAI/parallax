@@ -56,9 +56,9 @@ function token(): TokenFlowItem {
     },
     social_heat: {
       ...scoreBlock(
-        "token_factor_snapshot_v2_alpha_gated:social_heat",
+        "token_factor_snapshot_v3_social_attention:social_heat",
         76,
-        "attention_heat.mentions_1h",
+        "social_heat.mentions_1h",
       ),
       window: "1h",
       mentions: 3,
@@ -75,9 +75,9 @@ function token(): TokenFlowItem {
     },
     discussion_quality: {
       ...scoreBlock(
-        "token_factor_snapshot_v2_alpha_gated:discussion_quality",
+        "token_factor_snapshot_v3_social_attention:discussion_quality",
         64,
-        "semantic_quality.impact_mean",
+        "semantic_catalyst.impact_mean",
       ),
       evidence_specificity: 0.6,
       avg_post_quality: 64,
@@ -88,9 +88,9 @@ function token(): TokenFlowItem {
     },
     propagation: {
       ...scoreBlock(
-        "token_factor_snapshot_v2_alpha_gated:propagation",
+        "token_factor_snapshot_v3_social_attention:propagation",
         58,
-        "diffusion_quality.independent_authors",
+        "social_propagation.independent_authors",
       ),
       independent_authors: 3,
       effective_authors: 2.5,
@@ -102,7 +102,7 @@ function token(): TokenFlowItem {
       top_authors: [],
     },
     tradeability: {
-      ...scoreBlock("token_factor_snapshot_v2_alpha_gated:gates", 60, "data_health.market"),
+      ...scoreBlock("token_factor_snapshot_v3_social_attention:gates", 60, "data_health.market"),
       identity_tradeable: true,
       market_fresh: false,
       market_cap_present: false,
@@ -112,18 +112,22 @@ function token(): TokenFlowItem {
     },
     timing: {
       score: 42,
-      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
+      score_version: "token_factor_snapshot_v3_social_attention:timing",
       status: "neutral",
       chase_risk: false,
-      reasons: ["timing_response.price_change_since_social_pct"],
+      reasons: ["timing_risk.price_change_since_social_pct"],
       risks: [],
       contributions: [
-        { feature: "timing_response.price_change_since_social_pct", value: 42, reason: "ready" },
+        { feature: "timing_risk.price_change_since_social_pct", value: 42, reason: "ready" },
       ],
       risk_caps: [],
     },
     opportunity: {
-      ...scoreBlock("token_factor_snapshot_v2_alpha_gated:composite", 67, "factor_family_score"),
+      ...scoreBlock(
+        "token_factor_snapshot_v3_social_attention:composite",
+        67,
+        "factor_family_score",
+      ),
       decision: "watch",
       hard_risks: ["legacy_should_not_win"],
       components: { heat: 76, quality: 64, propagation: 58, timing: 42 },

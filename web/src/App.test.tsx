@@ -202,7 +202,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row).not.toHaveClass("is-selected");
     expect(within(row).getByText("86 · 4 +4")).toBeInTheDocument();
     expect(within(row).getByText("4 posts · new burst · share 0%")).toBeInTheDocument();
-    expect(within(row).getByText("78 · semantic quality snapshot")).toBeInTheDocument();
+    expect(within(row).getByText("78 · semantic catalyst snapshot")).toBeInTheDocument();
     expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
     expect(within(row).getByText("top 33% · repro -")).toBeInTheDocument();
@@ -340,7 +340,7 @@ describe("App Token Radar social heat cockpit", () => {
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
     expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent(
-      "78 · semantic quality snapshot",
+      "78 · semantic catalyst snapshot",
     );
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent(
       "expansion · 3 author",
@@ -724,7 +724,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     expect(drawer.querySelector(".opportunity-score")).toHaveTextContent("79");
     expect(within(drawer).getByText("86 / rising")).toBeInTheDocument();
-    expect(within(drawer).getByText("78 / semantic quality snapshot")).toBeInTheDocument();
+    expect(within(drawer).getByText("78 / semantic catalyst snapshot")).toBeInTheDocument();
     expect(within(drawer).getByText("3 authors")).toBeInTheDocument();
     expect(within(drawer).getByText("market pending")).toBeInTheDocument();
     expect(within(drawer).getByText("driver")).toBeInTheDocument();
@@ -846,7 +846,7 @@ describe("App Token Radar social heat cockpit", () => {
 
   it("rejects token radar rows when the factor snapshot omits the current attention window", () => {
     const row = assetFlowRow();
-    const attentionHeat = row.factor_snapshot!.families.attention_heat;
+    const attentionHeat = row.factor_snapshot!.families.social_heat;
     const facts = { ...(attentionHeat.facts ?? {}) };
     delete facts.mentions_1h;
 
@@ -858,7 +858,7 @@ describe("App Token Radar social heat cockpit", () => {
             ...row.factor_snapshot!,
             families: {
               ...row.factor_snapshot!.families,
-              attention_heat: {
+              social_heat: {
                 ...attentionHeat,
                 facts,
               },
@@ -868,7 +868,7 @@ describe("App Token Radar social heat cockpit", () => {
         "1h",
         "all",
       ),
-    ).toThrow(/factor_snapshot\.attention_heat\.mentions_1h/);
+    ).toThrow(/factor_snapshot\.social_heat\.mentions_1h/);
   });
 
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
@@ -1757,26 +1757,26 @@ function assetFlowRow(
   };
   const score = {
     heat: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
+      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
       score: 86,
       status: "rising",
       reasons: ["rising"],
       risks: ["public_stream_coverage"],
     }),
     quality: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
+      score_version: "token_factor_snapshot_v3_social_attention:discussion_quality",
       score: 78,
       reasons: ["resolved_asset"],
       risks: [],
     }),
     propagation: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
+      score_version: "token_factor_snapshot_v3_social_attention:propagation",
       score: 72,
       reasons: ["independent_expansion"],
       risks: [],
     }),
     tradeability: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
+      score_version: "token_factor_snapshot_v3_social_attention:gates",
       score: marketFresh ? 80 : 60,
       reasons: ["resolved_target"],
       risks: [],
@@ -1787,7 +1787,7 @@ function assetFlowRow(
       pool_present: marketFresh,
     }),
     timing: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:timing",
+      score_version: "token_factor_snapshot_v3_social_attention:timing",
       score: options.insufficientTiming ? 45 : marketFresh ? 50 : 45,
       status: timingStatus,
       chase_risk: false,
@@ -1795,7 +1795,7 @@ function assetFlowRow(
       risks: timingRisks,
     }),
     opportunity: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
+      score_version: "token_factor_snapshot_v3_social_attention:composite",
       score: 79,
       reasons: ["backend_decision"],
       risks: ["public_stream_coverage"],
@@ -1854,7 +1854,7 @@ function factorSnapshotFromAssetFlowFixture({
   const targetMarketType = target.target_type === "CexToken" ? "cex" : "dex";
   const blockedReasons = marketStatus === "missing" ? ["market_freshness_missing"] : [];
   return {
-    schema_version: "token_factor_snapshot_v2_alpha_gated",
+    schema_version: "token_factor_snapshot_v3_social_attention",
     subject: {
       target_type: target.target_type ?? null,
       target_id: target.target_id ?? null,
@@ -1895,7 +1895,7 @@ function factorSnapshotFromAssetFlowFixture({
       alpha: "ready",
     },
     families: {
-      attention_heat: {
+      social_heat: {
         raw_score: score.heat.score,
         score: score.heat.score,
         weight: 0.35,
@@ -1918,15 +1918,15 @@ function factorSnapshotFromAssetFlowFixture({
           baseline_sample_count: attention.baseline_sample_count,
         },
         factors: {
-          mentions_1h: factorPoint("attention_heat", "mentions_1h", attention.mentions_1h, 70),
+          mentions_1h: factorPoint("social_heat", "mentions_1h", attention.mentions_1h, 70),
           unique_authors: factorPoint(
-            "attention_heat",
+            "social_heat",
             "unique_authors",
             attention.unique_authors,
             70,
           ),
           watched_mentions: factorPoint(
-            "attention_heat",
+            "social_heat",
             "watched_mentions",
             attention.watched_mentions,
             60,
@@ -1934,7 +1934,7 @@ function factorSnapshotFromAssetFlowFixture({
         },
         data_health: "ready",
       },
-      diffusion_quality: {
+      social_propagation: {
         raw_score: score.propagation.score,
         score: score.propagation.score,
         weight: 0.3,
@@ -1946,13 +1946,13 @@ function factorSnapshotFromAssetFlowFixture({
         },
         factors: {
           independent_authors: factorPoint(
-            "diffusion_quality",
+            "social_propagation",
             "independent_authors",
             attention.unique_authors,
             70,
           ),
           informative_post_count: factorPoint(
-            "diffusion_quality",
+            "social_propagation",
             "informative_post_count",
             attention.mentions_window,
             70,
@@ -1960,7 +1960,7 @@ function factorSnapshotFromAssetFlowFixture({
         },
         data_health: "ready",
       },
-      semantic_quality: {
+      semantic_catalyst: {
         raw_score: score.quality.score,
         score: score.quality.score,
         weight: 0.25,
@@ -1971,11 +1971,11 @@ function factorSnapshotFromAssetFlowFixture({
           direction_counts: { bullish: attention.mentions_window },
         },
         factors: {
-          impact_mean: factorPoint("semantic_quality", "impact_mean", 0.78, score.quality.score),
+          impact_mean: factorPoint("semantic_catalyst", "impact_mean", 0.78, score.quality.score),
         },
         data_health: "ready",
       },
-      timing_response: {
+      timing_risk: {
         raw_score: score.timing.score,
         score: score.timing.score,
         weight: 0.1,
@@ -1986,7 +1986,7 @@ function factorSnapshotFromAssetFlowFixture({
         },
         factors: {
           price_change_since_social_pct: factorPoint(
-            "timing_response",
+            "timing_risk",
             "price_change_since_social_pct",
             price.price_change_since_social_pct ?? null,
             score.timing.score,
@@ -2010,10 +2010,10 @@ function factorSnapshotFromAssetFlowFixture({
       rank_score: score.opportunity.score,
       recommended_decision: score.opportunity.score >= 75 ? "high_alert" : "watch",
       family_scores: {
-        attention_heat: score.heat.score,
-        diffusion_quality: score.propagation.score,
-        semantic_quality: score.quality.score,
-        timing_response: score.timing.score,
+        social_heat: score.heat.score,
+        social_propagation: score.propagation.score,
+        semantic_catalyst: score.quality.score,
+        timing_risk: score.timing.score,
       },
     },
     provenance: {
@@ -2064,7 +2064,10 @@ function liveMarketFromPriceFixture({
   return {
     target_type: targetType,
     target_id: targetId,
-    status: price.market_status === "fresh" || price.market_status === "ready" ? "live" : price.market_status,
+    status:
+      price.market_status === "fresh" || price.market_status === "ready"
+        ? "live"
+        : price.market_status,
     price_usd: price.price_usd ?? null,
     price_quote: price.price_quote ?? null,
     quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,
@@ -2194,7 +2197,7 @@ function tokenFlowItem(
       baseline_sample_count: 20,
     },
     social_heat: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:social_heat",
+      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
       score: 86,
       reasons: ["z_score_above_3", "positive_mention_delta"],
       risks: ["public_stream_coverage"],
@@ -2215,7 +2218,7 @@ function tokenFlowItem(
       status: "burst",
     }),
     discussion_quality: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:discussion_quality",
+      score_version: "token_factor_snapshot_v3_social_attention:discussion_quality",
       score: 78,
       reasons: ["resolved_direct_evidence", "informative_discussion"],
       risks: [],
@@ -2227,7 +2230,7 @@ function tokenFlowItem(
       watched_source_count: 1,
     }),
     propagation: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:propagation",
+      score_version: "token_factor_snapshot_v3_social_attention:propagation",
       score: 72,
       reasons: ["independent_expansion"],
       risks: [],
@@ -2242,7 +2245,7 @@ function tokenFlowItem(
       top_authors: [{ handle: "traderpow", count: 1, followers: 168_905, watched_count: 1 }],
     }),
     tradeability: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:gates",
+      score_version: "token_factor_snapshot_v3_social_attention:gates",
       score: 80,
       reasons: ["resolved_ca", "fresh_market"],
       risks: [],
@@ -2254,7 +2257,7 @@ function tokenFlowItem(
     }),
     timing: options.insufficientTiming
       ? {
-          score_version: "token_factor_snapshot_v2_alpha_gated:timing",
+          score_version: "token_factor_snapshot_v3_social_attention:timing",
           score: 45,
           status: "market_pending",
           chase_risk: false,
@@ -2266,7 +2269,7 @@ function tokenFlowItem(
           risks: ["market_observation_pending"],
         }
       : {
-          score_version: "token_factor_snapshot_v2_alpha_gated:timing",
+          score_version: "token_factor_snapshot_v3_social_attention:timing",
           score: 50,
           status: "neutral",
           chase_risk: false,
@@ -2278,7 +2281,7 @@ function tokenFlowItem(
           risks: [],
         },
     opportunity: scoreBlock({
-      score_version: "token_factor_snapshot_v2_alpha_gated:composite",
+      score_version: "token_factor_snapshot_v3_social_attention:composite",
       score: options.score ?? 79,
       decision: "driver",
       decision_priority: 3,
@@ -2556,7 +2559,7 @@ function signalPulseData(): SignalPulseData {
         evidence_event_ids: ["event-cz-bnb"],
         source_event_ids: ["event-cz-bnb", "event-bnb-2"],
         factor_snapshot: {
-          schema_version: "token_factor_snapshot_v2_alpha_gated",
+          schema_version: "token_factor_snapshot_v3_social_attention",
           subject: {
             target_type: "CexToken",
             target_id: "asset:cex:okx:BNB-USDT",
@@ -2584,7 +2587,7 @@ function signalPulseData(): SignalPulseData {
           },
           data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
           families: {
-            attention_heat: {
+            social_heat: {
               raw_score: 86,
               score: 86,
               weight: 0.35,
@@ -2592,7 +2595,7 @@ function signalPulseData(): SignalPulseData {
               facts: { mentions_1h: 42, watched_mentions: 3 },
               factors: {},
             },
-            diffusion_quality: {
+            social_propagation: {
               raw_score: 72,
               score: 72,
               weight: 0.3,
@@ -2600,7 +2603,7 @@ function signalPulseData(): SignalPulseData {
               facts: { independent_authors: 18 },
               factors: {},
             },
-            semantic_quality: {
+            semantic_catalyst: {
               raw_score: 74,
               score: 74,
               weight: 0.25,
@@ -2613,7 +2616,7 @@ function signalPulseData(): SignalPulseData {
               },
               factors: {},
             },
-            timing_response: {
+            timing_risk: {
               raw_score: 68,
               score: 68,
               weight: 0.1,
@@ -2633,10 +2636,10 @@ function signalPulseData(): SignalPulseData {
             rank_score: 84,
             recommended_decision: "watch",
             family_scores: {
-              attention_heat: 86,
-              diffusion_quality: 72,
-              semantic_quality: 74,
-              timing_response: 68,
+              social_heat: 86,
+              social_propagation: 72,
+              semantic_catalyst: 74,
+              timing_risk: 68,
             },
           },
           provenance: {
@@ -2649,11 +2652,11 @@ function signalPulseData(): SignalPulseData {
           recommendation: "watch",
           summary_zh: "CZ 推动 BNB build 叙事，候选处于点火阶段。",
           primary_reasons: [
-            { factor_key: "attention_heat.watched_mentions", explanation_zh: "强账号触发" },
+            { factor_key: "social_heat.watched_mentions", explanation_zh: "强账号触发" },
           ],
           upgrade_conditions: [
             {
-              factor_key: "attention_heat.mentions_1h",
+              factor_key: "social_heat.mentions_1h",
               operator: ">",
               value: 50,
               description_zh: "热度确认",
@@ -2661,7 +2664,7 @@ function signalPulseData(): SignalPulseData {
           ],
           invalidation_conditions: [
             {
-              factor_key: "diffusion_quality.independent_authors",
+              factor_key: "social_propagation.independent_authors",
               operator: "<",
               value: 6,
               description_zh: "讨论未扩散",
@@ -2669,7 +2672,7 @@ function signalPulseData(): SignalPulseData {
           ],
           residual_risks: [
             {
-              factor_key: "diffusion_quality.source_concentration",
+              factor_key: "social_propagation.source_concentration",
               description_zh: "单一账号驱动",
             },
           ],

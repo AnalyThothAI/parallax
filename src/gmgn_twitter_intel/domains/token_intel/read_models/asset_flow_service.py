@@ -96,7 +96,7 @@ def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 
 def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    family = _family(snapshot, "attention_heat")
+    family = _family(snapshot, "social_heat")
     return _mapping(family.get("facts"))
 
 

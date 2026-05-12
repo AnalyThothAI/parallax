@@ -72,7 +72,7 @@ function minimalPulseItem() {
     evidence_event_ids: [],
     source_event_ids: [],
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v2_alpha_gated",
+      schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
         target_type: "Asset",
         target_id: "asset:pepe",
@@ -96,7 +96,7 @@ function minimalPulseItem() {
       },
       data_health: { identity: "ready", market: "missing", social: "ready", alpha: "ready" },
       families: {
-        attention_heat: {
+        social_heat: {
           raw_score: 82,
           score: 82,
           weight: 0.35,
@@ -104,7 +104,7 @@ function minimalPulseItem() {
           facts: {},
           factors: {},
         },
-        diffusion_quality: {
+        social_propagation: {
           raw_score: 70,
           score: 70,
           weight: 0.3,
@@ -112,7 +112,7 @@ function minimalPulseItem() {
           facts: {},
           factors: {},
         },
-        semantic_quality: {
+        semantic_catalyst: {
           raw_score: 68,
           score: 68,
           weight: 0.25,
@@ -120,7 +120,7 @@ function minimalPulseItem() {
           facts: {},
           factors: {},
         },
-        timing_response: {
+        timing_risk: {
           raw_score: 50,
           score: 50,
           weight: 0.1,
@@ -140,10 +140,10 @@ function minimalPulseItem() {
         rank_score: 82,
         recommended_decision: "watch",
         family_scores: {
-          attention_heat: 82,
-          diffusion_quality: 70,
-          semantic_quality: 68,
-          timing_response: 50,
+          social_heat: 82,
+          social_propagation: 70,
+          semantic_catalyst: 68,
+          timing_risk: 50,
         },
       },
       provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },

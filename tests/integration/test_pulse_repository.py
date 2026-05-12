@@ -360,7 +360,9 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
         conn.close()
 
     assert [item["candidate_id"] for item in first_page["items"]] == ["candidate-newer"]
-    assert first_page["items"][0]["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v2_alpha_gated"
+    assert (
+        first_page["items"][0]["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
+    )
     assert first_page["items"][0]["agent_recommendation_json"]["recommendation"] == "watch"
     assert first_page["items"][0]["gate_reasons_json"] == ["fresh_attention"]
     assert second_page["items"][0]["candidate_id"] == "candidate-older"
@@ -389,7 +391,7 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
             **_candidate_payload(
                 "candidate-factor-snapshot",
                 factor_snapshot_json={
-                    "schema_version": "token_factor_snapshot_v2_alpha_gated",
+                    "schema_version": "token_factor_snapshot_v3_social_attention",
                     "subject": {},
                     "gates": {"eligible_for_high_alert": False, "blocked_reasons": ["identity_unresolved"]},
                     "data_health": {"identity": "unresolved", "market": "no_resolved_target"},
@@ -408,7 +410,7 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
         conn.close()
 
     assert row["factor_snapshot_json"] == {
-        "schema_version": "token_factor_snapshot_v2_alpha_gated",
+        "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {},
         "gates": {"eligible_for_high_alert": False, "blocked_reasons": ["identity_unresolved"]},
         "data_health": {"identity": "unresolved", "market": "no_resolved_target"},
@@ -772,7 +774,7 @@ def _candidate_payload(
         "timeline_signature": f"timeline:{candidate_id}",
         "factor_snapshot_json": factor_snapshot_json
         or {
-            "schema_version": "token_factor_snapshot_v2_alpha_gated",
+            "schema_version": "token_factor_snapshot_v3_social_attention",
             "subject": {"target_type": "asset", "target_id": f"asset:{symbol.lower()}", "symbol": symbol},
             "gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
             "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
