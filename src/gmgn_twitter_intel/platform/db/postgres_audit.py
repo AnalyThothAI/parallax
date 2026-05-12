@@ -101,16 +101,38 @@ HOT_QUERIES: tuple[dict[str, Any], ...] = (
         "params": (),
     },
     {
-        "name": "search_fts",
+        "name": "search_v2_lexical",
         "sql": """
-            WITH query AS (SELECT websearch_to_tsquery('simple', %s) AS tsq)
+            WITH query AS (
+              SELECT
+                websearch_to_tsquery('simple', %s) AS simple_q,
+                websearch_to_tsquery('english', %s) AS english_q
+            )
             SELECT e.event_id
             FROM events e, query
-            WHERE e.search_tsv @@ query.tsq
-            ORDER BY ts_rank_cd(e.search_tsv, query.tsq) DESC, e.received_at_ms DESC, e.event_id DESC
+            WHERE e.search_tsv @@ query.simple_q
+               OR e.search_tsv @@ query.english_q
+            ORDER BY
+              (
+                ts_rank_cd(e.search_tsv, query.simple_q)
+                + ts_rank_cd(e.search_tsv, query.english_q)
+              ) DESC,
+              e.received_at_ms DESC,
+              e.event_id DESC
             LIMIT 20
         """,
-        "params": ("pepe",),
+        "params": ("pepe", "pepe"),
+    },
+    {
+        "name": "search_v2_trigram",
+        "sql": """
+            SELECT event_id
+            FROM events
+            WHERE search_text %% %s
+            ORDER BY similarity(search_text, %s) DESC, received_at_ms DESC, event_id DESC
+            LIMIT 20
+        """,
+        "params": ("pepe", "pepe"),
     },
     {
         "name": "token_radar_latest",

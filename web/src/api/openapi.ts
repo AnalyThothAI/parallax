@@ -1055,11 +1055,8 @@ export interface operations {
             query?: {
                 q?: string;
                 limit?: number;
-                symbol?: string;
-                ca?: string;
-                chain?: string;
-                handle?: string;
                 scope?: string;
+                cursor?: string;
             };
             header?: never;
             path?: never;

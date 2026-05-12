@@ -38,7 +38,8 @@ def test_query_audit_explains_hot_read_paths_without_analyze(tmp_path):
     names = {item["name"] for item in payload["queries"]}
     assert payload["ok"] is True
     assert payload["analyze"] is False
-    assert {"recent_all", "search_fts", "token_radar_latest", "target_posts_recent"}.issubset(names)
+    expected = {"recent_all", "search_v2_lexical", "search_v2_trigram", "token_radar_latest", "target_posts_recent"}
+    assert expected.issubset(names)
     assert all(item["plan"] for item in payload["queries"])
 
 

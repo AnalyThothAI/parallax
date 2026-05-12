@@ -50,6 +50,9 @@ export function CockpitApp() {
     scope,
     searchError,
     searchFetching,
+    fetchNextSearchPage,
+    searchFetchingNextPage,
+    searchHasNextPage,
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal,
@@ -82,10 +85,21 @@ export function CockpitApp() {
     () =>
       resolveEvidenceDetails(selection.selectedSignal, {
         currentSearchData,
+        fetchNextSearchPage,
         searchError,
         searchFetching,
+        searchFetchingNextPage,
+        searchHasNextPage,
       }),
-    [currentSearchData, searchError, searchFetching, selection.selectedSignal],
+    [
+      currentSearchData,
+      fetchNextSearchPage,
+      searchError,
+      searchFetching,
+      searchFetchingNextPage,
+      searchHasNextPage,
+      selection.selectedSignal,
+    ],
   );
   const notificationsController = useNotificationsController({
     fallbackSummary: status?.notifications?.summary ?? null,
@@ -268,8 +282,11 @@ function resolveEvidenceDetails(
   signal: SelectedSignal,
   data: {
     currentSearchData: SearchData | null;
+    fetchNextSearchPage: () => void;
     searchError: Error | null;
     searchFetching: boolean;
+    searchFetchingNextPage: boolean;
+    searchHasNextPage: boolean;
   },
 ): EvidenceDetailDrawerProps | null {
   if (!signal) {
@@ -293,6 +310,9 @@ function resolveEvidenceDetails(
       data: data.currentSearchData,
       isFetching: data.searchFetching,
       error: data.searchError,
+      hasMore: data.searchHasNextPage,
+      isFetchingNextPage: data.searchFetchingNextPage,
+      onLoadMore: data.fetchNextSearchPage,
     };
   }
   return null;

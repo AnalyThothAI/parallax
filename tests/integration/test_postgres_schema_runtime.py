@@ -78,6 +78,39 @@ def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
     assert [row["event_id"] for row in rows] == ["event-1"]
 
 
+def test_search_v2_schema_contains_trigram_extension_and_indexes(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        extensions = {
+            row["extname"]
+            for row in conn.execute("SELECT extname FROM pg_extension WHERE extname = 'pg_trgm'").fetchall()
+        }
+        indexes = {
+            row["indexname"]
+            for row in conn.execute(
+                "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'events'"
+            ).fetchall()
+        }
+        columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'events'
+                """
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert "pg_trgm" in extensions
+    assert "idx_events_search_tsv" in indexes
+    assert "idx_events_search_text_trgm" in indexes
+    assert "search_tsv" in columns
+
+
 def test_alembic_migration_is_idempotent(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

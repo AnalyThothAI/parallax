@@ -56,6 +56,19 @@ Token Radar market contract:
   market-cap values are not written during ingest; anchor prices are written by
   the anchor worker using provider payloads or delayed OKX lookup.
 
+Search V2 contract:
+
+- `/api/search` accepts `q`, `limit`, `scope`, and `cursor`.
+- `symbol`, `ca`, `chain`, and `handle` query params are rejected. Callers express
+  those searches in `q` as `$BTC`, `eth:0x...`, `0x...`, or `@handle`.
+- Responses return `data.query`, `data.page`, `data.target_candidates`, and
+  `data.items`. `data.page` contains `returned_count`, `has_more`, and
+  `next_cursor`; exact `total_count` is not part of the live search contract.
+- Search reads current token targets before lexical/trigram retrieval. It uses
+  `token_intent_resolutions`, `cex_tokens`, `registry_assets`, and
+  `asset_identity_current`; it does not resolve identity through legacy
+  `assets / asset_aliases / asset_venues`.
+
 ## CLI
 
 `gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.

@@ -1,17 +1,33 @@
-from __future__ import annotations
+import pytest
 
-import argparse
-
-from gmgn_twitter_intel.cli import _search_query
+from gmgn_twitter_intel.cli import build_parser
 
 
-def test_search_query_preserves_chain_hint_for_ca_option():
-    args = argparse.Namespace(
-        ca="0X8F32420F2E3728C49399B00DD0A796602D984444",
-        chain="bsc",
-        symbol="",
-        handle="",
-        query="",
-    )
+def test_search_accepts_positional_query_and_cursor():
+    args = build_parser().parse_args(["search", "btc", "--cursor", "0.1:100:event-1"])
 
-    assert _search_query(args) == "bsc:0X8F32420F2E3728C49399B00DD0A796602D984444"
+    assert args.command == "search"
+    assert args.query == "btc"
+    assert args.cursor == "0.1:100:event-1"
+
+
+@pytest.mark.parametrize("removed", ["--symbol", "--ca", "--chain", "--handle"])
+def test_search_removed_filter_flags_are_not_registered(removed):
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["search", "btc", removed, "PEPE"])
+
+
+def test_search_help_documents_cursor_and_not_removed_filters(capsys):
+    parser = build_parser()
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["search", "--help"])
+    output = capsys.readouterr().out
+
+    assert "--cursor" in output
+    assert "--symbol" not in output
+    assert "--ca" not in output
+    assert "--chain" not in output
+    assert "--handle" not in output

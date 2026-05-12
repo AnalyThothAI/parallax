@@ -178,14 +178,30 @@ export type SearchItem = {
   event: EventRecord;
   match_type: string;
   score: number;
+  match_reasons: string[];
+  target?: SearchTargetCandidate | null;
+  route_scores: Record<string, number>;
+};
+
+export type SearchTargetCandidate = {
+  target_type: "Asset" | "CexToken" | string;
+  target_id: string;
+  symbol?: string | null;
+  chain_id?: string | null;
+  address?: string | null;
+  status: string;
+  source: string;
+  reason: string;
 };
 
 export type SearchData = {
   query: Record<string, unknown>;
-  total_count: number;
-  returned_count: number;
-  has_more: boolean;
-  candidates?: TokenIdentityBlock[];
+  page: {
+    returned_count: number;
+    has_more: boolean;
+    next_cursor?: string | null;
+  };
+  target_candidates: SearchTargetCandidate[];
   items: SearchItem[];
 };
 

@@ -36,6 +36,9 @@ export type EvidenceDetailDrawerProps =
       data: SearchData | null;
       isFetching: boolean;
       error?: Error | null;
+      hasMore: boolean;
+      isFetchingNextPage: boolean;
+      onLoadMore: () => void;
     };
 
 export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
@@ -157,20 +160,22 @@ function SearchQueryDrawer({
   data,
   isFetching,
   error,
+  hasMore,
+  isFetchingNextPage,
+  onLoadMore,
 }: Extract<EvidenceDetailDrawerProps, { mode: "query" }>) {
-  const total = data?.total_count ?? 0;
-  const returned = data?.returned_count ?? 0;
+  const returned = data?.items.length ?? 0;
   const items = data?.items ?? [];
+  const pageState = data?.page.has_more ? "more" : "end";
   return (
     <DetailDrawerShell className="evidence-drawer">
       <DetailDrawerHeader
-        badge={isFetching ? "..." : total}
+        badge={isFetching ? "..." : returned}
         eyebrow="selected evidence"
         metrics={
           <DetailDrawerMetricGrid className="evidence-query-kv">
             <DetailDrawerMetric label="returned" value={returned} />
-            <DetailDrawerMetric label="total" value={total} />
-            <DetailDrawerMetric label="more" value={data?.has_more ? "yes" : "no"} />
+            <DetailDrawerMetric label="page" value={pageState} />
             <DetailDrawerMetric
               label="state"
               value={error ? "error" : isFetching ? "loading" : "ready"}
@@ -184,7 +189,7 @@ function SearchQueryDrawer({
         <p className="ledger-note">
           {error
             ? error.message
-            : total
+            : returned
               ? "命中项已收进当前 Evidence，上下文不再散落到底部面板。"
               : "没有命中时，尝试 CA、$SYMBOL、@handle 或更具体的文本。"}
         </p>
@@ -197,7 +202,7 @@ function SearchQueryDrawer({
         ) : null}
         {!isFetching && items.length ? (
           <div className="evidence-list">
-            {items.slice(0, 8).map((item) => (
+            {items.map((item) => (
               <article
                 className="evidence-match-row"
                 key={`${item.match_type}:${item.event.event_id}`}
@@ -223,6 +228,16 @@ function SearchQueryDrawer({
               </article>
             ))}
           </div>
+        ) : null}
+        {hasMore ? (
+          <button
+            className="secondary-action"
+            disabled={isFetchingNextPage}
+            onClick={onLoadMore}
+            type="button"
+          >
+            {isFetchingNextPage ? "Loading" : "Load more"}
+          </button>
         ) : null}
       </DetailDrawerSection>
     </DetailDrawerShell>
