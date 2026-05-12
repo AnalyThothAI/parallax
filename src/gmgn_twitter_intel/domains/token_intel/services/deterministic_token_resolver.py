@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 RESOLVER_POLICY_VERSION = TOKEN_RADAR_RESOLVER_POLICY_VERSION
 MIN_DOMINANT_MARKET_CAP_USD = Decimal("250000")
@@ -12,6 +12,16 @@ MIN_DOMINANT_HOLDERS = Decimal("1000")
 MIN_DOMINANT_LIQUIDITY_USD = Decimal("100000")
 RESOLUTION_MARKET_FRESH_MS = 24 * 60 * 60 * 1000
 MAX_AUDIT_CANDIDATE_IDS = 20
+ADDRESS_CHAIN_PRIORITY = (
+    "solana",
+    "eip155:1",
+    "eip155:8453",
+    "eip155:56",
+    "eip155:42161",
+    "eip155:43114",
+    "ton",
+)
+ADDRESS_CHAIN_PRIORITY_INDEX = {chain_id: index for index, chain_id in enumerate(ADDRESS_CHAIN_PRIORITY)}
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,7 +189,8 @@ class DeterministicTokenResolver:
         decision_time_ms: int,
     ) -> DeterministicResolution:
         rows = self.registry.find_assets_by_address(chain_id=None, address=keys.address)
-        candidate_ids = [str(row["asset_id"]) for row in rows if row.get("asset_id")]
+        rows = _rank_address_candidates([row for row in rows if row.get("asset_id")])
+        candidate_ids = [str(row["asset_id"]) for row in rows]
         if len(candidate_ids) == 1:
             return _resolution(
                 intent_id=intent_id,
@@ -196,10 +207,10 @@ class DeterministicTokenResolver:
             return _resolution(
                 intent_id=intent_id,
                 event_id=event_id,
-                status="AMBIGUOUS",
-                target_type=None,
-                target_id=None,
-                reason_codes=["ADDRESS_EXISTS_ON_MULTIPLE_CHAINS"],
+                status="UNIQUE_BY_CONTEXT",
+                target_type="Asset",
+                target_id=candidate_ids[0],
+                reason_codes=["RESOLVED_BY_CHAIN_PRIORITY"],
                 lookup_keys=lookup_keys,
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
@@ -274,6 +285,19 @@ class DeterministicTokenResolver:
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
+        provider_ranked = _provider_rank_asset(assets)
+        if provider_ranked is not None:
+            return _resolution(
+                intent_id=intent_id,
+                event_id=event_id,
+                status="UNIQUE_BY_CONTEXT",
+                target_type="Asset",
+                target_id=str(provider_ranked["asset_id"]),
+                reason_codes=["RESOLVED_BY_PROVIDER_RANK"],
+                lookup_keys=lookup_keys,
+                candidate_ids=candidate_ids,
+                decision_time_ms=decision_time_ms,
+            )
         if candidate_ids:
             return _resolution(
                 intent_id=intent_id,
@@ -321,15 +345,47 @@ def _candidate_ids(rows: list[dict[str, Any]]) -> list[str]:
     return [str(row["asset_id"]) for row in rows[:MAX_AUDIT_CANDIDATE_IDS] if str(row.get("asset_id") or "")]
 
 
+def _rank_address_candidates(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return sorted(rows, key=_address_candidate_rank_key)
+
+
+def _address_candidate_rank_key(row: dict[str, Any]) -> tuple[int, str]:
+    chain_id = str(row.get("chain_id") or "")
+    return (ADDRESS_CHAIN_PRIORITY_INDEX.get(chain_id, len(ADDRESS_CHAIN_PRIORITY)), str(row.get("asset_id") or ""))
+
+
 def _dominance_eligible(row: dict[str, Any]) -> bool:
     present = sum(
         1
         for key in ("market_cap_usd", "holders", "liquidity_usd")
         if row.get(key) is not None and _decimal(row.get(key)) > 0
     )
-    if present < 2:
+    if present < 1:
         return False
-    return _fresh_resolution_market_fields(row) >= 2
+    return _fresh_resolution_market_fields(row) >= 1
+
+
+def _provider_rank_asset(rows: list[dict[str, Any]]) -> dict[str, Any] | None:
+    ranked = [row for row in rows if _fresh_provider_rank(row)]
+    if not ranked:
+        return None
+    return sorted(ranked, key=lambda row: (int(row["provider_rank"]), str(row.get("asset_id") or "")))[0]
+
+
+def _fresh_provider_rank(row: dict[str, Any]) -> bool:
+    rank_value = row.get("provider_rank")
+    observed_value = row.get("provider_rank_observed_at_ms")
+    if rank_value is None or observed_value is None:
+        return False
+    try:
+        rank = int(rank_value)
+        observed_at_ms = int(observed_value)
+        decision_time_ms = int(row.get("decision_time_ms") or 0)
+    except (TypeError, ValueError):
+        return False
+    if rank < 0:
+        return False
+    return max(0, decision_time_ms - observed_at_ms) <= RESOLUTION_MARKET_FRESH_MS
 
 
 def _fresh_resolution_market_fields(row: dict[str, Any]) -> int:

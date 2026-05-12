@@ -438,6 +438,7 @@ def _with_identity_metadata(row: dict[str, Any]) -> dict[str, Any]:
         "liquidity",
     )
     holders = _metadata_int(payload, "holders", "holderCount", "holder_count")
+    provider_rank = _metadata_int(payload, "provider_rank")
     return {
         **row,
         "price_usd": _metadata_number(payload, "price_usd", "priceUsd", "priceUSD", "price"),
@@ -453,6 +454,8 @@ def _with_identity_metadata(row: dict[str, Any]) -> dict[str, Any]:
         "holders": holders,
         "holders_observed_at_ms": observed_at_ms if holders is not None else None,
         "holders_provider": provider if holders is not None else None,
+        "provider_rank": provider_rank,
+        "provider_rank_observed_at_ms": observed_at_ms if provider_rank is not None else None,
         "market_cap_status": _identity_metadata_status(market_cap_usd, observed_at_ms),
         "liquidity_status": _identity_metadata_status(liquidity_usd, observed_at_ms),
         "holders_status": _identity_metadata_status(holders, observed_at_ms),

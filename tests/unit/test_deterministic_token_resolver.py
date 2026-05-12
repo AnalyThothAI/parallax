@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from gmgn_twitter_intel.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicTokenResolver,
     MentionKeys,
@@ -223,6 +225,135 @@ def test_symbol_dominance_requires_field_freshness():
     assert result.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
 
 
+@pytest.mark.parametrize(
+    ("market_fields", "field_age_ms", "expected_status", "expected_target_id"),
+    [
+        ({"market_cap_usd": Decimal("600000")}, 60_000, "UNIQUE_BY_CONTEXT", "asset:eip155:1:erc20:0xaaaa"),
+        ({"holders": 5_000}, 60_000, "UNIQUE_BY_CONTEXT", "asset:eip155:1:erc20:0xaaaa"),
+        ({"liquidity_usd": Decimal("250000")}, 60_000, "UNIQUE_BY_CONTEXT", "asset:eip155:1:erc20:0xaaaa"),
+        (
+            {"market_cap_usd": Decimal("600000"), "holders": 5_000},
+            25 * 60 * 60 * 1000,
+            "AMBIGUOUS",
+            None,
+        ),
+        (
+            {"holders": 5_000, "liquidity_usd": Decimal("250000")},
+            25 * 60 * 60 * 1000,
+            "AMBIGUOUS",
+            None,
+        ),
+        (
+            {"market_cap_usd": Decimal("600000"), "holders": 5_000, "liquidity_usd": Decimal("250000")},
+            25 * 60 * 60 * 1000,
+            "AMBIGUOUS",
+            None,
+        ),
+    ],
+)
+def test_symbol_market_dominance_accepts_any_one_fresh_market_field(
+    market_fields,
+    field_age_ms,
+    expected_status,
+    expected_target_id,
+):
+    decision_time_ms = 1_778_200_000_000
+    observed_at_ms = decision_time_ms - field_age_ms
+    registry = FakeRegistry(
+        symbol_assets={
+            "SPARSE": [
+                _market_asset(
+                    "asset:eip155:1:erc20:0xaaaa",
+                    market_fields=market_fields,
+                    observed_at_ms=observed_at_ms,
+                ),
+                _market_asset(
+                    "asset:eip155:56:erc20:0xbbbb",
+                    market_fields=_smaller_market_fields(market_fields),
+                    observed_at_ms=observed_at_ms,
+                ),
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-sparse",
+        event_id="event-sparse",
+        keys=MentionKeys(symbol="SPARSE"),
+        decision_time_ms=decision_time_ms,
+    )
+
+    assert result.resolution_status == expected_status
+    assert result.target_id == expected_target_id
+    if expected_status == "UNIQUE_BY_CONTEXT":
+        assert result.reason_codes == ["MARKET_DOMINANT_CHAIN_ASSET"]
+    else:
+        assert result.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
+
+
+def test_symbol_without_dominance_falls_back_to_fresh_provider_rank():
+    decision_time_ms = 1_778_200_000_000
+    registry = FakeRegistry(
+        symbol_assets={
+            "RANKED": [
+                _provider_rank_asset(
+                    "asset:eip155:1:erc20:0xaaaa",
+                    provider_rank=1,
+                    observed_at_ms=decision_time_ms - 60_000,
+                ),
+                _provider_rank_asset(
+                    "asset:eip155:56:erc20:0xbbbb",
+                    provider_rank=0,
+                    observed_at_ms=decision_time_ms - 60_000,
+                ),
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-ranked",
+        event_id="event-ranked",
+        keys=MentionKeys(symbol="RANKED"),
+        decision_time_ms=decision_time_ms,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:eip155:56:erc20:0xbbbb"
+    assert result.reason_codes == ["RESOLVED_BY_PROVIDER_RANK"]
+
+
+def test_symbol_provider_rank_fallback_requires_fresh_identity_evidence():
+    decision_time_ms = 1_778_200_000_000
+    registry = FakeRegistry(
+        symbol_assets={
+            "RANKED": [
+                _provider_rank_asset(
+                    "asset:eip155:1:erc20:0xaaaa",
+                    provider_rank=1,
+                    observed_at_ms=decision_time_ms - 25 * 60 * 60 * 1000,
+                ),
+                _provider_rank_asset(
+                    "asset:eip155:56:erc20:0xbbbb",
+                    provider_rank=0,
+                    observed_at_ms=decision_time_ms - 25 * 60 * 60 * 1000,
+                ),
+            ],
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-ranked",
+        event_id="event-ranked",
+        keys=MentionKeys(symbol="RANKED"),
+        decision_time_ms=decision_time_ms,
+    )
+
+    assert result.resolution_status == "AMBIGUOUS"
+    assert result.target_id is None
+    assert result.reason_codes == ["NO_MARKET_DOMINANT_CHAIN_ASSET"]
+
+
 def test_symbol_selects_market_dominant_asset_when_lead_is_clear_but_not_extreme():
     registry = FakeRegistry(
         symbol_assets={
@@ -396,6 +527,103 @@ def test_ton_chain_address_is_exact_asset():
     assert result.reason_codes == ["CHAIN_ADDRESS_EXACT"]
 
 
+def test_address_without_chain_selects_solana_when_same_address_exists_on_multiple_chains():
+    address = "shared-address"
+    registry = FakeRegistry(
+        address_assets={
+            ("eip155:1", address): {
+                "asset_id": "asset:eip155:1:erc20:shared-address",
+                "chain_id": "eip155:1",
+                "address": address,
+            },
+            ("solana", address): {
+                "asset_id": "asset:solana:token:shared-address",
+                "chain_id": "solana",
+                "address": address,
+            },
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-address",
+        event_id="event-address",
+        keys=MentionKeys(address=address),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "Asset"
+    assert result.target_id == "asset:solana:token:shared-address"
+    assert result.reason_codes == ["RESOLVED_BY_CHAIN_PRIORITY"]
+    assert result.candidate_ids == [
+        "asset:solana:token:shared-address",
+        "asset:eip155:1:erc20:shared-address",
+    ]
+
+
+def test_address_without_chain_selects_ethereum_before_other_evm_chains():
+    address = "0xabc0000000000000000000000000000000000000"
+    registry = FakeRegistry(
+        address_assets={
+            ("eip155:8453", address): {
+                "asset_id": f"asset:eip155:8453:erc20:{address}",
+                "chain_id": "eip155:8453",
+                "address": address,
+            },
+            ("eip155:56", address): {
+                "asset_id": f"asset:eip155:56:erc20:{address}",
+                "chain_id": "eip155:56",
+                "address": address,
+            },
+            ("eip155:1", address): {
+                "asset_id": f"asset:eip155:1:erc20:{address}",
+                "chain_id": "eip155:1",
+                "address": address,
+            },
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-address",
+        event_id="event-address",
+        keys=MentionKeys(address=address),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_id == f"asset:eip155:1:erc20:{address}"
+    assert result.reason_codes == ["RESOLVED_BY_CHAIN_PRIORITY"]
+
+
+def test_address_without_chain_uses_stable_fallback_for_unknown_chains():
+    address = "unknown-address"
+    registry = FakeRegistry(
+        address_assets={
+            ("chain-z", address): {
+                "asset_id": "asset:chain-z:token:unknown-address",
+                "chain_id": "chain-z",
+                "address": address,
+            },
+            ("chain-a", address): {
+                "asset_id": "asset:chain-a:token:unknown-address",
+                "chain_id": "chain-a",
+                "address": address,
+            },
+        }
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-address",
+        event_id="event-address",
+        keys=MentionKeys(address=address),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_id == "asset:chain-a:token:unknown-address"
+    assert result.reason_codes == ["RESOLVED_BY_CHAIN_PRIORITY"]
+
+
 class FakeRegistry:
     def __init__(
         self,
@@ -449,4 +677,46 @@ def _registry_asset_row(row):
         "market_cap_status": "fresh",
         "liquidity_status": "fresh",
         "holders_status": "fresh",
+    }
+
+
+def _market_asset(asset_id: str, *, market_fields: dict[str, object], observed_at_ms: int) -> dict[str, object]:
+    row: dict[str, object] = {
+        "asset_id": asset_id,
+        "chain_id": asset_id.split(":")[1],
+        "symbol": "SPARSE",
+        "market_cap_usd": None,
+        "holders": None,
+        "liquidity_usd": None,
+        "market_cap_observed_at_ms": None,
+        "holders_observed_at_ms": None,
+        "liquidity_observed_at_ms": None,
+    }
+    observed_keys = {
+        "market_cap_usd": "market_cap_observed_at_ms",
+        "holders": "holders_observed_at_ms",
+        "liquidity_usd": "liquidity_observed_at_ms",
+    }
+    for field, value in market_fields.items():
+        row[field] = value
+        row[observed_keys[field]] = observed_at_ms
+    return row
+
+
+def _smaller_market_fields(market_fields: dict[str, object]) -> dict[str, object]:
+    smaller = {
+        "market_cap_usd": Decimal("100000"),
+        "holders": 50,
+        "liquidity_usd": Decimal("10000"),
+    }
+    return {field: smaller[field] for field in market_fields}
+
+
+def _provider_rank_asset(asset_id: str, *, provider_rank: int, observed_at_ms: int) -> dict[str, object]:
+    return {
+        "asset_id": asset_id,
+        "chain_id": asset_id.split(":")[1],
+        "symbol": "RANKED",
+        "provider_rank": provider_rank,
+        "provider_rank_observed_at_ms": observed_at_ms,
     }

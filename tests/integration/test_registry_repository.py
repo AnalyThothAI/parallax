@@ -124,7 +124,13 @@ def test_symbol_lookup_reads_market_metadata_from_okx_identity_evidence(tmp_path
             evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
             confidence=CONFIDENCE_PROVIDER_CANDIDATE,
             lookup_mode="symbol_search",
-            raw_payload={"marketCap": "1000000", "liquidity": "100000", "holders": "1000", "price": "0.01"},
+            raw_payload={
+                "marketCap": "1000000",
+                "liquidity": "100000",
+                "holders": "1000",
+                "price": "0.01",
+                "provider_rank": 1,
+            },
             observed_at_ms=1_700_000_000_000,
         )
         large = registry.upsert_chain_asset(
@@ -144,6 +150,7 @@ def test_symbol_lookup_reads_market_metadata_from_okx_identity_evidence(tmp_path
                 "liquidityUsd": "3000000",
                 "holderCount": "52000",
                 "priceUsd": "0.051",
+                "provider_rank": 0,
             },
             observed_at_ms=1_700_000_100_000,
         )
@@ -159,6 +166,8 @@ def test_symbol_lookup_reads_market_metadata_from_okx_identity_evidence(tmp_path
     assert rows[0]["holders"] == 52_000
     assert rows[0]["market_cap_provider"] == "okx"
     assert rows[0]["market_cap_observed_at_ms"] == 1_700_000_100_000
+    assert rows[0]["provider_rank"] == 0
+    assert rows[0]["provider_rank_observed_at_ms"] == 1_700_000_100_000
 
 
 def test_identity_current_selects_exact_provider_over_tweet_alias_without_registry_identity_columns(tmp_path):

@@ -222,6 +222,39 @@ def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(t
     assert counts == {"found": 1}
 
 
+def test_due_lookup_keys_includes_error_count_for_backoff(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _insert_event_intent_and_evidence(conn, symbol="RATE")
+        lookup = TokenIntentLookupRepository(conn)
+        lookup.replace_lookup_keys(
+            intent_id="intent-1",
+            event_id="event-1",
+            keys=["symbol:RATE"],
+            source_evidence_id="evidence-1",
+            created_at_ms=1_000,
+        )
+        discovery = DiscoveryRepository(conn)
+        discovery.fail_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:RATE",
+            lookup_type="dex_symbol_lookup",
+            last_error="HTTP 429 Too Many Requests",
+            next_refresh_at_ms=2_000,
+            now_ms=1_000,
+        )
+
+        due = discovery.due_lookup_keys(since_ms=0, now_ms=2_000, limit=10)
+    finally:
+        conn.close()
+
+    assert len(due) == 1
+    assert due[0]["lookup_key"] == "symbol:RATE"
+    assert due[0]["status"] == "error"
+    assert due[0]["error_count"] == 1
+
+
 def test_lookup_key_reprocess_can_revisit_already_resolved_intents(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

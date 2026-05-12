@@ -28,11 +28,11 @@ from ..identity_evidence_policy import (
 from ..repositories.discovery_repository import DISCOVERY_PROVIDER
 
 DEFAULT_DISCOVERY_LIMIT = 50
-DEFAULT_RETRY_DELAY_MS = 15 * 60 * 1000
 FOUND_SYMBOL_REFRESH_MS = 15 * 60 * 1000
 NOT_FOUND_SYMBOL_REFRESH_MS = 5 * 60 * 1000
 FOUND_ADDRESS_REFRESH_MS = 24 * 60 * 60 * 1000
 NOT_FOUND_ADDRESS_REFRESH_MS = 5 * 60 * 1000
+ERROR_REFRESH_BACKOFF_MS = (30_000, 60_000, 300_000, 1_800_000, 3_600_000)
 MAX_DEX_SYMBOL_CANDIDATES_PER_CHAIN = 3
 
 
@@ -157,7 +157,12 @@ def run_token_discovery_once(
                 lookup_key=lookup_key,
                 lookup_type=lookup_type or _lookup_type(lookup_key),
                 last_error=str(exc),
-                next_refresh_at_ms=now_ms + DEFAULT_RETRY_DELAY_MS,
+                next_refresh_at_ms=now_ms
+                + _refresh_ms(
+                    lookup_key=lookup_key,
+                    status="error",
+                    error_count=int(lookup.get("error_count") or 0),
+                ),
                 now_ms=now_ms,
             )
             result["lookups_failed"] += 1
@@ -221,6 +226,7 @@ def _process_dex_symbol_lookup(
     if not symbol:
         return _lookup_result()
     candidates = dex_market.search_tokens(query=symbol, chain_ids=chain_ids)
+    provider_ranks = _provider_ranks(candidates)
     result = _lookup_result(search_requests=1)
     matched_candidates = [
         candidate for candidate in candidates if _normalize_symbol(getattr(candidate, "symbol", None)) == symbol
@@ -240,6 +246,7 @@ def _process_dex_symbol_lookup(
             evidence_kind=EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
             confidence=CONFIDENCE_PROVIDER_CANDIDATE,
             lookup_mode="symbol_search",
+            provider_rank=provider_ranks.get(_candidate_identity_key(candidate)),
         )
         if not asset_id:
             continue
@@ -308,6 +315,7 @@ def _write_dex_candidate(
     evidence_kind: str,
     confidence: str,
     lookup_mode: str,
+    provider_rank: int | None = None,
 ) -> str | None:
     chain_id = _chain_id(getattr(candidate, "chain_id", None))
     address = _normalize_address(getattr(candidate, "address", None))
@@ -320,6 +328,9 @@ def _write_dex_candidate(
         observed_at_ms=now_ms,
         commit=False,
     )
+    raw_payload = {**getattr(candidate, "raw", {}), "payload_hash": _payload_hash(getattr(candidate, "raw", {}))}
+    if provider_rank is not None:
+        raw_payload["provider_rank"] = provider_rank
     repos.identity_evidence.upsert_identity_evidence(
         asset_id=str(asset["asset_id"]),
         evidence_kind=evidence_kind,
@@ -331,7 +342,7 @@ def _write_dex_candidate(
         name=getattr(candidate, "name", None),
         decimals=None,
         confidence=confidence,
-        raw_payload={**getattr(candidate, "raw", {}), "payload_hash": _payload_hash(getattr(candidate, "raw", {}))},
+        raw_payload=raw_payload,
         observed_at_ms=now_ms,
         commit=False,
     )
@@ -410,6 +421,22 @@ def _candidate_rank_key(candidate: Any) -> tuple[float, int, str]:
     return (-_candidate_quality_score(candidate), has_price_rank, address)
 
 
+def _provider_ranks(candidates: list[Any]) -> dict[tuple[str | None, str], int]:
+    ranks: dict[tuple[str | None, str], int] = {}
+    for index, candidate in enumerate(candidates):
+        key = _candidate_identity_key(candidate)
+        if key[1] and key not in ranks:
+            ranks[key] = index
+    return ranks
+
+
+def _candidate_identity_key(candidate: Any) -> tuple[str | None, str]:
+    return (
+        _chain_id(getattr(candidate, "chain_id", None)),
+        _normalize_address(getattr(candidate, "address", None)),
+    )
+
+
 def _candidate_quality_score(candidate: Any) -> float:
     return (
         0.5 * _log10_number(getattr(candidate, "market_cap_usd", None))
@@ -448,7 +475,10 @@ def _parse_address_lookup_key(lookup_key: str) -> dict[str, str | None]:
     return {"chain_id": chain_id or None, "address": _normalize_address(address)}
 
 
-def _refresh_ms(*, lookup_key: str, status: str) -> int:
+def _refresh_ms(*, lookup_key: str, status: str, error_count: int = 0) -> int:
+    if status == "error":
+        index = min(max(0, int(error_count)), len(ERROR_REFRESH_BACKOFF_MS) - 1)
+        return ERROR_REFRESH_BACKOFF_MS[index]
     if lookup_key.startswith("address:"):
         return FOUND_ADDRESS_REFRESH_MS if status == "found" else NOT_FOUND_ADDRESS_REFRESH_MS
     return FOUND_SYMBOL_REFRESH_MS if status == "found" else NOT_FOUND_SYMBOL_REFRESH_MS

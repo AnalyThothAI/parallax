@@ -60,7 +60,8 @@ class DiscoveryRepository:
               recent_refresh_candidates.refresh_priority,
               token_discovery_results.status,
               token_discovery_results.result_hash,
-              token_discovery_results.next_refresh_at_ms
+              token_discovery_results.next_refresh_at_ms,
+              COALESCE(token_discovery_results.error_count, 0) AS error_count
             FROM recent_refresh_candidates
             LEFT JOIN token_discovery_results
               ON token_discovery_results.provider = %s
