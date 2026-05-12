@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from curl_cffi import CurlOpt
 from curl_cffi import requests as curl_requests
 from eth_utils import is_address
+
+CURL_IPRESOLVE_V4 = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +86,10 @@ class GmgnOpenApiClient:
         self._httpx_client: httpx.Client | None = None
         resolved_transport = transport
         if resolved_transport is None and force_ipv4:
-            self._curl_session = curl_requests.Session(impersonate="chrome")
+            self._curl_session = curl_requests.Session(
+                impersonate="chrome",
+                curl_options={CurlOpt.IPRESOLVE: CURL_IPRESOLVE_V4},
+            )
         else:
             self._httpx_client = httpx.Client(
                 base_url=self.base_url,

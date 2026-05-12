@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import httpx
+from curl_cffi import CurlOpt
 
-from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
+from gmgn_twitter_intel.integrations.gmgn.openapi_client import CURL_IPRESOLVE_V4, GmgnOpenApiClient
 
 
 def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():
@@ -77,6 +78,32 @@ def test_gmgn_openapi_client_fetches_token_info_with_normal_auth_and_cache():
     assert second.cache_status == "hit"
     assert requests[0].content == b""
     assert len(requests) == 1
+
+
+def test_gmgn_openapi_client_force_ipv4_sets_curl_ipresolve(monkeypatch):
+    sessions = []
+
+    class FakeCurlSession:
+        def __init__(self, **kwargs):
+            sessions.append(kwargs)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        "gmgn_twitter_intel.integrations.gmgn.openapi_client.curl_requests.Session",
+        FakeCurlSession,
+    )
+
+    client = GmgnOpenApiClient(api_key="gmgn-test")
+    client.close()
+
+    assert sessions == [
+        {
+            "impersonate": "chrome",
+            "curl_options": {CurlOpt.IPRESOLVE: CURL_IPRESOLVE_V4},
+        }
+    ]
 
 
 def test_gmgn_openapi_client_maps_internal_solana_chain_to_openapi_sol():
