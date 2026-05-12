@@ -36,6 +36,21 @@ def test_search_paginates_with_next_cursor():
     assert second.items[0]["event"]["event_id"] == "event-2"
 
 
+def test_search_cursor_expands_route_window_for_later_pages():
+    query = FakeSearchQuery(
+        route_hits=[
+            hit(f"event-{index}", route="target", route_rank=index, received_at_ms=10_000 - index)
+            for index in range(1, 500)
+        ]
+    )
+
+    first = SearchService(search_query=query).search("btc", limit=50)
+    SearchService(search_query=query).search("btc", limit=50, cursor=first.page["next_cursor"])
+
+    assert query.route_limits[0] == 204
+    assert query.route_limits[1] == 404
+
+
 def test_search_rejects_invalid_cursor():
     query = FakeSearchQuery(route_hits=[])
 
@@ -68,6 +83,7 @@ class FakeSearchQuery:
         self._route_hits = route_hits
         self.resolved_symbols: list[str | None] = []
         self.route_intents = []
+        self.route_limits: list[int] = []
 
     def resolve_targets(self, intent):
         self.resolved_symbols.append(intent.symbol)
@@ -86,6 +102,7 @@ class FakeSearchQuery:
 
     def route_hits(self, *, intent, target_candidates, watched_only, route_limit):
         self.route_intents.append(intent)
+        self.route_limits.append(route_limit)
         return self._route_hits[:route_limit]
 
 

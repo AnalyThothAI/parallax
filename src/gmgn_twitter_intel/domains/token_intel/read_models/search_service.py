@@ -16,7 +16,8 @@ ROUTE_WEIGHTS = {
     "lexical": 0.65,
     "trigram": 0.35,
 }
-_ROUTE_LIMIT_CAP = 500
+_ROUTE_LIMIT_MIN = 100
+_ROUTE_LIMIT_MULTIPLIER = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,12 @@ class SearchPage:
 
 class SearchCursorError(Exception):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class _CursorState:
+    sort_tuple: tuple[float, int, str]
+    offset: int
 
 
 class SearchService:
@@ -52,15 +59,16 @@ class SearchService:
             return SearchPage(
                 ok=False,
                 query=query_payload,
-                page=_page([], requested_limit, has_more=False),
+                page=_page([], requested_limit, offset=0, has_more=False),
                 error="empty_query",
             )
-        cursor_tuple = _decode_cursor(cursor) if cursor else None
+        cursor_state = _decode_cursor(cursor) if cursor else None
+        cursor_offset = cursor_state.offset if cursor_state else 0
         target_intent = _target_intent(intent)
         target_candidates = self.search_query.resolve_targets(target_intent)
         lexical_query = expanded_lexical_query(intent, target_candidates)
         route_intent = replace(target_intent, lexical_query=lexical_query)
-        route_limit = min(max((requested_limit + 1) * 4, 100), _ROUTE_LIMIT_CAP)
+        route_limit = _route_limit(requested_limit=requested_limit, cursor_offset=cursor_offset)
         route_hits = self.search_query.route_hits(
             intent=route_intent,
             target_candidates=target_candidates,
@@ -68,8 +76,8 @@ class SearchService:
             route_limit=route_limit,
         )
         items = _items_from_hits(route_hits)
-        if cursor_tuple is not None:
-            items = [item for item in items if _sort_tuple(item) > cursor_tuple]
+        if cursor_state is not None:
+            items = [item for item in items if _sort_tuple(item) > cursor_state.sort_tuple]
         page_items = items[: requested_limit + 1]
         has_more = len(page_items) > requested_limit
         returned = page_items[:requested_limit]
@@ -78,7 +86,7 @@ class SearchService:
             query=query_payload | {"lexical_query": lexical_query},
             items=[_public_item(item) for item in returned],
             target_candidates=target_candidates,
-            page=_page(returned, requested_limit, has_more=has_more),
+            page=_page(returned, requested_limit, offset=cursor_offset, has_more=has_more),
         )
 
 
@@ -144,8 +152,13 @@ def _sort_tuple(item: dict[str, Any]) -> tuple[float, int, str]:
     return (-float(sort["rank_score"]), -int(sort["received_at_ms"]), str(sort["event_id"]))
 
 
-def _page(items: list[dict[str, Any]], limit: int, *, has_more: bool) -> dict[str, Any]:
-    next_cursor = _encode_cursor(items[-1]) if has_more and items else None
+def _route_limit(*, requested_limit: int, cursor_offset: int) -> int:
+    window = max(0, int(cursor_offset)) + max(0, int(requested_limit)) + 1
+    return max(window * _ROUTE_LIMIT_MULTIPLIER, _ROUTE_LIMIT_MIN)
+
+
+def _page(items: list[dict[str, Any]], limit: int, *, offset: int, has_more: bool) -> dict[str, Any]:
+    next_cursor = _encode_cursor(items[-1], offset=offset + len(items)) if has_more and items else None
     return {
         "returned_count": min(len(items), max(0, int(limit))),
         "has_more": has_more,
@@ -157,17 +170,22 @@ def _public_item(item: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in item.items() if key != "_sort"}
 
 
-def _encode_cursor(item: dict[str, Any]) -> str:
+def _encode_cursor(item: dict[str, Any], *, offset: int) -> str:
     sort = item["_sort"]
-    return f"{float(sort['rank_score']):.17g}:{int(sort['received_at_ms'])}:{sort['event_id']}"
+    return f"v2:{max(0, int(offset))}:{float(sort['rank_score']):.17g}:{int(sort['received_at_ms'])}:{sort['event_id']}"
 
 
-def _decode_cursor(cursor: str | None) -> tuple[float, int, str]:
+def _decode_cursor(cursor: str | None) -> _CursorState:
     if not cursor:
         raise SearchCursorError("invalid_cursor")
     try:
-        score_raw, received_raw, event_id = cursor.split(":", 2)
-        return (-float(score_raw), -int(received_raw), event_id)
+        version, offset_raw, score_raw, received_raw, event_id = cursor.split(":", 4)
+        if version != "v2":
+            raise ValueError("unsupported cursor version")
+        return _CursorState(
+            sort_tuple=(-float(score_raw), -int(received_raw), event_id),
+            offset=max(0, int(offset_raw)),
+        )
     except (TypeError, ValueError) as exc:
         raise SearchCursorError("invalid_cursor") from exc
 
