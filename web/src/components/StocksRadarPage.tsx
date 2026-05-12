@@ -10,13 +10,23 @@ import {
   formatTokenPriceUsd,
 } from "../lib/format";
 
+import { RadarControls } from "./RadarControls";
+
 type StocksRadarPageProps = {
   token: string;
   windowKey: WindowKey;
   scope: ScopeKey;
+  onWindowChange: (window: WindowKey) => void;
+  onScopeChange: (scope: ScopeKey) => void;
 };
 
-export function StocksRadarPage({ token, windowKey, scope }: StocksRadarPageProps) {
+export function StocksRadarPage({
+  token,
+  windowKey,
+  scope,
+  onWindowChange,
+  onScopeChange,
+}: StocksRadarPageProps) {
   const query = useStocksRadarQuery({ token, window: windowKey, scope });
   const data = query.data;
   const rows = data?.rows ?? [];
@@ -39,6 +49,14 @@ export function StocksRadarPage({ token, windowKey, scope }: StocksRadarPageProp
           <span>
             stale <b>{compactNumber(data?.health.quote_unavailable_count ?? 0)}</b>
           </span>
+        </div>
+        <div className="stocks-radar-controls" aria-label="stocks radar controls">
+          <RadarControls
+            scope={scope}
+            windowKey={windowKey}
+            onScopeChange={onScopeChange}
+            onWindowChange={onWindowChange}
+          />
         </div>
       </header>
 

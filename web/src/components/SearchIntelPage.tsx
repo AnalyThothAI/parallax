@@ -77,8 +77,8 @@ function SearchTopBar({
   const resultKind = data?.query.result_kind ?? "pending";
   return (
     <header className="search-intel-topbar">
-      <div>
-        <span>search intel case</span>
+      <div className="search-intel-titleline">
+        <span>case inspect</span>
         <h2>Search Intel</h2>
         <strong>{routeState.q || "empty query"}</strong>
       </div>

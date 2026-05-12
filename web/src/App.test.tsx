@@ -198,7 +198,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getByText("Decision")).toBeInTheDocument();
     expect(screen.queryByText("EV")).not.toBeInTheDocument();
     expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
-    const row = await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
     expect(row).toHaveClass("selected");
     expect(row).not.toHaveClass("is-selected");
     expect(within(row).getByText("86 · 4 +4")).toBeInTheDocument();
@@ -246,7 +246,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     const { container } = renderWithQuery(<App />);
 
-    const row = await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
       expect(row.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$111M");
       expect(row.querySelector('[data-radar-metric="market"]')).toHaveTextContent("live");
@@ -290,7 +290,7 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     mockedGetApi.mockClear();
 
     fireEvent.change(input, { target: { value: "$UPEG" } });
@@ -312,7 +312,7 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     mockedGetApi.mockClear();
 
     fireEvent.change(input, { target: { value: "UPEG" } });
@@ -329,13 +329,22 @@ describe("App Token Radar social heat cockpit", () => {
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
   });
 
-  it("routes Token Radar row clicks into Search Intel instead of the token drawer", async () => {
-    renderWithQuery(<App />);
+  it("selects Token Radar rows into the drawer and drills into Search Intel from the drawer action", async () => {
+    const { container } = renderWithQuery(<App />);
 
-    const row = await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
     mockedGetApi.mockClear();
 
     fireEvent.click(row);
+
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(within(drawer).getByText("selected token")).toBeInTheDocument();
+    expect(
+      within(drawer).getByRole("button", { name: "Open Search Intel for $UPEG" }),
+    ).toBeInTheDocument();
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search/inspect")).toBe(false);
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Open Search Intel for $UPEG" }));
 
     expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
     expect(await screen.findByText("1H OHLC")).toBeInTheDocument();
@@ -351,6 +360,30 @@ describe("App Token Radar social heat cockpit", () => {
       ).toBe(true);
     });
     expect(screen.queryByText("selected token")).not.toBeInTheDocument();
+  });
+
+  it("opens Search Intel from the Token Radar row arrow", async () => {
+    renderWithQuery(<App />);
+
+    const rowButton = await screen.findByRole("button", { name: "select token $UPEG" });
+    const row = rowButton.closest(".radar-row") as HTMLElement;
+    const drilldown = within(row).getByRole("button", { name: "Open Search Intel for $UPEG" });
+    mockedGetApi.mockClear();
+
+    fireEvent.click(drilldown);
+
+    expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) =>
+            path === "/api/search/inspect" &&
+            options?.params?.q === "$UPEG" &&
+            options?.params?.window === "1h" &&
+            options?.params?.scope === "all",
+        ),
+      ).toBe(true);
+    });
   });
 
   it("opens an evidence drawer from a non-token live tape event", async () => {
@@ -378,7 +411,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("keeps each Token Radar metric in stable responsive slots", async () => {
     renderWithQuery(<App />);
 
-    const rowButton = await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    const rowButton = await screen.findByRole("button", { name: "select token $UPEG" });
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-radar-metric="heat"]')).toHaveTextContent("86 · 4 +4");
     expect(rowButton.querySelector('[data-radar-metric="quality"]')).toHaveTextContent(
@@ -399,9 +432,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     renderWithQuery(<App />);
 
-    expect(
-      await screen.findByRole("button", { name: "open Search Intel $UPEG" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "select token $UPEG" })).toBeInTheDocument();
     expect(screen.getByText("TOKEN RADAR")).toBeInTheDocument();
   });
 
@@ -446,7 +477,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     renderWithQuery(<App />);
 
-    const rowButton = await screen.findByRole("button", { name: "open Search Intel $BTC" });
+    const rowButton = await screen.findByRole("button", { name: "select token $BTC" });
     expect(within(rowButton).getByText("OKX · BTC-USDT")).toBeInTheDocument();
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$69K");
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("live");
@@ -527,11 +558,11 @@ describe("App Token Radar social heat cockpit", () => {
 
     renderWithQuery(<App />);
 
-    const tonRow = await screen.findByRole("button", { name: "open Search Intel $TON" });
+    const tonRow = await screen.findByRole("button", { name: "select token $TON" });
     expect(tonRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$2.75");
     expect(tonRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$3");
 
-    const microRow = await screen.findByRole("button", { name: /open Search Intel 0x111111/ });
+    const microRow = await screen.findByRole("button", { name: /select token 0x111111/ });
     expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$0.00001361");
     expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent(
       "$0 fresh",
@@ -570,7 +601,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     renderWithQuery(<App />);
 
-    const rowButton = await screen.findByRole("button", { name: "open Search Intel $USDUC" });
+    const rowButton = await screen.findByRole("button", { name: "select token $USDUC" });
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent(
       "+11% since social",
     );
@@ -686,6 +717,16 @@ describe("App Token Radar social heat cockpit", () => {
 
     expect(await screen.findByRole("heading", { name: "US Stocks" })).toBeInTheDocument();
     expect(await screen.findByLabelText("stock AAPL")).toBeInTheDocument();
+    const stocksControls = container.querySelector(".stocks-radar-controls") as HTMLElement;
+    expect(within(stocksControls).getByRole("button", { name: "24h" })).toBeInTheDocument();
+    fireEvent.click(within(stocksControls).getByRole("button", { name: "24h" }));
+    await waitFor(() =>
+      expect(
+        mockedGetApi.mock.calls.some(
+          ([path, options]) => path === "/api/stocks-radar" && options?.params?.window === "24h",
+        ),
+      ).toBe(true),
+    );
     expect(container.querySelector(".cockpit-grid.stocks-main-nav-mode")).toBeInTheDocument();
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/stocks-radar")).toBe(true);
   });
@@ -771,7 +812,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("renders the selected token drawer with the mock structure and no extra override controls", async () => {
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
 
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer).toBeInTheDocument();
@@ -794,7 +835,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("opens Timeline by default, requests timeline/posts, and keeps token Lab as a pointer into Signal Lab", async () => {
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
 
     expect(await screen.findByRole("button", { name: "Timeline" })).toHaveClass("active");
     await waitFor(() => {
@@ -929,7 +970,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("drives selected token detail by production windows instead of manual timeline buckets", async () => {
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     const detailWindow = (await within(drawer).findByLabelText(
       "selected token detail window",
@@ -960,7 +1001,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("opens replay focus mode by clicking a timeline bucket", async () => {
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     const bucket = await within(drawer).findByRole("button", {
       name: /open replay bucket .*2 posts/i,
@@ -979,7 +1020,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("keeps Posts as the evidence surface with explicit range controls", async () => {
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     const postRange = await within(drawer).findByLabelText("token post range");
@@ -1006,7 +1047,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("requests catalyst post sorting from the server", async () => {
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     fireEvent.click(screen.getByRole("button", { name: "Posts" }));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     const sortControl = await within(drawer).findByLabelText("token post sort");
@@ -1230,7 +1271,7 @@ describe("App Token Radar social heat cockpit", () => {
     mockApi({ insufficientTiming: true });
     renderWithQuery(<App />);
 
-    const tokenButton = await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    const tokenButton = await screen.findByRole("button", { name: "select token $UPEG" });
     expect(within(tokenButton).getByText("86 · 4 +4")).toBeInTheDocument();
     expect(within(tokenButton).getByText("market pending")).toBeInTheDocument();
     expect(within(tokenButton).getByText("market observation pending")).toBeInTheDocument();
@@ -1248,7 +1289,7 @@ describe("App Token Radar social heat cockpit", () => {
     mockApi({ missingTokenId: true });
     renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
       const timelineCall = mockedGetApi.mock.calls.find(
         ([path]) => path === "/api/target-social-timeline",
@@ -1269,7 +1310,7 @@ describe("App Token Radar social heat cockpit", () => {
     mockApi({ assetFlowRows: [unresolvedAssetFlowRow()] });
     renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     expect(screen.queryByText("Page")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /open token audit page/i }),
@@ -1280,11 +1321,11 @@ describe("App Token Radar social heat cockpit", () => {
     mockApi({ windowSwapToken: true });
     const { container } = renderWithQuery(<App />);
 
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     const radarSurface = container.querySelector('[data-mobile-task-panel="radar"]') as HTMLElement;
     fireEvent.click(within(radarSurface).getByRole("button", { name: "5m" }));
 
-    const altRow = await screen.findByRole("button", { name: "open Search Intel $ALT" });
+    const altRow = await screen.findByRole("button", { name: "select token $ALT" });
     await waitFor(() => expect(altRow).toHaveClass("selected"));
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$ALT");
@@ -1295,7 +1336,7 @@ describe("App Token Radar social heat cockpit", () => {
     mockApi({ duplicateSymbol: true });
     const { container } = renderWithQuery(<App />);
 
-    await screen.findAllByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findAllByRole("button", { name: "select token $UPEG" });
     await screen.findByText("@traderpow -> $UPEG");
     fireEvent.click(screen.getByText("@traderpow -> $UPEG"));
 
@@ -1337,39 +1378,29 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getByLabelText("Signal Lab source filter")).toHaveValue("traderpow");
   });
 
-  it("routes mobile radar token clicks into Search Intel without changing the search input", async () => {
-    renderWithQuery(<App />);
+  it("keeps mobile radar token clicks on the detail drawer without changing the search input", async () => {
+    const { container } = renderWithQuery(<App />);
     const input = await screen.findByPlaceholderText("搜索 CA / $TOKEN / @handle / 文本");
     expect(input).toHaveValue("");
-    const row = await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    const row = await screen.findByRole("button", { name: "select token $UPEG" });
     mockedGetApi.mockClear();
 
     fireEvent.click(row);
 
-    expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        mockedGetApi.mock.calls.some(
-          ([path, options]) =>
-            path === "/api/search/inspect" &&
-            options?.params?.q === "$UPEG" &&
-            options?.params?.window === "1h" &&
-            options?.params?.scope === "all",
-        ),
-      ).toBe(true),
-    );
-    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/token-radar")).toBe(false);
+    expect(await screen.findByText("selected token")).toBeInTheDocument();
+    const drawer = container.querySelector(".detail-drawer") as HTMLElement;
+    expect(
+      within(drawer).getByRole("button", { name: "Open Search Intel for $UPEG" }),
+    ).toBeInTheDocument();
+    expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search/inspect")).toBe(false);
     expect(mockedGetApi.mock.calls.some(([path]) => path === "/api/search")).toBe(false);
     expect(input).toHaveValue("");
-    expect(
-      screen.queryByRole("navigation", { name: "mobile cockpit tasks" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("selected token")).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "mobile cockpit tasks" })).toBeInTheDocument();
   });
 
   it("switches mobile tasks without resetting window, scope, or selected token", async () => {
     const { container } = renderWithQuery(<App />);
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     const mobileNav = await screen.findByRole("navigation", { name: "mobile cockpit tasks" });
 
     fireEvent.click(within(mobileNav).getByRole("button", { name: "Tape" }));
@@ -1426,7 +1457,7 @@ describe("App Token Radar social heat cockpit", () => {
 
   it("exposes distinct responsive shell surfaces without duplicating Token Radar rows", async () => {
     const { container } = renderWithQuery(<App />);
-    await screen.findByRole("button", { name: "open Search Intel $UPEG" });
+    await screen.findByRole("button", { name: "select token $UPEG" });
     const responsiveControls = container.querySelector(".responsive-control-panel") as HTMLElement;
 
     expect(container.querySelector(".desktop-side-rail")).toBeInTheDocument();

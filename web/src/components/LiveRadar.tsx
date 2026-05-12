@@ -10,6 +10,7 @@ type LiveRadarProps = {
   selectedTokenKey: string | null;
   radarSortMode: RadarSortMode;
   onSelectToken: (item: TokenFlowItem) => void;
+  onOpenTokenSearch: (item: TokenFlowItem) => void;
   onSortModeChange: (mode: RadarSortMode) => void;
   scope: ScopeKey;
   windowKey: WindowKey;
@@ -24,6 +25,7 @@ export function LiveRadar({
   selectedTokenKey,
   radarSortMode,
   onSelectToken,
+  onOpenTokenSearch,
   onSortModeChange,
   scope,
   windowKey,
@@ -47,6 +49,7 @@ export function LiveRadar({
         items={tokenItems}
         selectedKey={selectedTokenKey}
         sortMode={radarSortMode}
+        onOpenSearch={onOpenTokenSearch}
         onSelect={onSelectToken}
         onSortModeChange={onSortModeChange}
       />

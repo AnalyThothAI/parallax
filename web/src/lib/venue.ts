@@ -97,18 +97,55 @@ function parseCexTargetId(
 }
 
 function cexVenueAction(item: TokenFlowItem): VenueAction | null {
-  const exchange = item.identity.exchange?.trim().toLowerCase();
-  const instId = item.identity.inst_id?.trim();
+  const parsedPricefeed = parseCexPricefeedId(item.identity.inst_id);
+  const parsedTarget = parseCexTargetId(item.identity.inst_id);
+  const exchange =
+    normalizeCexExchange(item.identity.exchange) ??
+    parsedPricefeed?.exchange ??
+    parsedTarget?.exchange;
+  const instId = parsedPricefeed?.instId ?? parsedTarget?.instId ?? item.identity.inst_id?.trim();
+  const instType =
+    normalizeCexInstType(item.identity.inst_type) ??
+    parsedPricefeed?.instType ??
+    parsedTarget?.instType;
   if (!exchange || !instId) {
     return null;
   }
   if (exchange === "okx") {
-    return { label: "OKX", url: okxUrl(instId, item.identity.inst_type) };
+    return { label: "OKX", url: okxUrl(instId, instType) };
   }
   if (exchange === "binance") {
-    return { label: "Binance", url: binanceUrl(instId, item.identity.inst_type) };
+    return { label: "Binance", url: binanceUrl(instId, instType) };
   }
   return null;
+}
+
+function normalizeCexExchange(value?: string | null): string | null {
+  const text = value?.trim().toLowerCase();
+  if (!text) {
+    return null;
+  }
+  if (text === "okx" || text === "okx_cex") {
+    return "okx";
+  }
+  if (text === "binance" || text === "binance_cex") {
+    return "binance";
+  }
+  return text;
+}
+
+function normalizeCexInstType(value?: string | null): string | null {
+  const text = value?.trim().toUpperCase();
+  if (!text) {
+    return null;
+  }
+  if (text === "CEX_SPOT") {
+    return "SPOT";
+  }
+  if (text === "CEX_SWAP" || text === "PERP" || text === "PERPETUAL") {
+    return "SWAP";
+  }
+  return text;
 }
 
 function okxUrl(instId: string, instType?: string | null): string {

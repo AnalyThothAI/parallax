@@ -146,6 +146,7 @@ export function CockpitApp() {
       onBackToTimeline={selection.handleTimelineBack}
       onDetailWindowChange={selection.handleDetailWindowChange}
       onLoadMorePosts={tokenDetail.loadMorePosts}
+      onOpenSearchIntel={selection.openTokenSearchPage}
       onPostRangeChange={selection.setPostRange}
       onPostSortModeChange={selection.setPostSortMode}
       onSelectedEventChange={selection.setSelectedEventId}
@@ -222,7 +223,8 @@ export function CockpitApp() {
       assetFlowError={assetFlowError}
       selectedTokenKey={selection.selectedTokenKey}
       radarSortMode={radarSortMode}
-      onSelectToken={selection.openTokenSearchPage}
+      onOpenTokenSearch={selection.openTokenSearchPage}
+      onSelectToken={selection.selectToken}
       onSortModeChange={setRadarSortMode}
       scope={scope}
       windowKey={windowKey}
@@ -241,7 +243,15 @@ export function CockpitApp() {
         <Route path="search" element={<SearchIntelPage />} />
         <Route
           path="stocks"
-          element={<StocksRadarPage token={token ?? ""} windowKey={windowKey} scope={scope} />}
+          element={
+            <StocksRadarPage
+              token={token ?? ""}
+              windowKey={windowKey}
+              scope={scope}
+              onScopeChange={setScope}
+              onWindowChange={setWindow}
+            />
+          }
         />
         <Route
           path="signal-lab"

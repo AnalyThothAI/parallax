@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import * as client from "../api/client";
@@ -12,11 +12,22 @@ afterEach(() => {
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const controls = {
+    onScopeChange: vi.fn(),
+    onWindowChange: vi.fn(),
+  };
+  const view = render(
     <QueryClientProvider client={queryClient}>
-      <StocksRadarPage token="secret" windowKey="1h" scope="all" />
+      <StocksRadarPage
+        token="secret"
+        windowKey="1h"
+        scope="all"
+        onScopeChange={controls.onScopeChange}
+        onWindowChange={controls.onWindowChange}
+      />
     </QueryClientProvider>,
   );
+  return { ...view, ...controls };
 }
 
 describe("StocksRadarPage", () => {
@@ -117,13 +128,17 @@ describe("StocksRadarPage", () => {
       },
     } as any);
 
-    renderPage();
+    const { onScopeChange, onWindowChange } = renderPage();
 
     expect(await screen.findByRole("heading", { name: "US Stocks" })).toBeInTheDocument();
     expect(await screen.findByLabelText("stock AAPL")).toBeInTheDocument();
     expect(screen.getByLabelText("stock RKLB")).toBeInTheDocument();
     expect(screen.getByText("$291.87")).toBeInTheDocument();
     expect(screen.getByText("RuntimeError")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "24h" }));
+    expect(onWindowChange).toHaveBeenCalledWith("24h");
+    fireEvent.click(screen.getByRole("button", { name: "watched" }));
+    expect(onScopeChange).toHaveBeenCalledWith("matched");
 
     await waitFor(() => {
       expect(getApi).toHaveBeenCalledWith(

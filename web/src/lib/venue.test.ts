@@ -27,6 +27,22 @@ describe("venue links", () => {
     });
   });
 
+  it("opens OKX CEX actions from pricefeed ids and provider aliases", () => {
+    expect(
+      tokenVenueAction(
+        token({
+          venueType: "cex",
+          exchange: "okx_cex",
+          instId: "pricefeed:cex:okx:spot:BTC-USDT",
+          instType: "cex_spot",
+        }),
+      ),
+    ).toEqual({
+      label: "OKX",
+      url: "https://www.okx.com/trade-spot/btc-usdt",
+    });
+  });
+
   it("keeps GMGN links for DEX assets", () => {
     expect(
       tokenVenueAction(

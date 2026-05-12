@@ -1,3 +1,5 @@
+import { ArrowUpRight } from "lucide-react";
+
 import type {
   AccountQualityData,
   TokenDetailMode,
@@ -65,6 +67,7 @@ type TokenDetailDrawerProps = {
   onHideDuplicateClustersChange: (enabled: boolean) => void;
   onWatchedPostsOnlyChange: (enabled: boolean) => void;
   onLoadMorePosts: () => void;
+  onOpenSearchIntel: (token: TokenFlowItem) => void;
 };
 
 export function TokenDetailDrawer({
@@ -96,6 +99,7 @@ export function TokenDetailDrawer({
   onHideDuplicateClustersChange,
   onWatchedPostsOnlyChange,
   onLoadMorePosts,
+  onOpenSearchIntel,
 }: TokenDetailDrawerProps) {
   if (!token) {
     return (
@@ -117,22 +121,34 @@ export function TokenDetailDrawer({
   const risks = [...(token.opportunity.hard_risks ?? []), ...token.opportunity.risks];
   const drawerSummary = tokenDrawerSummary(token);
   const venueAction = tokenVenueAction(token);
+  const headerActions = (
+    <div className="drawer-actions">
+      <button
+        aria-label={`Open Search Intel for ${tokenLabel(token)}`}
+        className="drawer-action-link drawer-search-link"
+        type="button"
+        onClick={() => onOpenSearchIntel(token)}
+      >
+        <ArrowUpRight aria-hidden />
+        Search Intel
+      </button>
+      {venueAction ? (
+        <a
+          aria-label={`Open selected token on ${venueAction.label}`}
+          className="venue-link drawer-venue-link"
+          href={venueAction.url}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {venueAction.label}
+        </a>
+      ) : null}
+    </div>
+  );
   return (
     <DetailDrawerShell>
       <DetailDrawerHeader
-        actions={
-          venueAction ? (
-            <a
-              aria-label={`Open selected token on ${venueAction.label}`}
-              className="venue-link drawer-venue-link"
-              href={venueAction.url}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {venueAction.label}
-            </a>
-          ) : null
-        }
+        actions={headerActions}
         badge={formatScore(token.opportunity.score)}
         eyebrow="selected token"
         metrics={

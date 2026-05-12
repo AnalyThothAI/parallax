@@ -1,3 +1,5 @@
+import { ArrowRight } from "lucide-react";
+
 import type { TokenFlowItem } from "../api/types";
 import {
   compactNumber,
@@ -18,10 +20,11 @@ import { DecisionTag } from "./DecisionTag";
 type TokenRadarRowProps = {
   item: TokenFlowItem;
   selected: boolean;
+  onOpenSearch: (item: TokenFlowItem) => void;
   onSelect: (item: TokenFlowItem) => void;
 };
 
-export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) {
+export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenRadarRowProps) {
   const delta = formatSignedPercent(
     item.market.price_change_since_social_pct ?? item.market.price_change_since_first_snapshot_pct,
   );
@@ -30,7 +33,7 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
   return (
     <div className={`radar-row ${selected ? "selected" : ""}`}>
       <button
-        aria-label={`open Search Intel ${tokenLabel(item)}`}
+        aria-label={`select token ${tokenLabel(item)}`}
         className={`radar-row-select ${selected ? "selected" : ""}`}
         type="button"
         onClick={() => onSelect(item)}
@@ -88,6 +91,15 @@ export function TokenRadarRow({ item, selected, onSelect }: TokenRadarRowProps) 
           </a>
         ) : null}
         {!venueAction ? <span className="muted">-</span> : null}
+        <button
+          aria-label={`Open Search Intel for ${tokenLabel(item)}`}
+          className="row-drilldown-button"
+          title="Search Intel"
+          type="button"
+          onClick={() => onOpenSearch(item)}
+        >
+          <ArrowRight aria-hidden />
+        </button>
       </span>
     </div>
   );

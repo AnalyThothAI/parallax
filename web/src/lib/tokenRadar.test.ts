@@ -86,6 +86,26 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.market.snapshot_received_at_ms).toBe(1_778_426_440_000);
   });
 
+  it("normalizes CEX venue identity from pricefeed-only production rows", () => {
+    const row = productionFactorSnapshotRow();
+    delete row.target!.native_market_id;
+    delete row.target!.feed_type;
+    row.factor_snapshot!.subject = {
+      ...row.factor_snapshot!.subject,
+      pricefeed_id: "pricefeed:cex:okx:swap:ZEC-USDT-SWAP",
+    };
+    row.live_market = {
+      ...row.live_market,
+      provider: "okx_cex",
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.identity.exchange).toBe("okx");
+    expect(item.identity.inst_id).toBe("ZEC-USDT-SWAP");
+    expect(item.identity.inst_type).toBe("SWAP");
+  });
+
   it("rejects rows missing anchor_price even when factor snapshot market contains price", () => {
     const row = productionFactorSnapshotRow() as Partial<AssetFlowRow> &
       Pick<AssetFlowRow, "factor_snapshot">;

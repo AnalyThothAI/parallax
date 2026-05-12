@@ -9,7 +9,14 @@ afterEach(() => cleanup());
 
 describe("TokenRadarRow", () => {
   it("does not render unresolved intent ids as address-like token subtitles", () => {
-    render(<TokenRadarRow item={unresolvedSymbolOnly()} selected={false} onSelect={vi.fn()} />);
+    render(
+      <TokenRadarRow
+        item={unresolvedSymbolOnly()}
+        selected={false}
+        onOpenSearch={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
 
     expect(screen.getByText("$SLOP")).toBeInTheDocument();
     expect(
@@ -19,9 +26,21 @@ describe("TokenRadarRow", () => {
   });
 
   it("renders fresh price with stale market cap as partial market freshness", () => {
-    render(<TokenRadarRow item={mixedFreshnessToken()} selected={false} onSelect={vi.fn()} />);
+    render(
+      <TokenRadarRow
+        item={mixedFreshnessToken()}
+        selected={false}
+        onOpenSearch={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
 
-    const row = screen.getByRole("button", { name: "open Search Intel $TROLL" });
+    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
+    const venueLink = screen.getByRole("link", { name: "Open $TROLL on GMGN" });
+    expect(searchButton).toBeInTheDocument();
+    expect(venueLink.parentElement?.children[0]).toBe(venueLink);
+    expect(venueLink.parentElement?.children[1]).toBe(searchButton);
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
     expect(market).toHaveTextContent("partial");

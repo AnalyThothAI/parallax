@@ -170,8 +170,16 @@ export function tokenRadarRowToTokenItem(
   const targetId =
     stringValue(subject.target_id) ?? target.target_id ?? row.resolution?.target_id ?? null;
   const address = isSnapshotAsset ? (stringValue(subject.address) ?? target.address ?? null) : null;
-  const nativeMarketId =
-    target.native_market_id ?? stringValue(subject.pricefeed_id) ?? target.pricefeed_id ?? null;
+  const cexPricefeedId = isCexToken ? firstString(target.pricefeed_id, subject.pricefeed_id) : null;
+  const parsedCexPricefeed = parseCexPricefeedId(cexPricefeedId);
+  const nativeMarketId = isCexToken
+    ? firstString(
+        target.native_market_id,
+        parsedCexPricefeed?.instId,
+        target.pricefeed_id,
+        subject.pricefeed_id,
+      )
+    : (target.native_market_id ?? stringValue(subject.pricefeed_id) ?? target.pricefeed_id ?? null);
   const identityKey =
     targetId ??
     row.intent?.intent_id ??
@@ -237,10 +245,12 @@ export function tokenRadarRowToTokenItem(
       asset_type: stringValue(subject.target_type) ?? target.target_type ?? null,
       venue_type: isCexToken ? "cex" : isSnapshotAsset || isChainAsset ? "dex" : null,
       exchange: isCexToken
-        ? (target.provider ?? marketProvider ?? exchangeFromMarketId(nativeMarketId))
+        ? exchangeFromCexFields(target.provider, marketProvider, cexPricefeedId, nativeMarketId)
         : null,
       inst_id: isCexToken ? nativeMarketId : null,
-      inst_type: isCexToken ? (target.feed_type ?? instTypeFromMarketId(nativeMarketId)) : null,
+      inst_type: isCexToken
+        ? instTypeFromCexFields(target.feed_type, cexPricefeedId, nativeMarketId)
+        : null,
       chain,
       address,
       symbol: displaySymbol,
@@ -713,6 +723,20 @@ function exchangeFromMarketId(marketId: string | null): string | null {
   return marketId ? "okx" : null;
 }
 
+function exchangeFromCexFields(
+  provider: unknown,
+  marketProvider: string | null,
+  pricefeedId: string | null,
+  marketId: string | null,
+): string | null {
+  return (
+    normalizeCexExchange(provider) ??
+    normalizeCexExchange(marketProvider) ??
+    parseCexPricefeedId(pricefeedId)?.exchange ??
+    exchangeFromMarketId(marketId)
+  );
+}
+
 function instTypeFromMarketId(marketId: string | null): string | null {
   const parts = marketId?.trim().split(":") ?? [];
   if (parts.length >= 5 && parts[0] === "pricefeed" && parts[1] === "cex") {
@@ -722,6 +746,60 @@ function instTypeFromMarketId(marketId: string | null): string | null {
     return "SWAP";
   }
   return marketId ? "SPOT" : null;
+}
+
+function instTypeFromCexFields(
+  feedType: unknown,
+  pricefeedId: string | null,
+  marketId: string | null,
+): string | null {
+  return (
+    normalizeCexInstType(feedType) ??
+    parseCexPricefeedId(pricefeedId)?.instType ??
+    instTypeFromMarketId(marketId)
+  );
+}
+
+function parseCexPricefeedId(
+  pricefeedId?: string | null,
+): { exchange: string; instType: string; instId: string } | null {
+  const parts = pricefeedId?.trim().split(":") ?? [];
+  if (parts.length < 5 || parts[0] !== "pricefeed" || parts[1] !== "cex") {
+    return null;
+  }
+  return {
+    exchange: normalizeCexExchange(parts[2]) ?? parts[2].toLowerCase(),
+    instType: normalizeCexInstType(parts[3]) ?? parts[3].toUpperCase(),
+    instId: parts.slice(4).join(":"),
+  };
+}
+
+function normalizeCexExchange(value: unknown): string | null {
+  const text = optionalString(value)?.trim().toLowerCase();
+  if (!text) {
+    return null;
+  }
+  if (text === "okx" || text === "okx_cex") {
+    return "okx";
+  }
+  if (text === "binance" || text === "binance_cex") {
+    return "binance";
+  }
+  return text;
+}
+
+function normalizeCexInstType(value: unknown): string | null {
+  const text = optionalString(value)?.trim().toUpperCase();
+  if (!text) {
+    return null;
+  }
+  if (text === "CEX_SPOT") {
+    return "SPOT";
+  }
+  if (text === "CEX_SWAP" || text === "PERP" || text === "PERPETUAL") {
+    return "SWAP";
+  }
+  return text;
 }
 
 function stringValue(value: unknown): string | null {
