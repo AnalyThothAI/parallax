@@ -63,11 +63,10 @@ uv run python scripts/audit_duplicate_tokens.py \
     --dry-run --chain solana --symbol TROLL \
     --report /tmp/troll-audit.md
 
-# Apply（先 pg_dump 再 DELETE，单事务）
+# Apply（单事务）
 uv run python scripts/audit_duplicate_tokens.py \
     --apply \
-    --report docs/generated/duplicate-token-audit-applied.md \
-    --backup-dir docs/generated/backups/
+    --report docs/generated/duplicate-token-audit-applied.md
 
 # 单阶段
 uv run python scripts/audit_duplicate_tokens.py --apply --only-phase1
@@ -75,6 +74,8 @@ uv run python scripts/audit_duplicate_tokens.py --apply --only-phase2
 ```
 
 参数：`--threshold-holders` (默认 200)、`--threshold-liq-usd` (默认 5000)、`--no-external` (跳过 OKX/CoinGecko)、`--chain`、`--symbol`。
+
+无备份：apply 全程单事务，异常即 ROLLBACK；不再生成 pg_dump（用户明确放弃备份）。
 
 ## 5. Phase 1：链名规范化
 
@@ -271,20 +272,14 @@ External arbitration:
 
 集成测试用 Testcontainers PG（项目已有 fixture pattern），fixture 数据塞 ~20 组 (chain, symbol) 重复。
 
-## 9. 备份与回滚
+## 9. 回滚策略
 
-`--apply` 前自动跑：
+用户明确放弃 pg_dump 备份。回滚机制仅依赖：
 
-```bash
-pg_dump --data-only \
-    --table=assets --table=asset_venues --table=asset_aliases \
-    --table=asset_market_snapshots --table=token_intent_resolutions \
-    --table=token_radar_rows --table=asset_signal_snapshots \
-    --table=token_intent_resolution_candidates \
-    -f docs/generated/backups/audit-backup-<ts>.sql
-```
+1. **单事务原子性**：`--apply` 全程包在一个 `platform.db.postgres_client.transaction()` 里，运行过程中任何异常 → 整体 ROLLBACK，库回到调用前状态
+2. **dry-run 先行**：commit 前的 audit report 是唯一的"人工审核关"。一旦 `--apply` 提交成功，不可逆
 
-回滚：手工 `psql -f audit-backup-<ts>.sql`（先 `TRUNCATE` 受影响表，再 restore）。不在 apply 流程里做自动回滚 —— 异常时事务回滚已经够；备份是最后手段。
+Phase 1 与 Phase 2 各自独立事务（互不依赖），可单独失败回滚。
 
 ## 10. 文件清单
 
@@ -297,6 +292,8 @@ pg_dump --data-only \
 | `tests/integrations/test_coingecko_search.py` | CoinGecko client 单测 |
 | `docs/generated/duplicate-token-audit.md` | dry-run 输出（首次 review）|
 | `docs/generated/duplicate-token-audit-applied.md` | apply 后留痕 |
+
+`docs/generated/backups/` 不创建（用户放弃备份）。
 
 ## 11. 验证计划
 
@@ -315,8 +312,7 @@ uv run python scripts/audit_duplicate_tokens.py --dry-run \
 
 # Apply
 uv run python scripts/audit_duplicate_tokens.py --apply \
-    --report docs/generated/duplicate-token-audit-applied.md \
-    --backup-dir docs/generated/backups/
+    --report docs/generated/duplicate-token-audit-applied.md
 
 # Apply 后断言
 psql ... -c "SELECT COUNT(*) FROM assets;"             # 应 ≈10,790
@@ -331,7 +327,7 @@ psql ... -c "SELECT canonical_symbol, COUNT(DISTINCT a.asset_id) FROM assets a J
 | winner 误判，删错真品 | dry-run 报告人审；阈值是中道值；外部仲裁兜底 |
 | Solana meme winner 没在 CoinGecko 收录（pump.fun 多数不在）| 默认走库内阈值，外部仲裁只在 top1 不过阈触发，pump.fun 类的会保 1 个 holder 最多的 |
 | `token_intent_resolutions.asset_id` 被 SET NULL，未来读模型缺数据 | `candidate_ids_json` / `reasons_json` 已保留诊断；只是 Radar 历史显示某 row 失去 asset 链接，是已知代价 |
-| pg_dump 备份过大 | `--data-only`、只 dump 受影响表；初步估算 < 200MB |
+| 无备份，apply 后想恢复 → 不行 | dry-run 报告人审是唯一关；单事务保证中途失败不留半成品；用户明确放弃备份 |
 | OKX/CoinGecko 速率限制 | dry-run 阶段并发限到 5 / s；fallback 路径理论上 ≪ 1259 次（多数组库内决出） |
 
 ## 13. 后续 follow-up（不在本 spec 内）
