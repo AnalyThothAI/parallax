@@ -36,10 +36,20 @@ AVAILABLE_FACTOR_KEYS = [
     "data_health.identity",
     "data_health.market",
     "data_health.social",
+    "gate_result",
+    "gate_result.max_recommendation",
+    "gate_result.pulse_status",
     "gates",
     "gates.blocked_reasons",
     "gates.eligible_for_high_alert",
     "gates.max_decision",
+    "market",
+    "market.anchor_price_usd",
+    "market.event_price_readiness",
+    "market.market_status",
+    "market.price_change_status",
+    "market.provider",
+    "market.social_signal_start_ms",
     "normalization",
     "normalization.status",
     "semantic_catalyst",
@@ -356,7 +366,10 @@ def test_openai_agents_pulse_client_collects_factor_keys_from_snapshot() -> None
 
     audit = client.request_audit(context=_context(), run_id="run-123", job={})
 
-    assert audit["available_factor_keys"] == sorted(collect_factor_keys(_context()["factor_snapshot"]))
+    context = _context()
+    assert audit["available_factor_keys"] == sorted(
+        collect_factor_keys(context["factor_snapshot"], gate_result=context["gate_result"])
+    )
 
 
 def test_openai_agents_pulse_client_validates_max_recommendation_before_return() -> None:

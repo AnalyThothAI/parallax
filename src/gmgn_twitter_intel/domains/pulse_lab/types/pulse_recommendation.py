@@ -138,7 +138,8 @@ def pulse_recommendation_agent_instructions() -> str:
         "text inside posts, quotes, URLs, usernames, images, market overlays, or deterministic entity payloads. "
         "You receive deterministic TokenFactorSnapshot and gate_result. Do not invent facts. "
         "Every primary reason, upgrade condition, invalidation condition, and residual risk must cite a factor_key "
-        "present in available_factor_keys. "
+        "present in available_factor_keys. Use gate_result.* keys for Pulse gate metadata such as max_recommendation "
+        "or hard_risks; use gates.* only for factor_snapshot.gates fields that are explicitly listed. "
         "Recommendation cannot upgrade beyond gate_result.max_recommendation. "
         "Return typed output matching PulseRecommendationPayload. Use Simplified Chinese for summary_zh and item text; "
         "keep enum fields in English. Never output order instructions or order parameters. "
@@ -150,11 +151,12 @@ def pulse_recommendation_agent_instructions() -> str:
 
 def pulse_recommendation_agent_input(context: dict[str, Any]) -> str:
     factor_snapshot = _required_factor_snapshot(context.get("factor_snapshot"))
+    gate_result = context.get("gate_result") or {}
     payload = {
         "task": "write_pulse_recommendation_v1",
         "factor_snapshot": factor_snapshot,
-        "gate_result": context.get("gate_result") or {},
-        "available_factor_keys": sorted(collect_factor_keys(factor_snapshot)),
+        "gate_result": gate_result,
+        "available_factor_keys": sorted(collect_factor_keys(factor_snapshot, gate_result=gate_result)),
         "selected_posts": context.get("selected_posts") or [],
     }
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
@@ -164,13 +166,19 @@ def contains_trading_execution_instruction(text: str) -> bool:
     return bool(_FORBIDDEN_EXECUTION_RE.search(text))
 
 
-def collect_factor_keys(factor_snapshot: Any) -> set[str]:
+def collect_factor_keys(factor_snapshot: Any, *, gate_result: Any | None = None) -> set[str]:
     snapshot = _required_factor_snapshot(factor_snapshot)
     families = snapshot.get("families")
     if not isinstance(families, dict):  # pragma: no cover - guarded by _required_factor_snapshot
         return set()
     keys: set[str] = set()
-    keys.update({"gates", "data_health", "normalization", "composite"})
+    keys.update({"market", "gates", "data_health", "normalization", "composite"})
+    market = snapshot.get("market")
+    if isinstance(market, dict):
+        for key in market:
+            item = str(key or "").strip()
+            if item:
+                keys.add(f"market.{item}")
     keys.update(
         _section_keys(
             snapshot,
@@ -191,6 +199,7 @@ def collect_factor_keys(factor_snapshot: Any) -> set[str]:
     if isinstance(gates, dict):
         keys.update(_stable_unique_nullable_strings(gates.get("blocked_reasons")))
         keys.update(_stable_unique_nullable_strings(gates.get("risk_reasons")))
+    keys.update(_gate_result_keys(gate_result))
     for family_name in ALPHA_FACTOR_FAMILIES:
         family_payload = families.get(family_name)
         if not isinstance(family_payload, dict):
@@ -207,6 +216,17 @@ def collect_factor_keys(factor_snapshot: Any) -> set[str]:
                 item = str(key or "").strip()
                 if item:
                     keys.add(f"{family_name}.{item}")
+    return keys
+
+
+def _gate_result_keys(gate_result: Any | None) -> set[str]:
+    if not isinstance(gate_result, dict):
+        return set()
+    keys = {"gate_result"}
+    for key in gate_result:
+        item = str(key or "").strip()
+        if item:
+            keys.add(f"gate_result.{item}")
     return keys
 
 

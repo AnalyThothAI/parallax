@@ -250,7 +250,7 @@ def _input_source_event_ids(context: dict[str, Any]) -> list[str]:
 
 
 def _input_available_factor_keys(context: dict[str, Any]) -> list[str]:
-    return sorted(collect_factor_keys(context.get("factor_snapshot")))
+    return sorted(collect_factor_keys(context.get("factor_snapshot"), gate_result=context.get("gate_result")))
 
 
 def _max_recommendation(context: dict[str, Any]) -> str | None:
