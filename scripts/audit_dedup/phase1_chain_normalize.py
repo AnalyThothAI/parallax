@@ -14,7 +14,7 @@ def _eth_rows(conn) -> list[tuple[str, str, str]]:
                WHERE av.chain = 'eth'
                ORDER BY av.asset_id"""
         )
-        return [(r[0], r[1], r[2]) for r in cur.fetchall()]
+        return [(r["asset_id"], r["venue_id"], r["address"]) for r in cur.fetchall()]
 
 
 def _ethereum_asset_for(conn, address_lower: str) -> str | None:
@@ -27,18 +27,18 @@ def _ethereum_asset_for(conn, address_lower: str) -> str | None:
             (address_lower,),
         )
         row = cur.fetchone()
-        return row[0] if row else None
+        return row["asset_id"] if row else None
 
 
 def _orphan_chains(conn) -> dict[str, int]:
     with conn.cursor() as cur:
         cur.execute(
-            """SELECT chain, COUNT(*) FROM asset_venues
+            """SELECT chain, COUNT(*) AS cnt FROM asset_venues
                WHERE chain = ANY(%s)
                GROUP BY chain""",
             (list(ORPHAN_CHAINS),),
         )
-        return {r[0]: int(r[1]) for r in cur.fetchall()}
+        return {r["chain"]: int(r["cnt"]) for r in cur.fetchall()}
 
 
 _FK_TABLES_ASSET = (
