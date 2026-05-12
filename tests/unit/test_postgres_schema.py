@@ -59,6 +59,9 @@ TOKEN_FACTOR_EVAL_DIAGNOSTICS_MIGRATION = Path(
 TOKEN_FACTOR_PULSE_CLEANUP_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260511_0027_prune_legacy_pulse_factor_snapshots.py"
 )
+PULSE_FACTOR_CONTRACT_CLEANUP_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0031_prune_legacy_pulse_factor_contracts.py"
+)
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -172,6 +175,20 @@ def test_token_factor_pulse_cleanup_migration_prunes_legacy_jobs_and_candidates(
 
     assert 'revision = "20260511_0027"' in text
     assert 'down_revision = "20260511_0026"' in text
+    assert "DELETE FROM pulse_agent_jobs" in text
+    assert "DELETE FROM pulse_candidates" in text
+    assert "context_json #>> '{factor_snapshot,schema_version}'" in text
+    assert "factor_snapshot_json->>'schema_version'" in text
+    assert "token_factor_snapshot_v3_social_attention" in text
+    assert "UPDATE pulse_agent_jobs" not in text
+    assert "mark" not in text.lower()
+
+
+def test_pulse_factor_contract_cleanup_migration_prunes_non_current_contracts() -> None:
+    text = PULSE_FACTOR_CONTRACT_CLEANUP_MIGRATION.read_text()
+
+    assert 'revision = "20260512_0031"' in text
+    assert 'down_revision = "20260511_0030"' in text
     assert "DELETE FROM pulse_agent_jobs" in text
     assert "DELETE FROM pulse_candidates" in text
     assert "context_json #>> '{factor_snapshot,schema_version}'" in text

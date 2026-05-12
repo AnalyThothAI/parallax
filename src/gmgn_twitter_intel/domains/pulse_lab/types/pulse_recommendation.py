@@ -170,7 +170,13 @@ def collect_factor_keys(factor_snapshot: Any) -> set[str]:
     if not isinstance(families, dict):  # pragma: no cover - guarded by _required_factor_snapshot
         return set()
     keys: set[str] = set()
-    keys.update({"gates", "data_health", "normalization", "composite"})
+    keys.update({"market", "gates", "data_health", "normalization", "composite"})
+    market = snapshot.get("market")
+    if isinstance(market, dict):
+        for key in market:
+            item = str(key or "").strip()
+            if item:
+                keys.add(f"market.{item}")
     keys.update(
         _section_keys(
             snapshot,
