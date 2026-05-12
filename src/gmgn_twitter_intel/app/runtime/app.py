@@ -334,6 +334,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             cex_market=providers.asset_market.message_cex_market,
             dex_quote_market=providers.asset_market.dex_quote_market,
             repository_session=lambda: repository_session(db_pool),
+            on_observations_written=runtime.token_radar_projection_worker.request_rebuild
+            if runtime.token_radar_projection_worker is not None
+            else None,
         )
     if start_collector and providers.asset_market.dex_discovery_market is not None:
         runtime.resolution_refresh_worker = ResolutionRefreshWorker(

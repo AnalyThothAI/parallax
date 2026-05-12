@@ -20,12 +20,14 @@ class AnchorPriceWorker:
         dex_quote_market: Any = None,
         interval_seconds: float = 5.0,
         limit: int = 100,
+        on_observations_written: Callable[[], None] | None = None,
     ) -> None:
         self.repository_session = repository_session
         self.cex_market = cex_market
         self.dex_quote_market = dex_quote_market
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.limit = max(1, int(limit))
+        self.on_observations_written = on_observations_written
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
         self.last_result: dict[str, Any] | None = None
@@ -53,6 +55,8 @@ class AnchorPriceWorker:
                 now_ms=observed_at_ms,
                 limit=self.limit,
             )
+        if int(result.get("anchor_observations_written") or 0) > 0 and self.on_observations_written is not None:
+            self.on_observations_written()
         self.last_run_at_ms = int(time.time() * 1000)
         self.last_result = result
         return result

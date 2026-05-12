@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from gmgn_twitter_intel.domains.token_intel.runtime import token_radar_projection_worker as module
 
 
@@ -128,3 +130,43 @@ def test_projection_worker_records_partial_window_results_before_background_fail
     assert result["windows"]["1h:matched"]["error"] == "source query timeout"
     assert worker.last_error == "source query timeout"
     assert worker.last_result == result
+
+
+def test_projection_worker_can_be_woken_before_interval(monkeypatch):
+    calls: list[tuple[str, str]] = []
+
+    class FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild(self, *, window, scope, now_ms=None, limit=100):
+            calls.append((window, scope))
+            return {"rows_written": 1, "source_rows": 1, "computed_at_ms": now_ms, "status": "ready"}
+
+    async def scenario() -> None:
+        monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+        worker = module.TokenRadarProjectionWorker(
+            repository_session=lambda: FakeSession({}),
+            windows=("5m",),
+            scopes=("all",),
+            interval_seconds=60.0,
+        )
+        task = asyncio.create_task(worker.run())
+        try:
+            await _wait_until(lambda: len(calls) == 1)
+            worker.request_rebuild()
+            await _wait_until(lambda: len(calls) >= 2)
+        finally:
+            worker.stop()
+            await task
+
+    asyncio.run(scenario())
+    assert calls[:2] == [("5m", "all"), ("5m", "all")]
+
+
+async def _wait_until(predicate, *, timeout_seconds: float = 1.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while not predicate():
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError("timed out waiting for condition")
+        await asyncio.sleep(0.01)

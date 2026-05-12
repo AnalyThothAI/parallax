@@ -40,11 +40,11 @@ class TokenRadarProjectionWorker:
         self.last_result: dict[str, Any] | None = None
         self.last_error: str | None = None
         self._stopped = False
-        self._stop_event: asyncio.Event | None = None
+        self._wake_event: asyncio.Event | None = None
         self._cursor = 0
 
     async def run(self) -> None:
-        self._stop_event = asyncio.Event()
+        self._wake_event = asyncio.Event()
         while not self._stopped:
             try:
                 await asyncio.to_thread(self.rebuild_once)
@@ -57,13 +57,19 @@ class TokenRadarProjectionWorker:
             if self._stopped:
                 break
             with suppress(TimeoutError):
-                await asyncio.wait_for(self._stop_event.wait(), timeout=self.interval_seconds)
-        self._stop_event = None
+                await asyncio.wait_for(self._wake_event.wait(), timeout=self.interval_seconds)
+            if self._wake_event is not None:
+                self._wake_event.clear()
+        self._wake_event = None
 
     def stop(self) -> None:
         self._stopped = True
-        if self._stop_event is not None:
-            self._stop_event.set()
+        if self._wake_event is not None:
+            self._wake_event.set()
+
+    def request_rebuild(self) -> None:
+        if self._wake_event is not None:
+            self._wake_event.set()
 
     def rebuild_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         computed_at_ms = int(now_ms if now_ms is not None else _now_ms())
