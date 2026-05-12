@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
-from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate
-from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import (
-    TokenDiscoveryWorker,
+from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate, DexTokenPrice
+from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
+    ResolutionRefreshWorker,
     _process_address_lookup,
 )
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
@@ -50,7 +50,7 @@ def _dex_candidate(
     "(migration 20260510_0021); test predates new asset_identity_evidence/current model. "
     "Tracked in docs/TECH_DEBT.md → 'Integration tests against pre-hard-cut asset registry'."
 )
-def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_path):
+def test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
     address = "0x44b28991b167582f18ba0259e0173176ca125505"
@@ -72,7 +72,7 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
         repos = repositories_for_connection(conn)
         before = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
 
-        worker = TokenDiscoveryWorker(
+        worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
             dex_market=FakeDexMarket(
                 candidates=[
@@ -121,7 +121,7 @@ def test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar(tmp_pa
     assert rows[0]["market_json"]["price_usd"] == 1061.0
 
 
-def test_token_discovery_worker_skips_symbol_lookup_after_retained_candidate_resolves_intent(tmp_path):
+def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_resolves_intent(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
     address = "0x44b28991b167582f18ba0259e0173176ca125505"
@@ -133,7 +133,7 @@ def test_token_discovery_worker_skips_symbol_lookup_after_retained_candidate_res
             signals=SignalRepository(conn),
             enrichment=FakeEnrichment(),
         )
-        worker = TokenDiscoveryWorker(
+        worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
             dex_market=FakeDexMarket(
                 candidates=[
@@ -187,6 +187,81 @@ def test_token_discovery_worker_skips_symbol_lookup_after_retained_candidate_res
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
 
 
+def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    now_ms = 1_778_145_100_000
+    address = "0x54b28991b167582f18ba0259e0173176ca125505"
+    dex_market = FakeDexMarket(candidates=[])
+    try:
+        migrate(conn)
+        ingest = IngestService(
+            evidence=EvidenceRepository(conn),
+            entities=EntityRepository(conn),
+            signals=SignalRepository(conn),
+            enrichment=FakeEnrichment(),
+        )
+        worker = ResolutionRefreshWorker(
+            repository_session=lambda: repository_session_for_connection(conn),
+            dex_market=dex_market,
+            chain_ids=("eip155:1",),
+            interval_seconds=60,
+        )
+        ingested = ingest.ingest_event(
+            make_event(
+                "event-fresh-1",
+                text="$FRESH is waking up",
+                received_at_ms=now_ms,
+                is_watched=True,
+            ),
+            is_watched=True,
+        )
+
+        first = worker.run_once(now_ms=now_ms + 60_000)
+        before = repositories_for_connection(conn).intent_resolutions.active_resolution_for_intent(
+            ingested.token_intents[0]["intent_id"]
+        )
+        dex_market.candidates = [
+            DexTokenCandidate(
+                chain_id="eip155:1",
+                address=address,
+                symbol="FRESH",
+                name="Fresh",
+                price_usd=0.5,
+                market_cap_usd=500_000.0,
+                liquidity_usd=50_000.0,
+                holders=500,
+                community_recognized=True,
+                raw={"tokenSymbol": "FRESH"},
+            )
+        ]
+
+        second = worker.run_once(now_ms=now_ms + 120_000)
+        repos = repositories_for_connection(conn)
+        after = repos.intent_resolutions.active_resolution_for_intent(
+            ingested.token_intents[0]["intent_id"]
+        )
+        rows = repos.token_radar.latest_rows(
+            window="5m",
+            scope="all",
+            limit=10,
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        )
+    finally:
+        conn.close()
+
+    assert first["lookups_done"] == 1
+    assert first["search_hits"] == 0
+    assert before["resolution_status"] == "NIL"
+    assert second["lookups_done"] == 1
+    assert second["search_hits"] == 1
+    assert second["anchor"]["anchor_observations_written"] == 1
+    assert second["projection"]["windows"]["5m:all"]["rows_written"] >= 1
+    assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
+    assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
+    assert rows[0]["target_id"] == f"asset:eip155:1:erc20:{address}"
+    assert rows[0]["factor_snapshot_json"]["market"]["anchor_price_usd"] == 0.5
+
+
 @pytest.mark.skip(
     reason="registry_assets.symbol dropped by token-identity-evidence hard-cut "
     "(migration 20260510_0021); test asserts demoted_search by symbol selector. "
@@ -207,7 +282,7 @@ def test_dex_symbol_discovery_retains_top_three_per_chain(tmp_path):
             make_event("event-hanta-top3", text="$HANTA is moving", received_at_ms=now_ms, is_watched=True),
             is_watched=True,
         )
-        worker = TokenDiscoveryWorker(
+        worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
             dex_market=FakeDexMarket(
                 candidates=[
@@ -344,7 +419,7 @@ def test_dex_symbol_discovery_demotes_old_unretained_search_assets(tmp_path):
             source="okx_dex_search",
             observed_at_ms=now_ms,
         )
-        worker = TokenDiscoveryWorker(
+        worker = ResolutionRefreshWorker(
             repository_session=lambda: repository_session_for_connection(conn),
             dex_market=FakeDexMarket(
                 candidates=[
@@ -419,10 +494,28 @@ class FakeDexMarket:
     def __init__(self, *, candidates):
         self.candidates = candidates
         self.search_requests = []
+        self.price_requests = []
 
     def search_tokens(self, *, query, chain_ids):
         self.search_requests.append({"query": query, "chain_ids": tuple(chain_ids)})
         return list(self.candidates)
+
+    def token_prices(self, requests):
+        self.price_requests.append(list(requests))
+        prices = []
+        for request in requests:
+            prices.extend(
+                DexTokenPrice(
+                    chain_id=candidate.chain_id,
+                    address=candidate.address,
+                    observed_at_ms=1_778_145_220_000,
+                    price_usd=candidate.price_usd,
+                    raw={"priceUsd": candidate.price_usd},
+                )
+                for candidate in self.candidates
+                if candidate.chain_id == request.chain_id and candidate.address.lower() == request.address.lower()
+            )
+        return prices
 
 
 class FakeEnrichment:

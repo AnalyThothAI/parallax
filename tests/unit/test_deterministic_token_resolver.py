@@ -92,7 +92,7 @@ def test_symbol_prefers_confirmed_cex_token_before_us_equity_symbol():
     assert result.reason_codes == ["CONFIRMED_CEX_TOKEN"]
 
 
-def test_symbol_prefers_existing_chain_asset_before_us_equity_symbol():
+def test_symbol_prefers_confirmed_us_equity_before_symbol_only_chain_asset():
     registry = FakeRegistry(
         symbol_assets={
             "ON": [
@@ -123,10 +123,11 @@ def test_symbol_prefers_existing_chain_asset_before_us_equity_symbol():
         decision_time_ms=1_778_145_100_000,
     )
 
-    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
-    assert result.target_type == "Asset"
-    assert result.target_id == "asset:solana:token:onchain"
-    assert result.reason_codes == ["SINGLE_ACTIVE_CHAIN_ASSET"]
+    assert result.resolution_status == "NON_CRYPTO"
+    assert result.target_type == "MarketInstrument"
+    assert result.target_id == "market_instrument:us_equity:ON"
+    assert result.reason_codes == ["CONFIRMED_US_EQUITY"]
+    assert result.lookup_keys == []
 
 
 def test_symbol_without_crypto_candidates_resolves_confirmed_us_equity_as_non_crypto():
@@ -153,6 +154,117 @@ def test_symbol_without_crypto_candidates_resolves_confirmed_us_equity_as_non_cr
     assert result.reason_codes == ["CONFIRMED_US_EQUITY"]
     assert result.candidate_ids == ["market_instrument:us_equity:AAOI"]
     assert result.lookup_keys == []
+
+
+def test_us_equity_symbol_wins_over_dex_symbol_only_candidates_after_cex_check():
+    registry = FakeRegistry(
+        us_equities={
+            "DELL": {
+                "market_instrument_id": "market_instrument:us_equity:DELL",
+                "symbol": "DELL",
+                "status": "active",
+            }
+        },
+        symbol_assets={
+            "DELL": [
+                {
+                    "asset_id": "asset:solana:token:dell",
+                    "chain_id": "solana",
+                    "address": "dell",
+                    "symbol": "DELL",
+                    "observed_at_ms": 1_778_145_000_000,
+                    "market_cap_usd": 10_000_000,
+                    "liquidity_usd": 500_000,
+                    "holders": 10_000,
+                    "provider_rank": 0,
+                    "provider_rank_observed_at_ms": 1_778_145_000_000,
+                }
+            ]
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-dell",
+        event_id="event-dell",
+        keys=MentionKeys(symbol="DELL"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "NON_CRYPTO"
+    assert result.target_type == "MarketInstrument"
+    assert result.target_id == "market_instrument:us_equity:DELL"
+    assert result.reason_codes == ["CONFIRMED_US_EQUITY"]
+    assert result.lookup_keys == []
+
+
+def test_us_equity_symbol_wins_over_mixed_dex_symbol_only_candidates():
+    registry = FakeRegistry(
+        us_equities={
+            "DELL": {
+                "market_instrument_id": "market_instrument:us_equity:DELL",
+                "symbol": "DELL",
+                "status": "active",
+            }
+        },
+        symbol_assets={
+            "DELL": [
+                {
+                    "asset_id": "asset:solana:token:dell-one",
+                    "chain_id": "solana",
+                    "address": "dell-one",
+                    "symbol": "DELL",
+                    "observed_at_ms": 1_778_145_000_000,
+                    "provider_rank": 0,
+                    "provider_rank_observed_at_ms": 1_778_145_000_000,
+                },
+                {
+                    "asset_id": "asset:solana:token:dell-two",
+                    "chain_id": "solana",
+                    "address": "dell-two",
+                    "symbol": "DELL",
+                    "observed_at_ms": 1_778_145_000_000,
+                },
+            ]
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-dell",
+        event_id="event-dell",
+        keys=MentionKeys(symbol="DELL"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "NON_CRYPTO"
+    assert result.target_type == "MarketInstrument"
+    assert result.target_id == "market_instrument:us_equity:DELL"
+    assert result.reason_codes == ["CONFIRMED_US_EQUITY"]
+    assert result.lookup_keys == []
+
+
+def test_cex_token_still_wins_over_us_equity_symbol():
+    registry = FakeRegistry(
+        cex_tokens={"COIN": {"cex_token_id": "cex_token:COIN", "base_symbol": "COIN"}},
+        us_equities={
+            "COIN": {
+                "market_instrument_id": "market_instrument:us_equity:COIN",
+                "symbol": "COIN",
+                "status": "active",
+            }
+        },
+    )
+
+    result = DeterministicTokenResolver(registry=registry).resolve(
+        intent_id="intent-coin",
+        event_id="event-coin",
+        keys=MentionKeys(symbol="COIN"),
+        decision_time_ms=1_778_145_100_000,
+    )
+
+    assert result.resolution_status == "UNIQUE_BY_CONTEXT"
+    assert result.target_type == "CexToken"
+    assert result.target_id == "cex_token:COIN"
+    assert result.reason_codes == ["CONFIRMED_CEX_TOKEN"]
 
 
 def test_cex_native_pricefeed_is_exact_before_symbol_resolution():

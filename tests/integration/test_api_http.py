@@ -442,8 +442,8 @@ def test_api_status_exposes_anchor_and_live_market_status(tmp_path):
     assert set(anchor_price) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
     live_price_gateway = response.json()["data"]["live_price_gateway"]
     assert set(live_price_gateway) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
-    token_discovery = response.json()["data"]["token_discovery"]
-    assert set(token_discovery) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
+    resolution_refresh = response.json()["data"]["resolution_refresh"]
+    assert set(resolution_refresh) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
     token_radar_projection = response.json()["data"]["token_radar_projection"]
     assert set(token_radar_projection) >= {"worker_running", "last_run_at_ms", "last_result", "last_error"}
 
@@ -512,6 +512,107 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
     assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "UNIQUE_BY_CONTEXT"
+
+
+def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    now_ms = 1_778_562_000_000
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        runtime.ingest.ingest_event(
+            make_token_event(
+                "event-pepe-diagnostics",
+                symbol="PEPE",
+                address=PEPE,
+                text=f"$PEPE {PEPE}",
+                received_at_ms=now_ms,
+            ),
+            is_watched=True,
+        )
+        runtime.ingest.ingest_event(
+            make_event(
+                "event-unknown-diagnostics",
+                text="$NEWTOKEN soon",
+                received_at_ms=now_ms + 1_000,
+            ),
+            is_watched=True,
+        )
+        rebuild_token_radar(client, now_ms=now_ms + 2_000)
+
+        response = client.get(
+            "/api/token-radar",
+            params={"window": "5m", "scope": "all", "limit": 20},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    public_rows = [*data["targets"], *data["attention"]]
+    assert public_rows
+    assert all(row["target"]["target_id"] for row in public_rows)
+    assert "NEWTOKEN" not in {row["target"]["symbol"] for row in public_rows}
+    assert data["projection"]["unresolved"]["identity_missing_count"] >= 1
+    assert "NEWTOKEN" in data["projection"]["unresolved"]["sample_symbols"]
+
+
+def test_token_radar_overlays_live_gateway_snapshot(tmp_path):
+    class FakeLiveGateway:
+        def stop(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+        def snapshot(self, *, target_type: str, target_id: str, now_ms: int | None = None):
+            return {
+                "target_type": target_type,
+                "target_id": target_id,
+                "status": "live",
+                "price_usd": 0.123,
+                "price_quote": None,
+                "quote_symbol": "USD",
+                "price_basis": "usd",
+                "market_cap_usd": 123_000,
+                "liquidity_usd": 45_000,
+                "holders": 321,
+                "volume_24h_usd": 9_000,
+                "observed_at_ms": now_ms,
+                "received_at_ms": now_ms,
+                "age_ms": 0,
+                "provider": "test_live",
+            }
+
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    now_ms = 1_778_562_100_000
+
+    with TestClient(app) as client:
+        runtime = client.app.state.service
+        runtime.ingest.ingest_event(
+            make_token_event(
+                "event-pepe-live-overlay",
+                symbol="PEPE",
+                address=PEPE,
+                text=f"$PEPE {PEPE}",
+                received_at_ms=now_ms,
+            ),
+            is_watched=True,
+        )
+        runtime.live_price_gateway = FakeLiveGateway()
+        rebuild_token_radar(client, now_ms=now_ms + 1_000)
+
+        response = client.get(
+            "/api/token-radar",
+            params={"window": "5m", "scope": "all", "limit": 20},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    row = response.json()["data"]["targets"][0]
+    assert row["live_market"]["status"] == "live"
+    assert row["live_market"]["price_usd"] == 0.123
+    assert row["live_market"]["market_cap_usd"] == 123_000
+    assert row["live_market"]["provider"] == "test_live"
 
 
 def test_api_exposes_notification_list_summary_and_read_state(tmp_path):

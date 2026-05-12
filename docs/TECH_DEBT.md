@@ -42,10 +42,10 @@ INSERT shape (cf. `src/gmgn_twitter_intel/domains/evidence/repositories/evidence
 
 | Test | Surface to rewrite against | Notes |
 |------|----------------------------|-------|
-| `tests/integration/test_token_discovery_worker.py::test_token_discovery_worker_resolves_recent_symbol_and_rebuilds_radar` | `asset_identity_evidence` / `asset_identity_current` | drop `registry_assets.symbol` reads |
-| `tests/integration/test_token_discovery_worker.py::test_dex_symbol_discovery_retains_top_three_per_chain` | same | symbol selector → identity-current |
-| `tests/integration/test_token_discovery_worker.py::test_dex_symbol_discovery_demotes_old_unretained_search_assets` | `RegistryRepository.upsert_chain_asset` (no symbol/name/decimals) | seed identity via evidence repo |
-| `tests/integration/test_token_discovery_worker.py::test_address_discovery_remains_uncapped` | same | SELECT via identity-current |
+| `tests/integration/test_resolution_refresh_worker.py::test_resolution_refresh_worker_resolves_recent_symbol_and_rebuilds_radar` | `asset_identity_evidence` / `asset_identity_current` | drop `registry_assets.symbol` reads |
+| `tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_retains_top_three_per_chain` | same | symbol selector → identity-current |
+| `tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_demotes_old_unretained_search_assets` | `RegistryRepository.upsert_chain_asset` (no symbol/name/decimals) | seed identity via evidence repo |
+| `tests/integration/test_resolution_refresh_worker.py::test_address_discovery_remains_uncapped` | same | SELECT via identity-current |
 | `tests/integration/test_price_observation_repository.py` (4 tests) | `events(source_provider, source_transport, …)` schema | helper `_insert_event_intent_resolution` insert is stale |
 | `tests/integration/test_enrichment_worker.py::test_enrichment_worker_materializes_closed_loop_harness_and_publishes_update` | hard-cut materializer path | asserts `snapshot_ready` but pipeline returns `asset_unresolved` |
 | `tests/integration/test_enrichment_worker.py::test_enrichment_worker_stores_non_signal_extraction_without_snapshot` | same | depends on materializer |

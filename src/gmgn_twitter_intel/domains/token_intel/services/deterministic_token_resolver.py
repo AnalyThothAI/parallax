@@ -256,6 +256,20 @@ class DeterministicTokenResolver:
                 candidate_ids=candidate_ids,
                 decision_time_ms=decision_time_ms,
             )
+        us_equity = self.registry.find_us_equity_symbol(symbol)
+        if us_equity:
+            target_id = str(us_equity["market_instrument_id"])
+            return _resolution(
+                intent_id=intent_id,
+                event_id=event_id,
+                status="NON_CRYPTO",
+                target_type="MarketInstrument",
+                target_id=target_id,
+                reason_codes=["CONFIRMED_US_EQUITY"],
+                lookup_keys=[],
+                candidate_ids=[target_id],
+                decision_time_ms=decision_time_ms,
+            )
         assets = self.registry.find_assets_by_symbol_with_identity_metadata(symbol)
         assets = [row for row in assets if str(row.get("asset_id") or "")]
         assets = [{**row, "decision_time_ms": decision_time_ms} for row in assets]
@@ -308,20 +322,6 @@ class DeterministicTokenResolver:
                 reason_codes=["NO_MARKET_DOMINANT_CHAIN_ASSET"],
                 lookup_keys=lookup_keys,
                 candidate_ids=candidate_ids,
-                decision_time_ms=decision_time_ms,
-            )
-        us_equity = self.registry.find_us_equity_symbol(symbol)
-        if us_equity:
-            target_id = str(us_equity["market_instrument_id"])
-            return _resolution(
-                intent_id=intent_id,
-                event_id=event_id,
-                status="NON_CRYPTO",
-                target_type="MarketInstrument",
-                target_id=target_id,
-                reason_codes=["CONFIRMED_US_EQUITY"],
-                lookup_keys=[],
-                candidate_ids=[target_id],
                 decision_time_ms=decision_time_ms,
             )
         return _resolution(

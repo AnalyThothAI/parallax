@@ -13,8 +13,9 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar: Any) -> None:
+    def __init__(self, *, token_radar: Any, live_market_gateway: Any | None = None) -> None:
         self.token_radar = token_radar
+        self.live_market_gateway = live_market_gateway
 
     def asset_flow(
         self,
@@ -40,9 +41,14 @@ class AssetFlowService:
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
-        public_rows = [_public_row(row) for row in rows]
-        targets = [row for row in public_rows if row.get("_lane") == "resolved"]
-        attention = [row for row in public_rows if row.get("_lane") == "attention"]
+        public_rows = [
+            _overlay_live_market(_public_row(row), gateway=self.live_market_gateway, now_ms=now_ms)
+            for row in rows
+        ]
+        unresolved = _unresolved_diagnostics(rows)
+        targetful_rows = [row for row in public_rows if _mapping(row.get("target")).get("target_id")]
+        targets = [row for row in targetful_rows if row.get("_lane") == "resolved"]
+        attention = [row for row in targetful_rows if row.get("_lane") == "attention"]
         for row in [*targets, *attention]:
             row.pop("_lane", None)
         returned_rows = [*targets[:limit], *attention[:limit]]
@@ -62,6 +68,7 @@ class AssetFlowService:
                 ),
                 "computed_at_ms": computed_at_ms if computed_at_ms is not None else coverage.get("computed_at_ms"),
                 "anchor_coverage": _anchor_coverage(returned_rows),
+                "unresolved": unresolved,
             },
         }
 
@@ -80,6 +87,27 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "factor_snapshot": factor_snapshot,
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
+    }
+
+
+def _overlay_live_market(row: dict[str, Any], *, gateway: Any | None, now_ms: int | None) -> dict[str, Any]:
+    if gateway is None:
+        return row
+    target = _mapping(row.get("target"))
+    target_type = str(target.get("target_type") or "").strip()
+    target_id = str(target.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return row
+    snapshot = _mapping(gateway.snapshot(target_type=target_type, target_id=target_id, now_ms=now_ms))
+    if not snapshot:
+        return row
+    return {
+        **row,
+        "live_market": {
+            **snapshot,
+            "target_type": snapshot.get("target_type") or target_type,
+            "target_id": snapshot.get("target_id") or target_id,
+        },
     }
 
 
@@ -150,6 +178,33 @@ def _anchor_coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     else:
         status = "missing"
     return {"status": status, "ready": ready, "missing": missing, "total": total}
+
+
+def _unresolved_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    unresolved = [row for row in rows if not row.get("target_id")]
+    symbols: list[str] = []
+    nil_count = 0
+    ambiguous_count = 0
+    for row in unresolved:
+        target = _mapping(row.get("target_json"))
+        intent = _mapping(row.get("intent_json"))
+        resolution = _mapping(row.get("resolution_json"))
+        status = str(
+            target.get("status") or resolution.get("status") or row.get("resolution_status") or ""
+        ).strip()
+        if status == "NIL":
+            nil_count += 1
+        elif status == "AMBIGUOUS":
+            ambiguous_count += 1
+        symbol = target.get("symbol") or intent.get("display_symbol") or intent.get("symbol")
+        if symbol and str(symbol) not in symbols:
+            symbols.append(str(symbol))
+    return {
+        "identity_missing_count": len(unresolved),
+        "nil_count": nil_count,
+        "ambiguous_count": ambiguous_count,
+        "sample_symbols": symbols[:10],
+    }
 
 
 def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:

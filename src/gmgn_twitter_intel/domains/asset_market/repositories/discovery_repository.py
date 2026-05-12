@@ -12,7 +12,17 @@ class DiscoveryRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def due_lookup_keys(self, *, since_ms: int, now_ms: int, limit: int) -> list[dict[str, Any]]:
+    def due_lookup_keys(
+        self,
+        *,
+        since_ms: int,
+        now_ms: int,
+        limit: int,
+        hot_since_ms: int | None = None,
+        hot_not_found_retry_ms: int | None = None,
+    ) -> list[dict[str, Any]]:
+        hot_since = int(hot_since_ms) if hot_since_ms is not None else None
+        hot_retry = int(hot_not_found_retry_ms) if hot_not_found_retry_ms is not None else None
         rows = self.conn.execute(
             """
             WITH recent_refresh_candidates AS (
@@ -58,6 +68,10 @@ class DiscoveryRepository:
               recent_refresh_candidates.latest_seen_ms,
               recent_refresh_candidates.intent_count,
               recent_refresh_candidates.refresh_priority,
+              CASE
+                WHEN %s::bigint IS NOT NULL AND recent_refresh_candidates.latest_seen_ms >= %s::bigint THEN 0
+                ELSE 1
+              END AS hot_priority,
               token_discovery_results.status,
               token_discovery_results.result_hash,
               token_discovery_results.next_refresh_at_ms,
@@ -72,7 +86,15 @@ class DiscoveryRepository:
                  token_discovery_results.status = 'running'
                  AND token_discovery_results.updated_at_ms < %s
                )
+               OR (
+                 %s::bigint IS NOT NULL
+                 AND %s::bigint IS NOT NULL
+                 AND recent_refresh_candidates.latest_seen_ms >= %s::bigint
+                 AND token_discovery_results.status = 'not_found'
+                 AND token_discovery_results.last_lookup_at_ms <= %s::bigint - %s::bigint
+               )
             ORDER BY
+              hot_priority ASC,
               recent_refresh_candidates.refresh_priority ASC,
               recent_refresh_candidates.latest_seen_ms DESC,
               CASE
@@ -87,9 +109,16 @@ class DiscoveryRepository:
             (
                 int(since_ms),
                 DISCOVERY_PROVIDER,
+                hot_since,
+                hot_since,
                 DISCOVERY_PROVIDER,
                 int(now_ms),
                 int(now_ms) - RUNNING_LOOKUP_TIMEOUT_MS,
+                hot_since,
+                hot_retry,
+                hot_since,
+                int(now_ms),
+                hot_retry,
                 max(0, int(limit)),
             ),
         ).fetchall()

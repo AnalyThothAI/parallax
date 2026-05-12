@@ -11,6 +11,7 @@ from typing import Any
 
 from loguru import logger
 
+from gmgn_twitter_intel.domains.asset_market.services.anchor_price_observation import observe_anchor_prices
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
@@ -18,6 +19,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
+from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import rebuild_token_radar_windows
 
 from ..identity_evidence_policy import (
     CONFIDENCE_PROVIDER_CANDIDATE,
@@ -32,11 +34,16 @@ FOUND_SYMBOL_REFRESH_MS = 15 * 60 * 1000
 NOT_FOUND_SYMBOL_REFRESH_MS = 5 * 60 * 1000
 FOUND_ADDRESS_REFRESH_MS = 24 * 60 * 60 * 1000
 NOT_FOUND_ADDRESS_REFRESH_MS = 5 * 60 * 1000
+HOT_LOOKBACK_MS = WINDOW_MS["1h"]
+HOT_NOT_FOUND_RETRY_MS = 60 * 1000
+HOT_PROJECTION_WINDOWS = ("5m", "1h")
+HOT_PROJECTION_SCOPES = ("all", "matched")
+HOT_PROJECTION_LIMIT = 100
 ERROR_REFRESH_BACKOFF_MS = (30_000, 60_000, 300_000, 1_800_000, 3_600_000)
 MAX_DEX_SYMBOL_CANDIDATES_PER_CHAIN = 3
 
 
-class TokenDiscoveryWorker:
+class ResolutionRefreshWorker:
     def __init__(
         self,
         *,
@@ -65,7 +72,7 @@ class TokenDiscoveryWorker:
                 await asyncio.to_thread(self.run_once)
             except Exception as exc:  # pragma: no cover - watchdog path
                 self.last_error = str(exc)
-                logger.exception(f"token discovery worker failed: {exc}")
+                logger.exception(f"resolution refresh worker failed: {exc}")
             await asyncio.sleep(self.interval_seconds)
 
     def run_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -74,7 +81,7 @@ class TokenDiscoveryWorker:
         self.last_error = None
         try:
             with self.repository_session() as repos:
-                result = run_token_discovery_once(
+                result = run_resolution_refresh_once(
                     repos=repos,
                     dex_market=self.dex_market,
                     chain_ids=self.chain_ids,
@@ -98,7 +105,7 @@ class TokenDiscoveryWorker:
             close()
 
 
-def run_token_discovery_once(
+def run_resolution_refresh_once(
     *,
     repos: Any,
     dex_market: Any,
@@ -109,7 +116,13 @@ def run_token_discovery_once(
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
     since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
-    lookups = repos.discovery.due_lookup_keys(since_ms=since_ms, now_ms=now_ms, limit=lookup_limit)
+    lookups = repos.discovery.due_lookup_keys(
+        since_ms=since_ms,
+        now_ms=now_ms,
+        limit=lookup_limit,
+        hot_since_ms=int(now_ms) - HOT_LOOKBACK_MS,
+        hot_not_found_retry_ms=HOT_NOT_FOUND_RETRY_MS,
+    )
     result["lookups_selected"] = len(lookups)
     affected_lookup_keys: set[str] = set()
     for lookup in lookups:
@@ -178,8 +191,21 @@ def run_token_discovery_once(
         )
         result["reprocess"] = reprocess_result
         result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
-    if result["reprocessed_intents"]:
-        result["projection"] = deferred_token_radar_projection()
+        if reprocess_result["resolved_intents"]:
+            result["anchor"] = observe_anchor_prices(
+                repos=repos,
+                cex_market=None,
+                dex_market=dex_market,
+                now_ms=now_ms,
+                limit=max(20, int(reprocess_result["resolved_intents"]) * 2),
+            )
+            result["projection"] = rebuild_token_radar_windows(
+                repos=repos,
+                now_ms=now_ms,
+                windows=HOT_PROJECTION_WINDOWS,
+                scopes=HOT_PROJECTION_SCOPES,
+                limit=HOT_PROJECTION_LIMIT,
+            )
     result["discovery_result_counts"] = repos.discovery.counts()
     return result
 
@@ -375,6 +401,7 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "assets_written": 0,
         "reprocessed_intents": 0,
         "reprocess": None,
+        "anchor": None,
         "projection": deferred_token_radar_projection(),
         "discovery_result_counts": {},
         "errors": [],

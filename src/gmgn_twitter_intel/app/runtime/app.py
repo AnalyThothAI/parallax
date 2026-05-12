@@ -29,7 +29,7 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_servic
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import AnchorPriceWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
-from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import TokenDiscoveryWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository, HarnessService
 from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
@@ -83,7 +83,7 @@ class CliRuntime:
     notification_worker: NotificationWorker | None = None
     notification_delivery_worker: NotificationDeliveryWorker | None = None
     anchor_price_worker: AnchorPriceWorker | None = None
-    token_discovery_worker: TokenDiscoveryWorker | None = None
+    resolution_refresh_worker: ResolutionRefreshWorker | None = None
     live_price_gateway: LivePriceGateway | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     pulse_candidate_worker: PulseCandidateWorker | None = None
@@ -94,7 +94,7 @@ class CliRuntime:
     notification_task: asyncio.Task | None = None
     notification_delivery_task: asyncio.Task | None = None
     anchor_price_task: asyncio.Task | None = None
-    token_discovery_task: asyncio.Task | None = None
+    resolution_refresh_task: asyncio.Task | None = None
     live_price_gateway_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
     pulse_candidate_task: asyncio.Task | None = None
@@ -330,7 +330,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             repository_session=lambda: repository_session(db_pool),
         )
     if start_collector and settings.okx_dex_configured:
-        runtime.token_discovery_worker = TokenDiscoveryWorker(
+        runtime.resolution_refresh_worker = ResolutionRefreshWorker(
             dex_market=providers.asset_market.discovery_dex_market,
             repository_session=lambda: repository_session(db_pool),
             chain_ids=providers.asset_market.discovery_chain_ids,
@@ -385,8 +385,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.notification_delivery_task = asyncio.create_task(runtime.notification_delivery_worker.run())
     if runtime.anchor_price_worker is not None and runtime.anchor_price_task is None:
         runtime.anchor_price_task = asyncio.create_task(runtime.anchor_price_worker.run())
-    if runtime.token_discovery_worker is not None and runtime.token_discovery_task is None:
-        runtime.token_discovery_task = asyncio.create_task(runtime.token_discovery_worker.run())
+    if runtime.resolution_refresh_worker is not None and runtime.resolution_refresh_task is None:
+        runtime.resolution_refresh_task = asyncio.create_task(runtime.resolution_refresh_worker.run())
     if runtime.live_price_gateway is not None and runtime.live_price_gateway_task is None:
         runtime.live_price_gateway_task = asyncio.create_task(runtime.live_price_gateway.run())
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
@@ -414,8 +414,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.notification_delivery_worker.stop()
     if runtime.anchor_price_worker is not None:
         runtime.anchor_price_worker.stop()
-    if runtime.token_discovery_worker is not None:
-        runtime.token_discovery_worker.stop()
+    if runtime.resolution_refresh_worker is not None:
+        runtime.resolution_refresh_worker.stop()
     if runtime.live_price_gateway is not None:
         runtime.live_price_gateway.stop()
     if runtime.token_radar_projection_worker is not None:
@@ -433,7 +433,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.notification_task,
             runtime.notification_delivery_task,
             runtime.anchor_price_task,
-            runtime.token_discovery_task,
+            runtime.resolution_refresh_task,
             runtime.live_price_gateway_task,
             runtime.pulse_candidate_task,
         )
@@ -452,8 +452,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     await runtime.collector.stop()
     if runtime.anchor_price_worker is not None:
         runtime.anchor_price_worker.close()
-    if runtime.token_discovery_worker is not None:
-        runtime.token_discovery_worker.close()
+    if runtime.resolution_refresh_worker is not None:
+        runtime.resolution_refresh_worker.close()
     if runtime.live_price_gateway is not None:
         runtime.live_price_gateway.close()
     if runtime.token_radar_projection_worker is not None:
@@ -557,14 +557,20 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_result": runtime.anchor_price_worker.last_result if runtime.anchor_price_worker else None,
             "last_error": runtime.anchor_price_worker.last_error if runtime.anchor_price_worker else None,
         },
-        "token_discovery": {
-            "worker_running": _task_running(runtime.token_discovery_task),
-            "last_started_at_ms": runtime.token_discovery_worker.last_started_at_ms
-            if runtime.token_discovery_worker
+        "resolution_refresh": {
+            "worker_running": _task_running(runtime.resolution_refresh_task),
+            "last_started_at_ms": runtime.resolution_refresh_worker.last_started_at_ms
+            if runtime.resolution_refresh_worker
             else None,
-            "last_run_at_ms": runtime.token_discovery_worker.last_run_at_ms if runtime.token_discovery_worker else None,
-            "last_result": runtime.token_discovery_worker.last_result if runtime.token_discovery_worker else None,
-            "last_error": runtime.token_discovery_worker.last_error if runtime.token_discovery_worker else None,
+            "last_run_at_ms": runtime.resolution_refresh_worker.last_run_at_ms
+            if runtime.resolution_refresh_worker
+            else None,
+            "last_result": runtime.resolution_refresh_worker.last_result
+            if runtime.resolution_refresh_worker
+            else None,
+            "last_error": runtime.resolution_refresh_worker.last_error
+            if runtime.resolution_refresh_worker
+            else None,
         },
         "live_price_gateway": {
             "configured": getattr(runtime.settings, "okx_dex_ws_configured", False),
@@ -598,8 +604,8 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("notification_delivery_worker_stopped")
     if runtime.anchor_price_worker is not None and not _task_running(runtime.anchor_price_task):
         reasons.append("anchor_price_worker_stopped")
-    if runtime.token_discovery_worker is not None and not _task_running(runtime.token_discovery_task):
-        reasons.append("token_discovery_worker_stopped")
+    if runtime.resolution_refresh_worker is not None and not _task_running(runtime.resolution_refresh_task):
+        reasons.append("resolution_refresh_worker_stopped")
     if runtime.live_price_gateway is not None and not _task_running(runtime.live_price_gateway_task):
         reasons.append("live_price_gateway_stopped")
     if runtime.token_radar_projection_worker is not None and not _task_running(runtime.token_radar_projection_task):

@@ -134,7 +134,7 @@ class CliTests(unittest.TestCase):
             ["ops", "projection-status"],
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
-            ["ops", "run-token-discovery", "--limit", "5"],
+            ["ops", "run-resolution-refresh", "--limit", "5"],
             ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5", "--lookup-key", "symbol:SLOP"],
             ["ops", "rebuild-token-intents", "--window", "5m", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
@@ -169,7 +169,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[5].ops_command, "validate-projections")
         self.assertEqual(parsed[5].sample, 5)
         self.assertEqual(parsed[6].ops_command, "sync-okx-cex-universe")
-        self.assertEqual(parsed[7].ops_command, "run-token-discovery")
+        self.assertEqual(parsed[7].ops_command, "run-resolution-refresh")
         self.assertEqual(parsed[7].limit, 5)
         self.assertEqual(parsed[8].ops_command, "reprocess-token-intents")
         self.assertEqual(parsed[8].window, "24h")

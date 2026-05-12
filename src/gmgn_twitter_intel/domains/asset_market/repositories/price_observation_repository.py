@@ -55,7 +55,7 @@ class PriceObservationRepository:
             source_resolution_id=source_resolution_id,
             observation_kind=observation_kind,
         )
-        self.conn.execute(
+        stored = self.conn.execute(
             """
             INSERT INTO price_observations(
               observation_id, pricefeed_id, provider, observed_at_ms, subject_type, subject_id,
@@ -65,7 +65,14 @@ class PriceObservationRepository:
               raw_payload_json, created_at_ms
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(observation_id) DO UPDATE SET
+            ON CONFLICT(source_resolution_id)
+              WHERE observation_kind = 'message_anchor' AND source_resolution_id IS NOT NULL
+            DO UPDATE SET
+              pricefeed_id = excluded.pricefeed_id,
+              provider = excluded.provider,
+              observed_at_ms = excluded.observed_at_ms,
+              subject_type = excluded.subject_type,
+              subject_id = excluded.subject_id,
               price_usd = excluded.price_usd,
               price_quote = excluded.price_quote,
               quote_symbol = excluded.quote_symbol,
@@ -82,6 +89,7 @@ class PriceObservationRepository:
               event_received_at_ms = excluded.event_received_at_ms,
               observation_lag_ms = excluded.observation_lag_ms,
               raw_payload_json = excluded.raw_payload_json
+            RETURNING observation_id
             """,
             (
                 observation_id,
@@ -108,14 +116,15 @@ class PriceObservationRepository:
                 Jsonb(raw_payload or {}),
                 int(observed_at_ms),
             ),
-        )
+        ).fetchone()
+        stored_observation_id = str((stored or {}).get("observation_id") or observation_id)
         self._upsert_token_market_price_baseline(
             resolution_id=source_resolution_id,
             event_id=source_event_id,
             target_type=subject_type,
             target_id=subject_id,
             event_received_at_ms=int(event_received_at_ms),
-            observation_id=observation_id,
+            observation_id=stored_observation_id,
             observation_kind=observation_kind,
             provider=provider,
             observed_at_ms=int(observed_at_ms),
@@ -126,7 +135,7 @@ class PriceObservationRepository:
         )
         if commit:
             self.conn.commit()
-        return self.get(observation_id) or {}
+        return self.get(stored_observation_id) or {}
 
     def get(self, observation_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(

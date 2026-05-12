@@ -176,6 +176,68 @@ def test_discovery_prioritizes_recent_due_lookup_over_old_never_seen_backlog(tmp
     assert [item["lookup_key"] for item in due] == ["symbol:RECENT"]
 
 
+def test_discovery_retries_hot_not_found_before_old_backlog(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        _insert_event_intent_and_evidence(
+            conn,
+            event_id="event-old",
+            intent_id="intent-old",
+            evidence_id="evidence-old",
+            resolution_id="resolution-old",
+            symbol="OLD",
+            received_at_ms=1_000,
+        )
+        _insert_event_intent_and_evidence(
+            conn,
+            event_id="event-hot",
+            intent_id="intent-hot",
+            evidence_id="evidence-hot",
+            resolution_id="resolution-hot",
+            symbol="HOT",
+            received_at_ms=100_000,
+        )
+        lookup = TokenIntentLookupRepository(conn)
+        lookup.replace_lookup_keys(
+            intent_id="intent-old",
+            event_id="event-old",
+            keys=["symbol:OLD"],
+            source_evidence_id="evidence-old",
+            created_at_ms=1_000,
+        )
+        lookup.replace_lookup_keys(
+            intent_id="intent-hot",
+            event_id="event-hot",
+            keys=["symbol:HOT"],
+            source_evidence_id="evidence-hot",
+            created_at_ms=100_000,
+        )
+        discovery = DiscoveryRepository(conn)
+        discovery.finish_lookup(
+            provider="okx_dex_search",
+            lookup_key="symbol:HOT",
+            lookup_type="dex_symbol_lookup",
+            status="not_found",
+            candidate_ids=[],
+            result_hash="empty",
+            next_refresh_at_ms=380_000,
+            now_ms=80_000,
+        )
+
+        due = discovery.due_lookup_keys(
+            since_ms=0,
+            now_ms=120_000,
+            limit=1,
+            hot_since_ms=90_000,
+            hot_not_found_retry_ms=30_000,
+        )
+    finally:
+        conn.close()
+
+    assert [item["lookup_key"] for item in due] == ["symbol:HOT"]
+
+
 def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

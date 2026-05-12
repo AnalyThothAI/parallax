@@ -20,7 +20,7 @@ from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_c
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.domains.asset_market.runtime.token_discovery_worker import run_token_discovery_once
+from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import run_resolution_refresh_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
@@ -219,12 +219,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="one-shot sync of GMGN twitter directory into account_profiles",
     )
     sync_gmgn_directory.add_argument("--max-pages", type=int, default=200)
-    run_token_discovery = ops_subcommands.add_parser(
-        "run-token-discovery",
-        help="refresh due token discovery results and reprocess recent intents",
+    run_resolution_refresh = ops_subcommands.add_parser(
+        "run-resolution-refresh",
+        help="refresh due token resolution lookups and reprocess recent intents",
     )
-    run_token_discovery.add_argument("--limit", type=int, default=50)
-    run_token_discovery.add_argument("--reprocess-limit", type=int, default=500)
+    run_resolution_refresh.add_argument("--limit", type=int, default=50)
+    run_resolution_refresh.add_argument("--reprocess-limit", type=int, default=500)
     reprocess_token_intents = ops_subcommands.add_parser(
         "reprocess-token-intents",
         help="re-resolve recent unresolved token intents and rebuild token radar",
@@ -778,7 +778,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
-        if command == "ops" and args.ops_command == "run-token-discovery":
+        if command == "ops" and args.ops_command == "run-resolution-refresh":
             client = OkxDexClient(
                 base_url=settings.okx_dex_base_url,
                 api_key=settings.okx_dex_api_key,
@@ -787,7 +787,7 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 timeout_seconds=settings.okx_timeout_seconds,
             )
             try:
-                data = run_token_discovery_once(
+                data = run_resolution_refresh_once(
                     repos=repos,
                     dex_market=OkxDexMarketProvider(client),
                     chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
