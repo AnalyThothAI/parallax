@@ -15,7 +15,7 @@ positional arguments:
     config              print effective runtime configuration
     db                  database lifecycle commands
     recent              print recent stored events
-    search              search stored tweets by CA, symbol, handle, or text
+    search              search stored tweets by query text
     asset-flow          rank resolved assets and unresolved attention
                         candidates
     account-alerts      print watched-account token alerts

@@ -34,9 +34,10 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     require_token_factor_snapshot,
 )
+from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
+from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
 from gmgn_twitter_intel.domains.token_intel.runtime.token_resolution_refresh import (
@@ -96,14 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     recent.add_argument("--symbol", default="", help="filter by cashtag symbol")
     recent.add_argument("--scope", choices=("all", "matched"), default="matched")
 
-    search = subcommands.add_parser("search", help="search stored tweets by CA, symbol, handle, or text")
+    search = subcommands.add_parser("search", help="search stored tweets by query text")
     search.add_argument("query", nargs="?", default="")
     search.add_argument("--limit", type=int, default=20)
-    search.add_argument("--symbol", default="", help="search by token symbol without shell cashtag escaping")
-    search.add_argument("--ca", default="", help="search by token contract address")
-    search.add_argument("--chain", default="", help="chain for --ca")
-    search.add_argument("--handle", default="", help="search by Twitter handle")
     search.add_argument("--scope", choices=("all", "matched"), default="all")
+    search.add_argument("--cursor", default="", help="opaque cursor returned by a prior search page")
 
     asset_flow = subcommands.add_parser("asset-flow", help="rank resolved assets and unresolved attention candidates")
     asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
@@ -474,22 +472,23 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0
 
         if command == "search":
-            query = _search_query(args)
-            results = AssetSearchService(evidence=evidence, assets=assets).search(
-                query,
-                limit=args.limit,
-                scope=args.scope,
-            )
+            try:
+                results = SearchService(search_query=SearchEventsQuery(repos.conn)).search(
+                    args.query,
+                    limit=args.limit,
+                    scope=args.scope,
+                    cursor=args.cursor or None,
+                )
+            except SearchCursorError:
+                _emit({"ok": False, "error": "invalid_cursor"}, stdout)
+                return 1
             _emit(
                 {
                     "ok": results.ok,
                     "data": {
                         "query": results.query,
-                        "total_count": results.total_count,
-                        "returned_count": results.returned_count,
-                        "has_more": results.has_more,
-                        "resolution": results.resolution,
-                        "candidates": results.candidates,
+                        "page": results.page,
+                        "target_candidates": results.target_candidates,
                         "items": results.items,
                     },
                     "error": results.error,
@@ -916,18 +915,6 @@ def _redacted_postgres_dsn(dsn: str) -> str:
         return conninfo.make_conninfo(**parts)
     except Exception:
         return dsn
-
-
-def _search_query(args: argparse.Namespace) -> str:
-    if args.ca:
-        if args.chain:
-            return f"{args.chain.strip()}:{args.ca}"
-        return args.ca
-    if args.symbol:
-        return f"${args.symbol.strip().lstrip('$')}"
-    if args.handle:
-        return f"@{args.handle.strip().lstrip('@')}"
-    return args.query
 
 
 def _handle_set(raw: str) -> set[str]:

@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 
 import { getApi, getBootstrap } from "../../api/client";
@@ -105,13 +105,15 @@ export function useLiveData() {
     refetchInterval: 20_000,
   });
 
-  const searchQuery = useQuery({
-    queryKey: ["search", submittedSearch],
-    queryFn: () =>
+  const searchQuery = useInfiniteQuery({
+    queryKey: ["search", submittedSearch, "v2"],
+    queryFn: ({ pageParam }) =>
       getApi<SearchData>("/api/search", {
         token,
-        params: { q: submittedSearch, limit: 36, scope: "all" },
+        params: { q: submittedSearch, limit: 36, scope: "all", cursor: pageParam ?? "" },
       }),
+    initialPageParam: "",
+    getNextPageParam: (lastPage) => lastPage.data.page.next_cursor ?? undefined,
     enabled: Boolean(token && submittedSearch),
   });
 
@@ -150,7 +152,19 @@ export function useLiveData() {
     );
   }, [recentQuery.data?.data.items, socket.events]);
 
-  const searchData = searchQuery.data?.data;
+  const searchData = useMemo(() => {
+    const pages = searchQuery.data?.pages ?? [];
+    if (!pages.length) {
+      return null;
+    }
+    const first = pages[0].data;
+    return {
+      query: first.query,
+      target_candidates: first.target_candidates,
+      page: pages[pages.length - 1].data.page,
+      items: pages.flatMap((page) => page.data.items),
+    };
+  }, [searchQuery.data?.pages]);
   const currentSearchData =
     searchData && String(searchData.query?.text ?? "") === submittedSearch ? searchData : null;
   const signalLabOverviewData =
@@ -187,7 +201,10 @@ export function useLiveData() {
     radarSortMode,
     scope,
     searchError: searchQuery.error instanceof Error ? searchQuery.error : null,
-    searchFetching: searchQuery.isFetching,
+    fetchNextSearchPage: searchQuery.fetchNextPage,
+    searchFetching: searchQuery.isPending,
+    searchFetchingNextPage: searchQuery.isFetchingNextPage,
+    searchHasNextPage: Boolean(searchQuery.hasNextPage),
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal: signalPulseTotal(signalLabOverviewData?.summary),

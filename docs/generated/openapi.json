@@ -1005,51 +1005,21 @@
           },
           {
             "in": "query",
-            "name": "symbol",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Symbol",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "ca",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Ca",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "chain",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Chain",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "handle",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Handle",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
             "name": "scope",
             "required": false,
             "schema": {
               "default": "all",
               "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
               "type": "string"
             }
           }

@@ -14,8 +14,9 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_serv
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
+from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
-from gmgn_twitter_intel.domains.token_intel.read_models.asset_search_service import AssetSearchService
+from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_cursor import TokenTargetCursorError
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_service import (
     TokenTargetPostsCursorError,
@@ -119,33 +120,30 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         request: Request,
         q: Annotated[str, Query()] = "",
         limit: Annotated[int, Query()] = 20,
-        symbol: Annotated[str, Query()] = "",
-        ca: Annotated[str, Query()] = "",
-        chain: Annotated[str, Query()] = "",
-        handle: Annotated[str, Query()] = "",
         scope: Annotated[str, Query()] = "all",
+        cursor: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        query = _search_query(q=q, symbol=symbol, ca=ca, chain=chain, handle=handle)
-        with runtime.repositories() as repos:
-            results = AssetSearchService(
-                evidence=repos.evidence,
-                assets=repos.assets,
-            ).search(
-                query,
-                limit=_limit(limit),
-                scope=_scope(scope),
-            )
+        for removed in ("symbol", "ca", "chain", "handle"):
+            if removed in request.query_params:
+                raise ApiBadRequest("unsupported_query_param", field=removed)
+        try:
+            with runtime.repositories() as repos:
+                results = SearchService(search_query=SearchEventsQuery(repos.conn)).search(
+                    q,
+                    limit=_limit(limit, maximum=200),
+                    scope=_scope(scope),
+                    cursor=cursor or None,
+                )
+        except SearchCursorError:
+            return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json(
             {
                 "ok": results.ok,
                 "data": {
                     "query": results.query,
-                    "total_count": results.total_count,
-                    "returned_count": results.returned_count,
-                    "has_more": results.has_more,
-                    "resolution": results.resolution,
-                    "candidates": results.candidates,
+                    "page": results.page,
+                    "target_candidates": results.target_candidates,
                     "items": results.items,
                 },
                 "error": results.error,
@@ -612,16 +610,6 @@ def _notification_payload(row: dict[str, Any]) -> dict[str, Any]:
     payload["payload"] = _json_loads(payload.pop("payload_json", "{}"), {})
     payload["channels"] = _json_loads(payload.pop("channels_json", "[]"), [])
     return payload
-
-
-def _search_query(*, q: str, symbol: str, ca: str, chain: str, handle: str) -> str:
-    if ca:
-        return f"{chain}:{ca}" if chain else ca
-    if symbol:
-        return f"${symbol.strip().lstrip('$')}"
-    if handle:
-        return f"@{handle.strip().lstrip('@')}"
-    return q
 
 
 def _handle_set(raw: str) -> set[str]:

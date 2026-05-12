@@ -1538,9 +1538,8 @@ function mockApi(
       if (options.searchResult) {
         return ok({
           query: { kind: "text", text: String(requestOptions?.params?.q ?? ""), scope: "all" },
-          total_count: 1,
-          returned_count: 1,
-          has_more: false,
+          page: { returned_count: 1, has_more: false, next_cursor: null },
+          target_candidates: [],
           items: [
             {
               event: {
@@ -1554,8 +1553,11 @@ function mockApi(
                 mentions: ["watcher"],
                 is_watched: 0,
               },
-              match_type: "fts",
+              match_type: "lexical",
               score: -2.1,
+              match_reasons: ["fts"],
+              target: null,
+              route_scores: { lexical: -2.1 },
             },
           ],
         });
@@ -1567,9 +1569,8 @@ function mockApi(
           scope: "all",
           symbol: "PEPE",
         },
-        total_count: 0,
-        returned_count: 0,
-        has_more: false,
+        page: { returned_count: 0, has_more: false, next_cursor: null },
+        target_candidates: [],
         items: [],
       });
     }

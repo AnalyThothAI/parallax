@@ -407,6 +407,30 @@ def test_api_removed_token_signal_reads_are_not_registered(tmp_path):
     assert evaluations.status_code == 404
 
 
+def test_api_search_rejects_removed_filter_params(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get("/api/search", params={"symbol": "PEPE"}, headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "unsupported_query_param", "field": "symbol"}
+
+
+def test_api_search_rejects_malformed_cursor(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/search",
+            params={"q": "PEPE", "cursor": "not-a-cursor"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_cursor"}
+
+
 def test_api_status_exposes_anchor_and_live_market_status(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
@@ -477,7 +501,10 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert "enrichment" not in recent.json()["data"]["items"][0]
 
     assert search.status_code == 200
-    assert search.json()["data"]["items"][0]["event"]["event_id"] == "event-1"
+    search_data = search.json()["data"]
+    assert search_data["items"][0]["event"]["event_id"] == "event-1"
+    assert search_data["page"]["returned_count"] == 1
+    assert "total_count" not in search_data
 
     assert asset_flow.status_code == 200
     assert asset_flow.json()["data"]["targets"][0]["target"]["symbol"] == "PEPE"

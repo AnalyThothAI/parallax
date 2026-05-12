@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import time
 from contextlib import AbstractContextManager
 from dataclasses import asdict
@@ -133,42 +132,6 @@ class EvidenceRepository:
         rows = self.conn.execute(f"SELECT * FROM events WHERE event_id IN ({placeholders})", event_ids).fetchall()
         return {str(row["event_id"]): decode_event_row(row) for row in rows}
 
-    def search_fts(self, query: str, *, limit: int, watched_only: bool = False) -> list[dict[str, Any]]:
-        if not query.strip() or limit <= 0:
-            return []
-        search_query = _fts_query(query)
-        if not search_query:
-            return []
-        watched_clause = "AND e.is_watched = true" if watched_only else ""
-        rows = self.conn.execute(
-            f"""
-            SELECT e.*, ts_rank_cd(e.search_tsv, websearch_to_tsquery('simple', %s)) AS score
-            FROM events e
-            WHERE e.search_tsv @@ websearch_to_tsquery('simple', %s) {watched_clause}
-            ORDER BY score DESC, e.received_at_ms DESC
-            LIMIT %s
-            """,
-            (search_query, search_query, max(0, int(limit))),
-        ).fetchall()
-        return [decode_event_row(row) | {"score": row["score"]} for row in rows]
-
-    def count_fts(self, query: str, *, watched_only: bool = False) -> int:
-        if not query.strip():
-            return 0
-        search_query = _fts_query(query)
-        if not search_query:
-            return 0
-        watched_clause = "AND e.is_watched = true" if watched_only else ""
-        row = self.conn.execute(
-            f"""
-            SELECT COUNT(*) AS count
-            FROM events e
-            WHERE e.search_tsv @@ websearch_to_tsquery('simple', %s) {watched_clause}
-            """,
-            (search_query,),
-        ).fetchone()
-        return int(row["count"] or 0) if row else 0
-
     def counts(self, *, since_ms: int | None = None) -> dict[str, int]:
         suffix = " WHERE received_at_ms >= %s" if since_ms is not None else ""
         params = (since_ms,) if since_ms is not None else ()
@@ -261,12 +224,6 @@ def decode_event_row(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
         }
     )
     return event
-
-
-def _fts_query(query: str) -> str:
-    if query.count('"') % 2 == 1:
-        query = query[: query.rfind('"')]
-    return " ".join(re.findall(r"\w+", query, flags=re.UNICODE)[:16])
 
 
 def _json(value: Any) -> Jsonb:
