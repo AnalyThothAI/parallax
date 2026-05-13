@@ -524,6 +524,12 @@ $ make check
 
 Result: exit code 0; 530 passed, 12 skipped.
 
+```text
+$ docker compose up -d --build app
+```
+
+Result: failed while fetching private GitHub dependency `marketlane-cli` because no GitHub token/credentials were available in the non-interactive build environment. The app container was not restarted from an old image.
+
 ## Diff summary
 
 Files changed by the final merged work:
@@ -551,7 +557,7 @@ Schema or contract changes that consumers must be aware of:
 ## Risks observed
 
 - Existing skipped enrichment/resolution tests still reference earlier identity-era fixtures. They are tracked in `docs/TECH_DEBT.md` and did not block this hard cut.
-- Local app container was stopped for migration lock release during rollout; service restart should be part of the operational handoff.
+- Local app container was stopped for migration lock release during rollout. Rebuild/restart is still an operational handoff because Docker build needs GitHub credentials for `marketlane-cli`; PostgreSQL remains running and healthy.
 
 ## Follow-ups
 

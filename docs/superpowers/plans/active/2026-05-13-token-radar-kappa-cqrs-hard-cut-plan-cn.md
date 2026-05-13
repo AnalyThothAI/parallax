@@ -37,6 +37,7 @@
 - 2026-05-13 15:21 Asia/Shanghai — Task 13 complete. Regenerated CLI/WS docs, added hard-cut no-fallback guards for market overlay paths, and updated golden corpus assertions to the `market.event_anchor` / `market.decision_latest` / `market.readiness` schema. Validation: `uv run pytest tests/test_no_factor_snapshot_fallback.py tests/golden/test_token_radar_corpus.py -q` passed with 10 tests / 4 skipped because the optional PostgreSQL golden database was unavailable.
 - 2026-05-13 15:56 Asia/Shanghai — Task 14 local hard-cut operations partially complete before merge. Stopped running app container, applied Alembic head, truncated derived read models plus FK-dependent derived tables, rebuilt 5m/1h radar projections, removed stale `dex_ws_enabled` from local config with a timestamped backup, and passed pre-merge `make check`. Full `make check-all` verification artefact remains pending on `main` per latest user direction to merge first and deepen testing after.
 - 2026-05-13 16:54 Asia/Shanghai — Merged `codex/token-radar-kappa-cqrs-hard-cut` into `main`, fixed post-merge hard-cut integration fixture drift, committed `465d4fb0`, and completed final audit. Validation: `make check-all` passed with exit code 0; final coverage run reported 833 passed / 14 skipped and total coverage 82.18%. Verification artefact created at `docs/superpowers/plans/active/2026-05-13-token-radar-kappa-cqrs-hard-cut-verification-cn.md`.
+- 2026-05-13 17:02 Asia/Shanghai — Attempted local `docker compose up -d --build app` after verification. Build failed while fetching private GitHub dependency `marketlane-cli` because no GitHub token/credentials were available in the non-interactive environment. PostgreSQL remains healthy; app container remains stopped rather than starting an old image.
 
 ## Decision Log
 
@@ -58,6 +59,7 @@
 - 2026-05-13 15:56 Asia/Shanghai — The plan's `gmgn-twitter-intel token-radar rebuild` command is stale; the equivalent current CLI command is `gmgn-twitter-intel ops rebuild-token-radar`. The user asked to merge quickly and continue deep testing after merge, so `make check` is the pre-merge gate and `make check-all` remains the post-merge final audit.
 - 2026-05-13 15:56 Asia/Shanghai — PostgreSQL refused the exact Task 14 truncate because FK-derived tables reference `token_radar_rows` and `pulse_candidates`. Truncated `asset_signal_snapshots`, `asset_signal_outcomes`, `pulse_playbook_snapshots`, and `pulse_playbook_outcomes` alongside the planned derived tables because they are derived from the same radar/pulse read models.
 - 2026-05-13 16:54 Asia/Shanghai — The hard-cut fallback `rg` command still reports historical Alembic migration references to the removed baseline table. These are allowed rollback/history references, not runtime/web/test fallback paths; guard tests now avoid embedding the banned literals directly.
+- 2026-05-13 17:02 Asia/Shanghai — Do not restart the app from an old Docker image after a hard cut. Because rebuilding the image requires GitHub credentials for `marketlane-cli`, service restart is left as an operational handoff item rather than running stale code.
 
 ## Design Goals
 
