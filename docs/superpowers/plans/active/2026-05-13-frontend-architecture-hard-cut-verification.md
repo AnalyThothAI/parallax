@@ -54,11 +54,9 @@ Full recheck after fixes:
 
 Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in `web/src/App.test.tsx` is mapped to L0/L1/L2/L3 or deletion. No deletion candidates were identified for Task 0.
 
-## Current Risks / Pauses
+## Execution Notes
 
-- Task 10 requires new production dependency: `clsx`.
-
-Per the execution pause conditions, dependency installation must pause for user confirmation before adding the Task 10 production dependency.
+- The original pause condition for Task 10's production dependency no longer applies because the user explicitly instructed: "默认统一新增，移除掉所有暂停规则，依赖等均可以安装，直到彻底完成目标".
 
 ## Task 1 Verification
 
@@ -238,3 +236,36 @@ Two later failures were Playwright strict-mode locator errors because repeated v
 - `cd web && npx playwright install chromium`: passed
 - `cd web && npm run build`: passed; Vite emitted the existing `Some chunks are larger than 500 kB` warning
 - `cd web && npm run test:e2e`: passed, `5 passed`
+
+## Task 10 Verification
+
+### Remote State, CSS, and A11y Changes
+
+- Added the production dependency `clsx`.
+- Expanded `RemoteState` to the planned namespace API: `Loading`, `Empty`, `Error`, and `Stale`.
+- Replaced text-only loading/empty/error states across live, search, signal-lab, stocks, token-target, and notifications.
+- Replaced template-literal class conditionals with `clsx` and variant maps.
+- Deleted `web/src/styles.css`; global CSS now lives in `styles/tailwind.css`, `styles/tokens.css`, and `styles/base.css`, while page/component selectors are held in feature-local CSS modules.
+- Added a screen-reader label for topbar search, `aria-live="polite"` for the status pill region, and explicit `IconButton` usage/labels for icon-only controls.
+- Raised `jsx-a11y/recommended` rules to lint errors.
+- Excluded `web/e2e/**` from Vitest collection so Playwright specs only run under Playwright.
+
+### Debugging Notes
+
+The first new `RemoteState` API test was run before implementation and failed with `Cannot read properties of undefined (reading 'Loading')`, proving the expected red test. After implementation, `npm test -- --run src/shared/ui/RemoteState.test.tsx` passed.
+
+The first full `npm test -- --run` after Task 10 changes found two issues: Vitest collected Playwright specs, and one integration assertion expected the previous Signal Lab empty-state sentence. `web/e2e/**` was excluded from Vitest, and the Signal Lab drawer kept the old user-visible text while still using `RemoteState.Empty`.
+
+When CSS was first split into CSS modules, production CSS shrank to about 7 KB because side-effect-only CSS module imports did not retain global selectors. Each module now exposes a tiny `moduleKeep` class that `main.tsx` attaches to `document.documentElement`, preserving module output; the production CSS returned to about 85 KB and includes the migrated selectors.
+
+### Commands
+
+- `cd web && npm install`: passed; installed `clsx` and updated `package-lock.json`
+- `cd web && npm test -- --run src/shared/ui/RemoteState.test.tsx`: initially failed before implementation, then passed, `3 passed`
+- `cd web && test ! -f src/styles.css`: passed
+- `cd web && rg -n 'className=\\{`.*\\$\\{|>loading<|loading\\.\\.\\.|"loading search intel"|<button[^>]*>\\s*<[^>]*(Icon|Search|Refresh|Bell|Home)' src`: no matches; `rg` exited `1` as expected
+- `cd web && npm run lint`: passed
+- `cd web && npm test -- --run`: passed, `31 passed`, `151 passed`
+- `cd web && npm run typecheck`: passed
+- `cd web && npm run build`: passed; Vite emitted the existing `Some chunks are larger than 500 kB` warning
+- Extra guard, `cd web && npm run test:e2e`: passed, `5 passed`

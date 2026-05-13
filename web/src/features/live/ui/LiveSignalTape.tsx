@@ -6,6 +6,8 @@ import {
   formatScore,
   tokenLabel,
 } from "@lib/format";
+import { RemoteState } from "@shared/ui/RemoteState";
+import clsx from "clsx";
 
 import type { LiveSignalTapeItem } from "../liveTapeModel";
 import { tapeItemId, tokenTapeReason } from "../liveTapeModel";
@@ -39,20 +41,22 @@ export function LiveSignalTape({
         <span>{socketStatus === "connected" ? `${items.length} 条` : "ws disconnected"}</span>
       </header>
       <div className="tape-list">
-        {isLoading ? <div className="empty-state">读取 replay 中</div> : null}
+        {isLoading ? (
+          <RemoteState.Loading layout="inline" rows={3} label="loading replay tape" />
+        ) : null}
         {!isLoading && visible.length === 0 ? (
-          <div className="empty-state">等待 replay 或 live event</div>
+          <RemoteState.Empty title="等待 replay 或 live event" />
         ) : null}
         {visible.map((item) => {
           const id = tapeItemId(item);
           return (
             <button
-              className={`tape-row ${selectedEventId === id ? "selected" : ""}`}
+              className={clsx("tape-row", selectedEventId === id && "selected")}
               key={`${item.kind}:${id}`}
               type="button"
               onClick={() => onSelect(item)}
             >
-              <span className={`tape-kind ${item.kind}`}>{tapeKindLabel(item)}</span>
+              <span className={clsx("tape-kind", item.kind)}>{tapeKindLabel(item)}</span>
               <span className="tape-main">
                 <strong>{tapeTitle(item)}</strong>
                 <p>{tapeBody(item)}</p>

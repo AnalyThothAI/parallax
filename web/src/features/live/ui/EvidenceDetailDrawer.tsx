@@ -6,10 +6,13 @@ import type {
   TokenIntentRecord,
   TokenResolutionRecord,
 } from "@lib/types";
-import { DetailDrawerHeader, DetailDrawerSection, DetailDrawerShell } from "@shared/ui/DetailDrawer";
+import {
+  DetailDrawerHeader,
+  DetailDrawerSection,
+  DetailDrawerShell,
+} from "@shared/ui/DetailDrawer";
+import { RemoteState } from "@shared/ui/RemoteState";
 import { ExternalLink } from "lucide-react";
-
-
 
 export type EvidenceDetailDrawerProps = {
   mode: "event";
@@ -64,7 +67,7 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
             ))}
           </div>
         ) : (
-          <div className="empty-state compact">no extracted entities</div>
+          <RemoteState.Empty title="no extracted entities" />
         )}
       </DetailDrawerSection>
 
@@ -109,7 +112,7 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
                 ))}
           </div>
         ) : (
-          <div className="empty-state compact">no token intent</div>
+          <RemoteState.Empty title="no token intent" />
         )}
       </DetailDrawerSection>
 
@@ -127,7 +130,7 @@ export function EvidenceDetailDrawer(props: EvidenceDetailDrawerProps) {
             ))}
           </div>
         ) : (
-          <div className="empty-state compact">no watched-account alert</div>
+          <RemoteState.Empty title="no watched-account alert" />
         )}
       </DetailDrawerSection>
     </DetailDrawerShell>

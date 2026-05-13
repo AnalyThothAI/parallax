@@ -1,4 +1,5 @@
 import type { LivePayload, SignalPulseData } from "@lib/types";
+import clsx from "clsx";
 import { Outlet } from "react-router-dom";
 
 import { useSignalLabPage } from "../useSignalLabPage";
@@ -20,7 +21,12 @@ export function SignalLabPage({
 
   return (
     <section
-      className={`mobile-task-surface signal-lab-task-surface signal-lab-layout${signalLab.isPulseRoute ? " signal-lab-layout-with-detail" : ""}`}
+      className={clsx(
+        "mobile-task-surface",
+        "signal-lab-task-surface",
+        "signal-lab-layout",
+        signalLab.isPulseRoute && "signal-lab-layout-with-detail",
+      )}
       data-mobile-task-panel="lab"
     >
       <div className="signal-lab-list">

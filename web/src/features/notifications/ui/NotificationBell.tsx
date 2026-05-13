@@ -1,6 +1,7 @@
 import type { NotificationSummary } from "@lib/types";
+import { IconButton } from "@shared/ui/IconButton";
+import clsx from "clsx";
 import { Bell } from "lucide-react";
-
 
 type Props = {
   summary?: NotificationSummary | null;
@@ -14,16 +15,20 @@ export function NotificationBell({ summary, open, onClick }: Props) {
     (summary?.high_unread_count ?? 0) > 0 || (summary?.critical_unread_count ?? 0) > 0,
   );
   return (
-    <button
+    <IconButton
       aria-label="notifications"
       aria-pressed={open}
-      className={`notification-bell ${open ? "open" : ""} ${unread > 0 ? "has-unread" : ""} ${hasHigh ? "has-high" : ""}`}
+      className={clsx(
+        "notification-bell",
+        open && "open",
+        unread > 0 && "has-unread",
+        hasHigh && "has-high",
+      )}
       onClick={onClick}
       title="Notifications"
-      type="button"
     >
       <Bell aria-hidden />
       {unread > 0 ? <span>{unread > 99 ? "99+" : unread}</span> : null}
-    </button>
+    </IconButton>
   );
 }

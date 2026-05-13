@@ -1,4 +1,3 @@
-
 import { formatScore, shortAddress, tokenLabel } from "@lib/format";
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type {
@@ -21,6 +20,7 @@ import {
   DetailDrawerShell,
   DetailDrawerTagStrip,
 } from "@shared/ui/DetailDrawer";
+import { RemoteState } from "@shared/ui/RemoteState";
 import { ScoreLedger } from "@shared/ui/ScoreLedger";
 import { TokenPostsPanel } from "@shared/ui/TokenPostsPanel";
 import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
@@ -114,7 +114,7 @@ export function TokenDetailDrawer({
           title="Select Token"
         />
         <DetailDrawerSection>
-          <div className="empty-state">从 Token Radar 或实时信号 Tape 选择一个币</div>
+          <RemoteState.Empty title="从 Token Radar 或实时信号 Tape 选择一个币" />
         </DetailDrawerSection>
       </DetailDrawerShell>
     );
@@ -256,12 +256,11 @@ export function TokenDetailDrawer({
       {activeTab === "lab" ? (
         <DetailDrawerSection title={<>Trading attention · {tokenLabel(token)}</>}>
           {signalLabLoading ? (
-            <div className="empty-state">loading trading attention</div>
+            <RemoteState.Loading layout="panel" rows={3} label="loading trading attention" />
           ) : (
-            <div className="empty-state">
-              Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and
-              risk attention.
-            </div>
+            <RemoteState.Empty
+              title="Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention."
+            />
           )}
         </DetailDrawerSection>
       ) : null}

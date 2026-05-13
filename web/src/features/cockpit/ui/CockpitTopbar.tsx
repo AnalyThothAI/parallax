@@ -1,6 +1,8 @@
 import { NotificationBell } from "@features/notifications";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { NotificationSummary, StatusData, WindowKey } from "@lib/types";
+import { IconButton } from "@shared/ui/IconButton";
+import clsx from "clsx";
 import { Clock3, Home, RefreshCw, Search, Wifi, Zap } from "lucide-react";
 import { useState, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
@@ -77,8 +79,12 @@ export function CockpitTopbar({
         }}
       >
         <Search aria-hidden />
+        <label className="sr-only" htmlFor="global-search-input">
+          Global search
+        </label>
         <input
           aria-label="global search"
+          id="global-search-input"
           placeholder="搜索 CA / $TOKEN / @handle / 文本"
           ref={search.inputRef}
           value={searchDraft}
@@ -111,15 +117,9 @@ export function CockpitTopbar({
         onClick={notifications.onToggleDrawer}
       />
 
-      <button
-        aria-label="刷新"
-        className="icon-button"
-        title="刷新"
-        type="button"
-        onClick={onRefresh}
-      >
+      <IconButton aria-label="刷新" title="刷新" onClick={onRefresh}>
         <RefreshCw aria-hidden />
-      </button>
+      </IconButton>
     </header>
   );
 }
@@ -141,16 +141,16 @@ function StatusPills({
 }) {
   const readiness = readinessLabel({ configReady, status, statusLoading, statusError });
   return (
-    <div className="status-pills">
-      <span className={configReady ? "pill good" : "pill warn"}>
+    <div className="status-pills" aria-live="polite">
+      <span className={clsx("pill", configReady ? "good" : "warn")}>
         <Zap aria-hidden />
         {configReady ? "token ready" : "token"}
       </span>
-      <span className={socketStatus === "connected" ? "pill good" : "pill warn"}>
+      <span className={clsx("pill", socketStatus === "connected" ? "good" : "warn")}>
         <Wifi aria-hidden />
         {socketStatus}
       </span>
-      <span className={readiness.ok ? "pill good" : "pill warn"} title={readiness.title}>
+      <span className={clsx("pill", readiness.ok ? "good" : "warn")} title={readiness.title}>
         <Zap aria-hidden />
         {readiness.label}
       </span>

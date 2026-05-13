@@ -1,6 +1,6 @@
 import { compactNumber, formatRelativeTime, formatScore } from "@lib/format";
 import type { AccountQualityData, TokenSocialTimelineData } from "@lib/types";
-
+import { RemoteState } from "@shared/ui/RemoteState";
 
 type AccountLaneProps = {
   timeline?: TokenSocialTimelineData | null;
@@ -10,7 +10,7 @@ type AccountLaneProps = {
 
 export function AccountLane({ timeline, accountQuality, isLoading }: AccountLaneProps) {
   if (isLoading) {
-    return <div className="empty-state">加载账号质量中</div>;
+    return <RemoteState.Loading layout="inline" rows={3} label="loading account quality" />;
   }
   const qualityByHandle = new Map(
     (accountQuality?.accounts ?? [])
@@ -19,7 +19,7 @@ export function AccountLane({ timeline, accountQuality, isLoading }: AccountLane
   );
   const authors = timeline?.authors ?? [];
   if (!authors.length) {
-    return <div className="empty-state">暂无作者质量线索</div>;
+    return <RemoteState.Empty title="暂无作者质量线索" />;
   }
   return (
     <div className="account-lane-list">

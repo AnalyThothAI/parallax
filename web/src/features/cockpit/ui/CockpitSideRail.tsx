@@ -3,6 +3,7 @@ import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
 import type { WatchlistRow } from "@lib/watchlist";
 import { signalLabPath, stocksPath } from "@shared/routing/paths";
+import clsx from "clsx";
 import { UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useMatch, useNavigate, useSearchParams } from "react-router-dom";
@@ -111,7 +112,7 @@ export function CockpitSideRail({
         <div className="watchlist">
           {watchlistRows.map((row) => (
             <Link
-              className={`watchlist-row ${activeWatchHandle === row.handle ? "active" : ""}`.trim()}
+              className={clsx("watchlist-row", activeWatchHandle === row.handle && "active")}
               key={row.handle}
               to={signalLabPath({ handle: row.handle })}
             >
@@ -145,7 +146,7 @@ function RailSection({
   className?: string;
 }) {
   return (
-    <section className={`rail-section ${className}`.trim()}>
+    <section className={clsx("rail-section", className)}>
       <h2>{label}</h2>
       {children}
     </section>
@@ -166,7 +167,7 @@ function RailButton({
   onClick: () => void;
 }) {
   return (
-    <button className={`rail-button ${active ? "active" : ""}`} type="button" onClick={onClick}>
+    <button className={clsx("rail-button", active && "active")} type="button" onClick={onClick}>
       <span>{index}</span>
       <b>{label}</b>
       {value !== undefined ? <em>{compactNumber(value)}</em> : <em />}
@@ -176,8 +177,8 @@ function RailButton({
 
 function DecisionCount({ decision, count }: { decision: Decision; count: number }) {
   return (
-    <span className={`decision-count ${decision}`}>
-      <span className={`decision-tag ${decision}`}>{decision}</span>
+    <span className={clsx("decision-count", decision)}>
+      <span className={clsx("decision-tag", decision)}>{decision}</span>
       <b>{compactNumber(count)}</b>
     </span>
   );

@@ -9,9 +9,7 @@ import importPlugin from "eslint-plugin-import";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import globals from "globals";
 
-const jsxA11yRecommendedRules = Object.fromEntries(
-  Object.keys(jsxA11y.flatConfigs.recommended.rules).map((rule) => [rule, "warn"]),
-);
+const jsxA11yRecommendedRules = jsxA11y.flatConfigs.recommended.rules;
 
 export default [
   {
@@ -74,7 +72,10 @@ export default [
       "react/jsx-uses-react": "off",
       "react/react-in-jsx-scope": "off",
       "react/jsx-key": "error",
-      "react-refresh/only-export-components": ["error", { allowConstantExport: true }],
+      "react-refresh/only-export-components": [
+        "error",
+        { allowConstantExport: true, allowExportNames: ["RemoteState"] },
+      ],
       // React hooks
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",

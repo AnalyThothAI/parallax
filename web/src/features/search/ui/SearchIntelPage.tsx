@@ -17,7 +17,9 @@ import type {
   WindowKey,
 } from "@lib/types";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
+import { RemoteState } from "@shared/ui/RemoteState";
 import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
+import clsx from "clsx";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -31,7 +33,6 @@ import {
 import { SearchAgentBrief } from "./SearchAgentBrief";
 import { SearchTimelinePanel } from "./SearchTimelinePanel";
 import { SearchTwitterResults } from "./SearchTwitterResults";
-
 
 const WINDOW_OPTIONS: WindowKey[] = ["5m", "1h", "4h", "24h"];
 const SCOPE_OPTIONS: ScopeKey[] = ["all", "matched"];
@@ -55,14 +56,11 @@ export function SearchIntelPage() {
       <SearchTopBar data={data} routeState={routeState} />
 
       {!routeState.q ? (
-        <div className="search-empty-state">输入 token、CA、@handle 或关键词后手动检索。</div>
+        <RemoteState.Empty title="输入 token、CA、@handle 或关键词后手动检索。" />
       ) : query.error ? (
-        <div className="search-empty-state error">
-          <b>Search Intel 请求失败</b>
-          <span>{query.error instanceof Error ? query.error.message : "unknown error"}</span>
-        </div>
+        <RemoteState.Error error={query.error} />
       ) : query.isPending || !data ? (
-        <div className="search-empty-state">loading search intel</div>
+        <RemoteState.Loading layout="route" rows={5} label="loading search results" />
       ) : (
         <div className="search-workspace">
           <SearchIntelSidebar data={data} routeState={routeState} onRouteChange={updateRoute} />
@@ -223,7 +221,7 @@ function SearchResultBody({ data }: { data: SearchInspectData }) {
   if (data.query.result_kind === "topic_result" && data.topic_result) {
     return <TopicResult data={data} result={data.topic_result} />;
   }
-  return <div className="search-empty-state">没有可展示的 search 结果。</div>;
+  return <RemoteState.Empty title="没有可展示的 search 结果。" />;
 }
 
 function TokenResult({ data, result }: { data: SearchInspectData; result: SearchTokenResult }) {
@@ -442,7 +440,7 @@ function MetricStrip({ metrics }: { metrics: Metric[] }) {
   return (
     <section className="search-metric-strip" aria-label="Search metrics">
       {metrics.map((metric) => (
-        <div className={metric.tone ? `tone-${metric.tone}` : ""} key={metric.label}>
+        <div className={clsx(metric.tone && `tone-${metric.tone}`)} key={metric.label}>
           <span>{metric.label}</span>
           <b>{metric.value}</b>
           {metric.detail ? <em>{metric.detail}</em> : null}
@@ -525,9 +523,10 @@ function SearchRadarPanel({ radarItem }: { radarItem?: Record<string, unknown> |
           </div>
         </>
       ) : (
-        <div className="search-empty-state compact">
-          当前 window/scope 下没有匹配 radar row。证据和 agent brief 仍然可读。
-        </div>
+        <RemoteState.Empty
+          title="当前 window/scope 下没有匹配 radar row。"
+          hint="证据和 agent brief 仍然可读。"
+        />
       )}
     </section>
   );

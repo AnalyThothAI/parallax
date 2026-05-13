@@ -7,15 +7,9 @@ import {
   formatScore,
   formatSignedPercent,
 } from "@lib/format";
-import type {
-  TokenPostItem,
-  TokenPostRange,
-  TokenPostSortMode,
-  TokenPostsData,
-} from "@lib/types";
-import { SkeletonRows } from "@shared/ui/RemoteState";
+import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData } from "@lib/types";
+import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
 import { ExternalLink } from "lucide-react";
-
 
 type TokenPostsPanelProps = {
   posts?: TokenPostsData | null;
@@ -152,7 +146,7 @@ export function TokenPostsPanel({
       {hideDuplicateClusters ? <div className="filter-note">已隐藏重复文本簇</div> : null}
       {isLoading ? <SkeletonRows count={4} label="loading token posts" /> : null}
       {!isLoading && items.length === 0 ? (
-        <div className="empty-state">该窗口暂无 token-attributed posts</div>
+        <RemoteState.Empty title="该窗口暂无 token-attributed posts" />
       ) : null}
       <div className="post-list">
         {items.map((item) => (

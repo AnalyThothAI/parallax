@@ -506,21 +506,21 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Modify: `web/package.json`
 - Modify: `web/package-lock.json`
 
-- [ ] Add dependency `clsx`.
-- [ ] Expand `RemoteState` API:
+- [x] Add dependency `clsx`.
+- [x] Expand `RemoteState` API:
   - `RemoteState.Loading({ layout: "route" | "panel" | "inline", rows, label })`
   - `RemoteState.Empty({ title, hint, action })`
   - `RemoteState.Error({ error, onRetry })`
   - `RemoteState.Stale({ updating, children })`
-- [ ] Replace text-only loading/empty/error states in live, search, signal-lab, stocks, token-target, notifications.
-- [ ] Replace template-literal `className` conditionals with `clsx` and/or typed variant maps.
-- [ ] Keep global CSS only in `styles/tokens.css`, `styles/base.css`, and `styles/tailwind.css`; move page/component selectors to feature-local modules or Tailwind utilities.
-- [ ] Add labels/aria:
+- [x] Replace text-only loading/empty/error states in live, search, signal-lab, stocks, token-target, notifications.
+- [x] Replace template-literal `className` conditionals with `clsx` and/or typed variant maps.
+- [x] Keep global CSS only in `styles/tokens.css`, `styles/base.css`, and `styles/tailwind.css`; move page/component selectors to feature-local modules or Tailwind utilities.
+- [x] Add labels/aria:
   - topbar search input has a visible or screen-reader label;
   - status pill region uses `aria-live="polite"`;
   - every icon-only button uses `IconButton` with explicit `aria-label`.
-- [ ] Raise `jsx-a11y/recommended` to error.
-- [ ] Run:
+- [x] Raise `jsx-a11y/recommended` to error.
+- [x] Run:
   ```bash
   cd web
   test ! -f src/styles.css
@@ -531,7 +531,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm run build
   ```
   Expected: `styles.css` is deleted; grep has no matches except approved tests/fixtures; lint/tests/typecheck/build pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "style: localize frontend css and harden a11y states"
@@ -617,6 +617,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 7 completed. Added the route-aware socket provider, ref-counted market target subscriptions, route-scoped live/search/token-target registrations, and backend regression coverage for replacing repeated `market_targets`; deleted the old socket hook and passed the Task 7 backend, grep, targeted Vitest, typecheck, lint, and full Vitest checks.
 - 2026-05-13: Task 8 completed. Replaced API client mocks/spies with MSW handlers, moved the monolithic App test into a feature integration test, added socket-provider test helpers, added route/component/a11y coverage with `jest-axe`, removed the app-integration Vitest project, and passed the no-App-test/no-API-mock grep, full Vitest, typecheck, and lint.
 - 2026-05-13: Task 9 completed. Added Playwright Chromium config, deterministic route-handler API mocks, and five golden paths for live cold load, topbar search, radar-to-token-target, signal-lab filters, and notification navigation; passed Chromium install, build, and full E2E.
+- 2026-05-13: Task 10 completed. Added the `RemoteState.*` API, localized frontend CSS into tokens/base/tailwind plus feature modules, replaced text-only loading/empty/error states and string-built class names, hardened icon-button/search/status aria, raised jsx-a11y to error, excluded Playwright specs from Vitest, and passed the Task 10 static, lint, Vitest, typecheck, build, and extra E2E guards.
 
 ## Decision Log
 
@@ -643,6 +644,10 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Use Playwright route handlers instead of an in-browser MSW worker for Task 9 so the built `vite preview` app stays production-like while `/api/*` is fully deterministic inside each test.
 - 2026-05-13: Make Playwright's webServer run `npm run build && npm run preview`; the plan validation still runs `npm run build` explicitly, and `npm run test:e2e` is independently reproducible.
 - 2026-05-13: Expand Task 9 timeline/posts mock payloads to match the real token-target UI contract after Playwright surfaced ErrorBoundary crashes from missing `buckets`, `authors`, `stage.people`, and `post_quality` fields.
+- 2026-05-13: The user explicitly lifted the original dependency/pause rules before Task 10, so installing the planned production dependency `clsx` was treated as in-scope execution instead of a blocker.
+- 2026-05-13: Keep the planned namespace-style `RemoteState.Loading` API and whitelist `RemoteState` in the Fast Refresh lint rule because the exported constant is the public shared UI surface required by Task 10.
+- 2026-05-13: Anchor feature-local global CSS-module output with a tiny local `moduleKeep` class imported in `main.tsx`; Vite otherwise tree-shook side-effect-only CSS module imports and dropped the migrated selectors from production CSS.
+- 2026-05-13: Exclude `web/e2e/**` from Vitest collection because Playwright specs are executed by `npm run test:e2e`, and collecting them under Vitest triggers Playwright's own `test()` context guard.
 
 ## Verification
 

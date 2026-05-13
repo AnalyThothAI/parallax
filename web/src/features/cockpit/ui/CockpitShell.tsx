@@ -1,5 +1,6 @@
 import { NotificationDrawer, NotificationToastBridge } from "@features/notifications";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
+import clsx from "clsx";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { Outlet, useMatch } from "react-router-dom";
@@ -49,9 +50,9 @@ export function CockpitShell({
     .join(" ");
 
   return (
-    <div className={`cockpit-shell mobile-task-${mobile.mobileTask}`}>
+    <div className={clsx("cockpit-shell", `mobile-task-${mobile.mobileTask}`)}>
       <CockpitTopbar {...topbar} />
-      <div className={`cockpit-grid mobile-task-${mobile.mobileTask} ${routeModeClass}`.trim()}>
+      <div className={clsx("cockpit-grid", `mobile-task-${mobile.mobileTask}`, routeModeClass)}>
         <CockpitSideRail {...sideRail} />
         <section className="responsive-control-panel" aria-label="cockpit controls">
           <RadarControls
@@ -71,10 +72,7 @@ export function CockpitShell({
           {detailPanel}
         </section>
       </div>
-      <CockpitMobileNav
-        {...mobile}
-        detailAvailable={mobile.detailAvailable && !stockRouteMatch}
-      />
+      <CockpitMobileNav {...mobile} detailAvailable={mobile.detailAvailable && !stockRouteMatch} />
       <NotificationLayer {...notifications} />
     </div>
   );

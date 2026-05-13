@@ -1,6 +1,6 @@
 import { tokenKey } from "@lib/format";
 import type { RadarSortMode, TokenFlowItem } from "@lib/types";
-
+import { RemoteState } from "@shared/ui/RemoteState";
 
 import { TokenRadarRow } from "./TokenRadarRow";
 
@@ -70,9 +70,9 @@ export function TokenRadarTable({
           <span>Action</span>
         </div>
         {isLoading ? <RadarSkeleton /> : null}
-        {error ? <div className="table-state">Token Radar 暂不可用 · {error.message}</div> : null}
+        {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}
         {!isLoading && !error && items.length === 0 ? (
-          <div className="table-state">当前窗口暂无可交易 token 热度</div>
+          <RemoteState.Empty title="当前窗口暂无可交易 token 热度" />
         ) : null}
         {!isLoading && !error
           ? items.map((item) => {

@@ -1,7 +1,7 @@
 import type { TokenProfileBlock } from "@lib/types";
+import clsx from "clsx";
 import { ExternalLink, Globe, MessageCircle, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-
 
 type TokenProfileCardProps = {
   profile?: TokenProfileBlock | null;
@@ -33,7 +33,7 @@ export function TokenProfileCard({ profile, compact = false }: TokenProfileCardP
   return (
     <section
       aria-label="Token profile"
-      className={cx("token-profile-card", "is-ready", compact ? "is-compact" : undefined)}
+      className={clsx("token-profile-card", "is-ready", compact && "is-compact")}
     >
       <div className="token-profile-main">
         {logoUrl ? (
@@ -88,11 +88,11 @@ function TokenProfileState({
   return (
     <section
       aria-label="Token profile"
-      className={cx(
+      className={clsx(
         "token-profile-card",
         "is-muted",
-        status === "error" ? "is-error" : undefined,
-        compact ? "is-compact" : undefined,
+        status === "error" && "is-error",
+        compact && "is-compact",
       )}
     >
       <div className="token-profile-state">
@@ -137,8 +137,4 @@ function profileStateMessage(status: string): string {
 function cleanText(value?: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
-}
-
-function cx(...classes: Array<string | undefined>): string {
-  return classes.filter(Boolean).join(" ");
 }

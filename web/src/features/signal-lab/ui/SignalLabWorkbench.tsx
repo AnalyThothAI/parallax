@@ -6,9 +6,9 @@ import type {
   SignalPulseStatus,
   SignalPulseStatusFilter,
 } from "@lib/types";
-import { SkeletonRows } from "@shared/ui/RemoteState";
+import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
+import clsx from "clsx";
 import { useId } from "react";
-
 
 import { SignalPulseList } from "./SignalLabPulse";
 
@@ -201,7 +201,7 @@ export function SignalLabWorkbench({
             type="button"
             onClick={onLoadMore}
           >
-            {isFetchingNextPage ? "Loading..." : "Load more"}
+            {isFetchingNextPage ? "Loading" : "Load more"}
           </button>
         ) : null}
       </section>
@@ -230,7 +230,10 @@ function AccountEventList({
         const chips = accountEventChips(item);
         return (
           <article
-            className={`signal-chain-row ${selectedEventId === item.event.event_id ? "selected" : ""}`}
+            className={clsx(
+              "signal-chain-row",
+              selectedEventId === item.event.event_id && "selected",
+            )}
             key={item.event.event_id}
           >
             <button
@@ -275,18 +278,18 @@ function SignalLabEmptyState({
   onClearFilters: () => void;
 }) {
   return (
-    <div className="signal-empty-panel">
-      <b>
-        {hasActiveFilters
-          ? "No matching Signal Pulse items"
-          : "No Signal Pulse items in this window"}
-      </b>
-      {hasActiveFilters ? (
-        <button type="button" onClick={onClearFilters}>
-          Clear filters
-        </button>
-      ) : null}
-    </div>
+    <RemoteState.Empty
+      title={
+        hasActiveFilters ? "No matching Signal Pulse items" : "No Signal Pulse items in this window"
+      }
+      action={
+        hasActiveFilters ? (
+          <button type="button" onClick={onClearFilters}>
+            Clear filters
+          </button>
+        ) : null
+      }
+    />
   );
 }
 

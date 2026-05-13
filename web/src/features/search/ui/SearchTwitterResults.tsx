@@ -5,8 +5,8 @@ import {
   formatTokenPriceUsd,
 } from "@lib/format";
 import type { SearchItem, TokenReference, TokenTimelinePost } from "@lib/types";
+import { RemoteState } from "@shared/ui/RemoteState";
 import { useMemo, useState } from "react";
-
 
 type SearchTwitterResultsProps = {
   title?: string;
@@ -144,7 +144,7 @@ export function SearchTwitterResults({
           ))}
         </div>
       ) : (
-        <div className="search-empty-state compact">当前过滤条件下没有证据行。</div>
+        <RemoteState.Empty title="当前过滤条件下没有证据行。" />
       )}
     </section>
   );

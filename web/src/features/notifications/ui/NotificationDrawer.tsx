@@ -1,7 +1,9 @@
 import { formatRelativeTime } from "@lib/format";
 import type { NotificationItem, NotificationSummary } from "@lib/types";
+import { IconButton } from "@shared/ui/IconButton";
+import { RemoteState } from "@shared/ui/RemoteState";
+import clsx from "clsx";
 import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
-
 
 type Props = {
   loading: boolean;
@@ -34,33 +36,30 @@ export function NotificationDrawer({
           <span>notifications</span>
           <b>{summary?.unread_count ?? 0} unread</b>
         </div>
-        <button
+        <IconButton
           aria-label="mark all read"
-          className="icon-button"
           disabled={(summary?.unread_count ?? 0) === 0}
           onClick={onMarkAllRead}
-          type="button"
         >
           <CheckCheck aria-hidden />
-        </button>
-        <button
-          aria-label="close notifications"
-          className="icon-button"
-          onClick={onClose}
-          type="button"
-        >
+        </IconButton>
+        <IconButton aria-label="close notifications" onClick={onClose}>
           <X aria-hidden />
-        </button>
+        </IconButton>
       </header>
 
       <div className="notification-list">
-        {loading ? <div className="notification-empty">loading</div> : null}
-        {!loading && notifications.length === 0 ? (
-          <div className="notification-empty">clear</div>
+        {loading ? (
+          <RemoteState.Loading layout="inline" rows={3} label="loading notifications" />
         ) : null}
+        {!loading && notifications.length === 0 ? <RemoteState.Empty title="clear" /> : null}
         {notifications.map((item) => (
           <article
-            className={`notification-row severity-${item.severity} ${item.read_at_ms ? "read" : "unread"}`}
+            className={clsx(
+              "notification-row",
+              `severity-${item.severity}`,
+              item.read_at_ms ? "read" : "unread",
+            )}
             key={item.notification_id}
           >
             <button
@@ -75,23 +74,19 @@ export function NotificationDrawer({
               <small>{formatRelativeTime(item.last_seen_at_ms)}</small>
             </button>
             <div className="notification-row-actions">
-              <button
+              <IconButton
                 aria-label={`jump to ${item.title}`}
-                className="icon-button"
                 onClick={() => onOpenNotification(item)}
-                type="button"
               >
                 <ExternalLink aria-hidden />
-              </button>
-              <button
+              </IconButton>
+              <IconButton
                 aria-label={`mark ${item.title} read`}
-                className="icon-button"
                 disabled={Boolean(item.read_at_ms)}
                 onClick={() => onMarkRead(item.notification_id)}
-                type="button"
               >
                 <Check aria-hidden />
-              </button>
+              </IconButton>
             </div>
           </article>
         ))}

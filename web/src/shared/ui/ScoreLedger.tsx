@@ -1,6 +1,6 @@
 import { formatReason, formatRisk, formatScore } from "@lib/format";
 import type { ScoreBlock, TimingBlock, TokenFlowItem } from "@lib/types";
-
+import clsx from "clsx";
 
 type LedgerItem = {
   key: string;
@@ -181,7 +181,7 @@ function PillStrip({
     return null;
   }
   return (
-    <div className={`pill-strip ${risk ? "risk" : ""}`} aria-label={label}>
+    <div className={clsx("pill-strip", risk && "risk")} aria-label={label}>
       {items.slice(0, 5).map((item) => (
         <span key={item}>{formatter(item)}</span>
       ))}

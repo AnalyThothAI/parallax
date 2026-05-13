@@ -1,7 +1,7 @@
 import { eventText, formatRelativeTime, formatRisk, formatScore } from "@lib/format";
 import type { TokenSocialTimelineData, TokenTimelinePost } from "@lib/types";
+import { RemoteState } from "@shared/ui/RemoteState";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-
 
 type TokenReplayFocusProps = {
   timeline?: TokenSocialTimelineData | null;
@@ -21,10 +21,10 @@ export function TokenReplayFocus({
   onSelectedEventChange,
 }: TokenReplayFocusProps) {
   if (isLoading) {
-    return <div className="empty-state">加载 replay 中</div>;
+    return <RemoteState.Loading layout="panel" rows={4} label="loading replay focus" />;
   }
   if (!timeline) {
-    return <div className="empty-state">该窗口暂无传播复盘</div>;
+    return <RemoteState.Empty title="该窗口暂无传播复盘" />;
   }
 
   const selectedBucket =
@@ -86,7 +86,7 @@ export function TokenReplayFocus({
               <ReplayChips post={post} />
             </button>
           ))}
-          {!replayPosts.length ? <div className="empty-state">该 bucket 暂无帖子</div> : null}
+          {!replayPosts.length ? <RemoteState.Empty title="该 bucket 暂无帖子" /> : null}
         </section>
 
         <aside className="replay-inspector">
@@ -140,7 +140,7 @@ export function TokenReplayFocus({
               ) : null}
             </>
           ) : (
-            <div className="empty-state">该 bucket 暂无选中事件</div>
+            <RemoteState.Empty title="该 bucket 暂无选中事件" />
           )}
         </aside>
       </div>

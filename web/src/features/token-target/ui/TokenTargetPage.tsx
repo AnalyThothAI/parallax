@@ -23,12 +23,13 @@ import type {
 import { tokenVenueAction } from "@lib/venue";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { DecisionTag } from "@shared/ui/DecisionTag";
+import { RemoteState } from "@shared/ui/RemoteState";
 import { ScoreLedger } from "@shared/ui/ScoreLedger";
 import { TokenPostsPanel } from "@shared/ui/TokenPostsPanel";
+import clsx from "clsx";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-
 
 import { isDexMarket, type TargetRef, targetRefEquals } from "../../../domain/tokenTarget";
 import {
@@ -41,7 +42,6 @@ import {
   serializeTokenTargetRouteState,
   type TokenTargetRouteState,
 } from "../state/tokenTargetRouteState";
-
 
 const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken"]);
 
@@ -133,7 +133,7 @@ export function TokenTargetPage() {
               <span>Live</span>
             </button>
           </header>
-          <div className="empty-state">Token 不存在或链接已失效</div>
+          <RemoteState.Empty title="Token 不存在或链接已失效" />
         </section>
       </section>
     );
@@ -254,9 +254,11 @@ export function TokenTargetPage() {
               <span>Back</span>
             </button>
           </header>
-          <div className="empty-state">
-            {assetFlowQuery.isPending ? "loading token audit" : "token audit target missing"}
-          </div>
+          {assetFlowQuery.isPending ? (
+            <RemoteState.Loading layout="route" rows={4} label="loading token audit" />
+          ) : (
+            <RemoteState.Empty title="token audit target missing" />
+          )}
         </section>
       </section>
     );
@@ -455,7 +457,7 @@ function StageTape({
   onSelect: (stageId: string | null) => void;
 }) {
   if (!stages.length) {
-    return <div className="empty-state">暂无阶段证据</div>;
+    return <RemoteState.Empty title="暂无阶段证据" />;
   }
   return (
     <div className="stage-tape">
@@ -465,7 +467,7 @@ function StageTape({
         return (
           <button
             key={stage.stage_id}
-            className={selectedStageId === stage.stage_id ? "active" : ""}
+            className={clsx(selectedStageId === stage.stage_id && "active")}
             type="button"
             onClick={() => onSelect(stage.stage_id)}
             aria-label={`select stage ${stage.phase}`}
@@ -475,7 +477,7 @@ function StageTape({
               {compactNumber(stage.people.posts)}p · {compactNumber(stage.people.authors)}a · top{" "}
               {Math.round(stage.people.top_author_share * 100)}%
             </span>
-            <span className={(stage.price.delta_pct ?? 0) >= 0 ? "up" : "down"}>
+            <span className={clsx((stage.price.delta_pct ?? 0) >= 0 ? "up" : "down")}>
               {stage.price.status} {formatSignedPercent(stage.price.delta_pct)}
             </span>
             <span>{formatReason(stage.trigger_reason)}</span>

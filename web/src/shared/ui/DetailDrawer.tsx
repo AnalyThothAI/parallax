@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import type { ReactNode } from "react";
 
 type DetailDrawerShellProps = {
@@ -57,7 +58,7 @@ type DetailDrawerTagStripProps = {
 };
 
 export function DetailDrawerShell({ children, className }: DetailDrawerShellProps) {
-  return <aside className={cx("detail-drawer", "drawer", className)}>{children}</aside>;
+  return <aside className={clsx("detail-drawer", "drawer", className)}>{children}</aside>;
 }
 
 export function DetailDrawerHeader({
@@ -71,7 +72,7 @@ export function DetailDrawerHeader({
   className,
 }: DetailDrawerHeaderProps) {
   return (
-    <header className={cx("drawer-head", className)}>
+    <header className={clsx("drawer-head", className)}>
       <div className="drawer-title">
         <div>
           <div className="eyebrow">{eyebrow}</div>
@@ -90,7 +91,7 @@ export function DetailDrawerHeader({
 }
 
 export function DetailDrawerMetricGrid({ children, className }: DetailDrawerMetricGridProps) {
-  return <div className={cx("drawer-kv", className)}>{children}</div>;
+  return <div className={clsx("drawer-kv", className)}>{children}</div>;
 }
 
 export function DetailDrawerMetric({ label, value }: DetailDrawerMetricProps) {
@@ -104,7 +105,7 @@ export function DetailDrawerMetric({ label, value }: DetailDrawerMetricProps) {
 
 export function DetailDrawerSection({ children, title, className }: DetailDrawerSectionProps) {
   return (
-    <section className={cx("drawer-section", className)}>
+    <section className={clsx("drawer-section", className)}>
       {title ? <div className="section-title">{title}</div> : null}
       {children}
     </section>
@@ -118,9 +119,7 @@ export function DetailDrawerCard({
   className,
 }: DetailDrawerCardProps) {
   return (
-    <article
-      className={cx("detail-drawer-card", tone === "accent" ? "is-accent" : undefined, className)}
-    >
+    <article className={clsx("detail-drawer-card", tone === "accent" && "is-accent", className)}>
       {title ? <h3>{title}</h3> : null}
       {children}
     </article>
@@ -128,7 +127,7 @@ export function DetailDrawerCard({
 }
 
 export function DetailDrawerFieldGrid({ children, className }: DetailDrawerFieldGridProps) {
-  return <div className={cx("detail-drawer-fields", className)}>{children}</div>;
+  return <div className={clsx("detail-drawer-fields", className)}>{children}</div>;
 }
 
 export function DetailDrawerField({ label, value }: DetailDrawerFieldProps) {
@@ -148,15 +147,11 @@ export function DetailDrawerTagStrip({
 }: DetailDrawerTagStripProps) {
   const renderedItems = items.length ? items : [emptyLabel];
   return (
-    <div className={cx("risk-strip", "detail-drawer-tag-strip", className)}>
+    <div className={clsx("risk-strip", "detail-drawer-tag-strip", className)}>
       {featuredItem ? <span className="hot">{featuredItem}</span> : null}
       {renderedItems.map((item, index) => (
         <span key={typeof item === "string" ? `${index}:${item}` : index}>{item}</span>
       ))}
     </div>
   );
-}
-
-function cx(...classes: Array<string | false | null | undefined>): string {
-  return classes.filter(Boolean).join(" ");
 }

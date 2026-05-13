@@ -7,10 +7,11 @@ import {
 } from "@lib/format";
 import type { ScopeKey, StockRadarRow, WindowKey } from "@lib/types";
 import { RadarControls } from "@shared/ui/RadarControls";
+import { RemoteState } from "@shared/ui/RemoteState";
+import clsx from "clsx";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 import { useStocksRadarQuery } from "../api/useStocksRadarQuery";
-
 
 type StocksRadarPageProps = {
   token: string;
@@ -72,9 +73,11 @@ export function StocksRadarPage({
         </div>
         {query.isLoading ? <StocksSkeleton /> : null}
         {!query.isLoading && rows.length === 0 ? (
-          <div className="table-state">
-            {query.isError ? "Stocks radar unavailable" : "No stock flow"}
-          </div>
+          query.isError ? (
+            <RemoteState.Error error={query.error ?? "Stocks radar unavailable"} />
+          ) : (
+            <RemoteState.Empty title="No stock flow" />
+          )
         ) : null}
         {rows.map((row) => (
           <StockRow key={row.target.target_id} row={row} />
@@ -136,12 +139,12 @@ function StockRow({ row }: { row: StockRadarRow }) {
           {direction === "up" ? <ArrowUpRight aria-hidden /> : null}
           {direction === "down" ? <ArrowDownRight aria-hidden /> : null}
           {direction === "flat" ? <Minus aria-hidden /> : null}
-          <b className={`direction ${direction}`}>{formatSignedPercent(change)}</b>
+          <b className={clsx("direction", direction)}>{formatSignedPercent(change)}</b>
         </span>
         <small>{moveMeta(row)}</small>
       </span>
 
-      <span className={`stock-quote-cell ${quoteReady ? "ready" : "unavailable"}`}>
+      <span className={clsx("stock-quote-cell", quoteReady ? "ready" : "unavailable")}>
         {quoteReady ? null : <AlertTriangle aria-hidden />}
         <b>{quoteLabel}</b>
         <small>{row.quote.latency_class || row.quote.freshness_class || row.quote.status}</small>

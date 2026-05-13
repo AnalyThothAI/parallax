@@ -6,7 +6,8 @@ import {
   formatScore,
 } from "@lib/format";
 import type { TokenSocialTimelineData } from "@lib/types";
-
+import { RemoteState } from "@shared/ui/RemoteState";
+import clsx from "clsx";
 
 type TokenTimelineProps = {
   timeline?: TokenSocialTimelineData | null;
@@ -25,7 +26,7 @@ export function TokenTimeline({
     return <TimelineSkeleton />;
   }
   if (!timeline) {
-    return <div className="empty-state">该窗口暂无传播时间线</div>;
+    return <RemoteState.Empty title="该窗口暂无传播时间线" />;
   }
   const maxPosts = Math.max(1, ...timeline.buckets.map((item) => item.posts));
   const sparse = timeline.summary.posts > 0 && timeline.summary.posts < 3;
@@ -93,7 +94,10 @@ export function TokenTimeline({
                 ) : null}
               </>
             );
-            const className = `timeline-bucket ${selectedBucketStartMs === item.start_ms ? "selected" : ""}`;
+            const className = clsx(
+              "timeline-bucket",
+              selectedBucketStartMs === item.start_ms && "selected",
+            );
             if (!onBucketSelect) {
               return (
                 <span
@@ -125,7 +129,10 @@ export function TokenTimeline({
 
       <section className="author-lanes">
         {timeline.authors.slice(0, 8).map((author) => (
-          <div className={`author-lane role-${author.role ?? "unknown"}`} key={author.handle}>
+          <div
+            className={clsx("author-lane", `role-${author.role ?? "unknown"}`)}
+            key={author.handle}
+          >
             <b>@{author.handle}</b>
             <span>{author.role ?? "author"}</span>
             <em>{compactNumber(author.posts)} posts</em>
@@ -134,7 +141,7 @@ export function TokenTimeline({
             ) : null}
           </div>
         ))}
-        {timeline.authors.length === 0 ? <div className="empty-state">暂无作者 lane</div> : null}
+        {timeline.authors.length === 0 ? <RemoteState.Empty title="暂无作者 lane" /> : null}
       </section>
     </div>
   );

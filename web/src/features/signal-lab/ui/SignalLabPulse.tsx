@@ -1,8 +1,8 @@
-
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "@lib/format";
 import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "@lib/types";
 import { signalPulseVenueActions } from "@lib/venue";
-import { SkeletonRows } from "@shared/ui/RemoteState";
+import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
+import clsx from "clsx";
 import { FlaskConical } from "lucide-react";
 
 type SignalLabPulseProps = {
@@ -71,17 +71,17 @@ export function SignalPulseList({
     return <SkeletonRows compact={compact} count={compact ? 5 : 6} label="loading signal pulse" />;
   }
   if (!items.length) {
-    return <div className="empty-state">No signal pulse items in this window</div>;
+    return <RemoteState.Empty title="No signal pulse items in this window" />;
   }
   return (
-    <div className={`signal-chain-list signal-pulse-list ${compact ? "compact" : ""}`}>
+    <div className={clsx("signal-chain-list", "signal-pulse-list", compact && "compact")}>
       {items.map((item, index) => {
         const rowKey = itemKey(item, index);
         const facts = pulseFactChips(item);
         const venueActions = signalPulseVenueActions(item);
         return (
           <article
-            className={`signal-chain-row ${selectedItemId === item.candidate_id ? "selected" : ""}`}
+            className={clsx("signal-chain-row", selectedItemId === item.candidate_id && "selected")}
             key={rowKey}
           >
             <button
@@ -90,7 +90,7 @@ export function SignalPulseList({
               type="button"
               onClick={() => onSelect(item)}
             >
-              <span className={`signal-stage-badge ${item.pulse_status}`}>
+              <span className={clsx("signal-stage-badge", item.pulse_status)}>
                 {statusLabel(item.pulse_status)}
               </span>
               <span className="signal-chain-main">

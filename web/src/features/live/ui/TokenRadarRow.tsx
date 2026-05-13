@@ -13,6 +13,7 @@ import {
 import type { TokenFlowItem } from "@lib/types";
 import { tokenVenueAction } from "@lib/venue";
 import { DecisionTag } from "@shared/ui/DecisionTag";
+import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 
 import { isDexMarket } from "../../../domain/tokenTarget";
@@ -36,10 +37,10 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
       : "flat";
   const venueAction = tokenVenueAction(item);
   return (
-    <div className={`radar-row ${selected ? "selected" : ""}`}>
+    <div className={clsx("radar-row", selected && "selected")}>
       <button
         aria-label={`select token ${tokenLabel(item)}`}
-        className={`radar-row-select ${selected ? "selected" : ""}`}
+        className={clsx("radar-row-select", selected && "selected")}
         type="button"
         onClick={() => onSelect(item)}
       >
@@ -70,7 +71,7 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
 
         <span className="metric market-cell" data-radar-metric="market">
           <b>{marketPrimary(item)}</b>
-          <small className={`direction ${direction}`}>{marketMeta(item, delta)}</small>
+          <small className={clsx("direction", direction)}>{marketMeta(item, delta)}</small>
         </span>
 
         <span className="phase timing-cell" data-radar-metric="timing">
