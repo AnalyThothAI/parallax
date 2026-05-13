@@ -165,7 +165,7 @@ def _insert_event(conn: Any, *, event_id: str, received_at_ms: int) -> None:
         )
         VALUES (
           %s, %s, 'gmgn', 'websocket', 'public', 'twitter', 'tweet', %s, %s,
-          %s, %s, %s, %s, %s, %s, false, 0, %s, %s, %s, %s
+          %s, %s, %s, %s, %s, %s, %s, false, 0, %s, %s, %s, %s
         )
         """,
         (
@@ -173,6 +173,7 @@ def _insert_event(conn: Any, *, event_id: str, received_at_ms: int) -> None:
             f"dedupe:{event_id}",
             received_at_ms,
             received_at_ms,
+            Jsonb([]),
             Jsonb([]),
             Jsonb([]),
             Jsonb([]),
