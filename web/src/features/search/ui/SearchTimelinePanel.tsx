@@ -196,6 +196,7 @@ function TimelineChart({ data }: { data: TimelineChartData }) {
       ref={containerRef}
       className="search-lightweight-chart"
       aria-label="market candles and social posts"
+      role="img"
     />
   );
 }

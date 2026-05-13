@@ -1,14 +1,30 @@
-import * as client from "@lib/api/client";
+import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+import { createApiMock, ok, resetApiMock } from "../../../../test/msw/fixtures";
+import { apiHandlers } from "../../../../test/msw/handlers";
+import { server } from "../../../../test/msw/server";
 import { SignalLabPage } from "../SignalLabPage";
 
+const apiMock = createApiMock();
+
 beforeEach(() => {
-  client.setAuthToken("test-token");
-  vi.restoreAllMocks();
+  setAuthToken("test-token");
+  resetApiMock(apiMock);
+  apiMock.getApiImpl = async () =>
+    ok({
+      query: {},
+      health: {},
+      summary: {},
+      items: [],
+      returned_count: 0,
+      has_more: false,
+      next_cursor: null,
+    });
+  server.use(...apiHandlers(apiMock));
 });
 
 function renderAt(url: string) {
@@ -26,21 +42,9 @@ function renderAt(url: string) {
 
 describe("SignalLabPage routing", () => {
   it("calls list endpoint with handle and status from URL", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockResolvedValue({
-      ok: true,
-      data: {
-        query: {},
-        health: {},
-        summary: {},
-        items: [],
-        returned_count: 0,
-        has_more: false,
-        next_cursor: null,
-      },
-    } as any);
     renderAt("/signal-lab?handle=toly&status=token_watch");
     await waitFor(() => {
-      expect(getApi).toHaveBeenCalledWith(
+      expect(apiMock.getApi).toHaveBeenCalledWith(
         "/api/signal-lab/pulse",
         expect.objectContaining({
           params: expect.objectContaining({ handle: "toly", status: "token_watch" }),
@@ -50,21 +54,9 @@ describe("SignalLabPage routing", () => {
   });
 
   it("does not include default status param", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockResolvedValue({
-      ok: true,
-      data: {
-        query: {},
-        health: {},
-        summary: {},
-        items: [],
-        returned_count: 0,
-        has_more: false,
-        next_cursor: null,
-      },
-    } as any);
     renderAt("/signal-lab");
-    await waitFor(() => expect(getApi).toHaveBeenCalled());
-    const lastCall = getApi.mock.calls.at(-1)!;
+    await waitFor(() => expect(apiMock.getApi).toHaveBeenCalled());
+    const lastCall = apiMock.getApi.mock.calls.at(-1)!;
     const params = (lastCall[1] as any).params;
     expect(params.status).toBeUndefined();
     expect(params.handle).toBeUndefined();
@@ -72,21 +64,9 @@ describe("SignalLabPage routing", () => {
   });
 
   it("uses window and scope from URL params", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockResolvedValue({
-      ok: true,
-      data: {
-        query: {},
-        health: {},
-        summary: {},
-        items: [],
-        returned_count: 0,
-        has_more: false,
-        next_cursor: null,
-      },
-    } as any);
     renderAt("/signal-lab?window=4h&scope=matched&q=SOL");
     await waitFor(() => {
-      expect(getApi).toHaveBeenCalledWith(
+      expect(apiMock.getApi).toHaveBeenCalledWith(
         "/api/signal-lab/pulse",
         expect.objectContaining({
           params: expect.objectContaining({ window: "4h", scope: "matched", q: "SOL" }),

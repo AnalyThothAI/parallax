@@ -425,11 +425,11 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Modify: `web/package.json`
 - Modify: `web/package-lock.json`
 
-- [ ] Add dev dependencies: `msw`, `jest-axe`, `axe-core`.
-- [ ] Set up MSW node server in Vitest setup with `beforeAll(server.listen)`, `afterEach(server.resetHandlers)`, `afterAll(server.close)`.
-- [ ] Replace module mocks of `api/client` and `useIntelSocket` with MSW handlers and socket-provider test helpers.
-- [ ] Split `App.test.tsx` according to `web/src/test/app-test-case-matrix.md`.
-- [ ] Required L2 route integration tests:
+- [x] Add dev dependencies: `msw`, `jest-axe`, `axe-core`.
+- [x] Set up MSW node server in Vitest setup with `beforeAll(server.listen)`, `afterEach(server.resetHandlers)`, `afterAll(server.close)`.
+- [x] Replace module mocks of `api/client` and `useIntelSocket` with MSW handlers and socket-provider test helpers.
+- [x] Split `App.test.tsx` according to `web/src/test/app-test-case-matrix.md`.
+- [x] Required L2 route integration tests:
   - cold `/` renders radar/tape and URL filters;
   - topbar search navigates to `/search?q=<submitted-query>`;
   - radar row navigates to token target/search route according to product contract;
@@ -437,12 +437,12 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   - `/signal-lab/pulse/:candidateId` renders list plus detail;
   - `/stocks` renders stocks rows and sends no market subscription;
   - notification click navigates to the expected route.
-- [ ] Required L1 component/a11y tests:
+- [x] Required L1 component/a11y tests:
   - `CockpitTopbar`, `CockpitSideRail`, `RemoteState`, `IconButton`;
   - one public UI component per feature directory;
   - each includes `expect(await axe(container)).toHaveNoViolations()` where DOM is meaningful.
-- [ ] Remove the `app-integration` Vitest project from `vite.config.ts`.
-- [ ] Run:
+- [x] Remove the `app-integration` Vitest project from `vite.config.ts`.
+- [x] Run:
   ```bash
   cd web
   wc -l src/App.test.tsx 2>/dev/null || true
@@ -451,7 +451,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm run typecheck
   ```
   Expected: `App.test.tsx` is deleted or under 100 lines; no API module mocks/spies remain; tests/typecheck pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "test: rebuild frontend test pyramid with msw"
@@ -615,6 +615,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 5 completed. Removed `web/src/components`, moved UI/tests to feature owners or `shared/ui`, added feature index barrels for public imports, and passed component-removal/deep-import grep checks, `npm run lint`, `npm run typecheck`, and full Vitest.
 - 2026-05-13: Task 6 completed. Replaced `CockpitLayout` with route-owned cockpit/search shells, split topbar/side rail/mobile nav components, removed raw pathname branch patterns from app/cockpit/route files, and passed the Task 6 grep, `npm run typecheck`, `npm run lint`, and full Vitest.
 - 2026-05-13: Task 7 completed. Added the route-aware socket provider, ref-counted market target subscriptions, route-scoped live/search/token-target registrations, and backend regression coverage for replacing repeated `market_targets`; deleted the old socket hook and passed the Task 7 backend, grep, targeted Vitest, typecheck, lint, and full Vitest checks.
+- 2026-05-13: Task 8 completed. Replaced API client mocks/spies with MSW handlers, moved the monolithic App test into a feature integration test, added socket-provider test helpers, added route/component/a11y coverage with `jest-axe`, removed the app-integration Vitest project, and passed the no-App-test/no-API-mock grep, full Vitest, typecheck, and lint.
 
 ## Decision Log
 
@@ -635,6 +636,9 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Preserve the existing `/stocks` grid class and disabled detail mobile task behavior inside `CockpitShell` with `useMatch`, because App integration tests and current CSS depend on that mode class.
 - 2026-05-13: Mount `IntelSocketProvider` inside `CockpitApp` rather than `AppRoot` because bootstrap token ownership still lives in `useLiveData` and `AppRoutes` currently delegates all frontend routes to `CockpitApp`; this keeps one socket provider mounted across live/search/stocks/signal-lab/token-target without moving bootstrap behavior.
 - 2026-05-13: Split socket context and market target normalization out of `IntelSocketProvider.tsx` so the provider file exports only a React component and satisfies the Fast Refresh lint gate.
+- 2026-05-13: Add `@types/jest-axe` as a dev-only companion type package because `jest-axe` does not ship TypeScript declarations and Task 8's a11y tests must pass `tsc --noEmit`.
+- 2026-05-13: Keep the old App integration assertions by moving them to `features/live/__tests__/CockpitApp.integration.test.tsx`; this deletes the root `App.test.tsx` while preserving the matrix coverage under feature ownership.
+- 2026-05-13: Fix axe-detected DOM semantics while adding tests: skeleton rows now use `role="status"`, the search chart has `role="img"`, and internal Search side panels no longer use nested complementary landmarks.
 
 ## Verification
 

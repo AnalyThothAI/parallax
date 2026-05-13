@@ -1,18 +1,25 @@
-import * as client from "@lib/api/client";
+import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApiMock, ok, resetApiMock } from "../../../../test/msw/fixtures";
+import { apiHandlers } from "../../../../test/msw/handlers";
+import { server } from "../../../../test/msw/server";
 import { TokenTargetPage } from "../TokenTargetPage";
 
+const apiMock = createApiMock();
+
 beforeEach(() => {
-  client.setAuthToken("test-token");
+  setAuthToken("test-token");
+  resetApiMock(apiMock);
+  server.use(...apiHandlers(apiMock));
 });
 
 afterEach(() => {
-  client.setAuthToken(null);
-  vi.restoreAllMocks();
+  setAuthToken(null);
 });
 
 function renderAt(url: string) {
@@ -30,36 +37,30 @@ function renderAt(url: string) {
 
 describe("TokenTargetPage routing", () => {
   it("calls target-social-timeline with target_type and target_id from the URL", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
+    apiMock.getApiImpl = async (path: string) => {
       if (path === "/api/target-posts") {
-        return {
-          ok: true,
-          data: {
-            items: [],
-            returned_count: 0,
-            total_count: 0,
-            has_more: false,
-            score_window: { window: "1h" },
-            query: { sort: "recent" },
-          },
-        } as any;
+        return ok({
+          items: [],
+          returned_count: 0,
+          total_count: 0,
+          has_more: false,
+          score_window: { window: "1h" },
+          query: { sort: "recent" },
+        } as any);
       }
-      return {
-        ok: true,
-        data: {
-          stages: [],
-          posts: [],
-          summary: { posts: 0, authors: 0 },
-          targets: [],
-          attention: [],
-        },
-      } as any;
-    });
+      return ok({
+        stages: [],
+        posts: [],
+        summary: { posts: 0, authors: 0 },
+        targets: [],
+        attention: [],
+      } as any);
+    };
 
     renderAt("/token/Asset/asset%3Apepe");
 
     await waitFor(() => {
-      expect(getApi).toHaveBeenCalledWith(
+      expect(apiMock.getApi).toHaveBeenCalledWith(
         "/api/target-social-timeline",
         expect.objectContaining({
           params: expect.objectContaining({
@@ -72,80 +73,73 @@ describe("TokenTargetPage routing", () => {
   });
 
   it("renders an in-page 404 when targetType is not in {Asset, CexToken}", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
+    apiMock.getApiImpl = async (path: string) => {
       if (path === "/api/target-posts") {
-        return {
-          ok: true,
-          data: {
-            items: [],
-            returned_count: 0,
-            total_count: 0,
-            has_more: false,
-            score_window: { window: "1h" },
-            query: { sort: "recent" },
-          },
-        } as any;
+        return ok({
+          items: [],
+          returned_count: 0,
+          total_count: 0,
+          has_more: false,
+          score_window: { window: "1h" },
+          query: { sort: "recent" },
+        } as any);
       }
-      return { ok: true, data: { targets: [], attention: [] } } as any;
-    });
+      return ok({ targets: [], attention: [] });
+    };
 
     const { container } = renderAt("/token/foo/bar");
 
     expect(container.textContent ?? "").toMatch(/不存在|失效|invalid/i);
     // Invalid target types must not fire a doomed timeline request.
-    expect(getApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(false);
+    expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(
+      false,
+    );
   });
 
   it("renders an honest CEX target page when the current radar window has no row", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
+    apiMock.getApiImpl = async (path: string) => {
       if (path === "/api/token-radar") {
-        return { ok: true, data: { targets: [], attention: [], projection: {} } } as any;
+        return ok({ targets: [], attention: [], projection: {} });
       }
       if (path === "/api/target-social-timeline") {
-        return {
-          ok: true,
-          data: {
-            stages: [],
-            posts: [],
-            summary: {
-              posts: 0,
-              authors: 0,
-              effective_authors: 0,
-              watched_posts: 0,
-              phase: "seed",
-            },
+        return ok({
+          stages: [],
+          posts: [],
+          summary: {
+            posts: 0,
+            authors: 0,
+            effective_authors: 0,
+            watched_posts: 0,
+            phase: "seed",
           },
-        } as any;
+        } as any);
       }
       if (path === "/api/target-posts") {
-        return {
-          ok: true,
-          data: {
-            items: [],
-            returned_count: 0,
-            total_count: 0,
-            has_more: false,
-            score_window: { window: "1h" },
-            query: {
-              target_type: "CexToken",
-              target_id: "cex_token:ZEC",
-              window: "1h",
-              scope: "all",
-              range: "current_window",
-              sort: "recent",
-            },
+        return ok({
+          items: [],
+          returned_count: 0,
+          total_count: 0,
+          has_more: false,
+          score_window: { window: "1h" },
+          query: {
+            target_type: "CexToken",
+            target_id: "cex_token:ZEC",
+            window: "1h",
+            scope: "all",
+            range: "current_window",
+            sort: "recent",
           },
-        } as any;
+        } as any);
       }
-      return { ok: true, data: {} } as any;
-    });
+      return ok({});
+    };
 
-    renderAt("/token/CexToken/cex_token%3AZEC");
+    const { container } = renderAt("/token/CexToken/cex_token%3AZEC");
 
     expect(await screen.findByRole("heading", { name: "$ZEC" })).toBeInTheDocument();
     expect(screen.getAllByText("Not in current radar window").length).toBeGreaterThan(0);
     expect(screen.queryByText("score audit")).not.toBeInTheDocument();
-    expect(getApi).toHaveBeenCalledWith(
+    expect(apiMock.getApi).toHaveBeenCalledWith(
       "/api/target-social-timeline",
       expect.objectContaining({
         params: expect.objectContaining({
@@ -154,36 +148,31 @@ describe("TokenTargetPage routing", () => {
         }),
       }),
     );
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("seeds the audit window from the URL query", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
+    apiMock.getApiImpl = async (path: string) => {
       if (path === "/api/target-posts") {
-        return {
-          ok: true,
-          data: {
-            items: [],
-            returned_count: 0,
-            total_count: 0,
-            has_more: false,
-            score_window: { window: "24h" },
-            query: { sort: "recent" },
-          },
-        } as any;
+        return ok({
+          items: [],
+          returned_count: 0,
+          total_count: 0,
+          has_more: false,
+          score_window: { window: "24h" },
+          query: { sort: "recent" },
+        } as any);
       }
       if (path === "/api/target-social-timeline") {
-        return {
-          ok: true,
-          data: { stages: [], posts: [], summary: { posts: 0, authors: 0 } },
-        } as any;
+        return ok({ stages: [], posts: [], summary: { posts: 0, authors: 0 } } as any);
       }
-      return { ok: true, data: { targets: [], attention: [], projection: {} } } as any;
-    });
+      return ok({ targets: [], attention: [], projection: {} });
+    };
 
     renderAt("/token/CexToken/cex_token%3AZEC?window=24h");
 
     await waitFor(() => {
-      expect(getApi).toHaveBeenCalledWith(
+      expect(apiMock.getApi).toHaveBeenCalledWith(
         "/api/token-radar",
         expect.objectContaining({
           params: expect.objectContaining({

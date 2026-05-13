@@ -1,15 +1,21 @@
-import * as client from "@lib/api/client";
+import { ApiError, setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { marketContextFixture } from "../../../../test/marketFixtures";
+import { createApiMock, ok, resetApiMock } from "../../../../test/msw/fixtures";
+import { apiHandlers } from "../../../../test/msw/handlers";
+import { server } from "../../../../test/msw/server";
 import { PulseDetailPage } from "../PulseDetailPage";
 
+const apiMock = createApiMock();
+
 beforeEach(() => {
-  client.setAuthToken("test-token");
-  vi.restoreAllMocks();
+  setAuthToken("test-token");
+  resetApiMock(apiMock);
+  server.use(...apiHandlers(apiMock));
 });
 
 function renderAt(url: string) {
@@ -27,17 +33,14 @@ function renderAt(url: string) {
 
 describe("PulseDetailPage", () => {
   it("renders a structural skeleton while the candidate request is pending", () => {
-    vi.spyOn(client, "getApi").mockReturnValue(new Promise(() => undefined) as any);
+    apiMock.getApiImpl = () => new Promise(() => undefined);
     renderAt("/signal-lab/pulse/cand-1");
 
     expect(screen.getByLabelText("loading pulse detail")).toBeInTheDocument();
   });
 
   it("renders inspector when candidate exists", async () => {
-    vi.spyOn(client, "getApi").mockResolvedValue({
-      ok: true,
-      data: minimalPulseItem(),
-    } as any);
+    apiMock.getApiImpl = async () => ok(minimalPulseItem());
     renderAt("/signal-lab/pulse/cand-1");
     await waitFor(() => {
       expect(screen.getAllByText(/PEPE|cand-1/).length).toBeGreaterThan(0);
@@ -45,7 +48,9 @@ describe("PulseDetailPage", () => {
   });
 
   it("renders in-page 404 when candidate is missing", async () => {
-    vi.spyOn(client, "getApi").mockRejectedValue({ status: 404 });
+    apiMock.getApiImpl = async () => {
+      throw new ApiError("not found", 404);
+    };
     renderAt("/signal-lab/pulse/ghost");
     await waitFor(() => {
       expect(screen.getByText(/不存在|失效|not found/i)).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import * as client from "@lib/api/client";
+import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -6,6 +6,11 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { App } from "../../../../App";
+import { createApiMock, ok, resetApiMock } from "../../../../test/msw/fixtures";
+import { apiHandlers } from "../../../../test/msw/handlers";
+import { server } from "../../../../test/msw/server";
+
+const apiMock = createApiMock();
 
 vi.mock("@shared/socket/IntelSocketProvider", () => ({
   IntelSocketProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
@@ -25,33 +30,27 @@ vi.mock("@shared/socket/useMarketSubscription", () => ({
 }));
 
 beforeEach(() => {
-  client.setAuthToken("test-token");
-  vi.restoreAllMocks();
+  setAuthToken("test-token");
+  resetApiMock(apiMock);
+  server.use(...apiHandlers(apiMock));
 });
 
 describe("watchlist sidebar", () => {
   it("renders each handle as a Link to /signal-lab?handle=...", async () => {
-    vi.spyOn(client, "getBootstrap").mockResolvedValue({
-      ok: true,
-      data: { ws_token: "test-token", handles: ["toly"], replay_limit: 25 },
-    } as any);
-    vi.spyOn(client, "getApi").mockImplementation(async (path: string) => {
+    apiMock.getBootstrapImpl = async () =>
+      ok({ ws_token: "test-token", handles: ["toly"], replay_limit: 25 });
+    apiMock.getApiImpl = async (path: string) => {
       if (path === "/api/status") {
-        return {
-          ok: true,
-          data: { ok: true, handles: ["toly"], collector: {}, notifications: { summary: {} } },
-        } as any;
+        return ok({ ok: true, handles: ["toly"], collector: {}, notifications: { summary: {} } });
       }
       if (path === "/api/recent") {
-        return { ok: true, data: { items: [] } } as any;
+        return ok({ items: [] });
       }
       if (path === "/api/token-radar") {
-        return { ok: true, data: { targets: [], attention: [], projection: {} } } as any;
+        return ok({ targets: [], attention: [], projection: {} });
       }
       if (path === "/api/signal-lab/pulse") {
-        return {
-          ok: true,
-          data: {
+        return ok({
             query: {},
             health: {},
             summary: {},
@@ -59,17 +58,16 @@ describe("watchlist sidebar", () => {
             returned_count: 0,
             has_more: false,
             next_cursor: null,
-          },
-        } as any;
+          } as any);
       }
       if (path === "/api/notification-summary") {
-        return { ok: true, data: {} } as any;
+        return ok({});
       }
       if (path === "/api/notifications") {
-        return { ok: true, data: { items: [], summary: {} } } as any;
+        return ok({ items: [], summary: {} });
       }
-      return { ok: true, data: {} } as any;
-    });
+      return ok({});
+    };
 
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(

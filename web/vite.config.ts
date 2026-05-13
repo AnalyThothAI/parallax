@@ -26,25 +26,6 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: "./src/test/setup.ts",
-    projects: [
-      {
-        extends: true,
-        test: {
-          name: "web-unit",
-          include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-          exclude: ["src/App.test.tsx"],
-          sequence: { groupOrder: 0 }
-        }
-      },
-      {
-        extends: true,
-        test: {
-          name: "app-integration",
-          include: ["src/App.test.tsx"],
-          sequence: { groupOrder: 1 }
-        }
-      }
-    ]
+    setupFiles: "./src/test/setup.ts"
   }
 });

@@ -8,7 +8,11 @@ type SkeletonRowsProps = {
 
 export function SkeletonRows({ count = 5, label, compact = false }: SkeletonRowsProps) {
   return (
-    <div aria-label={label} className={`skeleton-rows ${compact ? "compact" : ""}`.trim()}>
+    <div
+      aria-label={label}
+      className={`skeleton-rows ${compact ? "compact" : ""}`.trim()}
+      role="status"
+    >
       {Array.from({ length: count }, (_, index) => (
         <span className="skeleton-row" key={index}>
           <i />

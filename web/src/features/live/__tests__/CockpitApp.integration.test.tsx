@@ -1,6 +1,5 @@
-import { ApiError, getApi, getBootstrap, postApi, setAuthToken } from "@lib/api/client";
+import { ApiError, setAuthToken } from "@lib/api/client";
 import type {
-  ApiResponse,
   AssetFlowData,
   AssetFlowRow,
   BootstrapData,
@@ -25,46 +24,20 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { App } from "./App";
-import { useCockpitStore } from "./features/cockpit/state/cockpitStore";
-import { useLiveSelectionStore } from "./features/live/state/liveSelectionSlice";
-import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
+import { App } from "../../../App";
+import { tokenRadarRowToTokenItem } from "../../../lib/tokenRadar";
 import {
   marketContextFixture,
   marketObservationFixture,
   tokenMarketBlockFixture,
-} from "./test/marketFixtures";
+} from "../../../test/marketFixtures";
+import { createApiMock, ok, resetApiMock } from "../../../test/msw/fixtures";
+import { apiHandlers } from "../../../test/msw/handlers";
+import { server } from "../../../test/msw/server";
+import { useCockpitStore } from "../../cockpit/state/cockpitStore";
+import { useLiveSelectionStore } from "../state/liveSelectionSlice";
 
-const apiMock = vi.hoisted(() => {
-  type RequestOptions = {
-    token?: string;
-    params?: Record<string, string | number | boolean | null | undefined>;
-  };
-  type State = {
-    getApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
-    getBootstrapImpl: () => Promise<unknown>;
-    postApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
-    getApi: ReturnType<typeof vi.fn>;
-    getBootstrap: ReturnType<typeof vi.fn>;
-    postApi: ReturnType<typeof vi.fn>;
-  };
-  const state = {} as State;
-  state.getApiImpl = async (path: string) => {
-    throw new Error(`unexpected path ${path}`);
-  };
-  state.getBootstrapImpl = async () => {
-    throw new Error("unexpected bootstrap request");
-  };
-  state.postApiImpl = async (path: string) => {
-    throw new Error(`unexpected post ${path}`);
-  };
-  state.getApi = vi.fn((path: string, options?: RequestOptions) => state.getApiImpl(path, options));
-  state.getBootstrap = vi.fn(() => state.getBootstrapImpl());
-  state.postApi = vi.fn((path: string, options?: RequestOptions) =>
-    state.postApiImpl(path, options),
-  );
-  return state;
-});
+const apiMock = createApiMock();
 
 const socketMock: {
   status: string;
@@ -79,16 +52,6 @@ const socketMock: {
   liveMarketUpdates: [],
   lastMessageAt: 1_777_770_000_000,
 };
-
-vi.mock("@lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@lib/api/client")>("@lib/api/client");
-  return {
-    ...actual,
-    getApi: apiMock.getApi,
-    getBootstrap: apiMock.getBootstrap,
-    postApi: apiMock.postApi,
-  };
-});
 
 vi.mock("@shared/socket/IntelSocketProvider", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
@@ -156,9 +119,8 @@ function liveMarketUpdateKey(update: LiveMarketUpdatePayload) {
   ].join(":");
 }
 
-const mockedGetApi = vi.mocked(getApi);
-const mockedGetBootstrap = vi.mocked(getBootstrap);
-const mockedPostApi = vi.mocked(postApi);
+const mockedGetApi = apiMock.getApi;
+const mockedPostApi = apiMock.postApi;
 
 const statusData: StatusData = {
   ok: true,
@@ -223,10 +185,8 @@ describe("App Token Radar social heat cockpit", () => {
   });
 
   beforeEach(() => {
-    mockedGetApi.mockClear();
-    mockedGetBootstrap.mockClear();
-    mockedPostApi.mockClear();
-    apiMock.postApiImpl = async () => ok({ notification_id: "notification-1", updated: true });
+    resetApiMock(apiMock);
+    server.use(...apiHandlers(apiMock));
     socketMock.status = "connected";
     socketMock.events = [liveUpegEvent()];
     socketMock.notifications = [];
@@ -1125,7 +1085,8 @@ describe("App Token Radar social heat cockpit", () => {
 
     await waitFor(() => {
       const postsCall = mockedGetApi.mock.calls.find(([path]) => path === "/api/target-posts");
-      expect(postsCall?.[1]?.params).toMatchObject({ sort: "catalyst", cursor: undefined });
+      expect(postsCall?.[1]?.params).toMatchObject({ sort: "catalyst" });
+      expect(postsCall?.[1]?.params).not.toHaveProperty("cursor");
     });
   });
 
@@ -3239,8 +3200,4 @@ function renderWithQuery(children: ReactNode, options: { initialEntries?: string
       <MemoryRouter initialEntries={options.initialEntries}>{children}</MemoryRouter>
     </QueryClientProvider>,
   );
-}
-
-function ok<T>(data: T): ApiResponse<T> {
-  return { ok: true, data };
 }

@@ -1,5 +1,6 @@
 import type { NotificationItem, NotificationSummary } from "@lib/types";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 
@@ -56,13 +57,13 @@ describe("notification center components", () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it("renders drawer actions for individual and bulk read state", () => {
+  it("renders drawer actions for individual and bulk read state", async () => {
     const onClose = vi.fn();
     const onMarkAllRead = vi.fn();
     const onMarkRead = vi.fn();
     const onOpenNotification = vi.fn();
 
-    render(
+    const { container } = render(
       <NotificationDrawer
         loading={false}
         notifications={[notification]}
@@ -85,6 +86,7 @@ describe("notification center components", () => {
     expect(onMarkRead).toHaveBeenCalledWith("n1");
     expect(onMarkAllRead).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("only shows watchlist dot when the account has unread notifications", () => {

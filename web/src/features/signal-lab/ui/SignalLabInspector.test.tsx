@@ -1,5 +1,6 @@
 import type { SignalPulseItem } from "@lib/types";
 import { cleanup, render, screen } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { marketContextFixture, marketObservationFixture } from "../../../test/marketFixtures";
@@ -9,8 +10,8 @@ import { SignalLabInspector } from "./SignalLabInspector";
 afterEach(() => cleanup());
 
 describe("SignalLabInspector", () => {
-  it("shows a venue link for the selected parsed token", () => {
-    render(
+  it("shows a venue link for the selected parsed token", async () => {
+    const { container } = render(
       <SignalLabInspector
         item={
           {
@@ -135,6 +136,7 @@ describe("SignalLabInspector", () => {
       "href",
       "https://gmgn.ai/base/token/0x920738cbe6ddf7399187ffcf85c4b19154123be4",
     );
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("rejects malformed Signal Pulse factor snapshots before rendering raw JSON", () => {

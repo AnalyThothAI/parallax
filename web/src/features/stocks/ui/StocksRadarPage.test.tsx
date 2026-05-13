@@ -1,13 +1,20 @@
-import * as client from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { axe } from "jest-axe";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+
+import { createApiMock, ok, resetApiMock } from "../../../test/msw/fixtures";
+import { apiHandlers } from "../../../test/msw/handlers";
+import { server } from "../../../test/msw/server";
 
 import { StocksRadarPage } from "./StocksRadarPage";
 
-afterEach(() => {
-  vi.restoreAllMocks();
+const apiMock = createApiMock();
+
+beforeEach(() => {
+  resetApiMock(apiMock);
+  server.use(...apiHandlers(apiMock));
 });
 
 function renderPage() {
@@ -32,9 +39,8 @@ function renderPage() {
 
 describe("StocksRadarPage", () => {
   it("loads stocks radar rows and renders partial quote state", async () => {
-    const getApi = vi.spyOn(client, "getApi").mockResolvedValue({
-      ok: true,
-      data: {
+    apiMock.getApiImpl = async () =>
+      ok({
         window: "1h",
         scope: "all",
         query: {
@@ -125,10 +131,9 @@ describe("StocksRadarPage", () => {
           quote_ready_count: 1,
           quote_unavailable_count: 1,
         },
-      },
-    } as any);
+      } as any);
 
-    const { onScopeChange, onWindowChange } = renderPage();
+    const { container, onScopeChange, onWindowChange } = renderPage();
 
     expect(await screen.findByRole("heading", { name: "US Stocks" })).toBeInTheDocument();
     expect(await screen.findByLabelText("stock AAPL")).toBeInTheDocument();
@@ -141,7 +146,7 @@ describe("StocksRadarPage", () => {
     expect(onScopeChange).toHaveBeenCalledWith("matched");
 
     await waitFor(() => {
-      expect(getApi).toHaveBeenCalledWith(
+      expect(apiMock.getApi).toHaveBeenCalledWith(
         "/api/stocks-radar",
         expect.objectContaining({
           token: "secret",
@@ -149,5 +154,6 @@ describe("StocksRadarPage", () => {
         }),
       );
     });
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

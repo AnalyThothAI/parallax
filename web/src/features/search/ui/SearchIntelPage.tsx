@@ -123,7 +123,7 @@ function SearchIntelSidebar({
   );
 
   return (
-    <aside className="search-intel-sidebar" aria-label="Search Intel controls">
+    <div className="search-intel-sidebar" aria-label="Search Intel controls" role="group">
       <section className="search-side-panel search-side-query">
         <span>query</span>
         <b>{data.query.q || routeState.q}</b>
@@ -209,7 +209,7 @@ function SearchIntelSidebar({
           </a>
         ))}
       </nav>
-    </aside>
+    </div>
   );
 }
 
@@ -319,11 +319,11 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
             onSelectedStageChange={setSelectedStageId}
           />
         </div>
-        <aside className="search-insight-stack">
+        <div className="search-insight-stack">
           <TokenProfileCard profile={result.profile} />
           <SearchAgentBrief brief={result.agent_brief} />
           <SearchRadarPanel radarItem={result.radar_item} />
-        </aside>
+        </div>
       </div>
     </div>
   );
@@ -371,9 +371,9 @@ function TopicResult({ data, result }: { data: SearchInspectData; result: Search
           <SearchTopicTimeline items={result.items} />
           <SearchTwitterResults title="Topic Evidence" items={result.items} />
         </div>
-        <aside className="search-insight-stack">
+        <div className="search-insight-stack">
           <SearchAgentBrief brief={result.agent_brief} />
-        </aside>
+        </div>
       </div>
     </div>
   );
@@ -423,9 +423,9 @@ function AmbiguousResult({
           <SearchTopicTimeline items={result.items} />
           <SearchTwitterResults title="Ambiguous Evidence" items={result.items} />
         </div>
-        <aside className="search-insight-stack">
+        <div className="search-insight-stack">
           <SearchAgentBrief brief={result.agent_brief} />
-        </aside>
+        </div>
       </div>
     </div>
   );

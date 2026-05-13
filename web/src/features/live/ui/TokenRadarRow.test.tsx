@@ -1,5 +1,6 @@
 import type { TokenFlowItem } from "@lib/types";
 import { cleanup, render, screen } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 
@@ -25,8 +26,8 @@ describe("TokenRadarRow", () => {
     expect(screen.queryByText(/8ff41158.*e70faa/i)).not.toBeInTheDocument();
   });
 
-  it("renders DEX market cap as the primary market value", () => {
-    render(
+  it("renders DEX market cap as the primary market value", async () => {
+    const { container } = render(
       <TokenRadarRow
         item={mixedFreshnessToken()}
         selected={false}
@@ -47,6 +48,7 @@ describe("TokenRadarRow", () => {
     expect(market).toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("- fresh");
     expect(market).not.toHaveTextContent("$0.104");
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("does not fall back to token price for DEX rows without market cap", () => {

@@ -1,13 +1,19 @@
-import * as client from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
+
+import { createApiMock, ok, resetApiMock } from "../../../test/msw/fixtures";
+import { apiHandlers } from "../../../test/msw/handlers";
+import { server } from "../../../test/msw/server";
 
 import { useSignalPulseCandidate } from "./useSignalPulseQueries";
 
+const apiMock = createApiMock();
+
 beforeEach(() => {
-  vi.restoreAllMocks();
+  resetApiMock(apiMock);
+  server.use(...apiHandlers(apiMock));
 });
 
 function wrapper() {
@@ -19,33 +25,29 @@ function wrapper() {
 
 describe("useSignalPulseCandidate", () => {
   it("calls /api/signal-lab/pulse/{id} with token", async () => {
-    const getApi = vi
-      .spyOn(client, "getApi")
-      .mockResolvedValue({ ok: true, data: { candidate_id: "cand-1" } } as any);
+    apiMock.getApiImpl = async () => ok({ candidate_id: "cand-1" });
     const { result } = renderHook(
       () => useSignalPulseCandidate({ token: "tok", candidateId: "cand-1" }),
       { wrapper: wrapper() },
     );
     await waitFor(() => expect(result.current.data).toBeDefined());
-    expect(getApi).toHaveBeenCalledWith(
+    expect(apiMock.getApi).toHaveBeenCalledWith(
       "/api/signal-lab/pulse/cand-1",
       expect.objectContaining({ token: "tok" }),
     );
   });
 
   it("is disabled when candidateId is null", () => {
-    const getApi = vi.spyOn(client, "getApi");
     renderHook(() => useSignalPulseCandidate({ token: "tok", candidateId: null }), {
       wrapper: wrapper(),
     });
-    expect(getApi).not.toHaveBeenCalled();
+    expect(apiMock.getApi).not.toHaveBeenCalled();
   });
 
   it("is disabled when token is empty", () => {
-    const getApi = vi.spyOn(client, "getApi");
     renderHook(() => useSignalPulseCandidate({ token: "", candidateId: "cand-1" }), {
       wrapper: wrapper(),
     });
-    expect(getApi).not.toHaveBeenCalled();
+    expect(apiMock.getApi).not.toHaveBeenCalled();
   });
 });

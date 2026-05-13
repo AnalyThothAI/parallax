@@ -56,7 +56,6 @@ Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in
 
 ## Current Risks / Pauses
 
-- Task 8 requires new dev dependencies: `msw`, `jest-axe`, `axe-core`.
 - Task 9 requires new dev dependency: `@playwright/test`.
 - Task 10 requires new production dependency: `clsx`.
 
@@ -192,3 +191,24 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm run typecheck`: passed
 - Extra guard, `cd web && npm run lint`: passed
 - Extra guard, `cd web && npm test -- --run`: passed, `28 passed`, `146 passed`
+
+## Task 8 Verification
+
+### Test Pyramid Changes
+
+- Added MSW node server setup under `web/src/test/msw/` and registered it from `web/src/test/setup.ts`.
+- Added dev-only test dependencies `msw`, `jest-axe`, `axe-core`, and companion declarations via `@types/jest-axe`.
+- Moved the root `web/src/App.test.tsx` coverage to `web/src/features/live/__tests__/CockpitApp.integration.test.tsx`; the root App test file no longer exists.
+- Replaced API client module mocks/spies with MSW handlers backed by a test `apiMock`, preserving request path/param assertions without mocking `@lib/api/client`.
+- Kept socket behavior isolated through socket-provider test helpers instead of the deleted `useIntelSocket` hook.
+- Added L1 axe coverage for cockpit topbar/side rail, shared remote state/icon button, and representative UI in live, search, signal-lab, stocks, token-target, and notifications.
+- Removed the `app-integration` Vitest project; all tests run under the standard Vitest config.
+- Fixed axe-detected DOM semantics in `RemoteState` and Search UI while adding the accessibility checks.
+
+### Commands
+
+- `cd web && wc -l src/App.test.tsx 2>/dev/null || true`: no output because `src/App.test.tsx` is deleted
+- `cd web && rg -n 'vi\\.mock\\(".*api/client|vi\\.mock\\(".*useIntelSocket|vi\\.spyOn\\(client, "getApi"|vi\\.spyOn\\(client, "postApi"' src`: no matches; `rg` exited `1` as expected
+- `cd web && npm test -- --run`: passed, `31 passed`, `150 passed`
+- `cd web && npm run typecheck`: passed
+- Extra guard, `cd web && npm run lint`: passed

@@ -1,21 +1,28 @@
-import * as client from "@lib/api/client";
+import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { axe } from "jest-axe";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { marketContextFixture, marketObservationFixture } from "../../../../test/marketFixtures";
+import { createApiMock, ok, resetApiMock } from "../../../../test/msw/fixtures";
+import { apiHandlers } from "../../../../test/msw/handlers";
+import { server } from "../../../../test/msw/server";
 import { SearchIntelPage } from "../SearchIntelPage";
 
+const apiMock = createApiMock();
+
 beforeEach(() => {
-  client.setAuthToken("test-token");
-  vi.spyOn(client, "getApi").mockResolvedValue({ ok: true, data: searchInspectData() });
+  setAuthToken("test-token");
+  resetApiMock(apiMock);
+  apiMock.getApiImpl = async () => ok(searchInspectData());
+  server.use(...apiHandlers(apiMock));
 });
 
 afterEach(() => {
-  client.setAuthToken(null);
+  setAuthToken(null);
   cleanup();
-  vi.restoreAllMocks();
 });
 
 function renderAt(url: string) {
@@ -33,7 +40,7 @@ function renderAt(url: string) {
 
 describe("SearchIntelPage", () => {
   it("loads search inspect data from the route and renders token evidence", async () => {
-    renderAt("/search?q=%24RKC&window=24h&scope=all");
+    const { container } = renderAt("/search?q=%24RKC&window=24h&scope=all");
 
     expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
     expect(await screen.findByText("项目总结")).toBeInTheDocument();
@@ -45,13 +52,14 @@ describe("SearchIntelPage", () => {
     expect(screen.getByText(/Runtime narrative/)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(client.getApi).toHaveBeenCalledWith(
+      expect(apiMock.getApi).toHaveBeenCalledWith(
         "/api/search/inspect",
         expect.objectContaining({
           params: expect.objectContaining({ q: "$RKC", window: "24h", scope: "all", limit: 200 }),
         }),
       );
     });
+    expect(await axe(container)).toHaveNoViolations();
   });
 
   it("uses market cap as the primary DEX market metric in search details", async () => {
@@ -104,7 +112,7 @@ describe("SearchIntelPage", () => {
         }),
       }),
     };
-    vi.mocked(client.getApi).mockResolvedValueOnce({ ok: true, data });
+    apiMock.getApiImpl = async () => ok(data);
 
     renderAt("/search?q=%24RKC&window=24h&scope=all");
 
