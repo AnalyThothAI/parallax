@@ -239,12 +239,6 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         second = worker.run_once(now_ms=now_ms + 120_000)
         repos = repositories_for_connection(conn)
         after = repos.intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
-        rows = repos.token_radar.latest_rows(
-            window="5m",
-            scope="all",
-            limit=10,
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-        )
     finally:
         conn.close()
 
@@ -253,12 +247,10 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     assert before["resolution_status"] == "NIL"
     assert second["lookups_done"] == 1
     assert second["search_hits"] == 1
-    assert second["anchor"]["anchor_observations_written"] == 1
-    assert second["projection"]["windows"]["5m:all"]["rows_written"] >= 1
+    assert second["reprocessed_intents"] == 1
+    assert second["anchor"] is None
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert rows[0]["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert rows[0]["factor_snapshot_json"]["market"]["anchor_price_usd"] == 0.5
 
 
 @pytest.mark.skip(

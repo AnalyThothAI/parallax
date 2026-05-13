@@ -1,4 +1,3 @@
-
 import { getApi } from "@lib/api/client";
 import type {
   ScopeKey,

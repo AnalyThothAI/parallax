@@ -3,7 +3,6 @@ import type { ScopeKey, WindowKey } from "@lib/types";
 import { UserRound } from "lucide-react";
 import { useId } from "react";
 
-
 type RadarControlsProps = {
   windowKey: WindowKey;
   scope: ScopeKey;

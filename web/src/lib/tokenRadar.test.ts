@@ -1,7 +1,6 @@
 import type { AssetFlowRow, MarketContext } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
-
 import { tokenRadarRowToTokenItem } from "./tokenRadar";
 
 const PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933";

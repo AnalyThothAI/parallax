@@ -3,7 +3,6 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-
 import { TokenRadarRow } from "./TokenRadarRow";
 
 afterEach(() => cleanup());

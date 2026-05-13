@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  liveRouteStateWith,
-  parseLiveRouteState,
-  serializeLiveRouteState,
-} from "./liveRouteState";
+import { liveRouteStateWith, parseLiveRouteState, serializeLiveRouteState } from "./liveRouteState";
 
 describe("liveRouteState", () => {
   it("uses product defaults when query params are omitted", () => {

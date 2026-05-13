@@ -3,7 +3,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-
 import { NotificationBell } from "./NotificationBell";
 import { NotificationDrawer } from "./NotificationDrawer";
 import { WatchlistNotificationDot } from "./WatchlistNotificationDot";

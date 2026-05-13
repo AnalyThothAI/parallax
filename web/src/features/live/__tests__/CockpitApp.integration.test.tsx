@@ -72,9 +72,8 @@ vi.mock("@shared/socket/socketContext", () => ({
 
 vi.mock("@shared/socket/useMarketSubscription", async () => {
   const React = await vi.importActual<typeof import("react")>("react");
-  const query = await vi.importActual<typeof import("@tanstack/react-query")>(
-    "@tanstack/react-query",
-  );
+  const query =
+    await vi.importActual<typeof import("@tanstack/react-query")>("@tanstack/react-query");
   const marketPatch = await vi.importActual<typeof import("@shared/query/patchMarketUpdate")>(
     "@shared/query/patchMarketUpdate",
   );
@@ -1454,7 +1453,9 @@ describe("App Token Radar social heat cockpit", () => {
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
     expect(
-      screen.getAllByRole("button", { name: "1h" }).some((button) => button.classList.contains("active")),
+      screen
+        .getAllByRole("button", { name: "1h" })
+        .some((button) => button.classList.contains("active")),
     ).toBe(true);
     expect(
       screen

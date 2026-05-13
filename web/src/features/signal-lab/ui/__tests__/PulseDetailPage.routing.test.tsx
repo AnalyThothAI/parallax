@@ -33,14 +33,14 @@ function renderAt(url: string) {
 
 describe("PulseDetailPage", () => {
   it("renders a structural skeleton while the candidate request is pending", () => {
-    apiMock.getApiImpl = () => new Promise(() => undefined);
+    apiMock.readApiImpl = () => new Promise(() => undefined);
     renderAt("/signal-lab/pulse/cand-1");
 
     expect(screen.getByLabelText("loading pulse detail")).toBeInTheDocument();
   });
 
   it("renders inspector when candidate exists", async () => {
-    apiMock.getApiImpl = async () => ok(minimalPulseItem());
+    apiMock.readApiImpl = async () => ok(minimalPulseItem());
     renderAt("/signal-lab/pulse/cand-1");
     await waitFor(() => {
       expect(screen.getAllByText(/PEPE|cand-1/).length).toBeGreaterThan(0);
@@ -48,7 +48,7 @@ describe("PulseDetailPage", () => {
   });
 
   it("renders in-page 404 when candidate is missing", async () => {
-    apiMock.getApiImpl = async () => {
+    apiMock.readApiImpl = async () => {
       throw new ApiError("not found", 404);
     };
     renderAt("/signal-lab/pulse/ghost");

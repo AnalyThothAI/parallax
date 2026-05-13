@@ -1,4 +1,3 @@
-
 import { getApi, getAuthToken } from "@lib/api/client";
 import type { ScopeKey, SearchInspectData, WindowKey } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";

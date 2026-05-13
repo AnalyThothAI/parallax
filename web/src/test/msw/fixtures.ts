@@ -6,9 +6,13 @@ export type ApiMock = {
   getApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
   getBootstrapImpl: () => Promise<unknown>;
   postApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
+  readApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
+  writeApiImpl: (path: string, options?: RequestOptions) => Promise<unknown>;
   getApi: ApiMockFunction<[string, RequestOptions?]>;
   getBootstrap: ApiMockFunction<[]>;
   postApi: ApiMockFunction<[string, RequestOptions?]>;
+  readApi: ApiMockFunction<[string, RequestOptions?]>;
+  writeApi: ApiMockFunction<[string, RequestOptions?]>;
 };
 
 type ApiMockFunction<Args extends unknown[]> = {
@@ -19,14 +23,38 @@ type ApiMockFunction<Args extends unknown[]> = {
 
 export function createApiMock(): ApiMock {
   const mock = {} as ApiMock;
-  mock.getApiImpl = async (path: string) => {
+  let readApiImpl: ApiMock["getApiImpl"] = async (path: string) => {
     throw new Error(`unexpected path ${path}`);
   };
+  let writeApiImpl: ApiMock["postApiImpl"] = async (path: string) => {
+    throw new Error(`unexpected post ${path}`);
+  };
+  Object.defineProperty(mock, "getApiImpl", {
+    get: () => readApiImpl,
+    set: (value: ApiMock["getApiImpl"]) => {
+      readApiImpl = value;
+    },
+  });
+  Object.defineProperty(mock, "readApiImpl", {
+    get: () => readApiImpl,
+    set: (value: ApiMock["readApiImpl"]) => {
+      readApiImpl = value;
+    },
+  });
+  Object.defineProperty(mock, "postApiImpl", {
+    get: () => writeApiImpl,
+    set: (value: ApiMock["postApiImpl"]) => {
+      writeApiImpl = value;
+    },
+  });
+  Object.defineProperty(mock, "writeApiImpl", {
+    get: () => writeApiImpl,
+    set: (value: ApiMock["writeApiImpl"]) => {
+      writeApiImpl = value;
+    },
+  });
   mock.getBootstrapImpl = async () => {
     throw new Error("unexpected bootstrap request");
-  };
-  mock.postApiImpl = async (path: string) => {
-    throw new Error(`unexpected post ${path}`);
   };
   mock.getApi = vi.fn((path: string, options?: RequestOptions) =>
     mock.getApiImpl(path, options),
@@ -35,6 +63,8 @@ export function createApiMock(): ApiMock {
   mock.postApi = vi.fn((path: string, options?: RequestOptions) =>
     mock.postApiImpl(path, options),
   ) as ApiMock["postApi"];
+  mock.readApi = mock.getApi;
+  mock.writeApi = mock.postApi;
   return mock;
 }
 
@@ -42,7 +72,7 @@ export function resetApiMock(mock: ApiMock): void {
   mock.getApi.mockClear();
   mock.getBootstrap.mockClear();
   mock.postApi.mockClear();
-  mock.postApiImpl = async () => ok({ notification_id: "notification-1", updated: true });
+  mock.writeApiImpl = async () => ok({ notification_id: "notification-1", updated: true });
 }
 
 export function ok<T>(data: T): ApiResponse<T> {

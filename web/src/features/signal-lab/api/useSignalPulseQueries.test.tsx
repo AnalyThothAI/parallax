@@ -2,7 +2,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-
 import { createApiMock, ok, resetApiMock } from "../../../test/msw/fixtures";
 import { apiHandlers } from "../../../test/msw/handlers";
 import { server } from "../../../test/msw/server";

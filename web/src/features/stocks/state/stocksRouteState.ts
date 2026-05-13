@@ -1,7 +1,6 @@
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type { ScopeKey, WindowKey } from "@lib/types";
 
-
 export type StocksRouteState = {
   window: WindowKey;
   scope: ScopeKey;

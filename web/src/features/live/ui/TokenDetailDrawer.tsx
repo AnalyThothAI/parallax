@@ -258,9 +258,7 @@ export function TokenDetailDrawer({
           {signalLabLoading ? (
             <RemoteState.Loading layout="panel" rows={3} label="loading trading attention" />
           ) : (
-            <RemoteState.Empty
-              title="Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention."
-            />
+            <RemoteState.Empty title="Open Signal Lab to inspect watched-account token, topic, ecosystem, structure, and risk attention." />
           )}
         </DetailDrawerSection>
       ) : null}

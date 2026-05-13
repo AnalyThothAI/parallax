@@ -7,7 +7,6 @@ import type {
   WindowKey,
 } from "@lib/types";
 
-
 const VALID_TABS = new Set<TokenDetailTab>(["timeline", "posts", "score", "lab", "accounts"]);
 const VALID_RANGES = new Set<TokenPostRange>(["current_window", "since_ignition", "all_history"]);
 const VALID_SORTS = new Set<TokenPostSortMode>(["recent", "quality", "catalyst"]);
@@ -38,9 +37,7 @@ export function parseTokenTargetRouteState(searchParams: URLSearchParams): Token
   };
 }
 
-export function serializeTokenTargetRouteState(
-  routeState: TokenTargetRouteState,
-): URLSearchParams {
+export function serializeTokenTargetRouteState(routeState: TokenTargetRouteState): URLSearchParams {
   const params = new URLSearchParams();
   const normalized: TokenTargetRouteState = {
     window: parseWindow(routeState.window),

@@ -1,4 +1,3 @@
-
 import { getApi } from "@lib/api/client";
 import type { ScopeKey, StocksRadarData, WindowKey } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";

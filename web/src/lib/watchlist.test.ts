@@ -1,7 +1,6 @@
 import type { LivePayload } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
-
 import { buildWatchlistRows } from "./watchlist";
 
 describe("watchlist helpers", () => {

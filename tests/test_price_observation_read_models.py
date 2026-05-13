@@ -10,7 +10,7 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
 
-def test_insert_message_anchor_writes_baseline_without_current_market_facts(tmp_path):
+def test_insert_event_anchor_writes_observation_without_legacy_market_tables(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -26,34 +26,23 @@ def test_insert_message_anchor_writes_baseline_without_current_market_facts(tmp_
             source_event_id="event-1",
             source_intent_id="intent-1",
             source_resolution_id="resolution-1",
-            observation_kind="message_anchor",
+            observation_kind="event_anchor",
             event_received_at_ms=1_700_000_000_000,
         )
-        baseline = conn.execute(
-            """
-            SELECT *
-            FROM token_market_price_baselines
-            WHERE resolution_id = 'resolution-1'
-            """
-        ).fetchone()
+        baseline_table = conn.execute("SELECT to_regclass('public.token_market_price_baselines') AS value").fetchone()
         current_market_table = conn.execute(
             "SELECT to_regclass('public.current_market_field_facts') AS value"
         ).fetchone()
     finally:
         conn.close()
 
-    assert observation["observation_kind"] == "message_anchor"
+    assert observation["observation_kind"] == "event_anchor"
     assert observation["observation_lag_ms"] == 1_000
-    assert baseline["event_id"] == "event-1"
-    assert baseline["target_type"] == "Asset"
-    assert baseline["target_id"] == "asset:eip155:1:erc20:0xabc"
-    assert baseline["event_price_usd"] == 0.42
-    assert baseline["event_price_observation_kind"] == "message_anchor"
-    assert baseline["first_price_usd"] == 0.42
+    assert baseline_table["value"] is None
     assert current_market_table["value"] is None
 
 
-def test_insert_message_anchor_is_idempotent_by_resolution(tmp_path):
+def test_insert_event_anchor_is_idempotent_by_resolution(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -70,7 +59,7 @@ def test_insert_message_anchor_is_idempotent_by_resolution(tmp_path):
             source_event_id="event-1",
             source_intent_id="intent-1",
             source_resolution_id="resolution-1",
-            observation_kind="message_anchor",
+            observation_kind="event_anchor",
             event_received_at_ms=1_700_000_000_000,
         )
         second = repo.insert_observation(
@@ -84,7 +73,7 @@ def test_insert_message_anchor_is_idempotent_by_resolution(tmp_path):
             source_event_id="event-1",
             source_intent_id="intent-1",
             source_resolution_id="resolution-1",
-            observation_kind="message_anchor",
+            observation_kind="event_anchor",
             event_received_at_ms=1_700_000_000_000,
         )
         row = conn.execute(
@@ -92,14 +81,7 @@ def test_insert_message_anchor_is_idempotent_by_resolution(tmp_path):
             SELECT count(*) AS count, max(price_usd) AS price_usd, max(observed_at_ms) AS observed_at_ms
             FROM price_observations
             WHERE source_resolution_id = 'resolution-1'
-              AND observation_kind = 'message_anchor'
-            """
-        ).fetchone()
-        baseline = conn.execute(
-            """
-            SELECT event_price_observation_id, event_price_usd, event_price_observed_at_ms
-            FROM token_market_price_baselines
-            WHERE resolution_id = 'resolution-1'
+              AND observation_kind = 'event_anchor'
             """
         ).fetchone()
     finally:
@@ -109,16 +91,13 @@ def test_insert_message_anchor_is_idempotent_by_resolution(tmp_path):
     assert row["count"] == 1
     assert float(row["price_usd"]) == 0.43
     assert row["observed_at_ms"] == 1_700_000_002_000
-    assert baseline["event_price_observation_id"] == first["observation_id"]
-    assert baseline["event_price_usd"] == 0.43
-    assert baseline["event_price_observed_at_ms"] == 1_700_000_002_000
 
 
 def test_insert_observation_rejects_non_anchor_refresh_writes(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        with pytest.raises(ValueError, match="anchor-only"):
+        with pytest.raises(ValueError, match="event_anchor or decision_latest"):
             PriceObservationRepository(conn).insert_observation(
                 provider="okx_dex_price",
                 pricefeed_id=None,

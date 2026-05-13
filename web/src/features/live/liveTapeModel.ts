@@ -1,7 +1,6 @@
 import { compactNumber, eventText, formatRelativeTime } from "@lib/format";
 import type { LivePayload, TokenFlowItem } from "@lib/types";
 
-
 type LiveSignalTapeBase = {
   score?: number | null;
   reason: string;

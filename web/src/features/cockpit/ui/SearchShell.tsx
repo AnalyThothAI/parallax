@@ -18,10 +18,7 @@ export function SearchShell({ topbar, notifications, onHotkey }: SearchShellProp
 
   return (
     <div className="cockpit-shell search-shell">
-      <CockpitTopbar
-        {...topbar}
-        search={{ ...topbar.search, showMainRouteButton: true }}
-      />
+      <CockpitTopbar {...topbar} search={{ ...topbar.search, showMainRouteButton: true }} />
       <div className="cockpit-grid search-focus-mode">
         <section className="center-column">
           <Outlet />

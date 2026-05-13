@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-
 import { createApiMock, ok, resetApiMock } from "../../../test/msw/fixtures";
 import { apiHandlers } from "../../../test/msw/handlers";
 import { server } from "../../../test/msw/server";
@@ -39,7 +38,7 @@ function renderPage() {
 
 describe("StocksRadarPage", () => {
   it("loads stocks radar rows and renders partial quote state", async () => {
-    apiMock.getApiImpl = async () =>
+    apiMock.readApiImpl = async () =>
       ok({
         window: "1h",
         scope: "all",
@@ -146,7 +145,7 @@ describe("StocksRadarPage", () => {
     expect(onScopeChange).toHaveBeenCalledWith("matched");
 
     await waitFor(() => {
-      expect(apiMock.getApi).toHaveBeenCalledWith(
+      expect(apiMock.readApi).toHaveBeenCalledWith(
         "/api/stocks-radar",
         expect.objectContaining({
           token: "secret",

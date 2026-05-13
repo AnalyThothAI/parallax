@@ -20,7 +20,6 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef } from "react";
 
-
 type SearchTimelinePanelProps = {
   timeline: TokenSocialTimelineData;
   marketOverlay: SearchTokenResult["market_overlay"];

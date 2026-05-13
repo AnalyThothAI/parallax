@@ -1,4 +1,3 @@
-
 import { getApi } from "@lib/api/client";
 import type {
   AccountQualityData,
@@ -18,7 +17,6 @@ import {
   useTokenTargetPosts,
   useTokenTargetTimeline,
 } from "./api/useTokenTargetQueries";
-
 
 type UseTokenDetailDataArgs = {
   detailWindow: WindowKey;

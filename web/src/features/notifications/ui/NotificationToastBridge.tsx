@@ -2,7 +2,6 @@ import type { NotificationItem } from "@lib/types";
 import { useEffect, useRef } from "react";
 import { Toaster, toast } from "sonner";
 
-
 type Props = {
   notifications: NotificationItem[];
   onOpenNotification: (notification: NotificationItem) => void;

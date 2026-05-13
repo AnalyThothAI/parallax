@@ -1,13 +1,21 @@
-import type { RadarSortMode, ScopeKey, TokenPostRange, TokenPostSortMode, WindowKey } from "@lib/types";
+import type {
+  RadarSortMode,
+  ScopeKey,
+  TokenPostRange,
+  TokenPostSortMode,
+  WindowKey,
+} from "@lib/types";
 
 import { compactSearch } from "./searchParams";
 
-export function livePath(params: {
-  window?: WindowKey;
-  scope?: ScopeKey;
-  handles?: string;
-  sort?: RadarSortMode;
-} = {}): string {
+export function livePath(
+  params: {
+    window?: WindowKey;
+    scope?: ScopeKey;
+    handles?: string;
+    sort?: RadarSortMode;
+  } = {},
+): string {
   const search = compactSearch(params);
   return "/" + (search ? `?${search}` : "");
 }

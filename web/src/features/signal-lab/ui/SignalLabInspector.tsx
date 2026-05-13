@@ -1,4 +1,3 @@
-
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "@lib/format";
 import { requireTokenFactorSnapshot } from "@lib/tokenFactorSnapshot";
 import type { SignalPulseItem } from "@lib/types";

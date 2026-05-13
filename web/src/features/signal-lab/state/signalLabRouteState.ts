@@ -1,7 +1,6 @@
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type { ScopeKey, SignalPulseStatusFilter, WindowKey } from "@lib/types";
 
-
 export type SignalLabRouteState = {
   window: WindowKey;
   scope: ScopeKey;

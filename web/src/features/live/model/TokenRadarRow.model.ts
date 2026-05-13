@@ -1,7 +1,6 @@
 import { compactNumber, formatScore } from "@lib/format";
 import type { TokenFlowItem } from "@lib/types";
 
-
 export function compactLabel(value: string | null | undefined): string {
   return value ? value.replaceAll("_", " ") : "-";
 }

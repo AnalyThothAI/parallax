@@ -241,7 +241,11 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
                 SELECT indexname
                 FROM pg_indexes
                 WHERE schemaname = 'public'
-                  AND tablename IN ('token_score_evaluations', 'token_radar_rows', 'price_observations')
+                  AND (
+                    tablename IN ('token_score_evaluations', 'token_radar_rows', 'price_observations')
+                    OR tablename LIKE 'price_observations_event_anchor%'
+                    OR tablename LIKE 'price_observations_decision_latest%'
+                  )
                 """
             ).fetchall()
         }
@@ -256,4 +260,5 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
     assert columns["score_stddev"]["is_nullable"] == "YES"
     assert columns["diagnostics_json"]["is_nullable"] == "NO"
     assert {"idx_token_score_evaluations_generated", "idx_token_radar_rows_settlement"}.issubset(indexes)
-    assert "idx_price_observations_subject_price_after" in indexes
+    assert "idx_price_observations_event_anchor_subject_latest" in indexes
+    assert "idx_price_observations_decision_latest_default_subject_latest" in indexes

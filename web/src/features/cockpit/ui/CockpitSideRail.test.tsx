@@ -18,9 +18,7 @@ describe("CockpitSideRail", () => {
           onHandlesChange={vi.fn()}
           onWindowChange={vi.fn()}
           decisionCounts={{ driver: 1, watch: 1, investigate: 0, discard: 0 }}
-          watchlistRows={[
-            { handle: "toly", lastSeenAtMs: 1_700_000_000_000, unreadCount: 2 },
-          ]}
+          watchlistRows={[{ handle: "toly", lastSeenAtMs: 1_700_000_000_000, unreadCount: 2 }]}
           onMobileTaskChange={vi.fn()}
         />
       </MemoryRouter>,

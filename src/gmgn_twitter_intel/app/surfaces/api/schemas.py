@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-T = TypeVar("T")
 JsonObject = dict[str, Any]
 
 
@@ -13,7 +11,7 @@ class ApiSchema(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
-class ApiEnvelope(ApiSchema, Generic[T]):
+class ApiEnvelope[T](ApiSchema):
     ok: bool
     data: T | None = None
     error: str | None = None

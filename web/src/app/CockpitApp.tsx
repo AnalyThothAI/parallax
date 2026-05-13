@@ -254,11 +254,7 @@ function CockpitAppRoutes({
     />
   );
   const searchShellElement = (
-    <SearchShell
-      notifications={notificationProps}
-      topbar={topbarProps}
-      onHotkey={handleHotkey}
-    />
+    <SearchShell notifications={notificationProps} topbar={topbarProps} onHotkey={handleHotkey} />
   );
 
   const livePageElement = (

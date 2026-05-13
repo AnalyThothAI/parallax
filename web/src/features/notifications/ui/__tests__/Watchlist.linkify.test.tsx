@@ -39,7 +39,7 @@ describe("watchlist sidebar", () => {
   it("renders each handle as a Link to /signal-lab?handle=...", async () => {
     apiMock.getBootstrapImpl = async () =>
       ok({ ws_token: "test-token", handles: ["toly"], replay_limit: 25 });
-    apiMock.getApiImpl = async (path: string) => {
+    apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/status") {
         return ok({ ok: true, handles: ["toly"], collector: {}, notifications: { summary: {} } });
       }
@@ -51,14 +51,14 @@ describe("watchlist sidebar", () => {
       }
       if (path === "/api/signal-lab/pulse") {
         return ok({
-            query: {},
-            health: {},
-            summary: {},
-            items: [],
-            returned_count: 0,
-            has_more: false,
-            next_cursor: null,
-          } as any);
+          query: {},
+          health: {},
+          summary: {},
+          items: [],
+          returned_count: 0,
+          has_more: false,
+          next_cursor: null,
+        } as any);
       }
       if (path === "/api/notification-summary") {
         return ok({});

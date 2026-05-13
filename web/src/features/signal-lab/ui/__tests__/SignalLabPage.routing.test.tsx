@@ -14,7 +14,7 @@ const apiMock = createApiMock();
 beforeEach(() => {
   setAuthToken("test-token");
   resetApiMock(apiMock);
-  apiMock.getApiImpl = async () =>
+  apiMock.readApiImpl = async () =>
     ok({
       query: {},
       health: {},
@@ -44,7 +44,7 @@ describe("SignalLabPage routing", () => {
   it("calls list endpoint with handle and status from URL", async () => {
     renderAt("/signal-lab?handle=toly&status=token_watch");
     await waitFor(() => {
-      expect(apiMock.getApi).toHaveBeenCalledWith(
+      expect(apiMock.readApi).toHaveBeenCalledWith(
         "/api/signal-lab/pulse",
         expect.objectContaining({
           params: expect.objectContaining({ handle: "toly", status: "token_watch" }),
@@ -55,8 +55,8 @@ describe("SignalLabPage routing", () => {
 
   it("does not include default status param", async () => {
     renderAt("/signal-lab");
-    await waitFor(() => expect(apiMock.getApi).toHaveBeenCalled());
-    const lastCall = apiMock.getApi.mock.calls.at(-1)!;
+    await waitFor(() => expect(apiMock.readApi).toHaveBeenCalled());
+    const lastCall = apiMock.readApi.mock.calls.at(-1)!;
     const params = (lastCall[1] as any).params;
     expect(params.status).toBeUndefined();
     expect(params.handle).toBeUndefined();
@@ -66,7 +66,7 @@ describe("SignalLabPage routing", () => {
   it("uses window and scope from URL params", async () => {
     renderAt("/signal-lab?window=4h&scope=matched&q=SOL");
     await waitFor(() => {
-      expect(apiMock.getApi).toHaveBeenCalledWith(
+      expect(apiMock.readApi).toHaveBeenCalledWith(
         "/api/signal-lab/pulse",
         expect.objectContaining({
           params: expect.objectContaining({ window: "4h", scope: "matched", q: "SOL" }),

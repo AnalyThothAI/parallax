@@ -1,8 +1,4 @@
-import type {
-  NotificationItem,
-  NotificationLivePayload,
-  NotificationSummary,
-} from "@lib/types";
+import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -16,7 +12,6 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "./api/notifications";
-
 
 type UseNotificationsControllerArgs = {
   fallbackSummary?: NotificationSummary | null;

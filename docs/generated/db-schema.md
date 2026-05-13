@@ -613,7 +613,175 @@
 | `source_event_id` | `TEXT` | True | `None` |
 | `source_intent_id` | `TEXT` | True | `None` |
 | `source_resolution_id` | `TEXT` | True | `None` |
-| `observation_kind` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | True | `None` |
+| `observation_lag_ms` | `BIGINT` | True | `None` |
+
+## `price_observations_decision_latest`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `observation_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `subject_type` | `TEXT` | False | `None` |
+| `subject_id` | `TEXT` | False | `None` |
+| `price_usd` | `NUMERIC` | True | `None` |
+| `price_quote` | `NUMERIC` | True | `None` |
+| `quote_symbol` | `TEXT` | True | `None` |
+| `price_basis` | `TEXT` | False | `'unavailable'::text` |
+| `market_cap_usd` | `NUMERIC` | True | `None` |
+| `liquidity_usd` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `holders` | `BIGINT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | True | `None` |
+| `observation_lag_ms` | `BIGINT` | True | `None` |
+
+## `price_observations_decision_latest_2026_05`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `observation_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `subject_type` | `TEXT` | False | `None` |
+| `subject_id` | `TEXT` | False | `None` |
+| `price_usd` | `NUMERIC` | True | `None` |
+| `price_quote` | `NUMERIC` | True | `None` |
+| `quote_symbol` | `TEXT` | True | `None` |
+| `price_basis` | `TEXT` | False | `'unavailable'::text` |
+| `market_cap_usd` | `NUMERIC` | True | `None` |
+| `liquidity_usd` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `holders` | `BIGINT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | True | `None` |
+| `observation_lag_ms` | `BIGINT` | True | `None` |
+
+## `price_observations_decision_latest_2026_06`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `observation_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `subject_type` | `TEXT` | False | `None` |
+| `subject_id` | `TEXT` | False | `None` |
+| `price_usd` | `NUMERIC` | True | `None` |
+| `price_quote` | `NUMERIC` | True | `None` |
+| `quote_symbol` | `TEXT` | True | `None` |
+| `price_basis` | `TEXT` | False | `'unavailable'::text` |
+| `market_cap_usd` | `NUMERIC` | True | `None` |
+| `liquidity_usd` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `holders` | `BIGINT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | True | `None` |
+| `observation_lag_ms` | `BIGINT` | True | `None` |
+
+## `price_observations_decision_latest_default`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `observation_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `subject_type` | `TEXT` | False | `None` |
+| `subject_id` | `TEXT` | False | `None` |
+| `price_usd` | `NUMERIC` | True | `None` |
+| `price_quote` | `NUMERIC` | True | `None` |
+| `quote_symbol` | `TEXT` | True | `None` |
+| `price_basis` | `TEXT` | False | `'unavailable'::text` |
+| `market_cap_usd` | `NUMERIC` | True | `None` |
+| `liquidity_usd` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `holders` | `BIGINT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | True | `None` |
+| `observation_lag_ms` | `BIGINT` | True | `None` |
+
+## `price_observations_event_anchor`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `observation_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `subject_type` | `TEXT` | False | `None` |
+| `subject_id` | `TEXT` | False | `None` |
+| `price_usd` | `NUMERIC` | True | `None` |
+| `price_quote` | `NUMERIC` | True | `None` |
+| `quote_symbol` | `TEXT` | True | `None` |
+| `price_basis` | `TEXT` | False | `'unavailable'::text` |
+| `market_cap_usd` | `NUMERIC` | True | `None` |
+| `liquidity_usd` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `holders` | `BIGINT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
+| `event_received_at_ms` | `BIGINT` | True | `None` |
+| `observation_lag_ms` | `BIGINT` | True | `None` |
+
+## `price_observations_other`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `observation_id` | `TEXT` | False | `None` |
+| `pricefeed_id` | `TEXT` | True | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `subject_type` | `TEXT` | False | `None` |
+| `subject_id` | `TEXT` | False | `None` |
+| `price_usd` | `NUMERIC` | True | `None` |
+| `price_quote` | `NUMERIC` | True | `None` |
+| `quote_symbol` | `TEXT` | True | `None` |
+| `price_basis` | `TEXT` | False | `'unavailable'::text` |
+| `market_cap_usd` | `NUMERIC` | True | `None` |
+| `liquidity_usd` | `NUMERIC` | True | `None` |
+| `volume_24h_usd` | `NUMERIC` | True | `None` |
+| `open_interest_usd` | `NUMERIC` | True | `None` |
+| `holders` | `BIGINT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `source_event_id` | `TEXT` | True | `None` |
+| `source_intent_id` | `TEXT` | True | `None` |
+| `source_resolution_id` | `TEXT` | True | `None` |
+| `observation_kind` | `TEXT` | False | `None` |
 | `event_received_at_ms` | `BIGINT` | True | `None` |
 | `observation_lag_ms` | `BIGINT` | True | `None` |
 
@@ -1050,35 +1218,6 @@
 | `intent_status` | `TEXT` | False | `None` |
 | `intent_confidence` | `DOUBLE PRECISION` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `token_market_price_baselines`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `resolution_id` | `TEXT` | False | `None` |
-| `event_id` | `TEXT` | False | `None` |
-| `target_type` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `event_received_at_ms` | `BIGINT` | False | `None` |
-| `first_price_observed_at_ms` | `BIGINT` | True | `None` |
-| `first_price_usd` | `DOUBLE PRECISION` | True | `None` |
-| `first_price_quote` | `DOUBLE PRECISION` | True | `None` |
-| `first_price_quote_symbol` | `TEXT` | True | `None` |
-| `first_price_basis` | `TEXT` | True | `None` |
-| `event_price_observation_id` | `TEXT` | True | `None` |
-| `event_price_observation_kind` | `TEXT` | True | `None` |
-| `event_price_provider` | `TEXT` | True | `None` |
-| `event_price_observed_at_ms` | `BIGINT` | True | `None` |
-| `event_price_usd` | `DOUBLE PRECISION` | True | `None` |
-| `event_price_quote` | `DOUBLE PRECISION` | True | `None` |
-| `event_price_quote_symbol` | `TEXT` | True | `None` |
-| `event_price_basis` | `TEXT` | True | `None` |
-| `before_event_price_observed_at_ms` | `BIGINT` | True | `None` |
-| `before_event_price_usd` | `DOUBLE PRECISION` | True | `None` |
-| `before_event_price_quote` | `DOUBLE PRECISION` | True | `None` |
-| `before_event_price_quote_symbol` | `TEXT` | True | `None` |
-| `before_event_price_basis` | `TEXT` | True | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `token_radar_projection_coverage`

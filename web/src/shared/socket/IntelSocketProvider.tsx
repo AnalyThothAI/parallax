@@ -6,11 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import ReconnectingWebSocket from "reconnecting-websocket";
 
 import { isTarget, normalizeMarketTargets, targetFromKey, targetKey } from "./marketTargets";
-import {
-  idleSocketSnapshot,
-  SocketContext,
-  type SocketContextValue,
-} from "./socketContext";
+import { idleSocketSnapshot, SocketContext, type SocketContextValue } from "./socketContext";
 import type { MarketTargetRef, NormalizedMarketTarget, SocketSnapshot } from "./socketTypes";
 
 type IntelSocketProviderProps = {
@@ -129,9 +125,7 @@ export function IntelSocketProvider({
       readyRef.current = false;
       setSnapshot((current) => ({ ...current, status: "closed" }));
     });
-    ws.addEventListener("error", () =>
-      setSnapshot((current) => ({ ...current, status: "error" })),
-    );
+    ws.addEventListener("error", () => setSnapshot((current) => ({ ...current, status: "error" })));
 
     return () => {
       readyRef.current = false;

@@ -37,7 +37,7 @@ function renderAt(url: string) {
 
 describe("TokenTargetPage routing", () => {
   it("calls target-social-timeline with target_type and target_id from the URL", async () => {
-    apiMock.getApiImpl = async (path: string) => {
+    apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/target-posts") {
         return ok({
           items: [],
@@ -60,7 +60,7 @@ describe("TokenTargetPage routing", () => {
     renderAt("/token/Asset/asset%3Apepe");
 
     await waitFor(() => {
-      expect(apiMock.getApi).toHaveBeenCalledWith(
+      expect(apiMock.readApi).toHaveBeenCalledWith(
         "/api/target-social-timeline",
         expect.objectContaining({
           params: expect.objectContaining({
@@ -73,7 +73,7 @@ describe("TokenTargetPage routing", () => {
   });
 
   it("renders an in-page 404 when targetType is not in {Asset, CexToken}", async () => {
-    apiMock.getApiImpl = async (path: string) => {
+    apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/target-posts") {
         return ok({
           items: [],
@@ -91,13 +91,13 @@ describe("TokenTargetPage routing", () => {
 
     expect(container.textContent ?? "").toMatch(/不存在|失效|invalid/i);
     // Invalid target types must not fire a doomed timeline request.
-    expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/target-social-timeline")).toBe(
-      false,
-    );
+    expect(
+      apiMock.readApi.mock.calls.some(([path]) => path === "/api/target-social-timeline"),
+    ).toBe(false);
   });
 
   it("renders an honest CEX target page when the current radar window has no row", async () => {
-    apiMock.getApiImpl = async (path: string) => {
+    apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/token-radar") {
         return ok({ targets: [], attention: [], projection: {} });
       }
@@ -139,7 +139,7 @@ describe("TokenTargetPage routing", () => {
     expect(await screen.findByRole("heading", { name: "$ZEC" })).toBeInTheDocument();
     expect(screen.getAllByText("Not in current radar window").length).toBeGreaterThan(0);
     expect(screen.queryByText("score audit")).not.toBeInTheDocument();
-    expect(apiMock.getApi).toHaveBeenCalledWith(
+    expect(apiMock.readApi).toHaveBeenCalledWith(
       "/api/target-social-timeline",
       expect.objectContaining({
         params: expect.objectContaining({
@@ -152,7 +152,7 @@ describe("TokenTargetPage routing", () => {
   });
 
   it("seeds the audit window from the URL query", async () => {
-    apiMock.getApiImpl = async (path: string) => {
+    apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/target-posts") {
         return ok({
           items: [],
@@ -172,7 +172,7 @@ describe("TokenTargetPage routing", () => {
     renderAt("/token/CexToken/cex_token%3AZEC?window=24h");
 
     await waitFor(() => {
-      expect(apiMock.getApi).toHaveBeenCalledWith(
+      expect(apiMock.readApi).toHaveBeenCalledWith(
         "/api/token-radar",
         expect.objectContaining({
           params: expect.objectContaining({

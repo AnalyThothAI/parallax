@@ -1,11 +1,5 @@
 import { tokenKey } from "@lib/format";
-import type {
-  LivePayload,
-  ScopeKey,
-  SignalPulseItem,
-  TokenFlowItem,
-  WindowKey,
-} from "@lib/types";
+import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
 import { livePath, searchPath, signalLabPath } from "@shared/routing/paths";
 import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
 import { useCallback, useEffect, useMemo, useState } from "react";

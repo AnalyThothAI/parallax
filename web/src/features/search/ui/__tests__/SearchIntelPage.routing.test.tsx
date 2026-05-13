@@ -16,7 +16,7 @@ const apiMock = createApiMock();
 beforeEach(() => {
   setAuthToken("test-token");
   resetApiMock(apiMock);
-  apiMock.getApiImpl = async () => ok(searchInspectData());
+  apiMock.readApiImpl = async () => ok(searchInspectData());
   server.use(...apiHandlers(apiMock));
 });
 
@@ -52,7 +52,7 @@ describe("SearchIntelPage", () => {
     expect(screen.getByText(/Runtime narrative/)).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(apiMock.getApi).toHaveBeenCalledWith(
+      expect(apiMock.readApi).toHaveBeenCalledWith(
         "/api/search/inspect",
         expect.objectContaining({
           params: expect.objectContaining({ q: "$RKC", window: "24h", scope: "all", limit: 200 }),
@@ -112,7 +112,7 @@ describe("SearchIntelPage", () => {
         }),
       }),
     };
-    apiMock.getApiImpl = async () => ok(data);
+    apiMock.readApiImpl = async () => ok(data);
 
     renderAt("/search?q=%24RKC&window=24h&scope=all");
 

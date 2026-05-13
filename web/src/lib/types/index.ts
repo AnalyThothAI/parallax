@@ -17,8 +17,7 @@ export type OpenApiAccountQualityData = components["schemas"]["AccountQualityDat
 export type OpenApiNotificationSummary = components["schemas"]["NotificationSummary"];
 export type OpenApiNotificationsData = components["schemas"]["NotificationsData"];
 export type OpenApiNotificationReadData = components["schemas"]["NotificationReadData"];
-export type OpenApiNotificationReadAllData =
-  components["schemas"]["NotificationReadAllData"];
+export type OpenApiNotificationReadAllData = components["schemas"]["NotificationReadAllData"];
 export type OpenApiSignalPulseData = components["schemas"]["SignalPulseData"];
 export type OpenApiSignalPulseItem = components["schemas"]["SignalPulseItem"];
 
