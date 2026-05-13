@@ -97,8 +97,8 @@ export function SignalLabWorkbench({
     <section className="signal-lab-workbench">
       <header className="signal-lab-workbench-head">
         <div>
-          <h2>Signal Lab</h2>
-          <p>Review Signal Pulse agent candidates by status, source, and query.</p>
+          <h2>Signal Pulse</h2>
+          <p>Review agent memos by candidate stage, gate, source, and next action.</p>
         </div>
         <div className="signal-lab-workbench-state">
           <span>
@@ -113,7 +113,7 @@ export function SignalLabWorkbench({
         </div>
       </header>
 
-      <div className="signal-stage-grid" aria-label="Signal Pulse statuses">
+      <div className="signal-stage-grid" aria-label="Signal Pulse candidate stages">
         {PULSE_STATUSES.map((item) => (
           <button
             className={statusFilter === item.status ? "active" : ""}
@@ -128,7 +128,7 @@ export function SignalLabWorkbench({
         ))}
       </div>
 
-      <div className="signal-filter-bar" aria-label="Signal Lab filters">
+      <div className="signal-filter-bar" aria-label="Signal Pulse queue filters">
         <div className="filter-cell signal-stage-filter">
           <span>Status</span>
           <b>
@@ -139,14 +139,14 @@ export function SignalLabWorkbench({
         </div>
         <FilterField
           label="Source"
-          ariaLabel="Signal Lab source filter"
+          ariaLabel="Signal Pulse source filter"
           value={handleFilter}
           placeholder="@cz_binance"
           onChange={onHandleChange}
         />
         <FilterField
           label="Symbol/target"
-          ariaLabel="Signal Lab identity filter"
+          ariaLabel="Signal Pulse identity filter"
           value={searchFilter}
           placeholder="BNB, token:SOL, asset:..."
           onChange={onSearchChange}
@@ -167,7 +167,7 @@ export function SignalLabWorkbench({
 
       <section className="signal-chain-workbench-list">
         <header>
-          <h3>{showAccountEvents ? "Watched account events" : "Signal Pulse"}</h3>
+          <h3>{showAccountEvents ? "Watched account events" : "Candidate queue"}</h3>
           <span>
             {showAccountEvents
               ? `${accountEvents.length} posts · account lens`

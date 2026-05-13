@@ -5,11 +5,11 @@ import { RemoteState } from "@shared/ui/RemoteState";
 import { TokenRadarRow } from "./TokenRadarRow";
 
 const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
-  { mode: "opportunity", label: "Opportunity" },
-  { mode: "heat", label: "Heat" },
-  { mode: "quality", label: "Quality" },
-  { mode: "propagation", label: "Propagation" },
-  { mode: "timing", label: "Timing" },
+  { mode: "opportunity", label: "Desk pick" },
+  { mode: "heat", label: "Attention" },
+  { mode: "quality", label: "Proof" },
+  { mode: "propagation", label: "Reach" },
+  { mode: "timing", label: "Entry" },
 ];
 
 type TokenRadarTableProps = {
@@ -38,9 +38,7 @@ export function TokenRadarTable({
       <header className="radar-toolbar">
         <div>
           <h2>Token Radar</h2>
-          <span>
-            TOKEN RADAR <b>{items.length}</b>
-          </span>
+          <p>快速扫“这是什么、谁在推、为什么现在、能不能行动”。</p>
         </div>
         <div className="toolbar-controls" aria-label="token radar toolbar">
           <div className="segmented sort-toggle" aria-label="token radar sort">
@@ -60,14 +58,13 @@ export function TokenRadarTable({
 
       <div className="token-radar-table">
         <div className="radar-head">
-          <span>Token</span>
-          <span>Heat</span>
-          <span>Quality</span>
-          <span>Propagation</span>
+          <span>Token case</span>
+          <span>Official</span>
+          <span>Community</span>
+          <span>Narrative</span>
           <span>Market</span>
-          <span>Timing</span>
           <span>Decision</span>
-          <span>Action</span>
+          <span>Actions</span>
         </div>
         {isLoading ? <RadarSkeleton /> : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}

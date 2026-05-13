@@ -17,7 +17,7 @@ export function PulseDetailPage() {
   if (query.isError || !query.data?.data) {
     return (
       <RouteStatePanel title="Pulse 不存在或已被屏蔽">
-        检查链接，或回到 Signal Lab 列表选择其他候选。
+        检查链接，或回到 Signal Pulse 队列选择其他候选。
       </RouteStatePanel>
     );
   }

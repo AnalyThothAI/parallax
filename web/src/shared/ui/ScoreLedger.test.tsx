@@ -14,10 +14,10 @@ describe("ScoreLedger", () => {
 
     const scoreCards = document.querySelectorAll(".score-card");
     expect(scoreCards).toHaveLength(4);
-    expect(screen.getByText("Heat")).toBeInTheDocument();
-    expect(screen.getByText("Quality")).toBeInTheDocument();
-    expect(screen.getByText("Propagation")).toBeInTheDocument();
-    expect(screen.getByText("Timing")).toBeInTheDocument();
+    expect(screen.getByText("Attention")).toBeInTheDocument();
+    expect(screen.getByText("Discussion")).toBeInTheDocument();
+    expect(screen.getByText("Spread")).toBeInTheDocument();
+    expect(screen.getByText("Entry")).toBeInTheDocument();
     expect(screen.queryByText("Tradeability")).not.toBeInTheDocument();
     expect(screen.queryByText("Identity")).not.toBeInTheDocument();
     expect(screen.queryByText("Market")).not.toBeInTheDocument();

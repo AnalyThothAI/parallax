@@ -36,7 +36,7 @@ beforeEach(() => {
 });
 
 describe("watchlist sidebar", () => {
-  it("renders each handle as a Link to /signal-lab?handle=...", async () => {
+  it("renders each handle as a Link to /watchlist?handle=...", async () => {
     apiMock.getBootstrapImpl = async () =>
       ok({ ws_token: "test-token", handles: ["toly"], replay_limit: 25 });
     apiMock.readApiImpl = async (path: string) => {
@@ -79,7 +79,7 @@ describe("watchlist sidebar", () => {
     );
 
     const link = await waitFor(() => screen.getByRole("link", { name: /toly/i }));
-    expect(link.getAttribute("href")).toBe("/signal-lab?handle=toly");
+    expect(link.getAttribute("href")).toBe("/watchlist?handle=toly");
     expect(link).toHaveClass("watchlist-row");
   });
 });

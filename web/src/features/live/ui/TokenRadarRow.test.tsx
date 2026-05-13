@@ -1,5 +1,5 @@
 import type { TokenFlowItem } from "@lib/types";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -35,12 +35,17 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const row = screen.getByRole("button", { name: "Select token case $TROLL" });
     const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
     const venueLink = screen.getByRole("link", { name: "Open $TROLL on GMGN" });
     expect(searchButton).toBeInTheDocument();
     expect(venueLink.parentElement?.children[0]).toBe(venueLink);
     expect(venueLink.parentElement?.children[1]).toBe(searchButton);
+    expect(within(row).getByText("Identity")).toBeInTheDocument();
+    expect(within(row).getByText("Official")).toBeInTheDocument();
+    expect(within(row).getByText("Community")).toBeInTheDocument();
+    expect(within(row).getByText("Narrative")).toBeInTheDocument();
+    expect(within(row).getByText("Decision")).toBeInTheDocument();
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
     expect(market).toHaveTextContent("partial");
@@ -68,7 +73,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const row = screen.getByRole("button", { name: "Select token case $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("-");
     expect(market).toHaveTextContent("cap missing");
@@ -100,16 +105,15 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const row = screen.getByRole("button", { name: "Select token case $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
-    const timing = row.querySelector('[data-radar-metric="timing"]') as HTMLElement;
     expect(market).toHaveTextContent("$236K");
     expect(market).not.toHaveTextContent("anchored");
     expect(market).not.toHaveTextContent("price ready");
     expect(market).not.toHaveTextContent("cap live");
     expect(market).not.toHaveTextContent("liq live");
-    expect(timing).toHaveTextContent("neutral");
-    expect(timing).not.toHaveTextContent("live not persisted");
+    expect(row.querySelector('[data-radar-metric="timing"]')).not.toBeInTheDocument();
+    expect(row).not.toHaveTextContent("live not persisted");
   });
 });
 

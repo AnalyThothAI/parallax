@@ -13,7 +13,17 @@ body {
   margin: 0;
   overflow-x: clip;
   color: var(--text);
-  background: var(--bg);
+  background:
+    linear-gradient(90deg, rgba(241, 234, 214, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(241, 234, 214, 0.02) 1px, transparent 1px),
+    radial-gradient(circle at 14% 9%, rgba(217, 154, 40, 0.08), transparent 24rem),
+    radial-gradient(circle at 78% 12%, rgba(123, 181, 216, 0.065), transparent 22rem), var(--void);
+  background-size:
+    40px 40px,
+    40px 40px,
+    auto,
+    auto,
+    auto;
   font-family: var(--sans);
   font-size: 12px;
   letter-spacing: 0;

@@ -102,3 +102,39 @@
   height: 13px;
   flex: 0 0 auto;
 }
+
+@media (max-width: 1279px) {
+  :global(.stocks-radar-toolbar .stocks-health) {
+    overflow-x: auto;
+  }
+
+  :global(.stocks-radar-toolbar) {
+    flex-wrap: wrap;
+    align-items: stretch;
+    padding: 8px 14px;
+  }
+
+  :global(.stocks-radar-controls) {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  :global(.stock-radar-head),
+  :global(.stock-radar-row) {
+    grid-template-columns:
+      minmax(118px, 1fr)
+      minmax(72px, 0.6fr)
+      minmax(88px, 0.7fr)
+      minmax(92px, 0.72fr)
+      minmax(88px, 0.68fr);
+    min-width: 560px;
+  }
+
+  :global(.stock-radar-head > :nth-child(3)),
+  :global(.stock-radar-row > :nth-child(3)),
+  :global(.stock-radar-head > :nth-child(4)),
+  :global(.stock-radar-row > :nth-child(4)) {
+    display: none;
+  }
+}

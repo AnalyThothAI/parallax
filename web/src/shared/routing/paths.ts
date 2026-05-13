@@ -38,6 +38,11 @@ export function signalLabPath(params: { q?: string | null; handle?: string | nul
   return "/signal-lab" + (search ? `?${search}` : "");
 }
 
+export function watchlistPath(params: { handle?: string | null } = {}): string {
+  const search = compactSearch(params);
+  return "/watchlist" + (search ? `?${search}` : "");
+}
+
 export function signalLabPulsePath(candidateId: string, search = ""): string {
   return `/signal-lab/pulse/${encodeURIComponent(candidateId)}${search}`;
 }

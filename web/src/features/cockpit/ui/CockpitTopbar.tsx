@@ -51,9 +51,13 @@ export function CockpitTopbar({
       <div className="brand">
         <div className="brand-mark" aria-hidden />
         <div className="brand-copy">
-          <h1>intel.cockpit</h1>
-          <p>/ws · localhost:8765</p>
+          <h1>gmgn.intel</h1>
+          <p>obsidian desk</p>
         </div>
+        <WsStatusBeacon
+          lastMessageAt={status.lastSocketMessageAt}
+          socketStatus={status.socketStatus}
+        />
         {search.showMainRouteButton ? (
           <button className="main-route-button" type="button" onClick={() => navigate("/")}>
             <Home aria-hidden />
@@ -121,6 +125,36 @@ export function CockpitTopbar({
         <RefreshCw aria-hidden />
       </IconButton>
     </header>
+  );
+}
+
+function WsStatusBeacon({
+  socketStatus,
+  lastMessageAt,
+}: {
+  socketStatus: string;
+  lastMessageAt: number | null;
+}) {
+  const state =
+    socketStatus === "connected"
+      ? "connected"
+      : socketStatus === "connecting" || socketStatus === "authenticating"
+        ? "connecting"
+        : "offline";
+  const label = [
+    `WebSocket ${socketStatus}`,
+    lastMessageAt ? `last message ${formatRelativeTime(lastMessageAt)} ago` : "no message yet",
+  ].join(" · ");
+
+  return (
+    <span
+      aria-label={label}
+      className={clsx("ws-status-beacon", `state-${state}`)}
+      role="status"
+      title={label}
+    >
+      <Wifi aria-hidden />
+    </span>
   );
 }
 

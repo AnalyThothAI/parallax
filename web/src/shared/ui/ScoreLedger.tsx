@@ -13,16 +13,16 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
     return null;
   }
   const items: LedgerItem[] = [
-    { key: "heat", label: "Heat", block: token.social_heat },
-    { key: "quality", label: "Quality", block: token.discussion_quality },
-    { key: "propagation", label: "Propagation", block: token.propagation },
-    { key: "timing", label: "Timing", block: token.timing },
+    { key: "heat", label: "Attention", block: token.social_heat },
+    { key: "quality", label: "Discussion", block: token.discussion_quality },
+    { key: "propagation", label: "Spread", block: token.propagation },
+    { key: "timing", label: "Entry", block: token.timing },
   ];
   const alphaComponents = [
-    ["heat", token.opportunity.components.heat],
-    ["quality", token.opportunity.components.quality],
-    ["propagation", token.opportunity.components.propagation],
-    ["timing", token.opportunity.components.timing],
+    ["heat", "attention", token.opportunity.components.heat],
+    ["quality", "discussion", token.opportunity.components.quality],
+    ["propagation", "spread", token.opportunity.components.propagation],
+    ["timing", "entry", token.opportunity.components.timing],
   ] as const;
   const healthWarnings = dataHealthWarnings(token.factor_data_health);
   return (
@@ -106,9 +106,9 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
           <span>Opportunity</span>
           <b>{formatScore(token.opportunity.score)}</b>
         </div>
-        {alphaComponents.map(([key, value]) => (
+        {alphaComponents.map(([key, label, value]) => (
           <div key={key}>
-            <span>{key}</span>
+            <span>{label}</span>
             <b>{formatScore(value)}</b>
           </div>
         ))}

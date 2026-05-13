@@ -34,6 +34,7 @@ describe("CockpitTopbar", () => {
     );
 
     expect(screen.getByRole("textbox", { name: "global search" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: /WebSocket connected/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "notifications" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
