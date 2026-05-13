@@ -10,22 +10,31 @@ from gmgn_twitter_intel.integrations.okx.dex_ws_client import (
     OkxDexWsClientError,
     _login_prehash,
     _login_signature,
+    _okx_timestamp,
     _price_info_update_from_row,
+    _rows_from_message,
 )
 
 
 def test_okx_dex_ws_login_uses_expected_signature_prehash():
-    timestamp = "2026-05-11T12:00:00.000Z"
+    timestamp = "1704876947"
 
-    assert _login_prehash(timestamp) == "2026-05-11T12:00:00.000ZGET/users/self/verify"
+    assert _login_prehash(timestamp) == "1704876947GET/users/self/verify"
     expected = base64.b64encode(
         hmac.new(
             b"test-secret",
-            b"2026-05-11T12:00:00.000ZGET/users/self/verify",
+            b"1704876947GET/users/self/verify",
             hashlib.sha256,
         ).digest()
     ).decode("utf-8")
     assert _login_signature(secret_key="test-secret", timestamp=timestamp) == expected
+
+
+def test_okx_dex_ws_timestamp_is_unix_seconds():
+    timestamp = _okx_timestamp()
+
+    assert timestamp.isdigit()
+    assert len(timestamp) == 10
 
 
 def test_okx_dex_ws_price_info_normalizes_market_fields():
@@ -51,6 +60,34 @@ def test_okx_dex_ws_price_info_normalizes_market_fields():
     assert update.liquidity_usd == 4_820_000
     assert update.volume_24h_usd == 27_400_000
     assert update.holders == 57_141
+
+
+def test_okx_dex_ws_price_info_merges_subscription_arg_fields():
+    rows = _rows_from_message(
+        {
+            "arg": {
+                "channel": "price-info",
+                "chainIndex": "501",
+                "tokenContractAddress": "8jpRiwbUXLWH4yFQaF2TBDUkWDkfKWtBMX95sibTpump",
+            },
+            "data": [
+                {
+                    "time": "1778627069103",
+                    "price": "0.00001733",
+                    "marketCap": "17336.16",
+                    "liquidity": "10416.54",
+                    "holders": "224",
+                }
+            ],
+        }
+    )
+
+    update = _price_info_update_from_row(rows[0])
+
+    assert update is not None
+    assert update.chain_id == "501"
+    assert update.address == "8jpRiwbUXLWH4yFQaF2TBDUkWDkfKWtBMX95sibTpump"
+    assert update.observed_at_ms == 1_778_627_069_103
 
 
 def test_okx_dex_ws_unauthenticated_error_is_surfaceable():

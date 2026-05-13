@@ -22,6 +22,7 @@ import {
   formatPropagationPhase,
   formatScore,
   formatTokenPriceUsd,
+  formatUsdCompact,
   shortAddress,
 } from "../lib/format";
 
@@ -267,10 +268,10 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
             detail: result.timeline.summary.phase,
           },
           {
-            label: "price",
-            value: radar.priceLabel,
-            detail: radar.priceDetail,
-            tone: radar.priceTone,
+            label: radar.primaryMarketLabel,
+            value: radar.primaryMarketValue,
+            detail: radar.primaryMarketDetail,
+            tone: radar.primaryMarketTone,
           },
           {
             label: "market",
@@ -520,6 +521,7 @@ function SearchRadarPanel({ radarItem }: { radarItem?: Record<string, unknown> |
 
 function radarSummary(result: SearchTokenResult) {
   const radar = asRecord(result.radar_item);
+  const radarTarget = asRecord(radar.target);
   const score = asRecord(radar.score);
   const snapshot = asRecord(radar.factor_snapshot);
   const composite = asRecord(snapshot.composite);
@@ -527,9 +529,21 @@ function radarSummary(result: SearchTokenResult) {
   const dataHealth = nonEmptyRecord(radar.data_health) ?? asRecord(snapshot.data_health);
   const live = asRecord(radar.live_market);
   const anchor = asRecord(radar.anchor_price);
+  const snapshotMarket = asRecord(snapshot.market);
   const marketOverlay = asRecord(result.market_overlay);
   const firstBucketPrice = result.timeline.buckets.find((bucket) => bucket.price?.price_usd)?.price;
   const candleClose = latestCandleClose(result.market_overlay.candles);
+  const isDexMarket =
+    result.target.target_type === "Asset" || stringValue(radarTarget.target_type) === "Asset";
+  const liveMarketCap = numberValue(live.market_cap_usd);
+  const anchoredMarketCap = numberValue(snapshotMarket.market_cap_usd);
+  const marketCap = liveMarketCap ?? anchoredMarketCap;
+  const marketCapStatus =
+    liveMarketCap !== null
+      ? stringValue(live.status)
+      : anchoredMarketCap !== null
+        ? "anchored"
+        : "missing";
   const price =
     candleClose ??
     numberValue(live.price_usd) ??
@@ -541,6 +555,22 @@ function radarSummary(result: SearchTokenResult) {
       : stringValue(live.status) !== "-"
         ? stringValue(live.status)
         : stringValue(anchor.status);
+  const provider = stringValue(live.provider ?? anchor.provider ?? marketOverlay.provider);
+  const primaryMarketLabel = isDexMarket ? "market cap" : "price";
+  const primaryMarketValue = isDexMarket
+    ? marketCap === null
+      ? "-"
+      : formatUsdCompact(marketCap)
+    : price === null
+      ? "-"
+      : formatTokenPriceUsd(price);
+  const primaryMarketDetail = isDexMarket
+    ? marketCap === null
+      ? `${priceStatus} · cap missing`
+      : `${marketCapStatus} · ${provider}`
+    : priceStatus !== "-"
+      ? `${priceStatus} · ${provider}`
+      : "message anchor only";
   const marketHealth =
     stringValue(marketOverlay.candle_status) === "ready"
       ? "ready"
@@ -555,12 +585,16 @@ function radarSummary(result: SearchTokenResult) {
       stringValue(gates.max_decision) !== "-"
         ? `gate ${stringValue(gates.max_decision)}`
         : "gate unavailable",
-    priceLabel: price === null ? "-" : formatTokenPriceUsd(price),
-    priceDetail:
-      priceStatus !== "-"
-        ? `${priceStatus} · ${stringValue(live.provider ?? anchor.provider ?? marketOverlay.provider)}`
-        : "message anchor only",
-    priceTone: price ? "positive" : "warning",
+    primaryMarketLabel,
+    primaryMarketValue,
+    primaryMarketDetail,
+    primaryMarketTone: isDexMarket
+      ? marketCap === null
+        ? "warning"
+        : "positive"
+      : price
+        ? "positive"
+        : "warning",
     marketHealth,
     marketVenue: stringValue(
       marketOverlay.native_market_id ??
@@ -577,9 +611,10 @@ function radarSummary(result: SearchTokenResult) {
     decision: string;
     rankScore: number | null;
     gateLine: string;
-    priceLabel: string;
-    priceDetail: string;
-    priceTone: "positive" | "warning";
+    primaryMarketLabel: string;
+    primaryMarketValue: string;
+    primaryMarketDetail: string;
+    primaryMarketTone: "positive" | "warning";
     marketHealth: string;
     marketVenue: string;
     dataHealthLine: string;

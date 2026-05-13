@@ -207,7 +207,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(row).getByText("dup 0% · info 3")).toBeInTheDocument();
     expect(within(row).getByText("expansion · 3 author")).toBeInTheDocument();
     expect(within(row).getByText("top 33% · repro -")).toBeInTheDocument();
-    expect(within(row).getByText("- missing")).toBeInTheDocument();
+    expect(within(row).getByText("missing · cap missing")).toBeInTheDocument();
     expect(within(row).getByText("market pending")).toBeInTheDocument();
     expect(within(row).getByText("market observation pending")).toBeInTheDocument();
     expect(row.querySelector(".barline")).toBeInTheDocument();
@@ -249,7 +249,7 @@ describe("App Token Radar social heat cockpit", () => {
     const row = await screen.findByRole("button", { name: "select token $UPEG" });
     await waitFor(() => {
       expect(row.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$111M");
-      expect(row.querySelector('[data-radar-metric="market"]')).toHaveTextContent("live");
+      expect(row.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("cap live");
     });
     expect(container.querySelectorAll(".token-radar-table .radar-row")).toHaveLength(1);
   });
@@ -420,7 +420,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="propagation"]')).toHaveTextContent(
       "expansion · 3 author",
     );
-    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("- missing");
+    expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("missing");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).toHaveTextContent(
       "market pending",
     );
@@ -497,7 +497,7 @@ describe("App Token Radar social heat cockpit", () => {
     );
   });
 
-  it("renders token prices with price precision instead of compact integer rounding", async () => {
+  it("renders CEX prices with precision and keeps DEX primary market value on market cap", async () => {
     mockApi({
       assetFlowRows: [
         assetFlowRow({
@@ -563,9 +563,10 @@ describe("App Token Radar social heat cockpit", () => {
     expect(tonRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent("$3");
 
     const microRow = await screen.findByRole("button", { name: /select token 0x111111/ });
-    expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("$0.00001361");
+    expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("-");
+    expect(microRow.querySelector('[data-radar-metric="market"]')).toHaveTextContent("cap missing");
     expect(microRow.querySelector('[data-radar-metric="market"]')).not.toHaveTextContent(
-      "$0 fresh",
+      "$0.00001361",
     );
   });
 

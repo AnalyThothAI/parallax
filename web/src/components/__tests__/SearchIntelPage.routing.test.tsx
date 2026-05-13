@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.restoreAllMocks();
 });
 
@@ -50,6 +51,58 @@ describe("SearchIntelPage", () => {
         }),
       );
     });
+  });
+
+  it("uses market cap as the primary DEX market metric in search details", async () => {
+    const data = searchInspectData() as any;
+    data.token_result.radar_item = {
+      target: {
+        target_type: "Asset",
+        target_id: "asset:solana:rkc",
+      },
+      score: {
+        rank_score: 74,
+        recommended_decision: "token_watch",
+      },
+      factor_snapshot: {
+        composite: {
+          rank_score: 74,
+          recommended_decision: "token_watch",
+        },
+        gates: {
+          max_decision: "token_watch",
+        },
+        data_health: {
+          market: "live",
+          identity: "ready",
+        },
+        market: {
+          market_cap_usd: 33_000_000,
+        },
+      },
+      data_health: {
+        market: "live",
+        identity: "ready",
+      },
+      live_market: {
+        status: "live",
+        price_usd: 0.0078,
+        market_cap_usd: 51_000_000,
+        provider: "okx_dex_ws_price_info",
+      },
+      anchor_price: {
+        status: "ready",
+        price_usd: 0.007,
+        provider: "gmgn_dex_quote",
+      },
+    };
+    vi.mocked(client.getApi).mockResolvedValueOnce({ ok: true, data });
+
+    renderAt("/search?q=%24RKC&window=24h&scope=all");
+
+    expect(await screen.findByText("market cap")).toBeInTheDocument();
+    expect(screen.getByText("$51M")).toBeInTheDocument();
+    expect(screen.getByText("live · okx_dex_ws_price_info")).toBeInTheDocument();
   });
 });
 

@@ -129,6 +129,7 @@ class LivePriceGateway:
             result["cex_quotes_received"] += 1
             await self._publish(payload)
             result["live_market_updates_published"] += 1
+        self.last_result = result
         async for payload in self._stream_dex(dex_targets, received_at_ms=received_at_ms):
             result["updates_received"] += 1
             await self._publish(payload)
@@ -227,11 +228,29 @@ class LivePriceGateway:
             if target.get("chain_id") and target.get("address") and target.get("target_id")
         ]
         target_by_key = {_target_key(target.chain_id, target.address): target for target in stream_targets}
-        async for update in self.stream_provider.stream_price_info(stream_targets):
-            target = target_by_key.get(_target_key(update.chain_id, update.address))
-            if target is None:
-                continue
-            yield self._payload_from_dex(update, target=target, received_at_ms=received_at_ms)
+        stream = self.stream_provider.stream_price_info(stream_targets)
+        iterator = stream.__aiter__()
+        deadline = time.monotonic() + self._dex_stream_cycle_seconds()
+        try:
+            while not self._stopped:
+                remaining_seconds = deadline - time.monotonic()
+                if remaining_seconds <= 0:
+                    break
+                try:
+                    update = await asyncio.wait_for(iterator.__anext__(), timeout=remaining_seconds)
+                except (TimeoutError, StopAsyncIteration):
+                    break
+                target = target_by_key.get(_target_key(update.chain_id, update.address))
+                if target is None:
+                    continue
+                yield self._payload_from_dex(update, target=target, received_at_ms=received_at_ms)
+        finally:
+            close = getattr(iterator, "aclose", None)
+            if close is not None:
+                await close()
+
+    def _dex_stream_cycle_seconds(self) -> float:
+        return max(0.1, min(self.hot_target_ttl_seconds, self.cex_poll_interval_seconds, 30.0))
 
     def _payload_from_dex(
         self,

@@ -212,7 +212,11 @@ export function tokenRadarRowToTokenItem(
     market_cap_usd: displayMarketCap,
     liquidity_usd: displayLiquidity,
   };
-  const tradeability = tradeabilityFromGatesAndHealth(gates, dataHealth, marketFactsForTradeability);
+  const tradeability = tradeabilityFromGatesAndHealth(
+    gates,
+    dataHealth,
+    marketFactsForTradeability,
+  );
   const timing = scoreBlockFromFamily(timingFamily, "timing_risk", "timing");
   const recommendedDecision = requiredString(
     optionalString(composite.recommended_decision),

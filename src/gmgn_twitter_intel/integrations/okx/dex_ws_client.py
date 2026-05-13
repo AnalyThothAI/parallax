@@ -4,9 +4,9 @@ import base64
 import hashlib
 import hmac
 import json
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from typing import Any
 
 import websockets
@@ -114,12 +114,20 @@ async def _wait_for_login(websocket: Any) -> None:
 def _rows_from_message(message: Any) -> list[dict[str, Any]]:
     if not isinstance(message, dict):
         return []
+    arg = message.get("arg")
+    context = arg if isinstance(arg, dict) else {}
     data = message.get("data")
     if isinstance(data, list):
-        return [row for row in data if isinstance(row, dict)]
+        return [_with_message_context(row, context) for row in data if isinstance(row, dict)]
     if isinstance(data, dict):
-        return [data]
+        return [_with_message_context(data, context)]
     return [message]
+
+
+def _with_message_context(row: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    if not context:
+        return row
+    return {**context, **row}
 
 
 def _price_info_update_from_row(row: dict[str, Any]) -> OkxDexPriceInfoUpdate | None:
@@ -158,7 +166,7 @@ def _login_signature(*, secret_key: str, timestamp: str) -> str:
 
 
 def _okx_timestamp() -> str:
-    return datetime.now(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    return str(int(time.time()))
 
 
 def _error_message(row: dict[str, Any]) -> str:

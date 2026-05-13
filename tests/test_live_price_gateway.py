@@ -116,6 +116,27 @@ def test_live_price_gateway_run_paces_empty_stream_cycles():
     asyncio.run(run_probe())
 
 
+def test_live_price_gateway_bounds_dex_stream_cycle_when_no_updates_arrive():
+    repos = FakeRepos()
+    stream_provider = BlockingStreamProvider()
+    gateway = LivePriceGateway(
+        stream_provider=stream_provider,
+        cex_market=None,
+        repository_session=lambda: FakeSession(repos),
+        projection_version="token-radar-v12-anchor-live-hard-cut",
+        subscription_limit=10,
+        hot_target_ttl_seconds=60,
+        cex_poll_interval_seconds=1,
+        reconnect_delay_seconds=0.1,
+    )
+
+    result = asyncio.run(asyncio.wait_for(gateway.run_once(now_ms=1_778_000_000_000), timeout=2.0))
+
+    assert result["dex_targets_selected"] == 1
+    assert result["updates_received"] == 0
+    assert stream_provider.closed is True
+
+
 class FakeStreamProvider:
     def __init__(self, updates: list[DexMarketFactUpdate]) -> None:
         self.updates = updates
@@ -133,6 +154,19 @@ class FakeStreamProvider:
         ]
         for update in self.updates:
             yield update
+
+
+class BlockingStreamProvider:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def stream_price_info(self, targets):
+        try:
+            await asyncio.sleep(10)
+            if False:
+                yield
+        finally:
+            self.closed = True
 
 
 class FakeSession:

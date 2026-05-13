@@ -554,6 +554,11 @@ function identityLine(token: TokenFlowItem): string {
 }
 
 function marketLine(token: TokenFlowItem): string {
+  if (isDexMarket(token)) {
+    return token.market.market_cap !== null && token.market.market_cap !== undefined
+      ? formatUsdCompact(token.market.market_cap)
+      : "-";
+  }
   if (token.market.market_cap !== null && token.market.market_cap !== undefined) {
     return formatUsdCompact(token.market.market_cap);
   }
@@ -561,4 +566,8 @@ function marketLine(token: TokenFlowItem): string {
     return formatTokenPriceUsd(token.market.price);
   }
   return token.market.market_status ?? "-";
+}
+
+function isDexMarket(token: TokenFlowItem): boolean {
+  return token.identity.venue_type === "dex" || token.identity.target_type === "Asset";
 }

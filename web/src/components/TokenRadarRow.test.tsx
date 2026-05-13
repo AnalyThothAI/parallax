@@ -25,7 +25,7 @@ describe("TokenRadarRow", () => {
     expect(screen.queryByText(/8ff41158.*e70faa/i)).not.toBeInTheDocument();
   });
 
-  it("renders fresh price with stale market cap as partial market freshness", () => {
+  it("renders DEX market cap as the primary market value", () => {
     render(
       <TokenRadarRow
         item={mixedFreshnessToken()}
@@ -44,9 +44,71 @@ describe("TokenRadarRow", () => {
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
     expect(market).toHaveTextContent("partial");
-    expect(market).toHaveTextContent("price fresh");
     expect(market).toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("- fresh");
+    expect(market).not.toHaveTextContent("$0.104");
+  });
+
+  it("does not fall back to token price for DEX rows without market cap", () => {
+    const item = mixedFreshnessToken();
+    render(
+      <TokenRadarRow
+        item={{
+          ...item,
+          market: {
+            ...item.market,
+            market_cap: null,
+            market_cap_status: "missing",
+          },
+        }}
+        selected={false}
+        onOpenSearch={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
+    expect(market).toHaveTextContent("-");
+    expect(market).toHaveTextContent("cap missing");
+    expect(market).not.toHaveTextContent("$0.104");
+  });
+
+  it("suppresses anchored readiness noise from compact radar cells", () => {
+    const item = mixedFreshnessToken();
+    render(
+      <TokenRadarRow
+        item={{
+          ...item,
+          market: {
+            ...item.market,
+            market_status: "anchored",
+            price_status: "ready",
+            market_cap: 236_000,
+            market_cap_status: "live",
+            liquidity: 9_000,
+            liquidity_status: "live",
+            price_change_since_social_pct: null,
+            price_change_since_first_snapshot_pct: null,
+            price_change_status: "live_not_persisted",
+          },
+        }}
+        selected={false}
+        onOpenSearch={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: "select token $TROLL" });
+    const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
+    const timing = row.querySelector('[data-radar-metric="timing"]') as HTMLElement;
+    expect(market).toHaveTextContent("$236K");
+    expect(market).not.toHaveTextContent("anchored");
+    expect(market).not.toHaveTextContent("price ready");
+    expect(market).not.toHaveTextContent("cap live");
+    expect(market).not.toHaveTextContent("liq live");
+    expect(timing).toHaveTextContent("neutral");
+    expect(timing).not.toHaveTextContent("live not persisted");
   });
 });
 

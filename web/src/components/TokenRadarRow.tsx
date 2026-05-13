@@ -28,7 +28,11 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
   const delta = formatSignedPercent(
     item.market.price_change_since_social_pct ?? item.market.price_change_since_first_snapshot_pct,
   );
-  const direction = delta.startsWith("+") ? "up" : delta.startsWith("-") ? "down" : "flat";
+  const direction = delta.startsWith("+")
+    ? "up"
+    : delta !== "-" && delta.startsWith("-")
+      ? "down"
+      : "flat";
   const venueAction = tokenVenueAction(item);
   return (
     <div className={`radar-row ${selected ? "selected" : ""}`}>
@@ -133,6 +137,11 @@ function identitySubtitle(item: TokenFlowItem): string {
 }
 
 function marketPrimary(item: TokenFlowItem): string {
+  if (isDexMarket(item)) {
+    return item.market.market_cap !== null && item.market.market_cap !== undefined
+      ? formatUsdCompact(item.market.market_cap)
+      : "-";
+  }
   if (item.market.market_cap !== null && item.market.market_cap !== undefined) {
     return formatUsdCompact(item.market.market_cap);
   }
@@ -144,16 +153,40 @@ function marketPrimary(item: TokenFlowItem): string {
 
 function marketMeta(item: TokenFlowItem, delta: string): string {
   const details = marketFreshnessDetails(item);
-  return details.length
-    ? `${delta} ${item.market.market_status} · ${details.join(" · ")}`
-    : `${delta} ${item.market.market_status}`;
+  const parts = [
+    marketDeltaLabel(delta),
+    marketStatusLabel(item.market.market_status),
+    ...details,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join(" · ");
+}
+
+function marketDeltaLabel(delta: string): string | null {
+  return delta === "-" ? null : delta;
+}
+
+function marketStatusLabel(marketStatus: string): string | null {
+  if (marketStatus === "live") {
+    return "live";
+  }
+  if (marketStatus === "anchored" || marketStatus === "fresh" || marketStatus === "ready") {
+    return null;
+  }
+  return compactLabel(marketStatus);
 }
 
 function marketFreshnessDetails(item: TokenFlowItem): string[] {
   const marketStatus = item.market.market_status;
   const details: string[] = [];
-  if (shouldShowFieldStatus(item.market.price_status, marketStatus)) {
+  if (!isDexMarket(item) && shouldShowFieldStatus(item.market.price_status, marketStatus)) {
     details.push(`price ${compactLabel(item.market.price_status)}`);
+  }
+  if (
+    isDexMarket(item) &&
+    (item.market.market_cap === null || item.market.market_cap === undefined) &&
+    item.market.market_cap_status
+  ) {
+    details.push(`cap ${compactLabel(item.market.market_cap_status)}`);
   }
   if (
     item.market.market_cap !== null &&
@@ -172,6 +205,10 @@ function marketFreshnessDetails(item: TokenFlowItem): string[] {
   return details;
 }
 
+function isDexMarket(item: TokenFlowItem): boolean {
+  return item.identity.venue_type === "dex" || item.identity.target_type === "Asset";
+}
+
 function shouldShowFieldStatus(
   fieldStatus: string | null | undefined,
   marketStatus: string,
@@ -180,6 +217,9 @@ function shouldShowFieldStatus(
     return false;
   }
   if (fieldStatus === marketStatus) {
+    return false;
+  }
+  if (fieldStatus === "ready" || fieldStatus === "fresh" || fieldStatus === "live") {
     return false;
   }
   if (marketStatus === "missing" && fieldStatus === "missing") {
@@ -287,11 +327,12 @@ function timingMeta(item: TokenFlowItem): string {
   if (
     item.market.price_change_status &&
     item.market.price_change_status !== "ready" &&
-    item.market.price_change_status !== "insufficient_history"
+    item.market.price_change_status !== "insufficient_history" &&
+    item.market.price_change_status !== "live_not_persisted"
   ) {
     return formatRisk(item.market.price_change_status);
   }
-  return item.market.market_status;
+  return marketStatusLabel(item.market.market_status) ?? "";
 }
 
 function scoreClass(score: number): string {
