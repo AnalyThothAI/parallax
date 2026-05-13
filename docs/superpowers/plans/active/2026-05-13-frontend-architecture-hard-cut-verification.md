@@ -56,7 +56,6 @@ Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in
 
 ## Current Risks / Pauses
 
-- Task 9 requires new dev dependency: `@playwright/test`.
 - Task 10 requires new production dependency: `clsx`.
 
 Per the execution pause conditions, dependency installation must pause for user confirmation before adding the Task 10 production dependency.
@@ -212,3 +211,30 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm test -- --run`: passed, `31 passed`, `150 passed`
 - `cd web && npm run typecheck`: passed
 - Extra guard, `cd web && npm run lint`: passed
+
+## Task 9 Verification
+
+### Playwright Golden Path Changes
+
+- Added dev-only `@playwright/test`.
+- Added `test:e2e` and `test:e2e:headed` package scripts.
+- Added `web/playwright.config.ts` with a Chromium-only project, `trace: retain-on-failure`, and a `webServer` command that runs `npm run build && npm run preview`.
+- Added deterministic Playwright route handlers in `web/e2e/support/mockApi.ts` for `/api/*` endpoints used by the golden paths.
+- Added five Chromium golden paths:
+  - live cold load renders radar, token tape evidence, and URL-owned filters;
+  - topbar search navigates to `/search?q=...` and renders Search Intel state;
+  - radar target route renders token audit and post evidence;
+  - Signal Lab hard reload preserves filters and opens pulse detail;
+  - notification click navigates into Signal Lab context.
+
+### Debugging Notes
+
+The first full `npm run test:e2e` surfaced ErrorBoundary crashes in live/search/token-target flows. Root cause was that the E2E mock timeline/posts payloads were too shallow for the real UI contract: `TokenTimeline` requires `buckets` and `authors`, `StageTape` requires stage `people`/`price` metadata, and `TokenPostsPanel` requires `post_quality`. The mock payloads were expanded to match the existing MSW/Vitest fixture shape before rerunning the full suite.
+
+Two later failures were Playwright strict-mode locator errors because repeated visible text appeared in multiple semantic regions. The assertions were narrowed to the intended search controls and post article while still checking visible page state.
+
+### Commands
+
+- `cd web && npx playwright install chromium`: passed
+- `cd web && npm run build`: passed; Vite emitted the existing `Some chunks are larger than 500 kB` warning
+- `cd web && npm run test:e2e`: passed, `5 passed`

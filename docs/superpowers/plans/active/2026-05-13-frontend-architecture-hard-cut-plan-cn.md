@@ -470,13 +470,13 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Modify: `web/package.json`
 - Modify: `web/package-lock.json`
 
-- [ ] Add dev dependency `@playwright/test`.
-- [ ] Add scripts:
+- [x] Add dev dependency `@playwright/test`.
+- [x] Add scripts:
   - `test:e2e`: `playwright test`
   - `test:e2e:headed`: `playwright test --headed`
-- [ ] Configure chromium only, `webServer` using `npm run preview` after `npm run build`, and a deterministic mocked API strategy using either MSW browser worker or Playwright route handlers in `e2e/support/mockApi.ts`.
-- [ ] Implement 5 golden paths listed in files above. Each test must assert visible page state and URL, not only network calls.
-- [ ] Run:
+- [x] Configure chromium only, `webServer` using `npm run preview` after `npm run build`, and a deterministic mocked API strategy using either MSW browser worker or Playwright route handlers in `e2e/support/mockApi.ts`.
+- [x] Implement 5 golden paths listed in files above. Each test must assert visible page state and URL, not only network calls.
+- [x] Run:
   ```bash
   cd web
   npx playwright install chromium
@@ -484,7 +484,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm run test:e2e
   ```
   Expected: Chromium project passes all golden paths.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "test: add chromium frontend golden paths"
@@ -616,6 +616,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 6 completed. Replaced `CockpitLayout` with route-owned cockpit/search shells, split topbar/side rail/mobile nav components, removed raw pathname branch patterns from app/cockpit/route files, and passed the Task 6 grep, `npm run typecheck`, `npm run lint`, and full Vitest.
 - 2026-05-13: Task 7 completed. Added the route-aware socket provider, ref-counted market target subscriptions, route-scoped live/search/token-target registrations, and backend regression coverage for replacing repeated `market_targets`; deleted the old socket hook and passed the Task 7 backend, grep, targeted Vitest, typecheck, lint, and full Vitest checks.
 - 2026-05-13: Task 8 completed. Replaced API client mocks/spies with MSW handlers, moved the monolithic App test into a feature integration test, added socket-provider test helpers, added route/component/a11y coverage with `jest-axe`, removed the app-integration Vitest project, and passed the no-App-test/no-API-mock grep, full Vitest, typecheck, and lint.
+- 2026-05-13: Task 9 completed. Added Playwright Chromium config, deterministic route-handler API mocks, and five golden paths for live cold load, topbar search, radar-to-token-target, signal-lab filters, and notification navigation; passed Chromium install, build, and full E2E.
 
 ## Decision Log
 
@@ -639,6 +640,9 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Add `@types/jest-axe` as a dev-only companion type package because `jest-axe` does not ship TypeScript declarations and Task 8's a11y tests must pass `tsc --noEmit`.
 - 2026-05-13: Keep the old App integration assertions by moving them to `features/live/__tests__/CockpitApp.integration.test.tsx`; this deletes the root `App.test.tsx` while preserving the matrix coverage under feature ownership.
 - 2026-05-13: Fix axe-detected DOM semantics while adding tests: skeleton rows now use `role="status"`, the search chart has `role="img"`, and internal Search side panels no longer use nested complementary landmarks.
+- 2026-05-13: Use Playwright route handlers instead of an in-browser MSW worker for Task 9 so the built `vite preview` app stays production-like while `/api/*` is fully deterministic inside each test.
+- 2026-05-13: Make Playwright's webServer run `npm run build && npm run preview`; the plan validation still runs `npm run build` explicitly, and `npm run test:e2e` is independently reproducible.
+- 2026-05-13: Expand Task 9 timeline/posts mock payloads to match the real token-target UI contract after Playwright surfaced ErrorBoundary crashes from missing `buckets`, `authors`, `stage.people`, and `post_quality` fields.
 
 ## Verification
 
