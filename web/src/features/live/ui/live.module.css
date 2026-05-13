@@ -254,56 +254,6 @@
   font-size: 9px;
 }
 
-/* Token Radar social heat rebuild */
-:global(.cockpit-grid) {
-  grid-template-columns: 184px minmax(0, 1fr) minmax(356px, 388px);
-}
-
-:global(.cockpit-grid.search-focus-mode) {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-:global(.cockpit-grid.search-focus-mode > .detail-task-panel),
-:global(.cockpit-grid.search-focus-mode > .responsive-control-panel) {
-  display: none;
-}
-
-:global(.cockpit-grid.search-focus-mode > .center-column) {
-  border-right: 0;
-}
-
-:global(.cockpit-grid.stocks-main-nav-mode) {
-  grid-template-columns: 184px minmax(0, 1fr);
-}
-
-:global(.cockpit-grid.stocks-main-nav-mode > .detail-task-panel) {
-  display: none;
-}
-
-:global(.cockpit-grid.stocks-main-nav-mode > .center-column) {
-  border-right: 0;
-}
-
-:global(.center-column) {
-  min-width: 0;
-  border-right: 1px solid var(--line);
-  background: rgba(7, 9, 9, 0.88);
-}
-
-:global(.responsive-control-panel),
-:global(.mobile-task-nav) {
-  display: none;
-}
-
-:global(.detail-task-panel) {
-  min-width: 0;
-  background: rgba(13, 17, 17, 0.96);
-}
-
-:global(.detail-task-panel > .detail-drawer) {
-  width: 100%;
-}
-
 :global(.bottom-deck > [data-mobile-task-panel]) {
   min-width: 0;
 }
@@ -1114,14 +1064,6 @@
   border-color: #71501e;
   color: #ffd184;
   background: var(--opportunity-soft);
-}
-
-@media (max-width: 1279px) {
-  :global(.cockpit-grid),
-  :global(.cockpit-grid.signal-lab-mode),
-  :global(.cockpit-grid.stocks-main-nav-mode) {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (max-width: 767px) {

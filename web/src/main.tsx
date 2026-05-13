@@ -11,14 +11,16 @@ import signalLabStyles from "./features/signal-lab/ui/signalLab.module.css";
 import stocksStyles from "./features/stocks/ui/stocks.module.css";
 import tokenTargetStyles from "./features/token-target/ui/tokenTarget.module.css";
 import watchlistStyles from "./features/watchlist/ui/watchlist.module.css";
+import obsidianStyles from "./shared/ui/obsidian.module.css";
 import sharedStyles from "./shared/ui/shared.module.css";
 
 document.documentElement.classList.add(
   ...[
+    sharedStyles.moduleKeep,
+    obsidianStyles.moduleKeep,
     cockpitStyles.moduleKeep,
     liveStyles.moduleKeep,
     searchStyles.moduleKeep,
-    sharedStyles.moduleKeep,
     signalLabStyles.moduleKeep,
     stocksStyles.moduleKeep,
     tokenTargetStyles.moduleKeep,
