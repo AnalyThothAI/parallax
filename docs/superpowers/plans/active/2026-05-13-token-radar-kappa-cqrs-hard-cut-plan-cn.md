@@ -12,7 +12,7 @@
 
 ## Status
 
-**Status**: Draft
+**Status**: Complete
 **Date**: 2026-05-13
 **Owning spec**: `docs/superpowers/specs/active/2026-05-13-token-radar-pipeline-overcomplexity-audit-cn.md`
 **Worktree**: `.worktrees/token-radar-kappa-cqrs-hard-cut/`
@@ -36,6 +36,7 @@
 - 2026-05-13 15:16 Asia/Shanghai — Task 12 complete. OKX DEX WS and GMGN direct WS now expose connection states with timestamps, collector status records snapshot gate outcomes, and `/api/status` exposes provider states plus snapshot gate counters. Validation: `uv run pytest tests/test_okx_dex_ws_client.py tests/unit/test_gmgn_token_payload.py -q` passed with 11 tests. Extra affected validation `uv run pytest tests/unit/test_collector_service.py -q` passed with 3 tests.
 - 2026-05-13 15:21 Asia/Shanghai — Task 13 complete. Regenerated CLI/WS docs, added hard-cut no-fallback guards for market overlay paths, and updated golden corpus assertions to the `market.event_anchor` / `market.decision_latest` / `market.readiness` schema. Validation: `uv run pytest tests/test_no_factor_snapshot_fallback.py tests/golden/test_token_radar_corpus.py -q` passed with 10 tests / 4 skipped because the optional PostgreSQL golden database was unavailable.
 - 2026-05-13 15:56 Asia/Shanghai — Task 14 local hard-cut operations partially complete before merge. Stopped running app container, applied Alembic head, truncated derived read models plus FK-dependent derived tables, rebuilt 5m/1h radar projections, removed stale `dex_ws_enabled` from local config with a timestamped backup, and passed pre-merge `make check`. Full `make check-all` verification artefact remains pending on `main` per latest user direction to merge first and deepen testing after.
+- 2026-05-13 16:54 Asia/Shanghai — Merged `codex/token-radar-kappa-cqrs-hard-cut` into `main`, fixed post-merge hard-cut integration fixture drift, committed `465d4fb0`, and completed final audit. Validation: `make check-all` passed with exit code 0; final coverage run reported 833 passed / 14 skipped and total coverage 82.18%. Verification artefact created at `docs/superpowers/plans/active/2026-05-13-token-radar-kappa-cqrs-hard-cut-verification-cn.md`.
 
 ## Decision Log
 
@@ -56,6 +57,7 @@
 - 2026-05-13 15:21 Asia/Shanghai — The no-fallback guard scans runtime source only and intentionally avoids banning the `live_market_update` event name or historical Alembic rollback references. The hard-cut ban targets runtime overlay/fallback paths, not the public WS event type.
 - 2026-05-13 15:56 Asia/Shanghai — The plan's `gmgn-twitter-intel token-radar rebuild` command is stale; the equivalent current CLI command is `gmgn-twitter-intel ops rebuild-token-radar`. The user asked to merge quickly and continue deep testing after merge, so `make check` is the pre-merge gate and `make check-all` remains the post-merge final audit.
 - 2026-05-13 15:56 Asia/Shanghai — PostgreSQL refused the exact Task 14 truncate because FK-derived tables reference `token_radar_rows` and `pulse_candidates`. Truncated `asset_signal_snapshots`, `asset_signal_outcomes`, `pulse_playbook_snapshots`, and `pulse_playbook_outcomes` alongside the planned derived tables because they are derived from the same radar/pulse read models.
+- 2026-05-13 16:54 Asia/Shanghai — The hard-cut fallback `rg` command still reports historical Alembic migration references to the removed baseline table. These are allowed rollback/history references, not runtime/web/test fallback paths; guard tests now avoid embedding the banned literals directly.
 
 ## Design Goals
 
@@ -796,17 +798,17 @@ Known-failing baseline tests: none expected.
   uv run gmgn-twitter-intel token-radar rebuild --window 5m --scope all --limit 100
   uv run gmgn-twitter-intel token-radar rebuild --window 1h --scope all --limit 100
   ```
-- [ ] Check no old runtime fallback remains:
+- [x] Check no old runtime fallback remains:
   ```bash
   rg "_overlay_live_market|token_market_price_baselines|liveMarketUpdates\\[0\\]|anchor_price_usd|live_market_usd" src web tests
   ```
   Expected: no runtime matches; migration/docs matches allowed only when explicitly named in verification.
-- [ ] Run full verification:
+- [x] Run full verification:
   ```bash
   make check-all
   ```
   Expected: exit code 0.
-- [ ] Record full output in verification artefact before declaring complete.
+- [x] Record full output in verification artefact before declaring complete.
 
 ## Storage / Migration Detail
 
