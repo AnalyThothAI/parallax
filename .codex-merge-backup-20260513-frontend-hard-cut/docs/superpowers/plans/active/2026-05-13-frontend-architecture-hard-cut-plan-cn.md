@@ -1,0 +1,618 @@
+# Frontend Architecture Hard Cut Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 用一个 hard-cut implementation plan 完成 `web/` 前端架构、状态所有权、API 契约、测试金字塔、CSS/a11y 的生产级重构。
+
+**Architecture:** URL owns shareable route/filter state, React Query owns server state, Zustand owns only non-shareable local interaction state, and a route-aware WebSocket provider owns socket lifecycle/subscriptions. Code is reorganized into `lib -> shared -> features -> routes -> app`, guarded by lint rules and verified by unit/component/integration/e2e tests.
+
+**Tech Stack:** React 19, React Router 6, TanStack Query 5, Zustand 5, Vite 8, TypeScript 5.9, Vitest, Testing Library, MSW, Playwright Chromium, FastAPI OpenAPI, `openapi-typescript`, Tailwind v4.
+
+---
+
+## Status
+
+**Status**: Draft  
+**Date**: 2026-05-13  
+**Owning spec**: `docs/superpowers/specs/active/2026-05-13-frontend-architecture-audit-and-target-cn.md`  
+**Worktree**: `.worktrees/frontend-architecture-hard-cut/`  
+**Branch**: `codex/frontend-architecture-hard-cut`
+
+## Scope
+
+In scope:
+
+- Frontend code under `web/src/`, `web/vite.config.ts`, `web/tsconfig.json`, `web/eslint.config.js`, `web/package.json`, `web/package-lock.json`.
+- Contract-generation plumbing for frontend-consumed API response schemas: `src/gmgn_twitter_intel/app/surfaces/api/http.py`, a new API schema module, `scripts/regen_openapi.py`, `Makefile`, and `tests/contract/test_openapi_drift.py`.
+- Generated contract artefacts: `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`.
+- Frontend tests, MSW fixtures, Playwright smoke tests, and verification artefact.
+
+Out of scope:
+
+- Backend business logic, ranking/scoring formulas, database schema, public route paths, or HTTP/WS payload semantics.
+- SSR, Next.js, React Server Components, UI kits, Storybook, visual regression, Sentry/OpenTelemetry, bundle-size budgets, and React compiler.
+
+## Design Goals
+
+- **DG1 URL-first**: `window`, `scope`, `handles`, `q/search`, and `sort` are read from URL state and are never mirrored in Zustand.
+- **DG2 RQ-first server data**: HTTP and WS server data enters React Query cache through feature API hooks and shared cache patch helpers.
+- **DG3 small Zustand**: keep only local interaction fields such as detail tab/window/mode, selected bucket/event, post range/sort, duplicate/watch filters, notification drawer, and mobile task.
+- **DG4 route-owned layout**: routes choose shell/layout; `CockpitLayout` and pathname-based layout branching are deleted.
+- **DG5 generated API types**: frontend payload types come from OpenAPI-generated TS plus a facade; the current hand-written `web/src/api/types.ts` is deleted.
+- **DG6 route-aware socket**: one authenticated socket provider stays mounted, while feature subscriptions are registered/released by active routes.
+- **DG7 mechanical boundaries**: aliases and ESLint prevent reverse imports and cross-feature deep imports.
+- **DG8 testable end-to-end**: Vitest covers pure logic and components; MSW covers route integrations; Playwright covers 5 golden paths in Chromium.
+- **DG9 accessible UI states**: every loading/empty/error/stale state uses shared `RemoteState`; icon buttons/search/status controls pass lint and axe checks.
+- **DG10 single plan, many tasks**: implement in one branch and one PR, but follow the task order below with reviewable commits after each task group.
+
+## Current Critical Findings
+
+- `docs/generated/openapi.json` currently has only validation schemas; most `/api/*` 200 responses generate as `unknown` in `web/src/api/openapi.ts`. Therefore OpenAPI single-source typing requires adding FastAPI response models for frontend-consumed endpoints before deleting `web/src/api/types.ts`.
+- `PublicWebSocketHub._handle_client_message()` already replaces `client.market_targets` on every `subscribe` frame, so frontend route-aware subscription updates can use repeated `subscribe` messages without backend protocol changes.
+- `web/src/App.test.tsx` is 3144 lines in the current checkout, so the test split is larger than the spec snapshot and must start with a case matrix before deleting assertions.
+
+## Directory / File Role Map
+
+### Contract and Backend Surface Typing
+
+| Path | Role | Target state |
+|---|---|---|
+| `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` | FastAPI OpenAPI models | New Pydantic models for frontend-consumed envelope/data payloads; no runtime business decisions. |
+| `src/gmgn_twitter_intel/app/surfaces/api/http.py` | HTTP route declarations | Add `response_model=ApiEnvelope[ConcreteDataModel]` for consumed endpoints; keep response payload values unchanged. |
+| `scripts/regen_openapi.py` | Contract generator | Still writes `docs/generated/openapi.json`; no local config dependency. |
+| `Makefile` | Contract command | `regen-contract` generates `docs/generated/openapi.json` and `web/src/lib/types/openapi.ts`. |
+| `tests/contract/test_openapi_drift.py` | Contract drift guard | Compare committed OpenAPI JSON and generated TS at new path. |
+
+### Frontend Layers
+
+| Path | Role | Target state |
+|---|---|---|
+| `web/src/lib/api/client.ts` | HTTP client | Fetch client, `ApiError`, auth token closure, `getBootstrap`, `setAuthToken`, `websocketUrl`. |
+| `web/src/lib/env/env.ts` | Env parser | Typed `VITE_API_BASE_URL`, `VITE_WS_URL`, `MODE` parsing with safe same-origin defaults. |
+| `web/src/lib/types/openapi.ts` | Generated types | Output from `openapi-typescript`; ignored by handwritten lint rules only as generated artefact. |
+| `web/src/lib/types/index.ts` | Type facade | Business aliases exported from generated OpenAPI types; UI-only unions live in `web/src/features/*/state` or `shared/routing`, not in generated file. |
+| `web/src/shared/query/queryKeys.ts` | Query keys | One query-key factory used by every feature API hook. |
+| `web/src/shared/query/patchMarketUpdate.ts` | RQ cache patch | Single path for WS market delta patches. |
+| `web/src/shared/socket/IntelSocketProvider.tsx` | Socket lifecycle | Auth, ready state, event fan-out, notification fan-out, market subscription registry. |
+| `web/src/shared/socket/useMarketSubscription.ts` | Subscription hook | Register/release `TargetRef[]` with ref-counting. |
+| `web/src/shared/routing/paths.ts` | Navigation contracts | Typed route builders for live, search, stocks, signal-lab, pulse, token-target. |
+| `web/src/shared/ui/RemoteState.tsx` | Async UI primitive | Loading, Empty, Error, Stale components for route/panel/inline states. |
+| `web/src/shared/ui/ErrorBoundary.tsx` | Error boundary | Route and app fallback UI. |
+| `web/src/shared/ui/IconButton.tsx` | a11y primitive | Icon button with required `aria-label`. |
+| `web/src/shared/format/*` | Formatting | Move current `web/src/lib/format.ts`, `gmgn.ts`, `venue.ts`, `watchlist.ts` as needed. |
+| `web/src/features/live/{api,model,state,ui}/` | Live radar/tape/detail | Own live queries, route state, selection slice, radar/tape/detail UI. |
+| `web/src/features/search/{api,model,state,ui}/` | Search Intel | Own search URL state, inspect query, token/topic/ambiguous UI. |
+| `web/src/features/signal-lab/{api,model,state,ui}/` | Signal Lab | Own pulse list/detail/account events route state and UI. |
+| `web/src/features/stocks/{api,model,state,ui}/` | Stocks radar | Own stocks query, route state, page UI. |
+| `web/src/features/token-target/{api,model,state,ui}/` | Token target | Own target route state, timeline/posts/radar-row query, page UI. |
+| `web/src/features/notifications/{api,state,ui}/` | Notifications | Own notification queries/mutations, drawer/toast state and routing. |
+| `web/src/features/cockpit/{state,ui}/` | Shell controls | Topbar, side rail, mobile nav, cockpit shell state. |
+| `web/src/routes/*.route.tsx` | Route entries | Shell choice, route boundary, Suspense fallback; no direct `useQuery` or `getApi`. |
+| `web/src/app/AppRoot.tsx` | App providers | QueryClient, BrowserRouter, socket provider, top-level error boundary. |
+| `web/src/app/AppRoutes.tsx` | Route table | Lazy route imports and redirect fallback only. |
+| `web/src/main.tsx` | DOM mount | Render `<AppRoot />` and global styles. |
+| `web/src/styles/{tokens,base,tailwind}.css` | Global CSS | Tokens/reset/tailwind entry only. |
+| `web/src/**/*.module.css` | Component CSS | Local CSS modules for semantic classes that are too long for utilities. |
+
+## Target Task Order
+
+The plan is a single implementation plan and should ship as one final PR, but tasks are ordered so each commit is reviewable and verifiable.
+
+### Task 0 — Worktree, Baseline, and Test Matrix
+
+**Files:**
+- Create: `docs/superpowers/plans/active/2026-05-13-frontend-architecture-hard-cut-verification.md`
+- Create: `web/src/test/app-test-case-matrix.md`
+
+- [ ] Create implementation worktree:
+  ```bash
+  git worktree add .worktrees/frontend-architecture-hard-cut -b codex/frontend-architecture-hard-cut main
+  git worktree list
+  git -C .worktrees/frontend-architecture-hard-cut branch --show-current
+  git -C .worktrees/frontend-architecture-hard-cut status --short
+  ```
+  Expected: branch is `codex/frontend-architecture-hard-cut`; status is clean except files intentionally changed by this task.
+- [ ] Run baseline frontend gates:
+  ```bash
+  cd .worktrees/frontend-architecture-hard-cut/web
+  npm install
+  npm run typecheck
+  npm test -- --run
+  npm run build
+  npm run lint
+  ```
+  Expected: all pass, or failures are copied verbatim into the verification file as baseline failures.
+- [ ] Run backend/contract baseline relevant to OpenAPI:
+  ```bash
+  cd .worktrees/frontend-architecture-hard-cut
+  make contract-check
+  ```
+  Expected: pass, or pre-existing drift is recorded before Task 1 changes contracts.
+- [ ] Build `web/src/test/app-test-case-matrix.md` by listing every `test(name, callback)` / `it(name, callback)` entry in `web/src/App.test.tsx` and assigning each to L0/L1/L2/L3 or deletion with reason.
+- [ ] Commit:
+  ```bash
+  git add docs/superpowers/plans/active/2026-05-13-frontend-architecture-hard-cut-verification.md web/src/test/app-test-case-matrix.md
+  git commit -m "test: record frontend refactor baseline"
+  ```
+
+### Task 1 — OpenAPI Response Models and Generated Type Path
+
+**Files:**
+- Create: `src/gmgn_twitter_intel/app/surfaces/api/schemas.py`
+- Modify: `src/gmgn_twitter_intel/app/surfaces/api/http.py`
+- Modify: `Makefile`
+- Modify: `web/package.json`
+- Modify: `tests/contract/test_openapi_drift.py`
+- Generate: `docs/generated/openapi.json`
+- Generate: `web/src/lib/types/openapi.ts`
+
+- [ ] In `schemas.py`, add `ApiEnvelope[T]` plus Pydantic models for every frontend-consumed endpoint: bootstrap, status, recent, search, search inspect, token radar, stocks radar, live market, target posts, target social timeline, account alerts, account quality, notifications, notification summary, notification read mutation, notification read-all mutation, signal pulse list, signal pulse detail.
+- [ ] Set Pydantic models to preserve existing payload compatibility: `model_config = ConfigDict(extra="allow", populate_by_name=True)` for extensible blocks; use explicit field names for fields already consumed by `web/src`.
+- [ ] In `http.py`, add `response_model=ApiEnvelope[ConcreteDataModel]` on the endpoints consumed by the frontend. Keep return values and status codes unchanged.
+- [ ] Change `web/package.json` `generate:types` output from `src/api/openapi.ts` to `src/lib/types/openapi.ts`.
+- [ ] Change `Makefile regen-contract` to run the updated `web` generation command.
+- [ ] Update `tests/contract/test_openapi_drift.py` paths and comments so generated TS is checked at `web/src/lib/types/openapi.ts`.
+- [ ] Run:
+  ```bash
+  make regen-contract
+  rg -n '"application/json": unknown|content: \\{\\s*"application/json": unknown' web/src/lib/types/openapi.ts
+  make contract-check
+  ```
+  Expected: no `unknown` 200 responses for frontend-consumed `/api/*` endpoints; contract tests pass.
+- [ ] Commit:
+  ```bash
+  git add src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/app/surfaces/api/http.py Makefile web/package.json web/package-lock.json tests/contract/test_openapi_drift.py docs/generated/openapi.json web/src/lib/types/openapi.ts
+  git commit -m "build: generate typed frontend api contracts"
+  ```
+
+### Task 2 — Frontend DX Scaffold, Aliases, Env, App Root
+
+**Files:**
+- Create: `web/src/lib/env/env.ts`
+- Create: `web/src/lib/api/client.ts`
+- Create: `web/src/lib/types/index.ts`
+- Create: `web/src/shared/ui/ErrorBoundary.tsx`
+- Create: `web/src/shared/ui/RouteFallback.tsx`
+- Create: `web/src/app/AppRoot.tsx`
+- Create: `web/src/app/AppRoutes.tsx`
+- Create: `web/src/routes/live.route.tsx`
+- Create: `web/src/routes/search.route.tsx`
+- Create: `web/src/routes/stocks.route.tsx`
+- Create: `web/src/routes/signal-lab.route.tsx`
+- Create: `web/src/routes/signal-lab.pulse.route.tsx`
+- Create: `web/src/routes/token-target.route.tsx`
+- Modify: `web/src/App.tsx`
+- Modify: `web/src/main.tsx`
+- Modify: `web/tsconfig.json`
+- Modify: `web/vite.config.ts`
+- Modify: `web/eslint.config.js`
+- Modify: `web/package.json`
+
+- [ ] Add path aliases in `tsconfig.json` and `vite.config.ts`: `@app/*`, `@routes/*`, `@features/*`, `@shared/*`, `@lib/*`.
+- [ ] Add `web/src/lib/env/env.ts` with typed same-origin defaults:
+  - `apiBaseUrl`: `import.meta.env.VITE_API_BASE_URL || window.location.origin`
+  - `wsUrl`: `import.meta.env.VITE_WS_URL || ws(same host)`
+  - `mode`: `import.meta.env.MODE`
+- [ ] Move `web/src/api/client.ts` behavior into `web/src/lib/api/client.ts`; add closure auth helpers:
+  - `setAuthToken(token: string | null): void`
+  - `getAuthToken(): string | null`
+  - `getApi<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>>`
+  - `postApi<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>>`
+  - `getBootstrap(): Promise<ApiResponse<BootstrapData>>`
+  - `websocketUrl(): string`
+- [ ] Create `web/src/lib/types/index.ts` facade from generated OpenAPI types and local UI unions. Any type still not representable from OpenAPI must be listed in a `// local-ui-contract` section with a line comment explaining why it is not part of HTTP schema.
+- [ ] Add app and route error boundaries. Route files may temporarily import old `web/src/components/*` so Task 2 is behavior-preserving.
+- [ ] Enable ESLint plugins/rules in staged mode:
+  - `react-refresh/only-export-components`: error
+  - `jsx-a11y/recommended`: warn during this task
+  - `import/no-restricted-paths`: lib/shared zones only during this task
+- [ ] Run:
+  ```bash
+  cd web
+  npm run typecheck
+  npm run lint
+  npm test -- --run
+  npm run build
+  ```
+  Expected: pass with no lint warnings because `npm run lint` uses `--max-warnings=0`.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "refactor: add frontend app root and typed client scaffold"
+  ```
+
+### Task 3 — Query Keys and Feature API Hook Migration
+
+**Files:**
+- Create: `web/src/shared/query/queryKeys.ts`
+- Create: `web/src/shared/query/patchMarketUpdate.ts`
+- Create/modify: `web/src/features/live/api/*`
+- Create/modify: `web/src/features/search/api/*`
+- Create/modify: `web/src/features/signal-lab/api/*`
+- Create/modify: `web/src/features/stocks/api/*`
+- Create/modify: `web/src/features/token-target/api/*`
+- Create/modify: `web/src/features/notifications/api/*`
+- Modify/delete: `web/src/api/*`
+- Modify: `web/src/features/live/liveMarketUpdatePatch.ts`
+- Modify tests that spy on old `web/src/api/client.ts`
+
+- [ ] Add query key factories for bootstrap, status, live recent, token radar, signal pulse list/detail, search inspect, stocks radar, target timeline, target posts, account quality, notifications, notification summary.
+- [ ] Move each React Query hook from `web/src/api/*` or feature root files into the owning `features/*/api/` directory.
+- [ ] Convert every hook to import `getApi/postApi` from `@lib/api/client` and keys from `@shared/query/queryKeys`.
+- [ ] Move `patchTokenRadarLiveMarketUpdate` to `@shared/query/patchMarketUpdate` or make the current live patch a thin wrapper around the shared helper.
+- [ ] Delete `web/src/api/client.ts`, `web/src/api/openapi.ts`, and `web/src/api/types.ts` only after all imports use `@lib/api` and `@lib/types`.
+- [ ] Run:
+  ```bash
+  cd web
+  rg -n 'from "[.][./].*/api/types"|from "[.][./].*/api/client"|src/api/types|src/api/client|src/api/openapi' src
+  rg -n 'useQuery\\(|useMutation\\(|useInfiniteQuery\\(' src/features/*/ui src/features/*/state src/features/*/model src/routes src/shared/ui
+  rg -n 'getApi|postApi|setQueryData|setQueriesData' src/features/*/ui src/features/*/state src/features/*/model src/routes src/shared/ui
+  npm run typecheck
+  npm test -- --run
+  ```
+  Expected: all `rg` commands have no matches except tests explicitly listed in `app-test-case-matrix.md`; typecheck/tests pass.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "refactor: move server data access behind feature api hooks"
+  ```
+
+### Task 4 — URL State and Zustand Store Shrink
+
+**Files:**
+- Create: `web/src/shared/routing/searchParams.ts`
+- Create: `web/src/shared/routing/paths.ts`
+- Create/modify: `web/src/features/live/state/liveRouteState.ts`
+- Create/modify: `web/src/features/search/state/searchRouteState.ts`
+- Create/modify: `web/src/features/signal-lab/state/signalLabRouteState.ts`
+- Create/modify: `web/src/features/stocks/state/stocksRouteState.ts`
+- Create/modify: `web/src/features/token-target/state/tokenTargetRouteState.ts`
+- Create/modify: `web/src/features/cockpit/state/cockpitStore.ts`
+- Create/modify: `web/src/features/live/state/liveSelectionSlice.ts`
+- Delete: `web/src/store/useTraderStore.ts`
+- Modify: every consumer of `useTraderStore`
+
+- [ ] Move route defaults and validation into per-feature state modules:
+  - live: `window`, `scope`, `handles`, `sort`
+  - search: `q`, `window`, `scope`
+  - signal-lab: `window`, `scope`, `status`, `handle`, `q`
+  - stocks: `window`, `scope`
+  - token-target: `window`, `scope`, `tab`, `postRange`, `postSort`
+- [ ] Introduce `paths` builders for all app routes. No component should string-concatenate route URLs after this task.
+- [ ] Replace topbar search store state with local component state; submit writes URL through `paths.search({ q, window, scope })` or updates current Signal Lab search params.
+- [ ] Split local state:
+  - `features/live/state/liveSelectionSlice.ts`: detail tab/window/mode, selected bucket/event, post range/sort, duplicate/watch filters.
+  - `features/cockpit/state/cockpitStore.ts`: mobile task and shell-local UI only.
+  - `features/notifications/state/notificationStore.ts`: drawer open state only if local component state is not sufficient.
+- [ ] Remove auth token from Zustand. Bootstrap query calls `setAuthToken(ws_token)` in `@lib/api/client`; API hooks use client auth implicitly.
+- [ ] Delete `web/src/store/useTraderStore.ts`.
+- [ ] Add/update tests:
+  - `web/src/features/live/state/liveRouteState.test.ts`
+  - `web/src/features/search/state/searchRouteState.test.ts`
+  - `web/src/features/signal-lab/state/signalLabRouteState.test.ts`
+  - `web/src/features/token-target/state/tokenTargetRouteState.test.ts`
+- [ ] Run:
+  ```bash
+  cd web
+  rg -n 'useTraderStore|setToken|setWindow|setScope|setHandles|setSearch|setRadarSortMode|state\\.token|state\\.window|state\\.scope|state\\.handles|state\\.search|state\\.radarSortMode' src
+  npm run typecheck
+  npm test -- --run src/features/live/state src/features/search src/features/signal-lab src/features/token-target
+  npm test -- --run
+  ```
+  Expected: `rg` has no matches; all tests pass.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "refactor: make route filters url-owned"
+  ```
+
+### Task 5 — Feature Directory Hard Cut and Component Ownership
+
+**Files:**
+- Move/delete: `web/src/components/*`
+- Create/modify: `web/src/features/*/ui/*`
+- Create/modify: `web/src/features/*/model/*`
+- Create/modify: `web/src/features/*/index.ts`
+- Move/modify: component tests from `web/src/components/**` to matching feature folders
+
+- [ ] Move live UI components into `features/live/ui/`: `LivePage`, `LiveRadar`, `LiveSignalTape`, `TokenRadarRow`, `TokenRadarTable`, `TokenDetailDrawer`, `TokenTimeline`, `TokenPostsPanel`, `TokenReplayFocus`, score ledger components if they are live/token-radar specific.
+- [ ] Move search UI components into `features/search/ui/`: `SearchIntelPage`, `SearchAgentBrief`, `SearchTimelinePanel`, `SearchTwitterResults`.
+- [ ] Move signal-lab UI components into `features/signal-lab/ui/`: `SignalLabPage`, `SignalLabPulse`, `SignalLabWorkbench`, `SignalLabInspector`, `PulseDetailPage`.
+- [ ] Move stocks UI components into `features/stocks/ui/`: `StocksRadarPage`.
+- [ ] Move token-target UI components into `features/token-target/ui/`: `TokenTargetPage` and target-specific subpanels not shared with live.
+- [ ] Move notifications UI into `features/notifications/ui/`: `NotificationBell`, `NotificationDrawer`, `NotificationToastBridge`, `WatchlistNotificationDot` if still notification-specific.
+- [ ] Move reusable UI into `shared/ui/`: `DecisionTag`, generic `ScoreLedger` only if used across multiple features, `RemoteState`, `IconButton`, segmented controls.
+- [ ] Each feature exposes only intended public entries through `features/<feature>/index.ts`.
+- [ ] Enable `import/no-restricted-paths` full feature-zone rules and no cross-feature deep import rule.
+- [ ] Run:
+  ```bash
+  cd web
+  test ! -d src/components
+  rg -n 'from "@features/[^"]+/(api|model|state|ui)/|from "[.][./].*/features/[^"]+/(api|model|state|ui)/' src
+  npm run lint
+  npm run typecheck
+  npm test -- --run
+  ```
+  Expected: `src/components` does not exist; no cross-feature deep imports; lint/typecheck/tests pass.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "refactor: assign frontend components to feature owners"
+  ```
+
+### Task 6 — Cockpit Shell Split and Route Layout Ownership
+
+**Files:**
+- Create: `web/src/features/cockpit/ui/CockpitShell.tsx`
+- Create: `web/src/features/cockpit/ui/SearchShell.tsx`
+- Create: `web/src/features/cockpit/ui/CockpitTopbar.tsx`
+- Create: `web/src/features/cockpit/ui/CockpitSideRail.tsx`
+- Create: `web/src/features/cockpit/ui/CockpitMobileNav.tsx`
+- Create: `web/src/features/cockpit/ui/RadarControls.tsx`
+- Delete: `web/src/features/cockpit/ui/CockpitLayout.tsx` if created by move, or old `web/src/components/CockpitLayout.tsx`
+- Modify: `web/src/routes/*.route.tsx`
+- Modify: `web/src/app/AppRoutes.tsx`
+
+- [ ] `CockpitShell` renders common topbar, side rail, mobile nav, notification drawer/toast, and an `<Outlet />`. It must not branch on raw pathname except through typed route helpers for active nav state.
+- [ ] `SearchShell` renders the topbar and search-focused outlet without the live side rail/detail panel.
+- [ ] `CockpitTopbar` owns search input draft state and submit navigation. It reads status/socket summary through small hooks, not props from `CockpitApp`.
+- [ ] `CockpitSideRail` owns view links, scope/handle controls, decision counts, and watchlist links through feature hooks.
+- [ ] `CockpitMobileNav` derives route-safe task availability from typed route state and cockpit store.
+- [ ] Delete `CockpitLayout`; no successor component may accept more than 10 props.
+- [ ] Run:
+  ```bash
+  cd web
+  rg -n 'CockpitLayout|pathname\\.startsWith\\(|isSearch|isStocks|isSignalLab|isLive' src/features/cockpit src/routes src/app
+  npm run typecheck
+  npm test -- --run
+  ```
+  Expected: no deleted layout/pathname-branch patterns; typecheck/tests pass.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "refactor: split cockpit shell by route ownership"
+  ```
+
+### Task 7 — Route-Aware WebSocket Provider and Cache Patch Path
+
+**Files:**
+- Create: `web/src/shared/socket/IntelSocketProvider.tsx`
+- Create: `web/src/shared/socket/socketTypes.ts`
+- Create: `web/src/shared/socket/useMarketSubscription.ts`
+- Modify: `web/src/app/AppRoot.tsx`
+- Modify: `web/src/features/live/api/*`
+- Modify: `web/src/features/search/api/*`
+- Modify: `web/src/features/token-target/api/*`
+- Modify: `web/src/features/notifications/*`
+- Delete: old `web/src/api/useIntelSocket.ts` if still present
+- Test: `web/src/shared/socket/IntelSocketProvider.test.tsx`
+- Test: `tests/integration/test_api_websocket.py`
+
+- [ ] Add a backend regression test proving repeated `subscribe` frames replace `market_targets` and do not union stale targets.
+- [ ] Implement one mounted socket provider that authenticates once after bootstrap token is available, keeps status/lastMessageAt, emits event and notification streams, and sends a new subscribe frame whenever handles/replay/notifications/market target registry changes.
+- [ ] Implement `useMarketSubscription(targets)` with deterministic keying, ref-count add/remove, and cleanup on unmount.
+- [ ] Live route registers visible radar market targets only while the live route is mounted.
+- [ ] Token target route registers the current target.
+- [ ] Search route registers selected target only for `token_result` after inspect data resolves.
+- [ ] Signal Lab and Stocks register no market targets.
+- [ ] All WS market updates call `patchMarketUpdate(queryClient, payload)`; components never read raw `socket.liveMarketUpdates`.
+- [ ] Run:
+  ```bash
+  uv run pytest tests/integration/test_api_websocket.py -q
+  cd web
+  rg -n 'useIntelSocket|liveMarketUpdates|socket\\.events|socket\\.notifications' src/features src/routes src/app
+  npm test -- --run src/shared/socket src/features/live src/features/search src/features/token-target
+  npm run typecheck
+  ```
+  Expected: backend test passes; frontend `rg` only matches provider/context internals or approved tests; frontend tests/typecheck pass.
+- [ ] Commit:
+  ```bash
+  git add src/gmgn_twitter_intel/app/surfaces/api/ws.py tests/integration/test_api_websocket.py web
+  git commit -m "refactor: make websocket subscriptions route-aware"
+  ```
+
+### Task 8 — MSW Integration Tests and App Test Deletion
+
+**Files:**
+- Create: `web/src/test/msw/handlers.ts`
+- Create: `web/src/test/msw/server.ts`
+- Create: `web/src/test/msw/fixtures.ts`
+- Modify: `web/src/test/setup.ts`
+- Create/modify: `web/src/features/*/__tests__/*.integration.test.tsx`
+- Create/modify: `web/src/features/*/ui/*.test.tsx`
+- Delete or shrink: `web/src/App.test.tsx`
+- Modify: `web/vite.config.ts`
+- Modify: `web/package.json`
+- Modify: `web/package-lock.json`
+
+- [ ] Add dev dependencies: `msw`, `jest-axe`, `axe-core`.
+- [ ] Set up MSW node server in Vitest setup with `beforeAll(server.listen)`, `afterEach(server.resetHandlers)`, `afterAll(server.close)`.
+- [ ] Replace module mocks of `api/client` and `useIntelSocket` with MSW handlers and socket-provider test helpers.
+- [ ] Split `App.test.tsx` according to `web/src/test/app-test-case-matrix.md`.
+- [ ] Required L2 route integration tests:
+  - cold `/` renders radar/tape and URL filters;
+  - topbar search navigates to `/search?q=<submitted-query>`;
+  - radar row navigates to token target/search route according to product contract;
+  - cold `/signal-lab` applies URL filters and does not auto-redirect;
+  - `/signal-lab/pulse/:candidateId` renders list plus detail;
+  - `/stocks` renders stocks rows and sends no market subscription;
+  - notification click navigates to the expected route.
+- [ ] Required L1 component/a11y tests:
+  - `CockpitTopbar`, `CockpitSideRail`, `RemoteState`, `IconButton`;
+  - one public UI component per feature directory;
+  - each includes `expect(await axe(container)).toHaveNoViolations()` where DOM is meaningful.
+- [ ] Remove the `app-integration` Vitest project from `vite.config.ts`.
+- [ ] Run:
+  ```bash
+  cd web
+  wc -l src/App.test.tsx 2>/dev/null || true
+  rg -n 'vi\\.mock\\(".*api/client|vi\\.mock\\(".*useIntelSocket|vi\\.spyOn\\(client, "getApi"|vi\\.spyOn\\(client, "postApi"' src
+  npm test -- --run
+  npm run typecheck
+  ```
+  Expected: `App.test.tsx` is deleted or under 100 lines; no API module mocks/spies remain; tests/typecheck pass.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "test: rebuild frontend test pyramid with msw"
+  ```
+
+### Task 9 — Playwright Chromium Golden Paths
+
+**Files:**
+- Create: `web/playwright.config.ts`
+- Create: `web/e2e/golden-paths/live-cold-load.spec.ts`
+- Create: `web/e2e/golden-paths/search-submit.spec.ts`
+- Create: `web/e2e/golden-paths/radar-to-token-target.spec.ts`
+- Create: `web/e2e/golden-paths/signal-lab-filters.spec.ts`
+- Create: `web/e2e/golden-paths/notification-navigation.spec.ts`
+- Create: `web/e2e/support/mockApi.ts`
+- Modify: `web/package.json`
+- Modify: `web/package-lock.json`
+
+- [ ] Add dev dependency `@playwright/test`.
+- [ ] Add scripts:
+  - `test:e2e`: `playwright test`
+  - `test:e2e:headed`: `playwright test --headed`
+- [ ] Configure chromium only, `webServer` using `npm run preview` after `npm run build`, and a deterministic mocked API strategy using either MSW browser worker or Playwright route handlers in `e2e/support/mockApi.ts`.
+- [ ] Implement 5 golden paths listed in files above. Each test must assert visible page state and URL, not only network calls.
+- [ ] Run:
+  ```bash
+  cd web
+  npx playwright install chromium
+  npm run build
+  npm run test:e2e
+  ```
+  Expected: Chromium project passes all golden paths.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "test: add chromium frontend golden paths"
+  ```
+
+### Task 10 — RemoteState, CSS Modules, Tailwind Tokens, a11y Error Gate
+
+**Files:**
+- Create: `web/src/styles/tokens.css`
+- Create: `web/src/styles/base.css`
+- Create: `web/src/styles/tailwind.css`
+- Delete: `web/src/styles.css`
+- Create/modify: feature-local `*.module.css`
+- Modify: `web/src/main.tsx`
+- Modify: `web/src/shared/ui/RemoteState.tsx`
+- Modify: `web/src/shared/ui/IconButton.tsx`
+- Modify: all components with text loading states, icon-only buttons, string-concat className
+- Modify: `web/eslint.config.js`
+- Modify: `web/package.json`
+- Modify: `web/package-lock.json`
+
+- [ ] Add dependency `clsx`.
+- [ ] Expand `RemoteState` API:
+  - `RemoteState.Loading({ layout: "route" | "panel" | "inline", rows, label })`
+  - `RemoteState.Empty({ title, hint, action })`
+  - `RemoteState.Error({ error, onRetry })`
+  - `RemoteState.Stale({ updating, children })`
+- [ ] Replace text-only loading/empty/error states in live, search, signal-lab, stocks, token-target, notifications.
+- [ ] Replace template-literal `className` conditionals with `clsx` and/or typed variant maps.
+- [ ] Keep global CSS only in `styles/tokens.css`, `styles/base.css`, and `styles/tailwind.css`; move page/component selectors to feature-local modules or Tailwind utilities.
+- [ ] Add labels/aria:
+  - topbar search input has a visible or screen-reader label;
+  - status pill region uses `aria-live="polite"`;
+  - every icon-only button uses `IconButton` with explicit `aria-label`.
+- [ ] Raise `jsx-a11y/recommended` to error.
+- [ ] Run:
+  ```bash
+  cd web
+  test ! -f src/styles.css
+  rg -n 'className=\\{`.*\\$\\{|>loading<|loading\\.\\.\\.|"loading search intel"|<button[^>]*>\\s*<[^>]*(Icon|Search|Refresh|Bell|Home)' src
+  npm run lint
+  npm test -- --run
+  npm run typecheck
+  npm run build
+  ```
+  Expected: `styles.css` is deleted; grep has no matches except approved tests/fixtures; lint/tests/typecheck/build pass.
+- [ ] Commit:
+  ```bash
+  git add web
+  git commit -m "style: localize frontend css and harden a11y states"
+  ```
+
+### Task 11 — Documentation, Final Gates, and Manual UI Verification
+
+**Files:**
+- Modify: `docs/FRONTEND.md`
+- Modify: `docs/CONTRACTS.md` only if OpenAPI response model documentation needs to name generation behavior
+- Modify: `docs/superpowers/plans/active/2026-05-13-frontend-architecture-hard-cut-verification.md`
+- Modify: `docs/TECH_DEBT.md` only for non-trivial follow-ups discovered during execution
+
+- [ ] Update `docs/FRONTEND.md` layer map from old `api/domain/store/components` to new `lib/shared/features/routes/app`.
+- [ ] Document test commands: `cd web && npm test -- --run`, `cd web && npm run test:e2e`, `cd web && npm run build`, and full repo `make check-all`.
+- [ ] Run final frontend gates:
+  ```bash
+  cd web
+  npm run lint
+  npm run typecheck
+  npm test -- --run
+  npm run build
+  npm run test:e2e
+  ```
+- [ ] Run final repo gate:
+  ```bash
+  make check-all
+  ```
+  Expected: exit code 0. If environment blocks PostgreSQL or browser installation, record exact command output and the compensating targeted commands in verification; do not mark complete.
+- [ ] Manual browser verification with local Vite preview or dev server:
+  - hard reload `/`;
+  - hard reload `/?window=4h&scope=matched&handles=toly&sort=heat`;
+  - submit topbar search and verify `/search?q=<submitted-query>`;
+  - hard reload `/signal-lab?window=1h&scope=all&handle=toly&q=sol`;
+  - hard reload `/stocks?window=1h&scope=all`;
+  - hard reload `/token/Asset/<known-target-id>?window=1h&scope=all`;
+  - verify `/signal-lab` has no token-radar market target subscription after leaving `/`.
+- [ ] Copy command outputs and manual checks into the verification file.
+- [ ] Commit:
+  ```bash
+  git add docs web src tests Makefile
+  git commit -m "docs: record frontend hard cut verification"
+  ```
+
+## Rollout Order
+
+1. Implement Tasks 0-11 in order in `.worktrees/frontend-architecture-hard-cut/`.
+2. Keep each task group as a separate commit for review, but ship one PR for the whole plan.
+3. Before PR, run `make check-all` and record output in the verification artefact.
+4. Open a single PR titled `Frontend architecture hard cut`.
+5. After merge, move the owning spec and this plan from `active/` to `completed/` with the verification artefact.
+
+## Rollback
+
+- No database migrations are introduced; rollback is `git revert` of the frontend hard-cut PR plus regenerated contract artefacts.
+- If OpenAPI response models cause unexpected schema drift without runtime behavior change, revert Task 1 and temporarily restore `web/src/api/types.ts`; do not keep mixed generated/handwritten imports.
+- If Playwright is flaky only in CI, keep Vitest/MSW as blocking and mark Playwright flaky as a follow-up only after a local green run and a recorded CI failure log.
+- If route-aware socket behavior regresses, keep the provider but temporarily send an empty `market_targets` list outside `/`, `/token`, and token-result `/search`; HTTP polling remains the fallback for market freshness.
+
+## Acceptance Criteria
+
+- AC1: `web/src/components/`, `web/src/api/types.ts`, `web/src/api/client.ts`, and old `web/src/api/useIntelSocket.ts` do not exist.
+- AC2: `useTraderStore` does not exist, or any remaining store contains no `token`, `window`, `scope`, `handles`, `search`, or `radarSortMode`.
+- AC3: `rg -n 'useQuery\\(|useMutation\\(|useInfiniteQuery\\(' web/src/features/*/ui web/src/features/*/state web/src/features/*/model web/src/routes web/src/shared/ui` has no matches.
+- AC4: `rg -n 'getApi|postApi|setQueryData|setQueriesData' web/src/features/*/ui web/src/features/*/state web/src/features/*/model web/src/routes web/src/shared/ui` has no matches.
+- AC5: `rg -n 'from "@features/[^"]+/(api|model|state|ui)/|from "[.][./].*/features/[^"]+/(api|model|state|ui)/' web/src` has no cross-feature deep imports.
+- AC6: cold reload reproduces URL state for `/`, `/search`, `/signal-lab`, `/signal-lab/pulse/:candidateId`, `/stocks`, and `/token/:targetType/:targetId`.
+- AC7: route switch from `/` to `/signal-lab` releases token-radar `market_targets` while preserving global notification subscription.
+- AC8: `web/src/App.test.tsx` is deleted or under 100 lines, and tests do not mock `api/client` or `useIntelSocket`.
+- AC9: Playwright Chromium has at least 5 passing golden paths.
+- AC10: `web/src/styles.css` is deleted; global CSS lives in `web/src/styles/{tokens,base,tailwind}.css`.
+- AC11: `npm run lint`, `npm run typecheck`, `npm test -- --run`, `npm run build`, `npm run test:e2e`, and `make check-all` pass before completion is claimed.
+
+## Verification
+
+Record final verification in `docs/superpowers/plans/active/2026-05-13-frontend-architecture-hard-cut-verification.md`.
+
+## Progress Log
+
+- 2026-05-13: Task 0 started. Created isolated worktree `.worktrees/frontend-architecture-hard-cut/` on branch `codex/frontend-architecture-hard-cut`; copied this plan into the worktree because it was not present on `main`.
+
+## Decision Log
+
+- 2026-05-13: Treat this plan file as the requested `PLAN.md` for Progress log and Decision log updates; no separate `PLAN.md` existed in the repository.

@@ -1,0 +1,1556 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Obsidian Desk v2 - GMGN Twitter Intel</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --void: #070908;
+        --obsidian: #0c100e;
+        --slab: #121713;
+        --slab-2: #171d18;
+        --slab-3: #1e261f;
+        --bone: #f1ead6;
+        --bone-2: #d6cdb8;
+        --ash: #9a9f92;
+        --dim: #646b60;
+        --line: #2a312a;
+        --line-2: #394236;
+        --opportunity: #d99a28;
+        --opportunity-soft: #392910;
+        --health: #58c98a;
+        --health-soft: #123225;
+        --info: #7bb5d8;
+        --info-soft: #132c38;
+        --risk: #d86679;
+        --risk-soft: #3a1720;
+        --violet: #b79ae8;
+        --violet-soft: #291d3a;
+        --paper: #eee3c8;
+        --ink: #10130f;
+        --radius: 7px;
+        --shadow: 0 24px 70px rgba(0, 0, 0, 0.38);
+        --sans: "Aptos", "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+        --mono: "Berkeley Mono", "SFMono-Regular", "Roboto Mono", Menlo, Consolas, monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          linear-gradient(90deg, rgba(241, 234, 214, 0.025) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(241, 234, 214, 0.02) 1px, transparent 1px),
+          radial-gradient(circle at 14% 9%, rgba(217, 154, 40, 0.08), transparent 24rem),
+          radial-gradient(circle at 78% 12%, rgba(123, 181, 216, 0.065), transparent 22rem),
+          var(--void);
+        background-size: 40px 40px, 40px 40px, auto, auto, auto;
+        color: var(--bone);
+        font-family: var(--sans);
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: default;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .board {
+        max-width: 1500px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+
+      .board-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 440px;
+        gap: 24px;
+        align-items: stretch;
+        min-height: 280px;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background:
+          linear-gradient(135deg, rgba(241, 234, 214, 0.06), transparent 42%),
+          rgba(12, 16, 14, 0.94);
+        box-shadow: var(--shadow);
+      }
+
+      .kicker,
+      .label,
+      .mono,
+      .badge,
+      .pill,
+      .nav-link,
+      .metric span,
+      .table-head,
+      .field-label {
+        font-family: var(--mono);
+      }
+
+      .kicker {
+        color: var(--opportunity);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 820px;
+        margin-top: 10px;
+        color: var(--bone);
+        font-size: clamp(42px, 6vw, 84px);
+        line-height: 0.94;
+        letter-spacing: 0;
+      }
+
+      .hero-copy {
+        max-width: 760px;
+        margin-top: 18px;
+        color: var(--bone-2);
+        font-size: 18px;
+        line-height: 1.55;
+      }
+
+      .hero-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 0 13px;
+        border: 1px solid var(--line-2);
+        border-radius: var(--radius);
+        background: var(--slab-2);
+        color: var(--bone);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .button.primary {
+        border-color: #765620;
+        background: var(--opportunity-soft);
+        color: #ffd184;
+      }
+
+      .system-card {
+        display: grid;
+        gap: 12px;
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(7, 9, 8, 0.72);
+      }
+
+      .system-card h2 {
+        font-size: 19px;
+      }
+
+      .principle {
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--slab);
+      }
+
+      .principle b {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border-radius: 6px;
+        background: var(--opportunity-soft);
+        color: var(--opportunity);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .principle strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .principle span {
+        display: block;
+        margin-top: 4px;
+        color: var(--ash);
+        font-size: 12px;
+        line-height: 1.42;
+      }
+
+      .section {
+        margin-top: 28px;
+      }
+
+      .section-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: end;
+        margin-bottom: 14px;
+      }
+
+      .section-title h2 {
+        font-size: 24px;
+      }
+
+      .section-title p {
+        max-width: 760px;
+        color: var(--ash);
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .palette-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 10px;
+      }
+
+      .swatch {
+        min-height: 118px;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: var(--slab);
+      }
+
+      .swatch i {
+        display: block;
+        height: 44px;
+        margin-bottom: 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .swatch b {
+        display: block;
+        font-size: 13px;
+      }
+
+      .swatch code {
+        display: block;
+        margin-top: 5px;
+        color: var(--ash);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .tabs {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        display: flex;
+        gap: 8px;
+        padding: 12px 0;
+        background: linear-gradient(180deg, var(--void), rgba(7, 9, 8, 0.84));
+        backdrop-filter: blur(14px);
+      }
+
+      .nav-link {
+        padding: 8px 11px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(18, 23, 19, 0.94);
+        color: var(--ash);
+        font-size: 12px;
+      }
+
+      .nav-link:hover {
+        color: var(--bone);
+        border-color: var(--line-2);
+      }
+
+      .mock-window {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--obsidian);
+        box-shadow: var(--shadow);
+      }
+
+      .window-bar {
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr) auto;
+        align-items: center;
+        min-height: 52px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(7, 9, 8, 0.92);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        height: 100%;
+        padding: 0 14px;
+        border-right: 1px solid var(--line);
+      }
+
+      .brand-mark {
+        width: 17px;
+        height: 17px;
+        border-radius: 5px;
+        background: conic-gradient(from 90deg, var(--opportunity), #f1cc85, var(--opportunity));
+        box-shadow: 0 0 18px rgba(217, 154, 40, 0.38);
+      }
+
+      .brand strong {
+        display: block;
+        overflow: hidden;
+        font-family: var(--mono);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .brand span {
+        display: block;
+        color: var(--dim);
+        font-size: 11px;
+      }
+
+      .command {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        padding: 0 12px;
+      }
+
+      .search {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 240px;
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(3, 4, 3, 0.74);
+      }
+
+      .search span {
+        padding-left: 11px;
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .segmented {
+        display: flex;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(3, 4, 3, 0.68);
+      }
+
+      .segmented button {
+        height: 27px;
+        min-width: 44px;
+        padding: 0 9px;
+        border: 0;
+        border-radius: 5px;
+        background: transparent;
+        color: var(--ash);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .segmented button.active {
+        background: var(--opportunity-soft);
+        color: #ffd184;
+      }
+
+      .status {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        padding: 0 12px;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 26px;
+        padding: 0 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--slab);
+        color: var(--ash);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      .pill.opportunity {
+        border-color: #71501e;
+        background: var(--opportunity-soft);
+        color: #ffd184;
+      }
+
+      .pill.health {
+        border-color: #2a7147;
+        background: var(--health-soft);
+        color: #91eab5;
+      }
+
+      .pill.info {
+        border-color: #2d647d;
+        background: var(--info-soft);
+        color: #acdfff;
+      }
+
+      .pill.risk {
+        border-color: #7a2c3b;
+        background: var(--risk-soft);
+        color: #f0a1ad;
+      }
+
+      .desk-layout {
+        display: grid;
+        grid-template-columns: 196px minmax(0, 1fr) 374px;
+        min-height: 700px;
+      }
+
+      .rail {
+        border-right: 1px solid var(--line);
+        background: rgba(10, 13, 11, 0.88);
+      }
+
+      .rail-section {
+        padding: 13px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .label,
+      .rail-section h3,
+      .field-label {
+        display: block;
+        margin-bottom: 9px;
+        color: var(--dim);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .rail-button,
+      .watch-account,
+      .filter-line {
+        display: grid;
+        align-items: center;
+        width: 100%;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        background: transparent;
+        color: var(--ash);
+      }
+
+      .rail-button {
+        grid-template-columns: 24px 1fr auto;
+        gap: 8px;
+        min-height: 35px;
+        margin-bottom: 5px;
+        padding: 0 8px;
+      }
+
+      .rail-button i,
+      .rank {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        color: var(--opportunity);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-style: normal;
+      }
+
+      .rail-button b {
+        text-align: left;
+        font-size: 13px;
+      }
+
+      .rail-button em {
+        color: var(--dim);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-style: normal;
+      }
+
+      .rail-button.active {
+        border-color: #5b421b;
+        background: rgba(217, 154, 40, 0.08);
+        color: var(--bone);
+      }
+
+      .filter-line {
+        min-height: 32px;
+        margin-bottom: 7px;
+        padding: 0 9px;
+        border-color: var(--line);
+        background: rgba(7, 9, 8, 0.7);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .decision-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        margin-bottom: 7px;
+      }
+
+      .watch-account {
+        grid-template-columns: 26px 1fr auto;
+        gap: 8px;
+        min-height: 36px;
+        padding: 0 4px;
+      }
+
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 26px;
+        height: 26px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--bone);
+        background: var(--slab-2);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .watch-account b {
+        display: block;
+        overflow: hidden;
+        font-size: 12px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .watch-account span:not(.avatar) {
+        display: block;
+        color: var(--dim);
+        font-size: 11px;
+      }
+
+      .main-plane {
+        min-width: 0;
+        background:
+          linear-gradient(180deg, rgba(241, 234, 214, 0.025), transparent 220px),
+          var(--obsidian);
+      }
+
+      .plane-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: end;
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .plane-head h2 {
+        font-size: 21px;
+      }
+
+      .plane-head p {
+        margin-top: 6px;
+        color: var(--ash);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .case-list {
+        padding: 12px;
+      }
+
+      .table-head,
+      .case-row {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr 0.9fr 1fr 102px;
+        gap: 9px;
+        align-items: stretch;
+      }
+
+      .table-head {
+        margin: 0 8px 8px;
+        color: var(--dim);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+
+      .case-row {
+        min-height: 112px;
+        margin-bottom: 8px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(18, 23, 19, 0.92);
+      }
+
+      .case-row.selected {
+        border-color: #765620;
+        background:
+          linear-gradient(90deg, rgba(217, 154, 40, 0.14), transparent 25%),
+          rgba(18, 23, 19, 0.98);
+        box-shadow: inset 3px 0 0 var(--opportunity);
+      }
+
+      .identity {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .token-mark {
+        display: grid;
+        place-items: center;
+        width: 44px;
+        height: 44px;
+        border: 1px solid #70521f;
+        border-radius: 9px;
+        background: var(--opportunity-soft);
+        color: #ffd184;
+        font-family: var(--mono);
+        font-weight: 800;
+      }
+
+      .token-mark.health {
+        border-color: #2a7147;
+        background: var(--health-soft);
+        color: #91eab5;
+      }
+
+      .token-mark.info {
+        border-color: #2d647d;
+        background: var(--info-soft);
+        color: #acdfff;
+      }
+
+      .symbol {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+      }
+
+      .symbol strong {
+        overflow: hidden;
+        color: #ffd184;
+        font-family: var(--mono);
+        font-size: 15px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        min-height: 20px;
+        padding: 0 6px;
+        border-radius: 5px;
+        background: var(--slab-3);
+        color: var(--ash);
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .badge.health {
+        background: var(--health-soft);
+        color: #91eab5;
+      }
+
+      .badge.info {
+        background: var(--info-soft);
+        color: #acdfff;
+      }
+
+      .badge.risk {
+        background: var(--risk-soft);
+        color: #f0a1ad;
+      }
+
+      .case-meta,
+      .micro,
+      .field small {
+        color: var(--dim);
+        font-size: 11px;
+      }
+
+      .micro {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 8px;
+      }
+
+      .micro span {
+        padding: 3px 6px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        color: var(--ash);
+        background: rgba(7, 9, 8, 0.62);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .field {
+        min-width: 0;
+      }
+
+      .field b {
+        display: block;
+        overflow: hidden;
+        color: var(--bone);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .field p {
+        display: -webkit-box;
+        margin-top: 7px;
+        overflow: hidden;
+        color: var(--ash);
+        font-size: 12px;
+        line-height: 1.42;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .score-cell {
+        display: grid;
+        align-content: stretch;
+        gap: 6px;
+      }
+
+      .score {
+        display: grid;
+        place-items: center;
+        min-height: 45px;
+        border: 1px solid #765620;
+        border-radius: var(--radius);
+        background: var(--opportunity-soft);
+        color: #ffd184;
+        font-family: var(--mono);
+        font-size: 23px;
+        font-weight: 800;
+      }
+
+      .score-cell .pill {
+        justify-content: center;
+        border-radius: 6px;
+      }
+
+      .detail-pane {
+        min-width: 0;
+        border-left: 1px solid var(--line);
+        background: rgba(11, 14, 12, 0.95);
+      }
+
+      .case-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(217, 154, 40, 0.09), transparent 70%),
+          var(--slab);
+      }
+
+      .case-title {
+        display: grid;
+        grid-template-columns: 46px 1fr 62px;
+        gap: 11px;
+        align-items: start;
+      }
+
+      .case-title h3 {
+        margin-top: 2px;
+        color: #ffd184;
+        font-size: 24px;
+      }
+
+      .summary-score {
+        display: grid;
+        place-items: center;
+        height: 54px;
+        border: 1px solid #765620;
+        border-radius: var(--radius);
+        background: var(--opportunity-soft);
+        color: #ffd184;
+        font-family: var(--mono);
+        font-size: 22px;
+        font-weight: 800;
+      }
+
+      .thesis {
+        margin-top: 13px;
+        padding: 11px;
+        border: 1px solid #5a4423;
+        border-radius: var(--radius);
+        background: rgba(217, 154, 40, 0.075);
+        color: var(--bone-2);
+        font-size: 13px;
+        line-height: 1.48;
+      }
+
+      .detail-section {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .detail-section h4 {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: center;
+        margin: 0 0 10px;
+        font-size: 13px;
+      }
+
+      .metric-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .metric {
+        min-height: 58px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .metric b {
+        display: block;
+        color: var(--bone);
+        font-size: 15px;
+      }
+
+      .metric span {
+        display: block;
+        margin-top: 4px;
+        color: var(--dim);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+
+      .evidence-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .evidence-item {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 8px;
+        color: var(--ash);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .evidence-item i {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 5px;
+        background: var(--slab-3);
+        color: var(--opportunity);
+        font-family: var(--mono);
+        font-size: 10px;
+        font-style: normal;
+      }
+
+      .evidence-item b {
+        color: var(--bone);
+      }
+
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(18, 1fr);
+        align-items: end;
+        gap: 4px;
+        height: 82px;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .timeline i {
+        display: block;
+        min-height: 8px;
+        border-radius: 4px 4px 0 0;
+        background: var(--line-2);
+      }
+
+      .timeline i.hot {
+        background: var(--opportunity);
+      }
+
+      .timeline i.health {
+        background: var(--health);
+      }
+
+      .timeline i.info {
+        background: var(--info);
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .mini-page {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 540px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--obsidian);
+        box-shadow: var(--shadow);
+      }
+
+      .mini-page-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 16px;
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(18, 23, 19, 0.86);
+      }
+
+      .mini-page-head h3 {
+        font-size: 20px;
+      }
+
+      .mini-page-head p {
+        margin-top: 6px;
+        color: var(--ash);
+        font-size: 13px;
+        line-height: 1.42;
+      }
+
+      .mini-page-body {
+        padding: 14px;
+      }
+
+      .search-case {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
+        gap: 12px;
+      }
+
+      .brief {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .brief h4 {
+        margin: 0 0 9px;
+      }
+
+      .brief p {
+        color: var(--bone-2);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .stage-strip {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .stage {
+        min-height: 62px;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .stage.active {
+        border-color: #765620;
+        background: var(--opportunity-soft);
+      }
+
+      .stage b {
+        display: block;
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .stage span {
+        display: block;
+        margin-top: 5px;
+        color: var(--dim);
+        font-size: 11px;
+      }
+
+      .record-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .record {
+        display: grid;
+        grid-template-columns: 36px 1fr auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 58px;
+        padding: 9px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .record-main {
+        min-width: 0;
+      }
+
+      .record-main b,
+      .record-main span {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .record-main b {
+        color: var(--bone);
+        font-size: 13px;
+      }
+
+      .record-main span {
+        margin-top: 4px;
+        color: var(--ash);
+        font-size: 12px;
+      }
+
+      .heat-bars {
+        display: flex;
+        align-items: end;
+        gap: 3px;
+        height: 28px;
+      }
+
+      .heat-bars i {
+        width: 5px;
+        border-radius: 3px;
+        background: var(--opportunity);
+      }
+
+      .pulse-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .pulse-status {
+        min-height: 94px;
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .pulse-status strong {
+        display: block;
+        font-size: 13px;
+      }
+
+      .pulse-status b {
+        display: block;
+        margin-top: 8px;
+        color: var(--bone);
+        font-family: var(--mono);
+        font-size: 24px;
+      }
+
+      .pulse-status p {
+        margin-top: 6px;
+        color: var(--ash);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .detail-card {
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: rgba(7, 9, 8, 0.62);
+      }
+
+      .detail-card + .detail-card {
+        margin-top: 10px;
+      }
+
+      .detail-card h4 {
+        margin: 0 0 8px;
+        font-size: 13px;
+      }
+
+      .detail-card p {
+        color: var(--ash);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+
+      .note {
+        min-height: 178px;
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--slab);
+      }
+
+      .note h3 {
+        font-size: 17px;
+      }
+
+      .note p,
+      .note li {
+        color: var(--ash);
+        font-size: 13px;
+        line-height: 1.48;
+      }
+
+      .note ul {
+        margin: 10px 0 0;
+        padding-left: 18px;
+      }
+
+      @media (max-width: 1180px) {
+        .board {
+          padding: 16px;
+        }
+
+        .board-hero,
+        .desk-layout,
+        .panel-grid,
+        .search-case,
+        .notes,
+        .palette-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .window-bar {
+          grid-template-columns: 1fr;
+        }
+
+        .brand,
+        .command,
+        .status {
+          min-height: 48px;
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .table-head {
+          display: none;
+        }
+
+        .case-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="board">
+      <section class="board-hero" id="top">
+        <div>
+          <span class="kicker">Obsidian Desk v2</span>
+          <h1>把实时噪音整理成可判断的案卷台</h1>
+          <p class="hero-copy">
+            这版设计语言把 Token Radar、Search Intel、Watchlist、Signal Pulse 统一成同一种交互语法：
+            先扫列表，再开案卷，最后看证据链和下一步动作。颜色不再是装饰，而是产品状态。
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#radar">看 Radar 桌面</a>
+            <a class="button" href="#search">看二级页</a>
+            <a class="button" href="#watchlist">看 Watchlist</a>
+            <a class="button" href="#pulse">看 Signal Pulse</a>
+          </div>
+        </div>
+        <div class="system-card">
+          <h2>Design Rules</h2>
+          <div class="principle">
+            <b>01</b>
+            <div><strong>一切都是 case file</strong><span>Token、账号、主题、pulse 都有 brief、facts、evidence、decision。</span></div>
+          </div>
+          <div class="principle">
+            <b>02</b>
+            <div><strong>颜色绑定语义</strong><span>Amber 是机会，Green 是健康，Blue 是信息，Red 是风险，Violet 是 agent。</span></div>
+          </div>
+          <div class="principle">
+            <b>03</b>
+            <div><strong>列表负责扫，详情负责判</strong><span>列表只给足够判断是否点击的信息；深度解释统一进入右栏或二级页。</span></div>
+          </div>
+          <div class="principle">
+            <b>04</b>
+            <div><strong>少用卡片，多用档案区块</strong><span>页面区块是整幅案卷，不堆叠浮动卡；重复实体才使用卡片。</span></div>
+          </div>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Design board sections">
+        <a class="nav-link" href="#palette">Palette</a>
+        <a class="nav-link" href="#radar">Token Radar</a>
+        <a class="nav-link" href="#search">Search Intel</a>
+        <a class="nav-link" href="#watchlist">Watchlist</a>
+        <a class="nav-link" href="#pulse">Signal Pulse</a>
+        <a class="nav-link" href="#notes">Implementation Notes</a>
+      </nav>
+
+      <section class="section" id="palette">
+        <div class="section-title">
+          <div>
+            <span class="kicker">Theme System</span>
+            <h2>配色从“黄黑终端”升级为多语义 Obsidian</h2>
+          </div>
+          <p>底色仍然是黑曜石，但正文用骨白，辅助信息用灰绿；颜色只负责表达状态，不负责填满页面。</p>
+        </div>
+        <div class="palette-grid">
+          <div class="swatch"><i style="background:#070908"></i><b>Void</b><code>#070908</code></div>
+          <div class="swatch"><i style="background:#121713"></i><b>Slab</b><code>#121713</code></div>
+          <div class="swatch"><i style="background:#f1ead6"></i><b>Bone Text</b><code>#F1EAD6</code></div>
+          <div class="swatch"><i style="background:#d99a28"></i><b>Opportunity</b><code>#D99A28</code></div>
+          <div class="swatch"><i style="background:#58c98a"></i><b>Health</b><code>#58C98A</code></div>
+          <div class="swatch"><i style="background:#7bb5d8"></i><b>Info</b><code>#7BB5D8</code></div>
+        </div>
+      </section>
+
+      <section class="section" id="radar">
+        <div class="section-title">
+          <div>
+            <span class="kicker">Primary Surface</span>
+            <h2>Token Radar · 扫描桌面</h2>
+          </div>
+          <p>Radar item 不再是指标列，而是同屏展示 Identity、Community、Narrative、Decision。右侧 Selected Case 使用同一套结构，不让用户重新学习。</p>
+        </div>
+
+        <div class="mock-window">
+          <header class="window-bar">
+            <div class="brand"><span class="brand-mark"></span><div><strong>gmgn.intel</strong><span>obsidian desk</span></div></div>
+            <div class="command">
+              <div class="search"><span>Search CA / $TOKEN / @handle / narrative</span></div>
+              <div class="segmented"><button>5m</button><button class="active">1h</button><button>4h</button><button>24h</button></div>
+              <div class="segmented"><button>watched</button><button class="active">all</button></div>
+            </div>
+            <div class="status"><span class="pill health">ready</span><span class="pill opportunity">48 cases</span><span class="pill risk">9 alerts</span></div>
+          </header>
+
+          <div class="desk-layout">
+            <aside class="rail">
+              <section class="rail-section">
+                <h3>Views</h3>
+                <button class="rail-button active"><i>1</i><b>Radar</b><em>48</em></button>
+                <button class="rail-button"><i>2</i><b>Search Intel</b><em></em></button>
+                <button class="rail-button"><i>3</i><b>Watchlist</b><em>82</em></button>
+                <button class="rail-button"><i>4</i><b>Signal Pulse</b><em>46</em></button>
+              </section>
+              <section class="rail-section">
+                <h3>Filters</h3>
+                <div class="filter-line">decision: driver + watch</div>
+                <div class="filter-line">source: watched + all stream</div>
+                <div class="filter-line">target: DEX + CEX</div>
+              </section>
+              <section class="rail-section">
+                <h3>Decision Counts</h3>
+                <div class="decision-row"><span class="pill opportunity">driver</span><b>17</b></div>
+                <div class="decision-row"><span class="pill info">watch</span><b>31</b></div>
+                <div class="decision-row"><span class="pill risk">investigate</span><b>8</b></div>
+              </section>
+              <section class="rail-section">
+                <h3>Watchlist Hot</h3>
+                <div class="watch-account"><span class="avatar">M</span><div><b>@marionawfal</b><span>moved $HYPE</span></div><span class="pill risk">9+</span></div>
+                <div class="watch-account"><span class="avatar">T</span><div><b>@toly</b><span>Solana cluster</span></div><span class="pill info">1m</span></div>
+                <div class="watch-account"><span class="avatar">B</span><div><b>@base</b><span>Base meme lane</span></div><span class="pill">8m</span></div>
+              </section>
+            </aside>
+
+            <main class="main-plane">
+              <header class="plane-head">
+                <div>
+                  <h2>Token Radar</h2>
+                  <p>快速扫“这是什么、谁在推、为什么现在、能不能行动”。</p>
+                </div>
+                <div class="segmented"><button class="active">Opportunity</button><button>Heat</button><button>Quality</button><button>Timing</button></div>
+              </header>
+              <section class="case-list">
+                <div class="table-head"><span>Token case</span><span>Identity</span><span>Community</span><span>Narrative</span><span>Decision</span></div>
+
+                <article class="case-row selected">
+                  <div class="identity">
+                    <span class="token-mark">H</span>
+                    <div><div class="symbol"><strong>$HYPE</strong><span class="badge health">verified</span></div><div class="case-meta">OKX · HYPE-USDT · exact</div><div class="micro"><span>web</span><span>X</span><span>OKX</span></div></div>
+                  </div>
+                  <div class="field"><span class="field-label">Identity</span><b>Official profile ready</b><p>CEX inst id + official links，不依赖 agent 解析身份。</p></div>
+                  <div class="field"><span class="field-label">Community</span><b>36 posts · 21 authors</b><p>watched 5，top author 24%，从种子账户扩散。</p></div>
+                  <div class="field"><span class="field-label">Narrative</span><b>Perp revenue rotation</b><p>HYPE 被放入 ETH beta / DEX revenue 讨论组。</p></div>
+                  <div class="score-cell"><div class="score">95</div><span class="pill opportunity">driver</span></div>
+                </article>
+
+                <article class="case-row">
+                  <div class="identity">
+                    <span class="token-mark health">K</span>
+                    <div><div class="symbol"><strong>$KRC</strong><span class="badge info">DEX</span></div><div class="case-meta">solana · 7HGFXFTR · ready</div><div class="micro"><span>GMGN</span><span>X pending</span></div></div>
+                  </div>
+                  <div class="field"><span class="field-label">Identity</span><b>Profile partial</b><p>GMGN route ready，官方 X 仍待二次确认。</p></div>
+                  <div class="field"><span class="field-label">Community</span><b>14 posts · 11 authors</b><p>扩散在加速，但 top share 仍偏高。</p></div>
+                  <div class="field"><span class="field-label">Narrative</span><b>Solana meme revival</b><p>开始出现 liquidity / holder 增长讨论。</p></div>
+                  <div class="score-cell"><div class="score">88</div><span class="pill opportunity">driver</span></div>
+                </article>
+
+                <article class="case-row">
+                  <div class="identity">
+                    <span class="token-mark info">S</span>
+                    <div><div class="symbol"><strong>$SOL</strong><span class="badge health">CEX</span></div><div class="case-meta">OKX · SOL-USDT · exact</div><div class="micro"><span>web</span><span>X</span><span>OKX</span></div></div>
+                  </div>
+                  <div class="field"><span class="field-label">Identity</span><b>Official complete</b><p>大市值 CEX target，可作为 ecosystem anchor。</p></div>
+                  <div class="field"><span class="field-label">Community</span><b>12 posts · 9 authors</b><p>watched 4，discussion quality 中性。</p></div>
+                  <div class="field"><span class="field-label">Narrative</span><b>Infra beta reference</b><p>自身不是新 alpha，但解释相关 meme 的 beta。</p></div>
+                  <div class="score-cell"><div class="score">81</div><span class="pill info">watch</span></div>
+                </article>
+              </section>
+            </main>
+
+            <aside class="detail-pane">
+              <header class="case-header">
+                <div class="case-title">
+                  <span class="token-mark">H</span>
+                  <div><span class="label">Selected case</span><h3>$HYPE</h3><div class="case-meta">cex_token:HYPE · exact · 1h</div></div>
+                  <div class="summary-score">95</div>
+                </div>
+                <p class="thesis">结论：官方身份完整，社区传播进入 expansion，当前不是纯 ticker 噪声。下一步进入 Search Intel 看 evidence chain。</p>
+              </header>
+              <section class="detail-section">
+                <h4>Official <span class="badge health">ready</span></h4>
+                <div class="metric-grid"><div class="metric"><b>Hyperliquid</b><span>profile</span></div><div class="metric"><b>@HyperliquidX</b><span>official x</span></div><div class="metric"><b>OKX</b><span>venue</span></div><div class="metric"><b>GMGN</b><span>route</span></div></div>
+              </section>
+              <section class="detail-section">
+                <h4>Community <span class="badge info">expansion</span></h4>
+                <div class="metric-grid"><div class="metric"><b>36</b><span>posts</span></div><div class="metric"><b>21</b><span>authors</span></div><div class="metric"><b>5</b><span>watched</span></div><div class="metric"><b>24%</b><span>top share</span></div></div>
+              </section>
+              <section class="detail-section">
+                <h4>Narrative</h4>
+                <div class="evidence-list">
+                  <div class="evidence-item"><i>1</i><span><b>Why now:</b> perp volume 与 DEX revenue 被多个账户同时复述。</span></div>
+                  <div class="evidence-item"><i>2</i><span><b>What changed:</b> watched accounts 先发，普通交易账户开始跟进。</span></div>
+                  <div class="evidence-item"><i>3</i><span><b>Invalidation:</b> 若新增作者停止扩散，降级为 watch。</span></div>
+                </div>
+              </section>
+              <section class="detail-section">
+                <h4>Social x Market</h4>
+                <div class="timeline"><i style="height:18px"></i><i class="hot" style="height:42px"></i><i style="height:25px"></i><i class="health" style="height:54px"></i><i class="hot" style="height:76px"></i><i class="info" style="height:36px"></i><i class="hot" style="height:70px"></i><i style="height:32px"></i><i class="health" style="height:49px"></i><i style="height:26px"></i><i class="info" style="height:44px"></i><i class="hot" style="height:78px"></i><i style="height:38px"></i><i class="health" style="height:52px"></i><i style="height:24px"></i><i class="info" style="height:30px"></i><i style="height:20px"></i><i style="height:18px"></i></div>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="search">
+        <div class="section-title">
+          <div>
+            <span class="kicker">Secondary Page</span>
+            <h2>Search Intel · 深挖案卷页</h2>
+          </div>
+          <p>二级页使用更阅读友好的密度。它不再像右栏 drawer，而是“case brief + evidence timeline + score ledger”。</p>
+        </div>
+        <div class="mini-page">
+          <header class="mini-page-head">
+            <div><span class="kicker">case inspect</span><h3>$HYPE · Search Intel</h3><p>唯一 resolved target，展示官方资料、市场事实、社交传播、agent brief 和证据流。</p></div>
+            <div class="status"><span class="pill health">identity ready</span><span class="pill info">anchor line</span><span class="pill opportunity">driver</span></div>
+          </header>
+          <div class="mini-page-body search-case">
+            <div>
+              <div class="brief">
+                <h4>Desk Note</h4>
+                <p>HYPE 在过去 1h 的传播已经从 watched seed 进入多账户 expansion。官方身份和 venue route 足够明确；主要风险是价格若先涨后社交，会从 driver 降级为 chase watch。</p>
+              </div>
+              <div class="stage-strip">
+                <div class="stage"><b>seed</b><span>2 posts</span></div>
+                <div class="stage"><b>ignition</b><span>5 posts</span></div>
+                <div class="stage active"><b>expansion</b><span>21 authors</span></div>
+                <div class="stage"><b>concentration</b><span>24% top</span></div>
+                <div class="stage"><b>chase</b><span>neutral</span></div>
+              </div>
+              <div class="detail-card">
+                <h4>Social x Market Timeline</h4>
+                <div class="timeline"><i style="height:20px"></i><i class="info" style="height:35px"></i><i class="hot" style="height:70px"></i><i class="health" style="height:52px"></i><i style="height:24px"></i><i class="hot" style="height:78px"></i><i class="info" style="height:44px"></i><i class="health" style="height:60px"></i><i style="height:26px"></i><i class="hot" style="height:82px"></i><i class="info" style="height:38px"></i><i style="height:20px"></i><i class="health" style="height:49px"></i><i class="hot" style="height:68px"></i><i style="height:30px"></i><i class="info" style="height:36px"></i><i style="height:22px"></i><i style="height:18px"></i></div>
+              </div>
+            </div>
+            <aside>
+              <div class="detail-card">
+                <h4>Snapshot</h4>
+                <div class="metric-grid"><div class="metric"><b>$39.28</b><span>price</span></div><div class="metric"><b>36</b><span>posts</span></div><div class="metric"><b>21</b><span>authors</span></div><div class="metric"><b>95</b><span>score</span></div></div>
+              </div>
+              <div class="detail-card">
+                <h4>Evidence Stream</h4>
+                <div class="record-list">
+                  <div class="record"><span class="avatar">M</span><div class="record-main"><b>@marionawfal</b><span>mentions HYPE with perp revenue context</span></div><span class="pill opportunity">seed</span></div>
+                  <div class="record"><span class="avatar">A</span><div class="record-main"><b>@alpha_desk</b><span>compares HYPE with ETH beta</span></div><span class="pill info">expand</span></div>
+                  <div class="record"><span class="avatar">T</span><div class="record-main"><b>@traderpow</b><span>asks whether move is already chased</span></div><span class="pill risk">risk</span></div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="watchlist">
+        <div class="section-title">
+          <div>
+            <span class="kicker">Account Intelligence</span>
+            <h2>Watchlist · 账户案卷</h2>
+          </div>
+          <p>Watchlist 从“很多 handle 链接”升级为账号贡献面板：这个账号最近带出了哪些 token / 主题，可信度如何，是否在制造异常传播。</p>
+        </div>
+        <div class="panel-grid">
+          <div class="mini-page">
+            <header class="mini-page-head"><div><h3>Watchlist Overview</h3><p>按影响力、最近活跃、触发的 token / theme 分组。</p></div><span class="pill info">82 accounts</span></header>
+            <div class="mini-page-body record-list">
+              <div class="record"><span class="avatar">M</span><div class="record-main"><b>@marionawfal</b><span>moved $HYPE · 9 alerts · public pulse</span></div><div class="heat-bars"><i style="height:20px"></i><i style="height:26px"></i><i style="height:32px"></i><i style="height:22px"></i></div></div>
+              <div class="record"><span class="avatar">T</span><div class="record-main"><b>@toly</b><span>Solana ecosystem · 3 related tokens</span></div><div class="heat-bars"><i style="height:14px"></i><i style="height:28px"></i><i style="height:18px"></i><i style="height:26px"></i></div></div>
+              <div class="record"><span class="avatar">B</span><div class="record-main"><b>@base</b><span>Base meme lane · builders narrative</span></div><div class="heat-bars"><i style="height:16px"></i><i style="height:21px"></i><i style="height:34px"></i><i style="height:24px"></i></div></div>
+              <div class="record"><span class="avatar">A</span><div class="record-main"><b>@a16z</b><span>AI x crypto theme · low token directness</span></div><div class="heat-bars"><i style="height:12px"></i><i style="height:18px"></i><i style="height:16px"></i><i style="height:30px"></i></div></div>
+            </div>
+          </div>
+          <div class="mini-page">
+            <header class="mini-page-head"><div><span class="kicker">account file</span><h3>@marionawfal</h3><p>不是 profile 页，而是“这个账号给交易系统带来什么信号”。</p></div><span class="pill risk">hot</span></header>
+            <div class="mini-page-body">
+              <div class="metric-grid"><div class="metric"><b>9+</b><span>alerts</span></div><div class="metric"><b>5</b><span>tokens moved</span></div><div class="metric"><b>public</b><span>source type</span></div><div class="metric"><b>medium</b><span>reliability</span></div></div>
+              <div class="detail-card"><h4>Recent Calls</h4><p>$HYPE, $SOL beta, Base meme cluster. Most posts are broad news framing; useful as ignition evidence, weaker as trade confirmation.</p></div>
+              <div class="detail-card"><h4>Narrative Bias</h4><p>Prefers macro/news style copy. Treat as propagation amplifier; require independent trader accounts before driver upgrade.</p></div>
+              <div class="detail-card"><h4>Related Evidence</h4><p>Links into Search Intel with account filter pre-applied, not a separate disconnected page.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="pulse">
+        <div class="section-title">
+          <div>
+            <span class="kicker">Agent Queue</span>
+            <h2>Signal Pulse · 候选案卷队列</h2>
+          </div>
+          <p>Signal Pulse 更像投委会工作台：每个候选都有 gate、agent verdict、fact card、source events 和下一步动作。</p>
+        </div>
+        <div class="panel-grid">
+          <div class="mini-page">
+            <header class="mini-page-head"><div><h3>Signal Pulse Queue</h3><p>状态区块用数量和解释，不再只是 tab。</p></div><span class="pill health">46 candidates</span></header>
+            <div class="mini-page-body">
+              <div class="pulse-grid">
+                <div class="pulse-status"><strong>Trade candidate</strong><b>5</b><p>Enough social + market facts for action review.</p></div>
+                <div class="pulse-status"><strong>Token watch</strong><b>8</b><p>Token-specific but needs confirmation.</p></div>
+                <div class="pulse-status"><strong>Theme watch</strong><b>0</b><p>Narrative clusters worth monitoring.</p></div>
+                <div class="pulse-status"><strong>Rejected high info</strong><b>41</b><p>Informative but blocked by gates.</p></div>
+              </div>
+              <div class="record-list">
+                <div class="record"><span class="avatar">H</span><div class="record-main"><b>$HYPE · high conviction expansion</b><span>agent: watch-to-driver · gate: eligible</span></div><span class="pill opportunity">trade</span></div>
+                <div class="record"><span class="avatar">A</span><div class="record-main"><b>$ASTEROID · social propagation</b><span>agent: monitor · gate: market partial</span></div><span class="pill info">watch</span></div>
+                <div class="record"><span class="avatar">T</span><div class="record-main"><b>$TSLA · blocked</b><span>agent: high info, not token trade</span></div><span class="pill risk">blocked</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="mini-page">
+            <header class="mini-page-head"><div><span class="kicker">selected pulse</span><h3>$HYPE Recommendation</h3><p>把 JSON-like inspector 改成可读的 agent memo + fact ledger。</p></div><span class="pill" style="border-color:#5d4a82;background:var(--violet-soft);color:#d9c7ff">agent</span></header>
+            <div class="mini-page-body">
+              <div class="detail-card"><h4>Agent Recommendation</h4><p>Recommendation: upgrade to driver if expansion continues for another 15m with independent authors and no chase-risk market move.</p></div>
+              <div class="metric-grid"><div class="metric"><b>$39.28</b><span>price</span></div><div class="metric"><b>$7.9M</b><span>mcap</span></div><div class="metric"><b>36</b><span>mentions</span></div><div class="metric"><b>21</b><span>authors</span></div></div>
+              <div class="detail-card"><h4>Eligibility Gates</h4><p>eligible_for_high_alert: true. max_decision: driver. blocked_reasons: none.</p></div>
+              <div class="detail-card"><h4>Source Events</h4><p>Show evidence ids as clickable rows with text previews, not raw JSON blocks by default.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="notes">
+        <div class="section-title">
+          <div>
+            <span class="kicker">Production Translation</span>
+            <h2>落地拆分建议</h2>
+          </div>
+          <p>这套视觉语言可以分三步落地，避免一次性重写所有页面。</p>
+        </div>
+        <div class="notes">
+          <article class="note">
+            <h3>1. Design tokens first</h3>
+            <p>先替换全局 tokens：颜色、字体、线框、状态色、密度。生产代码可以保留现有组件结构，先统一气质。</p>
+            <ul><li>新增 semantic color tokens</li><li>统一 pill / badge / segmented</li><li>移除单一黄黑依赖</li></ul>
+          </article>
+          <article class="note">
+            <h3>2. Radar case row</h3>
+            <p>改 TokenRadarRow 信息模型，先把 official/community/narrative 进入 item 和 selected detail。</p>
+            <ul><li>复用 TokenProfileCard 数据</li><li>行内摘要不做 agent 事实</li><li>Search Intel 成为主动作</li></ul>
+          </article>
+          <article class="note">
+            <h3>3. Secondary pages</h3>
+            <p>Search、Watchlist、Signal Pulse 共享 case file layout，降低用户学习成本。</p>
+            <ul><li>Search: case brief + timeline</li><li>Watchlist: account file</li><li>Pulse: agent memo + fact ledger</li></ul>
+          </article>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,1323 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Token Radar - Static Redesign Mock</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap");
+
+      :root {
+        color-scheme: dark;
+        --bg: #0b0d0c;
+        --panel: #111412;
+        --panel-2: #151915;
+        --panel-3: #1b201b;
+        --line: #2b322c;
+        --line-soft: #20261f;
+        --text: #f5efdc;
+        --muted: #9aa092;
+        --faint: #646b60;
+        --amber: #f4aa19;
+        --amber-soft: #49360a;
+        --mint: #44d48b;
+        --mint-soft: #123a28;
+        --cyan: #65d8ff;
+        --cyan-soft: #14333f;
+        --rose: #e45d73;
+        --rose-soft: #421924;
+        --ink: #050605;
+        --radius: 8px;
+        --mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+        --sans: "IBM Plex Sans", "Avenir Next", Helvetica, Arial, sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background:
+          linear-gradient(90deg, rgba(244, 170, 25, 0.05) 1px, transparent 1px),
+          linear-gradient(180deg, rgba(245, 239, 220, 0.035) 1px, transparent 1px),
+          var(--bg);
+        background-size: 48px 48px, 48px 48px, auto;
+        color: var(--text);
+        font-family: var(--sans);
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+
+      button {
+        cursor: default;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 184px minmax(640px, 1fr) 398px;
+        grid-template-rows: 54px minmax(0, 1fr) 168px;
+        height: 100vh;
+        min-width: 1180px;
+        overflow: hidden;
+      }
+
+      .topbar {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 184px 1fr auto;
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        background: rgba(11, 13, 12, 0.96);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        height: 100%;
+        padding: 0 14px;
+        border-right: 1px solid var(--line);
+      }
+
+      .brand-mark {
+        width: 16px;
+        height: 16px;
+        border: 4px solid var(--amber);
+        border-radius: 5px;
+        box-shadow: 0 0 18px rgba(244, 170, 25, 0.42);
+      }
+
+      .brand strong {
+        display: block;
+        font-family: var(--mono);
+        font-size: 14px;
+      }
+
+      .brand small,
+      .status small,
+      .rail small,
+      .meta,
+      .label,
+      .fine {
+        color: var(--muted);
+      }
+
+      .command {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+      }
+
+      .search {
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 360px;
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #080a09;
+      }
+
+      .search svg {
+        flex: 0 0 auto;
+        margin-left: 10px;
+        color: var(--faint);
+      }
+
+      .search input {
+        width: 100%;
+        min-width: 0;
+        border: 0;
+        outline: 0;
+        background: transparent;
+        color: var(--text);
+        padding: 0 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .chip-row,
+      .status,
+      .toolbar,
+      .metric-row,
+      .tabs {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .status {
+        justify-content: flex-end;
+        padding: 0 12px;
+      }
+
+      .pill,
+      .tab,
+      .icon-button,
+      .segment button,
+      .link-chip,
+      .risk-chip {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #0b0e0c;
+        color: var(--muted);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 28px;
+        padding: 0 9px;
+        font-family: var(--mono);
+        font-size: 11px;
+        white-space: nowrap;
+      }
+
+      .pill.good {
+        color: var(--mint);
+        border-color: #246642;
+        background: var(--mint-soft);
+      }
+
+      .pill.warn {
+        color: var(--amber);
+        border-color: #75530b;
+        background: var(--amber-soft);
+      }
+
+      .pill.hot {
+        color: var(--rose);
+        border-color: #7d2c3a;
+        background: var(--rose-soft);
+      }
+
+      .icon-button {
+        display: grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        padding: 0;
+      }
+
+      .rail {
+        grid-row: 2 / 4;
+        border-right: 1px solid var(--line);
+        background: rgba(13, 16, 14, 0.94);
+        overflow: hidden;
+      }
+
+      .rail-section {
+        padding: 14px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .section-heading,
+      .rail h2,
+      .table-head,
+      .label {
+        margin: 0 0 10px;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .rail-button {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        height: 35px;
+        margin-bottom: 6px;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        text-align: left;
+      }
+
+      .rail-button span {
+        display: grid;
+        place-items: center;
+        width: 22px;
+        height: 22px;
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .rail-button.active {
+        border-color: #5f460e;
+        background: #19160d;
+        color: var(--text);
+      }
+
+      .rail-button b {
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .rail-button em {
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-style: normal;
+      }
+
+      .rail-field {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 34px;
+        margin-top: 8px;
+        padding: 0 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #090b0a;
+        color: var(--muted);
+      }
+
+      .rail-field span {
+        font-size: 12px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .decision-count {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .decision-tag {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        height: 24px;
+        padding: 0 9px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--muted);
+      }
+
+      .decision-tag.driver {
+        border-color: #75530b;
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .decision-tag.watch {
+        border-color: #1b6379;
+        color: var(--cyan);
+        background: var(--cyan-soft);
+      }
+
+      .decision-tag.investigate {
+        border-color: #824152;
+        color: var(--rose);
+        background: var(--rose-soft);
+      }
+
+      .watch-row {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .avatar {
+        display: grid;
+        place-items: center;
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .main {
+        grid-column: 2;
+        grid-row: 2;
+        min-width: 0;
+        overflow: hidden;
+        border-right: 1px solid var(--line);
+      }
+
+      .main-header {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 16px;
+        align-items: end;
+        min-height: 78px;
+        padding: 14px;
+        border-bottom: 1px solid var(--line);
+        background: rgba(17, 20, 18, 0.86);
+      }
+
+      .main-title h1,
+      .detail-title h2 {
+        margin: 0;
+        font-family: var(--mono);
+      }
+
+      .main-title h1 {
+        font-size: 19px;
+      }
+
+      .main-title p,
+      .detail-title p,
+      .copy {
+        margin: 6px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .segment {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        background: #070908;
+      }
+
+      .segment button {
+        height: 28px;
+        min-width: 52px;
+        padding: 0 10px;
+        border-color: transparent;
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .segment button.active {
+        color: var(--amber);
+        border-color: #76530b;
+        background: var(--amber-soft);
+      }
+
+      .token-list {
+        height: calc(100% - 78px);
+        overflow: auto;
+        padding: 10px;
+      }
+
+      .table-head {
+        display: grid;
+        grid-template-columns: 1.05fr 1fr 1fr 1.2fr 116px;
+        gap: 10px;
+        padding: 0 10px 8px;
+      }
+
+      .token-item {
+        display: grid;
+        grid-template-columns: 1.05fr 1fr 1fr 1.2fr 116px;
+        gap: 10px;
+        min-height: 112px;
+        margin-bottom: 8px;
+        padding: 10px;
+        border: 1px solid var(--line-soft);
+        border-radius: var(--radius);
+        background: #101411;
+      }
+
+      .token-item.selected {
+        border-color: #8c6410;
+        background:
+          linear-gradient(90deg, rgba(244, 170, 25, 0.16), transparent 23%),
+          #111411;
+        box-shadow: inset 3px 0 0 var(--amber);
+      }
+
+      .token-identity {
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .token-logo {
+        display: grid;
+        place-items: center;
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        border: 1px solid #75530b;
+        background: #201804;
+        color: var(--amber);
+        font-family: var(--mono);
+        font-weight: 700;
+      }
+
+      .token-logo.mint {
+        border-color: #236b45;
+        background: #0e2b1f;
+        color: var(--mint);
+      }
+
+      .token-logo.cyan {
+        border-color: #1c637b;
+        background: #0b2630;
+        color: var(--cyan);
+      }
+
+      .token-name {
+        min-width: 0;
+      }
+
+      .symbol-line {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .symbol-line strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 15px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        height: 20px;
+        padding: 0 6px;
+        border-radius: 5px;
+        background: var(--panel-3);
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 10px;
+        white-space: nowrap;
+      }
+
+      .badge.good {
+        color: var(--mint);
+        background: var(--mint-soft);
+      }
+
+      .badge.warn {
+        color: var(--amber);
+        background: var(--amber-soft);
+      }
+
+      .tiny-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-top: 8px;
+      }
+
+      .link-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 22px;
+        padding: 0 7px;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .info-block {
+        min-width: 0;
+      }
+
+      .info-block strong {
+        display: block;
+        overflow: hidden;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .info-block p {
+        display: -webkit-box;
+        min-height: 36px;
+        margin: 7px 0 0;
+        overflow: hidden;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .mini-stats {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 5px;
+        margin-top: 9px;
+      }
+
+      .mini-stat {
+        min-width: 0;
+        padding: 5px 6px;
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        background: #0a0c0b;
+      }
+
+      .mini-stat b {
+        display: block;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .mini-stat span {
+        display: block;
+        overflow: hidden;
+        color: var(--faint);
+        font-size: 10px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .score-block {
+        display: grid;
+        align-content: stretch;
+        gap: 6px;
+      }
+
+      .score-box {
+        display: grid;
+        place-items: center;
+        min-height: 44px;
+        border: 1px solid #7b570d;
+        border-radius: var(--radius);
+        background: var(--amber-soft);
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .score-action {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        border: 1px solid #7b570d;
+        border-radius: 999px;
+        background: #171205;
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .bar-stack {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4px;
+      }
+
+      .bar-stack i {
+        display: block;
+        height: 6px;
+        border-radius: 999px;
+        background: var(--line);
+      }
+
+      .bar-stack i:nth-child(1),
+      .bar-stack i:nth-child(2),
+      .bar-stack i:nth-child(3) {
+        background: var(--amber);
+      }
+
+      .detail {
+        grid-column: 3;
+        grid-row: 2 / 4;
+        min-width: 0;
+        overflow: auto;
+        background: rgba(15, 18, 16, 0.96);
+      }
+
+      .detail-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+        background:
+          linear-gradient(180deg, rgba(244, 170, 25, 0.12), transparent 58%),
+          #101411;
+      }
+
+      .detail-title {
+        display: grid;
+        grid-template-columns: 48px 1fr 66px;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .detail-title h2 {
+        color: var(--amber);
+        font-size: 24px;
+      }
+
+      .detail-score {
+        display: grid;
+        place-items: center;
+        height: 56px;
+        border: 1px solid #7b570d;
+        border-radius: var(--radius);
+        color: var(--amber);
+        background: var(--amber-soft);
+        font-family: var(--mono);
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .thesis {
+        margin: 14px 0 0;
+        padding: 10px;
+        border: 1px solid #544321;
+        border-radius: var(--radius);
+        background: rgba(244, 170, 25, 0.08);
+        color: var(--text);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .detail-section {
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .detail-section h3 {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 0 0 10px;
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .summary-metric {
+        min-height: 58px;
+        padding: 8px;
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        background: #0a0c0b;
+      }
+
+      .summary-metric b {
+        display: block;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 15px;
+      }
+
+      .summary-metric span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .bullets {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .bullets li {
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .bullets b {
+        color: var(--text);
+      }
+
+      .marker {
+        display: grid;
+        place-items: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 5px;
+        background: var(--panel-3);
+        color: var(--amber);
+        font-family: var(--mono);
+        font-size: 10px;
+      }
+
+      .timeline {
+        display: grid;
+        grid-template-columns: repeat(18, 1fr);
+        align-items: end;
+        gap: 4px;
+        height: 86px;
+        padding: 10px;
+        border: 1px solid var(--line-soft);
+        border-radius: var(--radius);
+        background: #080a09;
+      }
+
+      .timeline i {
+        display: block;
+        min-height: 8px;
+        border-radius: 4px 4px 0 0;
+        background: var(--line);
+      }
+
+      .timeline i.hot {
+        background: var(--amber);
+      }
+
+      .timeline i.mint {
+        background: var(--mint);
+      }
+
+      .timeline i.cyan {
+        background: var(--cyan);
+      }
+
+      .phase-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        margin-top: 9px;
+      }
+
+      .phase {
+        padding: 7px 6px;
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        background: #0a0c0b;
+      }
+
+      .phase.active {
+        border-color: #76530b;
+        background: var(--amber-soft);
+      }
+
+      .phase b {
+        display: block;
+        overflow: hidden;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 10px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .phase span {
+        display: block;
+        margin-top: 3px;
+        color: var(--faint);
+        font-size: 10px;
+      }
+
+      .bottom {
+        grid-column: 2;
+        grid-row: 3;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+        min-width: 0;
+        border-top: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+        background: rgba(13, 16, 14, 0.96);
+      }
+
+      .bottom-panel {
+        min-width: 0;
+        padding: 12px 14px;
+        border-right: 1px solid var(--line-soft);
+        overflow: hidden;
+      }
+
+      .bottom-panel:last-child {
+        border-right: 0;
+      }
+
+      .tape-row,
+      .pulse-row {
+        display: grid;
+        align-items: center;
+        gap: 8px;
+        min-height: 28px;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .tape-row {
+        grid-template-columns: 54px 1fr 48px;
+      }
+
+      .pulse-row {
+        grid-template-columns: 72px 1fr 52px;
+      }
+
+      .tape-row b,
+      .pulse-row b {
+        overflow: hidden;
+        color: var(--text);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .muted {
+        color: var(--faint);
+      }
+
+      @media (max-width: 1180px) {
+        .app {
+          min-width: 0;
+          grid-template-columns: 1fr;
+          grid-template-rows: 54px auto auto auto;
+          height: auto;
+          min-height: 100vh;
+          overflow: auto;
+        }
+
+        .topbar,
+        .main,
+        .detail,
+        .bottom {
+          grid-column: 1;
+          grid-row: auto;
+        }
+
+        .rail {
+          display: none;
+        }
+
+        .topbar {
+          grid-template-columns: 1fr;
+          height: auto;
+          min-height: 54px;
+        }
+
+        .brand,
+        .command,
+        .status {
+          border-right: 0;
+          border-bottom: 1px solid var(--line-soft);
+          padding: 10px 12px;
+        }
+
+        .command,
+        .status,
+        .main-header,
+        .bottom {
+          display: flex;
+          flex-wrap: wrap;
+        }
+
+        .token-item,
+        .table-head {
+          grid-template-columns: 1fr;
+        }
+
+        .table-head {
+          display: none;
+        }
+
+        .detail {
+          max-height: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>
+            <strong>gmgn.intel</strong>
+            <small>token radar</small>
+          </div>
+        </div>
+
+        <div class="command">
+          <div class="search">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m21 21-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" />
+            </svg>
+            <input value="HYPE / Monad / Base meme" aria-label="search" />
+          </div>
+          <div class="segment" aria-label="window">
+            <button>5m</button>
+            <button class="active">1h</button>
+            <button>4h</button>
+            <button>24h</button>
+          </div>
+          <div class="segment" aria-label="scope">
+            <button>watched</button>
+            <button class="active">all</button>
+          </div>
+        </div>
+
+        <div class="status">
+          <span class="pill good">ready</span>
+          <span class="pill warn">48 cases</span>
+          <span class="pill hot">9 alerts</span>
+          <button class="icon-button" aria-label="refresh">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M21 12a9 9 0 0 1-15.5 6.2M3 12A9 9 0 0 1 18.5 5.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              <path d="M21 4v6h-6M3 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <aside class="rail">
+        <section class="rail-section">
+          <h2>Views</h2>
+          <button class="rail-button active"><span>1</span><b>Radar</b><em>48</em></button>
+          <button class="rail-button"><span>2</span><b>Search</b><em></em></button>
+          <button class="rail-button"><span>3</span><b>Signal Lab</b><em>46</em></button>
+          <button class="rail-button"><span>4</span><b>Alerts</b><em>9</em></button>
+        </section>
+
+        <section class="rail-section">
+          <h2>Filters</h2>
+          <div class="rail-field"><span>Drivers + Watch</span></div>
+          <div class="rail-field"><span>@toly, @ansem, @base</span></div>
+          <div class="rail-field"><span>DEX + CEX targets</span></div>
+        </section>
+
+        <section class="rail-section">
+          <h2>Decisions</h2>
+          <div class="decision-count"><span class="decision-tag driver">driver</span><b>17</b></div>
+          <div class="decision-count"><span class="decision-tag watch">watch</span><b>31</b></div>
+          <div class="decision-count"><span class="decision-tag investigate">investigate</span><b>8</b></div>
+          <div class="decision-count"><span class="decision-tag">discard</span><b>4</b></div>
+        </section>
+
+        <section class="rail-section">
+          <h2>Watchlist</h2>
+          <div class="watch-row"><span class="avatar">M</span><b>@marionawfal</b><span class="pill hot">9+</span></div>
+          <div class="watch-row"><span class="avatar">T</span><b>@toly</b><span class="fine">1m</span></div>
+          <div class="watch-row"><span class="avatar">P</span><b>@polymarket</b><span class="fine">8m</span></div>
+          <div class="watch-row"><span class="avatar">B</span><b>@base</b><span class="fine">12m</span></div>
+          <div class="watch-row"><span class="avatar">A</span><b>@a16z</b><span class="fine">22m</span></div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <header class="main-header">
+          <div class="main-title">
+            <h1>Token Radar</h1>
+            <p>每个 item 都先回答四件事: 官方身份、社区扩散、叙事变化、交易可用性。</p>
+          </div>
+          <div class="toolbar">
+            <div class="segment" aria-label="sort">
+              <button class="active">Opportunity</button>
+              <button>Heat</button>
+              <button>Quality</button>
+              <button>Timing</button>
+            </div>
+          </div>
+        </header>
+
+        <section class="token-list" aria-label="token radar redesign list">
+          <div class="table-head">
+            <span>Token case</span>
+            <span>Official</span>
+            <span>Community</span>
+            <span>Narrative</span>
+            <span>Decision</span>
+          </div>
+
+          <article class="token-item selected">
+            <div class="token-identity">
+              <div class="token-logo">H</div>
+              <div class="token-name">
+                <div class="symbol-line"><strong>$HYPE</strong><span class="badge good">verified</span></div>
+                <div class="meta">OKX - HYPE-USDT - exact</div>
+                <div class="tiny-links">
+                  <span class="link-chip">web</span>
+                  <span class="link-chip">X @HyperliquidX</span>
+                  <span class="link-chip">GMGN</span>
+                </div>
+              </div>
+            </div>
+            <div class="info-block">
+              <span class="label">Official</span>
+              <strong>Hyperliquid profile ready</strong>
+              <p>官方 X、网站和 GMGN route 齐全，identity 来源是 CEX inst id，不依赖叙事 agent 判断。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Community</span>
+              <strong>36 posts - 21 authors</strong>
+              <p>watched 5，top author 24%，duplicate 6%，扩散从单点进入多账户复述。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Narrative</span>
+              <strong>CEX perp attention rotation</strong>
+              <p>交易账户把 HYPE 与 ETH beta、DEX revenue 和 perp volume 放在同一组讨论。</p>
+            </div>
+            <div class="score-block">
+              <div class="score-box">95</div>
+              <div class="score-action">driver</div>
+              <div class="bar-stack"><i></i><i></i><i></i><i></i></div>
+            </div>
+          </article>
+
+          <article class="token-item">
+            <div class="token-identity">
+              <div class="token-logo mint">K</div>
+              <div class="token-name">
+                <div class="symbol-line"><strong>$KRC</strong><span class="badge warn">DEX</span></div>
+                <div class="meta">solana - 7HGFXFTR... - ready</div>
+                <div class="tiny-links">
+                  <span class="link-chip">X pending</span>
+                  <span class="link-chip">GMGN</span>
+                </div>
+              </div>
+            </div>
+            <div class="info-block">
+              <span class="label">Official</span>
+              <strong>Profile partial</strong>
+              <p>GMGN route ready，官方网站缺失，X username 需要 profile refresh 二次确认。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Community</span>
+              <strong>14 posts - 11 authors</strong>
+              <p>watched 2，new authors 加速，但 top share 仍偏高，质量 50。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Narrative</span>
+              <strong>Solana meme revival</strong>
+              <p>早期账户讨论流动性和持有人增长，尚未出现稳定 catalyst 句式。</p>
+            </div>
+            <div class="score-block">
+              <div class="score-box">88</div>
+              <div class="score-action">driver</div>
+              <div class="bar-stack"><i></i><i></i><i></i><i></i></div>
+            </div>
+          </article>
+
+          <article class="token-item">
+            <div class="token-identity">
+              <div class="token-logo cyan">S</div>
+              <div class="token-name">
+                <div class="symbol-line"><strong>$SOL</strong><span class="badge good">CEX</span></div>
+                <div class="meta">OKX - SOL-USDT - exact</div>
+                <div class="tiny-links">
+                  <span class="link-chip">web</span>
+                  <span class="link-chip">X @solana</span>
+                  <span class="link-chip">OKX</span>
+                </div>
+              </div>
+            </div>
+            <div class="info-block">
+              <span class="label">Official</span>
+              <strong>Official links complete</strong>
+              <p>大市值 CEX token，profile source 稳定，可作为 ecosystem anchor。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Community</span>
+              <strong>12 posts - 9 authors</strong>
+              <p>watched 4，discussion quality 中性，dup 8%，更多是背景 beta。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Narrative</span>
+              <strong>Infra beta, not fresh alpha</strong>
+              <p>与新 meme 共同出现，但 SOL 本体缺乏新触发，适合做情境参照。</p>
+            </div>
+            <div class="score-block">
+              <div class="score-box">81</div>
+              <div class="score-action">watch</div>
+              <div class="bar-stack"><i></i><i></i><i></i><i></i></div>
+            </div>
+          </article>
+
+          <article class="token-item">
+            <div class="token-identity">
+              <div class="token-logo">P</div>
+              <div class="token-name">
+                <div class="symbol-line"><strong>$PTOKEN</strong><span class="badge warn">risk</span></div>
+                <div class="meta">solana - GP2CZRRU... - stale</div>
+                <div class="tiny-links">
+                  <span class="link-chip">GMGN</span>
+                  <span class="link-chip">X missing</span>
+                </div>
+              </div>
+            </div>
+            <div class="info-block">
+              <span class="label">Official</span>
+              <strong>Official weak</strong>
+              <p>token profile 缺描述和官方链接，只能展示 market route，不提升 identity 信心。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Community</span>
+              <strong>11 posts - 8 authors</strong>
+              <p>watched 1，duplicate 19%，传播像短期复读，需看原帖质量。</p>
+            </div>
+            <div class="info-block">
+              <span class="label">Narrative</span>
+              <strong>One-line ticker pump</strong>
+              <p>多数帖子只有 ticker 和价格口号，没有产品、团队或事件上下文。</p>
+            </div>
+            <div class="score-block">
+              <div class="score-box">72</div>
+              <div class="score-action">watch</div>
+              <div class="bar-stack"><i></i><i></i><i></i><i></i></div>
+            </div>
+          </article>
+        </section>
+      </main>
+
+      <aside class="detail">
+        <header class="detail-header">
+          <div class="detail-title">
+            <div class="token-logo">H</div>
+            <div>
+              <span class="label">Selected case</span>
+              <h2>$HYPE</h2>
+              <p>unknown - cex_token:HYPE - exact</p>
+            </div>
+            <div class="detail-score">95</div>
+          </div>
+          <div class="thesis">
+            结论: 社区热度不是单纯 ticker 噪声，官方身份完整，传播从 watched accounts 扩散到多账户复述；可进入 Search Intel 看证据链和时间线。
+          </div>
+          <div class="tabs" style="margin-top: 12px">
+            <span class="tab pill warn">Search Intel</span>
+            <span class="tab pill">GMGN</span>
+            <span class="tab pill">OKX</span>
+          </div>
+        </header>
+
+        <section class="detail-section">
+          <h3>Official <span class="badge good">ready</span></h3>
+          <div class="summary-grid">
+            <div class="summary-metric"><b>Hyperliquid</b><span>name + symbol from profile</span></div>
+            <div class="summary-metric"><b>@HyperliquidX</b><span>official X detected</span></div>
+            <div class="summary-metric"><b>Website</b><span>primary route available</span></div>
+            <div class="summary-metric"><b>GMGN / OKX</b><span>venue actions ready</span></div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3>Community <span class="badge">1h window</span></h3>
+          <div class="summary-grid">
+            <div class="summary-metric"><b>36</b><span>posts</span></div>
+            <div class="summary-metric"><b>21</b><span>authors</span></div>
+            <div class="summary-metric"><b>5</b><span>watched accounts</span></div>
+            <div class="summary-metric"><b>24%</b><span>top author share</span></div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3>Narrative <span class="badge warn">expansion</span></h3>
+          <ul class="bullets">
+            <li><span class="marker">1</span><span><b>Why now</b>: perp volume 与 DEX revenue 被多个账户同时提起，形成可复述叙事。</span></li>
+            <li><span class="marker">2</span><span><b>What changed</b>: watched accounts 先发，之后普通交易账户开始跟进。</span></li>
+            <li><span class="marker">3</span><span><b>Invalidation</b>: 若新增作者停止扩散，或价格已先涨后社交，降级为 chase risk。</span></li>
+          </ul>
+        </section>
+
+        <section class="detail-section">
+          <h3>Social x Market</h3>
+          <div class="timeline" aria-hidden="true">
+            <i style="height: 18px"></i>
+            <i style="height: 26px"></i>
+            <i class="hot" style="height: 42px"></i>
+            <i style="height: 30px"></i>
+            <i class="mint" style="height: 54px"></i>
+            <i class="hot" style="height: 68px"></i>
+            <i class="cyan" style="height: 39px"></i>
+            <i class="hot" style="height: 74px"></i>
+            <i style="height: 31px"></i>
+            <i class="mint" style="height: 49px"></i>
+            <i style="height: 28px"></i>
+            <i class="cyan" style="height: 44px"></i>
+            <i class="hot" style="height: 78px"></i>
+            <i class="hot" style="height: 62px"></i>
+            <i class="mint" style="height: 38px"></i>
+            <i style="height: 24px"></i>
+            <i class="cyan" style="height: 30px"></i>
+            <i style="height: 20px"></i>
+          </div>
+          <div class="phase-row">
+            <div class="phase"><b>seed</b><span>2 posts</span></div>
+            <div class="phase"><b>ignition</b><span>5 posts</span></div>
+            <div class="phase active"><b>expansion</b><span>21 authors</span></div>
+            <div class="phase"><b>concentration</b><span>24% top</span></div>
+            <div class="phase"><b>chase</b><span>neutral</span></div>
+          </div>
+        </section>
+
+        <section class="detail-section">
+          <h3>Decision <span class="decision-tag driver">driver</span></h3>
+          <ul class="bullets">
+            <li><span class="marker">H</span><span><b>Heat 95</b>: burst + mention delta + stream share support rank.</span></li>
+            <li><span class="marker">Q</span><span><b>Quality 100</b>: semantic discussion, low duplication, enough informative posts.</span></li>
+            <li><span class="marker">T</span><span><b>Timing neutral</b>: no hard chase block, market observation available.</span></li>
+          </ul>
+        </section>
+      </aside>
+
+      <section class="bottom">
+        <div class="bottom-panel">
+          <h3 class="section-heading">Live signal tape</h3>
+          <div class="tape-row"><span>POST</span><b>@marionawfal -> Congratulations!</b><span>0s</span></div>
+          <div class="tape-row"><span>POST</span><b>@yushanshan1123 -> 厉害了我的哥</b><span>12s</span></div>
+          <div class="tape-row"><span>POST</span><b>@panewslab -> 可以可以，爽</b><span>13s</span></div>
+          <div class="tape-row"><span>POST</span><b>@base -> builders are back onchain</b><span>24s</span></div>
+        </div>
+        <div class="bottom-panel">
+          <h3 class="section-heading">Signal pulse</h3>
+          <div class="pulse-row"><span class="decision-tag driver">trade</span><b>HYPE: high-conviction expansion</b><span>hot</span></div>
+          <div class="pulse-row"><span class="decision-tag watch">token</span><b>BTC: social attention steady</b><span>mid</span></div>
+          <div class="pulse-row"><span class="decision-tag">theme</span><b>Solana memes: breadth improving</b><span>new</span></div>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>
