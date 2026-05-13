@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,8 +90,48 @@ vi.mock("./api/client", async () => {
 });
 
 vi.mock("./api/useIntelSocket", () => ({
-  useIntelSocket: () => socketMock,
+  useIntelSocket: ({
+    marketTargets = [],
+    onLiveMarketUpdate,
+  }: {
+    marketTargets?: Array<{ target_type?: string | null; target_id?: string | null }>;
+    onLiveMarketUpdate?: (payload: LiveMarketUpdatePayload) => void;
+  }) => {
+    const marketTargetKey = JSON.stringify(marketTargets);
+    const dispatchedMarketUpdateKeys = useRef(new Set<string>());
+    useEffect(() => {
+      for (const update of socketMock.liveMarketUpdates) {
+        if (!marketTargets.some((target) => marketTargetMatchesUpdate(target, update))) {
+          continue;
+        }
+        const updateKey = liveMarketUpdateKey(update);
+        if (dispatchedMarketUpdateKeys.current.has(updateKey)) {
+          continue;
+        }
+        dispatchedMarketUpdateKeys.current.add(updateKey);
+        onLiveMarketUpdate?.(update);
+      }
+    }, [marketTargetKey, marketTargets, onLiveMarketUpdate]);
+    return socketMock;
+  },
 }));
+
+function marketTargetMatchesUpdate(
+  target: { target_type?: string | null; target_id?: string | null },
+  update: LiveMarketUpdatePayload,
+) {
+  return target.target_type === update.target_type && target.target_id === update.target_id;
+}
+
+function liveMarketUpdateKey(update: LiveMarketUpdatePayload) {
+  return [
+    update.target_type,
+    update.target_id,
+    update.observed_at_ms,
+    update.market.decision_latest?.observed_at_ms,
+    update.market.decision_latest?.provider,
+  ].join(":");
+}
 
 const mockedGetApi = vi.mocked(getApi);
 const mockedGetBootstrap = vi.mocked(getBootstrap);

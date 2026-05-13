@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as client from "../../api/client";
 import { useTraderStore } from "../../store/useTraderStore";
+import { marketContextFixture, marketObservationFixture } from "../../test/marketFixtures";
 import { SearchIntelPage } from "../SearchIntelPage";
 
 beforeEach(() => {
@@ -84,17 +85,24 @@ describe("SearchIntelPage", () => {
         market: "live",
         identity: "ready",
       },
-      live_market: {
-        status: "live",
-        price_usd: 0.0078,
-        market_cap_usd: 51_000_000,
-        provider: "okx_dex_ws_price_info",
-      },
-      anchor_price: {
-        status: "ready",
-        price_usd: 0.007,
-        provider: "gmgn_dex_quote",
-      },
+      market: marketContextFixture({
+        event_anchor: marketObservationFixture({
+          target_type: "Asset",
+          target_id: "asset:solana:rkc",
+          source: "event_anchor",
+          provider: "gmgn_dex_quote",
+          price_usd: 0.007,
+          market_cap_usd: 33_000_000,
+        }),
+        decision_latest: marketObservationFixture({
+          target_type: "Asset",
+          target_id: "asset:solana:rkc",
+          source: "decision_latest",
+          provider: "okx_dex_ws_price_info",
+          price_usd: 0.0078,
+          market_cap_usd: 51_000_000,
+        }),
+      }),
     };
     vi.mocked(client.getApi).mockResolvedValueOnce({ ok: true, data });
 
