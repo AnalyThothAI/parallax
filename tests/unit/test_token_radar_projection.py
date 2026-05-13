@@ -485,7 +485,7 @@ def test_projection_market_uses_latest_market_snapshot_fields():
         "missing_fields": [],
         "stale_fields": [],
     }
-    assert "anchor_price_usd" not in market
+    assert "anchor_price_" + "usd" not in market
     assert "live_price_persisted" not in market
 
 
@@ -554,7 +554,7 @@ def test_source_rows_does_not_read_historical_price_observations():
     assert "LEFT JOIN LATERAL" in conn.sql
     assert "event_price_observation" in conn.sql
     assert "decision_latest_observation" in conn.sql
-    assert "token_market_price_baselines" not in conn.sql
+    assert "token_market_price_" + "baselines" not in conn.sql
     assert "message_event_price" not in conn.sql
     assert "event_history_price" not in conn.sql
     assert "latest_price_observation" not in conn.sql

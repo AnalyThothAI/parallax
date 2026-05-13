@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -505,6 +506,7 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
     collector_status = runtime.collector.status.to_dict()
     db_status = _db_status(runtime)
     reasons = _unhealthy_reasons(runtime, now_ms=now_ms, db_status=db_status)
+    stream_dex_market = _stream_dex_market(runtime)
     payload = {
         "ok": not reasons,
         "reasons": reasons,
@@ -515,7 +517,7 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         "db": db_status,
         "provider_states": {
             "gmgn_direct_ws": _provider_state_payload(getattr(runtime.collector, "upstream_client", None)),
-            "okx_dex_ws": _provider_state_payload(getattr(runtime.providers.asset_market, "stream_dex_market", None)),
+            "okx_dex_ws": _provider_state_payload(stream_dex_market),
         },
         "enrichment": {
             "llm_configured": runtime.settings.llm_configured,
@@ -607,9 +609,7 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "configured": getattr(runtime.settings, "okx_dex_ws_configured", False),
             "worker_running": _task_running(runtime.live_price_gateway_task),
             "subscription_limit": getattr(runtime.settings, "okx_dex_ws_subscription_limit", None),
-            "provider_state": _provider_state_payload(
-                getattr(runtime.providers.asset_market, "stream_dex_market", None)
-            ),
+            "provider_state": _provider_state_payload(stream_dex_market),
             "last_started_at_ms": runtime.live_price_gateway.last_started_at_ms if runtime.live_price_gateway else None,
             "last_run_at_ms": runtime.live_price_gateway.last_run_at_ms if runtime.live_price_gateway else None,
             "last_result": runtime.live_price_gateway.last_result if runtime.live_price_gateway else None,
@@ -617,6 +617,12 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         },
     }
     return payload, 503 if reasons else 200
+
+
+def _stream_dex_market(runtime: Any) -> Any | None:
+    providers = getattr(runtime, "providers", None)
+    asset_market = getattr(providers, "asset_market", None)
+    return getattr(asset_market, "stream_dex_market", None)
 
 
 def _unhealthy_reasons(runtime: CliRuntime, *, now_ms: int, db_status: dict[str, object]) -> list[str]:

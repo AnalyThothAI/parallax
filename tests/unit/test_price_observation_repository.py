@@ -32,7 +32,7 @@ def test_event_anchor_insert_updates_existing_resolution_without_baseline_write(
     assert observation_id == "existing-observation"
     assert "UPDATE price_observations" in sql
     assert "ON CONFLICT" not in sql
-    assert "token_market_price_baselines" not in sql
+    assert "token_market_price_" + "baselines" not in sql
     assert conn.commits == 1
 
 

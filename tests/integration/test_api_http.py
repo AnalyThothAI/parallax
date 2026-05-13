@@ -38,7 +38,27 @@ def _pulse_factor_snapshot(
     blocked_reasons: list[str] | None = None,
 ) -> dict[str, object]:
     blocked = blocked_reasons or []
-    market_health = "ready" if market_status == "fresh" else "partial"
+    market_ready = market_status == "fresh"
+    market_health = "ready" if market_ready else "missing"
+    observation = {
+        "target_type": "Asset",
+        "target_id": target_id,
+        "source": "event_anchor",
+        "provider": "okx" if market_ready else None,
+        "pricefeed_id": None,
+        "price_usd": 0.42 if market_ready else None,
+        "price_quote": None,
+        "quote_symbol": "USD" if market_ready else None,
+        "price_basis": "usd" if market_ready else None,
+        "market_cap_usd": None,
+        "liquidity_usd": None,
+        "holders": None,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "observed_at_ms": 1_700_000_000_000 if market_ready else None,
+        "received_at_ms": 1_700_000_000_000 if market_ready else None,
+        "raw_payload_hash": None,
+    }
     return {
         "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {
@@ -49,17 +69,15 @@ def _pulse_factor_snapshot(
             "chain": "sol",
         },
         "market": {
-            "market_status": "anchored" if market_status == "fresh" else "missing",
-            "price_change_status": "live_not_persisted",
-            "provider": "okx",
-            "anchor_price_usd": 0.42 if market_status == "fresh" else None,
-            "anchor_price_quote": None,
-            "anchor_quote_symbol": "USD" if market_status == "fresh" else None,
-            "anchor_price_basis": "usd" if market_status == "fresh" else None,
-            "anchor_observed_at_ms": 1_700_000_000_000 if market_status == "fresh" else None,
-            "social_signal_start_ms": 1_700_000_000_000,
-            "anchor_lag_ms": 0 if market_status == "fresh" else None,
-            "event_price_readiness": {"status": "ready" if market_status == "fresh" else "missing"},
+            "event_anchor": observation if market_ready else None,
+            "decision_latest": {**observation, "source": "decision_latest"} if market_ready else None,
+            "readiness": {
+                "anchor_status": "ready" if market_ready else "missing",
+                "latest_status": "live" if market_ready else "missing",
+                "dex_floor_status": "missing_fields",
+                "missing_fields": ["holders", "liquidity_usd", "market_cap_usd"],
+                "stale_fields": [],
+            },
         },
         "gates": {
             "eligible_for_high_alert": not blocked,
@@ -574,7 +592,7 @@ def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_pat
     assert "NEWTOKEN" in data["projection"]["unresolved"]["sample_symbols"]
 
 
-def test_token_radar_overlays_live_gateway_snapshot(tmp_path):
+def test_token_radar_payload_ignores_process_local_live_gateway_snapshot(tmp_path):
     class FakeLiveGateway:
         def stop(self) -> None:
             return None
@@ -627,10 +645,10 @@ def test_token_radar_overlays_live_gateway_snapshot(tmp_path):
 
     assert response.status_code == 200
     row = response.json()["data"]["targets"][0]
-    assert row["live_market"]["status"] == "live"
-    assert row["live_market"]["price_usd"] == 0.123
-    assert row["live_market"]["market_cap_usd"] == 123_000
-    assert row["live_market"]["provider"] == "test_live"
+    assert "live_market" not in row
+    assert row["market"]["event_anchor"] is None
+    assert row["market"]["decision_latest"] is None
+    assert row["market"]["readiness"]["anchor_status"] == "missing"
 
 
 def test_stocks_radar_returns_us_equity_market_instruments_with_partial_quotes(tmp_path):

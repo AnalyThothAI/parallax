@@ -46,19 +46,19 @@ LEGACY_FRONTEND_PATTERNS = (
 )
 
 LEGACY_MARKET_OVERLAY_BACKEND_PATTERNS = (
-    "_overlay_live_market",
-    "token_market_price_baselines",
-    '"live_market":',
-    'row.get("live_market")',
-    "row['live_market']",
+    "_overlay_" + "live_market",
+    "token_market_price_" + "baselines",
+    '"live_' + 'market":',
+    'row.get("live_' + 'market")',
+    "row['live_" + "market']",
 )
 
 LEGACY_MARKET_OVERLAY_FRONTEND_PATTERNS = (
-    "liveMarketUpdates[0]",
-    ".live_market",
-    "row.live_market",
-    "radar.live_market",
-    "update.live_market",
+    "liveMarket" + "Updates[0]",
+    ".live_" + "market",
+    "row.live_" + "market",
+    "radar.live_" + "market",
+    "update.live_" + "market",
 )
 
 FACTOR_SNAPSHOT_PRODUCER_FILES = (

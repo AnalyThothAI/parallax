@@ -253,12 +253,13 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     assert before["resolution_status"] == "NIL"
     assert second["lookups_done"] == 1
     assert second["search_hits"] == 1
-    assert second["anchor"]["anchor_observations_written"] == 1
-    assert second["projection"]["windows"]["5m:all"]["rows_written"] >= 1
+    assert second["reprocessed_intents"] == 1
+    assert second["anchor"] is None
+    assert second["projection"]["status"] == "deferred_to_worker"
+    assert second["projection"]["rows_written"] == 0
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert rows[0]["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert rows[0]["factor_snapshot_json"]["market"]["anchor_price_usd"] == 0.5
+    assert rows == []
 
 
 @pytest.mark.skip(
