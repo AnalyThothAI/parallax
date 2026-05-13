@@ -1,6 +1,6 @@
 import type { ScopeKey, SignalPulseStatusFilter, WindowKey } from "@lib/types";
 
-import { OBSERVATION_WINDOWS } from "../../lib/observationWindows";
+import { OBSERVATION_WINDOWS } from "../../../lib/observationWindows";
 
 export type SignalLabRouteState = {
   window: WindowKey;
@@ -36,14 +36,14 @@ export function parseSignalLabRouteState(searchParams: URLSearchParams): SignalL
   };
 }
 
-export function serializeSignalLabRouteState(state: SignalLabRouteState): URLSearchParams {
+export function serializeSignalLabRouteState(routeState: SignalLabRouteState): URLSearchParams {
   const params = new URLSearchParams();
   const normalized: SignalLabRouteState = {
-    window: parseWindow(state.window),
-    scope: parseScope(state.scope),
-    status: parseStatus(state.status),
-    handle: normalizeHandle(state.handle),
-    q: state.q.trim(),
+    window: parseWindow(routeState.window),
+    scope: parseScope(routeState.scope),
+    status: parseStatus(routeState.status),
+    handle: normalizeHandle(routeState.handle),
+    q: routeState.q.trim(),
   };
   if (normalized.window !== SIGNAL_LAB_ROUTE_DEFAULTS.window)
     params.set("window", normalized.window);

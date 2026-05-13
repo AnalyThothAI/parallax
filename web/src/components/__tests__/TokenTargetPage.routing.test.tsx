@@ -4,14 +4,14 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import { useTraderStore } from "../../store/useTraderStore";
 import { TokenTargetPage } from "../TokenTargetPage";
 
 beforeEach(() => {
-  useTraderStore.setState({ token: "test-token", scope: "all" });
+  client.setAuthToken("test-token");
 });
 
 afterEach(() => {
+  client.setAuthToken(null);
   vi.restoreAllMocks();
 });
 

@@ -5,17 +5,20 @@ import type {
   TokenFlowItem,
   WindowKey,
 } from "@lib/types";
+import { livePath, searchPath, signalLabPath } from "@shared/routing/paths";
+import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { MobileTask } from "../../components/MobileTaskNav";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { tokenKey } from "../../lib/format";
-import { useTraderStore } from "../../store/useTraderStore";
 import { requiredMobileTaskForPathname } from "../cockpit/mobileRouteTask";
+import { useCockpitStore } from "../cockpit/state/cockpitStore";
 import { tokenSearchPath } from "../search/tokenSearchRoute";
 
 import { tapeItemId, type LiveSignalTapeItem } from "./liveTapeModel";
+import { useLiveSelectionStore } from "./state/liveSelectionSlice";
 
 export type SelectedSignal =
   | { kind: "token"; key: string; item: TokenFlowItem }
@@ -27,6 +30,7 @@ type UseLiveSelectionArgs = {
   compactSignalPulseItems: SignalPulseItem[];
   isSignalLabPulseFetching: boolean;
   scope: ScopeKey;
+  search: string;
   tokenItems: TokenFlowItem[];
   windowKey: WindowKey;
 };
@@ -35,6 +39,7 @@ export function useLiveSelection({
   compactSignalPulseItems,
   isSignalLabPulseFetching,
   scope,
+  search,
   tokenItems,
   windowKey,
 }: UseLiveSelectionArgs) {
@@ -44,30 +49,30 @@ export function useLiveSelection({
   const isTokenRadarRoute = location.pathname === "/";
   const suppressTokenDetailRoute =
     location.pathname.startsWith("/search") || location.pathname.startsWith("/stocks");
-  const search = useTraderStore((state) => state.search);
-  const detailTab = useTraderStore((state) => state.detailTab);
-  const detailWindow = useTraderStore((state) => state.detailWindow);
-  const detailMode = useTraderStore((state) => state.detailMode);
-  const selectedBucketStartMs = useTraderStore((state) => state.selectedBucketStartMs);
-  const selectedEventId = useTraderStore((state) => state.selectedEventId);
-  const postRange = useTraderStore((state) => state.postRange);
-  const postSortMode = useTraderStore((state) => state.postSortMode);
-  const hideDuplicateClusters = useTraderStore((state) => state.hideDuplicateClusters);
-  const watchedPostsOnly = useTraderStore((state) => state.watchedPostsOnly);
-  const setDetailTab = useTraderStore((state) => state.setDetailTab);
-  const setDetailWindow = useTraderStore((state) => state.setDetailWindow);
-  const setDetailMode = useTraderStore((state) => state.setDetailMode);
-  const setSelectedBucketStartMs = useTraderStore((state) => state.setSelectedBucketStartMs);
-  const setSelectedEventId = useTraderStore((state) => state.setSelectedEventId);
-  const setPostRange = useTraderStore((state) => state.setPostRange);
-  const setPostSortMode = useTraderStore((state) => state.setPostSortMode);
-  const setHideDuplicateClusters = useTraderStore((state) => state.setHideDuplicateClusters);
-  const setWatchedPostsOnly = useTraderStore((state) => state.setWatchedPostsOnly);
+  const detailTab = useLiveSelectionStore((state) => state.detailTab);
+  const detailWindow = useLiveSelectionStore((state) => state.detailWindow);
+  const detailMode = useLiveSelectionStore((state) => state.detailMode);
+  const selectedBucketStartMs = useLiveSelectionStore((state) => state.selectedBucketStartMs);
+  const selectedEventId = useLiveSelectionStore((state) => state.selectedEventId);
+  const postRange = useLiveSelectionStore((state) => state.postRange);
+  const postSortMode = useLiveSelectionStore((state) => state.postSortMode);
+  const hideDuplicateClusters = useLiveSelectionStore((state) => state.hideDuplicateClusters);
+  const watchedPostsOnly = useLiveSelectionStore((state) => state.watchedPostsOnly);
+  const setDetailTab = useLiveSelectionStore((state) => state.setDetailTab);
+  const setDetailWindow = useLiveSelectionStore((state) => state.setDetailWindow);
+  const setDetailMode = useLiveSelectionStore((state) => state.setDetailMode);
+  const setSelectedBucketStartMs = useLiveSelectionStore((state) => state.setSelectedBucketStartMs);
+  const setSelectedEventId = useLiveSelectionStore((state) => state.setSelectedEventId);
+  const setPostRange = useLiveSelectionStore((state) => state.setPostRange);
+  const setPostSortMode = useLiveSelectionStore((state) => state.setPostSortMode);
+  const setHideDuplicateClusters = useLiveSelectionStore((state) => state.setHideDuplicateClusters);
+  const setWatchedPostsOnly = useLiveSelectionStore((state) => state.setWatchedPostsOnly);
   const [selectedSignal, setSelectedSignal] = useState<SelectedSignal>(null);
   const [selectedTapeEventId, setSelectedTapeEventId] = useState<string | null>(null);
-  const [mobileTask, setMobileTask] = useState<MobileTask>("radar");
+  const mobileTask = useCockpitStore((state) => state.mobileTask);
+  const setMobileTask = useCockpitStore((state) => state.setMobileTask);
 
-  const resetTokenDetail = useCallback(
+  const resetDetailPanel = useCallback(
     (nextWindow: WindowKey) => {
       setDetailTab("timeline");
       setDetailWindow(nextWindow);
@@ -91,7 +96,7 @@ export function useLiveSelection({
     if (requiredTask && mobileTask !== requiredTask) {
       setMobileTask(requiredTask);
     }
-  }, [location.pathname, mobileTask]);
+  }, [location.pathname, mobileTask, setMobileTask]);
 
   useEffect(() => {
     if (!isTokenRadarRoute) {
@@ -99,9 +104,9 @@ export function useLiveSelection({
     }
     if (!selectedSignal && tokenItems.length) {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
-      resetTokenDetail(windowKey);
+      resetDetailPanel(windowKey);
     }
-  }, [isTokenRadarRoute, resetTokenDetail, selectedSignal, tokenItems, windowKey]);
+  }, [isTokenRadarRoute, resetDetailPanel, selectedSignal, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "token") {
@@ -114,13 +119,13 @@ export function useLiveSelection({
     }
     if (!latest && tokenItems.length) {
       setSelectedSignal({ kind: "token", key: tokenKey(tokenItems[0]), item: tokenItems[0] });
-      resetTokenDetail(windowKey);
+      resetDetailPanel(windowKey);
       return;
     }
     if (!latest) {
       setSelectedSignal(null);
     }
-  }, [resetTokenDetail, selectedSignal, tokenItems, windowKey]);
+  }, [resetDetailPanel, selectedSignal, tokenItems, windowKey]);
 
   useEffect(() => {
     if (selectedSignal?.kind !== "pulse") {
@@ -155,7 +160,7 @@ export function useLiveSelection({
 
   const selectToken = (item: TokenFlowItem, tapeId: string | null = null) => {
     setSelectedSignal({ kind: "token", key: tokenKey(item), item });
-    resetTokenDetail(windowKey);
+    resetDetailPanel(windowKey);
     setSelectedTapeEventId(tapeId);
     setMobileTask("detail");
   };
@@ -174,7 +179,7 @@ export function useLiveSelection({
     setSelectedTapeEventId(item.candidate_id);
     setMobileTask("detail");
     if (options.openLab) {
-      navigate("/signal-lab");
+      navigate(signalLabPath());
       setMobileTask("lab");
     }
   };
@@ -194,20 +199,16 @@ export function useLiveSelection({
       } else {
         next.delete("q");
       }
-      const queryString = next.toString();
-      navigate("/signal-lab" + (queryString ? "?" + queryString : ""));
+      navigate({
+        pathname: "/signal-lab",
+        search: searchWithOptionalPrefix(next),
+      });
       setSelectedSignal(null);
       setSelectedTapeEventId(null);
       setMobileTask("lab");
       return;
     }
-    const next = new URLSearchParams();
-    if (query) {
-      next.set("q", query);
-    }
-    next.set("window", "24h");
-    next.set("scope", scope);
-    navigate(`/search?${next.toString()}`);
+    navigate(searchPath({ q: query, window: "24h", scope }));
     setSelectedSignal(null);
     setSelectedBucketStartMs(null);
     setSelectedEventId(null);
@@ -229,7 +230,7 @@ export function useLiveSelection({
   const handleMobileTaskChange = (task: MobileTask) => {
     setMobileTask(task);
     if (task === "radar" || task === "tape") {
-      navigate("/");
+      navigate(livePath());
     }
   };
 
@@ -258,7 +259,7 @@ export function useLiveSelection({
   };
 
   const onOpenLab = () => {
-    navigate("/signal-lab");
+    navigate(signalLabPath());
     setMobileTask("lab");
   };
 

@@ -5,7 +5,6 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { App } from "../../App";
-import { useTraderStore } from "../../store/useTraderStore";
 
 vi.mock("../../api/useIntelSocket", () => ({
   useIntelSocket: () => ({
@@ -17,7 +16,7 @@ vi.mock("../../api/useIntelSocket", () => ({
 }));
 
 beforeEach(() => {
-  useTraderStore.setState({ token: "test-token" });
+  client.setAuthToken("test-token");
   vi.restoreAllMocks();
 });
 

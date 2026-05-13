@@ -3,19 +3,21 @@ import { getApi, getBootstrap, setAuthToken } from "@lib/api/client";
 import type {
   LivePayload,
   LiveMarketUpdatePayload,
+  RadarSortMode,
   RecentData,
+  ScopeKey,
   SignalPulseData,
   StatusData,
+  WindowKey,
 } from "@lib/types";
 import { patchTokenRadarLiveMarketUpdate } from "@shared/query/patchMarketUpdate";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useIntelSocket } from "../../api/useIntelSocket";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/tokenRadar";
-import { useTraderStore } from "../../store/useTraderStore";
 
 import { useTokenRadarQuery } from "./api/useTokenRadarQuery";
 import { buildLiveSignalTapeItems } from "./liveTapeModel";
@@ -23,14 +25,16 @@ import { buildLiveSignalTapeItems } from "./liveTapeModel";
 const SIGNAL_LAB_COMPACT_WINDOW = "1h";
 const SIGNAL_LAB_COMPACT_SCOPE = "all";
 
-export function useLiveData() {
+type UseLiveDataArgs = {
+  handles: string;
+  radarSortMode: RadarSortMode;
+  scope: ScopeKey;
+  windowKey: WindowKey;
+};
+
+export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiveDataArgs) {
   const queryClient = useQueryClient();
-  const windowKey = useTraderStore((state) => state.window);
-  const scope = useTraderStore((state) => state.scope);
-  const handles = useTraderStore((state) => state.handles);
-  const token = useTraderStore((state) => state.token);
-  const radarSortMode = useTraderStore((state) => state.radarSortMode);
-  const setToken = useTraderStore((state) => state.setToken);
+  const [token, updateToken] = useState("");
 
   const bootstrapQuery = useQuery({
     queryKey: queryKeys.bootstrap(),
@@ -42,9 +46,9 @@ export function useLiveData() {
     if (bootstrapQuery.data?.data.ws_token) {
       const wsToken = bootstrapQuery.data.data.ws_token;
       setAuthToken(wsToken);
-      setToken(wsToken);
+      updateToken(wsToken);
     }
-  }, [bootstrapQuery.data?.data.ws_token, setToken]);
+  }, [bootstrapQuery.data?.data.ws_token]);
 
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
 

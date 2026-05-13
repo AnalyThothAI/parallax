@@ -4,16 +4,16 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useTraderStore } from "../../store/useTraderStore";
 import { marketContextFixture, marketObservationFixture } from "../../test/marketFixtures";
 import { SearchIntelPage } from "../SearchIntelPage";
 
 beforeEach(() => {
-  useTraderStore.setState({ token: "test-token" });
+  client.setAuthToken("test-token");
   vi.spyOn(client, "getApi").mockResolvedValue({ ok: true, data: searchInspectData() });
 });
 
 afterEach(() => {
+  client.setAuthToken(null);
   cleanup();
   vi.restoreAllMocks();
 });

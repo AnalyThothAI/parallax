@@ -41,7 +41,7 @@ export function SignalLabPage({
           onClearFilters={signalLab.clearFilters}
           onHandleChange={signalLab.setHandleFilter}
           onLoadMore={signalLab.loadMore}
-          onSearchChange={signalLab.setSearchFilter}
+          onSearchChange={signalLab.updateSearchFilter}
           onSelectAccountEvent={signalLab.selectAccountEvent}
           onSelect={signalLab.selectPulse}
           onStatusChange={signalLab.setStatusFilter}

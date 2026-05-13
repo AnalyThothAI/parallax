@@ -272,26 +272,26 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Delete: `web/src/store/useTraderStore.ts`
 - Modify: every consumer of `useTraderStore`
 
-- [ ] Move route defaults and validation into per-feature state modules:
+- [x] Move route defaults and validation into per-feature state modules:
   - live: `window`, `scope`, `handles`, `sort`
   - search: `q`, `window`, `scope`
   - signal-lab: `window`, `scope`, `status`, `handle`, `q`
   - stocks: `window`, `scope`
   - token-target: `window`, `scope`, `tab`, `postRange`, `postSort`
-- [ ] Introduce `paths` builders for all app routes. No component should string-concatenate route URLs after this task.
-- [ ] Replace topbar search store state with local component state; submit writes URL through `paths.search({ q, window, scope })` or updates current Signal Lab search params.
-- [ ] Split local state:
+- [x] Introduce `paths` builders for all app routes. No component should string-concatenate route URLs after this task.
+- [x] Replace topbar search store state with local component state; submit writes URL through `paths.search({ q, window, scope })` or updates current Signal Lab search params.
+- [x] Split local state:
   - `features/live/state/liveSelectionSlice.ts`: detail tab/window/mode, selected bucket/event, post range/sort, duplicate/watch filters.
   - `features/cockpit/state/cockpitStore.ts`: mobile task and shell-local UI only.
   - `features/notifications/state/notificationStore.ts`: drawer open state only if local component state is not sufficient.
-- [ ] Remove auth token from Zustand. Bootstrap query calls `setAuthToken(ws_token)` in `@lib/api/client`; API hooks use client auth implicitly.
-- [ ] Delete `web/src/store/useTraderStore.ts`.
-- [ ] Add/update tests:
+- [x] Remove auth token from Zustand. Bootstrap query calls `setAuthToken(ws_token)` in `@lib/api/client`; API hooks use client auth implicitly.
+- [x] Delete `web/src/store/useTraderStore.ts`.
+- [x] Add/update tests:
   - `web/src/features/live/state/liveRouteState.test.ts`
   - `web/src/features/search/state/searchRouteState.test.ts`
   - `web/src/features/signal-lab/state/signalLabRouteState.test.ts`
   - `web/src/features/token-target/state/tokenTargetRouteState.test.ts`
-- [ ] Run:
+- [x] Run:
   ```bash
   cd web
   rg -n 'useTraderStore|setToken|setWindow|setScope|setHandles|setSearch|setRadarSortMode|state\\.token|state\\.window|state\\.scope|state\\.handles|state\\.search|state\\.radarSortMode' src
@@ -300,7 +300,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm test -- --run
   ```
   Expected: `rg` has no matches; all tests pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "refactor: make route filters url-owned"
@@ -611,6 +611,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 1 completed. Added OpenAPI response models, moved generated frontend OpenAPI types to `web/src/lib/types/openapi.ts`, regenerated contract artefacts, verified no `application/json: unknown` response entries remain, and passed `make contract-check`.
 - 2026-05-13: Task 2 completed. Added frontend aliases, env/client/type facade scaffold, app root/routes/error boundaries, staged lint rules, and behavior-preserving compatibility re-exports; passed `npm run typecheck`, `npm run lint`, `npm test -- --run`, and `npm run build`.
 - 2026-05-13: Task 3 completed. Moved server data hooks behind feature API folders, centralized query keys and market cache patching, removed old generated/handwritten API client/type files, and passed the boundary grep checks, `npm run typecheck`, `npm test -- --run`, and `npm run lint`.
+- 2026-05-13: Task 4 completed. Moved shareable live/search/signal-lab/stocks/token-target filters into URL route state modules, split remaining local interaction state into feature/cockpit stores, removed `useTraderStore`, and passed the no-old-store grep, `npm run typecheck`, targeted route-state tests, full Vitest, and `npm run lint`.
 
 ## Decision Log
 
@@ -623,6 +624,8 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Move global cockpit hotkeys from a DOM `onKeyDown` prop to a document listener to satisfy the new a11y lint gate without changing shortcut behavior.
 - 2026-05-13: Keep `web/src/api/useIntelSocket.ts` until Task 7 because it is not a React Query hook and the plan explicitly deletes the old socket hook during the route-aware socket provider milestone.
 - 2026-05-13: Add `.gitkeep` placeholders for target feature layer directories so Task 3's grep validation commands are executable before Tasks 4-5 populate those folders.
+- 2026-05-13: Keep the Task 4 route-state split behavior-preserving by leaving `CockpitApp` as the temporary route host until Task 6; only shareable filters moved to URL, while non-shareable detail/mobile state moved to small feature stores.
+- 2026-05-13: Fix the App integration "token tape click" test by waiting for the token-radar row before clicking the tape row, because Task 4's URL-state rerender exposed that the old test could click the replay-only POST row before token radar data resolved.
 
 ## Verification
 

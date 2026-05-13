@@ -1,14 +1,14 @@
+import { getAuthToken } from "@lib/api/client";
 import { useParams } from "react-router-dom";
 
 import { useSignalPulseCandidate } from "../features/signal-lab/api/useSignalPulseQueries";
 import { PanelSkeleton, RouteStatePanel } from "../shared/ui/RemoteState";
-import { useTraderStore } from "../store/useTraderStore";
 
 import { SignalLabInspector } from "./SignalLabInspector";
 
 export function PulseDetailPage() {
   const { candidateId } = useParams<{ candidateId: string }>();
-  const token = useTraderStore((state) => state.token);
+  const token = getAuthToken() ?? "";
   const query = useSignalPulseCandidate({ token, candidateId: candidateId ?? null });
 
   if (query.isLoading) {

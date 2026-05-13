@@ -15,7 +15,7 @@ import {
   parseSearchRouteState,
   serializeSearchRouteState,
   type SearchRouteState,
-} from "../features/search/searchRouteState";
+} from "../features/search/state/searchRouteState";
 import {
   compactNumber,
   formatPercentShare,

@@ -19,12 +19,12 @@ export function parseSearchRouteState(params: URLSearchParams): SearchRouteState
   };
 }
 
-export function serializeSearchRouteState(state: SearchRouteState): URLSearchParams {
+export function serializeSearchRouteState(routeState: SearchRouteState): URLSearchParams {
   const next = new URLSearchParams();
-  if (state.q.trim()) {
-    next.set("q", state.q.trim());
+  if (routeState.q.trim()) {
+    next.set("q", routeState.q.trim());
   }
-  next.set("window", state.window);
-  next.set("scope", state.scope);
+  next.set("window", routeState.window);
+  next.set("scope", routeState.scope);
   return next;
 }

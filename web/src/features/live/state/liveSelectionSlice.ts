@@ -1,6 +1,4 @@
 import type {
-  RadarSortMode,
-  ScopeKey,
   TokenDetailMode,
   TokenDetailTab,
   TokenPostRange,
@@ -9,14 +7,7 @@ import type {
 } from "@lib/types";
 import { create } from "zustand";
 
-
-type TraderState = {
-  token: string;
-  window: WindowKey;
-  scope: ScopeKey;
-  handles: string;
-  search: string;
-  radarSortMode: RadarSortMode;
+type LiveSelectionState = {
   detailTab: TokenDetailTab;
   detailWindow: WindowKey;
   detailMode: TokenDetailMode;
@@ -26,12 +17,6 @@ type TraderState = {
   postSortMode: TokenPostSortMode;
   hideDuplicateClusters: boolean;
   watchedPostsOnly: boolean;
-  setToken: (token: string) => void;
-  setWindow: (window: WindowKey) => void;
-  setScope: (scope: ScopeKey) => void;
-  setHandles: (handles: string) => void;
-  setSearch: (search: string) => void;
-  setRadarSortMode: (mode: RadarSortMode) => void;
   setDetailTab: (tab: TokenDetailTab) => void;
   setDetailWindow: (window: WindowKey) => void;
   setDetailMode: (mode: TokenDetailMode) => void;
@@ -43,13 +28,7 @@ type TraderState = {
   setWatchedPostsOnly: (enabled: boolean) => void;
 };
 
-export const useTraderStore = create<TraderState>((set) => ({
-  token: "",
-  window: "1h",
-  scope: "all",
-  handles: "",
-  search: "",
-  radarSortMode: "opportunity",
+export const useLiveSelectionStore = create<LiveSelectionState>((set) => ({
   detailTab: "timeline",
   detailWindow: "1h",
   detailMode: "compact",
@@ -59,12 +38,6 @@ export const useTraderStore = create<TraderState>((set) => ({
   postSortMode: "recent",
   hideDuplicateClusters: false,
   watchedPostsOnly: false,
-  setToken: (token) => set({ token }),
-  setWindow: (window) => set({ window }),
-  setScope: (scope) => set({ scope }),
-  setHandles: (handles) => set({ handles }),
-  setSearch: (search) => set({ search }),
-  setRadarSortMode: (radarSortMode) => set({ radarSortMode }),
   setDetailTab: (detailTab) => set({ detailTab }),
   setDetailWindow: (detailWindow) => set({ detailWindow }),
   setDetailMode: (detailMode) => set({ detailMode }),

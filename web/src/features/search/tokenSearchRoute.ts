@@ -1,6 +1,5 @@
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
-
-import { serializeSearchRouteState } from "./searchRouteState";
+import { searchPath } from "@shared/routing/paths";
 
 export function tokenSearchQuery(item: TokenFlowItem): string {
   const symbol = item.identity.symbol?.trim();
@@ -22,10 +21,9 @@ export function tokenSearchQuery(item: TokenFlowItem): string {
 }
 
 export function tokenSearchPath(item: TokenFlowItem, window: WindowKey, scope: ScopeKey): string {
-  const params = serializeSearchRouteState({
+  return searchPath({
     q: tokenSearchQuery(item),
     window,
     scope,
   });
-  return `/search?${params.toString()}`;
 }

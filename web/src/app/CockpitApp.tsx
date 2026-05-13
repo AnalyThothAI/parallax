@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { CockpitLayout } from "../components/CockpitLayout";
@@ -16,24 +16,25 @@ import { SignalLabPage } from "../components/SignalLabPage";
 import { StocksRadarPage } from "../components/StocksRadarPage";
 import { TokenDetailDrawer } from "../components/TokenDetailDrawer";
 import { TokenTargetPage } from "../components/TokenTargetPage";
+import { useLiveRouteState } from "../features/live/state/liveRouteState";
 import { useLiveData } from "../features/live/useLiveData";
 import { useLiveSelection, type SelectedSignal } from "../features/live/useLiveSelection";
 import { useNotificationsController } from "../features/notifications/useNotificationsController";
 import { useTokenDetailData } from "../features/token-target/useTokenDetailData";
 import { buildWatchlistRows } from "../lib/watchlist";
-import { useTraderStore } from "../store/useTraderStore";
 
 export function CockpitApp() {
   const queryClient = useQueryClient();
 
-  const search = useTraderStore((state) => state.search);
-  const setWindow = useTraderStore((state) => state.setWindow);
-  const setScope = useTraderStore((state) => state.setScope);
-  const setHandles = useTraderStore((state) => state.setHandles);
-  const setSearch = useTraderStore((state) => state.setSearch);
-  const setRadarSortMode = useTraderStore((state) => state.setRadarSortMode);
+  const [searchDraft, updateSearchDraft] = useState("");
+  const liveRoute = useLiveRouteState();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const liveData = useLiveData();
+  const liveData = useLiveData({
+    handles: liveRoute.handles,
+    radarSortMode: liveRoute.sort,
+    scope: liveRoute.scope,
+    windowKey: liveRoute.window,
+  });
   const {
     bootstrapHandles,
     compactSignalPulseItems,
@@ -64,6 +65,7 @@ export function CockpitApp() {
     compactSignalPulseItems,
     isSignalLabPulseFetching,
     scope,
+    search: searchDraft,
     tokenItems,
     windowKey,
   });
@@ -111,10 +113,10 @@ export function CockpitApp() {
     if (isTyping) {
       return;
     }
-    if (event.key === "1") setWindow("5m");
-    if (event.key === "2") setWindow("1h");
-    if (event.key === "3") setWindow("4h");
-    if (event.key === "4") setWindow("24h");
+    if (event.key === "1") liveRoute.updateWindow("5m");
+    if (event.key === "2") liveRoute.updateWindow("1h");
+    if (event.key === "3") liveRoute.updateWindow("4h");
+    if (event.key === "4") liveRoute.updateWindow("24h");
   };
 
   const detailPanel = selection.selectedPulseItem ? (
@@ -158,8 +160,8 @@ export function CockpitApp() {
   const layoutElement = (
     <CockpitLayout
       searchInputRef={searchInputRef}
-      searchValue={search}
-      onSearchChange={setSearch}
+      searchValue={searchDraft}
+      onSearchChange={updateSearchDraft}
       onSubmitSearch={selection.submitEvidenceSearch}
       socketStatus={socket.status}
       lastSocketMessageAt={socket.lastMessageAt}
@@ -186,10 +188,10 @@ export function CockpitApp() {
       socketNotifications={socket.notifications}
       onRefresh={() => void queryClient.invalidateQueries()}
       scope={scope}
-      onScopeChange={setScope}
+      onScopeChange={liveRoute.updateScope}
       handles={handles}
-      onHandlesChange={setHandles}
-      onWindowChange={setWindow}
+      onHandlesChange={liveRoute.updateHandles}
+      onWindowChange={liveRoute.updateWindow}
       decisionCounts={decisionCounts}
       watchlistRows={watchlistRows}
       mobileTask={selection.mobileTask}
@@ -224,11 +226,11 @@ export function CockpitApp() {
       radarSortMode={radarSortMode}
       onOpenTokenSearch={selection.openTokenSearchPage}
       onSelectToken={selection.selectToken}
-      onSortModeChange={setRadarSortMode}
+      onSortModeChange={liveRoute.updateSort}
       scope={scope}
       windowKey={windowKey}
-      onScopeChange={setScope}
-      onWindowChange={setWindow}
+      onScopeChange={liveRoute.updateScope}
+      onWindowChange={liveRoute.updateWindow}
     />
   );
 
@@ -247,8 +249,8 @@ export function CockpitApp() {
               token={token ?? ""}
               windowKey={windowKey}
               scope={scope}
-              onScopeChange={setScope}
-              onWindowChange={setWindow}
+              onScopeChange={liveRoute.updateScope}
+              onWindowChange={liveRoute.updateWindow}
             />
           }
         />

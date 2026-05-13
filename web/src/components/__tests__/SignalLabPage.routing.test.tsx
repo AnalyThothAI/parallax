@@ -4,11 +4,10 @@ import { render, waitFor } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import { useTraderStore } from "../../store/useTraderStore";
 import { SignalLabPage } from "../SignalLabPage";
 
 beforeEach(() => {
-  useTraderStore.setState({ token: "test-token", scope: "all", window: "1h" });
+  client.setAuthToken("test-token");
   vi.restoreAllMocks();
 });
 

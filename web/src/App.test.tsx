@@ -1,4 +1,4 @@
-import { ApiError, getApi, getBootstrap, postApi } from "@lib/api/client";
+import { ApiError, getApi, getBootstrap, postApi, setAuthToken } from "@lib/api/client";
 import type {
   ApiResponse,
   AssetFlowData,
@@ -26,8 +26,9 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
+import { useCockpitStore } from "./features/cockpit/state/cockpitStore";
+import { useLiveSelectionStore } from "./features/live/state/liveSelectionSlice";
 import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
-import { useTraderStore } from "./store/useTraderStore";
 import {
   marketContextFixture,
   marketObservationFixture,
@@ -209,13 +210,9 @@ describe("App Token Radar social heat cockpit", () => {
     socketMock.notifications = [];
     socketMock.liveMarketUpdates = [];
     socketMock.lastMessageAt = 1_777_770_000_000;
-    useTraderStore.setState({
-      token: "",
-      window: "1h",
-      scope: "all",
-      handles: "",
-      search: "",
-      radarSortMode: "opportunity",
+    setAuthToken(null);
+    useCockpitStore.setState({ mobileTask: "radar" });
+    useLiveSelectionStore.setState({
       detailTab: "timeline",
       detailWindow: "1h",
       detailMode: "compact",
@@ -1309,6 +1306,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(await screen.findByText("@traderpow -> $UPEG")).toBeInTheDocument();
     expect(screen.getAllByText("@traderpow -> $UPEG")).toHaveLength(1);
     expect(within(tape).getByText("$UPEG watched account evidence")).toBeInTheDocument();
+    await screen.findByRole("button", { name: "select token $UPEG" });
     fireEvent.click(screen.getByRole("button", { name: "Heat" }));
     expect(screen.getByRole("button", { name: "Heat" })).toHaveClass("active");
     fireEvent.click(screen.getByText("@traderpow -> $UPEG"));
@@ -1472,8 +1470,14 @@ describe("App Token Radar social heat cockpit", () => {
 
     const drawer = container.querySelector(".detail-drawer") as HTMLElement;
     expect(drawer.querySelector(".drawer-title h2")).toHaveTextContent("$UPEG");
-    expect(useTraderStore.getState().window).toBe("1h");
-    expect(useTraderStore.getState().scope).toBe("all");
+    expect(
+      screen.getAllByRole("button", { name: "1h" }).some((button) => button.classList.contains("active")),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole("button", { name: /all/i })
+        .some((button) => button.classList.contains("active")),
+    ).toBe(true);
   });
 
   it("returns mobile Radar and Tape tasks to the live cockpit after opening Signal Lab", async () => {

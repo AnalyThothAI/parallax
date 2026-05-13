@@ -113,3 +113,24 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm run typecheck`: passed
 - `cd web && npm test -- --run`: passed, `25 passed`, `136 passed`
 - Extra guard, `cd web && npm run lint`: passed
+
+## Task 4 Verification
+
+### URL State and Store Split Changes
+
+- Added route-state modules for live, search, signal-lab, stocks, and token-target URL filters.
+- Added shared route path/search helpers under `web/src/shared/routing/`.
+- Replaced the old global `useTraderStore` with small local stores for live detail interaction state and cockpit mobile task state.
+- Moved topbar search draft state into `CockpitApp` local state and kept submitted queries URL-owned.
+- Removed auth token ownership from Zustand; bootstrap now writes the token through `setAuthToken(ws_token)`.
+- Deleted `web/src/store/useTraderStore.ts`.
+- Added route-state tests for live and token-target, and updated moved search/signal-lab route-state tests.
+- Adjusted one App integration test to wait for token-radar data before asserting token tape selection; the previous sync point could click the replay-only POST row before token data resolved.
+
+### Commands
+
+- `cd web && rg -n 'useTraderStore|setToken|setWindow|setScope|setHandles|setSearch|setRadarSortMode|state\\.token|state\\.window|state\\.scope|state\\.handles|state\\.search|state\\.radarSortMode' src`: no matches; `rg` exited `1` as expected
+- `cd web && npm run typecheck`: passed
+- `cd web && npm test -- --run src/features/live/state src/features/search src/features/signal-lab src/features/token-target`: passed, `5 passed`, `20 passed`
+- `cd web && npm test -- --run`: passed, `27 passed`, `145 passed`
+- Extra guard, `cd web && npm run lint`: passed

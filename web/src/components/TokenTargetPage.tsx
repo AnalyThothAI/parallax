@@ -1,11 +1,9 @@
+import { getAuthToken } from "@lib/api/client";
 import type {
   TokenFlowItem,
-  TokenPostRange,
-  TokenPostSortMode,
   TokenSocialTimelineData,
   TokenTimelinePost,
   TokenTimelineStage,
-  WindowKey,
 } from "@lib/types";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -18,6 +16,11 @@ import {
   useTokenTargetPosts,
   useTokenTargetTimeline,
 } from "../features/token-target/api/useTokenTargetQueries";
+import {
+  parseTokenTargetRouteState,
+  serializeTokenTargetRouteState,
+  type TokenTargetRouteState,
+} from "../features/token-target/state/tokenTargetRouteState";
 import {
   compactNumber,
   eventText,
@@ -33,7 +36,6 @@ import {
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "../lib/tokenRadar";
 import { tokenVenueAction } from "../lib/venue";
-import { useTraderStore } from "../store/useTraderStore";
 
 import { DecisionTag } from "./DecisionTag";
 import { ScoreLedger } from "./ScoreLedger";
@@ -44,19 +46,20 @@ const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken
 export function TokenTargetPage() {
   const navigate = useNavigate();
   const params = useParams<{ targetType: string; targetId: string }>();
-  const [searchParams] = useSearchParams();
-  const token = useTraderStore((state) => state.token);
-  const storeScope = useTraderStore((state) => state.scope);
-  const scope = parseScopeKey(searchParams.get("scope")) ?? storeScope;
-
-  const [windowKey, setWindowKey] = useState<WindowKey>(
-    () => parseWindowKey(searchParams.get("window")) ?? "1h",
-  );
-  const [postRange, setPostRange] = useState<TokenPostRange>("current_window");
-  const [postSortMode, setPostSortMode] = useState<TokenPostSortMode>("recent");
+  const [searchParams, replaceUrlSearch] = useSearchParams();
+  const token = getAuthToken() ?? "";
+  const routeState = parseTokenTargetRouteState(searchParams);
+  const scope = routeState.scope;
+  const windowKey = routeState.window;
+  const postRange = routeState.postRange;
+  const postSortMode = routeState.postSort;
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [watchedPostsOnly, setWatchedPostsOnly] = useState(false);
   const [hideDuplicateClusters, setHideDuplicateClusters] = useState(false);
+
+  const updateRouteState = (patch: Partial<TokenTargetRouteState>) => {
+    replaceUrlSearch(serializeTokenTargetRouteState({ ...routeState, ...patch }));
+  };
 
   const targetType = params.targetType as TargetRef["target_type"] | undefined;
   const isValidTargetType = Boolean(targetType && VALID_TARGET_TYPES.has(targetType));
@@ -165,7 +168,7 @@ export function TokenTargetPage() {
                       key={item}
                       className={windowKey === item ? "active" : ""}
                       type="button"
-                      onClick={() => setWindowKey(item)}
+                      onClick={() => updateRouteState({ window: item })}
                     >
                       {item}
                     </button>
@@ -224,8 +227,8 @@ export function TokenTargetPage() {
                 watchedPostsOnly={watchedPostsOnly}
                 onHideDuplicateClustersChange={setHideDuplicateClusters}
                 onLoadMorePosts={() => void postsQuery.fetchNextPage()}
-                onPostRangeChange={setPostRange}
-                onPostSortModeChange={setPostSortMode}
+                onPostRangeChange={(range) => updateRouteState({ postRange: range })}
+                onPostSortModeChange={(postSort) => updateRouteState({ postSort })}
                 onWatchedPostsOnlyChange={setWatchedPostsOnly}
               />
             </section>
@@ -297,7 +300,7 @@ export function TokenTargetPage() {
                   key={item}
                   className={windowKey === item ? "active" : ""}
                   type="button"
-                  onClick={() => setWindowKey(item)}
+                  onClick={() => updateRouteState({ window: item })}
                 >
                   {item}
                 </button>
@@ -400,8 +403,8 @@ export function TokenTargetPage() {
             watchedPostsOnly={watchedPostsOnly}
             onHideDuplicateClustersChange={setHideDuplicateClusters}
             onLoadMorePosts={() => void postsQuery.fetchNextPage()}
-            onPostRangeChange={setPostRange}
-            onPostSortModeChange={setPostSortMode}
+            onPostRangeChange={(range) => updateRouteState({ postRange: range })}
+            onPostSortModeChange={(postSort) => updateRouteState({ postSort })}
             onWatchedPostsOnlyChange={setWatchedPostsOnly}
           />
         </section>
@@ -493,14 +496,6 @@ function representativePosts(
   return stagePosts
     .filter((post) => post.stage_id === stage.stage_id || representativeIds.has(post.event_id))
     .slice(0, 3);
-}
-
-function parseWindowKey(value: string | null): WindowKey | null {
-  return OBSERVATION_WINDOWS.includes(value as WindowKey) ? (value as WindowKey) : null;
-}
-
-function parseScopeKey(value: string | null): TokenFlowItem["posts_query"]["scope"] | null {
-  return value === "all" || value === "matched" ? value : null;
 }
 
 function symbolFromTarget(target: TargetRef): string | null {
