@@ -117,6 +117,57 @@ def test_pending_asset_profile_query_skips_future_refresh_and_includes_due_rows(
     assert rows[0]["next_refresh_at_ms"] == now_ms
 
 
+def test_pending_asset_profile_query_prioritizes_current_radar_assets(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        non_radar_asset_id = _insert_resolved_asset(
+            conn,
+            event_id="event-new-non-radar",
+            intent_id="intent-new-non-radar",
+            resolution_id="resolution-new-non-radar",
+            chain_id="eip155:1",
+            address="0x4444444444444444444444444444444444444444",
+            symbol="NEW",
+            received_at_ms=1_700_000_025_000,
+        )
+        radar_asset_id = _insert_resolved_asset(
+            conn,
+            event_id="event-old-radar",
+            intent_id="intent-old-radar",
+            resolution_id="resolution-old-radar",
+            chain_id="solana",
+            address="Radar11111111111111111111111111111111111111",
+            symbol="HOT",
+            received_at_ms=1_700_000_010_000,
+        )
+        _insert_radar_row(
+            conn,
+            row_id="radar-hot",
+            event_id="event-old-radar",
+            intent_id="intent-old-radar",
+            asset_id=None,
+            target_id=radar_asset_id,
+            symbol="HOT",
+            rank=1,
+            computed_at_ms=1_700_000_029_000,
+        )
+        conn.commit()
+
+        rows = PendingAssetProfileQuery(conn).pending_rows(
+            provider=GMGN_DEX_PROFILE_PROVIDER,
+            now_ms=1_700_000_030_000,
+            limit=10,
+        )
+    finally:
+        conn.close()
+
+    assert [row["asset_id"] for row in rows] == [radar_asset_id, non_radar_asset_id]
+    assert rows[0]["best_radar_rank"] == 1
+    assert rows[0]["latest_radar_computed_at_ms"] == 1_700_000_029_000
+    assert rows[1]["best_radar_rank"] is None
+
+
 def _insert_resolved_asset(
     conn: Any,
     *,
@@ -184,6 +235,60 @@ def _insert_event(conn: Any, *, event_id: str, received_at_ms: int) -> None:
             Jsonb({"event_id": event_id}),
             received_at_ms,
             received_at_ms,
+        ),
+    )
+
+
+def _insert_radar_row(
+    conn: Any,
+    *,
+    row_id: str,
+    event_id: str,
+    intent_id: str,
+    asset_id: str | None,
+    target_id: str,
+    symbol: str,
+    rank: int,
+    computed_at_ms: int,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO token_radar_rows(
+          row_id, projection_version, "window", scope, computed_at_ms, source_max_received_at_ms,
+          lane, rank, intent_id, event_id, asset_id, intent_json, asset_json, primary_venue_json,
+          attention_json, resolution_json, market_json, score_json, decision, data_health_json,
+          source_event_ids_json, created_at_ms, target_type, target_id, pricefeed_id, target_json,
+          price_json, factor_snapshot_json, factor_version
+        )
+        VALUES (
+          %s, 'token-radar-v13-social-attention', '24h', 'all', %s, %s,
+          'all', %s, %s, %s, %s, %s, %s, NULL,
+          %s, %s, %s, %s, 'watch', %s,
+          %s, %s, 'Asset', %s, NULL, %s,
+          %s, %s, 'token_factor_snapshot_v3_social_attention'
+        )
+        """,
+        (
+            row_id,
+            computed_at_ms,
+            computed_at_ms,
+            rank,
+            intent_id,
+            event_id,
+            asset_id,
+            Jsonb({"intent_id": intent_id}),
+            Jsonb({"asset_id": asset_id, "symbol": symbol}),
+            Jsonb({}),
+            Jsonb({}),
+            Jsonb({}),
+            Jsonb({"rank_score": max(0, 100 - rank)}),
+            Jsonb({"alpha": "ready"}),
+            Jsonb([event_id]),
+            computed_at_ms,
+            target_id,
+            Jsonb({"symbol": symbol, "target_id": target_id}),
+            Jsonb({}),
+            Jsonb({}),
         ),
     )
 
