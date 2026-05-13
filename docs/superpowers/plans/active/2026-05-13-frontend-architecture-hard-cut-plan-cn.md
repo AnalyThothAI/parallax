@@ -353,13 +353,13 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Modify: `web/src/routes/*.route.tsx`
 - Modify: `web/src/app/AppRoutes.tsx`
 
-- [ ] `CockpitShell` renders common topbar, side rail, mobile nav, notification drawer/toast, and an `<Outlet />`. It must not branch on raw pathname except through typed route helpers for active nav state.
-- [ ] `SearchShell` renders the topbar and search-focused outlet without the live side rail/detail panel.
-- [ ] `CockpitTopbar` owns search input draft state and submit navigation. It reads status/socket summary through small hooks, not props from `CockpitApp`.
-- [ ] `CockpitSideRail` owns view links, scope/handle controls, decision counts, and watchlist links through feature hooks.
-- [ ] `CockpitMobileNav` derives route-safe task availability from typed route state and cockpit store.
-- [ ] Delete `CockpitLayout`; no successor component may accept more than 10 props.
-- [ ] Run:
+- [x] `CockpitShell` renders common topbar, side rail, mobile nav, notification drawer/toast, and an `<Outlet />`. It must not branch on raw pathname except through typed route helpers for active nav state.
+- [x] `SearchShell` renders the topbar and search-focused outlet without the live side rail/detail panel.
+- [x] `CockpitTopbar` owns search input draft state and submit navigation. It reads status/socket summary through small hooks, not props from `CockpitApp`.
+- [x] `CockpitSideRail` owns view links, scope/handle controls, decision counts, and watchlist links through feature hooks.
+- [x] `CockpitMobileNav` derives route-safe task availability from typed route state and cockpit store.
+- [x] Delete `CockpitLayout`; no successor component may accept more than 10 props.
+- [x] Run:
   ```bash
   cd web
   rg -n 'CockpitLayout|pathname\\.startsWith\\(|isSearch|isStocks|isSignalLab|isLive' src/features/cockpit src/routes src/app
@@ -367,7 +367,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm test -- --run
   ```
   Expected: no deleted layout/pathname-branch patterns; typecheck/tests pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "refactor: split cockpit shell by route ownership"
@@ -613,6 +613,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 3 completed. Moved server data hooks behind feature API folders, centralized query keys and market cache patching, removed old generated/handwritten API client/type files, and passed the boundary grep checks, `npm run typecheck`, `npm test -- --run`, and `npm run lint`.
 - 2026-05-13: Task 4 completed. Moved shareable live/search/signal-lab/stocks/token-target filters into URL route state modules, split remaining local interaction state into feature/cockpit stores, removed `useTraderStore`, and passed the no-old-store grep, `npm run typecheck`, targeted route-state tests, full Vitest, and `npm run lint`.
 - 2026-05-13: Task 5 completed. Removed `web/src/components`, moved UI/tests to feature owners or `shared/ui`, added feature index barrels for public imports, and passed component-removal/deep-import grep checks, `npm run lint`, `npm run typecheck`, and full Vitest.
+- 2026-05-13: Task 6 completed. Replaced `CockpitLayout` with route-owned cockpit/search shells, split topbar/side rail/mobile nav components, removed raw pathname branch patterns from app/cockpit/route files, and passed the Task 6 grep, `npm run typecheck`, `npm run lint`, and full Vitest.
 
 ## Decision Log
 
@@ -629,6 +630,8 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Fix the App integration "token tape click" test by waiting for the token-radar row before clicking the tape row, because Task 4's URL-state rerender exposed that the old test could click the replay-only POST row before token radar data resolved.
 - 2026-05-13: Put cross-feature reusable token UI (`DecisionTag`, `ScoreLedger`, `TokenPostsPanel`, `TokenProfileCard`, drawer primitives, and shared radar controls) under `shared/ui` to avoid cross-feature UI imports while preserving current behavior.
 - 2026-05-13: Keep `CockpitLayout` temporarily under `features/cockpit/ui` for Task 5 so component ownership is explicit; Task 6 remains responsible for splitting and deleting that layout.
+- 2026-05-13: Keep `CockpitApp` as the temporary data controller for Task 6 while moving shell/layout ownership into route elements; Task 7 will still replace the socket/data lifecycle with a provider.
+- 2026-05-13: Preserve the existing `/stocks` grid class and disabled detail mobile task behavior inside `CockpitShell` with `useMatch`, because App integration tests and current CSS depend on that mode class.
 
 ## Verification
 

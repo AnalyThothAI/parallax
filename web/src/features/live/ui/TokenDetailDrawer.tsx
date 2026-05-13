@@ -50,7 +50,7 @@ type TokenDetailDrawerProps = {
   isPostsLoading: boolean;
   isPostsFetchingNextPage: boolean;
   isAccountQualityLoading: boolean;
-  isSignalLabLoading: boolean;
+  signalLabLoading: boolean;
   detailWindow: WindowKey;
   detailMode: TokenDetailMode;
   selectedBucketStartMs: number | null;
@@ -82,7 +82,7 @@ export function TokenDetailDrawer({
   isPostsLoading,
   isPostsFetchingNextPage,
   isAccountQualityLoading,
-  isSignalLabLoading,
+  signalLabLoading,
   detailWindow,
   detailMode,
   selectedBucketStartMs,
@@ -255,7 +255,7 @@ export function TokenDetailDrawer({
       ) : null}
       {activeTab === "lab" ? (
         <DetailDrawerSection title={<>Trading attention · {tokenLabel(token)}</>}>
-          {isSignalLabLoading ? (
+          {signalLabLoading ? (
             <div className="empty-state">loading trading attention</div>
           ) : (
             <div className="empty-state">

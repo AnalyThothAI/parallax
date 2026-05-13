@@ -18,8 +18,8 @@ describe("LivePage", () => {
                 selectedTapeEventId={null}
                 onTapeSelect={() => {}}
                 signalLabPulseData={null}
-                isSignalLabPulseLoading={false}
                 selectedPulseItemId={null}
+                signalPulseLoading={false}
                 onOpenLab={() => {}}
                 onSelectPulse={() => {}}
               />

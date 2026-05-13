@@ -152,3 +152,20 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm run lint`: passed
 - `cd web && npm run typecheck`: passed
 - `cd web && npm test -- --run`: passed, `27 passed`, `145 passed`
+
+## Task 6 Verification
+
+### Shell Split Changes
+
+- Replaced the old `CockpitLayout` file/component with `CockpitShell` and `SearchShell`.
+- Split cockpit shell UI into `CockpitTopbar`, `CockpitSideRail`, `CockpitMobileNav`, and a cockpit `RadarControls` export.
+- Moved search input draft state into `CockpitTopbar`; submit passes the query text back to the live selection/navigation controller.
+- Routed `/search` through `SearchShell`, while live, stocks, token-target, and signal-lab use `CockpitShell`.
+- Replaced raw pathname branch checks in cockpit/app files with route matching or typed segment parsing.
+
+### Commands
+
+- `cd web && rg -n 'CockpitLayout|pathname\\.startsWith\\(|isSearch|isStocks|isSignalLab|isLive' src/features/cockpit src/routes src/app`: no matches; `rg` exited `1` as expected
+- `cd web && npm run typecheck`: passed
+- `cd web && npm run lint`: passed
+- `cd web && npm test -- --run`: passed, `27 passed`, `145 passed`

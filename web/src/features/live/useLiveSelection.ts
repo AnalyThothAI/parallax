@@ -28,18 +28,16 @@ export type SelectedSignal =
 
 type UseLiveSelectionArgs = {
   compactSignalPulseItems: SignalPulseItem[];
-  isSignalLabPulseFetching: boolean;
+  signalPulseFetching: boolean;
   scope: ScopeKey;
-  search: string;
   tokenItems: TokenFlowItem[];
   windowKey: WindowKey;
 };
 
 export function useLiveSelection({
   compactSignalPulseItems,
-  isSignalLabPulseFetching,
+  signalPulseFetching,
   scope,
-  search,
   tokenItems,
   windowKey,
 }: UseLiveSelectionArgs) {
@@ -138,10 +136,10 @@ export function useLiveSelection({
       setSelectedSignal({ kind: "pulse", item: latest });
       return;
     }
-    if (!latest && !isSignalLabPulseFetching) {
+    if (!latest && !signalPulseFetching) {
       setSelectedSignal(null);
     }
-  }, [compactSignalPulseItems, isSignalLabPulseFetching, selectedSignal]);
+  }, [compactSignalPulseItems, selectedSignal, signalPulseFetching]);
 
   const selectedToken =
     !suppressTokenDetailRoute && selectedSignal?.kind === "token"
@@ -190,8 +188,8 @@ export function useLiveSelection({
     setMobileTask("detail");
   };
 
-  const submitEvidenceSearch = () => {
-    const query = search.trim();
+  const submitEvidenceSearch = (searchText: string) => {
+    const query = searchText.trim();
     if (isSignalLabRoute) {
       const next = new URLSearchParams(location.search);
       if (query) {

@@ -1,4 +1,4 @@
-import { CockpitLayout } from "@features/cockpit";
+import { CockpitShell, SearchShell } from "@features/cockpit";
 import {
   EvidenceDetailDrawer,
   LivePage,
@@ -17,13 +17,12 @@ import { StocksRadarPage } from "@features/stocks";
 import { TokenTargetPage, useTokenDetailData } from "@features/token-target";
 import { buildWatchlistRows } from "@lib/watchlist";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 export function CockpitApp() {
   const queryClient = useQueryClient();
 
-  const [searchDraft, updateSearchDraft] = useState("");
   const liveRoute = useLiveRouteState();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const liveData = useLiveData({
@@ -39,8 +38,6 @@ export function CockpitApp() {
     handles,
     isAssetFlowLoading,
     isRecentLoading,
-    isSignalLabPulseColdLoading,
-    isSignalLabPulseFetching,
     liveItems,
     liveSignalTapeItems,
     radarSortMode,
@@ -48,6 +45,8 @@ export function CockpitApp() {
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal,
+    signalPulseColdLoading,
+    signalPulseFetching,
     socket,
     status,
     statusError,
@@ -60,9 +59,8 @@ export function CockpitApp() {
   } = liveData;
   const selection = useLiveSelection({
     compactSignalPulseItems,
-    isSignalLabPulseFetching,
     scope,
-    search: searchDraft,
+    signalPulseFetching,
     tokenItems,
     windowKey,
   });
@@ -128,7 +126,7 @@ export function CockpitApp() {
       detailWindow={selection.detailWindow}
       hideDuplicateClusters={selection.hideDuplicateClusters}
       isAccountQualityLoading={tokenDetail.isAccountQualityLoading}
-      isSignalLabLoading={isSignalLabPulseFetching}
+      signalLabLoading={signalPulseFetching}
       isPostsFetchingNextPage={tokenDetail.isPostsFetchingNextPage}
       isPostsLoading={tokenDetail.isPostsLoading}
       isTimelineLoading={tokenDetail.isTimelineLoading}
@@ -154,47 +152,75 @@ export function CockpitApp() {
     />
   );
 
-  const layoutElement = (
-    <CockpitLayout
-      searchInputRef={searchInputRef}
-      searchValue={searchDraft}
-      onSearchChange={updateSearchDraft}
-      onSubmitSearch={selection.submitEvidenceSearch}
-      socketStatus={socket.status}
-      lastSocketMessageAt={socket.lastMessageAt}
-      status={status}
-      statusLoading={statusLoading}
-      statusError={statusError}
-      configReady={Boolean(token)}
-      liveItemsCount={liveItems.length}
-      tokenItemsCount={tokenItems.length}
-      windowKey={windowKey}
-      signalLabSummaryTrade={signalLabOverviewData?.summary.trade_candidate ?? 0}
-      signalLabSummaryToken={signalLabOverviewData?.summary.token_watch ?? 0}
-      signalLabSummaryTheme={signalLabOverviewData?.summary.theme_watch ?? 0}
-      signalLabPulseTotal={signalLabPulseTotal}
-      notifications={notificationsController.notifications}
-      notificationSummary={notificationsController.notificationSummary}
-      notificationDrawerOpen={notificationsController.drawerOpen}
-      onToggleNotificationDrawer={notificationsController.toggleDrawer}
-      onCloseNotificationDrawer={notificationsController.closeDrawer}
-      notificationsLoading={notificationsController.notificationsLoading}
-      onMarkAllRead={notificationsController.markAllRead}
-      onMarkRead={notificationsController.markRead}
-      onOpenNotification={notificationsController.openNotification}
-      socketNotifications={socket.notifications}
-      onRefresh={() => void queryClient.invalidateQueries()}
-      scope={scope}
-      onScopeChange={liveRoute.updateScope}
-      handles={handles}
-      onHandlesChange={liveRoute.updateHandles}
-      onWindowChange={liveRoute.updateWindow}
-      decisionCounts={decisionCounts}
-      watchlistRows={watchlistRows}
-      mobileTask={selection.mobileTask}
-      detailAvailable={selection.detailAvailable}
-      onMobileTaskChange={selection.handleMobileTaskChange}
+  const topbarProps = {
+    search: {
+      inputRef: searchInputRef,
+      onSubmitQuery: selection.submitEvidenceSearch,
+    },
+    status: {
+      socketStatus: socket.status,
+      lastSocketMessageAt: socket.lastMessageAt,
+      status,
+      statusLoading,
+      statusError,
+      configReady: Boolean(token),
+    },
+    stats: {
+      tokenItemsCount: tokenItems.length,
+      windowKey,
+      signalLabSummaryTrade: signalLabOverviewData?.summary.trade_candidate ?? 0,
+      signalLabSummaryToken: signalLabOverviewData?.summary.token_watch ?? 0,
+      signalLabSummaryTheme: signalLabOverviewData?.summary.theme_watch ?? 0,
+    },
+    notifications: {
+      summary: notificationsController.notificationSummary,
+      drawerOpen: notificationsController.drawerOpen,
+      onToggleDrawer: notificationsController.toggleDrawer,
+    },
+    onRefresh: () => void queryClient.invalidateQueries(),
+  };
+  const notificationProps = {
+    notifications: notificationsController.notifications,
+    notificationSummary: notificationsController.notificationSummary,
+    notificationDrawerOpen: notificationsController.drawerOpen,
+    notificationsLoading: notificationsController.notificationsLoading,
+    onCloseNotificationDrawer: notificationsController.closeDrawer,
+    onMarkAllRead: notificationsController.markAllRead,
+    onMarkRead: notificationsController.markRead,
+    onOpenNotification: notificationsController.openNotification,
+    socketNotifications: socket.notifications,
+  };
+  const sideRailProps = {
+    tokenItemsCount: tokenItems.length,
+    signalLabPulseTotal,
+    scope,
+    onScopeChange: liveRoute.updateScope,
+    handles,
+    onHandlesChange: liveRoute.updateHandles,
+    onWindowChange: liveRoute.updateWindow,
+    decisionCounts,
+    watchlistRows,
+    onMobileTaskChange: selection.handleMobileTaskChange,
+  };
+  const mobileProps = {
+    mobileTask: selection.mobileTask,
+    detailAvailable: selection.detailAvailable,
+    onMobileTaskChange: selection.handleMobileTaskChange,
+  };
+  const cockpitShellElement = (
+    <CockpitShell
       detailPanel={detailPanel}
+      mobile={mobileProps}
+      notifications={notificationProps}
+      sideRail={sideRailProps}
+      topbar={topbarProps}
+      onHotkey={handleHotkey}
+    />
+  );
+  const searchShellElement = (
+    <SearchShell
+      notifications={notificationProps}
+      topbar={topbarProps}
       onHotkey={handleHotkey}
     />
   );
@@ -207,7 +233,7 @@ export function CockpitApp() {
       selectedTapeEventId={selection.selectedTapeEventId}
       onTapeSelect={selection.handleTapeSelect}
       signalLabPulseData={signalLabPulseData ?? null}
-      isSignalLabPulseLoading={isSignalLabPulseColdLoading}
+      signalPulseLoading={signalPulseColdLoading}
       selectedPulseItemId={selection.selectedPulseItemId}
       onOpenLab={selection.onOpenLab}
       onSelectPulse={selection.selectPulseItem}
@@ -233,12 +259,11 @@ export function CockpitApp() {
 
   return (
     <Routes>
-      <Route element={layoutElement}>
+      <Route element={cockpitShellElement}>
         <Route element={livePageElement}>
           <Route index element={liveRadarElement} />
           <Route path="token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Route>
-        <Route path="search" element={<SearchIntelPage />} />
         <Route
           path="stocks"
           element={
@@ -263,8 +288,11 @@ export function CockpitApp() {
         >
           <Route path="pulse/:candidateId" element={<PulseDetailPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
+      <Route element={searchShellElement}>
+        <Route path="search" element={<SearchIntelPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

@@ -1,10 +1,11 @@
 import type { MobileTask } from "./mobileTask";
 
 export function requiredMobileTaskForPathname(pathname: string): MobileTask | null {
-  if (pathname.startsWith("/signal-lab")) {
+  const routeRoot = pathname.split("/").filter(Boolean)[0] ?? "";
+  if (routeRoot === "signal-lab") {
     return "lab";
   }
-  if (pathname.startsWith("/token/")) {
+  if (routeRoot === "token") {
     return "radar";
   }
   return null;
