@@ -1,6 +1,6 @@
 import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -43,6 +43,7 @@ describe("SearchIntelPage", () => {
     const { container } = renderAt("/search?q=%24RKC&window=24h&scope=all");
 
     expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Search case $RKC" })).toBeInTheDocument();
     expect(await screen.findByText("项目总结")).toBeInTheDocument();
     expect(screen.getByText("传播")).toBeInTheDocument();
     expect(screen.getByText("多头观点")).toBeInTheDocument();
@@ -50,6 +51,13 @@ describe("SearchIntelPage", () => {
     expect(screen.getByText("1H OHLC")).toBeInTheDocument();
     expect(screen.getByText("24h Evidence Stream")).toBeInTheDocument();
     expect(screen.getByText(/Runtime narrative/)).toBeInTheDocument();
+    for (const link of within(
+      screen.getByRole("navigation", { name: "Search sections" }),
+    ).getAllByRole("link")) {
+      const id = link.getAttribute("href")?.replace("#", "");
+      expect(id).toBeTruthy();
+      expect(document.getElementById(id as string)).toBeInTheDocument();
+    }
 
     await waitFor(() => {
       expect(apiMock.readApi).toHaveBeenCalledWith(
@@ -117,7 +125,7 @@ describe("SearchIntelPage", () => {
     renderAt("/search?q=%24RKC&window=24h&scope=all");
 
     expect(await screen.findByText("market cap")).toBeInTheDocument();
-    expect(screen.getByText("$51M")).toBeInTheDocument();
+    expect(screen.getAllByText("$51M").length).toBeGreaterThan(0);
     expect(screen.getByText("live · okx_dex_ws_price_info")).toBeInTheDocument();
   });
 });

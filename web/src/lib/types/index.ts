@@ -21,7 +21,7 @@ export type OpenApiNotificationReadAllData = components["schemas"]["Notification
 export type OpenApiSignalPulseData = components["schemas"]["SignalPulseData"];
 export type OpenApiSignalPulseItem = components["schemas"]["SignalPulseItem"];
 
-// local-ui-contract: these UI/domain shapes still encode frontend-specific view models
+// frontend-contracts: these UI/domain shapes still encode frontend-specific view models
 // that are richer than the current extensible OpenAPI response schemas.
 export type {
   AccountQualityData,
@@ -86,4 +86,4 @@ export type {
   TokenTimelinePost,
   TradeabilityBlock,
   WindowKey,
-} from "./legacy-ui";
+} from "./frontend-contracts";

@@ -16,6 +16,7 @@ import { SearchIntelPage } from "@features/search";
 import { PulseDetailPage, SignalLabInspector, SignalLabPage } from "@features/signal-lab";
 import { StocksRadarPage } from "@features/stocks";
 import { TokenTargetPage, useTokenDetailData } from "@features/token-target";
+import { buildWatchlistAccountCases, WatchlistPage } from "@features/watchlist";
 import type { LivePayload } from "@lib/types";
 import { buildWatchlistRows } from "@lib/watchlist";
 import { IntelSocketProvider } from "@shared/socket/IntelSocketProvider";
@@ -131,6 +132,10 @@ function CockpitAppRoutes({
       notificationsController.notificationSummary?.account_unread_counts,
       statusHandles,
     ],
+  );
+  const watchlistAccountCases = useMemo(
+    () => buildWatchlistAccountCases({ rows: watchlistRows, liveItems }),
+    [liveItems, watchlistRows],
   );
 
   const handleHotkey = (event: KeyboardEvent) => {
@@ -315,6 +320,7 @@ function CockpitAppRoutes({
             />
           }
         />
+        <Route path="watchlist" element={<WatchlistPage accountCases={watchlistAccountCases} />} />
         <Route
           path="signal-lab"
           element={

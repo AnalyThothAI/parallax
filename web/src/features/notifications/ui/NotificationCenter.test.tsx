@@ -23,8 +23,8 @@ const notification: NotificationItem = {
   dedup_key: "hot:pepe",
   rule_id: "hot_quality_token_5m",
   severity: "high",
-  title: "PEPE heat",
-  body: "Heat 88, quality 76",
+  title: "PEPE attention",
+  body: "Attention 88, discussion 76",
   entity_type: "token",
   entity_key: "token:eth:pepe",
   author_handle: null,
@@ -75,12 +75,12 @@ describe("notification center components", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /open PEPE heat/i }));
-    fireEvent.click(screen.getByRole("button", { name: /mark PEPE heat read/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open PEPE attention/i }));
+    fireEvent.click(screen.getByRole("button", { name: /mark PEPE attention read/i }));
     fireEvent.click(screen.getByRole("button", { name: /mark all read/i }));
     fireEvent.click(screen.getByRole("button", { name: /close notifications/i }));
 
-    expect(screen.getByText("PEPE heat")).toBeInTheDocument();
+    expect(screen.getByText("PEPE attention")).toBeInTheDocument();
     expect(onOpenNotification).toHaveBeenCalledWith(notification);
     expect(onMarkRead).toHaveBeenCalledWith("n1");
     expect(onMarkAllRead).toHaveBeenCalledOnce();

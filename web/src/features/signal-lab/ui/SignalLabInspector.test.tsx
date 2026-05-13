@@ -1,6 +1,8 @@
 import type { SignalPulseItem } from "@lib/types";
 import { cleanup, render, screen } from "@testing-library/react";
 import { axe } from "jest-axe";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { marketContextFixture, marketObservationFixture } from "../../../test/marketFixtures";
@@ -11,7 +13,7 @@ afterEach(() => cleanup());
 
 describe("SignalLabInspector", () => {
   it("shows a venue link for the selected parsed token", async () => {
-    const { container } = render(
+    const { container } = renderWithRouter(
       <SignalLabInspector
         item={
           {
@@ -131,8 +133,13 @@ describe("SignalLabInspector", () => {
     );
 
     expect(
-      screen.getByRole("link", { name: "Open selected Signal Pulse token on GMGN" }),
-    ).toHaveAttribute(
+      screen.getByRole("region", { name: "Signal Pulse case $CANCERHAWK" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Agent memo")).toBeInTheDocument();
+    expect(screen.getByText("Fact ledger")).toBeInTheDocument();
+    expect(screen.getByText("Source events")).toBeInTheDocument();
+    expect(screen.getByText("Debug facts")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open pulse case on GMGN" })).toHaveAttribute(
       "href",
       "https://gmgn.ai/base/token/0x920738cbe6ddf7399187ffcf85c4b19154123be4",
     );
@@ -146,7 +153,9 @@ describe("SignalLabInspector", () => {
       market_quality: { facts: { market_status: "fresh" }, factors: {} },
     } as unknown as SignalPulseItem["factor_snapshot"]["families"];
 
-    expect(() => render(<SignalLabInspector item={item} />)).toThrow(/families\.market_quality/);
+    expect(() => renderWithRouter(<SignalLabInspector item={item} />)).toThrow(
+      /families\.market_quality/,
+    );
     expect(screen.queryByText("factor_snapshot")).not.toBeInTheDocument();
   });
 
@@ -156,11 +165,15 @@ describe("SignalLabInspector", () => {
       item.factor_snapshot.composite as Partial<SignalPulseItem["factor_snapshot"]["composite"]>
     ).recommended_decision;
 
-    expect(() => render(<SignalLabInspector item={item} />)).toThrow(
+    expect(() => renderWithRouter(<SignalLabInspector item={item} />)).toThrow(
       /composite\.recommended_decision/,
     );
   });
 });
+
+function renderWithRouter(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function signalPulseItem(): SignalPulseItem {
   return {

@@ -10,6 +10,7 @@ import searchStyles from "./features/search/ui/search.module.css";
 import signalLabStyles from "./features/signal-lab/ui/signalLab.module.css";
 import stocksStyles from "./features/stocks/ui/stocks.module.css";
 import tokenTargetStyles from "./features/token-target/ui/tokenTarget.module.css";
+import watchlistStyles from "./features/watchlist/ui/watchlist.module.css";
 import sharedStyles from "./shared/ui/shared.module.css";
 
 document.documentElement.classList.add(
@@ -21,6 +22,7 @@ document.documentElement.classList.add(
     signalLabStyles.moduleKeep,
     stocksStyles.moduleKeep,
     tokenTargetStyles.moduleKeep,
+    watchlistStyles.moduleKeep,
   ].filter(Boolean),
 );
 

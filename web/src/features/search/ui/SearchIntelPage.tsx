@@ -3,8 +3,6 @@ import {
   formatPercentShare,
   formatPropagationPhase,
   formatScore,
-  formatTokenPriceUsd,
-  formatUsdCompact,
   shortAddress,
 } from "@lib/format";
 import type {
@@ -19,11 +17,12 @@ import type {
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { RemoteState } from "@shared/ui/RemoteState";
 import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
-import clsx from "clsx";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useSearchInspectQuery } from "../api/useSearchInspectQuery";
+import { buildSearchCaseView } from "../model/searchCase";
+import { buildSearchRadarSummary } from "../model/searchRadar";
 import {
   parseSearchRouteState,
   serializeSearchRouteState,
@@ -31,7 +30,11 @@ import {
 } from "../state/searchRouteState";
 
 import { SearchAgentBrief } from "./SearchAgentBrief";
+import { SearchDossier } from "./SearchDossier";
+import { SearchMetricStrip } from "./SearchMetricStrip";
+import { SearchRadarPanel } from "./SearchRadarPanel";
 import { SearchTimelinePanel } from "./SearchTimelinePanel";
+import { SearchTopicTimeline } from "./SearchTopicTimeline";
 import { SearchTwitterResults } from "./SearchTwitterResults";
 
 const WINDOW_OPTIONS: WindowKey[] = ["5m", "1h", "4h", "24h"];
@@ -226,28 +229,14 @@ function SearchResultBody({ data }: { data: SearchInspectData }) {
 
 function TokenResult({ data, result }: { data: SearchInspectData; result: SearchTokenResult }) {
   const [selectedStageId, setSelectedStageId] = useState<string>("all");
-  const radar = useMemo(() => radarSummary(result), [result]);
+  const radar = useMemo(() => buildSearchRadarSummary(result), [result]);
+  const searchCase = useMemo(() => buildSearchCaseView(data), [data]);
 
   return (
     <div className="search-content">
-      <section className="search-case-header" id="overview">
-        <div>
-          <span>token case</span>
-          <h3>
-            {result.target.symbol
-              ? `$${result.target.symbol}`
-              : shortTarget(result.target.target_id)}
-          </h3>
-        </div>
-        <div className="search-case-meta">
-          <code>{result.target.target_type}</code>
-          <code>{result.target.chain_id ?? radar.marketVenue ?? "target"}</code>
-          <code>{result.market_overlay.price_series_type}</code>
-        </div>
-        <p>{identityLine(result.target, result.market_overlay)}</p>
-      </section>
+      <SearchDossier view={searchCase} />
 
-      <MetricStrip
+      <SearchMetricStrip
         metrics={[
           {
             label: "decision",
@@ -320,7 +309,7 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
         <div className="search-insight-stack">
           <TokenProfileCard profile={result.profile} />
           <SearchAgentBrief brief={result.agent_brief} />
-          <SearchRadarPanel radarItem={result.radar_item} />
+          <SearchRadarPanel summary={radar} />
         </div>
       </div>
     </div>
@@ -328,22 +317,13 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
 }
 
 function TopicResult({ data, result }: { data: SearchInspectData; result: SearchTopicResult }) {
+  const searchCase = useMemo(() => buildSearchCaseView(data), [data]);
+
   return (
     <div className="search-content">
-      <section className="search-case-header" id="overview">
-        <div>
-          <span>topic case</span>
-          <h3>{data.query.q}</h3>
-        </div>
-        <div className="search-case-meta">
-          <code>{data.query.result_kind}</code>
-          <code>{data.query.window}</code>
-          <code>{data.query.scope}</code>
-        </div>
-        <p>Topic 结果只展示语料聚合，不自动推断为单一 token。</p>
-      </section>
+      <SearchDossier view={searchCase} />
 
-      <MetricStrip
+      <SearchMetricStrip
         metrics={[
           { label: "result", value: "topic", detail: "no unique target" },
           {
@@ -384,19 +364,11 @@ function AmbiguousResult({
   data: SearchInspectData;
   result: SearchAmbiguousResult;
 }) {
+  const searchCase = useMemo(() => buildSearchCaseView(data), [data]);
+
   return (
     <div className="search-content">
-      <section className="search-case-header" id="overview">
-        <div>
-          <span>ambiguous case</span>
-          <h3>{data.query.q}</h3>
-        </div>
-        <div className="search-case-meta">
-          <code>{result.candidates.length} candidates</code>
-          <code>no auto pick</code>
-        </div>
-        <p>多个候选存在时，页面保留原始 query 和 topic evidence，不静默选择 token。</p>
-      </section>
+      <SearchDossier view={searchCase} />
 
       <section className="search-panel search-candidate-compare">
         <header>
@@ -427,233 +399,6 @@ function AmbiguousResult({
       </div>
     </div>
   );
-}
-
-type Metric = {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "positive" | "warning" | "negative";
-};
-
-function MetricStrip({ metrics }: { metrics: Metric[] }) {
-  return (
-    <section className="search-metric-strip" aria-label="Search metrics">
-      {metrics.map((metric) => (
-        <div className={clsx(metric.tone && `tone-${metric.tone}`)} key={metric.label}>
-          <span>{metric.label}</span>
-          <b>{metric.value}</b>
-          {metric.detail ? <em>{metric.detail}</em> : null}
-        </div>
-      ))}
-    </section>
-  );
-}
-
-function SearchTopicTimeline({ items }: { items: SearchTopicResult["items"] }) {
-  const buckets = useMemo(() => topicBuckets(items), [items]);
-  const peak = Math.max(...buckets.map((bucket) => bucket.posts), 1);
-
-  return (
-    <section className="search-panel search-topic-timeline" id="timeline">
-      <header>
-        <h3>Topic Mention Timeline</h3>
-        <span>{buckets.length} buckets</span>
-      </header>
-      <div className="search-topic-bars" aria-label="topic buckets">
-        {buckets.map((bucket) => (
-          <div key={bucket.startMs}>
-            <i style={{ height: `${Math.max(8, (bucket.posts / peak) * 100)}%` }} />
-            <span>{bucket.posts}</span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function SearchRadarPanel({ radarItem }: { radarItem?: Record<string, unknown> | null }) {
-  const radar = asRecord(radarItem);
-  const score = asRecord(radar.score);
-  const snapshot = asRecord(radar.factor_snapshot);
-  const composite = asRecord(snapshot.composite);
-  const gates = asRecord(snapshot.gates);
-  const dataHealth = nonEmptyRecord(radar.data_health) ?? asRecord(snapshot.data_health);
-  const familyScores = nonEmptyRecord(score.family_scores) ?? asRecord(composite.family_scores);
-  const entries = Object.entries(familyScores).slice(0, 6);
-
-  return (
-    <section className="search-panel search-radar-panel" id="score">
-      <header>
-        <h3>Score / Data Health</h3>
-        <span>{radarItem ? "radar row" : "not in current radar"}</span>
-      </header>
-      {radarItem ? (
-        <>
-          <div className="search-score-summary">
-            <div>
-              <span>rank</span>
-              <b>{formatScore(numberValue(score.rank_score ?? composite.rank_score))}</b>
-            </div>
-            <div>
-              <span>decision</span>
-              <b>{stringValue(score.recommended_decision ?? composite.recommended_decision)}</b>
-            </div>
-            <div>
-              <span>gate</span>
-              <b>{stringValue(gates.max_decision)}</b>
-            </div>
-          </div>
-          {entries.length ? (
-            <div className="search-score-families">
-              {entries.map(([key, value]) => (
-                <div key={key}>
-                  <span>{key.replaceAll("_", " ")}</span>
-                  <b>{formatScore(numberValue(value))}</b>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div className="search-data-health">
-            {Object.entries(dataHealth).map(([key, value]) => (
-              <code key={key}>
-                {key}: {stringValue(value)}
-              </code>
-            ))}
-          </div>
-        </>
-      ) : (
-        <RemoteState.Empty
-          title="当前 window/scope 下没有匹配 radar row。"
-          hint="证据和 agent brief 仍然可读。"
-        />
-      )}
-    </section>
-  );
-}
-
-function radarSummary(result: SearchTokenResult) {
-  const radar = asRecord(result.radar_item);
-  const radarTarget = asRecord(radar.target);
-  const score = asRecord(radar.score);
-  const snapshot = asRecord(radar.factor_snapshot);
-  const composite = asRecord(snapshot.composite);
-  const gates = asRecord(snapshot.gates);
-  const dataHealth = nonEmptyRecord(radar.data_health) ?? asRecord(snapshot.data_health);
-  const market = asRecord(radar.market);
-  const eventAnchor = asRecord(market.event_anchor);
-  const decisionLatest = asRecord(market.decision_latest);
-  const readiness = asRecord(market.readiness);
-  const marketOverlay = asRecord(result.market_overlay);
-  const firstBucketPrice = result.timeline.buckets.find((bucket) => bucket.price?.price_usd)?.price;
-  const candleClose = latestCandleClose(result.market_overlay.candles);
-  const isDexMarket =
-    result.target.target_type === "Asset" || stringValue(radarTarget.target_type) === "Asset";
-  const latestMarketCap = numberValue(decisionLatest.market_cap_usd);
-  const anchoredMarketCap = numberValue(eventAnchor.market_cap_usd);
-  const marketCap = latestMarketCap ?? anchoredMarketCap;
-  const marketCapStatus =
-    latestMarketCap !== null
-      ? stringValue(readiness.latest_status)
-      : anchoredMarketCap !== null
-        ? "anchored"
-        : "missing";
-  const price =
-    candleClose ??
-    numberValue(decisionLatest.price_usd) ??
-    numberValue(eventAnchor.price_usd) ??
-    numberValue(firstBucketPrice?.price_usd);
-  const priceStatus =
-    stringValue(marketOverlay.candle_status) === "ready"
-      ? "ohlc ready"
-      : stringValue(readiness.latest_status) !== "-"
-        ? stringValue(readiness.latest_status)
-        : stringValue(readiness.anchor_status);
-  const provider = stringValue(
-    decisionLatest.provider ?? eventAnchor.provider ?? marketOverlay.provider,
-  );
-  const primaryMarketLabel = isDexMarket ? "market cap" : "price";
-  const primaryMarketValue = isDexMarket
-    ? marketCap === null
-      ? "-"
-      : formatUsdCompact(marketCap)
-    : price === null
-      ? "-"
-      : formatTokenPriceUsd(price);
-  const primaryMarketDetail = isDexMarket
-    ? marketCap === null
-      ? `${priceStatus} · cap missing`
-      : `${marketCapStatus} · ${provider}`
-    : priceStatus !== "-"
-      ? `${priceStatus} · ${provider}`
-      : "message anchor only";
-  const marketHealth =
-    stringValue(marketOverlay.candle_status) === "ready"
-      ? "ready"
-      : stringValue(dataHealth.market) !== "-"
-        ? stringValue(dataHealth.market)
-        : priceStatus;
-
-  return {
-    decision: stringValue(score.recommended_decision ?? composite.recommended_decision),
-    rankScore: numberValue(score.rank_score ?? composite.rank_score),
-    gateLine:
-      stringValue(gates.max_decision) !== "-"
-        ? `gate ${stringValue(gates.max_decision)}`
-        : "gate unavailable",
-    primaryMarketLabel,
-    primaryMarketValue,
-    primaryMarketDetail,
-    primaryMarketTone: isDexMarket
-      ? marketCap === null
-        ? "warning"
-        : "positive"
-      : price
-        ? "positive"
-        : "warning",
-    marketHealth,
-    marketVenue: stringValue(
-      marketOverlay.native_market_id ??
-        marketOverlay.chain_id ??
-        marketOverlay.provider ??
-        marketOverlay.pricefeed_id,
-    ),
-    dataHealthLine:
-      Object.entries(dataHealth)
-        .slice(0, 3)
-        .map(([key, value]) => `${key}:${String(value)}`)
-        .join(" · ") || "not ranked",
-  } satisfies {
-    decision: string;
-    rankScore: number | null;
-    gateLine: string;
-    primaryMarketLabel: string;
-    primaryMarketValue: string;
-    primaryMarketDetail: string;
-    primaryMarketTone: "positive" | "warning";
-    marketHealth: string;
-    marketVenue: string;
-    dataHealthLine: string;
-  };
-}
-
-function topicBuckets(items: SearchTopicResult["items"]) {
-  const times = items
-    .map((item) => item.event.received_at_ms)
-    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  if (!times.length) {
-    return [{ startMs: 0, posts: 0 }];
-  }
-  const min = Math.min(...times);
-  const bucketMs = 60 * 60 * 1000;
-  const grouped = new Map<number, number>();
-  for (const time of times) {
-    const startMs = min + Math.floor((time - min) / bucketMs) * bucketMs;
-    grouped.set(startMs, (grouped.get(startMs) ?? 0) + 1);
-  }
-  return [...grouped.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([startMs, posts]) => ({ startMs, posts }));
 }
 
 function navForResult(kind: SearchInspectData["query"]["result_kind"]) {
@@ -696,37 +441,8 @@ function candidateKey(candidate: SearchTargetCandidate | null) {
   return `${candidate.target_type}:${candidate.target_id}`;
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function nonEmptyRecord(value: unknown): Record<string, unknown> | null {
-  const record = asRecord(value);
-  return Object.keys(record).length ? record : null;
-}
-
-function latestCandleClose(value: unknown): number | null {
-  if (!Array.isArray(value)) {
-    return null;
-  }
-  for (let index = value.length - 1; index >= 0; index -= 1) {
-    const close = numberValue(asRecord(value[index]).close);
-    if (close !== null) {
-      return close;
-    }
-  }
-  return null;
-}
-
 function stringValue(value: unknown): string {
   if (typeof value === "string" && value.trim()) return value;
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return "-";
-}
-
-function numberValue(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return null;
 }

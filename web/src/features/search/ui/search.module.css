@@ -785,3 +785,59 @@
     grid-template-columns: 1fr 1fr;
   }
 }
+
+@media (max-width: 767px) {
+  :global(.search-intel-topbar),
+  :global(.search-case-header),
+  :global(.search-panel header),
+  :global(.search-agent-brief > header) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  :global(.search-intel-topbar),
+  :global(.search-case-header) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :global(.search-intel-titleline) {
+    flex-wrap: wrap;
+  }
+
+  :global(.search-route-meta),
+  :global(.search-case-meta) {
+    justify-content: flex-start;
+  }
+
+  :global(.search-workspace),
+  :global(.search-content-grid),
+  :global(.search-agent-grid),
+  :global(.search-score-summary),
+  :global(.search-score-families) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :global(.search-side-nav) {
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+  }
+
+  :global(.search-side-nav > span),
+  :global(.search-side-nav a) {
+    flex: 0 0 auto;
+  }
+
+  :global(.search-metric-strip) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :global(.search-evidence-toolbar),
+  :global(.search-evidence-list article) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  :global(.search-evidence-list a) {
+    justify-self: start;
+  }
+}

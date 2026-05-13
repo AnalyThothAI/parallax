@@ -1,9 +1,11 @@
-import { compactNumber, formatRelativeTime, formatUsdCompact } from "@lib/format";
-import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "@lib/types";
-import { signalPulseVenueActions } from "@lib/venue";
+import { compactNumber, formatRelativeTime } from "@lib/format";
+import type { SignalPulseData, SignalPulseItem } from "@lib/types";
 import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { FlaskConical } from "lucide-react";
+import { Link } from "react-router-dom";
+
+import { buildPulseCaseView, type PulseCaseView } from "../model/pulseCase";
 
 type SignalLabPulseProps = {
   data?: SignalPulseData;
@@ -29,10 +31,10 @@ export function SignalLabPulse({
       <header>
         <div>
           <FlaskConical aria-hidden />
-          <h2>Signal Lab Pulse</h2>
+          <h2>Signal Pulse</h2>
         </div>
         <button className="text-action" type="button" onClick={onOpenLab}>
-          Open Lab
+          Open queue
         </button>
       </header>
       <div className="signal-attention-summary" aria-label="signal pulse summary">
@@ -71,32 +73,34 @@ export function SignalPulseList({
     return <SkeletonRows compact={compact} count={compact ? 5 : 6} label="loading signal pulse" />;
   }
   if (!items.length) {
-    return <RemoteState.Empty title="No signal pulse items in this window" />;
+    return <RemoteState.Empty title="No pulse candidates in this window" />;
   }
   return (
     <div className={clsx("signal-chain-list", "signal-pulse-list", compact && "compact")}>
       {items.map((item, index) => {
         const rowKey = itemKey(item, index);
-        const facts = pulseFactChips(item);
-        const venueActions = signalPulseVenueActions(item);
+        const view = buildPulseCaseView(item);
+        const facts = pulseFactChips(view);
+        const venueActions = view.actions.filter((action) => action.kind === "venue");
+        const searchAction = view.actions.find((action) => action.kind === "search");
         return (
           <article
             className={clsx("signal-chain-row", selectedItemId === item.candidate_id && "selected")}
             key={rowKey}
           >
             <button
-              aria-label={`open Signal Pulse ${itemTitle(item)}`}
+              aria-label={`open pulse case ${view.subject.title}`}
               className="signal-chain-select"
               type="button"
               onClick={() => onSelect(item)}
             >
               <span className={clsx("signal-stage-badge", item.pulse_status)}>
-                {statusLabel(item.pulse_status)}
+                {view.stage.value}
               </span>
               <span className="signal-chain-main">
-                <strong>{itemTitle(item)}</strong>
-                <em>{compact ? compactPulseMeta(item) : fullPulseMeta(item)}</em>
-                <p>{item.agent_recommendation.summary_zh || "No recommendation summary."}</p>
+                <strong>{view.subject.title}</strong>
+                <em>{compact ? compactPulseMeta(view, item) : fullPulseMeta(view, item)}</em>
+                <p>{view.agentMemo.summary}</p>
                 <span className="signal-chain-chipline">
                   {facts.slice(0, compact ? 4 : 6).map((fact) => (
                     <span key={fact}>{fact}</span>
@@ -104,20 +108,27 @@ export function SignalPulseList({
                 </span>
               </span>
               <span className="signal-chain-score">
-                <b>{scoreBand(item) ?? compactNumber(gateScore(item))}</b>
-                <small>
-                  {gateStatus(item) ?? item.agent_recommendation.recommendation ?? "gate unknown"}
-                </small>
+                <b>{view.gate.value}</b>
+                <small>{view.agentMemo.recommendation.value}</small>
               </span>
               <span className="signal-chain-time">{formatRelativeTime(item.updated_at_ms)}</span>
             </button>
             <span className="signal-pulse-venue-links" data-signal-pulse-action="venue">
+              {searchAction ? (
+                <Link
+                  aria-label={`Search Intel for ${view.subject.title}`}
+                  className="venue-link"
+                  to={searchAction.href}
+                >
+                  {searchAction.label}
+                </Link>
+              ) : null}
               {venueActions.map((action) => (
                 <a
-                  aria-label={`Open ${itemTitle(item)} on ${action.label}`}
+                  aria-label={`Open ${actionSubject(view)} on ${action.label}`}
                   className="venue-link"
-                  href={action.url}
-                  key={`${action.label}:${action.url}`}
+                  href={action.href}
+                  key={`${action.label}:${action.href}`}
                   rel="noreferrer"
                   target="_blank"
                 >
@@ -140,124 +151,76 @@ function SummaryPill({ label, value }: { label: string; value: number }) {
   );
 }
 
-function itemTitle(item: SignalPulseItem): string {
-  return (
-    item.factor_snapshot.subject.symbol ||
-    item.symbol ||
-    item.subject_key ||
-    item.target_id ||
-    item.candidate_id ||
-    "unknown pulse"
-  );
-}
-
 function itemKey(item: SignalPulseItem, index: number): string {
   return item.candidate_id || item.target_id || item.subject_key || item.symbol || `pulse:${index}`;
 }
 
-function fullPulseMeta(item: SignalPulseItem): string {
+function fullPulseMeta(view: PulseCaseView, item: SignalPulseItem): string {
   return [
-    marketFactMeta(item),
-    socialFactMeta(item),
-    gateMeta(item),
+    marketFactMeta(view),
+    socialFactMeta(view),
+    `${view.stage.value} · ${view.gate.value}`,
     `updated ${formatRelativeTime(item.updated_at_ms)} ago`,
   ]
     .filter(Boolean)
     .join(" · ");
 }
 
-function compactPulseMeta(item: SignalPulseItem): string {
-  return [socialFactMeta(item), gateMeta(item), `${formatRelativeTime(item.updated_at_ms)} ago`]
+function compactPulseMeta(view: PulseCaseView, item: SignalPulseItem): string {
+  return [
+    socialFactMeta(view),
+    `${view.gate.value}`,
+    `${formatRelativeTime(item.updated_at_ms)} ago`,
+  ]
     .filter(Boolean)
     .join(" · ");
 }
 
-function statusLabel(status: SignalPulseStatus): string {
-  if (status === "trade_candidate") return "trade";
-  if (status === "token_watch") return "token";
-  if (status === "theme_watch") return "theme";
-  return "rejected";
-}
-
-function pulseFactChips(item: SignalPulseItem): string[] {
+function pulseFactChips(view: PulseCaseView): string[] {
+  const ledger = new Map(view.factLedger.map((fact) => [fact.label, fact.value]));
+  const community = parseCommunity(ledger.get("Community"));
   return [
-    usdFact("cap", item.fact_card.market_cap_usd),
-    usdFact("liq", item.fact_card.liquidity_usd),
-    numberFact("holders", item.fact_card.holders),
-    usdFact("vol", item.fact_card.volume_24h_usd),
-    numberFact("mentions", item.fact_card.mentions_1h),
-    numberFact("authors", item.fact_card.unique_authors),
-    gateMeta(item),
+    factChip("Market cap", ledger.get("Market cap")),
+    factChip("Liquidity", ledger.get("Liquidity")),
+    factChip("Holders", ledger.get("Holders")),
+    factChip("Volume 24h", ledger.get("Volume 24h")),
+    community.mentions,
+    community.authors,
   ].filter((value): value is string => Boolean(value));
 }
 
-function marketFactMeta(item: SignalPulseItem): string | null {
+function marketFactMeta(view: PulseCaseView): string | null {
+  const ledger = new Map(view.factLedger.map((fact) => [fact.label, fact.value]));
   return (
     [
-      usdFact("cap", item.fact_card.market_cap_usd),
-      usdFact("liq", item.fact_card.liquidity_usd),
-      numberFact("holders", item.fact_card.holders) ??
-        usdFact("vol", item.fact_card.volume_24h_usd),
+      factChip("Market cap", ledger.get("Market cap")),
+      factChip("Liquidity", ledger.get("Liquidity")),
+      factChip("Holders", ledger.get("Holders")),
     ]
       .filter(Boolean)
       .join(" · ") || null
   );
 }
 
-function socialFactMeta(item: SignalPulseItem): string | null {
-  return (
-    [
-      numberFact("mentions", item.fact_card.mentions_1h),
-      numberFact("authors", item.fact_card.unique_authors),
-    ]
-      .filter(Boolean)
-      .join(" · ") || null
+function socialFactMeta(view: PulseCaseView): string | null {
+  const community = parseCommunity(
+    view.factLedger.find((fact) => fact.label === "Community")?.value,
   );
+  return [community.mentions, community.authors].filter(Boolean).join(" · ") || null;
 }
 
-function gateMeta(item: SignalPulseItem): string | null {
-  const status = gateStatus(item);
-  const band = scoreBand(item);
-  if (status && band) return `${status} ${band}`;
-  return status ?? band;
+function factChip(label: string, value?: string): string | null {
+  return value && value !== "-" ? `${label} ${value}` : null;
 }
 
-function gateStatus(item: SignalPulseItem): string | null {
-  return (
-    stringValue(item.gate.pulse_status) ??
-    stringValue(item.fact_card.market_status) ??
-    item.pulse_status ??
-    null
-  );
+function parseCommunity(value?: string): { authors: string | null; mentions: string | null } {
+  const [posts, authors] = value?.split(" · ") ?? [];
+  return {
+    authors: authors?.replace(" authors", "") ? `authors ${authors.replace(" authors", "")}` : null,
+    mentions: posts?.replace(" posts", "") ? `mentions ${posts.replace(" posts", "")}` : null,
+  };
 }
 
-function scoreBand(item: SignalPulseItem): string | null {
-  return stringValue(item.gate.score_band) ?? item.score_band ?? null;
-}
-
-function gateScore(item: SignalPulseItem): number | null {
-  return (
-    numberValue(item.gate.candidate_score) ??
-    item.candidate_score ??
-    item.factor_snapshot.composite.rank_score ??
-    null
-  );
-}
-
-function usdFact(label: string, value: unknown): string | null {
-  const number = numberValue(value);
-  return number === null ? null : `${label} ${formatUsdCompact(number)}`;
-}
-
-function numberFact(label: string, value: unknown): string | null {
-  const number = numberValue(value);
-  return number === null ? null : `${label} ${compactNumber(number)}`;
-}
-
-function numberValue(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function stringValue(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
+function actionSubject(view: PulseCaseView): string {
+  return view.subject.title.replace(/^\$+/, "");
 }

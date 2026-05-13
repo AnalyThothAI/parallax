@@ -24,11 +24,12 @@ describe("CockpitSideRail", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /Token/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Radar/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Watchlist/ })).toBeInTheDocument();
     expect(screen.getByLabelText("watchlist handles")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /toly/i })).toHaveAttribute(
       "href",
-      "/signal-lab?handle=toly",
+      "/watchlist?handle=toly",
     );
     expect(await axe(container)).toHaveNoViolations();
   });

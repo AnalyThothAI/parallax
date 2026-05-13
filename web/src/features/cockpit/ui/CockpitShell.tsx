@@ -42,9 +42,13 @@ export function CockpitShell({
   useShellHotkeys(onHotkey);
   const stockRouteMatch = useMatch("/stocks/*");
   const labRouteMatch = useMatch("/signal-lab/*");
+  const watchlistRouteMatch = useMatch("/watchlist/*");
+  const shouldHideOuterDetail = Boolean(stockRouteMatch || labRouteMatch || watchlistRouteMatch);
   const routeModeClass = [
     stockRouteMatch ? "stocks-main-nav-mode" : "",
     labRouteMatch ? "signal-lab-mode" : "",
+    watchlistRouteMatch ? "watchlist-mode" : "",
+    shouldHideOuterDetail ? "no-drawer-mode" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -68,11 +72,16 @@ export function CockpitShell({
         <section className="center-column">
           <Outlet />
         </section>
-        <section className="detail-task-panel" data-mobile-task-panel="detail">
-          {detailPanel}
-        </section>
+        {!shouldHideOuterDetail ? (
+          <section className="detail-task-panel" data-mobile-task-panel="detail">
+            {detailPanel}
+          </section>
+        ) : null}
       </div>
-      <CockpitMobileNav {...mobile} detailAvailable={mobile.detailAvailable && !stockRouteMatch} />
+      <CockpitMobileNav
+        {...mobile}
+        detailAvailable={mobile.detailAvailable && !shouldHideOuterDetail}
+      />
       <NotificationLayer {...notifications} />
     </div>
   );

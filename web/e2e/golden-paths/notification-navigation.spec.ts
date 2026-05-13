@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { installMockApi } from "../support/mockApi";
 
-test("notification click navigates into Signal Lab context", async ({ page }) => {
+test("notification click navigates into Signal Pulse context", async ({ page }) => {
   await installMockApi(page);
   await page.goto("/");
 
@@ -12,6 +12,6 @@ test("notification click navigates into Signal Lab context", async ({ page }) =>
 
   await expect(page).toHaveURL(/\/signal-lab\?q=BNB/);
   await expect(
-    page.getByText("Review Signal Pulse agent candidates by status, source, and query."),
+    page.getByText("Review agent memos by candidate stage, gate, source, and next action."),
   ).toBeVisible();
 });

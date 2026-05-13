@@ -875,6 +875,31 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `pulse_agent_run_steps`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `step_id` | `TEXT` | False | `None` |
+| `run_id` | `TEXT` | False | `None` |
+| `stage` | `TEXT` | False | `None` |
+| `route` | `TEXT` | False | `None` |
+| `attempt_index` | `BIGINT` | False | `0` |
+| `provider` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `input_json` | `JSONB` | False | `'{}'::jsonb` |
+| `prompt_text` | `TEXT` | False | `''::text` |
+| `response_json` | `JSONB` | True | `None` |
+| `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
+| `usage_json` | `JSONB` | False | `'{}'::jsonb` |
+| `latency_ms` | `BIGINT` | False | `0` |
+| `status` | `TEXT` | False | `None` |
+| `error` | `TEXT` | True | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
 ## `pulse_agent_runs`
 
 | Column | Type | Nullable | Default |
@@ -902,6 +927,9 @@
 | `error` | `TEXT` | True | `None` |
 | `started_at_ms` | `BIGINT` | False | `None` |
 | `finished_at_ms` | `BIGINT` | False | `None` |
+| `outcome` | `TEXT` | False | `'pending'::text` |
+| `decision_route` | `TEXT` | False | `'research_only'::text` |
+| `decision_stage_count` | `BIGINT` | False | `0` |
 
 ## `pulse_candidates`
 
@@ -935,8 +963,13 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
-| `agent_recommendation_json` | `JSONB` | False | `'{}'::jsonb` |
 | `gate_json` | `JSONB` | False | `'{}'::jsonb` |
+| `decision_route` | `TEXT` | False | `'research_only'::text` |
+| `decision_recommendation` | `TEXT` | False | `'abstain'::text` |
+| `decision_confidence` | `DOUBLE PRECISION` | False | `0` |
+| `decision_abstain_reason` | `TEXT` | True | `None` |
+| `decision_stage_count` | `BIGINT` | False | `0` |
+| `decision_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `pulse_playbook_outcomes`
 

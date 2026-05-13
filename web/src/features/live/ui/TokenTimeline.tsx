@@ -70,7 +70,7 @@ export function TokenTimeline({
         ) : null}
       </div>
 
-      <section className="timeline-chart" aria-label="social heat timeline">
+      <section className="timeline-chart" aria-label="social case timeline">
         {timeline.buckets.length ? (
           timeline.buckets.map((item) => {
             const content = (

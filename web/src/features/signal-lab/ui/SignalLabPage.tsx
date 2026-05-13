@@ -1,9 +1,11 @@
 import type { LivePayload, SignalPulseData } from "@lib/types";
+import { RemoteState } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { Outlet } from "react-router-dom";
 
 import { useSignalLabPage } from "../useSignalLabPage";
 
+import { SignalLabInspector } from "./SignalLabInspector";
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
 
 type SignalLabPageProps = {
@@ -18,6 +20,13 @@ export function SignalLabPage({
   onSelectAccountEvent,
 }: SignalLabPageProps) {
   const signalLab = useSignalLabPage({ onSelectAccountEvent });
+  const inlinePulseItem =
+    signalLab.signalPulseData?.items.find(
+      (item) => item.candidate_id === signalLab.selectedPulseItemId,
+    ) ??
+    signalLab.signalPulseData?.items[0] ??
+    null;
+  const shouldShowDetail = true;
 
   return (
     <section
@@ -25,7 +34,7 @@ export function SignalLabPage({
         "mobile-task-surface",
         "signal-lab-task-surface",
         "signal-lab-layout",
-        signalLab.isPulseRoute && "signal-lab-layout-with-detail",
+        shouldShowDetail && "signal-lab-layout-with-detail",
       )}
       data-mobile-task-panel="lab"
     >
@@ -54,7 +63,13 @@ export function SignalLabPage({
         />
       </div>
       <aside className="signal-lab-inspector-pane">
-        <Outlet />
+        {signalLab.isPulseRoute ? (
+          <Outlet />
+        ) : inlinePulseItem ? (
+          <SignalLabInspector item={inlinePulseItem} />
+        ) : (
+          <RemoteState.Empty title="No selected Signal Pulse case." />
+        )}
       </aside>
     </section>
   );

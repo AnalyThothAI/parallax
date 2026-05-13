@@ -2,7 +2,7 @@ import { WatchlistNotificationDot } from "@features/notifications";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
 import type { WatchlistRow } from "@lib/watchlist";
-import { signalLabPath, stocksPath } from "@shared/routing/paths";
+import { signalLabPath, stocksPath, watchlistPath } from "@shared/routing/paths";
 import clsx from "clsx";
 import { UserRound } from "lucide-react";
 import type { ReactNode } from "react";
@@ -40,9 +40,10 @@ export function CockpitSideRail({
   const navigate = useNavigate();
   const liveRouteMatch = useMatch({ path: "/", end: true });
   const stockRouteMatch = useMatch("/stocks/*");
+  const watchlistRouteMatch = useMatch("/watchlist/*");
   const labRouteMatch = useMatch("/signal-lab/*");
   const [searchParams] = useSearchParams();
-  const activeWatchHandle = labRouteMatch ? (searchParams.get("handle") ?? "") : "";
+  const activeWatchHandle = watchlistRouteMatch ? (searchParams.get("handle") ?? "") : "";
 
   return (
     <aside className="side-rail desktop-side-rail">
@@ -50,7 +51,7 @@ export function CockpitSideRail({
         <RailButton
           active={Boolean(liveRouteMatch)}
           index="1"
-          label="Token"
+          label="Radar"
           value={tokenItemsCount}
           onClick={() => navigate("/")}
         />
@@ -61,9 +62,16 @@ export function CockpitSideRail({
           onClick={() => navigate(stocksPath())}
         />
         <RailButton
-          active={Boolean(labRouteMatch)}
+          active={Boolean(watchlistRouteMatch)}
           index="3"
-          label="Signal Labs"
+          label="Watchlist"
+          value={watchlistRows.length}
+          onClick={() => navigate(watchlistPath())}
+        />
+        <RailButton
+          active={Boolean(labRouteMatch)}
+          index="4"
+          label="Signal Pulse"
           value={signalLabPulseTotal}
           onClick={() => {
             navigate(signalLabPath());
@@ -114,7 +122,7 @@ export function CockpitSideRail({
             <Link
               className={clsx("watchlist-row", activeWatchHandle === row.handle && "active")}
               key={row.handle}
-              to={signalLabPath({ handle: row.handle })}
+              to={watchlistPath({ handle: row.handle })}
             >
               <span className="watchlist-avatar">{row.handle.slice(0, 1).toUpperCase()}</span>
               <span className="watchlist-copy">

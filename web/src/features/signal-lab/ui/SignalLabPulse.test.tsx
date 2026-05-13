@@ -1,5 +1,7 @@
 import type { SignalPulseItem } from "@lib/types";
 import { cleanup, render, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { marketContextFixture, marketObservationFixture } from "../../../test/marketFixtures";
@@ -10,7 +12,9 @@ afterEach(() => cleanup());
 
 describe("SignalLabPulse", () => {
   it("renders structural skeleton rows while loading", () => {
-    render(<SignalLabPulse isLoading data={undefined} onOpenLab={vi.fn()} onSelect={vi.fn()} />);
+    renderWithRouter(
+      <SignalLabPulse isLoading data={undefined} onOpenLab={vi.fn()} onSelect={vi.fn()} />,
+    );
 
     const skeleton = screen.getByLabelText("loading signal pulse");
     expect(skeleton.querySelectorAll(".skeleton-row")).toHaveLength(5);
@@ -20,7 +24,7 @@ describe("SignalLabPulse", () => {
   it("shows every pulse item with the Signal Pulse row budget", () => {
     const items = Array.from({ length: 7 }, (_, index) => pulseItem(index));
 
-    render(
+    renderWithRouter(
       <SignalLabPulse
         data={{
           query: { window: "24h", scope: "all" },
@@ -52,12 +56,14 @@ describe("SignalLabPulse", () => {
 
     expect(screen.getByRole("button", { name: /TOKEN6/ })).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(7);
-    expect(screen.getAllByText("trade").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("trade candidate").length).toBeGreaterThan(0);
     expect(screen.getByText("recommendation 6")).toBeInTheDocument();
+    expect(screen.getAllByText("watch").length).toBeGreaterThan(0);
     expect(screen.getByText(/mentions 7/)).toBeInTheDocument();
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("liq $75K").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Liquidity $75K").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/authors 3/).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: /Search Intel/ }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Open TOKEN6 on OKX" })).toHaveAttribute(
       "href",
       "https://www.okx.com/trade-spot/token6-usdt",
@@ -69,7 +75,7 @@ describe("SignalLabPulse", () => {
   });
 
   it("renders rows from the factor snapshot contract without legacy fields", () => {
-    render(
+    renderWithRouter(
       <SignalLabPulse
         data={{
           query: { window: "24h", scope: "all" },
@@ -99,12 +105,16 @@ describe("SignalLabPulse", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "open Signal Pulse TOKEN0" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "open pulse case $TOKEN0" })).toBeInTheDocument();
     expect(screen.getByText("recommendation 0")).toBeInTheDocument();
     expect(screen.queryByText("radar_score_json")).not.toBeInTheDocument();
     expect(screen.queryByText("market_context_json")).not.toBeInTheDocument();
   });
 });
+
+function renderWithRouter(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 function pulseItem(index: number): SignalPulseItem {
   return {
