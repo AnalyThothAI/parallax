@@ -156,33 +156,22 @@ def _pulse_gate(
     }
 
 
-def _pulse_recommendation(summary: str = "PEPE 社交热度显著上升。") -> dict[str, object]:
+def _pulse_decision(
+    summary: str = "PEPE 社交热度显著上升。",
+    *,
+    recommendation: str = "watchlist",
+    abstain_reason: str | None = None,
+) -> dict[str, object]:
+    confidence = 0.0 if recommendation == "abstain" else 0.72
     return {
-        "schema_version": "pulse_recommendation_v1",
-        "recommendation": "research",
+        "route": "meme",
+        "recommendation": recommendation,
+        "confidence": confidence,
+        "abstain_reason": abstain_reason,
         "summary_zh": summary,
-        "primary_reasons": [
-            {"factor_key": "social_propagation.independent_authors", "explanation_zh": "独立作者扩散正在增加。"}
-        ],
-        "upgrade_conditions": [
-            {
-                "factor_key": "social_heat.watched_mentions",
-                "operator": ">=",
-                "value": 1,
-                "description_zh": "关注账号继续确认。",
-            }
-        ],
-        "invalidation_conditions": [
-            {
-                "factor_key": "social_heat.mentions_1h",
-                "operator": "<",
-                "value": 3,
-                "description_zh": "讨论快速降温。",
-            }
-        ],
-        "residual_risks": [{"factor_key": "timing_risk.price_change_status", "description_zh": "价格响应仍可能变化。"}],
+        "invalidation_conditions": ["讨论快速降温。"],
+        "residual_risks": ["价格响应仍可能变化。"],
         "evidence_event_ids": ["event-api-1"],
-        "confidence": 0.72,
     }
 
 
@@ -254,7 +243,12 @@ class FakeSignalPulseRepository:
                     "candidate_score": 0.84,
                     "score_band": "watch",
                     "factor_snapshot_json": _pulse_factor_snapshot(),
-                    "agent_recommendation_json": _pulse_recommendation(),
+                    "decision_route": "meme",
+                    "decision_recommendation": "watchlist",
+                    "decision_confidence": 0.72,
+                    "decision_abstain_reason": None,
+                    "decision_stage_count": 3,
+                    "decision_json": _pulse_decision(),
                     "gate_json": _pulse_gate(score=0.84),
                     "gate_reasons_json": ["fresh_attention"],
                     "risk_reasons_json": [],
@@ -928,6 +922,16 @@ def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
         "theme_watch": 0,
         "risk_rejected_high_info": 0,
         "blocked_low_information": 0,
+        "decision_route_counts": {"cex": 0, "meme": 0, "research_only": 0},
+        "decision_recommendation_counts": {
+            "abstain": 0,
+            "high_conviction": 0,
+            "ignore": 0,
+            "trade_candidate": 0,
+            "watchlist": 0,
+        },
+        "decision_abstain_reason_counts": {},
+        "decision_error_count": 0,
     }
     assert data["items"] == []
     assert data["returned_count"] == 0
@@ -978,7 +982,8 @@ def test_signal_pulse_api_uses_fake_runtime_without_postgres():
     assert data["health"]["settlement_coverage"] == 0.5
     assert data["summary"]["token_watch"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-fake"
-    assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert data["items"][0]["decision"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert "agent_recommendation" not in data["items"][0]
     assert data["items"][0]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     assert "radar_score_json" not in data["items"][0]
     assert "market_context_json" not in data["items"][0]
@@ -1032,7 +1037,12 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                 timeline_signature="timeline-api-token",
                 factor_snapshot_json=_pulse_factor_snapshot(score=84),
                 gate_json=_pulse_gate(score=84.0),
-                agent_recommendation_json=_pulse_recommendation(),
+                decision_route="meme",
+                decision_recommendation="watchlist",
+                decision_confidence=0.72,
+                decision_abstain_reason=None,
+                decision_stage_count=3,
+                decision_json=_pulse_decision(),
                 gate_reasons_json=["fresh_attention"],
                 risk_reasons_json=["thin_liquidity"],
                 evidence_event_ids_json=["event-api-1"],
@@ -1072,7 +1082,16 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                     score=10.0,
                     blocked_reasons=["low_information"],
                 ),
-                agent_recommendation_json=_pulse_recommendation("信息不足。"),
+                decision_route="meme",
+                decision_recommendation="abstain",
+                decision_confidence=0.0,
+                decision_abstain_reason="low_information",
+                decision_stage_count=1,
+                decision_json=_pulse_decision(
+                    "信息不足。",
+                    recommendation="abstain",
+                    abstain_reason="low_information",
+                ),
                 gate_reasons_json=["low_information"],
                 risk_reasons_json=["low_information"],
                 evidence_event_ids_json=["event-api-2"],
@@ -1113,7 +1132,16 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
                     score=10.0,
                     blocked_reasons=["low_information"],
                 ),
-                agent_recommendation_json=_pulse_recommendation("信息不足。"),
+                decision_route="meme",
+                decision_recommendation="abstain",
+                decision_confidence=0.0,
+                decision_abstain_reason="low_information",
+                decision_stage_count=1,
+                decision_json=_pulse_decision(
+                    "信息不足。",
+                    recommendation="abstain",
+                    abstain_reason="low_information",
+                ),
                 gate_reasons_json=["low_information"],
                 risk_reasons_json=["low_information"],
                 evidence_event_ids_json=["event-api-3"],
@@ -1142,7 +1170,8 @@ def test_api_signal_pulse_reads_pulse_candidates_after_hard_cut(tmp_path):
     assert data["health"]["market_ready_rate"] == 1.0
     assert data["returned_count"] == 1
     assert data["items"][0]["candidate_id"] == "candidate-api-token"
-    assert data["items"][0]["agent_recommendation"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert data["items"][0]["decision"]["summary_zh"] == "PEPE 社交热度显著上升。"
+    assert "agent_recommendation" not in data["items"][0]
     assert data["items"][0]["fact_card"]["market_status"] == "ready"
     assert "radar_score_json" not in data["items"][0]
     assert "market_context_json" not in data["items"][0]
@@ -1425,7 +1454,12 @@ def _seed_displayable_candidate(app, *, candidate_id: str) -> None:
             schema_version="schema-v1",
             factor_snapshot_json=_pulse_factor_snapshot(),
             gate_json=_pulse_gate(score=82.0),
-            agent_recommendation_json=_pulse_recommendation("test"),
+            decision_route="meme",
+            decision_recommendation="watchlist",
+            decision_confidence=0.72,
+            decision_abstain_reason=None,
+            decision_stage_count=3,
+            decision_json=_pulse_decision("test"),
             target_type="Asset",
             target_id="asset:pepe",
             symbol="PEPE",

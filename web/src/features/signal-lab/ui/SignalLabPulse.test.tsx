@@ -58,7 +58,7 @@ describe("SignalLabPulse", () => {
     expect(screen.getAllByRole("article")).toHaveLength(7);
     expect(screen.getAllByText("trade candidate").length).toBeGreaterThan(0);
     expect(screen.getByText("recommendation 6")).toBeInTheDocument();
-    expect(screen.getAllByText("watch").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("watchlist").length).toBeGreaterThan(0);
     expect(screen.getByText(/mentions 7/)).toBeInTheDocument();
     expect(screen.getAllByText("A").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Liquidity $75K").length).toBeGreaterThan(0);
@@ -211,21 +211,16 @@ function pulseItem(index: number): SignalPulseItem {
         computed_at_ms: 1_700_000_000_000 + index,
       },
     },
-    agent_recommendation: {
-      schema_version: "pulse_recommendation_v1",
-      recommendation: "watch",
+    decision: {
+      route: "meme",
+      recommendation: "watchlist",
+      confidence: 0.72,
+      abstain_reason: null,
+      stage_count: 3,
       summary_zh: `recommendation ${index}`,
-      primary_reasons: [
-        { factor_key: "social_heat.mentions_1h", explanation_zh: "mentions expanding" },
-      ],
-      upgrade_conditions: [],
       invalidation_conditions: [],
-      residual_risks: [
-        {
-          factor_key: "social_propagation.duplicate_text_share",
-          description_zh: "liquidity can thin quickly",
-        },
-      ],
+      residual_risks: ["liquidity can thin quickly"],
+      evidence_event_ids: [`source-${index}`],
     },
     gate: {
       pulse_status: "trade_candidate",

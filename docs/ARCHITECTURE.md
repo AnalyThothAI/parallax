@@ -62,7 +62,7 @@ direction is still enforced by the package rules below.
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
-| `domains/pulse_lab/` | Signal pulse read model, factor-snapshot candidate gate / worker, bounded pulse recommendation agent, pulse persistence. |
+| `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
 
 ## Module Architecture Documents
@@ -110,6 +110,27 @@ Transaction ownership follows the same rule: domain services and runtime workers
 Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, and `pulse_lab`. Do not add empty provider files.
 
 CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.
+
+## Pulse Agent Runtime
+
+Signal Pulse is the first concrete strategy on the unified Agent Runtime Core.
+`domains/pulse_lab/services/agent_routing.py` owns deterministic route policy
+(`cex`, `meme`, or `research_only`) and completeness gates. The Pulse worker
+turns a factor snapshot into a route, writes an agent run, short-circuits
+research-only or hard-blocked rows to an abstain decision, and otherwise calls
+the configured `PulseDecisionProvider`.
+
+OpenAI-specific stage execution lives only under `integrations/openai_agents/`.
+That adapter runs the Analyst, Critic, and Judge stages with typed outputs and
+returns domain values; it does not own routing, persistence, product thresholds,
+or SQL. `app/runtime/providers_wiring.py` is the composition point that binds
+the concrete adapter to the `pulse_lab` provider protocol.
+
+The audit ledger is PostgreSQL: `pulse_agent_runs` records the final outcome and
+route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,
+and `pulse_candidates.decision_*` plus `decision_json` are the public decision
+source. Signal Pulse public payloads expose `decision`, `factor_snapshot`,
+`gate`, and `fact_card`.
 
 ## Asset Profile Facts
 

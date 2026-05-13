@@ -1055,7 +1055,12 @@ export type SignalPulseHealth = {
   settlement_coverage: number | null;
 };
 
-export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number>;
+export type SignalPulseSummary = Record<SignalPulseStatus | "blocked_low_information", number> & {
+  decision_route_counts?: Record<string, number>;
+  decision_recommendation_counts?: Record<string, number>;
+  decision_abstain_reason_counts?: Record<string, number>;
+  decision_error_count?: number;
+};
 
 export type FactorPoint = {
   family: string;
@@ -1130,26 +1135,22 @@ export type TokenFactorSnapshot = {
   };
 };
 
-export type PulseAgentRecommendation = {
-  schema_version: "pulse_recommendation_v1" | string;
-  recommendation: "ignore" | "watch" | "research" | "alert" | "trade_candidate" | string;
-  summary_zh: string;
-  primary_reasons: Array<{ factor_key: string; explanation_zh: string }>;
-  upgrade_conditions: Array<{
-    factor_key: string;
-    operator: string;
-    value: unknown;
-    description_zh: string;
-  }>;
-  invalidation_conditions: Array<{
-    factor_key: string;
-    operator: string;
-    value: unknown;
-    description_zh: string;
-  }>;
-  residual_risks: Array<{ factor_key: string; description_zh: string }>;
-  evidence_event_ids?: string[];
+export type PulseDecision = {
+  route: "cex" | "meme" | "research_only" | string;
+  recommendation:
+    | "high_conviction"
+    | "trade_candidate"
+    | "watchlist"
+    | "ignore"
+    | "abstain"
+    | string;
   confidence?: number | null;
+  abstain_reason?: string | null;
+  stage_count?: number | null;
+  summary_zh: string;
+  invalidation_conditions: string[];
+  residual_risks: string[];
+  evidence_event_ids?: string[];
 };
 
 export type SignalPulseItem = {
@@ -1170,7 +1171,7 @@ export type SignalPulseItem = {
   evidence_event_ids: string[];
   source_event_ids: string[];
   factor_snapshot: TokenFactorSnapshot;
-  agent_recommendation: PulseAgentRecommendation;
+  decision: PulseDecision;
   gate: Record<string, unknown>;
   fact_card: Record<string, unknown>;
   agent_run_id?: string | null;

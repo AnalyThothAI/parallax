@@ -4,8 +4,7 @@ import asyncio
 from contextlib import contextmanager
 from typing import Any
 
-from gmgn_twitter_intel.domains.pulse_lab.interfaces import PULSE_RECOMMENDATION_SCHEMA_VERSION
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionResult
 from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import (
     PulseCandidateWorker,
     _asset_candidate_id,
@@ -13,7 +12,7 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     _source_seed_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, StageRunAudit
 
 NOW_MS = 1_800_000
 
@@ -22,7 +21,7 @@ def test_missing_factor_snapshot_is_not_enqueued() -> None:
     repos = FakeRepos()
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=None)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -38,7 +37,7 @@ def test_malformed_v3_factor_snapshot_is_not_enqueued() -> None:
     snapshot["families"]["market_quality"] = {"facts": {"market_status": "fresh"}}
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -53,7 +52,7 @@ def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> N
     snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -97,7 +96,7 @@ def test_worker_gates_before_agent_and_agent_cannot_upgrade_gate_status() -> Non
 
     worker = PulseCandidateWorker(
         repository_session=lambda: _session(repos),
-        recommendation_client=client,
+        decision_client=client,
         gate_func=gate_func,
     )
 
@@ -113,12 +112,12 @@ def test_worker_gates_before_agent_and_agent_cannot_upgrade_gate_status() -> Non
     assert repos.pulse.candidate_upserts[0]["score_band"] == "speculative"
 
 
-def test_worker_persists_factor_snapshot_gate_and_recommendation_only() -> None:
+def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     repos = FakeRepos()
     snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
     worker.scan_triggers_once(now_ms=NOW_MS)
     result = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -127,16 +126,20 @@ def test_worker_persists_factor_snapshot_gate_and_recommendation_only() -> None:
     upsert = repos.pulse.candidate_upserts[0]
     assert upsert["factor_snapshot_json"] == snapshot
     assert upsert["gate_json"]["pulse_status"] == "trade_candidate"
-    assert upsert["agent_recommendation_json"]["schema_version"] == "pulse_recommendation_v1"
+    assert upsert["decision_json"]["recommendation"] == "watchlist"
+    assert upsert["decision_route"] == "meme"
+    assert upsert["decision_recommendation"] == "watchlist"
+    assert "agent_recommendation_json" not in upsert
     assert "radar_score_json" not in upsert
     assert "market_context_json" not in upsert
     assert "thesis_json" not in upsert
 
 
-def test_source_seed_without_target_is_gated_blocked_after_agent() -> None:
+def test_source_seed_without_target_short_circuits_before_provider_pipeline() -> None:
     repos = FakeRepos()
     repos.harness.social_events = [_source_event()]
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+    client = FakeClient()
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=client)
 
     scan = worker.scan_triggers_once(now_ms=NOW_MS)
     run = worker.process_due_jobs_once(now_ms=NOW_MS)
@@ -148,6 +151,9 @@ def test_source_seed_without_target_is_gated_blocked_after_agent() -> None:
     assert upsert["pulse_status"] == "blocked_low_information"
     assert upsert["gate_json"]["blocked_reasons"] == ["identity_unresolved"]
     assert upsert["gate_json"]["max_recommendation"] == "ignore"
+    assert upsert["decision_recommendation"] == "abstain"
+    assert upsert["decision_abstain_reason"] == "research_only_no_resolved_target"
+    assert client.run_calls == 0
     assert "hard_gates" not in upsert["factor_snapshot_json"]
     assert upsert["factor_snapshot_json"]["gates"]["blocked_reasons"] == ["identity_unresolved"]
 
@@ -201,7 +207,7 @@ def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
     wake_listener = FakeWakeListener()
     worker = PulseCandidateWorker(
         repository_session=lambda: _session(repos),
-        recommendation_client=FakeClient(),
+        decision_client=FakeClient(),
         poll_interval=60.0,
         wake_listener=wake_listener,
     )
@@ -250,7 +256,7 @@ def test_legacy_previous_candidate_gate_json_does_not_bypass_cooldown() -> None:
             "trade_candidate_eligible": False,
         },
     }
-    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), recommendation_client=FakeClient())
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
 
@@ -311,7 +317,11 @@ class FakePulse:
         self.jobs: list[dict[str, Any]] = []
         self.candidates: dict[str, dict[str, Any]] = {}
         self.agent_runs: list[dict[str, Any]] = []
+        self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
+        self.harness_versions: list[dict[str, Any]] = []
+        self.eval_cases: list[dict[str, Any]] = []
+        self.eval_results: list[dict[str, Any]] = []
         self.candidate_upserts: list[dict[str, Any]] = []
         self.playbook_upserts: list[dict[str, Any]] = []
         self.successes: list[str] = []
@@ -355,6 +365,22 @@ class FakePulse:
         self.finished_runs.append(row)
         return row
 
+    def insert_agent_run_step(self, **kwargs: Any) -> dict[str, Any]:
+        self.agent_run_steps.append(kwargs)
+        return kwargs
+
+    def upsert_agent_harness_version(self, **kwargs: Any) -> dict[str, Any]:
+        self.harness_versions.append(kwargs)
+        return kwargs
+
+    def insert_agent_eval_case(self, **kwargs: Any) -> dict[str, Any]:
+        self.eval_cases.append(kwargs)
+        return kwargs
+
+    def upsert_agent_eval_result(self, **kwargs: Any) -> dict[str, Any]:
+        self.eval_results.append(kwargs)
+        return kwargs
+
     def upsert_candidate(self, **kwargs: Any) -> dict[str, Any]:
         self.candidate_upserts.append(kwargs)
         self.candidates[kwargs["candidate_id"]] = kwargs
@@ -382,11 +408,21 @@ class FakeClient:
     timeout_seconds = 1.0
     artifact_version_hash = "artifact:fake"
 
-    def __init__(self, *, recommendation: str = "watch") -> None:
+    def __init__(self, *, recommendation: str = "watchlist") -> None:
         self.recommendation = recommendation
         self.contexts: list[dict[str, Any]] = []
+        self.run_calls = 0
 
-    def request_audit(self, *, context: dict[str, Any], run_id: str, job: dict[str, Any]) -> dict[str, Any]:
+    def request_audit(
+        self,
+        *,
+        context: dict[str, Any],
+        run_id: str,
+        job: dict[str, Any],
+        route: str,
+        completeness: dict[str, Any],
+        harness: dict[str, Any],
+    ) -> dict[str, Any]:
         self.contexts.append(context)
         return {
             "backend": "fake",
@@ -394,50 +430,67 @@ class FakeClient:
             "workflow_name": "test-flow",
             "agent_name": "test-agent",
             "prompt_version": "prompt-v1",
-            "schema_version": PULSE_RECOMMENDATION_SCHEMA_VERSION,
+            "schema_version": "pulse_decision_v1",
             "artifact_version_hash": self.artifact_version_hash,
-            "trace_metadata": {"candidate_id": context["candidate_id"]},
+            "harness_version": harness["harness_version"],
+            "harness_hash": "sha256:fake-harness",
+            "trace_metadata": {
+                "candidate_id": context["candidate_id"],
+                "route": route,
+                "completeness": completeness,
+                "harness_version": harness["harness_version"],
+                "harness_hash": "sha256:fake-harness",
+            },
             "input_hash": "input-hash",
         }
 
-    async def write_recommendation(
+    async def run_decision_pipeline(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseRecommendationResult:
-        payload = PulseRecommendationPayload(
-            schema_version=PULSE_RECOMMENDATION_SCHEMA_VERSION,
+        route: str,
+        completeness: dict[str, Any],
+        harness: dict[str, Any],
+    ) -> PulseDecisionResult:
+        self.run_calls += 1
+        final_decision = FinalDecision(
+            route=route,  # type: ignore[arg-type]
             recommendation=self.recommendation,
-            summary_zh="因子快照显示信号值得继续观察。",
-            primary_reasons=[
-                {"factor_key": "social_propagation.independent_authors", "explanation_zh": "独立作者数上升。"}
-            ],
-            upgrade_conditions=[
-                {
-                    "factor_key": "social_heat.watched_mentions",
-                    "operator": ">=",
-                    "value": 1,
-                    "description_zh": "关注账号确认继续出现。",
-                }
-            ],
-            invalidation_conditions=[
-                {
-                    "factor_key": "social_propagation.independent_authors",
-                    "operator": "<",
-                    "value": 3,
-                    "description_zh": "独立作者数回落。",
-                }
-            ],
-            residual_risks=[
-                {"factor_key": "timing_risk.price_change_status", "description_zh": "价格响应仍可能变化。"}
-            ],
-            evidence_event_ids=context.get("source_event_ids") or ["event-1"],
             confidence=0.7,
+            abstain_reason=None,
+            summary_zh="因子快照显示信号值得继续观察。",
+            invalidation_conditions=["独立作者数回落。"],
+            residual_risks=["价格响应仍可能变化。"],
+            evidence_event_ids=context.get("source_event_ids") or ["event-1"],
         )
-        audit = self.request_audit(context=context, run_id=run_id, job=job)
-        return PulseRecommendationResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
+        stage_audit = StageRunAudit(
+            stage="judge",
+            route=route,  # type: ignore[arg-type]
+            attempt_index=0,
+            input_json={"context": context, "completeness": completeness},
+            prompt_text="fake prompt",
+            response_json=final_decision.model_dump(mode="json"),
+            trace_metadata_json={},
+            usage_json={},
+            latency_ms=1,
+            status="ok",
+            error=None,
+        )
+        audit = self.request_audit(
+            context=context,
+            run_id=run_id,
+            job=job,
+            route=route,
+            completeness=completeness,
+            harness=harness,
+        )
+        return PulseDecisionResult(
+            final_decision=final_decision,
+            agent_run_audit={**audit, "output_hash": "output-hash"},
+            stage_audits=(stage_audit,),
+        )
 
 
 class FakeWakeListener:

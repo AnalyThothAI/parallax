@@ -13,7 +13,7 @@ The only application config source.
 - `api` — FastAPI bind address and replay settings.
 - `storage.postgres` — DSN, password file, pool, timeout.
 - `llm.api_key` / `llm.model` — optional, for watched-account social-event extraction.
-- `llm.pulse_agent_*` — optional Signal Pulse recommendation worker config. Current gate knobs are:
+- `llm.pulse_agent_*` — optional Signal Pulse decision worker config. Current gate knobs are:
   `pulse_agent_trigger_min_rank_score`, `pulse_agent_gate_trade_candidate_min`,
   `pulse_agent_gate_token_watch_min`,
   `pulse_agent_gate_high_info_rejection_min`, and
@@ -153,9 +153,29 @@ the GMGN profile provider is not configured.
 `projection_version` and `factor_version` are bumped on any Token Radar factor
 or ranking-contract change. Current runtime explanations come from
 `factor_snapshot_json`; public Signal Pulse payloads expose `factor_snapshot`,
-`agent_recommendation`, `gate`, and `fact_card`, not old score/thesis JSON
-fields. Downstream evaluation services filter by version, otherwise A/B
-comparisons silently mix populations. No black-box scores.
+`decision`, `gate`, and `fact_card`, not old score/thesis JSON fields.
+Downstream evaluation services filter by version, otherwise A/B comparisons
+silently mix populations. No black-box scores.
+
+Signal Pulse `decision` blocks are the runtime contract for agent output:
+
+```json
+{
+  "route": "meme",
+  "recommendation": "watchlist",
+  "confidence": 0.72,
+  "abstain_reason": null,
+  "stage_count": 3,
+  "summary_zh": "社交热度有效，但 DEX floor 仍需继续确认。",
+  "invalidation_conditions": ["decision_latest 失效或 liquidity 跌破 floor"],
+  "residual_risks": ["单一 KOL 驱动，缺少多源确认"],
+  "evidence_event_ids": ["event-1"]
+}
+```
+
+Default Signal Pulse listings hide rows where
+`decision.recommendation = "abstain"`. Abstain is decision semantics, not a
+`pulse_status`.
 
 Current factor snapshots use `schema_version =
 "token_factor_snapshot_v3_social_attention"` only. Runtime readers reject old

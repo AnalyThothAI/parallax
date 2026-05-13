@@ -14,21 +14,32 @@ from loguru import logger
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import (
     AGENT_NAME,
     BACKEND,
+    PULSE_DECISION_PROMPT_VERSION,
+    PULSE_DECISION_SCHEMA_VERSION,
     PULSE_GATE_VERSION,
     PULSE_PLAYBOOK_VERSION,
-    PULSE_RECOMMENDATION_PROMPT_VERSION,
-    PULSE_RECOMMENDATION_SCHEMA_VERSION,
     PULSE_VERSION,
     WORKFLOW_NAME,
 )
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness import (
+    PULSE_AGENT_STRATEGY,
+    build_pulse_harness_manifest,
+    pulse_harness_hash,
+)
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_harness_eval import (
+    build_pulse_deterministic_eval_case,
+    grade_pulse_deterministic_eval_case,
+)
+from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
+from gmgn_twitter_intel.domains.pulse_lab.services.decision_mapping import candidate_fields_from_decision
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     PulseGateResult,
     PulseGateThresholds,
     gate_pulse_candidate_from_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
-from gmgn_twitter_intel.domains.pulse_lab.types.pulse_recommendation import PulseRecommendationPayload
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, StageRunAudit
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -106,7 +117,7 @@ class PulseCandidateWorker:
         self,
         *,
         repository_session: Callable[[], AbstractContextManager[Any]],
-        recommendation_client: PulseRecommendationProvider,
+        decision_client: PulseDecisionProvider,
         gate_func: Callable[..., PulseGateResult] = gate_pulse_candidate_from_factor_snapshot,
         windows: tuple[str, ...] = DEFAULT_WINDOWS,
         scopes: tuple[str, ...] = DEFAULT_SCOPES,
@@ -118,7 +129,7 @@ class PulseCandidateWorker:
         wake_listener: Any | None = None,
     ) -> None:
         self.repository_session = repository_session
-        self.recommendation_client = recommendation_client
+        self.decision_client = decision_client
         self.gate_func = gate_func
         self.windows = tuple(windows)
         self.scopes = tuple(scopes)
@@ -166,11 +177,11 @@ class PulseCandidateWorker:
         self._enqueue_wake()
 
     async def aclose(self) -> None:
-        close = getattr(self.recommendation_client, "aclose", None)
+        close = getattr(self.decision_client, "aclose", None)
         if close is not None:
             await close()
             return
-        close_sync = getattr(self.recommendation_client, "close", None)
+        close_sync = getattr(self.decision_client, "close", None)
         if close_sync is not None:
             close_sync()
 
@@ -452,52 +463,179 @@ class PulseCandidateWorker:
         )
         context = _context_with_gate(context, gate)
         agent_context = context.agent_context()
+        route = route_decision_context(agent_context)
+        completeness = compute_completeness(context.factor_snapshot, route=route)
+        completeness_json = {
+            "route": completeness.route,
+            "score": completeness.score,
+            "hard_blocked": completeness.hard_blocked,
+            "missing_fields": list(completeness.missing_fields),
+            "stale_fields": list(completeness.stale_fields),
+            "blockers": list(completeness.blockers),
+        }
+        provider = getattr(self.decision_client, "provider", "openai")
+        model = getattr(self.decision_client, "model", "")
+        artifact_version_hash = _artifact_hash(self.decision_client)
+        harness = build_pulse_harness_manifest(
+            provider=provider,
+            model=model,
+            artifact_version_hash=artifact_version_hash,
+            timeout_seconds=float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0),
+        )
+        harness_hash = pulse_harness_hash(harness)
         audit: dict[str, Any] | None = None
         try:
-            audit = self.recommendation_client.request_audit(context=agent_context, run_id=run_id, job=job)
+            audit = self.decision_client.request_audit(
+                context=agent_context,
+                run_id=run_id,
+                job=job,
+                route=route,
+                completeness=completeness_json,
+                harness=harness,
+            )
             with self.repository_session() as repos, _transaction(repos.conn):
+                repos.pulse.upsert_agent_harness_version(
+                    harness_version=str(harness["harness_version"]),
+                    harness_hash=harness_hash,
+                    strategy=PULSE_AGENT_STRATEGY,
+                    provider=provider,
+                    model=model,
+                    prompt_version=PULSE_DECISION_PROMPT_VERSION,
+                    schema_version=PULSE_DECISION_SCHEMA_VERSION,
+                    manifest_json=harness,
+                    created_at_ms=now_ms,
+                    commit=False,
+                )
                 repos.pulse.insert_agent_run(
                     run_id=run_id,
                     job_id=str(job["job_id"]),
                     candidate_id=context.candidate_id,
-                    provider=getattr(self.recommendation_client, "provider", "openai"),
-                    model=getattr(self.recommendation_client, "model", ""),
+                    provider=provider,
+                    model=model,
                     backend=str(audit.get("backend") or BACKEND),
                     sdk_trace_id=audit.get("sdk_trace_id"),
                     workflow_name=str(audit.get("workflow_name") or WORKFLOW_NAME),
                     agent_name=str(audit.get("agent_name") or AGENT_NAME),
                     artifact_version_hash=str(
-                        audit.get("artifact_version_hash") or _artifact_hash(self.recommendation_client)
+                        audit.get("artifact_version_hash") or _artifact_hash(self.decision_client)
                     ),
-                    prompt_version=str(audit.get("prompt_version") or PULSE_RECOMMENDATION_PROMPT_VERSION),
-                    schema_version=str(audit.get("schema_version") or PULSE_RECOMMENDATION_SCHEMA_VERSION),
+                    prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
+                    schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                    harness_version=str(harness["harness_version"]),
+                    harness_hash=harness_hash,
                     input_hash=str(audit.get("input_hash") or _stable_hash(agent_context)),
                     trace_metadata_json=audit.get("trace_metadata") or {},
                     usage_json=audit.get("usage") or {},
                     status="running",
-                    request_json={"context_hash": _stable_hash(agent_context)},
+                    outcome="pending",
+                    decision_route=route,
+                    decision_stage_count=0,
+                    request_json=agent_context,
                     started_at_ms=now_ms,
                     commit=False,
                 )
-            timeout_seconds = max(0.1, float(getattr(self.recommendation_client, "timeout_seconds", 30.0) or 30.0))
-            try:
-                result = await asyncio.wait_for(
-                    self.recommendation_client.write_recommendation(context=agent_context, run_id=run_id, job=job),
-                    timeout=timeout_seconds,
+            if completeness.hard_blocked:
+                final_decision = _abstain_decision(
+                    route=route,
+                    reason=(completeness.blockers[0] if completeness.blockers else "data_completeness_blocked"),
+                    summary_zh="数据完整度不足，未进入资产决策。",
+                    residual_risks=list(completeness.blockers),
                 )
-            except TimeoutError as exc:
-                raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
-            recommendation = result.payload
-            result_audit = result.agent_run_audit or audit or {}
+                stage_audits = (
+                    StageRunAudit(
+                        stage="research_only_gate",
+                        route=route,
+                        attempt_index=0,
+                        input_json={"context": agent_context, "completeness": completeness_json},
+                        prompt_text="deterministic completeness gate",
+                        response_json=final_decision.model_dump(mode="json"),
+                        trace_metadata_json=audit.get("trace_metadata") or {},
+                        usage_json={},
+                        latency_ms=0,
+                        status="skipped",
+                        error=None,
+                    ),
+                )
+                result_audit = audit
+            else:
+                timeout_seconds = max(0.1, float(getattr(self.decision_client, "timeout_seconds", 30.0) or 30.0))
+                try:
+                    result = await asyncio.wait_for(
+                        self.decision_client.run_decision_pipeline(
+                            context=agent_context,
+                            run_id=run_id,
+                            job=job,
+                            route=route,
+                            completeness=completeness_json,
+                            harness=harness,
+                        ),
+                        timeout=timeout_seconds,
+                    )
+                except TimeoutError as exc:
+                    raise TimeoutError(f"Agents SDK request timed out after {timeout_seconds:g}s") from exc
+                final_decision = result.final_decision
+                stage_audits = result.stage_audits
+                result_audit = result.agent_run_audit or audit
             finished_at_ms = _now_ms()
+            decision_fields = candidate_fields_from_decision(final_decision, stage_count=len(stage_audits))
+            decision_fields.pop("score_band", None)
+            outcome = _run_outcome(final_decision, completeness_blocked=completeness.hard_blocked)
             with self.repository_session() as repos, _transaction(repos.conn):
+                for stage_audit in stage_audits:
+                    repos.pulse.insert_agent_run_step(
+                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
+                        run_id=run_id,
+                        stage=stage_audit.stage,
+                        route=stage_audit.route,
+                        attempt_index=stage_audit.attempt_index,
+                        provider=getattr(self.decision_client, "provider", "openai"),
+                        model=getattr(self.decision_client, "model", ""),
+                        prompt_version=str(audit.get("prompt_version") or PULSE_DECISION_PROMPT_VERSION),
+                        schema_version=str(audit.get("schema_version") or PULSE_DECISION_SCHEMA_VERSION),
+                        input_json=stage_audit.input_json,
+                        prompt_text=stage_audit.prompt_text,
+                        response_json=stage_audit.response_json,
+                        trace_metadata_json=stage_audit.trace_metadata_json,
+                        usage_json=stage_audit.usage_json,
+                        latency_ms=stage_audit.latency_ms,
+                        status=stage_audit.status,
+                        error=stage_audit.error,
+                        started_at_ms=finished_at_ms,
+                        finished_at_ms=finished_at_ms,
+                        created_at_ms=finished_at_ms,
+                        commit=False,
+                    )
                 repos.pulse.finish_agent_run(
                     run_id,
                     "done",
-                    response_json=_payload_dict(recommendation),
-                    output_hash=result_audit.get("output_hash"),
+                    response_json=final_decision.model_dump(mode="json"),
+                    output_hash=result_audit.get("output_hash") or _stable_hash(final_decision.model_dump(mode="json")),
                     usage_json=result_audit.get("usage") or {},
+                    outcome=outcome,
+                    decision_route=route,
+                    decision_stage_count=len(stage_audits),
                     finished_at_ms=finished_at_ms,
+                    commit=False,
+                )
+                eval_case = build_pulse_deterministic_eval_case(
+                    run_id=run_id,
+                    harness_hash=harness_hash,
+                    context=agent_context,
+                    route=route,
+                    completeness=completeness_json,
+                    final_decision=final_decision,
+                    stage_audits=tuple(stage_audits),
+                )
+                stored_eval_case = repos.pulse.insert_agent_eval_case(
+                    **eval_case,
+                    status="active",
+                    created_at_ms=finished_at_ms,
+                    commit=False,
+                )
+                eval_result = grade_pulse_deterministic_eval_case(stored_eval_case)
+                repos.pulse.upsert_agent_eval_result(
+                    **eval_result,
+                    created_at_ms=finished_at_ms,
                     commit=False,
                 )
                 repos.pulse.upsert_candidate(
@@ -519,18 +657,16 @@ class PulseCandidateWorker:
                     timeline_signature=context.timeline_signature,
                     factor_snapshot_json=context.factor_snapshot,
                     gate_json=gate.to_json(),
-                    agent_recommendation_json=_payload_dict(recommendation),
+                    **decision_fields,
                     gate_reasons_json=gate.gate_reasons,
                     risk_reasons_json=gate.risk_reasons,
-                    evidence_event_ids_json=list(
-                        getattr(recommendation, "evidence_event_ids", context.evidence_event_ids)
-                    ),
+                    evidence_event_ids_json=list(final_decision.evidence_event_ids or context.evidence_event_ids),
                     source_event_ids_json=context.source_event_ids,
                     agent_run_id=run_id,
                     pulse_version=PULSE_VERSION,
                     gate_version=PULSE_GATE_VERSION,
-                    prompt_version=PULSE_RECOMMENDATION_PROMPT_VERSION,
-                    schema_version=PULSE_RECOMMENDATION_SCHEMA_VERSION,
+                    prompt_version=PULSE_DECISION_PROMPT_VERSION,
+                    schema_version=PULSE_DECISION_SCHEMA_VERSION,
                     updated_at_ms=finished_at_ms,
                     commit=False,
                 )
@@ -539,7 +675,7 @@ class PulseCandidateWorker:
                         **_playbook_snapshot_payload(
                             context=context,
                             gate=gate,
-                            recommendation=recommendation,
+                            final_decision=final_decision,
                             now_ms=now_ms,
                         ),
                         commit=False,
@@ -831,7 +967,7 @@ def _playbook_snapshot_payload(
     *,
     context: PulseCandidateContext,
     gate: PulseGateResult,
-    recommendation: PulseRecommendationPayload,
+    final_decision: FinalDecision,
     now_ms: int,
 ) -> dict[str, Any]:
     horizon = context.window
@@ -846,22 +982,20 @@ def _playbook_snapshot_payload(
         "side": _playbook_side(gate.pulse_status),
         "setup": {
             "pulse_status": gate.pulse_status,
-            "recommendation": recommendation.recommendation,
-            "confidence": recommendation.confidence,
+            "recommendation": final_decision.recommendation,
+            "confidence": final_decision.confidence,
             "candidate_score": gate.candidate_score,
             "score_band": gate.score_band,
-            "summary_zh": recommendation.summary_zh,
+            "summary_zh": final_decision.summary_zh,
         },
         "confirmation": {
-            "upgrade_conditions": [item.model_dump(mode="json") for item in recommendation.upgrade_conditions],
+            "invalidation_conditions": list(final_decision.invalidation_conditions),
         },
         "invalidation": {
-            "invalidation_conditions": [
-                item.model_dump(mode="json") for item in recommendation.invalidation_conditions
-            ],
+            "invalidation_conditions": list(final_decision.invalidation_conditions),
         },
         "risk": {
-            "residual_risks": [item.model_dump(mode="json") for item in recommendation.residual_risks],
+            "residual_risks": list(final_decision.residual_risks),
             "risk_reasons": gate.risk_reasons,
             "hard_risks": gate.hard_risks,
         },
@@ -870,6 +1004,35 @@ def _playbook_snapshot_payload(
         "outcome_status": "pending",
         "created_at_ms": now_ms,
     }
+
+
+def _abstain_decision(
+    *,
+    route: str,
+    reason: str,
+    summary_zh: str,
+    residual_risks: list[str],
+) -> FinalDecision:
+    return FinalDecision(
+        route=route,  # type: ignore[arg-type]
+        recommendation="abstain",
+        confidence=0.0,
+        abstain_reason=reason,
+        summary_zh=summary_zh,
+        invalidation_conditions=[],
+        residual_risks=residual_risks or [reason],
+        evidence_event_ids=[],
+    )
+
+
+def _run_outcome(final_decision: FinalDecision, *, completeness_blocked: bool) -> str:
+    if final_decision.recommendation == "abstain":
+        if completeness_blocked:
+            return "abstain_insufficient_data"
+        if final_decision.abstain_reason == "critic_veto":
+            return "abstain_critic_veto"
+        return "abstain"
+    return "completed"
 
 
 def _playbook_side(status: str) -> str:
@@ -1144,12 +1307,6 @@ def _nested(data: dict[str, Any], *keys: str) -> Any:
             return None
         value = value.get(key)
     return value
-
-
-def _payload_dict(payload: PulseRecommendationPayload | dict[str, Any]) -> dict[str, Any]:
-    if hasattr(payload, "model_dump"):
-        return payload.model_dump(mode="json")
-    return dict(payload)
 
 
 def _call_optional(target: Any, method: str, *args: Any) -> Any:

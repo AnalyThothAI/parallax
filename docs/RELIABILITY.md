@@ -21,3 +21,13 @@ Docker Compose bind-mounts the host config directory into the container and pins
 ## MCP boundary
 
 MCP / FastMCP is optional control / query infrastructure only. `/ws` is the production live push channel; do not route real-time events through MCP.
+
+## Pulse Agent Audit Ledger
+
+Signal Pulse agent decisions must be replayable from PostgreSQL. Every worker
+run writes `pulse_agent_runs`; every Analyst / Critic / Judge stage, plus
+research-only short-circuits, writes `pulse_agent_run_steps`.
+`pulse_agent_run_steps.prompt_text` is operational audit data and must never
+include secrets, cookies, auth headers, raw `.env` values, or private provider
+credentials. Rows with insufficient data finish as abstain decisions instead of
+inventing confidence or a display status.

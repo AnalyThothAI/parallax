@@ -16,10 +16,10 @@ describe("buildPulseCaseView", () => {
     expect(view.stage.source).toBe("deterministic");
     expect(view.gate.value).toBe("watch");
     expect(view.gate.detail).toContain("liquidity below high alert floor");
-    expect(view.agentMemo.recommendation.value).toBe("research");
+    expect(view.agentMemo.recommendation.value).toBe("watchlist");
     expect(view.agentMemo.summary).toBe("社区在放大，但流动性还需要确认。");
-    expect(view.agentMemo.reasons).toEqual(["social_heat.mentions_1h: mentions expanding"]);
-    expect(view.agentMemo.risks).toEqual(["timing_risk.price: chase risk"]);
+    expect(view.agentMemo.reasons).toEqual(["evidence: evidence-1"]);
+    expect(view.agentMemo.risks).toEqual(["chase risk"]);
     expect(view.factLedger.map((fact) => fact.label)).toEqual([
       "Market cap",
       "Liquidity",
@@ -175,24 +175,16 @@ function signalPulseFixture(): SignalPulseItem {
       },
       provenance: { source_event_ids: ["source-1"], computed_at_ms: 1_700_000_000_000 },
     },
-    agent_recommendation: {
-      schema_version: "pulse_recommendation_v1",
-      recommendation: "research",
-      summary_zh: "社区在放大，但流动性还需要确认。",
-      primary_reasons: [
-        { factor_key: "social_heat.mentions_1h", explanation_zh: "mentions expanding" },
-      ],
-      upgrade_conditions: [
-        {
-          factor_key: "fact_card.liquidity_usd",
-          operator: ">=",
-          value: 100_000,
-          description_zh: "needs more liquidity",
-        },
-      ],
-      invalidation_conditions: [],
-      residual_risks: [{ factor_key: "timing_risk.price", description_zh: "chase risk" }],
+    decision: {
+      route: "meme",
+      recommendation: "watchlist",
       confidence: 0.74,
+      abstain_reason: null,
+      stage_count: 3,
+      summary_zh: "社区在放大，但流动性还需要确认。",
+      invalidation_conditions: ["liquidity below 50K"],
+      residual_risks: ["chase risk"],
+      evidence_event_ids: ["evidence-1"],
     },
     gate: {
       pulse_status: "token_watch",

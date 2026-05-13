@@ -20,7 +20,6 @@ export function SignalLabInspector({ item }: SignalLabInspectorProps) {
   const view = buildPulseCaseView(item);
   const searchAction = view.actions.find((action) => action.kind === "search");
   const venueActions = view.actions.filter((action) => action.kind === "venue");
-
   return (
     <ObsidianCase
       aria-label={`Signal Pulse case ${view.subject.title}`}

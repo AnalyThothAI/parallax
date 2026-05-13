@@ -390,14 +390,16 @@ function pulseItem() {
       ...row.factor_snapshot,
       subject: { ...row.factor_snapshot.subject, symbol: "BNB" },
     },
-    agent_recommendation: {
-      schema_version: "pulse_recommendation_v1",
+    decision: {
+      route: "meme",
       recommendation: "trade_candidate",
+      confidence: 0.72,
+      abstain_reason: null,
+      stage_count: 3,
       summary_zh: "BNB social pulse is live for e2e.",
-      primary_reasons: [],
-      upgrade_conditions: [],
       invalidation_conditions: [],
       residual_risks: [],
+      evidence_event_ids: ["event-upeg-1"],
     },
     gate: {
       pulse_status: "trade_candidate",

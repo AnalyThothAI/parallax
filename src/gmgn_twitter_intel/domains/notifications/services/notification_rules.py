@@ -516,7 +516,7 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
         "pulse_status": row.get("pulse_status"),
         "score_band": row.get("score_band"),
         "gates": _dict(factor_snapshot.get("gates")),
-        "agent_recommendation": _dict(row.get("agent_recommendation_json")),
+        "decision": _pulse_decision(row),
         "factor_snapshot_fingerprint": _short_hash(factor_snapshot),
         "latest_evidence_event_id_bucket": _event_id_bucket([*evidence_ids, *source_ids]),
         "source_event_fingerprint": _short_hash(_stable_list(source_ids)),
@@ -532,7 +532,7 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
         "score_band": row.get("score_band"),
         "social_phase": row.get("social_phase"),
         "narrative_type": row.get("narrative_type"),
-        "agent_recommendation": _dict(row.get("agent_recommendation_json")),
+        "decision": _pulse_decision(row),
         "gate": _dict(factor_snapshot.get("gates")),
         "factor_snapshot": factor_snapshot,
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
@@ -547,7 +547,7 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
 
 def _pulse_body(row: dict[str, Any]) -> str:
     snapshot = _dict(row.get("factor_snapshot_json"))
-    recommendation = _dict(row.get("agent_recommendation_json"))
+    decision = _pulse_decision(row)
     subject = _dict(snapshot.get("subject"))
     symbol = _symbol(row.get("symbol") or subject.get("symbol"))
     display = f"${symbol}" if symbol else str(row.get("subject_key") or row.get("candidate_id") or "Signal Pulse")
@@ -556,10 +556,7 @@ def _pulse_body(row: dict[str, Any]) -> str:
     social = _social_fact_line(snapshot)
     blocked_reasons = _list(_nested(snapshot, "gates", "blocked_reasons"))
     summary = _compact_text(
-        recommendation.get("summary_zh")
-        or recommendation.get("summary")
-        or recommendation.get("rationale_zh")
-        or recommendation.get("rationale"),
+        decision.get("summary_zh"),
         limit=240,
     )
     lines = [
@@ -701,12 +698,31 @@ def _stable_list(values: list[Any]) -> list[str]:
     return result
 
 
+def _pulse_decision(row: dict[str, Any]) -> dict[str, Any]:
+    decision = _dict(row.get("decision_json"))
+    return {
+        "route": row.get("decision_route") or decision.get("route"),
+        "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
+        "confidence": row.get("decision_confidence"),
+        "abstain_reason": row.get("decision_abstain_reason") or decision.get("abstain_reason"),
+        "stage_count": int(row.get("decision_stage_count") or 0),
+        "summary_zh": decision.get("summary_zh") or "",
+        "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
+        "residual_risks": _string_list(decision.get("residual_risks")),
+        "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
+    }
+
+
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _string_list(value: Any) -> list[str]:
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
 
 
 def _stable_hash(payload: Any) -> str:

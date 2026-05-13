@@ -298,10 +298,15 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             artifact_version_hash="artifact-hash",
             prompt_version="pulse-prompt-v1",
             schema_version="pulse-schema-v1",
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-run",
             input_hash="input-hash",
             trace_metadata_json={"candidate_id": "candidate-run"},
             usage_json={"input_tokens": 10},
             status="running",
+            outcome="pending",
+            decision_route="meme",
+            decision_stage_count=0,
             request_json={"messages": [{"role": "user", "content": "inspect"}]},
             started_at_ms=1_100,
         )
@@ -311,6 +316,9 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             response_json={"verdict": "token_watch"},
             output_hash="output-hash",
             usage_json={"output_tokens": 20},
+            outcome="completed",
+            decision_route="meme",
+            decision_stage_count=3,
             finished_at_ms=1_350,
         )
     finally:
@@ -324,6 +332,250 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
     assert finished["usage_json"] == {"output_tokens": 20}
     assert finished["output_hash"] == "output-hash"
     assert finished["latency_ms"] == 250
+    assert finished["outcome"] == "completed"
+    assert finished["decision_route"] == "meme"
+    assert finished["decision_stage_count"] == 3
+
+
+def test_agent_harness_version_round_trip(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        inserted = repo.upsert_agent_harness_version(
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-1",
+            strategy="signal_pulse_decision",
+            provider="openai",
+            model="gpt-5-mini",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
+            created_at_ms=1_000,
+        )
+        fetched = repo.agent_harness_version("sha256:harness-1")
+    finally:
+        conn.close()
+
+    assert inserted["harness_hash"] == "sha256:harness-1"
+    assert fetched is not None
+    assert fetched["harness_version"] == "pulse-decision-harness-v1"
+    assert fetched["manifest_json"]["runtime"]["stages"] == ["analyst", "critic", "judge"]
+
+
+def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        repo.enqueue_job(
+            job_id="job-harness-run",
+            candidate_id="candidate-harness-run",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="global",
+            trigger_signature="trigger-harness",
+            timeline_signature="timeline-harness",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        repo.upsert_agent_harness_version(
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-run",
+            strategy="signal_pulse_decision",
+            provider="openai",
+            model="gpt-5-mini",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
+            created_at_ms=1_000,
+        )
+        run = repo.insert_agent_run(
+            run_id="run-harness",
+            job_id="job-harness-run",
+            candidate_id="candidate-harness-run",
+            provider="openai",
+            model="gpt-5-mini",
+            workflow_name="signal_lab_pulse",
+            agent_name="pulse_decision_pipeline",
+            artifact_version_hash="artifact-hash",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            input_hash="input-hash",
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-run",
+            status="running",
+            outcome="pending",
+            decision_route="meme",
+            decision_stage_count=0,
+            request_json={"candidate_id": "candidate-harness-run"},
+            started_at_ms=1_100,
+        )
+    finally:
+        conn.close()
+
+    assert run["harness_version"] == "pulse-decision-harness-v1"
+    assert run["harness_hash"] == "sha256:harness-run"
+
+
+def test_agent_run_steps_round_trip(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        repo.enqueue_job(
+            job_id="job-run-step",
+            candidate_id="candidate-run-step",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="global",
+            trigger_signature="trigger-run-step",
+            timeline_signature="timeline-run-step",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        repo.insert_agent_run(
+            run_id="run-step",
+            job_id="job-run-step",
+            candidate_id="candidate-run-step",
+            provider="openai",
+            model="gpt-5-mini",
+            workflow_name="signal_lab_pulse",
+            agent_name="pulse_decision_pipeline",
+            artifact_version_hash="artifact-hash",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-step",
+            input_hash="input-hash",
+            status="running",
+            outcome="pending",
+            decision_route="meme",
+            decision_stage_count=0,
+            request_json={"target": "asset:sol"},
+            started_at_ms=1_100,
+        )
+        step = repo.insert_agent_run_step(
+            step_id="run-step:analyst:0",
+            run_id="run-step",
+            stage="analyst",
+            route="meme",
+            attempt_index=0,
+            provider="openai",
+            model="gpt-5-mini",
+            prompt_version="meme-analyst-v1",
+            schema_version="pulse_decision_v1",
+            input_json={"factor_snapshot": {"schema_version": "token_factor_snapshot_v3_social_attention"}},
+            prompt_text="Analyze meme token facts only.",
+            response_json={"recommendation": "watchlist", "confidence": 0.42},
+            trace_metadata_json={"trace_id": "trace-step"},
+            usage_json={"input_tokens": 123, "output_tokens": 45},
+            latency_ms=350,
+            status="ok",
+            error=None,
+            started_at_ms=1_101,
+            finished_at_ms=1_451,
+            created_at_ms=1_451,
+        )
+        steps = repo.list_agent_run_steps("run-step")
+    finally:
+        conn.close()
+
+    assert step["step_id"] == "run-step:analyst:0"
+    assert steps == [step]
+    assert steps[0]["prompt_text"] == "Analyze meme token facts only."
+    assert steps[0]["input_json"]["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
+    assert steps[0]["response_json"] == {"recommendation": "watchlist", "confidence": 0.42}
+
+
+def test_agent_eval_case_and_result_round_trip(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        repo.enqueue_job(
+            job_id="job-eval",
+            candidate_id="candidate-eval",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="global",
+            trigger_signature="trigger-eval",
+            timeline_signature="timeline-eval",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        repo.upsert_agent_harness_version(
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-eval",
+            strategy="signal_pulse_decision",
+            provider="openai",
+            model="gpt-5-mini",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
+            created_at_ms=1_000,
+        )
+        repo.insert_agent_run(
+            run_id="run-eval",
+            job_id="job-eval",
+            candidate_id="candidate-eval",
+            provider="openai",
+            model="gpt-5-mini",
+            workflow_name="signal_lab_pulse",
+            agent_name="pulse_decision_pipeline",
+            artifact_version_hash="artifact-hash",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            input_hash="input-hash",
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-eval",
+            status="done",
+            outcome="completed",
+            decision_route="meme",
+            decision_stage_count=3,
+            request_json={"candidate_id": "candidate-eval"},
+            response_json={"route": "meme", "recommendation": "watchlist"},
+            started_at_ms=1_100,
+            finished_at_ms=1_300,
+        )
+        case = repo.insert_agent_eval_case(
+            eval_case_id="eval-case-run-eval",
+            source_run_id="run-eval",
+            harness_hash="sha256:harness-eval",
+            eval_type="deterministic",
+            route="meme",
+            recommendation="watchlist",
+            input_json={"run_id": "run-eval"},
+            expected_json={"recommendation": "watchlist"},
+            rubric_json={"checks": ["final_recommendation_matches"]},
+            status="active",
+            created_at_ms=1_400,
+        )
+        result = repo.upsert_agent_eval_result(
+            eval_result_id="eval-result-run-eval",
+            eval_case_id=case["eval_case_id"],
+            harness_hash="sha256:harness-eval",
+            status="pass",
+            score=1.0,
+            grader_version="pulse-deterministic-harness-v1",
+            details_json={"violations": []},
+            created_at_ms=1_500,
+        )
+        cases = repo.list_agent_eval_cases(source_run_id="run-eval")
+        results = repo.list_agent_eval_results(eval_case_id=case["eval_case_id"])
+    finally:
+        conn.close()
+
+    assert cases == [case]
+    assert result["status"] == "pass"
+    assert results == [result]
+    assert results[0]["details_json"]["violations"] == []
 
 
 def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_path) -> None:
@@ -363,7 +615,10 @@ def test_upsert_candidate_and_list_candidates_contract_filters_and_cursor(tmp_pa
     assert (
         first_page["items"][0]["factor_snapshot_json"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
     )
-    assert first_page["items"][0]["agent_recommendation_json"]["recommendation"] == "watch"
+    assert first_page["items"][0]["decision_route"] == "meme"
+    assert first_page["items"][0]["decision_recommendation"] == "watchlist"
+    assert first_page["items"][0]["decision_confidence"] == 0.42
+    assert "agent_recommendation_json" not in first_page["items"][0]
     assert first_page["items"][0]["gate_reasons_json"] == ["fresh_attention"]
     assert second_page["items"][0]["candidate_id"] == "candidate-older"
     assert second_page["next_cursor"] is None
@@ -376,14 +631,18 @@ def test_upsert_candidate_signature_uses_factor_snapshot_contract() -> None:
     signature = inspect.signature(PulseRepository.upsert_candidate)
 
     assert "factor_snapshot_json" in signature.parameters
-    assert "agent_recommendation_json" in signature.parameters
+    assert "decision_json" in signature.parameters
+    assert "decision_route" in signature.parameters
+    assert "decision_recommendation" in signature.parameters
+    assert "decision_confidence" in signature.parameters
+    assert "agent_recommendation_json" not in signature.parameters
     assert "gate_json" in signature.parameters
     assert "radar_score_json" not in signature.parameters
     assert "market_context_json" not in signature.parameters
     assert "thesis_json" not in signature.parameters
 
 
-def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation(tmp_path) -> None:
+def test_upsert_candidate_persists_factor_snapshot_gate_and_decision(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -398,11 +657,18 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
                     "families": {},
                     "composite": {"rank_score": 0},
                 },
-                agent_recommendation_json={
-                    "schema_version": "pulse_recommendation_v1",
-                    "recommendation": "ignore",
-                },
                 gate_json={"pulse_status": "blocked_low_information", "candidate_score": 12},
+                decision_route="research_only",
+                decision_recommendation="abstain",
+                decision_confidence=0.0,
+                decision_abstain_reason="identity_unresolved",
+                decision_stage_count=1,
+                decision_json={
+                    "route": "research_only",
+                    "recommendation": "abstain",
+                    "confidence": 0.0,
+                    "abstain_reason": "identity_unresolved",
+                },
                 updated_at_ms=3_000,
             )
         )
@@ -417,11 +683,36 @@ def test_upsert_candidate_persists_factor_snapshot_gate_and_agent_recommendation
         "families": {},
         "composite": {"rank_score": 0},
     }
-    assert row["agent_recommendation_json"] == {
-        "schema_version": "pulse_recommendation_v1",
-        "recommendation": "ignore",
-    }
     assert row["gate_json"] == {"pulse_status": "blocked_low_information", "candidate_score": 12}
+    assert row["decision_route"] == "research_only"
+    assert row["decision_recommendation"] == "abstain"
+    assert row["decision_confidence"] == 0.0
+    assert row["decision_abstain_reason"] == "identity_unresolved"
+    assert row["decision_stage_count"] == 1
+    assert row["decision_json"] == {
+        "route": "research_only",
+        "recommendation": "abstain",
+        "confidence": 0.0,
+        "abstain_reason": "identity_unresolved",
+    }
+
+
+def test_candidate_upsert_rejects_missing_decision_fields(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        payload = _candidate_payload("candidate-missing-decision", updated_at_ms=3_000)
+        del payload["decision_json"]
+        try:
+            PulseRepository(conn).upsert_candidate(**payload)
+        except TypeError as exc:
+            error = str(exc)
+        else:
+            error = ""
+    finally:
+        conn.close()
+
+    assert "decision_json" in error
 
 
 def test_pulse_summary_reads_market_fresh_count_from_factor_snapshot_contract() -> None:
@@ -750,8 +1041,13 @@ def _candidate_payload(
     source_event_ids: list[str] | None = None,
     evidence_event_ids: list[str] | None = None,
     factor_snapshot_json: dict[str, Any] | None = None,
-    agent_recommendation_json: dict[str, Any] | None = None,
     gate_json: dict[str, Any] | None = None,
+    decision_route: str = "meme",
+    decision_recommendation: str = "watchlist",
+    decision_confidence: float = 0.42,
+    decision_abstain_reason: str | None = None,
+    decision_stage_count: int = 3,
+    decision_json: dict[str, Any] | None = None,
     updated_at_ms: int,
 ) -> dict[str, Any]:
     resolved_verdict = verdict if verdict is not None else pulse_status
@@ -781,9 +1077,23 @@ def _candidate_payload(
             "families": {},
             "composite": {"rank_score": 82},
         },
-        "agent_recommendation_json": agent_recommendation_json
-        or {"schema_version": "pulse_recommendation_v1", "recommendation": "watch"},
         "gate_json": gate_json or {"pulse_status": pulse_status, "candidate_score": 82},
+        "decision_route": decision_route,
+        "decision_recommendation": decision_recommendation,
+        "decision_confidence": decision_confidence,
+        "decision_abstain_reason": decision_abstain_reason,
+        "decision_stage_count": decision_stage_count,
+        "decision_json": decision_json
+        or {
+            "route": decision_route,
+            "recommendation": decision_recommendation,
+            "confidence": decision_confidence,
+            "abstain_reason": decision_abstain_reason,
+            "summary_zh": "社交热度有效，但仍需确认。",
+            "invalidation_conditions": ["attention fades"],
+            "residual_risks": ["thin liquidity"],
+            "evidence_event_ids": evidence_event_ids or ["event-1"],
+        },
         "gate_reasons_json": ["fresh_attention"],
         "risk_reasons_json": ["thin_liquidity"],
         "evidence_event_ids_json": evidence_event_ids or ["event-1"],
@@ -802,6 +1112,8 @@ class FakePulseSummaryConn:
 
     def execute(self, sql, params=None):
         text = str(sql)
+        if "FROM pulse_candidates" in text and "GROUP BY reason" in text:
+            return FakePulseSummaryResult({})
         if "FROM pulse_candidates" in text:
             self.summary_sql = text
             return FakePulseSummaryResult(
@@ -828,3 +1140,6 @@ class FakePulseSummaryResult:
 
     def fetchone(self):
         return self.row
+
+    def fetchall(self):
+        return []

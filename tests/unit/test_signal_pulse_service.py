@@ -112,6 +112,10 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
         "theme_watch": 0,
         "risk_rejected_high_info": 0,
         "blocked_low_information": 0,
+        "decision_route_counts": {},
+        "decision_recommendation_counts": {},
+        "decision_abstain_reason_counts": {},
+        "decision_error_count": 0,
     }
     assert result["items"] == []
     assert result["returned_count"] == 0
@@ -201,6 +205,10 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
         "theme_watch": 0,
         "risk_rejected_high_info": 0,
         "blocked_low_information": 1,
+        "decision_route_counts": {},
+        "decision_recommendation_counts": {},
+        "decision_abstain_reason_counts": {},
+        "decision_error_count": 0,
     }
     assert result["health"] == {
         "pulse_ready": True,
@@ -241,10 +249,16 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "evidence_event_ids": ["event-1"],
             "source_event_ids": ["event-1"],
             "factor_snapshot": _factor_snapshot(market_status="fresh"),
-            "agent_recommendation": {
-                "schema_version": "pulse_recommendation_v1",
-                "recommendation": "watch",
+            "decision": {
+                "route": "meme",
+                "recommendation": "watchlist",
+                "confidence": 0.72,
+                "abstain_reason": None,
+                "stage_count": 3,
                 "summary_zh": "链上质量允许继续观察。",
+                "invalidation_conditions": ["讨论快速降温。"],
+                "residual_risks": ["价格响应仍可能变化。"],
+                "evidence_event_ids": ["event-1"],
             },
             "gate": {
                 "eligible_for_high_alert": True,
@@ -365,10 +379,20 @@ def _candidate_row(
         "radar_score_json": {"score": 0.82},
         "market_context_json": {"market_status": market_status} if market_status else {},
         "factor_snapshot_json": _factor_snapshot(market_status=market_status),
-        "agent_recommendation_json": {
-            "schema_version": "pulse_recommendation_v1",
-            "recommendation": "watch",
+        "decision_route": "meme",
+        "decision_recommendation": "watchlist",
+        "decision_confidence": 0.72,
+        "decision_abstain_reason": None,
+        "decision_stage_count": 3,
+        "decision_json": {
+            "route": "meme",
+            "recommendation": "watchlist",
+            "confidence": 0.72,
+            "abstain_reason": None,
             "summary_zh": "链上质量允许继续观察。",
+            "invalidation_conditions": ["讨论快速降温。"],
+            "residual_risks": ["价格响应仍可能变化。"],
+            "evidence_event_ids": ["event-1"],
         },
         "gate_json": {
             "pulse_status": pulse_status,
@@ -408,8 +432,83 @@ def test_candidate_returns_full_item() -> None:
     assert result["candidate_id"] == "cand-1"
     assert result["pulse_status"] == "token_watch"
     assert result["factor_snapshot"]["schema_version"] == "token_factor_snapshot_v3_social_attention"
-    assert result["agent_recommendation"]["summary_zh"] == "链上质量允许继续观察。"
+    assert result["decision"]["summary_zh"] == "链上质量允许继续观察。"
+    assert "agent_recommendation" not in result
     assert result["playbooks"] == []
+
+
+def test_default_listing_hides_abstain_decisions() -> None:
+    row = _candidate_row(
+        "cand-abstain",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["decision_recommendation"] = "abstain"
+    row["decision_abstain_reason"] = "missing_decision_latest"
+    row["decision_json"] = {
+        "route": "meme",
+        "recommendation": "abstain",
+        "confidence": 0.0,
+        "abstain_reason": "missing_decision_latest",
+        "summary_zh": "信息不足。",
+        "invalidation_conditions": [],
+        "residual_risks": ["market context missing"],
+        "evidence_event_ids": [],
+    }
+    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
+
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).pulse(
+        window="1h",
+        scope="matched",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+    )
+
+    assert result["items"] == []
+    assert result["returned_count"] == 0
+
+
+def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
+    pulse = FakePulseRepository(
+        health={
+            "candidate_count": 4,
+            "blocked_low_information_count": 0,
+            "dead_job_count": 1,
+            "market_ready_rate": 1.0,
+            "summary": {
+                "trade_candidate": 1,
+                "token_watch": 2,
+                "theme_watch": 0,
+                "risk_rejected_high_info": 0,
+                "blocked_low_information": 1,
+            },
+            "decision_route_counts": {"meme": 3, "research_only": 1},
+            "decision_recommendation_counts": {"watchlist": 2, "abstain": 1, "ignore": 1},
+            "decision_abstain_reason_counts": {"missing_decision_latest": 1},
+            "decision_error_count": 1,
+        }
+    )
+
+    result = SignalPulseService(pulse=pulse, harness=FakeHarnessRepository(None)).pulse(
+        window="1h",
+        scope="matched",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+    )
+
+    assert result["summary"]["decision_route_counts"] == {"meme": 3, "research_only": 1}
+    assert result["summary"]["decision_recommendation_counts"] == {"watchlist": 2, "abstain": 1, "ignore": 1}
+    assert result["summary"]["decision_abstain_reason_counts"] == {"missing_decision_latest": 1}
+    assert result["summary"]["decision_error_count"] == 1
 
 
 def test_candidate_returns_none_when_missing() -> None:

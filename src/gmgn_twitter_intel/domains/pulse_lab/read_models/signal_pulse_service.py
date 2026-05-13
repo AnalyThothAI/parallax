@@ -95,12 +95,16 @@ def _rows(page: dict[str, Any]) -> list[dict[str, Any]]:
     return [row for row in page.get("items", []) if isinstance(row, dict)]
 
 
-def _summary(aggregate: dict[str, Any]) -> dict[str, int]:
+def _summary(aggregate: dict[str, Any]) -> dict[str, Any]:
     raw_summary = _dict(aggregate.get("summary"))
-    counts = {status: 0 for status in SUMMARY_STATUSES}
+    counts: dict[str, Any] = {status: 0 for status in SUMMARY_STATUSES}
     for status in SUMMARY_STATUSES:
         if status in counts:
             counts[status] = int(raw_summary.get(status) or 0)
+    counts["decision_route_counts"] = _int_dict(aggregate.get("decision_route_counts"))
+    counts["decision_recommendation_counts"] = _int_dict(aggregate.get("decision_recommendation_counts"))
+    counts["decision_abstain_reason_counts"] = _int_dict(aggregate.get("decision_abstain_reason_counts"))
+    counts["decision_error_count"] = int(aggregate.get("decision_error_count") or 0)
     return counts
 
 
@@ -108,6 +112,7 @@ def _is_displayable(row: dict[str, Any]) -> bool:
     return (
         row.get("pulse_status") in DISPLAY_STATUSES
         and row.get("verdict") != "blocked_low_information"
+        and row.get("decision_recommendation") != "abstain"
         and _valid_factor_snapshot(row.get("factor_snapshot_json"))
     )
 
@@ -115,7 +120,6 @@ def _is_displayable(row: dict[str, Any]) -> bool:
 def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = _dict(row.get("factor_snapshot_json"))
     gate = _dict(factor_snapshot.get("gates"))
-    agent_recommendation = _dict(row.get("agent_recommendation_json"))
     return {
         "candidate_id": row.get("candidate_id"),
         "candidate_type": row.get("candidate_type"),
@@ -137,7 +141,7 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
         "factor_snapshot": factor_snapshot,
-        "agent_recommendation": agent_recommendation,
+        "decision": _decision(row),
         "gate": gate,
         "fact_card": _fact_card(row=row, factor_snapshot=factor_snapshot, gate=gate),
         "agent_run_id": row.get("agent_run_id"),
@@ -153,6 +157,26 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _int_dict(value: Any) -> dict[str, int]:
+    payload = _dict(value)
+    return {str(key): int(count or 0) for key, count in payload.items()}
+
+
+def _decision(row: dict[str, Any]) -> dict[str, Any]:
+    decision = _dict(row.get("decision_json"))
+    return {
+        "route": row.get("decision_route") or decision.get("route"),
+        "recommendation": row.get("decision_recommendation") or decision.get("recommendation"),
+        "confidence": row.get("decision_confidence"),
+        "abstain_reason": row.get("decision_abstain_reason") or decision.get("abstain_reason"),
+        "stage_count": int(row.get("decision_stage_count") or 0),
+        "summary_zh": decision.get("summary_zh") or "",
+        "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
+        "residual_risks": _string_list(decision.get("residual_risks")),
+        "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
+    }
 
 
 def _valid_factor_snapshot(value: Any) -> bool:
@@ -212,3 +236,7 @@ def _row_market_facts(row: dict[str, Any]) -> dict[str, Any]:
 
 def _list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _string_list(value: Any) -> list[str]:
+    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []

@@ -3,6 +3,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src" / "gmgn_twitter_intel"
 
@@ -372,4 +374,45 @@ def test_service_provider_wiring_is_the_only_integration_provider_join_point() -
             "Move the join into app/runtime/providers_wiring.py; CLI ops are intentionally outside this "
             "service-runtime rule."
         ),
+    )
+
+
+def test_pulse_agent_route_policy_stays_in_domain() -> None:
+    path = SRC_ROOT / "domains" / "pulse_lab" / "services" / "agent_routing.py"
+    offenders = [
+        f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
+        for imported, lineno in _import_records(path)
+        if imported.startswith("agents") or imported.startswith("gmgn_twitter_intel.integrations.")
+    ]
+    _assert_no_offenders(
+        offenders,
+        invariant="pulse agent route policy stays in the domain",
+        reason="Route/completeness policy is product behavior; importing OpenAI or an agent framework hides it.",
+        fix="Move integration-specific code into integrations/openai_agents or app/runtime/providers_wiring.py.",
+    )
+
+
+def test_openai_agent_integrations_do_not_import_repositories() -> None:
+    offenders: list[str] = []
+    for path in (SRC_ROOT / "integrations" / "openai_agents").rglob("*.py"):
+        for imported, lineno in _import_records(path):
+            if ".repositories" in imported:
+                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
+    _assert_no_offenders(
+        offenders,
+        invariant="OpenAI agent integrations do not import repositories",
+        reason="The adapter may run stages, but persistence belongs to domain repositories and workers.",
+        fix="Return typed values from the adapter and let the owning domain runtime persist them.",
+    )
+
+
+def test_pulse_stage_prompts_do_not_contain_execution_language() -> None:
+    prompt_path = SRC_ROOT / "integrations" / "openai_agents" / "pulse_stage_prompts.py"
+    text = prompt_path.read_text(encoding="utf-8")
+    offenders = [prompt_path.relative_to(ROOT).as_posix()] if contains_trading_execution_instruction(text) else []
+    _assert_no_offenders(
+        offenders,
+        invariant="Pulse stage prompts avoid trading execution language",
+        reason="Signal Pulse is research and monitoring only; prompts must not ask for orders or position advice.",
+        fix="Rewrite prompts to discuss observation, confidence, invalidation, and residual risk only.",
     )

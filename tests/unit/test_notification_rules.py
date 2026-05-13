@@ -503,7 +503,8 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert all(item.source_id != "blocked" for item in candidates)
     assert pulse.calls[0]["displayable_only"] is True
     assert candidates[0].payload["candidate_id"] == "trade"
-    assert "agent_recommendation" in candidates[0].payload
+    assert "decision" in candidates[0].payload
+    assert "agent_recommendation" not in candidates[0].payload
     assert "gate" in candidates[0].payload
     assert "factor_snapshot" in candidates[0].payload
     assert "top_risks" not in candidates[0].payload
@@ -851,10 +852,20 @@ def pulse_candidate(
         "radar_score_json": radar_score or {"heat": {"score": 82}},
         "factor_snapshot_json": factor_snapshot,
         "gate_json": resolved_gate,
-        "agent_recommendation_json": {
-            "schema_version": "pulse_recommendation_v1",
-            "recommendation": "watch",
+        "decision_route": "meme",
+        "decision_recommendation": "watchlist",
+        "decision_confidence": 0.72,
+        "decision_abstain_reason": None,
+        "decision_stage_count": 3,
+        "decision_json": {
+            "route": "meme",
+            "recommendation": "watchlist",
+            "confidence": 0.72,
+            "abstain_reason": None,
             "summary_zh": recommendation_summary,
+            "invalidation_conditions": ["讨论迅速降温"],
+            "residual_risks": risks or ["public_stream_coverage"],
+            "evidence_event_ids": evidence_ids or ["event-1"],
         },
         "thesis_json": {
             "summary_zh": "社交热度正在上升。",

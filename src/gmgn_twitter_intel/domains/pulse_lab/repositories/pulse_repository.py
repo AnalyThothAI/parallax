@@ -276,6 +276,8 @@ class PulseRepository:
         artifact_version_hash: str,
         prompt_version: str,
         schema_version: str,
+        harness_version: str,
+        harness_hash: str,
         input_hash: str,
         request_json: dict[str, Any] | None = None,
         backend: str = "openai_agents_sdk",
@@ -285,6 +287,9 @@ class PulseRepository:
         usage_json: dict[str, Any] | None = None,
         latency_ms: int = 0,
         status: str = "running",
+        outcome: str = "pending",
+        decision_route: str = "research_only",
+        decision_stage_count: int = 0,
         response_json: dict[str, Any] | None = None,
         error: str | None = None,
         started_at_ms: int | None = None,
@@ -298,13 +303,13 @@ class PulseRepository:
             INSERT INTO pulse_agent_runs(
               run_id, job_id, candidate_id, provider, model, backend, sdk_trace_id,
               workflow_name, agent_name, artifact_version_hash, prompt_version,
-              schema_version, input_hash, output_hash, trace_metadata_json,
-              usage_json, latency_ms, status, request_json, response_json, error,
-              started_at_ms, finished_at_ms
+              schema_version, harness_version, harness_hash, input_hash, output_hash, trace_metadata_json,
+              usage_json, latency_ms, status, outcome, decision_route, decision_stage_count,
+              request_json, response_json, error, started_at_ms, finished_at_ms
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             RETURNING *
             """,
@@ -321,12 +326,17 @@ class PulseRepository:
                 artifact_version_hash,
                 prompt_version,
                 schema_version,
+                harness_version,
+                harness_hash,
                 input_hash,
                 output_hash,
                 _json(trace_metadata_json or {}),
                 _json(usage_json or {}),
                 max(0, int(latency_ms)),
                 status,
+                outcome,
+                decision_route,
+                max(0, int(decision_stage_count)),
                 _json(request_json or {}),
                 _json(response_json) if response_json is not None else None,
                 error,
@@ -346,6 +356,9 @@ class PulseRepository:
         error: str | None = None,
         output_hash: str | None = None,
         usage_json: dict[str, Any] | None = None,
+        outcome: str | None = None,
+        decision_route: str | None = None,
+        decision_stage_count: int | None = None,
         finished_at_ms: int | None = None,
         commit: bool = True,
     ) -> dict[str, Any] | None:
@@ -367,6 +380,9 @@ class PulseRepository:
                 output_hash = COALESCE(%s, output_hash),
                 usage_json = %s,
                 latency_ms = %s,
+                outcome = COALESCE(%s, outcome),
+                decision_route = COALESCE(%s, decision_route),
+                decision_stage_count = COALESCE(%s, decision_stage_count),
                 finished_at_ms = %s
             WHERE run_id = %s
             RETURNING *
@@ -378,6 +394,9 @@ class PulseRepository:
                 output_hash,
                 _json(next_usage or {}),
                 latency_ms,
+                outcome,
+                decision_route,
+                max(0, int(decision_stage_count)) if decision_stage_count is not None else None,
                 now,
                 run_id,
             ),
@@ -408,10 +427,15 @@ class PulseRepository:
         schema_version: str,
         factor_snapshot_json: dict[str, Any],
         gate_json: dict[str, Any],
+        decision_route: str,
+        decision_recommendation: str,
+        decision_confidence: float,
+        decision_stage_count: int,
+        decision_json: dict[str, Any],
         target_type: str | None = None,
         target_id: str | None = None,
         symbol: str | None = None,
-        agent_recommendation_json: dict[str, Any] | None = None,
+        decision_abstain_reason: str | None = None,
         gate_reasons_json: list[Any] | None = None,
         risk_reasons_json: list[Any] | None = None,
         evidence_event_ids_json: list[Any] | None = None,
@@ -429,7 +453,8 @@ class PulseRepository:
               candidate_id, candidate_type, subject_key, target_type, target_id, symbol,
               "window", scope, pulse_status, verdict, social_phase, narrative_type,
               candidate_score, score_band, trigger_signature, timeline_signature,
-              factor_snapshot_json, agent_recommendation_json, gate_json,
+              factor_snapshot_json, gate_json, decision_route, decision_recommendation,
+              decision_confidence, decision_abstain_reason, decision_stage_count, decision_json,
               gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
               agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
               created_at_ms, updated_at_ms
@@ -437,7 +462,8 @@ class PulseRepository:
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s
             )
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
@@ -456,8 +482,13 @@ class PulseRepository:
               trigger_signature = excluded.trigger_signature,
               timeline_signature = excluded.timeline_signature,
               factor_snapshot_json = excluded.factor_snapshot_json,
-              agent_recommendation_json = excluded.agent_recommendation_json,
               gate_json = excluded.gate_json,
+              decision_route = excluded.decision_route,
+              decision_recommendation = excluded.decision_recommendation,
+              decision_confidence = excluded.decision_confidence,
+              decision_abstain_reason = excluded.decision_abstain_reason,
+              decision_stage_count = excluded.decision_stage_count,
+              decision_json = excluded.decision_json,
               gate_reasons_json = excluded.gate_reasons_json,
               risk_reasons_json = excluded.risk_reasons_json,
               evidence_event_ids_json = excluded.evidence_event_ids_json,
@@ -488,8 +519,13 @@ class PulseRepository:
                 trigger_signature,
                 timeline_signature,
                 _json(factor_snapshot_json),
-                _json(agent_recommendation_json or {}),
                 _json(gate_json),
+                decision_route,
+                decision_recommendation,
+                float(decision_confidence),
+                decision_abstain_reason,
+                max(0, int(decision_stage_count)),
+                _json(decision_json),
                 _json(gate_reasons_json or []),
                 _json(risk_reasons_json or []),
                 _json(evidence_event_ids_json or []),
@@ -506,6 +542,285 @@ class PulseRepository:
         if commit:
             self.conn.commit()
         return _row(row)
+
+    def insert_agent_run_step(
+        self,
+        *,
+        step_id: str,
+        run_id: str,
+        stage: str,
+        route: str,
+        attempt_index: int,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        schema_version: str,
+        input_json: dict[str, Any],
+        prompt_text: str,
+        response_json: dict[str, Any] | None,
+        trace_metadata_json: dict[str, Any] | None = None,
+        usage_json: dict[str, Any] | None = None,
+        latency_ms: int = 0,
+        status: str = "ok",
+        error: str | None = None,
+        started_at_ms: int | None = None,
+        finished_at_ms: int | None = None,
+        created_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        started = int(started_at_ms if started_at_ms is not None else _now_ms())
+        finished = int(finished_at_ms if finished_at_ms is not None else started)
+        created = int(created_at_ms if created_at_ms is not None else finished)
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_agent_run_steps(
+              step_id, run_id, stage, route, attempt_index, provider, model,
+              prompt_version, schema_version, input_json, prompt_text, response_json,
+              trace_metadata_json, usage_json, latency_ms, status, error,
+              started_at_ms, finished_at_ms, created_at_ms
+            )
+            VALUES (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
+            ON CONFLICT(run_id, stage, attempt_index) DO UPDATE SET
+              step_id = excluded.step_id,
+              route = excluded.route,
+              provider = excluded.provider,
+              model = excluded.model,
+              prompt_version = excluded.prompt_version,
+              schema_version = excluded.schema_version,
+              input_json = excluded.input_json,
+              prompt_text = excluded.prompt_text,
+              response_json = excluded.response_json,
+              trace_metadata_json = excluded.trace_metadata_json,
+              usage_json = excluded.usage_json,
+              latency_ms = excluded.latency_ms,
+              status = excluded.status,
+              error = excluded.error,
+              started_at_ms = excluded.started_at_ms,
+              finished_at_ms = excluded.finished_at_ms,
+              created_at_ms = excluded.created_at_ms
+            RETURNING *
+            """,
+            (
+                step_id,
+                run_id,
+                stage,
+                route,
+                max(0, int(attempt_index)),
+                provider,
+                model,
+                prompt_version,
+                schema_version,
+                _json(input_json),
+                prompt_text,
+                _json(response_json) if response_json is not None else None,
+                _json(trace_metadata_json or {}),
+                _json(usage_json or {}),
+                max(0, int(latency_ms)),
+                status,
+                error,
+                started,
+                finished,
+                created,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+
+    def list_agent_run_steps(self, run_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM pulse_agent_run_steps
+            WHERE run_id = %s
+            ORDER BY started_at_ms ASC, stage ASC, attempt_index ASC
+            """,
+            (run_id,),
+        ).fetchall()
+        return [_row(row) for row in rows]
+
+    def upsert_agent_harness_version(
+        self,
+        *,
+        harness_version: str,
+        harness_hash: str,
+        strategy: str,
+        provider: str,
+        model: str,
+        prompt_version: str,
+        schema_version: str,
+        manifest_json: dict[str, Any],
+        created_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        created = int(created_at_ms if created_at_ms is not None else _now_ms())
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_agent_harness_versions(
+              harness_hash, harness_version, strategy, provider, model, prompt_version,
+              schema_version, manifest_json, created_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(harness_hash) DO UPDATE SET
+              harness_version = excluded.harness_version,
+              strategy = excluded.strategy,
+              provider = excluded.provider,
+              model = excluded.model,
+              prompt_version = excluded.prompt_version,
+              schema_version = excluded.schema_version,
+              manifest_json = excluded.manifest_json
+            RETURNING *
+            """,
+            (
+                harness_hash,
+                harness_version,
+                strategy,
+                provider,
+                model,
+                prompt_version,
+                schema_version,
+                _json(manifest_json),
+                created,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+
+    def agent_harness_version(self, harness_hash: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM pulse_agent_harness_versions
+            WHERE harness_hash = %s
+            """,
+            (harness_hash,),
+        ).fetchone()
+        return _optional_row(row)
+
+    def insert_agent_eval_case(
+        self,
+        *,
+        eval_case_id: str,
+        source_run_id: str,
+        harness_hash: str,
+        eval_type: str,
+        route: str,
+        recommendation: str,
+        input_json: dict[str, Any],
+        expected_json: dict[str, Any],
+        rubric_json: dict[str, Any],
+        status: str = "active",
+        created_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        created = int(created_at_ms if created_at_ms is not None else _now_ms())
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_agent_eval_cases(
+              eval_case_id, source_run_id, harness_hash, eval_type, route, recommendation,
+              input_json, expected_json, rubric_json, status, created_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(source_run_id, eval_type) DO UPDATE SET
+              harness_hash = excluded.harness_hash,
+              route = excluded.route,
+              recommendation = excluded.recommendation,
+              input_json = excluded.input_json,
+              expected_json = excluded.expected_json,
+              rubric_json = excluded.rubric_json,
+              status = excluded.status,
+              created_at_ms = excluded.created_at_ms
+            RETURNING *
+            """,
+            (
+                eval_case_id,
+                source_run_id,
+                harness_hash,
+                eval_type,
+                route,
+                recommendation,
+                _json(input_json),
+                _json(expected_json),
+                _json(rubric_json),
+                status,
+                created,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+
+    def list_agent_eval_cases(self, *, source_run_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM pulse_agent_eval_cases
+            WHERE source_run_id = %s
+            ORDER BY created_at_ms ASC, eval_case_id ASC
+            """,
+            (source_run_id,),
+        ).fetchall()
+        return [_row(row) for row in rows]
+
+    def upsert_agent_eval_result(
+        self,
+        *,
+        eval_result_id: str,
+        eval_case_id: str,
+        harness_hash: str,
+        status: str,
+        score: float,
+        grader_version: str,
+        details_json: dict[str, Any],
+        created_at_ms: int | None = None,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        created = int(created_at_ms if created_at_ms is not None else _now_ms())
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_agent_eval_results(
+              eval_result_id, eval_case_id, harness_hash, status, score,
+              grader_version, details_json, created_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(eval_case_id, harness_hash, grader_version) DO UPDATE SET
+              eval_result_id = excluded.eval_result_id,
+              status = excluded.status,
+              score = excluded.score,
+              details_json = excluded.details_json,
+              created_at_ms = excluded.created_at_ms
+            RETURNING *
+            """,
+            (
+                eval_result_id,
+                eval_case_id,
+                harness_hash,
+                status,
+                float(score),
+                grader_version,
+                _json(details_json),
+                created,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+
+    def list_agent_eval_results(self, *, eval_case_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM pulse_agent_eval_results
+            WHERE eval_case_id = %s
+            ORDER BY created_at_ms ASC, eval_result_id ASC
+            """,
+            (eval_case_id,),
+        ).fetchall()
+        return [_row(row) for row in rows]
 
     def list_candidates(
         self,
@@ -527,6 +842,7 @@ class PulseRepository:
         if displayable_only:
             clauses.append(f"candidate.pulse_status IN {DISPLAY_PULSE_STATUS_SQL}")
             clauses.append("candidate.verdict IS DISTINCT FROM 'blocked_low_information'")
+            clauses.append("candidate.decision_recommendation IS DISTINCT FROM 'abstain'")
         if handle:
             handle_clause, handle_params = _candidate_handle_filter_clause("candidate", handle)
             if handle_clause:
@@ -590,6 +906,14 @@ class PulseRepository:
               COUNT(*) FILTER (WHERE pulse_status = 'theme_watch') AS theme_watch_count,
               COUNT(*) FILTER (WHERE pulse_status = 'risk_rejected_high_info') AS risk_rejected_high_info_count,
               COUNT(*) FILTER (WHERE pulse_status = 'blocked_low_information') AS blocked_low_information_status_count,
+              COUNT(*) FILTER (WHERE decision_route = 'cex') AS decision_route_cex_count,
+              COUNT(*) FILTER (WHERE decision_route = 'meme') AS decision_route_meme_count,
+              COUNT(*) FILTER (WHERE decision_route = 'research_only') AS decision_route_research_only_count,
+              COUNT(*) FILTER (WHERE decision_recommendation = 'high_conviction') AS decision_high_conviction_count,
+              COUNT(*) FILTER (WHERE decision_recommendation = 'trade_candidate') AS decision_trade_candidate_count,
+              COUNT(*) FILTER (WHERE decision_recommendation = 'watchlist') AS decision_watchlist_count,
+              COUNT(*) FILTER (WHERE decision_recommendation = 'ignore') AS decision_ignore_count,
+              COUNT(*) FILTER (WHERE decision_recommendation = 'abstain') AS decision_abstain_count,
               COUNT(*) FILTER (
                 WHERE pulse_status = 'blocked_low_information'
                    OR verdict = 'blocked_low_information'
@@ -598,10 +922,12 @@ class PulseRepository:
               COUNT(*) FILTER (
                 WHERE pulse_status IN {DISPLAY_PULSE_STATUS_SQL}
                   AND verdict IS DISTINCT FROM 'blocked_low_information'
+                  AND decision_recommendation IS DISTINCT FROM 'abstain'
               ) AS displayable_count,
               COUNT(*) FILTER (
                 WHERE pulse_status IN {DISPLAY_PULSE_STATUS_SQL}
                   AND verdict IS DISTINCT FROM 'blocked_low_information'
+                  AND decision_recommendation IS DISTINCT FROM 'abstain'
                   AND factor_snapshot_json #>> '{{data_health,market}}' = 'ready'
               ) AS market_fresh_count
             FROM pulse_candidates
@@ -610,6 +936,20 @@ class PulseRepository:
             """,
             tuple(params),
         ).fetchone()
+        abstain_rows = self.conn.execute(
+            f"""
+            SELECT
+              COALESCE(NULLIF(decision_abstain_reason, ''), 'unspecified') AS reason,
+              COUNT(*) AS count
+            FROM pulse_candidates
+            AS candidate
+            WHERE {" AND ".join(clauses)}
+              AND decision_recommendation = 'abstain'
+            GROUP BY reason
+            ORDER BY count DESC, reason ASC
+            """,
+            tuple(params),
+        ).fetchall()
         job_clauses = ['job."window" = %s', "job.scope = %s", "job.status = 'dead'"]
         job_params: list[Any] = [window, scope]
         if handle:
@@ -640,12 +980,31 @@ class PulseRepository:
             "risk_rejected_high_info": int(row.get("risk_rejected_high_info_count") or 0),
             "blocked_low_information": int(row.get("blocked_low_information_status_count") or 0),
         }
+        decision_route_counts = {
+            "cex": int(row.get("decision_route_cex_count") or 0),
+            "meme": int(row.get("decision_route_meme_count") or 0),
+            "research_only": int(row.get("decision_route_research_only_count") or 0),
+        }
+        decision_recommendation_counts = {
+            "high_conviction": int(row.get("decision_high_conviction_count") or 0),
+            "trade_candidate": int(row.get("decision_trade_candidate_count") or 0),
+            "watchlist": int(row.get("decision_watchlist_count") or 0),
+            "ignore": int(row.get("decision_ignore_count") or 0),
+            "abstain": int(row.get("decision_abstain_count") or 0),
+        }
+        decision_abstain_reason_counts = {
+            str(abstain_row["reason"]): int(abstain_row["count"]) for abstain_row in abstain_rows
+        }
         displayable_count = int(row.get("displayable_count") or 0)
         market_fresh_count = int(row.get("market_fresh_count") or 0)
         return {
             "window": window,
             "scope": scope,
             "summary": summary,
+            "decision_route_counts": decision_route_counts,
+            "decision_recommendation_counts": decision_recommendation_counts,
+            "decision_abstain_reason_counts": decision_abstain_reason_counts,
+            "decision_error_count": 0,
             "candidate_count": int(row.get("candidate_count") or 0),
             "blocked_low_information_count": int(row.get("blocked_low_information_count") or 0),
             "dead_job_count": int(job_row["dead_job_count"] if job_row else 0),

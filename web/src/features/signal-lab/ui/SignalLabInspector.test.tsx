@@ -108,14 +108,16 @@ describe("SignalLabInspector", () => {
               },
               provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },
             },
-            agent_recommendation: {
-              schema_version: "pulse_recommendation_v1",
-              recommendation: "watch",
+            decision: {
+              route: "meme",
+              recommendation: "watchlist",
+              confidence: 0.62,
+              abstain_reason: null,
+              stage_count: 3,
               summary_zh: "summary",
-              primary_reasons: [],
-              upgrade_conditions: [],
               invalidation_conditions: [],
               residual_risks: [],
+              evidence_event_ids: ["event-1"],
             },
             gate: {
               pulse_status: "token_watch",
@@ -263,14 +265,16 @@ function signalPulseItem(): SignalPulseItem {
       },
       provenance: { source_event_ids: ["event-1"], computed_at_ms: 1_700_000_000_000 },
     },
-    agent_recommendation: {
-      schema_version: "pulse_recommendation_v1",
-      recommendation: "watch",
+    decision: {
+      route: "meme",
+      recommendation: "watchlist",
+      confidence: 0.62,
+      abstain_reason: null,
+      stage_count: 3,
       summary_zh: "summary",
-      primary_reasons: [],
-      upgrade_conditions: [],
       invalidation_conditions: [],
       residual_risks: [],
+      evidence_event_ids: ["event-1"],
     },
     gate: {
       pulse_status: "token_watch",

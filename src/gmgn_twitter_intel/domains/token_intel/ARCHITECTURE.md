@@ -75,7 +75,7 @@ not reconstruct old top-level `anchor_price` or process-local `live_market`
 fallbacks. Legacy score-centered JSON fields, v1 snapshot fields, and old
 current-market refresh snapshots are not runtime fallback sources. `profile`
 comes from the asset-level `asset_profiles` read model and is intentionally
-outside the scoring snapshot. Signal Lab Pulse recommendations consume v3 factor
+outside the scoring snapshot. Signal Lab Pulse decisions consume v3 factor
 snapshots, `market.decision_latest`, and deterministic gates.
 
 Historical `token_radar_rows` are retained by `computed_at_ms` so
@@ -129,9 +129,10 @@ symbol remains `None` rather than falling back to the mention symbol.
   clean duplication only removes that penalty.
 - Token Radar target display uses current identity. Intent display symbol is
   preserved separately as what the tweet mentioned.
-- Signal Pulse reads v3 `factor_snapshot_json`, `agent_recommendation_json`, and
-  deterministic gate output. Product decisions must not fall back to legacy
-  Signal Pulse `thesis_json`, `radar_score_json`, or `market_context_json`.
+- Signal Pulse reads v3 `factor_snapshot_json`, first-class `decision_*`
+  columns, `decision_json`, and deterministic gate output. Product decisions
+  must not fall back to legacy Signal Pulse `thesis_json`, `radar_score_json`,
+  or `market_context_json`.
 
 ## Update Triggers
 

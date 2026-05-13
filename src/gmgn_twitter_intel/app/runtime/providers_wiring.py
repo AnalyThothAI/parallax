@@ -21,7 +21,8 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     ProviderHealth,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
-from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider, PulseRecommendationResult
+from gmgn_twitter_intel.domains.pulse_lab.providers import PulseDecisionProvider, PulseDecisionResult
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import DecisionRoute
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
 from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
 from gmgn_twitter_intel.integrations.gmgn.openapi_client import GmgnOpenApiClient
@@ -30,9 +31,7 @@ from gmgn_twitter_intel.integrations.okx.cex_client import OkxCexClient
 from gmgn_twitter_intel.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
 from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
-from gmgn_twitter_intel.integrations.openai_agents.pulse_recommendation_agent_client import (
-    OpenAIAgentsPulseRecommendationClient,
-)
+from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
 from gmgn_twitter_intel.platform.config.settings import Settings
 
@@ -73,7 +72,7 @@ class SocialEnrichmentProviders:
 
 @dataclass(frozen=True, slots=True)
 class PulseLabProviders:
-    recommendation_provider: PulseRecommendationProvider | None = None
+    decision_provider: PulseDecisionProvider | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -246,8 +245,8 @@ class OkxDexWebSocketMarketProviderAdapter:
         return {"provider": "okx_dex_ws", "state": "disconnected", "last_state_change_at_ms": None}
 
 
-class OpenAIPulseRecommendationProvider:
-    def __init__(self, client: OpenAIAgentsPulseRecommendationClient) -> None:
+class OpenAIPulseDecisionProvider:
+    def __init__(self, client: OpenAIAgentsPulseDecisionClient) -> None:
         self._client = client
 
     @property
@@ -266,18 +265,48 @@ class OpenAIPulseRecommendationProvider:
     def artifact_version_hash(self) -> str:
         return self._client.artifact_version_hash
 
-    def request_audit(self, *, context: dict[str, Any], run_id: str, job: dict[str, Any]) -> dict[str, Any]:
-        return self._client.request_audit(context=context, run_id=run_id, job=job)
-
-    async def write_recommendation(
+    def request_audit(
         self,
         *,
         context: dict[str, Any],
         run_id: str,
         job: dict[str, Any],
-    ) -> PulseRecommendationResult:
-        result = await self._client.write_recommendation(context=context, run_id=run_id, job=job)
-        return PulseRecommendationResult(payload=result.payload, agent_run_audit=result.agent_run_audit)
+        route: DecisionRoute,
+        completeness: dict[str, Any],
+        harness: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._client.request_audit(
+            context=context,
+            run_id=run_id,
+            job=job,
+            route=route,
+            completeness=completeness,
+            harness=harness,
+        )
+
+    async def run_decision_pipeline(
+        self,
+        *,
+        context: dict[str, Any],
+        run_id: str,
+        job: dict[str, Any],
+        route: DecisionRoute,
+        completeness: dict[str, Any],
+        harness: dict[str, Any],
+    ) -> PulseDecisionResult:
+        result = await self._client.run_decision_pipeline(
+            context=context,
+            run_id=run_id,
+            job=job,
+            route=route,
+            completeness=completeness,
+            harness=harness,
+        )
+        return PulseDecisionResult(
+            final_decision=result.final_decision,
+            agent_run_audit=result.run_audit,
+            stage_audits=result.stage_audits,
+        )
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -293,7 +322,7 @@ def wire_providers(settings: Settings, *, start_collector: bool) -> WiredProvide
             event_enrichment=_openai_social_event_provider(settings) if settings.llm_configured else None,
         ),
         pulse_lab=PulseLabProviders(
-            recommendation_provider=_openai_pulse_recommendation_provider(settings)
+            decision_provider=_openai_pulse_decision_provider(settings)
             if settings.pulse_agent_enabled and settings.pulse_agent_configured
             else None,
         ),
@@ -474,9 +503,9 @@ def _openai_social_event_provider(settings: Settings) -> OpenAIAgentsSocialEvent
     )
 
 
-def _openai_pulse_recommendation_provider(settings: Settings) -> OpenAIPulseRecommendationProvider:
-    return OpenAIPulseRecommendationProvider(
-        OpenAIAgentsPulseRecommendationClient(
+def _openai_pulse_decision_provider(settings: Settings) -> OpenAIPulseDecisionProvider:
+    return OpenAIPulseDecisionProvider(
+        OpenAIAgentsPulseDecisionClient(
             api_key=settings.llm_api_key or "",
             model=settings.pulse_agent_model or "",
             base_url=settings.llm_base_url,

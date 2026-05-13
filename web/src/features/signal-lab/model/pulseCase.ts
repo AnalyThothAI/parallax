@@ -111,31 +111,26 @@ export function buildPulseCaseView(item: SignalPulseItem): PulseCaseView {
 }
 
 function agentMemo(item: SignalPulseItem): PulseAgentMemo {
-  const recommendation = item.agent_recommendation;
+  const decision = item.decision;
+  const evidenceIds = stringList(decision.evidence_event_ids).length
+    ? stringList(decision.evidence_event_ids)
+    : stringList(item.evidence_event_ids);
   return {
-    confidence: percentValue(recommendation.confidence),
-    invalidations: recommendation.invalidation_conditions.map(
-      (condition) =>
-        `${condition.factor_key} ${condition.operator} ${String(condition.value)}: ${condition.description_zh}`,
-    ),
-    reasons: recommendation.primary_reasons.map(
-      (reason) => `${reason.factor_key}: ${reason.explanation_zh}`,
-    ),
+    confidence: percentValue(decision.confidence),
+    invalidations: stringList(decision.invalidation_conditions),
+    reasons: decision.abstain_reason
+      ? [`abstain: ${decision.abstain_reason}`]
+      : evidenceIds.map((id) => `evidence: ${id}`),
     recommendation: {
-      detail: `schema ${recommendation.schema_version}`,
+      detail: `route ${decision.route || "-"} · stages ${compactNumber(decision.stage_count)}`,
       label: "Agent verdict",
       source: "agent",
-      tone: agentTone(recommendation.recommendation),
-      value: recommendation.recommendation || "-",
+      tone: agentTone(decision.recommendation),
+      value: decision.recommendation || "-",
     },
-    risks: recommendation.residual_risks.map(
-      (risk) => `${risk.factor_key}: ${risk.description_zh}`,
-    ),
-    summary: recommendation.summary_zh || "Agent memo unavailable.",
-    upgrades: recommendation.upgrade_conditions.map(
-      (condition) =>
-        `${condition.factor_key} ${condition.operator} ${String(condition.value)}: ${condition.description_zh}`,
-    ),
+    risks: stringList(decision.residual_risks),
+    summary: decision.summary_zh || "Agent memo unavailable.",
+    upgrades: [],
   };
 }
 
@@ -317,9 +312,11 @@ function stageTone(status: SignalPulseItem["pulse_status"]): PulseCaseTone {
 }
 
 function agentTone(value: string): PulseCaseTone {
-  if (value === "alert" || value === "trade_candidate") return "opportunity";
-  if (value === "ignore") return "risk";
-  if (value === "research") return "info";
+  if (value === "alert" || value === "high_conviction" || value === "trade_candidate") {
+    return "opportunity";
+  }
+  if (value === "abstain" || value === "ignore") return "risk";
+  if (value === "research" || value === "watchlist") return "info";
   return "agent";
 }
 

@@ -1142,8 +1142,8 @@ describe("App Token Radar social heat cockpit", () => {
           symbol: "SOL",
         },
       },
-      agent_recommendation: {
-        ...firstPage.items[0].agent_recommendation,
+      decision: {
+        ...firstPage.items[0].decision,
         summary_zh: "SOL pulse loaded from cursor.",
       },
       fact_card: {
@@ -2947,35 +2947,16 @@ function signalPulseData(): SignalPulseData {
             computed_at_ms: 1_777_746_300_000,
           },
         },
-        agent_recommendation: {
-          schema_version: "pulse_recommendation_v1",
-          recommendation: "watch",
+        decision: {
+          route: "cex",
+          recommendation: "watchlist",
+          confidence: 0.72,
+          abstain_reason: null,
+          stage_count: 3,
           summary_zh: "CZ 推动 BNB build 叙事，候选处于点火阶段。",
-          primary_reasons: [
-            { factor_key: "social_heat.watched_mentions", explanation_zh: "强账号触发" },
-          ],
-          upgrade_conditions: [
-            {
-              factor_key: "social_heat.mentions_1h",
-              operator: ">",
-              value: 50,
-              description_zh: "热度确认",
-            },
-          ],
-          invalidation_conditions: [
-            {
-              factor_key: "social_propagation.independent_authors",
-              operator: "<",
-              value: 6,
-              description_zh: "讨论未扩散",
-            },
-          ],
-          residual_risks: [
-            {
-              factor_key: "social_propagation.source_concentration",
-              description_zh: "单一账号驱动",
-            },
-          ],
+          invalidation_conditions: ["讨论未扩散"],
+          residual_risks: ["单一账号驱动"],
+          evidence_event_ids: ["event-cz-bnb"],
         },
         gate: {
           pulse_status: "trade_candidate",

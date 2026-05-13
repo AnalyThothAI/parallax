@@ -306,7 +306,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
         runtime.pulse_candidate_worker = PulseCandidateWorker(
-            recommendation_client=providers.pulse_lab.recommendation_provider,
+            decision_client=providers.pulse_lab.decision_provider,
             repository_session=lambda: repository_session(db_pool),
             poll_interval=settings.pulse_agent_interval_seconds,
             batch_size=settings.pulse_agent_batch_size,
