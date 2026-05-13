@@ -57,7 +57,11 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
 
     hanta = next(row for row in rows if row["intent_json"]["display_symbol"] == "HANTA")
     assert hanta["decision"] == "investigate"
-    assert hanta["market_json"]["market_observation_status"] == "no_resolved_target"
+    factor_snapshot = hanta["factor_snapshot_json"]
+    assert factor_snapshot["market"]["event_anchor"] is None
+    assert factor_snapshot["market"]["decision_latest"] is None
+    assert factor_snapshot["market"]["readiness"]["anchor_status"] == "missing"
+    assert factor_snapshot["market"]["readiness"]["latest_status"] == "missing"
 
 
 def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path):
@@ -106,14 +110,11 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
     assert result.token_resolutions[0]["resolution_status"] == "EXACT"
     assert rows[0]["asset_json"]["symbol"] == "PEPE"
     resolution = result.token_resolutions[0]
-    assert (
-        repos.price_observations.latest_for_subject(
-            subject_type="Asset",
-            subject_id=resolution["target_id"],
-            at_or_before_ms=event.received_at_ms,
-        )
-        is None
-    )
+    assert repos.price_observations.event_anchor_for_resolution(resolution_id=resolution["resolution_id"]) is None
     factor_snapshot = rows[0]["factor_snapshot_json"]
+    assert factor_snapshot["market"]["event_anchor"] is None
+    assert factor_snapshot["market"]["decision_latest"] is None
+    assert factor_snapshot["market"]["readiness"]["anchor_status"] == "missing"
+    assert factor_snapshot["market"]["readiness"]["latest_status"] == "missing"
     assert factor_snapshot["data_health"]["market"] == "missing"
     assert "market_metadata_missing" in factor_snapshot["gates"]["risk_reasons"]

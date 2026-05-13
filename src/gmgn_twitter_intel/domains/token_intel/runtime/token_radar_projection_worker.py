@@ -28,6 +28,8 @@ class TokenRadarProjectionWorker:
         hot_windows: tuple[str, ...] = DEFAULT_HOT_WINDOWS,
         limit: int = 100,
         interval_seconds: float = 10.0,
+        wake_bus: Any | None = None,
+        wake_listener: Any | None = None,
     ) -> None:
         self.repository_session = repository_session
         self.windows = tuple(windows)
@@ -35,41 +37,45 @@ class TokenRadarProjectionWorker:
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
         self.limit = max(1, int(limit))
         self.interval_seconds = max(1.0, float(interval_seconds))
+        self.wake_bus = wake_bus
+        self.wake_listener = wake_listener
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
         self.last_result: dict[str, Any] | None = None
         self.last_error: str | None = None
-        self._stopped = False
-        self._wake_event: asyncio.Event | None = None
+        self._stopped: bool = False
+        self._wake_queue: asyncio.Queue[None] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._cursor = 0
 
     async def run(self) -> None:
-        self._wake_event = asyncio.Event()
-        while not self._stopped:
-            try:
-                await asyncio.to_thread(self.rebuild_once)
-            except asyncio.CancelledError:
-                self._stopped = True
-                raise
-            except Exception as exc:  # pragma: no cover - watchdog path
-                self.last_error = str(exc)
-                logger.exception(f"token radar projection worker failed: {exc}")
-            if self._stopped:
-                break
-            with suppress(TimeoutError):
-                await asyncio.wait_for(self._wake_event.wait(), timeout=self.interval_seconds)
-            if self._wake_event is not None:
-                self._wake_event.clear()
-        self._wake_event = None
+        self._loop = asyncio.get_running_loop()
+        self._wake_queue = asyncio.Queue(maxsize=1)
+        listener_task = asyncio.create_task(self._listen_for_wake_hints())
+        try:
+            while not self._stopped:
+                try:
+                    await asyncio.to_thread(self.rebuild_once)
+                except asyncio.CancelledError:
+                    self._stopped = True
+                    raise
+                except Exception as exc:  # pragma: no cover - watchdog path
+                    self.last_error = str(exc)
+                    logger.exception(f"token radar projection worker failed: {exc}")
+                if self._stopped:
+                    break
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(self._wake_queue.get(), timeout=self.interval_seconds)
+        finally:
+            listener_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await listener_task
+            self._wake_queue = None
+            self._loop = None
 
     def stop(self) -> None:
         self._stopped = True
-        if self._wake_event is not None:
-            self._wake_event.set()
-
-    def request_rebuild(self) -> None:
-        if self._wake_event is not None:
-            self._wake_event.set()
+        self._enqueue_wake()
 
     def rebuild_once(self, *, now_ms: int | None = None) -> dict[str, Any]:
         computed_at_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -120,6 +126,8 @@ class TokenRadarProjectionWorker:
             result["source_rows"] += int(window_result.get("source_rows") or 0)
             result["window"] = primary_item[0]
             result["scope"] = primary_item[1]
+            if str(window_result.get("status") or "") == "ready" and self.wake_bus is not None:
+                self.wake_bus.notify_token_radar_updated(window=window, scope=scope)
             self.last_result = result
         self.last_run_at_ms = _now_ms()
         self.last_result = result
@@ -127,6 +135,37 @@ class TokenRadarProjectionWorker:
 
     def close(self) -> None:
         return None
+
+    async def _listen_for_wake_hints(self) -> None:
+        while not self._stopped:
+            if self.wake_listener is None:
+                await asyncio.sleep(self.interval_seconds)
+                continue
+            try:
+                listen_projection_wakes = cast(Callable[..., None], self.wake_listener.listen_projection_wakes)
+                await asyncio.to_thread(
+                    listen_projection_wakes,
+                    on_wake=self._enqueue_wake_threadsafe,
+                    should_stop=lambda: self._stopped,
+                    interval_seconds=self.interval_seconds,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - listener diagnostics
+                logger.debug(f"token radar projection wake listener unavailable: {exc}")
+                await asyncio.sleep(self.interval_seconds)
+
+    def _enqueue_wake_threadsafe(self) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(self._enqueue_wake)
+
+    def _enqueue_wake(self) -> None:
+        queue = self._wake_queue
+        if queue is None or queue.full():
+            return
+        queue.put_nowait(None)
 
     def _next_work_items(self) -> tuple[list[tuple[str, str]], tuple[str, str]]:
         hot_items = self._hot_work_items()

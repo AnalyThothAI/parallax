@@ -77,29 +77,43 @@ class TokenRadarSourceQuery:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol AS pricefeed_quote_symbol,
               price_feeds.status AS pricefeed_status,
-              price_baselines.first_price_observed_at_ms,
-              price_baselines.first_price_usd,
-              price_baselines.first_price_quote,
-              price_baselines.first_price_quote_symbol,
-              price_baselines.first_price_basis,
-              price_baselines.event_price_observation_id,
-              price_baselines.event_price_observation_kind,
-              price_baselines.event_price_provider,
-              price_baselines.event_price_observed_at_ms,
-              price_baselines.event_price_usd,
-              price_baselines.event_price_quote,
-              price_baselines.event_price_quote_symbol,
-              price_baselines.event_price_basis,
+              first_price_observation.observed_at_ms AS first_price_observed_at_ms,
+              first_price_observation.price_usd AS first_price_usd,
+              first_price_observation.price_quote AS first_price_quote,
+              first_price_observation.quote_symbol AS first_price_quote_symbol,
+              first_price_observation.price_basis AS first_price_basis,
+              event_price_observation.observation_id AS event_price_observation_id,
+              event_price_observation.observation_kind AS event_price_observation_kind,
+              event_price_observation.provider AS event_price_provider,
+              event_price_observation.observed_at_ms AS event_price_observed_at_ms,
+              event_price_observation.price_usd AS event_price_usd,
+              event_price_observation.price_quote AS event_price_quote,
+              event_price_observation.quote_symbol AS event_price_quote_symbol,
+              event_price_observation.price_basis AS event_price_basis,
               event_price_observation.market_cap_usd AS event_price_market_cap_usd,
               event_price_observation.liquidity_usd AS event_price_liquidity_usd,
               event_price_observation.volume_24h_usd AS event_price_volume_24h_usd,
               event_price_observation.open_interest_usd AS event_price_open_interest_usd,
               event_price_observation.holders AS event_price_holders,
-              price_baselines.before_event_price_observed_at_ms,
-              price_baselines.before_event_price_usd,
-              price_baselines.before_event_price_quote,
-              price_baselines.before_event_price_quote_symbol,
-              price_baselines.before_event_price_basis
+              decision_latest_observation.observation_id AS decision_latest_observation_id,
+              decision_latest_observation.provider AS decision_latest_provider,
+              decision_latest_observation.pricefeed_id AS decision_latest_pricefeed_id,
+              decision_latest_observation.observed_at_ms AS decision_latest_observed_at_ms,
+              decision_latest_observation.created_at_ms AS decision_latest_received_at_ms,
+              decision_latest_observation.price_usd AS decision_latest_price_usd,
+              decision_latest_observation.price_quote AS decision_latest_price_quote,
+              decision_latest_observation.quote_symbol AS decision_latest_quote_symbol,
+              decision_latest_observation.price_basis AS decision_latest_price_basis,
+              decision_latest_observation.market_cap_usd AS decision_latest_market_cap_usd,
+              decision_latest_observation.liquidity_usd AS decision_latest_liquidity_usd,
+              decision_latest_observation.volume_24h_usd AS decision_latest_volume_24h_usd,
+              decision_latest_observation.open_interest_usd AS decision_latest_open_interest_usd,
+              decision_latest_observation.holders AS decision_latest_holders,
+              NULL::bigint AS before_event_price_observed_at_ms,
+              NULL::numeric AS before_event_price_usd,
+              NULL::numeric AS before_event_price_quote,
+              NULL::text AS before_event_price_quote_symbol,
+              NULL::text AS before_event_price_basis
             FROM window_events events
             JOIN token_intents ON token_intents.event_id = events.event_id
             JOIN LATERAL (
@@ -111,10 +125,32 @@ class TokenRadarSourceQuery:
                 AND COALESCE(token_intent_resolutions.target_type, 'Asset') IN ('Asset', 'CexToken')
               LIMIT 1
             ) token_intent_resolutions ON true
-            LEFT JOIN token_market_price_baselines price_baselines
-              ON price_baselines.resolution_id = token_intent_resolutions.resolution_id
-            LEFT JOIN price_observations event_price_observation
-              ON event_price_observation.observation_id = price_baselines.event_price_observation_id
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.source_resolution_id = token_intent_resolutions.resolution_id
+                AND price_observations.observation_kind = 'event_anchor'
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) event_price_observation ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+                AND price_observations.observation_kind = 'decision_latest'
+                AND price_observations.observed_at_ms <= %s
+              ORDER BY observed_at_ms DESC, observation_id DESC
+              LIMIT 1
+            ) decision_latest_observation ON true
+            LEFT JOIN LATERAL (
+              SELECT *
+              FROM price_observations
+              WHERE price_observations.subject_type = token_intent_resolutions.target_type
+                AND price_observations.subject_id = token_intent_resolutions.target_id
+              ORDER BY observed_at_ms ASC, observation_id ASC
+              LIMIT 1
+            ) first_price_observation ON true
             LEFT JOIN account_profiles ap ON ap.handle = LOWER(events.author_handle)
             LEFT JOIN social_event_extractions see ON see.event_id = events.event_id
             LEFT JOIN registry_assets
@@ -161,6 +197,7 @@ class TokenRadarSourceQuery:
                 since_ms,
                 now_ms,
                 TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                now_ms,
             ),
         ).fetchall()
         return [dict(row) for row in rows]

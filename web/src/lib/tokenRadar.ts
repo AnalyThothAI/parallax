@@ -3,8 +3,8 @@ import type {
   AssetFlowRow,
   Decision,
   FactorPoint,
-  AnchorPriceSnapshot,
-  LiveMarketSnapshot,
+  MarketContext,
+  MarketObservationSnapshot,
   RadarSortMode,
   ScoreBlock,
   ScoreContribution,
@@ -91,21 +91,23 @@ export function tokenRadarRowToTokenItem(
     string,
     unknown
   >;
-  const anchorPrice = requiredAnchorPrice(row);
-  const liveMarket = requiredLiveMarket(row);
+  const marketContext = requiredMarketContext(row.market);
+  const eventAnchor = marketContext.event_anchor;
+  const decisionLatest = marketContext.decision_latest;
+  const readiness = marketContext.readiness;
   const anchorPriceValue =
-    optionalNullableNumber(anchorPrice.price_usd) ??
-    optionalNullableNumber(anchorPrice.price_quote);
+    optionalNullableNumber(eventAnchor?.price_usd) ??
+    optionalNullableNumber(eventAnchor?.price_quote);
   const livePriceValue =
-    optionalNullableNumber(liveMarket.price_usd) ?? optionalNullableNumber(liveMarket.price_quote);
+    optionalNullableNumber(decisionLatest?.price_usd) ??
+    optionalNullableNumber(decisionLatest?.price_quote);
   const displayPrice = livePriceValue ?? anchorPriceValue;
   const liveMarketHasPrice = livePriceValue !== null;
-  const marketStatus = marketDisplayStatus(anchorPrice, liveMarket, liveMarketHasPrice);
+  const marketStatus = marketDisplayStatus(readiness, liveMarketHasPrice);
   const priceChangeSinceSocialPct = liveDeltaFromAnchor(livePriceValue, anchorPriceValue);
   const priceChangeBeforeSocialPct = null;
-  const priceChangeStatus = priceChangeStatusFromAnchorLive(
-    anchorPrice,
-    liveMarket,
+  const priceChangeStatus = priceChangeStatusFromMarketContext(
+    readiness,
     priceChangeSinceSocialPct,
   );
   const composite = requiredObject(snapshot.composite, "factor_snapshot.composite") as Record<
@@ -193,22 +195,24 @@ export function tokenRadarRowToTokenItem(
     row.resolution?.candidate_ids?.length ?? row.resolution?.candidates?.length ?? 0;
   const discoveryStatus = discoveryStatusSummary(row.resolution?.discovery);
   const marketObservationStatus = marketStatus;
-  const marketHasUsableSnapshot = liveMarketHasPrice || anchorPrice.status === "ready";
+  const marketHasUsableSnapshot = liveMarketHasPrice || readiness.anchor_status === "ready";
   const heat = scoreBlockFromFamily(attentionFamily, "social_heat", "social_heat");
   const quality = scoreBlockFromFamily(semanticFamily, "semantic_catalyst", "discussion_quality");
   const propagation = scoreBlockFromFamily(diffusionFamily, "social_propagation", "propagation");
-  const anchoredMarketCap = optionalNullableNumber(snapshotMarket.market_cap_usd);
-  const anchoredLiquidity = optionalNullableNumber(snapshotMarket.liquidity_usd);
-  const anchoredHolders = optionalNullableNumber(snapshotMarket.holders);
-  const anchoredVolume24h = optionalNullableNumber(snapshotMarket.volume_24h_usd);
+  const anchoredMarketCap = optionalNullableNumber(eventAnchor?.market_cap_usd);
+  const anchoredLiquidity = optionalNullableNumber(eventAnchor?.liquidity_usd);
+  const anchoredHolders = optionalNullableNumber(eventAnchor?.holders);
+  const anchoredVolume24h = optionalNullableNumber(eventAnchor?.volume_24h_usd);
   const displayMarketCap = isCexToken
     ? null
-    : (optionalNullableNumber(liveMarket.market_cap_usd) ?? anchoredMarketCap);
-  const displayLiquidity = optionalNullableNumber(liveMarket.liquidity_usd) ?? anchoredLiquidity;
-  const displayHolders = optionalNullableNumber(liveMarket.holders) ?? anchoredHolders;
-  const displayVolume24h = optionalNullableNumber(liveMarket.volume_24h_usd) ?? anchoredVolume24h;
+    : (optionalNullableNumber(decisionLatest?.market_cap_usd) ?? anchoredMarketCap);
+  const displayLiquidity =
+    optionalNullableNumber(decisionLatest?.liquidity_usd) ?? anchoredLiquidity;
+  const displayHolders = optionalNullableNumber(decisionLatest?.holders) ?? anchoredHolders;
+  const displayVolume24h =
+    optionalNullableNumber(decisionLatest?.volume_24h_usd) ?? anchoredVolume24h;
   const marketFactsForTradeability = {
-    ...liveMarket,
+    ...(decisionLatest ?? {}),
     market_cap_usd: displayMarketCap,
     liquidity_usd: displayLiquidity,
   };
@@ -230,7 +234,7 @@ export function tokenRadarRowToTokenItem(
   const chaseRisk =
     timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
   const marketPrice = displayPrice;
-  const marketProvider = firstString(liveMarket.provider, anchorPrice.provider);
+  const marketProvider = firstString(decisionLatest?.provider, eventAnchor?.provider);
   const chain = isSnapshotAsset ? (stringValue(subject.chain) ?? target.chain_id ?? null) : null;
   const blockedReasons = requiredStringArray(
     gates.blocked_reasons ?? [],
@@ -278,9 +282,12 @@ export function tokenRadarRowToTokenItem(
       discovery_status: discoveryStatus,
     },
     market: {
+      event_anchor: eventAnchor,
+      decision_latest: decisionLatest,
+      readiness,
       market_status: marketStatus,
       price: marketPrice,
-      price_status: liveMarketHasPrice ? liveMarket.status : anchorPrice.status,
+      price_status: liveMarketHasPrice ? readiness.latest_status : readiness.anchor_status,
       market_cap: displayMarketCap,
       market_cap_status: fieldStatusFromNullableValue(displayMarketCap),
       liquidity: displayLiquidity,
@@ -291,12 +298,12 @@ export function tokenRadarRowToTokenItem(
       volume_24h: displayVolume24h,
       volume_24h_status: fieldStatusFromNullableValue(displayVolume24h),
       provider: marketProvider,
-      snapshot_age_ms: optionalNullableNumber(liveMarket.age_ms),
+      snapshot_age_ms: snapshotAgeMs(decisionLatest, latestSeenMs),
       snapshot_received_at_ms:
-        optionalNullableNumber(liveMarket.observed_at_ms) ??
-        optionalNullableNumber(anchorPrice.anchor_observed_at_ms),
+        optionalNullableNumber(decisionLatest?.observed_at_ms) ??
+        optionalNullableNumber(eventAnchor?.observed_at_ms),
       social_signal_start_ms:
-        optionalNullableNumber(anchorPrice.event_received_at_ms) ??
+        optionalNullableNumber(eventAnchor?.received_at_ms) ??
         optionalNumber(timingFacts.social_signal_start_ms) ??
         latestSeenMs,
       reference_ms: latestSeenMs,
@@ -309,7 +316,7 @@ export function tokenRadarRowToTokenItem(
         optionalNullableNumber(snapshotMarket.price_at_first_snapshot) ?? anchorPriceValue,
       first_snapshot_observed_at_ms:
         optionalNullableNumber(snapshotMarket.first_snapshot_observed_at_ms) ??
-        optionalNullableNumber(anchorPrice.anchor_observed_at_ms),
+        optionalNullableNumber(eventAnchor?.observed_at_ms),
       price_change_since_first_snapshot_pct: null,
       market_observation_status: marketObservationStatus,
       price_change_status: priceChangeStatus,
@@ -389,7 +396,7 @@ export function tokenRadarRowToTokenItem(
       score_version: timing.score_version,
       status: timingStatus,
       social_signal_start_ms:
-        optionalNullableNumber(anchorPrice.event_received_at_ms) ??
+        optionalNullableNumber(eventAnchor?.received_at_ms) ??
         optionalNumber(timingFacts.social_signal_start_ms) ??
         latestSeenMs,
       price_change_since_social_pct: priceChangeSinceSocialPct,
@@ -448,26 +455,43 @@ function requiredFactorSnapshot(row: AssetFlowRow): TokenFactorSnapshot {
   }
 }
 
-function requiredAnchorPrice(row: AssetFlowRow): AnchorPriceSnapshot {
-  const anchorPrice = row.anchor_price;
-  if (!anchorPrice || typeof anchorPrice !== "object") {
-    throw new Error("token_radar_contract:anchor_price");
+function requiredMarketContext(value: unknown): MarketContext {
+  if (!value || typeof value !== "object") {
+    throw new Error("token_radar_contract:market");
   }
-  if (typeof anchorPrice.status !== "string" || !anchorPrice.status) {
-    throw new Error("token_radar_contract:anchor_price.status");
+  const market = value as Partial<MarketContext>;
+  if (
+    market.event_anchor !== null &&
+    market.event_anchor !== undefined &&
+    typeof market.event_anchor !== "object"
+  ) {
+    throw new Error("token_radar_contract:market.event_anchor");
   }
-  return anchorPrice;
-}
-
-function requiredLiveMarket(row: AssetFlowRow): LiveMarketSnapshot {
-  const liveMarket = row.live_market;
-  if (!liveMarket || typeof liveMarket !== "object") {
-    throw new Error("token_radar_contract:live_market");
+  if (
+    market.decision_latest !== null &&
+    market.decision_latest !== undefined &&
+    typeof market.decision_latest !== "object"
+  ) {
+    throw new Error("token_radar_contract:market.decision_latest");
   }
-  if (typeof liveMarket.status !== "string" || !liveMarket.status) {
-    throw new Error("token_radar_contract:live_market.status");
+  if (!market.readiness || typeof market.readiness !== "object") {
+    throw new Error("token_radar_contract:market.readiness");
   }
-  return liveMarket;
+  for (const key of ["anchor_status", "latest_status", "dex_floor_status"] as const) {
+    if (typeof market.readiness[key] !== "string" || !market.readiness[key]) {
+      throw new Error(`token_radar_contract:market.readiness.${key}`);
+    }
+  }
+  for (const key of ["missing_fields", "stale_fields"] as const) {
+    if (!Array.isArray(market.readiness[key])) {
+      throw new Error(`token_radar_contract:market.readiness.${key}`);
+    }
+  }
+  return {
+    event_anchor: (market.event_anchor ?? null) as MarketObservationSnapshot | null,
+    decision_latest: (market.decision_latest ?? null) as MarketObservationSnapshot | null,
+    readiness: market.readiness as MarketContext["readiness"],
+  };
 }
 
 function requiredFamily(
@@ -486,16 +510,13 @@ function familyFacts(family: FactorFamily): Record<string, unknown> {
 }
 
 function marketDisplayStatus(
-  anchorPrice: AnchorPriceSnapshot,
-  liveMarket: LiveMarketSnapshot,
+  readiness: MarketContext["readiness"],
   liveMarketHasPrice: boolean,
 ): string {
   if (liveMarketHasPrice) {
-    return liveMarket.status === "missing" || liveMarket.status === "unsupported"
-      ? "live"
-      : liveMarket.status;
+    return readiness.latest_status === "missing" ? "live" : readiness.latest_status;
   }
-  return anchorPrice.status === "ready" ? "anchored" : "missing";
+  return readiness.anchor_status === "ready" ? "anchored" : "missing";
 }
 
 function scoreBlockFromFamily(
@@ -560,7 +581,7 @@ function scoreBlockFromComposite(
 function tradeabilityFromGatesAndHealth(
   gates: TokenFactorSnapshot["gates"],
   dataHealth: TokenFactorSnapshot["data_health"],
-  liveMarket: LiveMarketSnapshot,
+  marketFacts: MarketObservationSnapshot,
 ): TradeabilityBlock {
   const blockedReasons = requiredStringArray(
     gates.blocked_reasons ?? [],
@@ -568,8 +589,8 @@ function tradeabilityFromGatesAndHealth(
   );
   const riskReasons = stringArray(gates.risk_reasons);
   const marketReady = dataHealth.market === "ready";
-  const marketCapPresent = optionalNullableNumber(liveMarket.market_cap_usd) !== null;
-  const liquidityPresent = optionalNullableNumber(liveMarket.liquidity_usd) !== null;
+  const marketCapPresent = optionalNullableNumber(marketFacts.market_cap_usd) !== null;
+  const liquidityPresent = optionalNullableNumber(marketFacts.liquidity_usd) !== null;
   const score = gates.eligible_for_high_alert ? 100 : marketReady ? 60 : 0;
   return {
     score,
@@ -665,16 +686,25 @@ function liveDeltaFromAnchor(livePrice: number | null, anchorPrice: number | nul
   return (livePrice - anchorPrice) / Math.abs(anchorPrice);
 }
 
-function priceChangeStatusFromAnchorLive(
-  anchorPrice: AnchorPriceSnapshot,
-  liveMarket: LiveMarketSnapshot,
+function priceChangeStatusFromMarketContext(
+  readiness: MarketContext["readiness"],
   priceChangeSinceSocialPct: number | null,
 ): string {
-  if (anchorPrice.status !== "ready") return "missing_anchor";
+  if (readiness.anchor_status !== "ready") return "missing_anchor";
   if (priceChangeSinceSocialPct !== null) return "ready";
-  if (liveMarket.status === "missing" || liveMarket.status === "unsupported")
-    return "live_not_persisted";
+  if (readiness.latest_status === "missing") return "missing_latest";
   return "missing_live_price";
+}
+
+function snapshotAgeMs(
+  observation: MarketObservationSnapshot | null,
+  referenceMs: number,
+): number | null {
+  const observedAtMs = optionalNullableNumber(observation?.observed_at_ms);
+  if (observedAtMs === null) {
+    return null;
+  }
+  return Math.max(0, referenceMs - observedAtMs);
 }
 
 function requiredNumber(value: unknown, field: string): number {

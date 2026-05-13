@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from gmgn_twitter_intel.domains.asset_market.providers import DexTokenCandidate
+from gmgn_twitter_intel.domains.asset_market.runtime import resolution_refresh_worker as module
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import (
     FOUND_ADDRESS_REFRESH_MS,
     FOUND_SYMBOL_REFRESH_MS,
@@ -50,6 +51,42 @@ def test_symbol_lookup_writes_provider_rank_to_identity_payload():
     assert by_asset_id["asset:eip155:56:erc20:0x2222222222222222222222222222222222222222"]["provider_rank"] == 1
 
 
+def test_resolution_refresh_notifies_without_inline_anchor_or_projection(monkeypatch):
+    repos = FakeRefreshRepos()
+    wake_bus = FakeWakeBus()
+
+    monkeypatch.setattr(
+        module,
+        "_process_lookup",
+        lambda **_: {
+            **module._lookup_result(search_requests=1, search_hits=1),
+            "candidate_ids": ["asset-1"],
+            "affected_lookup_keys": ["symbol:ABC"],
+            "assets_written": 1,
+        },
+    )
+    monkeypatch.setattr(
+        module,
+        "reprocess_recent_token_intents",
+        lambda **_: {"reprocessed_intents": 1, "resolved_intents": 1},
+    )
+
+    result = module.run_resolution_refresh_once(
+        repos=repos,
+        dex_discovery_market=object(),
+        dex_quote_market=object(),
+        chain_ids=("solana",),
+        now_ms=1_778_200_000_000,
+        wake_bus=wake_bus,
+    )
+
+    assert result["reprocessed_intents"] == 1
+    assert result["affected_lookup_keys"] == ["symbol:ABC"]
+    assert result["anchor"] is None
+    assert result["projection"]["status"] == "deferred_to_worker"
+    assert wake_bus.resolution_notifications == [["symbol:ABC"]]
+
+
 def _candidate(*, chain_id: str, address: str, symbol: str = "SPARSE") -> DexTokenCandidate:
     return DexTokenCandidate(
         chain_id=chain_id,
@@ -77,6 +114,49 @@ class FakeRepos:
     def __init__(self) -> None:
         self.registry = FakeRegistry()
         self.identity_evidence = FakeIdentityEvidence()
+
+
+class FakeRefreshRepos:
+    def __init__(self) -> None:
+        self.conn = FakeRefreshConn()
+        self.discovery = FakeRefreshDiscovery()
+
+
+class FakeRefreshConn:
+    def __init__(self) -> None:
+        self.commits = 0
+        self.rollbacks = 0
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
+
+
+class FakeRefreshDiscovery:
+    def due_lookup_keys(self, **kwargs):
+        return [{"lookup_key": "symbol:ABC", "lookup_type": "dex_symbol_lookup", "error_count": 0}]
+
+    def start_lookup(self, **kwargs):
+        return {}
+
+    def finish_lookup(self, **kwargs):
+        return {}
+
+    def fail_lookup(self, **kwargs):
+        return {}
+
+    def counts(self):
+        return {"found": 1}
+
+
+class FakeWakeBus:
+    def __init__(self) -> None:
+        self.resolution_notifications: list[list[str]] = []
+
+    def notify_resolution_updated(self, *, lookup_keys):
+        self.resolution_notifications.append(list(lookup_keys))
 
 
 class FakeRegistry:

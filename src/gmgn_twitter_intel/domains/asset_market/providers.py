@@ -2,7 +2,25 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any, Protocol
+
+
+class MarketCapability(StrEnum):
+    QUOTE_CEX = "quote_cex"
+    QUOTE_DEX_EXACT = "quote_dex_exact"
+    STREAM_DEX = "stream_dex"
+    SEARCH_DEX = "search_dex"
+    PROFILE_DEX_EXACT = "profile_dex_exact"
+    CANDLES_DEX_EXACT = "candles_dex_exact"
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderHealth:
+    provider: str
+    capabilities: frozenset[MarketCapability]
+    configured: bool
+    last_error: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,4 +163,6 @@ __all__ = [
     "DexTokenQuoteProvider",
     "DexTokenQuoteRequest",
     "MarketCandle",
+    "MarketCapability",
+    "ProviderHealth",
 ]

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { TokenFlowItem } from "../api/types";
+import { tokenMarketBlockFixture } from "../test/marketFixtures";
 
 import {
   compactNumber,
@@ -74,7 +75,10 @@ function sampleToken(): TokenFlowItem {
       address: "0x6982508145454Ce325dDbE47a25d4ec3d2311933",
       symbol: "PEPE",
     },
-    market: { market_status: "fresh", price_change_status: "insufficient_history" },
+    market: tokenMarketBlockFixture({
+      market_status: "fresh",
+      price_change_status: "insufficient_history",
+    }),
     flow: {
       window: "5m",
       mentions: 1,

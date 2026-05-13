@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-import threading
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
@@ -17,6 +15,7 @@ from loguru import logger
 
 from gmgn_twitter_intel.app.runtime.providers_wiring import WiredProviders, wire_providers
 from gmgn_twitter_intel.app.runtime.repository_session import PooledRepository, repository_session
+from gmgn_twitter_intel.app.runtime.wake_bus import WakeBus, WakeListener
 from gmgn_twitter_intel.app.surfaces.api.http import (
     ApiBadRequest,
     ApiUnauthorized,
@@ -91,6 +90,8 @@ class CliRuntime:
     stock_quote_provider: object | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     pulse_candidate_worker: PulseCandidateWorker | None = None
+    wake_bus: WakeBus | None = None
+    wake_listener: WakeListener | None = None
     collector_task: asyncio.Task | None = None
     supervisor_task: asyncio.Task | None = None
     enrichment_task: asyncio.Task | None = None
@@ -291,11 +292,15 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         start_collector=start_collector,
         stock_quote_provider=providers.marketlane.stock_quote_provider,
     )
+    runtime.wake_bus = WakeBus(db_pool.connection)
+    runtime.wake_listener = WakeListener(db_pool.connection)
     runtime.harness_ops_worker = HarnessOpsWorker(
         repository_session=lambda: repository_session(db_pool),
     )
     runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
         repository_session=lambda: repository_session(db_pool),
+        wake_bus=runtime.wake_bus,
+        wake_listener=runtime.wake_listener,
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
         runtime.pulse_candidate_worker = PulseCandidateWorker(
@@ -313,6 +318,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
                 high_info_rejection_min=settings.pulse_agent_gate_high_info_rejection_min,
                 high_conviction_min=settings.pulse_agent_gate_high_conviction_min,
             ),
+            wake_listener=runtime.wake_listener,
         )
     if settings.notifications.enabled:
         runtime.notification_worker = NotificationWorker(
@@ -338,9 +344,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             cex_market=providers.asset_market.message_cex_market,
             dex_quote_market=providers.asset_market.dex_quote_market,
             repository_session=lambda: repository_session(db_pool),
-            on_observations_written=runtime.token_radar_projection_worker.request_rebuild
-            if runtime.token_radar_projection_worker is not None
-            else None,
+            wake_bus=runtime.wake_bus,
         )
     if start_collector and providers.asset_market.dex_profile_market is not None:
         runtime.asset_profile_refresh_worker = AssetProfileRefreshWorker(
@@ -356,6 +360,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             repository_session=lambda: repository_session(db_pool),
             chain_ids=providers.asset_market.discovery_chain_ids,
             interval_seconds=30.0,
+            wake_bus=runtime.wake_bus,
         )
     if start_collector and (
         providers.asset_market.stream_dex_market is not None or providers.asset_market.message_cex_market is not None
@@ -369,6 +374,10 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             hot_target_ttl_seconds=settings.okx_dex_ws_hot_target_ttl_seconds,
             reconnect_delay_seconds=settings.okx_dex_ws_reconnect_delay_seconds,
             on_live_market_update=hub.publish,
+            wake_bus=runtime.wake_bus,
+            live_observation_heartbeat_seconds=settings.live_observation_heartbeat_seconds,
+            live_observation_min_price_change_pct=settings.live_observation_min_price_change_pct,
+            live_observation_min_write_interval_seconds=settings.live_observation_min_write_interval_seconds,
         )
     if settings.llm_configured:
         runtime.enrichment_worker = EnrichmentWorker(
@@ -418,10 +427,7 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
     if runtime.token_radar_projection_worker is not None and runtime.token_radar_projection_task is None:
         runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
     if runtime.pulse_candidate_worker is not None and runtime.pulse_candidate_task is None:
-        runtime.pulse_candidate_task = _start_threaded_async_worker(
-            runtime.pulse_candidate_worker.run,
-            name="pulse-candidate-worker",
-        )
+        runtime.pulse_candidate_task = asyncio.create_task(runtime.pulse_candidate_worker.run())
     if runtime.start_collector:
         if runtime.collector_task is None:
             runtime.collector_task = asyncio.create_task(runtime.collector.run())
@@ -494,28 +500,6 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
     runtime.db_pool.close()
 
 
-def _start_threaded_async_worker(run: Callable[[], Any], *, name: str) -> asyncio.Task:
-    state: dict[str, BaseException | None] = {"error": None}
-
-    def runner() -> None:
-        try:
-            asyncio.run(run())
-        except BaseException as exc:  # pragma: no cover - surfaced by watcher task
-            state["error"] = exc
-
-    thread = threading.Thread(target=runner, name=name, daemon=True)
-    thread.start()
-    return asyncio.create_task(_watch_threaded_worker(thread, state))
-
-
-async def _watch_threaded_worker(thread: threading.Thread, state: dict[str, BaseException | None]) -> None:
-    while thread.is_alive():  # noqa: ASYNC110 - this watcher polls a daemon thread, not an asyncio signal.
-        await asyncio.sleep(1.0)
-    error = state.get("error")
-    if error is not None:
-        raise error
-
-
 def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:
     now_ms = now_ms if now_ms is not None else _now_ms()
     collector_status = runtime.collector.status.to_dict()
@@ -525,9 +509,14 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
         "ok": not reasons,
         "reasons": reasons,
         "collector": collector_status,
+        "snapshot_gate": collector_status.get("snapshot_gate_outcomes", {}),
         "handles": list(runtime.settings.handles),
         "store": "postgresql",
         "db": db_status,
+        "provider_states": {
+            "gmgn_direct_ws": _provider_state_payload(getattr(runtime.collector, "upstream_client", None)),
+            "okx_dex_ws": _provider_state_payload(getattr(runtime.providers.asset_market, "stream_dex_market", None)),
+        },
         "enrichment": {
             "llm_configured": runtime.settings.llm_configured,
             "worker_running": _task_running(runtime.enrichment_task),
@@ -618,6 +607,9 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "configured": getattr(runtime.settings, "okx_dex_ws_configured", False),
             "worker_running": _task_running(runtime.live_price_gateway_task),
             "subscription_limit": getattr(runtime.settings, "okx_dex_ws_subscription_limit", None),
+            "provider_state": _provider_state_payload(
+                getattr(runtime.providers.asset_market, "stream_dex_market", None)
+            ),
             "last_started_at_ms": runtime.live_price_gateway.last_started_at_ms if runtime.live_price_gateway else None,
             "last_run_at_ms": runtime.live_price_gateway.last_run_at_ms if runtime.live_price_gateway else None,
             "last_result": runtime.live_price_gateway.last_result if runtime.live_price_gateway else None,
@@ -685,6 +677,19 @@ def _db_status(runtime: CliRuntime) -> dict[str, object]:
             return postgres_health_check(conn, expected_migration_version=latest_migration_version())
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
+
+
+def _provider_state_payload(provider: object | None) -> dict[str, object | None]:
+    if provider is None:
+        return {"state": "disconnected", "last_state_change_at_ms": None}
+    payload = getattr(provider, "connection_state_payload", None)
+    if payload is None:
+        return {"state": "disconnected", "last_state_change_at_ms": None}
+    try:
+        value = payload()
+    except Exception as exc:
+        return {"state": "failed", "last_state_change_at_ms": None, "error": str(exc)}
+    return value if isinstance(value, dict) else {"state": "failed", "last_state_change_at_ms": None}
 
 
 def _enrichment_job_counts(runtime: CliRuntime) -> dict[str, int]:

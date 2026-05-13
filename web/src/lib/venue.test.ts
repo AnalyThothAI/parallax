@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { SignalPulseItem, TokenFlowItem } from "../api/types";
+import {
+  marketContextFixture,
+  marketObservationFixture,
+  tokenMarketBlockFixture,
+} from "../test/marketFixtures";
 
 import { signalPulseVenueActions, tokenVenueAction } from "./venue";
 
@@ -115,7 +120,12 @@ function token(options: {
       address: options.address ?? null,
       symbol: "BTC",
     },
-    market: { market_status: "missing", price_change_status: "missing_market" },
+    market: tokenMarketBlockFixture({
+      event_anchor: null,
+      decision_latest: null,
+      market_status: "missing",
+      price_change_status: "missing_market",
+    }),
     flow: {
       window: "1h",
       mentions: 1,
@@ -212,14 +222,28 @@ function pulse(options: {
         address: options.address ?? null,
         pricefeed_id: options.pricefeedId ?? null,
       },
-      market: {
-        market_status: "anchored",
-        price_change_status: "live_not_persisted",
-        provider: "okx",
-        anchor_price_usd: 1,
-        social_signal_start_ms: 1_700_000_000_000,
-        event_price_readiness: { status: "ready" },
-      },
+      market: marketContextFixture({
+        event_anchor: marketObservationFixture({
+          target_type: options.targetType,
+          target_id: options.targetId,
+          source: "event_anchor",
+          provider: "okx",
+          pricefeed_id: options.pricefeedId ?? null,
+          price_usd: 1,
+          observed_at_ms: 1_700_000_000_000,
+          received_at_ms: 1_700_000_000_000,
+        }),
+        decision_latest: marketObservationFixture({
+          target_type: options.targetType,
+          target_id: options.targetId,
+          source: "decision_latest",
+          provider: "okx",
+          pricefeed_id: options.pricefeedId ?? null,
+          price_usd: 1,
+          observed_at_ms: 1_700_000_000_000,
+          received_at_ms: 1_700_000_000_000,
+        }),
+      }),
       gates: {
         eligible_for_high_alert: false,
         max_decision: "watch",

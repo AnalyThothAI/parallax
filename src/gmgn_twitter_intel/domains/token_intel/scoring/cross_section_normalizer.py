@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 NORMALIZER_VERSION = "cross_section_v2_factor_ranks"
+MIN_COHORT_SIZE = 10
 
 
 def rank_within_cohort(
@@ -12,7 +13,9 @@ def rank_within_cohort(
 ) -> dict[str, float | None]:
     rankable = [(token_id, score) for token_id, score in scores.items() if token_id in cohort and score is not None]
     out: dict[str, float | None] = {token_id: None for token_id in scores}
-    if not rankable:
+    if len(rankable) < MIN_COHORT_SIZE:
+        return out
+    if len({score for _token_id, score in rankable}) <= 1:
         return out
     rankable.sort(key=lambda pair: pair[1])
     n = len(rankable)

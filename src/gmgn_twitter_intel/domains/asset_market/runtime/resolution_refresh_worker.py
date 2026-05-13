@@ -11,13 +11,11 @@ from typing import Any
 
 from loguru import logger
 
-from gmgn_twitter_intel.domains.asset_market.services.anchor_price_observation import observe_anchor_prices
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     DEFAULT_REPROCESS_LIMIT,
     DEFAULT_REPROCESS_WINDOW,
     WINDOW_MS,
     deferred_token_radar_projection,
-    rebuild_token_radar_windows,
     reprocess_recent_token_intents,
 )
 
@@ -54,6 +52,7 @@ class ResolutionRefreshWorker:
         interval_seconds: float = 30.0,
         lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
         reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
+        wake_bus: Any | None = None,
     ) -> None:
         self.repository_session = repository_session
         self.dex_discovery_market = dex_discovery_market
@@ -62,6 +61,7 @@ class ResolutionRefreshWorker:
         self.interval_seconds = max(1.0, float(interval_seconds))
         self.lookup_limit = max(1, int(lookup_limit))
         self.reprocess_limit = max(1, int(reprocess_limit))
+        self.wake_bus = wake_bus
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
         self.last_result: dict[str, Any] | None = None
@@ -91,6 +91,7 @@ class ResolutionRefreshWorker:
                     now_ms=observed_at_ms,
                     lookup_limit=self.lookup_limit,
                     reprocess_limit=self.reprocess_limit,
+                    wake_bus=self.wake_bus,
                 )
         except Exception as exc:
             self.last_error = str(exc)
@@ -118,6 +119,7 @@ def run_resolution_refresh_once(
     now_ms: int,
     lookup_limit: int = DEFAULT_DISCOVERY_LIMIT,
     reprocess_limit: int = DEFAULT_REPROCESS_LIMIT,
+    wake_bus: Any | None = None,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms)
     since_ms = int(now_ms) - WINDOW_MS.get(DEFAULT_REPROCESS_WINDOW, WINDOW_MS["24h"])
@@ -187,30 +189,19 @@ def run_resolution_refresh_once(
             result["provider_errors"] += 1
             result["errors"].append({"lookup_key": lookup_key, "error": str(exc)})
     if affected_lookup_keys:
+        sorted_lookup_keys = sorted(affected_lookup_keys)
+        result["affected_lookup_keys"] = sorted_lookup_keys
         reprocess_result = reprocess_recent_token_intents(
             repos=repos,
-            lookup_keys=sorted(affected_lookup_keys),
+            lookup_keys=sorted_lookup_keys,
             now_ms=now_ms,
             window=DEFAULT_REPROCESS_WINDOW,
             limit=reprocess_limit,
         )
         result["reprocess"] = reprocess_result
         result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
-        if reprocess_result["resolved_intents"]:
-            result["anchor"] = observe_anchor_prices(
-                repos=repos,
-                cex_market=None,
-                dex_quote_market=dex_quote_market,
-                now_ms=now_ms,
-                limit=max(20, int(reprocess_result["resolved_intents"]) * 2),
-            )
-            result["projection"] = rebuild_token_radar_windows(
-                repos=repos,
-                now_ms=now_ms,
-                windows=HOT_PROJECTION_WINDOWS,
-                scopes=HOT_PROJECTION_SCOPES,
-                limit=HOT_PROJECTION_LIMIT,
-            )
+        if reprocess_result["resolved_intents"] and wake_bus is not None:
+            wake_bus.notify_resolution_updated(lookup_keys=sorted_lookup_keys)
     result["discovery_result_counts"] = repos.discovery.counts()
     return result
 
@@ -408,6 +399,7 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "reprocess": None,
         "anchor": None,
         "projection": deferred_token_radar_projection(),
+        "affected_lookup_keys": [],
         "discovery_result_counts": {},
         "errors": [],
     }

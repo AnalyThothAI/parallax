@@ -105,14 +105,7 @@ def test_identity_market_and_social_start_presence_do_not_score_as_alpha() -> No
         attention={},
         social_quality={},
         social_semantics={},
-        market={
-            "market_status": "fresh",
-            "market_cap_usd": 500_000.0,
-            "liquidity_usd": 150_000.0,
-            "holders": 1_500,
-            "native_market_id": "raydium:quiet-sol",
-            "pricefeed_id": "pf-quiet",
-        },
+        market=_dex_market({"pricefeed_id": "pf-quiet"}),
         timing={"social_signal_start_ms": 1_778_000_001_000},
         source_event_ids=["event-1"],
         computed_at_ms=1_778_000_002_000,
@@ -283,12 +276,32 @@ def test_fresh_dex_market_missing_floor_inputs_is_not_market_ready() -> None:
         }
     )
 
-    assert snapshot["data_health"]["market"] == "missing"
+    assert snapshot["data_health"]["market"] == "partial"
     assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
+    assert "holders_unverified" in snapshot["gates"]["blocked_reasons"]
+    assert "liquidity_usd_unverified" in snapshot["gates"]["blocked_reasons"]
+    assert "market_cap_usd_unverified" in snapshot["gates"]["blocked_reasons"]
     assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "market_cap_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
-    assert snapshot["gates"]["eligible_for_high_alert"] is True
+    assert snapshot["gates"]["eligible_for_high_alert"] is False
+
+
+def test_dex_missing_market_fields_block_high_alert() -> None:
+    snapshot = _strong_dex_snapshot(
+        market={
+            "holders": None,
+            "liquidity_usd": None,
+            "market_cap_usd": None,
+        }
+    )
+
+    assert snapshot["gates"]["eligible_for_high_alert"] is False
+    assert set(snapshot["gates"]["blocked_reasons"]) >= {
+        "holders_unverified",
+        "liquidity_usd_unverified",
+        "market_cap_usd_unverified",
+    }
 
 
 def test_cex_token_does_not_apply_dex_holder_liquidity_floors_or_native_market_alpha() -> None:
@@ -380,9 +393,13 @@ def test_high_raw_alpha_with_unfresh_market_is_not_capped_by_backend_market_fres
     assert snapshot["data_health"]["market"] == market_health
     assert "market_freshness_stale" not in snapshot["gates"]["blocked_reasons"]
     assert "market_freshness_missing" not in snapshot["gates"]["blocked_reasons"]
-    assert snapshot["gates"]["eligible_for_high_alert"] is True
-    assert snapshot["gates"]["max_decision"] == "high_alert"
-    assert snapshot["composite"]["recommended_decision"] == "high_alert"
+    if market_status is None:
+        assert snapshot["gates"]["eligible_for_high_alert"] is False
+        assert "holders_unverified" in snapshot["gates"]["blocked_reasons"]
+    else:
+        assert snapshot["gates"]["eligible_for_high_alert"] is True
+        assert snapshot["gates"]["max_decision"] == "high_alert"
+        assert snapshot["composite"]["recommended_decision"] == "high_alert"
 
 
 def test_unresolved_identity_and_stale_market_gate_high_alert() -> None:
@@ -455,12 +472,7 @@ def test_empty_attention_and_social_quality_are_missing_not_ready() -> None:
         attention={},
         social_quality={},
         social_semantics={},
-        market={
-            "market_status": "fresh",
-            "market_cap_usd": 500_000.0,
-            "liquidity_usd": 150_000.0,
-            "holders": 1_500,
-        },
+        market=_dex_market(),
         timing={},
         source_event_ids=["event-empty"],
         computed_at_ms=1_778_000_000_000,
@@ -509,6 +521,7 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
     assert concentration_penalty["raw_value"] is None
     assert snapshot["families"]["timing_risk"]["facts"]["social_signal_start_ms"] is None
     assert "market_metadata_missing" in snapshot["gates"]["risk_reasons"]
+    assert "market_cap_usd_unverified" in snapshot["gates"]["blocked_reasons"]
     assert "holders_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "liquidity_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
     assert "market_cap_below_high_alert_floor" not in snapshot["gates"]["blocked_reasons"]
@@ -539,19 +552,18 @@ def test_timing_risk_is_zero_weight_negative_only_and_reports_chase_or_late_risk
     assert "timing_late_risk" in snapshot["gates"]["risk_reasons"]
 
 
-def test_timing_risk_preserves_anchor_live_not_persisted_behavior() -> None:
+def test_timing_risk_uses_material_decision_latest_status() -> None:
     snapshot = _strong_dex_snapshot(
-        market={"price_change_status": "live_not_persisted"},
         timing={"price_change_since_social_pct": 0.50},
     )
 
     timing = snapshot["families"]["timing_risk"]
-    assert timing["data_health"] == "anchor_only"
+    assert timing["data_health"] == "ready"
     assert timing["weight"] == 0
     assert timing["score"] == 0
-    assert timing["facts"]["price_change_status"] == "live_not_persisted"
+    assert timing["facts"]["price_change_status"] == "live"
     assert timing["facts"]["price_change_since_social_pct"] == 0.50
-    assert timing["factors"] == {}
+    assert "post_social_late_risk" in timing["factors"]
 
 
 def _all_factor_keys(snapshot: dict[str, object]) -> set[str]:
@@ -564,6 +576,108 @@ def _log_points(value: float, *, scale: float) -> float:
     import math
 
     return min(100.0, math.log1p(max(0.0, value)) / math.log1p(scale) * 100.0)
+
+
+def _dex_market(overrides: dict[str, object] | None = None) -> dict[str, object]:
+    event_anchor = {
+        "target_type": "Asset",
+        "target_id": "asset:solana:token:STRONG",
+        "observed_at_ms": 1_778_000_000_000,
+        "received_at_ms": 1_778_000_000_000,
+        "source": "event_anchor",
+        "provider": "gmgn_dex_quote",
+        "pricefeed_id": "pf-strong",
+        "price_usd": 1.0,
+        "price_quote": None,
+        "quote_symbol": "USD",
+        "price_basis": "usd",
+        "market_cap_usd": None,
+        "liquidity_usd": None,
+        "holders": None,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "raw_payload_hash": None,
+    }
+    decision_latest = {
+        **event_anchor,
+        "source": "decision_latest",
+        "observed_at_ms": 1_778_000_030_000,
+        "received_at_ms": 1_778_000_030_000,
+        "price_usd": 1.03,
+        "market_cap_usd": 500_000.0,
+        "liquidity_usd": 150_000.0,
+        "holders": 1_500,
+    }
+    status = "live"
+    payload = dict(overrides or {})
+    if payload:
+        status_value = payload.pop("market_status", None)
+        if status_value == "stale":
+            status = "stale"
+        elif status_value is None and "market_status" in (overrides or {}):
+            return {
+                "event_anchor": None,
+                "decision_latest": None,
+                "readiness": {
+                    "anchor_status": "missing",
+                    "latest_status": "missing",
+                    "dex_floor_status": "missing_fields",
+                    "missing_fields": ["holders", "liquidity_usd", "market_cap_usd"],
+                    "stale_fields": [],
+                },
+            }
+        for key in (
+            "holders",
+            "liquidity_usd",
+            "market_cap_usd",
+            "volume_24h_usd",
+            "open_interest_usd",
+            "pricefeed_id",
+        ):
+            if key in payload:
+                decision_latest[key] = payload[key]
+    missing_fields = [key for key in ("holders", "liquidity_usd", "market_cap_usd") if decision_latest.get(key) is None]
+    return {
+        "event_anchor": event_anchor,
+        "decision_latest": decision_latest,
+        "readiness": {
+            "anchor_status": "ready",
+            "latest_status": status,
+            "dex_floor_status": "missing_fields" if missing_fields else "ready",
+            "missing_fields": missing_fields,
+            "stale_fields": ["decision_latest"] if status == "stale" else [],
+        },
+    }
+
+
+def _cex_market(overrides: dict[str, object] | None = None) -> dict[str, object]:
+    market = _dex_market({})
+    latest = dict(market["decision_latest"])
+    latest.update(
+        {
+            "target_type": "CexToken",
+            "target_id": "cex_token:BLEND",
+            "provider": "okx_cex",
+            "pricefeed_id": "pf-blend",
+            "volume_24h_usd": 45_000_000.0,
+            "open_interest_usd": 8_000_000.0,
+            "market_cap_usd": None,
+            "liquidity_usd": None,
+            "holders": None,
+        }
+    )
+    if overrides:
+        status_value = overrides.get("market_status")
+        if status_value == "stale":
+            market["readiness"]["latest_status"] = "stale"
+            market["readiness"]["stale_fields"] = ["decision_latest"]
+        for key in ("volume_24h_usd", "open_interest_usd", "pricefeed_id"):
+            if key in overrides:
+                latest[key] = overrides[key]
+    market["decision_latest"] = latest
+    market["readiness"]["dex_floor_status"] = "ready"
+    market["readiness"]["missing_fields"] = []
+    return market
 
 
 def _strong_dex_snapshot(
@@ -600,14 +714,7 @@ def _strong_dex_snapshot(
     }
     if attention is not None:
         base_attention.update(attention)
-    base_market: dict[str, object] = {
-        "market_status": "fresh",
-        "market_cap_usd": 500_000.0,
-        "liquidity_usd": 150_000.0,
-        "holders": 1_500,
-    }
-    if market is not None:
-        base_market.update(market)
+    base_market = _dex_market(market)
     base_social_quality: dict[str, object] = {
         "duplicate_text_share": 0.0,
         "top_author_share": 0.20,
@@ -655,12 +762,7 @@ def _strong_cex_snapshot(
     *,
     market: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    base_market: dict[str, object] = {
-        "market_status": "fresh",
-        "native_market_id": "OKX:BLEND-USDT",
-    }
-    if market is not None:
-        base_market.update(market)
+    base_market = _cex_market(market)
     return build_token_factor_snapshot(
         target={
             "target_type": "CexToken",

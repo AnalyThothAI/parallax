@@ -45,6 +45,22 @@ LEGACY_FRONTEND_PATTERNS = (
     "top_risks",
 )
 
+LEGACY_MARKET_OVERLAY_BACKEND_PATTERNS = (
+    "_overlay_live_market",
+    "token_market_price_baselines",
+    '"live_market":',
+    'row.get("live_market")',
+    "row['live_market']",
+)
+
+LEGACY_MARKET_OVERLAY_FRONTEND_PATTERNS = (
+    "liveMarketUpdates[0]",
+    ".live_market",
+    "row.live_market",
+    "radar.live_market",
+    "update.live_market",
+)
+
 FACTOR_SNAPSHOT_PRODUCER_FILES = (
     SRC_ROOT / "domains" / "token_intel" / "_constants.py",
     SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_snapshot.py",
@@ -101,6 +117,19 @@ def test_frontend_runtime_has_no_legacy_signal_pulse_fallback_fields() -> None:
     )
 
     assert offenders == []
+
+
+def test_no_runtime_market_overlay_fallbacks() -> None:
+    backend_offenders = _matches(
+        _python_runtime_files(),
+        patterns=LEGACY_MARKET_OVERLAY_BACKEND_PATTERNS,
+    )
+    frontend_offenders = _matches(
+        _frontend_runtime_files(),
+        patterns=LEGACY_MARKET_OVERLAY_FRONTEND_PATTERNS,
+    )
+
+    assert backend_offenders + frontend_offenders == []
 
 
 def test_token_factor_snapshot_producers_have_no_legacy_snapshot_fallback_contract() -> None:
@@ -188,17 +217,53 @@ def _valid_factor_snapshot() -> dict[str, object]:
     return {
         "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {"target_type": "Asset", "target_id": "asset:test"},
-        "market": {},
-        "gates": {},
-        "data_health": {},
+        "market": {
+            "event_anchor": None,
+            "decision_latest": None,
+            "readiness": {
+                "anchor_status": "missing",
+                "latest_status": "missing",
+                "dex_floor_status": "missing_fields",
+                "missing_fields": [
+                    "holders",
+                    "liquidity_usd",
+                    "market_cap_usd",
+                ],
+                "stale_fields": [],
+            },
+        },
+        "gates": {
+            "eligible_for_high_alert": False,
+            "blocked_reasons": [],
+            "risk_reasons": [],
+            "discard_cap_reasons": [],
+            "max_decision": "discard",
+        },
+        "data_health": {
+            "identity": "ready",
+            "market": "missing",
+            "social": "missing",
+            "alpha": "missing",
+        },
         "families": {
             "social_heat": _family_block(),
             "social_propagation": _family_block(),
             "semantic_catalyst": _family_block(),
             "timing_risk": _family_block(),
         },
-        "normalization": {},
-        "composite": {},
+        "normalization": {
+            "status": "no_signal",
+            "cohort_status": "insufficient",
+            "cohort": {},
+            "factor_ranks": {},
+            "alpha_rank": None,
+        },
+        "composite": {
+            "raw_alpha_score": 0,
+            "rank_score": 0,
+            "family_scores": {},
+            "recommended_decision": "discard",
+        },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1},
     }
 

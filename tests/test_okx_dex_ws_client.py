@@ -7,6 +7,7 @@ import hmac
 import pytest
 
 from gmgn_twitter_intel.integrations.okx.dex_ws_client import (
+    OkxDexWebSocketMarketProvider,
     OkxDexWsClientError,
     _login_prehash,
     _login_signature,
@@ -93,3 +94,22 @@ def test_okx_dex_ws_price_info_merges_subscription_arg_fields():
 def test_okx_dex_ws_unauthenticated_error_is_surfaceable():
     with pytest.raises(OkxDexWsClientError, match="60011"):
         _price_info_update_from_row({"event": "error", "code": "60011", "msg": "Please log in"})
+
+
+def test_okx_dex_ws_exposes_connection_state_payload():
+    provider = OkxDexWebSocketMarketProvider(
+        url="wss://example.test/ws",
+        api_key="key",
+        secret_key="secret",
+        passphrase="pass",
+        subscription_limit=10,
+    )
+
+    initial = provider.connection_state_payload()
+    provider._set_connection_state("connecting")
+    changed = provider.connection_state_payload()
+
+    assert initial["state"] == "disconnected"
+    assert changed["provider"] == "okx_dex_ws"
+    assert changed["state"] == "connecting"
+    assert isinstance(changed["last_state_change_at_ms"], int)

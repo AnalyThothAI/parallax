@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SignalPulseItem } from "../api/types";
+import { marketContextFixture, marketObservationFixture } from "../test/marketFixtures";
 
 import { SignalLabPulse } from "./SignalLabPulse";
 
@@ -247,17 +248,26 @@ function pulseItem(index: number): SignalPulseItem {
 }
 
 function signalPulseMarketFixture() {
-  return {
-    market_status: "anchored",
-    price_change_status: "live_not_persisted",
-    provider: "okx",
-    anchor_price_usd: 1.23,
-    anchor_price_quote: 1.23,
-    anchor_quote_symbol: "USDT",
-    anchor_price_basis: "quote_as_usd",
-    anchor_observed_at_ms: 1_700_000_000_000,
-    social_signal_start_ms: 1_700_000_000_000,
-    anchor_lag_ms: 0,
-    event_price_readiness: { status: "ready" },
-  };
+  return marketContextFixture({
+    event_anchor: marketObservationFixture({
+      source: "event_anchor",
+      provider: "okx",
+      price_usd: 1.23,
+      price_quote: 1.23,
+      quote_symbol: "USDT",
+      price_basis: "quote_as_usd",
+      observed_at_ms: 1_700_000_000_000,
+      received_at_ms: 1_700_000_000_000,
+    }),
+    decision_latest: marketObservationFixture({
+      source: "decision_latest",
+      provider: "okx",
+      price_usd: 1.23,
+      price_quote: 1.23,
+      quote_symbol: "USDT",
+      price_basis: "quote_as_usd",
+      observed_at_ms: 1_700_000_000_000,
+      received_at_ms: 1_700_000_000_000,
+    }),
+  });
 }

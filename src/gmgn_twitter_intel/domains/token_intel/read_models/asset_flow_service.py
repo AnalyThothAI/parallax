@@ -13,10 +13,9 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar: Any, profiles: Any, live_market_gateway: Any | None = None) -> None:
+    def __init__(self, *, token_radar: Any, profiles: Any) -> None:
         self.token_radar = token_radar
         self.profiles = profiles
-        self.live_market_gateway = live_market_gateway
 
     def asset_flow(
         self,
@@ -42,9 +41,7 @@ class AssetFlowService:
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         )
         computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
-        public_rows = [
-            _overlay_live_market(_public_row(row), gateway=self.live_market_gateway, now_ms=now_ms) for row in rows
-        ]
+        public_rows = [_public_row(row) for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
         targetful_rows = [row for row in public_rows if _mapping(row.get("target")).get("target_id")]
@@ -81,34 +78,12 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "intent": row.get("intent_json") or {},
         "target": _target_from_snapshot(factor_snapshot),
         "attention": _attention_from_snapshot(factor_snapshot),
-        "anchor_price": _anchor_price_from_snapshot(factor_snapshot),
-        "live_market": _missing_live_market(factor_snapshot),
+        "market": _market_from_snapshot(factor_snapshot),
         "resolution": row.get("resolution_json") or {},
         "score": _composite_from_snapshot(factor_snapshot),
         "factor_snapshot": factor_snapshot,
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
-    }
-
-
-def _overlay_live_market(row: dict[str, Any], *, gateway: Any | None, now_ms: int | None) -> dict[str, Any]:
-    if gateway is None:
-        return row
-    target = _mapping(row.get("target"))
-    target_type = str(target.get("target_type") or "").strip()
-    target_id = str(target.get("target_id") or "").strip()
-    if not target_type or not target_id:
-        return row
-    snapshot = _mapping(gateway.snapshot(target_type=target_type, target_id=target_id, now_ms=now_ms))
-    if not snapshot:
-        return row
-    return {
-        **row,
-        "live_market": {
-            **snapshot,
-            "target_type": snapshot.get("target_type") or target_type,
-            "target_id": snapshot.get("target_id") or target_id,
-        },
     }
 
 
@@ -140,46 +115,15 @@ def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     return _mapping(family.get("facts"))
 
 
-def _anchor_price_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    market = _mapping(snapshot.get("market"))
-    subject = _mapping(snapshot.get("subject"))
-    readiness = _mapping(market.get("event_price_readiness"))
-    status = str(readiness.get("status") or ("ready" if market.get("anchor_price_usd") is not None else "missing"))
-    return {
-        "status": status,
-        "target_type": subject.get("target_type"),
-        "target_id": subject.get("target_id"),
-        "price_usd": market.get("anchor_price_usd"),
-        "price_quote": market.get("anchor_price_quote"),
-        "quote_symbol": market.get("anchor_quote_symbol"),
-        "price_basis": market.get("anchor_price_basis"),
-        "provider": market.get("provider"),
-        "anchor_observed_at_ms": market.get("anchor_observed_at_ms"),
-        "event_received_at_ms": market.get("social_signal_start_ms"),
-        "anchor_lag_ms": market.get("anchor_lag_ms"),
-    }
-
-
-def _missing_live_market(snapshot: dict[str, Any]) -> dict[str, Any]:
-    target_key = _target_key_from_snapshot(snapshot)
-    return {
-        "target_type": target_key[0] if target_key else None,
-        "target_id": target_key[1] if target_key else None,
-        "status": "missing",
-        "price_usd": None,
-        "price_quote": None,
-        "quote_symbol": None,
-        "price_basis": "unavailable",
-        "provider": None,
-        "observed_at_ms": None,
-        "received_at_ms": None,
-        "age_ms": None,
-    }
+def _market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+    return _mapping(snapshot.get("market"))
 
 
 def _anchor_coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(rows)
-    ready = sum(1 for row in rows if _mapping(row.get("anchor_price")).get("status") == "ready")
+    ready = sum(
+        1 for row in rows if _mapping(_mapping(row.get("market")).get("readiness")).get("anchor_status") == "ready"
+    )
     missing = total - ready
     if total == 0:
         status = "missing"
@@ -224,17 +168,6 @@ def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 def _family(snapshot: dict[str, Any], name: str) -> dict[str, Any]:
     families = _mapping(snapshot.get("families"))
     return _mapping(families.get(name))
-
-
-def _target_key_from_snapshot(snapshot: Any) -> tuple[str, str] | None:
-    if not isinstance(snapshot, dict):
-        return None
-    subject = _mapping(snapshot.get("subject"))
-    target_type = str(subject.get("target_type") or "").strip()
-    target_id = str(subject.get("target_id") or "").strip()
-    if not target_type or not target_id:
-        return None
-    return (target_type, target_id)
 
 
 def _mapping(value: Any) -> dict[str, Any]:

@@ -201,7 +201,6 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             data = AssetFlowService(
                 token_radar=repos.token_radar,
                 profiles=profiles,
-                live_market_gateway=runtime.live_price_gateway,
             ).asset_flow(
                 window=parsed_window,
                 limit=_limit(limit),

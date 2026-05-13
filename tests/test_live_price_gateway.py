@@ -7,7 +7,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdat
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 
 
-def test_live_price_gateway_publishes_update_without_writing_observation():
+def test_live_price_gateway_persists_and_publishes_first_material_update():
     repos = FakeRepos()
     stream_provider = FakeStreamProvider(
         [
@@ -36,33 +36,12 @@ def test_live_price_gateway_publishes_update_without_writing_observation():
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_000_000))
 
     assert result["updates_received"] == 1
-    assert result["observations_written"] == 0
-    assert repos.price_observations.calls == []
-    assert repos.legacy_market_read_calls == []
-    assert published == [
-        {
-            "type": "live_market_update",
-            "provider": "okx_dex_ws_price_info",
-            "target_type": "Asset",
-            "target_id": "asset:solana:token:abc",
-            "observed_at_ms": 1_778_000_000_500,
-            "live_market": {
-                "status": "live",
-                "price_usd": 0.42,
-                "price_quote": None,
-                "quote_symbol": "USD",
-                "price_basis": "usd",
-                "market_cap_usd": None,
-                "liquidity_usd": None,
-                "holders": None,
-                "volume_24h_usd": None,
-                "observed_at_ms": 1_778_000_000_500,
-                "received_at_ms": 1_778_000_000_000,
-                "age_ms": 0,
-                "provider": "okx_dex_ws_price_info",
-            },
-        }
-    ]
+    assert result["observations_written"] == 1
+    assert len(repos.price_observations.calls) == 1
+    assert published[0]["type"] == "live_market_update"
+    assert published[0]["market"]["decision_latest"]["price_usd"] == 0.42
+    assert published[0]["market"]["decision_latest"]["source"] == "decision_latest"
+    assert "live_market" not in published[0]
     assert (
         gateway.snapshot(target_type="Asset", target_id="asset:solana:token:abc", now_ms=1_778_000_001_500)["status"]
         == "live"
@@ -184,7 +163,6 @@ class FakeRepos:
     def __init__(self) -> None:
         self.registry = FakeRegistry()
         self.price_observations = FakePriceObservations()
-        self.legacy_market_read_calls: list[dict] = []
 
 
 class FakeRegistry:
@@ -214,7 +192,32 @@ class FakeRegistry:
 class FakePriceObservations:
     def __init__(self) -> None:
         self.calls: list[dict] = []
+        self.latest = {}
 
-    def insert_observation(self, **kwargs):
-        self.calls.append(kwargs)
-        return {}
+    def latest_for_target(self, *, target_type, target_id, now_ms, max_age_ms):
+        return self.latest.get((target_type, target_id))
+
+    def insert_market_observation(
+        self,
+        observation,
+        *,
+        observation_kind,
+        source_event_id,
+        source_intent_id,
+        source_resolution_id,
+        event_received_at_ms,
+        commit,
+    ):
+        self.calls.append(
+            {
+                "observation": observation,
+                "observation_kind": observation_kind,
+                "source_event_id": source_event_id,
+                "source_intent_id": source_intent_id,
+                "source_resolution_id": source_resolution_id,
+                "event_received_at_ms": event_received_at_ms,
+                "commit": commit,
+            }
+        )
+        self.latest[(observation.target.target_type, observation.target.target_id)] = observation
+        return "observation-id"

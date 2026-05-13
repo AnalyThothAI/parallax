@@ -15,6 +15,7 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
 )
+WS_CONNECTION_STATES = frozenset({"disconnected", "connecting", "authenticating", "subscribed", "streaming", "failed"})
 
 
 class UpstreamIdleTimeoutError(TimeoutError):
@@ -108,6 +109,15 @@ class DirectGmgnWebSocketClient:
         self.heartbeat_interval = heartbeat_interval
         self.idle_timeout = idle_timeout
         self.user_agent = user_agent
+        self.connection_state = "disconnected"
+        self.last_state_change_at_ms = _now_ms()
+
+    def connection_state_payload(self) -> dict[str, Any]:
+        return {
+            "provider": "gmgn_direct_ws",
+            "state": self.connection_state,
+            "last_state_change_at_ms": self.last_state_change_at_ms,
+        }
 
     async def run(self) -> None:
         reconnect_count = 0
@@ -116,9 +126,11 @@ class DirectGmgnWebSocketClient:
                 await self._run_once(reconnect_count=reconnect_count)
                 reconnect_count += 1
             except asyncio.CancelledError:
+                self._set_connection_state("disconnected")
                 raise
             except Exception as exc:
                 reconnect_count += 1
+                self._set_connection_state("failed")
                 logger.error(f"❌ GMGN 直连 WS 断开: {exc}")
 
             await asyncio.sleep(self.reconnect_delay)
@@ -138,15 +150,20 @@ class DirectGmgnWebSocketClient:
             "proxy": self.proxy,
         }
 
+        self._set_connection_state("connecting")
         async with websockets.connect(ws_url, **connect_kwargs) as websocket:
+            self._set_connection_state("authenticating")
             logger.success(f"GMGN 直连 WS 已连接，匿名订阅频道: {', '.join(self.channels)}")
             await self._subscribe_all(websocket)
+            self._set_connection_state("subscribed")
             heartbeat_task = asyncio.create_task(self._heartbeat_loop(websocket))
             try:
                 await self._receive_frames(websocket)
             finally:
                 heartbeat_task.cancel()
                 await asyncio.gather(heartbeat_task, return_exceptions=True)
+                if self.connection_state != "failed":
+                    self._set_connection_state("disconnected")
 
     async def _receive_frames(self, websocket) -> None:
         while True:
@@ -154,6 +171,7 @@ class DirectGmgnWebSocketClient:
                 frame = await asyncio.wait_for(websocket.recv(), timeout=self.idle_timeout)
             except TimeoutError as exc:
                 raise UpstreamIdleTimeoutError(f"no upstream frame received for {self.idle_timeout:g}s") from exc
+            self._set_connection_state("streaming")
             result = self.on_frame(frame)
             if inspect.isawaitable(result):
                 await result
@@ -170,3 +188,20 @@ class DirectGmgnWebSocketClient:
             await asyncio.sleep(self.heartbeat_interval)
             message = build_heartbeat_message()
             await websocket.send(json.dumps(message, separators=(",", ":")))
+
+    def _set_connection_state(self, state: str) -> None:
+        if state not in WS_CONNECTION_STATES:
+            raise ValueError(f"unsupported GMGN WS state: {state}")
+        if state == self.connection_state:
+            return
+        self.connection_state = state
+        self.last_state_change_at_ms = _now_ms()
+        logger.info(
+            "GMGN direct WS connection state changed | state={} last_state_change_at_ms={}",
+            self.connection_state,
+            self.last_state_change_at_ms,
+        )
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)

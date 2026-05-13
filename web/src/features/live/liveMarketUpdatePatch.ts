@@ -47,10 +47,20 @@ export function patchAssetFlowRows(
     changed = true;
     return {
       ...row,
-      live_market: {
-        target_type: update.target_type,
-        target_id: update.target_id,
-        ...update.live_market,
+      market: {
+        ...row.market,
+        decision_latest: {
+          target_type: update.target_type,
+          target_id: update.target_id,
+          ...update.market.decision_latest,
+        },
+        readiness: {
+          ...row.market.readiness,
+          latest_status: "live",
+          stale_fields: (row.market.readiness.stale_fields ?? []).filter(
+            (field) => field !== "decision_latest",
+          ),
+        },
       },
     };
   });

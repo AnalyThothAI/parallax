@@ -165,7 +165,9 @@ export type LiveMarketUpdatePayload = {
   target_id: string;
   provider?: string | null;
   observed_at_ms?: number | null;
-  live_market: LiveMarketSnapshot;
+  market: {
+    decision_latest: MarketObservationSnapshot;
+  };
 };
 
 export type RecentData = {
@@ -408,24 +410,12 @@ export type TokenRadarDataHealth = {
   [key: string]: unknown;
 };
 
-export type AnchorPriceSnapshot = {
+export type MarketObservationSnapshot = {
   target_type?: string | null;
   target_id?: string | null;
-  status: "ready" | "missing" | "pending" | string;
-  price_usd?: number | null;
-  price_quote?: number | null;
-  quote_symbol?: string | null;
-  price_basis?: string | null;
+  source?: "event_anchor" | "decision_latest" | string | null;
   provider?: string | null;
-  anchor_observed_at_ms?: number | null;
-  event_received_at_ms?: number | null;
-  anchor_lag_ms?: number | null;
-};
-
-export type LiveMarketSnapshot = {
-  target_type?: string | null;
-  target_id?: string | null;
-  status: "live" | "stale" | "missing" | "unsupported" | string;
+  pricefeed_id?: string | null;
   price_usd?: number | null;
   price_quote?: number | null;
   quote_symbol?: string | null;
@@ -434,10 +424,24 @@ export type LiveMarketSnapshot = {
   liquidity_usd?: number | null;
   holders?: number | null;
   volume_24h_usd?: number | null;
+  open_interest_usd?: number | null;
   observed_at_ms?: number | null;
   received_at_ms?: number | null;
-  age_ms?: number | null;
-  provider?: string | null;
+  raw_payload_hash?: string | null;
+};
+
+export type MarketReadiness = {
+  anchor_status: "ready" | "missing" | "stale" | string;
+  latest_status: "live" | "ready" | "stale" | "missing" | string;
+  dex_floor_status: "ready" | "missing_fields" | "not_applicable" | string;
+  missing_fields: string[];
+  stale_fields: string[];
+};
+
+export type MarketContext = {
+  event_anchor: MarketObservationSnapshot | null;
+  decision_latest: MarketObservationSnapshot | null;
+  readiness: MarketReadiness;
 };
 
 export type AssetFlowRow = {
@@ -445,8 +449,7 @@ export type AssetFlowRow = {
   target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
   source_event_ids?: string[];
-  anchor_price: AnchorPriceSnapshot;
-  live_market: LiveMarketSnapshot;
+  market: MarketContext;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
@@ -596,6 +599,9 @@ export type TokenIdentityBlock = {
 };
 
 export type TokenMarketBlock = {
+  event_anchor: MarketObservationSnapshot | null;
+  decision_latest: MarketObservationSnapshot | null;
+  readiness: MarketReadiness;
   market_status: "fresh" | "partial" | "stale" | "missing" | string;
   price?: number | null;
   price_status?: string | null;
@@ -1054,7 +1060,7 @@ export type TokenFactorSnapshot = {
     address?: string | null;
     pricefeed_id?: string | null;
   };
-  market: Record<string, unknown>;
+  market: MarketContext;
   gates: {
     eligible_for_high_alert: boolean;
     max_decision?: string | null;

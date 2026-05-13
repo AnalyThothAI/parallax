@@ -901,14 +901,7 @@ def _factor_snapshot(
             "target_id": target_id,
             "target_market_type": "dex" if target_id else None,
         },
-        "market": {
-            "market_status": "anchored" if target_id and market_status == "fresh" else "missing",
-            "price_change_status": "live_not_persisted" if target_id and market_status == "fresh" else "missing_anchor",
-            "provider": "okx" if target_id else None,
-            "anchor_price_usd": 0.42 if target_id else None,
-            "social_signal_start_ms": 1_700_000_000_000,
-            "event_price_readiness": {"status": "ready" if target_id and market_status == "fresh" else "missing"},
-        },
+        "market": _market_context(target_type=target_type, target_id=target_id, market_status=market_status),
         "gates": {
             "eligible_for_high_alert": eligible_for_high_alert and not blocked_reasons,
             "blocked_reasons": blocked_reasons,
@@ -967,4 +960,38 @@ def _factor_snapshot(
             },
         },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 1_700_000_000_000},
+    }
+
+
+def _market_context(*, target_type: str | None, target_id: str | None, market_status: str | None) -> dict:
+    ready = bool(target_id and market_status == "fresh")
+    observation = {
+        "target_type": target_type,
+        "target_id": target_id,
+        "source": "event_anchor",
+        "provider": "okx" if ready else None,
+        "pricefeed_id": None,
+        "price_usd": 0.42 if ready else None,
+        "price_quote": None,
+        "quote_symbol": "USD" if ready else None,
+        "price_basis": "usd" if ready else None,
+        "market_cap_usd": 120_000 if ready else None,
+        "liquidity_usd": 55_000 if ready else None,
+        "holders": 800 if ready else None,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "observed_at_ms": 1_700_000_000_000 if ready else None,
+        "received_at_ms": 1_700_000_000_000 if ready else None,
+        "raw_payload_hash": None,
+    }
+    return {
+        "event_anchor": observation if ready else None,
+        "decision_latest": {**observation, "source": "decision_latest"} if ready else None,
+        "readiness": {
+            "anchor_status": "ready" if ready else "missing",
+            "latest_status": "live" if ready else "missing",
+            "dex_floor_status": "ready" if ready else "missing_fields",
+            "missing_fields": [] if ready else ["holders", "liquidity_usd", "market_cap_usd"],
+            "stale_fields": [],
+        },
     }

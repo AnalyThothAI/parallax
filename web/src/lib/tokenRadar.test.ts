@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { AssetFlowRow } from "../api/types";
+import type { AssetFlowRow, MarketContext } from "../api/types";
 
 import { tokenRadarRowToTokenItem } from "./tokenRadar";
 
@@ -16,7 +16,7 @@ describe("token radar factor snapshot mapper", () => {
   it("rejects legacy v1 factor snapshots", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
-      ...row.factor_snapshot!,
+      ...row.factor_snapshot,
       schema_version: legacySnapshotVersion("v1"),
     } as unknown as AssetFlowRow["factor_snapshot"];
 
@@ -28,7 +28,7 @@ describe("token radar factor snapshot mapper", () => {
   it("rejects v2 alpha-gated factor snapshots", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
-      ...row.factor_snapshot!,
+      ...row.factor_snapshot,
       schema_version: legacySnapshotV2Alpha(),
     } as unknown as AssetFlowRow["factor_snapshot"];
 
@@ -37,10 +37,10 @@ describe("token radar factor snapshot mapper", () => {
     );
   });
 
-  it("rejects v2 snapshots with legacy gate blocks", () => {
+  it("rejects snapshots with legacy gate blocks", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
-      ...row.factor_snapshot!,
+      ...row.factor_snapshot,
       [legacyGateKey()]: { eligible_for_high_alert: true, blocked_reasons: [] },
     } as unknown as AssetFlowRow["factor_snapshot"];
 
@@ -51,7 +51,7 @@ describe("token radar factor snapshot mapper", () => {
 
   it("requires composite recommended_decision instead of falling back to row decision", () => {
     const row = productionFactorSnapshotRow();
-    delete (row.factor_snapshot!.composite as Record<string, unknown>).recommended_decision;
+    delete (row.factor_snapshot.composite as Record<string, unknown>).recommended_decision;
     (row as unknown as Record<string, unknown>).decision = "high_alert";
 
     expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
@@ -59,16 +59,16 @@ describe("token radar factor snapshot mapper", () => {
     );
   });
 
-  it("rejects v2 snapshots with empty provenance source_event_ids", () => {
+  it("rejects snapshots with empty provenance source_event_ids", () => {
     const row = productionFactorSnapshotRow();
-    row.factor_snapshot!.provenance.source_event_ids = [];
+    row.factor_snapshot.provenance.source_event_ids = [];
 
     expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
       /factor_snapshot\.provenance\.source_event_ids/,
     );
   });
 
-  it("maps production hard-cut rows from factor_snapshot instead of legacy score fields", () => {
+  it("maps production hard-cut rows from factor_snapshot and market roles", () => {
     const item = tokenRadarRowToTokenItem(productionFactorSnapshotRow(), "1h", "all");
 
     expect(item.identity.symbol).toBe("ZEC");
@@ -81,6 +81,8 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.opportunity.score).toBe(78);
     expect(item.opportunity.decision).toBe("driver");
     expect(item.evidence_total_count).toBe(2);
+    expect(item.market.event_anchor?.price_usd).toBe(34);
+    expect(item.market.decision_latest?.price_usd).toBe(35.42);
     expect(item.market.price).toBe(35.42);
     expect(item.market.market_status).toBe("live");
     expect(item.market.snapshot_received_at_ms).toBe(1_778_426_440_000);
@@ -124,13 +126,9 @@ describe("token radar factor snapshot mapper", () => {
     const row = productionFactorSnapshotRow();
     delete row.target!.native_market_id;
     delete row.target!.feed_type;
-    row.factor_snapshot!.subject = {
-      ...row.factor_snapshot!.subject,
+    row.factor_snapshot.subject = {
+      ...row.factor_snapshot.subject,
       pricefeed_id: "pricefeed:cex:okx:swap:ZEC-USDT-SWAP",
-    };
-    row.live_market = {
-      ...row.live_market,
-      provider: "okx_cex",
     };
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
@@ -140,50 +138,12 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.identity.inst_type).toBe("SWAP");
   });
 
-  it("rejects rows missing anchor_price even when factor snapshot market contains price", () => {
+  it("rejects rows missing material market context", () => {
     const row = productionFactorSnapshotRow() as Partial<AssetFlowRow> &
       Pick<AssetFlowRow, "factor_snapshot">;
-    delete row.anchor_price;
-    row.factor_snapshot!.market = {
-      ...(row.factor_snapshot!.market ?? {}),
-      price_usd: 999,
-      market_cap_usd: 999_000_000,
-    };
+    delete row.market;
 
-    expect(() => tokenRadarRowToTokenItem(row as AssetFlowRow, "1h", "all")).toThrow(
-      /anchor_price/,
-    );
-  });
-
-  it("does not read live price from factor snapshot market facts", () => {
-    const row = productionFactorSnapshotRow();
-    row.live_market = {
-      target_type: "CexToken",
-      target_id: "cex_token:ZEC",
-      status: "live",
-      price_usd: 0.104,
-      price_basis: "usd",
-      market_cap_usd: 51_000_000,
-      liquidity_usd: null,
-      holders: null,
-      volume_24h_usd: null,
-      observed_at_ms: 1_778_426_440_000,
-      received_at_ms: 1_778_426_440_000,
-      age_ms: 30_000,
-      provider: "okx_cex",
-    };
-    row.factor_snapshot!.market = {
-      ...(row.factor_snapshot!.market ?? {}),
-      price_usd: 999,
-      market_cap_usd: 999_000_000,
-    };
-
-    const item = tokenRadarRowToTokenItem(row, "1h", "all");
-
-    expect(item.market.price).toBe(0.104);
-    expect(item.market.market_cap).toBeNull();
-    expect(item.market.market_status).toBe("live");
-    expect(item.market.snapshot_age_ms).toBe(30_000);
+    expect(() => tokenRadarRowToTokenItem(row as AssetFlowRow, "1h", "all")).toThrow(/market/);
   });
 
   it("keeps usable market cap for chain asset rows", () => {
@@ -197,34 +157,25 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.market.market_cap_status).toBe("live");
   });
 
-  it("uses anchored GMGN market metadata for chain asset rows when live stream is missing", () => {
+  it("uses event_anchor market metadata for chain asset rows when decision_latest is missing", () => {
     const row = productionChainAssetRow();
-    row.live_market = {
-      ...row.live_market,
-      status: "missing",
-      price_usd: null,
-      price_quote: null,
-      market_cap_usd: null,
-      liquidity_usd: null,
-      holders: null,
-      volume_24h_usd: null,
-      provider: null,
-      observed_at_ms: null,
-      received_at_ms: null,
-      age_ms: null,
+    row.market = {
+      event_anchor: {
+        ...row.market.event_anchor!,
+        provider: "gmgn_dex_quote",
+        price_usd: 0.1,
+        market_cap_usd: 33_000_000,
+        liquidity_usd: 1_800_000,
+        holders: 22_000,
+        volume_24h_usd: 9_100_000,
+      },
+      decision_latest: null,
+      readiness: {
+        ...row.market.readiness,
+        latest_status: "missing",
+      },
     };
-    row.factor_snapshot!.market = {
-      ...row.factor_snapshot!.market,
-      provider: "gmgn_dex_quote",
-      market_cap_usd: 33_000_000,
-      liquidity_usd: 1_800_000,
-      holders: 22_000,
-      volume_24h_usd: 9_100_000,
-    };
-    row.anchor_price = {
-      ...row.anchor_price,
-      provider: "gmgn_dex_quote",
-    };
+    row.factor_snapshot.market = row.market;
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
@@ -240,8 +191,8 @@ describe("token radar factor snapshot mapper", () => {
 
   it("does not read market display deltas from timing facts", () => {
     const row = productionFactorSnapshotRow();
-    row.factor_snapshot!.families.timing_risk.facts = {
-      ...(row.factor_snapshot!.families.timing_risk.facts ?? {}),
+    row.factor_snapshot.families.timing_risk.facts = {
+      ...row.factor_snapshot.families.timing_risk.facts,
       price_change_since_social_pct: 9.99,
       price_change_before_social_pct: 8.88,
     };
@@ -257,12 +208,7 @@ describe("token radar factor snapshot mapper", () => {
 
   it("derives tradeability market freshness from data_health.market only", () => {
     const row = productionFactorSnapshotRow();
-    row.factor_snapshot!.data_health.market = "missing";
-    row.live_market = {
-      ...row.live_market,
-      status: "live",
-      price_usd: 35.42,
-    };
+    row.factor_snapshot.data_health.market = "missing";
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
@@ -274,23 +220,21 @@ describe("token radar factor snapshot mapper", () => {
     });
   });
 
-  it("derives UI market status from live_market without falling back to factor snapshot market", () => {
+  it("derives UI market status from decision_latest readiness", () => {
     const row = productionFactorSnapshotRow();
-    row.factor_snapshot!.market = {
-      ...row.factor_snapshot!.market,
-      market_status: "anchored",
+    row.market = {
+      ...row.market,
+      readiness: {
+        ...row.market.readiness,
+        latest_status: "stale",
+        stale_fields: ["decision_latest"],
+      },
+      decision_latest: {
+        ...row.market.decision_latest!,
+        observed_at_ms: 1_778_340_040_000,
+      },
     };
-    row.live_market = {
-      target_type: "CexToken",
-      target_id: "cex_token:ZEC",
-      status: "stale",
-      price_usd: 35.42,
-      price_basis: "usd",
-      observed_at_ms: 1_778_426_440_000,
-      received_at_ms: 1_778_426_440_000,
-      age_ms: 86_400_000,
-      provider: "okx_cex",
-    };
+    row.factor_snapshot.market = row.market;
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
@@ -300,6 +244,17 @@ describe("token radar factor snapshot mapper", () => {
 });
 
 function productionFactorSnapshotRow(): AssetFlowRow {
+  const market = marketContext({
+    targetType: "CexToken",
+    targetId: "cex_token:ZEC",
+    provider: "okx",
+    latestProvider: "okx_cex",
+    anchorPrice: 34,
+    latestPrice: 35.42,
+    quoteSymbol: "USDT",
+    priceBasis: "quote_as_usd",
+    latestVolume24h: 10_482_890.08,
+  });
   return {
     intent: { intent_id: "intent-zec", display_symbol: "ZEC", display_name: null, evidence: [] },
     target: {
@@ -314,41 +269,26 @@ function productionFactorSnapshotRow(): AssetFlowRow {
       mentions_4h: 6,
       mentions_5m: 0,
       mentions_24h: 12,
+      mentions_window: 2,
       latest_seen_ms: 1_778_425_132_800,
       unique_authors: 2,
       watched_mentions: 1,
+      previous_mentions: 0,
+      mention_delta: 2,
+      mention_delta_pct: null,
+      z_score: null,
+      z_ewma: null,
+      robust_z: null,
+      new_burst_score: null,
+      stream_share: 0,
+      baseline_version: "test",
+      baseline_status: "ready",
+      baseline_sample_count: 1,
+      baseline_nonzero_sample_count: 1,
+      zero_slot_count: 0,
     },
-    anchor_price: {
-      target_type: "CexToken",
-      target_id: "cex_token:ZEC",
-      status: "ready",
-      price_usd: 34,
-      price_quote: 34,
-      quote_symbol: "USDT",
-      price_basis: "quote_as_usd",
-      provider: "okx",
-      anchor_observed_at_ms: 1_778_423_360_921,
-      event_received_at_ms: 1_778_423_360_921,
-      anchor_lag_ms: 0,
-    },
-    live_market: {
-      target_type: "CexToken",
-      target_id: "cex_token:ZEC",
-      status: "live",
-      price_usd: 35.42,
-      price_quote: 35.42,
-      quote_symbol: "USDT",
-      price_basis: "quote_as_usd",
-      market_cap_usd: null,
-      liquidity_usd: null,
-      holders: null,
-      volume_24h_usd: 10_482_890.08,
-      observed_at_ms: 1_778_426_440_000,
-      received_at_ms: 1_778_426_440_000,
-      age_ms: 30_000,
-      provider: "okx_cex",
-    },
-    resolution: {},
+    market,
+    resolution: { status: "EXACT" },
     factor_snapshot: {
       schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
@@ -358,19 +298,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         chain: null,
         address: null,
       },
-      market: {
-        market_status: "anchored",
-        price_change_status: "live_not_persisted",
-        provider: "okx",
-        anchor_price_usd: 34,
-        anchor_price_quote: 34,
-        anchor_quote_symbol: "USDT",
-        anchor_price_basis: "quote_as_usd",
-        anchor_observed_at_ms: 1_778_423_360_921,
-        social_signal_start_ms: 1_778_423_360_921,
-        anchor_lag_ms: 0,
-        event_price_readiness: { status: "ready" },
-      },
+      market,
       gates: {
         eligible_for_high_alert: true,
         max_decision: "high_alert",
@@ -449,7 +377,8 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         },
       },
       normalization: {
-        status: "ready",
+        status: "ranked",
+        cohort_status: "ready",
         cohort: { window: "1h" },
         factor_ranks: {},
         alpha_rank: 3,
@@ -472,11 +401,12 @@ function productionFactorSnapshotRow(): AssetFlowRow {
     },
     data_health: { factor_snapshot: "ready", market: "partial", identity: "ready" },
     source_event_ids: ["event-1", "event-2"],
-  } as unknown as AssetFlowRow;
+  };
 }
 
 function productionChainAssetRow(): AssetFlowRow {
   const row = productionFactorSnapshotRow();
+  const targetId = `asset:eip155:1:erc20:${PEPE}`;
   row.intent = {
     intent_id: "intent-pepe",
     display_symbol: "PEPE",
@@ -485,45 +415,110 @@ function productionChainAssetRow(): AssetFlowRow {
   };
   row.target = {
     target_type: "Asset",
-    target_id: `asset:eip155:1:erc20:${PEPE}`,
+    target_id: targetId,
     symbol: "PEPE",
     chain_id: "eip155:1",
     address: PEPE,
   };
-  row.anchor_price = {
-    ...row.anchor_price,
+  row.market = marketContext({
+    targetType: "Asset",
+    targetId,
+    provider: "gmgn_dex_quote",
+    latestProvider: "okx_dex",
+    anchorPrice: 0.1,
+    latestPrice: 0.104,
+    quoteSymbol: "USD",
+    priceBasis: "usd",
+    latestMarketCap: 51_000_000,
+    latestLiquidity: 5_000_000,
+    latestHolders: 12_000,
+    latestVolume24h: 1_200_000,
+  });
+  row.factor_snapshot.subject = {
     target_type: "Asset",
-    target_id: `asset:eip155:1:erc20:${PEPE}`,
-    price_usd: 0.1,
-    price_quote: null,
-    quote_symbol: "USD",
-    price_basis: "usd",
-  };
-  row.live_market = {
-    target_type: "Asset",
-    target_id: `asset:eip155:1:erc20:${PEPE}`,
-    status: "live",
-    price_usd: 0.104,
-    price_quote: null,
-    quote_symbol: "USD",
-    price_basis: "usd",
-    market_cap_usd: 51_000_000,
-    liquidity_usd: 5_000_000,
-    holders: 12_000,
-    volume_24h_usd: 1_200_000,
-    observed_at_ms: 1_778_426_440_000,
-    received_at_ms: 1_778_426_440_000,
-    age_ms: 30_000,
-    provider: "okx_dex",
-  };
-  row.factor_snapshot!.subject = {
-    target_type: "Asset",
-    target_id: `asset:eip155:1:erc20:${PEPE}`,
+    target_id: targetId,
     symbol: "PEPE",
     chain: "eip155:1",
     address: PEPE,
   };
+  row.factor_snapshot.market = row.market;
   return row;
+}
+
+function marketContext({
+  targetType,
+  targetId,
+  provider,
+  latestProvider,
+  anchorPrice,
+  latestPrice,
+  quoteSymbol,
+  priceBasis,
+  latestMarketCap = null,
+  latestLiquidity = null,
+  latestHolders = null,
+  latestVolume24h = null,
+}: {
+  targetType: string;
+  targetId: string;
+  provider: string;
+  latestProvider: string;
+  anchorPrice: number;
+  latestPrice: number;
+  quoteSymbol: string;
+  priceBasis: string;
+  latestMarketCap?: number | null;
+  latestLiquidity?: number | null;
+  latestHolders?: number | null;
+  latestVolume24h?: number | null;
+}): MarketContext {
+  return {
+    event_anchor: {
+      target_type: targetType,
+      target_id: targetId,
+      observed_at_ms: 1_778_423_360_921,
+      received_at_ms: 1_778_423_360_921,
+      source: "event_anchor",
+      provider,
+      pricefeed_id: "pf-test",
+      price_usd: anchorPrice,
+      price_quote: anchorPrice,
+      quote_symbol: quoteSymbol,
+      price_basis: priceBasis,
+      market_cap_usd: null,
+      liquidity_usd: null,
+      holders: null,
+      volume_24h_usd: null,
+      open_interest_usd: null,
+      raw_payload_hash: null,
+    },
+    decision_latest: {
+      target_type: targetType,
+      target_id: targetId,
+      observed_at_ms: 1_778_426_440_000,
+      received_at_ms: 1_778_426_440_000,
+      source: "decision_latest",
+      provider: latestProvider,
+      pricefeed_id: "pf-test",
+      price_usd: latestPrice,
+      price_quote: latestPrice,
+      quote_symbol: quoteSymbol,
+      price_basis: priceBasis,
+      market_cap_usd: latestMarketCap,
+      liquidity_usd: latestLiquidity,
+      holders: latestHolders,
+      volume_24h_usd: latestVolume24h,
+      open_interest_usd: null,
+      raw_payload_hash: null,
+    },
+    readiness: {
+      anchor_status: "ready",
+      latest_status: "live",
+      dex_floor_status: latestMarketCap === null ? "not_applicable" : "ready",
+      missing_fields: [],
+      stale_fields: [],
+    },
+  };
 }
 
 function factor(family: string, key: string, rawValue: unknown, score: number) {
@@ -532,9 +527,8 @@ function factor(family: string, key: string, rawValue: unknown, score: number) {
     key,
     raw_value: rawValue,
     score,
-    confidence: 0.95,
     data_health: "ready",
-    source_refs: [],
+    reasons: [],
     risk_flags: [],
   };
 }

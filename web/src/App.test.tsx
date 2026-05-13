@@ -28,6 +28,11 @@ import type {
 } from "./api/types";
 import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import { useTraderStore } from "./store/useTraderStore";
+import {
+  marketContextFixture,
+  marketObservationFixture,
+  tokenMarketBlockFixture,
+} from "./test/marketFixtures";
 
 const apiMock = vi.hoisted(() => {
   type RequestOptions = {
@@ -228,18 +233,21 @@ describe("App Token Radar social heat cockpit", () => {
         ...target,
         observed_at_ms: 1_777_770_120_000,
         provider: "okx_dex_ws_price_info",
-        live_market: {
-          status: "live",
-          price_usd: 0.111,
-          price_basis: "usd",
-          market_cap_usd: 110_900_000,
-          liquidity_usd: 4_820_000,
-          holders: 57_141,
-          volume_24h_usd: 27_400_000,
-          observed_at_ms: 1_777_770_120_000,
-          received_at_ms: 1_777_770_120_000,
-          age_ms: 0,
-          provider: "okx_dex_ws_price_info",
+        market: {
+          decision_latest: {
+            source: "decision_latest",
+            target_type: target.target_type,
+            target_id: target.target_id,
+            price_usd: 0.111,
+            price_basis: "usd",
+            market_cap_usd: 110_900_000,
+            liquidity_usd: 4_820_000,
+            holders: 57_141,
+            volume_24h_usd: 27_400_000,
+            observed_at_ms: 1_777_770_120_000,
+            received_at_ms: 1_777_770_120_000,
+            provider: "okx_dex_ws_price_info",
+          },
         },
       },
     ];
@@ -2086,8 +2094,7 @@ function assetFlowRow(
     },
     target,
     attention,
-    anchor_price: anchorPriceFromPriceFixture({ target, price }),
-    live_market: liveMarketFromPriceFixture({ target, price }),
+    market: marketContextFromPriceFixture({ target, price }),
     resolution,
     factor_snapshot: factorSnapshotFromAssetFlowFixture({
       attention,
@@ -2131,25 +2138,7 @@ function factorSnapshotFromAssetFlowFixture({
       address: target.target_type === "Asset" ? (target.address ?? null) : null,
       target_market_type: targetMarketType,
     },
-    market: {
-      market_status: marketStatus === "missing" ? "missing" : "anchored",
-      market_observation_status: price.market_observation_status ?? marketStatus,
-      price_change_status: "live_not_persisted",
-      provider: price.provider ?? target.provider ?? null,
-      anchor_price_usd: price.price_at_social_start ?? price.price_usd ?? null,
-      anchor_price_quote: price.price_at_social_start ?? price.price_quote ?? null,
-      anchor_quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,
-      anchor_price_basis: price.price_basis ?? null,
-      anchor_observed_at_ms: price.snapshot_observed_at_ms ?? null,
-      social_signal_start_ms: price.social_signal_start_ms ?? attention.latest_seen_ms,
-      anchor_lag_ms: 0,
-      event_price_readiness: {
-        status:
-          price.price_at_social_start === null || price.price_at_social_start === undefined
-            ? "missing"
-            : "ready",
-      },
-    },
+    market: marketContextFromPriceFixture({ target, price }),
     gates: {
       eligible_for_high_alert: blockedReasons.length === 0,
       max_decision: blockedReasons.length === 0 ? "high_alert" : "discard",
@@ -2291,64 +2280,76 @@ function factorSnapshotFromAssetFlowFixture({
   };
 }
 
-function anchorPriceFromPriceFixture({
+function marketContextFromPriceFixture({
   target,
   price,
 }: {
   target: NonNullable<AssetFlowRow["target"]>;
   price: AssetFlowPriceFixture;
-}): AssetFlowRow["anchor_price"] {
+}): AssetFlowRow["market"] {
   const provider = price.provider ?? target.provider ?? null;
   const observedAt = price.snapshot_observed_at_ms ?? null;
   const targetType = target.target_type ?? null;
   const targetId = target.target_id ?? null;
-  const anchorValue = price.price_at_social_start ?? price.price_usd ?? price.price_quote ?? null;
-  return {
-    target_type: targetType,
-    target_id: targetId,
-    status: anchorValue === null ? "missing" : "ready",
-    price_usd: anchorValue,
-    price_quote: price.price_quote ?? anchorValue,
-    quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,
-    price_basis: price.price_basis ?? null,
-    provider,
-    anchor_observed_at_ms: observedAt,
-    event_received_at_ms: price.social_signal_start_ms ?? observedAt,
-    anchor_lag_ms: 0,
-  };
-}
-
-function liveMarketFromPriceFixture({
-  target,
-  price,
-}: {
-  target: NonNullable<AssetFlowRow["target"]>;
-  price: AssetFlowPriceFixture;
-}): AssetFlowRow["live_market"] {
-  const provider = price.provider ?? target.provider ?? null;
-  const observedAt = price.snapshot_observed_at_ms ?? null;
-  const targetType = target.target_type ?? null;
-  const targetId = target.target_id ?? null;
-  return {
-    target_type: targetType,
-    target_id: targetId,
-    status:
-      price.market_status === "fresh" || price.market_status === "ready"
-        ? "live"
-        : price.market_status,
-    price_usd: price.price_usd ?? null,
-    price_quote: price.price_quote ?? null,
-    quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,
-    price_basis: price.price_basis ?? null,
-    market_cap_usd: price.market_cap_usd ?? null,
-    liquidity_usd: price.liquidity_usd ?? null,
-    holders: price.holders ?? null,
-    volume_24h_usd: price.volume_24h_usd ?? null,
-    observed_at_ms: observedAt,
-    received_at_ms: observedAt,
-    age_ms: price.snapshot_age_ms ?? null,
-    provider,
-  };
+  const anchorPrice = price.price_at_social_start ?? price.price_usd ?? price.price_quote ?? null;
+  const eventAnchor =
+    anchorPrice === null || anchorPrice === undefined
+      ? null
+      : marketObservationFixture({
+          target_type: targetType,
+          target_id: targetId,
+          source: "event_anchor",
+          provider,
+          pricefeed_id: target.pricefeed_id ?? null,
+          price_usd: anchorPrice,
+          price_quote: price.price_quote ?? anchorPrice,
+          quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,
+          price_basis: price.price_basis ?? null,
+          market_cap_usd: price.market_cap_usd ?? null,
+          liquidity_usd: price.liquidity_usd ?? null,
+          holders: price.holders ?? null,
+          volume_24h_usd: price.volume_24h_usd ?? null,
+          open_interest_usd: price.open_interest_usd ?? null,
+          observed_at_ms: observedAt,
+          received_at_ms: observedAt,
+        });
+  const decisionLatest =
+    price.price_usd === null || price.price_usd === undefined
+      ? null
+      : marketObservationFixture({
+          target_type: targetType,
+          target_id: targetId,
+          source: "decision_latest",
+          provider,
+          pricefeed_id: target.pricefeed_id ?? null,
+          price_usd: price.price_usd ?? null,
+          price_quote: price.price_quote ?? null,
+          quote_symbol: price.quote_symbol ?? target.quote_symbol ?? null,
+          price_basis: price.price_basis ?? null,
+          market_cap_usd: price.market_cap_usd ?? null,
+          liquidity_usd: price.liquidity_usd ?? null,
+          holders: price.holders ?? null,
+          volume_24h_usd: price.volume_24h_usd ?? null,
+          open_interest_usd: price.open_interest_usd ?? null,
+          observed_at_ms: observedAt,
+          received_at_ms: observedAt,
+        });
+  return marketContextFixture({
+    event_anchor: eventAnchor,
+    decision_latest: decisionLatest,
+    readiness: {
+      anchor_status: eventAnchor ? "ready" : "missing",
+      latest_status:
+        price.market_status === "fresh" || price.market_status === "ready"
+          ? "live"
+          : decisionLatest
+            ? String(price.market_status)
+            : "missing",
+      dex_floor_status: decisionLatest ? "ready" : "missing_fields",
+      missing_fields: decisionLatest ? [] : ["holders", "liquidity_usd", "market_cap_usd"],
+      stale_fields: price.market_status === "stale" ? ["decision_latest"] : [],
+    },
+  });
 }
 
 function factorPoint(family: string, key: string, rawValue: unknown, score: number) {
@@ -2430,11 +2431,33 @@ function tokenFlowItem(
       address,
       symbol,
     },
-    market: {
+    market: tokenMarketBlockFixture({
+      event_anchor: marketObservationFixture({
+        target_type: "Asset",
+        target_id: assetId,
+        source: "event_anchor",
+        price_usd: 0.001,
+        price_quote: 0.001,
+        market_cap_usd: 60_490,
+        liquidity_usd: 250_000,
+        observed_at_ms: 1_777_746_000_000,
+        received_at_ms: 1_777_746_000_000,
+      }),
+      decision_latest: marketObservationFixture({
+        target_type: "Asset",
+        target_id: assetId,
+        source: "decision_latest",
+        price_usd: 0.00112,
+        price_quote: 0.00112,
+        market_cap_usd: 60_490,
+        liquidity_usd: 250_000,
+        observed_at_ms: 1_777_746_050_000,
+        received_at_ms: 1_777_746_050_000,
+      }),
       market_status: "fresh",
       price: 0.001,
-      market_cap: 60490,
-      liquidity: 250000,
+      market_cap: 60_490,
+      liquidity: 250_000,
       pool_status: "ready",
       snapshot_age_ms: 120_000,
       snapshot_received_at_ms: 1_777_746_050_000,
@@ -2447,7 +2470,7 @@ function tokenFlowItem(
       price_change_before_social_pct: 0.111111,
       market_observation_status: "ready",
       price_change_status: "ready",
-    },
+    }),
     flow: {
       window: "1h",
       window_start_ms: 1_777_746_000_000,
@@ -2834,19 +2857,32 @@ function signalPulseData(): SignalPulseData {
             symbol: "BNB",
             pricefeed_id: "pricefeed:cex:okx:spot:BNB-USDT",
           },
-          market: {
-            market_status: "anchored",
-            price_change_status: "live_not_persisted",
-            provider: "okx",
-            anchor_price_usd: 610,
-            anchor_price_quote: 610,
-            anchor_quote_symbol: "USDT",
-            anchor_price_basis: "quote_as_usd",
-            anchor_observed_at_ms: 1_777_746_300_000,
-            social_signal_start_ms: 1_777_746_300_000,
-            anchor_lag_ms: 0,
-            event_price_readiness: { status: "ready" },
-          },
+          market: marketContextFixture({
+            event_anchor: marketObservationFixture({
+              target_type: "CexToken",
+              target_id: "asset:cex:okx:BNB-USDT",
+              source: "event_anchor",
+              provider: "okx",
+              price_usd: 610,
+              price_quote: 610,
+              quote_symbol: "USDT",
+              price_basis: "quote_as_usd",
+              observed_at_ms: 1_777_746_300_000,
+              received_at_ms: 1_777_746_300_000,
+            }),
+            decision_latest: marketObservationFixture({
+              target_type: "CexToken",
+              target_id: "asset:cex:okx:BNB-USDT",
+              source: "decision_latest",
+              provider: "okx",
+              price_usd: 610,
+              price_quote: 610,
+              quote_symbol: "USDT",
+              price_basis: "quote_as_usd",
+              observed_at_ms: 1_777_746_300_000,
+              received_at_ms: 1_777_746_300_000,
+            }),
+          }),
           gates: {
             eligible_for_high_alert: true,
             max_decision: "high_alert",

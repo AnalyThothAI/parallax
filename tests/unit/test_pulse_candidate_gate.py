@@ -17,7 +17,35 @@ def _snapshot(
     target_id: str | None = "asset-1",
     symbol: str | None = "TEST",
     risk_reasons: list[str] | None = None,
+    decision_latest: dict[str, object] | None = None,
+    cohort_status: str = "ready",
+    normalization_status: str = "ranked",
 ) -> dict[str, object]:
+    latest = (
+        {
+            "target_type": "Asset",
+            "target_id": target_id,
+            "observed_at_ms": 1_700_000_010_000,
+            "received_at_ms": 1_700_000_010_000,
+            "source": "decision_latest",
+            "provider": "okx",
+            "pricefeed_id": "pf-test",
+            "price_usd": 0.42,
+            "price_quote": None,
+            "quote_symbol": "USD",
+            "price_basis": "usd",
+            "market_cap_usd": 1_000_000,
+            "liquidity_usd": 250_000,
+            "holders": 1000,
+            "volume_24h_usd": 12_000,
+            "open_interest_usd": None,
+            "raw_payload_hash": None,
+        }
+        if target_id
+        else None
+    )
+    if decision_latest is not None:
+        latest = decision_latest
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {
@@ -27,12 +55,15 @@ def _snapshot(
             "symbol": symbol,
         },
         "market": {
-            "market_status": "anchored" if target_id else "missing",
-            "price_change_status": "live_not_persisted" if target_id else "missing_anchor",
-            "provider": "okx" if target_id else None,
-            "anchor_price_usd": 0.42 if target_id else None,
-            "social_signal_start_ms": 1_700_000_000_000,
-            "event_price_readiness": {"status": "ready" if target_id else "missing"},
+            "event_anchor": None,
+            "decision_latest": latest,
+            "readiness": {
+                "anchor_status": "ready" if target_id else "missing",
+                "latest_status": "live" if latest else "missing",
+                "dex_floor_status": "ready" if latest else "missing_fields",
+                "missing_fields": [] if latest else ["holders", "liquidity_usd", "market_cap_usd"],
+                "stale_fields": [],
+            },
         },
         "gates": {
             "eligible_for_high_alert": eligible,
@@ -82,7 +113,13 @@ def _snapshot(
                 factors={},
             ),
         },
-        "normalization": {"status": "pending_cross_section"},
+        "normalization": {
+            "status": normalization_status,
+            "cohort_status": cohort_status,
+            "cohort": {"size": 12, "in_cohort": bool(target_id)},
+            "factor_ranks": {},
+            "alpha_rank": 0.73,
+        },
         "composite": {
             "family_scores": {
                 "social_heat": rank_score,
@@ -190,6 +227,36 @@ def test_alpha_risk_flags_are_recorded_without_runtime_context() -> None:
     assert result.pulse_status == "trade_candidate"
     assert result.risk_reasons == ["duplicate_text_share_high"]
     assert result.hard_risks == []
+
+
+def test_missing_decision_latest_blocks_target_candidate() -> None:
+    result = gate_pulse_candidate_from_factor_snapshot(
+        factor_snapshot=_snapshot(rank_score=80, decision_latest={}),
+    )
+
+    assert result.pulse_status == "risk_rejected_high_info"
+    assert result.blocked_reasons == ["decision_latest_missing"]
+    assert result.max_recommendation == "research"
+
+
+@pytest.mark.parametrize(
+    ("cohort_status", "reason"),
+    [
+        ("insufficient", "cohort_insufficient"),
+        ("all_tied", "cohort_all_tied"),
+    ],
+)
+def test_no_signal_cohort_blocks_target_candidate(cohort_status: str, reason: str) -> None:
+    result = gate_pulse_candidate_from_factor_snapshot(
+        factor_snapshot=_snapshot(
+            rank_score=80,
+            cohort_status=cohort_status,
+            normalization_status="no_signal",
+        ),
+    )
+
+    assert result.pulse_status == "risk_rejected_high_info"
+    assert result.blocked_reasons == [reason]
 
 
 def test_source_seed_or_no_target_snapshot_is_blocked() -> None:

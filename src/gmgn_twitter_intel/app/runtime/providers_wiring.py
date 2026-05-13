@@ -17,6 +17,8 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
     DexTokenQuote,
     DexTokenQuoteRequest,
     MarketCandle,
+    MarketCapability,
+    ProviderHealth,
 )
 from gmgn_twitter_intel.domains.ingestion.providers import UpstreamClientProtocol
 from gmgn_twitter_intel.domains.pulse_lab.providers import PulseRecommendationProvider, PulseRecommendationResult
@@ -52,6 +54,16 @@ class AssetMarketProviders:
     dex_profile_market: object | None = None
     stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
+    provider_health: tuple[ProviderHealth, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class OkxProviderBundle:
+    sync_cex_market: CexMarketProvider | None
+    message_cex_market: CexMarketProvider | None
+    dex_discovery_market: DexTokenDiscoveryProvider | None
+    stream_dex_market: DexMarketStreamProvider | None
+    health: ProviderHealth
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +239,12 @@ class OkxDexWebSocketMarketProviderAdapter:
         if close:
             close()
 
+    def connection_state_payload(self) -> dict[str, Any]:
+        payload = getattr(self._provider, "connection_state_payload", None)
+        if payload:
+            return payload()
+        return {"provider": "okx_dex_ws", "state": "disconnected", "last_state_change_at_ms": None}
+
 
 class OpenAIPulseRecommendationProvider:
     def __init__(self, client: OpenAIAgentsPulseRecommendationClient) -> None:
@@ -316,20 +334,61 @@ def okx_chain_index(chain_id: Any) -> str | None:
 def _wire_asset_market(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
     if not start_collector:
         return AssetMarketProviders()
-    dex_discovery_market = (
-        _SerializedDiscoveryProvider(_okx_dex_discovery_market(settings)) if settings.okx_dex_configured else None
-    )
+    okx_bundle = _wire_okx_provider_bundle(settings)
     gmgn_dex_market = _gmgn_dex_market(settings) if settings.gmgn_configured else None
     return AssetMarketProviders(
-        sync_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        message_cex_market=_okx_cex_market(settings) if settings.okx_cex_sync_enabled else None,
-        dex_discovery_market=dex_discovery_market,
+        sync_cex_market=okx_bundle.sync_cex_market,
+        message_cex_market=okx_bundle.message_cex_market,
+        dex_discovery_market=okx_bundle.dex_discovery_market,
         dex_quote_market=gmgn_dex_market,
         dex_candle_market=gmgn_dex_market,
         dex_profile_market=gmgn_dex_market,
-        stream_dex_market=_okx_dex_ws_market(settings) if settings.okx_dex_ws_configured else None,
+        stream_dex_market=okx_bundle.stream_dex_market,
         discovery_chain_ids=okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
+        provider_health=(okx_bundle.health, _gmgn_provider_health(settings)),
     )
+
+
+def _wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
+    capabilities: set[MarketCapability] = set()
+    shared_cex_market: OkxCexMarketProvider | None = None
+    if settings.okx_cex_sync_enabled:
+        shared_cex_market = _okx_cex_market(settings)
+        capabilities.add(MarketCapability.QUOTE_CEX)
+    dex_discovery_market: DexTokenDiscoveryProvider | None = None
+    if settings.okx_dex_configured:
+        dex_discovery_market = _SerializedDiscoveryProvider(_okx_dex_discovery_market(settings))
+        capabilities.add(MarketCapability.SEARCH_DEX)
+    stream_dex_market: DexMarketStreamProvider | None = None
+    if settings.okx_dex_ws_configured:
+        stream_dex_market = _okx_dex_ws_market(settings)
+        capabilities.add(MarketCapability.STREAM_DEX)
+    return OkxProviderBundle(
+        sync_cex_market=shared_cex_market,
+        message_cex_market=shared_cex_market,
+        dex_discovery_market=dex_discovery_market,
+        stream_dex_market=stream_dex_market,
+        health=ProviderHealth(
+            provider="okx",
+            capabilities=frozenset(capabilities),
+            configured=bool(capabilities),
+        ),
+    )
+
+
+def _gmgn_provider_health(settings: Settings) -> ProviderHealth:
+    capabilities = (
+        frozenset(
+            {
+                MarketCapability.QUOTE_DEX_EXACT,
+                MarketCapability.PROFILE_DEX_EXACT,
+                MarketCapability.CANDLES_DEX_EXACT,
+            }
+        )
+        if settings.gmgn_configured
+        else frozenset()
+    )
+    return ProviderHealth(provider="gmgn", capabilities=capabilities, configured=settings.gmgn_configured)
 
 
 def _wire_marketlane(settings: Settings) -> MarketlaneProviders:
@@ -529,6 +588,7 @@ __all__ = [
     "OkxCexMarketProvider",
     "OkxDexDiscoveryProvider",
     "OkxDexWebSocketMarketProviderAdapter",
+    "OkxProviderBundle",
     "PulseLabProviders",
     "SocialEnrichmentProviders",
     "WiredProviders",

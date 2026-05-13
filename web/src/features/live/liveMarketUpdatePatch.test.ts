@@ -19,7 +19,7 @@ describe("liveMarketUpdatePatch", () => {
 
     const patched = patchAssetFlowData(data, update);
 
-    expect(patched.targets[0].live_market.price_usd).toBe(42);
+    expect(patched.targets[0].market.decision_latest?.price_usd).toBe(42);
     expect(patched.targets[0]).not.toBe(row);
     expect(patched.attention[0]).toBe(other);
   });
@@ -63,11 +63,11 @@ describe("liveMarketUpdatePatch", () => {
 
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "all"])?.data
-        .targets[0].live_market.price_usd,
+        .targets[0].market.decision_latest?.price_usd,
     ).toBe(77);
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "5m", "all"])?.data
-        .attention[0].live_market.price_usd,
+        .attention[0].market.decision_latest?.price_usd,
     ).toBe(77);
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "matched"]),
@@ -99,10 +99,16 @@ function assetFlowData({
 function assetFlowRow(targetType: string, targetId: string): AssetFlowRow {
   return {
     target: { target_type: targetType, target_id: targetId },
-    live_market: {
-      target_type: targetType,
-      target_id: targetId,
-      status: "missing",
+    market: {
+      event_anchor: null,
+      decision_latest: null,
+      readiness: {
+        anchor_status: "missing",
+        latest_status: "missing",
+        dex_floor_status: "not_applicable",
+        missing_fields: [],
+        stale_fields: [],
+      },
     },
   } as unknown as AssetFlowRow;
 }
@@ -116,14 +122,17 @@ function liveMarketUpdate(
     type: "live_market_update",
     target_type: targetType,
     target_id: targetId,
-    live_market: {
-      status: "live",
-      price_usd: price,
-      price_basis: "usd",
-      observed_at_ms: 2,
-      received_at_ms: 2,
-      age_ms: 0,
-      provider: "test",
+    market: {
+      decision_latest: {
+        target_type: targetType,
+        target_id: targetId,
+        source: "decision_latest",
+        price_usd: price,
+        price_basis: "usd",
+        observed_at_ms: 2,
+        received_at_ms: 2,
+        provider: "test",
+      },
     },
   };
 }

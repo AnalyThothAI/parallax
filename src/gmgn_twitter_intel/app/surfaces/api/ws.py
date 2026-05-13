@@ -16,6 +16,8 @@ from gmgn_twitter_intel.domains.ingestion.services.subscriptions import normaliz
 
 @dataclass(eq=False)
 class ClientSubscription:
+    """Client filters for replay events and material live market target updates."""
+
     websocket: WebSocket
     handles: set[str] = field(default_factory=set)
     cas: set[tuple[str, str]] = field(default_factory=set)
@@ -25,6 +27,8 @@ class ClientSubscription:
 
 
 class PublicWebSocketHub:
+    """Publishes event/replay payloads and material live_market_update messages."""
+
     def __init__(
         self,
         *,

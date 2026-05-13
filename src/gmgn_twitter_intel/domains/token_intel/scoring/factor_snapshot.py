@@ -265,10 +265,19 @@ def _semantic_catalyst_family(*, social_semantics: dict[str, Any], social_qualit
 
 
 def _timing_risk_family(*, timing: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
-    social_signal_start_ms = timing.get("social_signal_start_ms") or market.get("social_signal_start_ms")
+    event_anchor = _market_event_anchor(market)
+    decision_latest = _market_decision_latest(market)
+    readiness = _market_readiness(market)
+    social_signal_start_ms = (
+        timing.get("social_signal_start_ms") or event_anchor.get("received_at_ms") or event_anchor.get("observed_at_ms")
+    )
     price_change_before_social_pct = _optional_float(timing.get("price_change_before_social_pct"))
-    price_change_since_social_pct = _optional_float(timing.get("price_change_since_social_pct"))
-    price_change_status = _optional_str(market.get("price_change_status"))
+    price_change_since_social_pct = _optional_float(
+        timing.get("price_change_since_social_pct")
+        if timing.get("price_change_since_social_pct") is not None
+        else _market_price_change_since_anchor(decision_latest, event_anchor)
+    )
+    price_change_status = _optional_str(readiness.get("latest_status") or readiness.get("anchor_status"))
     facts = {
         "price_change_before_social_pct": price_change_before_social_pct,
         "price_change_since_social_pct": price_change_since_social_pct,
@@ -325,10 +334,12 @@ def _gates(
         discard_cap_reasons.append("alpha_data_missing")
     if subject["target_market_type"] == "dex":
         metadata_missing = False
+        decision_latest = _market_decision_latest(market)
         for key, reason in _DEX_FLOOR_REASONS.items():
-            value = _optional_float(market.get(key))
+            value = _optional_float(decision_latest.get(key))
             if value is None:
                 metadata_missing = True
+                blocked_reasons.append(f"{key}_unverified")
                 continue
             if _is_below(value, key):
                 blocked_reasons.append(reason)
@@ -626,7 +637,37 @@ def _first_float(source: dict[str, Any], keys: tuple[str, ...]) -> float | None:
     return None
 
 
+def _market_event_anchor(market: dict[str, Any]) -> dict[str, Any]:
+    value = market.get("event_anchor")
+    return value if isinstance(value, dict) else {}
+
+
+def _market_decision_latest(market: dict[str, Any]) -> dict[str, Any]:
+    value = market.get("decision_latest")
+    return value if isinstance(value, dict) else {}
+
+
+def _market_readiness(market: dict[str, Any]) -> dict[str, Any]:
+    value = market.get("readiness")
+    return value if isinstance(value, dict) else {}
+
+
+def _market_price_change_since_anchor(decision_latest: dict[str, Any], event_anchor: dict[str, Any]) -> float | None:
+    latest_usd = _optional_float(decision_latest.get("price_usd"))
+    anchor_usd = _optional_float(event_anchor.get("price_usd"))
+    if latest_usd is not None and anchor_usd is not None and anchor_usd != 0:
+        return latest_usd / anchor_usd - 1.0
+    if decision_latest.get("quote_symbol") and decision_latest.get("quote_symbol") == event_anchor.get("quote_symbol"):
+        latest_quote = _optional_float(decision_latest.get("price_quote"))
+        anchor_quote = _optional_float(event_anchor.get("price_quote"))
+        if latest_quote is not None and anchor_quote is not None and anchor_quote != 0:
+            return latest_quote / anchor_quote - 1.0
+    return None
+
+
 def _subject(*, target: dict[str, Any], market: dict[str, Any]) -> dict[str, Any]:
+    event_anchor = _market_event_anchor(market)
+    decision_latest = _market_decision_latest(market)
     return {
         "target_type": _optional_str(target.get("target_type")),
         "target_id": _optional_str(target.get("target_id")),
@@ -634,7 +675,9 @@ def _subject(*, target: dict[str, Any], market: dict[str, Any]) -> dict[str, Any
         "target_market_type": _target_market_type(target),
         "chain": _optional_str(target.get("chain") or target.get("asset_chain_id")),
         "address": _optional_str(target.get("address") or target.get("asset_address")),
-        "pricefeed_id": _optional_str(target.get("pricefeed_id") or market.get("pricefeed_id")),
+        "pricefeed_id": _optional_str(
+            target.get("pricefeed_id") or decision_latest.get("pricefeed_id") or event_anchor.get("pricefeed_id")
+        ),
     }
 
 
@@ -643,19 +686,19 @@ def _identity_health(subject: dict[str, Any]) -> str:
 
 
 def _market_health(*, subject: dict[str, Any], market: dict[str, Any]) -> str:
-    status = str(market.get("market_status") or market.get("market_observation_status") or "").lower()
-    if status in {"", "missing", "missing_market", "none", "null"}:
+    readiness = _market_readiness(market)
+    anchor_status = str(readiness.get("anchor_status") or "").lower()
+    latest_status = str(readiness.get("latest_status") or "").lower()
+    if anchor_status != "ready":
         return "missing"
-    if status not in {"fresh", "ready", "anchored"}:
+    if latest_status not in {"live", "fresh"}:
         return "partial"
     if subject["target_market_type"] != "dex":
         return "ready"
-    floor_health = [_optional_float(market.get(key)) is not None for key in _DEX_FLOOR_REASONS]
-    if status == "anchored" and not any(floor_health):
-        return "partial"
-    if all(floor_health):
+    dex_floor_status = str(readiness.get("dex_floor_status") or "").lower()
+    if dex_floor_status == "ready":
         return "ready"
-    if any(floor_health):
+    if dex_floor_status in {"missing_fields", "below_floor"}:
         return "partial"
     return "missing"
 

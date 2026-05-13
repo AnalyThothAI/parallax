@@ -21,6 +21,10 @@ TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS = frozenset(
     }
 )
 TOKEN_FACTOR_SNAPSHOT_PROVENANCE_KEYS = frozenset({"source_event_ids", "computed_at_ms"})
+TOKEN_FACTOR_SNAPSHOT_MARKET_KEYS = frozenset({"event_anchor", "decision_latest", "readiness"})
+TOKEN_FACTOR_SNAPSHOT_MARKET_READINESS_KEYS = frozenset(
+    {"anchor_status", "latest_status", "dex_floor_status", "missing_fields", "stale_fields"}
+)
 TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
     {
         "raw_score",
@@ -52,6 +56,25 @@ def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snaps
 
     for key in ("subject", "market", "gates", "data_health", "normalization", "composite", "provenance"):
         _required_dict(value.get(key), field_name=f"{field_name}.{key}")
+
+    market = _required_dict(value.get("market"), field_name=f"{field_name}.market")
+    _require_exact_keys(
+        market,
+        allowed=TOKEN_FACTOR_SNAPSHOT_MARKET_KEYS,
+        field_name=f"{field_name}.market",
+    )
+    for key in ("event_anchor", "decision_latest"):
+        if market.get(key) is not None and not isinstance(market.get(key), dict):
+            raise ValueError(f"{field_name}.market.{key} must be an object or null")
+    readiness = _required_dict(market.get("readiness"), field_name=f"{field_name}.market.readiness")
+    _require_exact_keys(
+        readiness,
+        allowed=TOKEN_FACTOR_SNAPSHOT_MARKET_READINESS_KEYS,
+        field_name=f"{field_name}.market.readiness",
+    )
+    for key in ("missing_fields", "stale_fields"):
+        if not isinstance(readiness.get(key), list):
+            raise ValueError(f"{field_name}.market.readiness.{key} must be a list")
 
     provenance = _required_dict(value.get("provenance"), field_name=f"{field_name}.provenance")
     _require_exact_keys(

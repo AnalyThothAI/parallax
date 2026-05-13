@@ -1,4 +1,23 @@
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
+from gmgn_twitter_intel.integrations.gmgn.direct_ws import DirectGmgnWebSocketClient
+
+
+def test_direct_gmgn_ws_exposes_connection_state_payload():
+    client = DirectGmgnWebSocketClient(
+        app_version="1.0.0",
+        channels=["twitter_monitor_basic"],
+        chains=["solana"],
+        on_frame=lambda frame: None,
+    )
+
+    initial = client.connection_state_payload()
+    client._set_connection_state("subscribed")
+    changed = client.connection_state_payload()
+
+    assert initial["state"] == "disconnected"
+    assert changed["provider"] == "gmgn_direct_ws"
+    assert changed["state"] == "subscribed"
+    assert isinstance(changed["last_state_change_at_ms"], int)
 
 
 def test_parse_gmgn_token_payload_normalizes_identity_snapshot():

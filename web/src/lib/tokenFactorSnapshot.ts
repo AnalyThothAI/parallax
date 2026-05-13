@@ -20,6 +20,14 @@ const ALPHA_FAMILIES: TokenFactorFamilyKey[] = [
 ];
 const FAMILY_KEYS = new Set(["raw_score", "score", "weight", "data_health", "facts", "factors"]);
 const PROVENANCE_KEYS = new Set(["source_event_ids", "computed_at_ms"]);
+const MARKET_KEYS = new Set(["event_anchor", "decision_latest", "readiness"]);
+const MARKET_READINESS_KEYS = new Set([
+  "anchor_status",
+  "latest_status",
+  "dex_floor_status",
+  "missing_fields",
+  "stale_fields",
+]);
 const LEGACY_GATE_KEY = ["hard", "gates"].join("_");
 
 export function requireTokenFactorSnapshot(
@@ -58,6 +66,23 @@ export function requireTokenFactorSnapshot(
   ] as const) {
     if (!isRecord(value[key])) {
       throw new Error(`token_factor_snapshot_contract:${fieldName}.${key}`);
+    }
+  }
+
+  const market = value.market as Record<string, unknown>;
+  requireExactKeys(market, MARKET_KEYS, `${fieldName}.market`);
+  for (const key of ["event_anchor", "decision_latest"] as const) {
+    if (market[key] !== null && !isRecord(market[key])) {
+      throw new Error(`token_factor_snapshot_contract:${fieldName}.market.${key}`);
+    }
+  }
+  if (!isRecord(market.readiness)) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.market.readiness`);
+  }
+  requireExactKeys(market.readiness, MARKET_READINESS_KEYS, `${fieldName}.market.readiness`);
+  for (const key of ["missing_fields", "stale_fields"] as const) {
+    if (!Array.isArray(market.readiness[key])) {
+      throw new Error(`token_factor_snapshot_contract:${fieldName}.market.readiness.${key}`);
     }
   }
 

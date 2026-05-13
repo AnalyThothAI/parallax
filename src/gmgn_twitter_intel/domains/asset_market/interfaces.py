@@ -22,6 +22,15 @@ from .repositories.identity_evidence_repository import IdentityEvidenceRepositor
 from .repositories.market_repository import MarketRepository
 from .repositories.price_observation_repository import PriceObservationRepository
 from .repositories.registry_repository import RegistryRepository
+from .types import (
+    MarketContext,
+    MarketObservation,
+    MarketReadiness,
+    MarketTargetRef,
+    market_context_to_dict,
+    market_observation_from_row,
+    market_observation_to_dict,
+)
 
 __all__ = [
     "CONFIDENCE_MANUAL",
@@ -40,8 +49,15 @@ __all__ = [
     "AssetRepository",
     "DiscoveryRepository",
     "IdentityEvidenceRepository",
+    "MarketContext",
+    "MarketObservation",
+    "MarketReadiness",
     "MarketRepository",
+    "MarketTargetRef",
     "PriceObservationRepository",
     "RegistryRepository",
+    "market_context_to_dict",
+    "market_observation_from_row",
+    "market_observation_to_dict",
     "select_current_identity",
 ]
