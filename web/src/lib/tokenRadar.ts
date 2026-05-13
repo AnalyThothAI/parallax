@@ -411,6 +411,7 @@ export function tokenRadarRowToTokenItem(
       reasons: watched ? ["watched_source_present"] : [],
       risks: watched ? [] : ["no_watched_confirmation"],
     },
+    profile: row.profile ?? null,
     factor_data_health: dataHealth,
     factor_gates: gates,
     factor_normalization: normalization,

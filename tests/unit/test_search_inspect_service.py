@@ -18,6 +18,7 @@ def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
         ),
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("ev_1", phase_text="$BTC first social wave")]),
+        profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
     )
 
     result = service.inspect("$BTC", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -27,6 +28,7 @@ def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
     assert result["token_result"]["market_overlay"]["price_series_type"] == "anchor_line"
+    assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert result["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
 
 
@@ -40,6 +42,7 @@ def test_search_inspect_returns_topic_result_for_keyword_query():
         ),
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
+        profiles=FakeProfiles(),
     )
 
     result = service.inspect("挖矿", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -74,6 +77,7 @@ def test_search_inspect_returns_ambiguous_result_without_selecting_target():
         ),
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
+        profiles=FakeProfiles(),
     )
 
     result = service.inspect("$DOG", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -89,6 +93,7 @@ def test_search_inspect_returns_empty_result_for_empty_query():
         search_query=FakeSearchQuery(),
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
+        profiles=FakeProfiles(),
     )
 
     result = service.inspect("   ", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -143,6 +148,17 @@ class FakeTokenRadar:
 
     def latest_rows(self, *, window, scope, limit, projection_version):
         return []
+
+
+class FakeProfiles:
+    def __init__(self, *, profile=None):
+        self.profile = profile
+
+    def profile_for_target(self, *, target_type, target_id):
+        return self.profile
+
+    def profiles_for_targets(self, targets):
+        return {}
 
 
 def hit(

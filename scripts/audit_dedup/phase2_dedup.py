@@ -24,9 +24,7 @@ class ArbiterResultProto(Protocol):
 
 
 class ArbiterProto(Protocol):
-    def arbitrate(
-        self, *, chain: str, symbol: str, candidates: tuple[AssetCandidate, ...]
-    ) -> ArbiterResultProto: ...
+    def arbitrate(self, *, chain: str, symbol: str, candidates: tuple[AssetCandidate, ...]) -> ArbiterResultProto: ...
 
 
 class _NullArbiter:

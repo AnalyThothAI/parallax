@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_servic
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
+from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
 from gmgn_twitter_intel.domains.token_intel.queries.search_events_query import SearchEventsQuery
@@ -169,10 +170,12 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
+            profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
             data = SearchInspectService(
                 search_query=SearchEventsQuery(repos.conn),
                 token_radar=repos.token_radar,
                 targets=repos.token_targets,
+                profiles=profiles,
             ).inspect(
                 q,
                 window=parsed_window,
@@ -194,8 +197,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
+            profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
             data = AssetFlowService(
                 token_radar=repos.token_radar,
+                profiles=profiles,
                 live_market_gateway=runtime.live_price_gateway,
             ).asset_flow(
                 window=parsed_window,

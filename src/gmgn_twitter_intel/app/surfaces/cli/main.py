@@ -16,13 +16,16 @@ from gmgn_twitter_intel.app.runtime.providers_wiring import (
     OkxCexMarketProvider,
     OkxDexDiscoveryProvider,
     okx_chain_indexes_to_chain_ids,
+    wire_providers,
 )
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import run_resolution_refresh_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
+from gmgn_twitter_intel.domains.asset_market.services.asset_profile_refresh import refresh_asset_profiles_once
 from gmgn_twitter_intel.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
@@ -227,6 +230,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run_resolution_refresh.add_argument("--limit", type=int, default=50)
     run_resolution_refresh.add_argument("--reprocess-limit", type=int, default=500)
+    refresh_asset_profiles = ops_subcommands.add_parser(
+        "refresh-asset-profiles",
+        help="refresh due GMGN token profile facts",
+    )
+    refresh_asset_profiles.add_argument("--limit", type=int, default=50)
     reprocess_token_intents = ops_subcommands.add_parser(
         "reprocess-token-intents",
         help="re-resolve recent unresolved token intents and rebuild token radar",
@@ -459,6 +467,21 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             _emit({"ok": True, "data": data}, stdout)
             return 0
 
+        if command == "ops" and args.ops_command == "refresh-asset-profiles":
+            providers = wire_providers(settings, start_collector=True)
+            dex_profile_market = providers.asset_market.dex_profile_market
+            try:
+                data = refresh_asset_profiles_once(
+                    repos=repos,
+                    dex_profile_market=dex_profile_market,
+                    now_ms=_now_ms(),
+                    limit=args.limit,
+                )
+            finally:
+                _close_asset_market_providers(providers.asset_market)
+            _emit({"ok": True, "data": data}, stdout)
+            return 0
+
         evidence = repos.evidence
         signals = repos.signals
         assets = repos.assets
@@ -505,7 +528,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
+            data = AssetFlowService(
+                token_radar=repos.token_radar,
+                profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+            ).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,
@@ -902,6 +928,26 @@ def _run_sync_gmgn_directory(
         "last_handles": handles[-5:],
         "observed_at_ms": now_ms,
     }
+
+
+def _close_asset_market_providers(asset_market: object) -> None:
+    seen: set[int] = set()
+    for name in (
+        "sync_cex_market",
+        "message_cex_market",
+        "dex_discovery_market",
+        "dex_quote_market",
+        "dex_candle_market",
+        "dex_profile_market",
+        "stream_dex_market",
+    ):
+        provider = getattr(asset_market, name, None)
+        if provider is None or id(provider) in seen:
+            continue
+        seen.add(id(provider))
+        close = getattr(provider, "close", None)
+        if close:
+            close()
 
 
 @contextmanager

@@ -15,6 +15,7 @@ from .identity_evidence_policy import (
     EVIDENCE_TWEET_CONTRACT_MENTION,
     select_current_identity,
 )
+from .repositories.asset_profile_repository import AssetProfileRepository
 from .repositories.asset_repository import AssetRepository
 from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
@@ -35,6 +36,7 @@ __all__ = [
     "EVIDENCE_OKX_DEX_EXACT_ADDRESS",
     "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
     "EVIDENCE_TWEET_CONTRACT_MENTION",
+    "AssetProfileRepository",
     "AssetRepository",
     "DiscoveryRepository",
     "IdentityEvidenceRepository",

@@ -31,17 +31,31 @@ class _StubCg:
 
 def _c(asset_id: str, address: str, *, holders=10, liq=1.0) -> AssetCandidate:
     return AssetCandidate(
-        asset_id=asset_id, chain="solana", address=address,
-        first_seen_at_ms=0, holders=holders, liquidity_usd=liq, market_cap_usd=None,
-        volume_24h_usd=None, observed_at_ms=None,
+        asset_id=asset_id,
+        chain="solana",
+        address=address,
+        first_seen_at_ms=0,
+        holders=holders,
+        liquidity_usd=liq,
+        market_cap_usd=None,
+        volume_24h_usd=None,
+        observed_at_ms=None,
     )
 
 
 def _okx(address: str) -> OkxDexTokenCandidate:
     return OkxDexTokenCandidate(
-        chain_index="501", chain="solana", address=address, symbol="TROLL", name=None,
-        price_usd=None, market_cap_usd=None, liquidity_usd=None, holders=None,
-        community_recognized=None, raw={},
+        chain_index="501",
+        chain="solana",
+        address=address,
+        symbol="TROLL",
+        name=None,
+        price_usd=None,
+        market_cap_usd=None,
+        liquidity_usd=None,
+        holders=None,
+        community_recognized=None,
+        raw={},
     )
 
 

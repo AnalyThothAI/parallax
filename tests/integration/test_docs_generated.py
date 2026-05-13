@@ -11,7 +11,9 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GENERATED = REPO_ROOT / "docs" / "generated"
-EXPECTED = {"README.md", "db-schema.md", "cli-help.md", "score-versions.md", "ws-protocol.md"}
+AUTO_GENERATED = {"db-schema.md", "cli-help.md", "score-versions.md", "ws-protocol.md"}
+GENERATED_REPORTS = {"duplicate-token-audit.md", "duplicate-token-audit-applied.md"}
+EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS
 HEADER_MARKER = "AUTO-GENERATED"
 
 
@@ -25,7 +27,7 @@ def test_expected_generated_files() -> None:
 
 
 def test_generated_files_have_header_marker() -> None:
-    for name in EXPECTED - {"README.md"}:
+    for name in AUTO_GENERATED:
         path = GENERATED / name
         first_line = path.read_text(encoding="utf-8").splitlines()[0]
         assert HEADER_MARKER in first_line, f"{name} missing AUTO-GENERATED header"

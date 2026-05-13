@@ -6,9 +6,15 @@ from scripts.audit_dedup.winner import WinnerOutcome, pick_in_db_winner
 
 def _c(asset_id: str, *, first_seen: int = 0, holders=None, liq=None, mcap=None) -> AssetCandidate:
     return AssetCandidate(
-        asset_id=asset_id, chain="solana", address=asset_id.rsplit(":", maxsplit=1)[-1],
-        first_seen_at_ms=first_seen, holders=holders, liquidity_usd=liq, market_cap_usd=mcap,
-        volume_24h_usd=None, observed_at_ms=None,
+        asset_id=asset_id,
+        chain="solana",
+        address=asset_id.rsplit(":", maxsplit=1)[-1],
+        first_seen_at_ms=first_seen,
+        holders=holders,
+        liquidity_usd=liq,
+        market_cap_usd=mcap,
+        volume_24h_usd=None,
+        observed_at_ms=None,
     )
 
 

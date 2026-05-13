@@ -125,10 +125,7 @@ def run_phase1(conn, *, apply: bool) -> Phase1Result:
     eth_rows = _eth_rows(conn)
     if not apply:
         # Compute counts only; nothing mutated
-        existing_count = sum(
-            1 for _, _, addr in eth_rows
-            if _ethereum_asset_for(conn, addr.lower()) is not None
-        )
+        existing_count = sum(1 for _, _, addr in eth_rows if _ethereum_asset_for(conn, addr.lower()) is not None)
         return Phase1Result(
             venue_rows_normalized=len(eth_rows),
             assets_merged=existing_count,

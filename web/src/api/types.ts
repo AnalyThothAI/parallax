@@ -254,10 +254,37 @@ export type SearchAgentBrief = {
   };
 };
 
+export type TokenProfileBlock = {
+  status: "ready" | "pending" | "missing" | "unsupported" | "error" | string;
+  provider?: string | null;
+  observed_at_ms?: number | null;
+  identity?: {
+    symbol?: string | null;
+    name?: string | null;
+    logo_url?: string | null;
+    banner_url?: string | null;
+    description?: string | null;
+  } | null;
+  links?: {
+    website_url?: string | null;
+    twitter_url?: string | null;
+    twitter_username?: string | null;
+    telegram_url?: string | null;
+    gmgn_url?: string | null;
+    geckoterminal_url?: string | null;
+  } | null;
+  source?: {
+    provider?: string | null;
+    raw_available?: boolean | null;
+    last_error?: string | null;
+  } | null;
+};
+
 export type SearchTokenResult = {
   target: SearchTargetCandidate;
   timeline: TokenSocialTimelineData;
   posts: TokenPostsData;
+  profile?: TokenProfileBlock | null;
   radar_item?: Record<string, unknown> | null;
   market_overlay: Record<string, unknown> & TokenTimelineMarketOverlay & {
     price_series_type: "anchor_line" | "ohlc" | string;
@@ -436,6 +463,7 @@ export type AssetFlowRow = {
     candidates?: unknown[];
   };
   factor_snapshot: TokenFactorSnapshot;
+  profile?: TokenProfileBlock | null;
   data_health?: TokenRadarDataHealth;
 };
 
@@ -733,6 +761,7 @@ export type TokenFlowItem = {
   timing: TimingBlock;
   opportunity: OpportunityBlock;
   watch: WatchBlock;
+  profile?: TokenProfileBlock | null;
   factor_data_health?: TokenFactorSnapshot["data_health"];
   factor_gates?: TokenFactorSnapshot["gates"];
   factor_normalization?: TokenFactorSnapshot["normalization"];

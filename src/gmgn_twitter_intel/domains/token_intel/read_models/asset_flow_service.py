@@ -13,8 +13,9 @@ WINDOW_MS = {
 
 
 class AssetFlowService:
-    def __init__(self, *, token_radar: Any, live_market_gateway: Any | None = None) -> None:
+    def __init__(self, *, token_radar: Any, profiles: Any, live_market_gateway: Any | None = None) -> None:
         self.token_radar = token_radar
+        self.profiles = profiles
         self.live_market_gateway = live_market_gateway
 
     def asset_flow(
@@ -44,6 +45,7 @@ class AssetFlowService:
         public_rows = [
             _overlay_live_market(_public_row(row), gateway=self.live_market_gateway, now_ms=now_ms) for row in rows
         ]
+        _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
         targetful_rows = [row for row in public_rows if _mapping(row.get("target")).get("target_id")]
         targets = [row for row in targetful_rows if row.get("_lane") == "resolved"]
@@ -108,6 +110,17 @@ def _overlay_live_market(row: dict[str, Any], *, gateway: Any | None, now_ms: in
             "target_id": snapshot.get("target_id") or target_id,
         },
     }
+
+
+def _hydrate_profiles(rows: list[dict[str, Any]], *, profiles: Any) -> None:
+    profile_blocks = profiles.profiles_for_targets([_mapping(row.get("target")) for row in rows])
+    for row in rows:
+        target = _mapping(row.get("target"))
+        target_type = str(target.get("target_type") or "")
+        target_id = str(target.get("target_id") or "")
+        key = (target_type, target_id)
+        if key in profile_blocks:
+            row["profile"] = profile_blocks[key]
 
 
 def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:

@@ -6,6 +6,7 @@ import unittest
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import yaml
@@ -135,6 +136,7 @@ class CliTests(unittest.TestCase):
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-okx-cex-universe", "--inst-type", "SPOT"],
             ["ops", "run-resolution-refresh", "--limit", "5"],
+            ["ops", "refresh-asset-profiles", "--limit", "5"],
             ["ops", "reprocess-token-intents", "--window", "24h", "--limit", "5", "--lookup-key", "symbol:SLOP"],
             ["ops", "rebuild-token-intents", "--window", "5m", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
@@ -171,19 +173,21 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[6].ops_command, "sync-okx-cex-universe")
         self.assertEqual(parsed[7].ops_command, "run-resolution-refresh")
         self.assertEqual(parsed[7].limit, 5)
-        self.assertEqual(parsed[8].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[8].window, "24h")
-        self.assertEqual(parsed[8].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[9].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[9].window, "5m")
-        self.assertEqual(parsed[10].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[11].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[12].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[13].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[13].limit, 200)
-        self.assertEqual(parsed[14].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[14].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[15].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[8].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[8].limit, 5)
+        self.assertEqual(parsed[9].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[9].window, "24h")
+        self.assertEqual(parsed[9].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[10].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[10].window, "5m")
+        self.assertEqual(parsed[11].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[12].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[13].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[14].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[14].limit, 200)
+        self.assertEqual(parsed[15].ops_command, "settle-token-factors")
+        self.assertEqual(parsed[15].now_ms, 1_700_000_000_000)
+        self.assertEqual(parsed[16].ops_command, "sync-us-equity-symbols")
 
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -708,6 +712,55 @@ def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, t
     assert code == 0
     assert captured["generated_at_ms"] == 0
     assert json.loads(stdout.getvalue())["data"]["generated_at_ms"] == 0
+
+
+def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(monkeypatch, tmp_path):
+    import gmgn_twitter_intel.app.surfaces.cli.main as cli_module
+
+    captured = {}
+
+    class FakeRepos:
+        pass
+
+    @contextmanager
+    def fake_repositories(_settings):
+        repos = FakeRepos()
+        captured["repos"] = repos
+        yield repos
+
+    def fake_wire_providers(settings, *, start_collector):
+        captured["start_collector"] = start_collector
+        return SimpleNamespace(asset_market=SimpleNamespace(dex_profile_market=None))
+
+    write_runtime_config(tmp_path, db_path=tmp_path / ".gmgn-twitter-intel" / "postgres_test_db")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(cli_module, "_repositories", fake_repositories)
+    monkeypatch.setattr(cli_module, "wire_providers", fake_wire_providers, raising=False)
+    monkeypatch.setattr(cli_module, "_now_ms", lambda: 1_700_000_000_000)
+    stdout = io.StringIO()
+
+    code = cli_module.main(
+        ["ops", "refresh-asset-profiles", "--limit", "3"],
+        stdout=stdout,
+    )
+
+    payload = json.loads(stdout.getvalue())
+    assert code == 0
+    assert captured["repos"].__class__ is FakeRepos
+    assert captured["start_collector"] is True
+    assert payload == {
+        "ok": True,
+        "data": {
+            "provider": "gmgn_dex_profile",
+            "selected": 0,
+            "ready": 0,
+            "missing": 0,
+            "error": 0,
+            "skipped": 1,
+            "started_at_ms": 1_700_000_000_000,
+            "finished_at_ms": 1_700_000_000_000,
+        },
+    }
 
 
 def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch, tmp_path):

@@ -36,8 +36,9 @@ def _insert_venue(cur, asset_id: str, venue_id: str, chain: str, address: str) -
     )
 
 
-def _insert_snapshot(cur, asset_id: str, venue_id: str, observed_ms: int, *, holders: int | None,
-                     liq: float | None, mcap: float | None) -> None:
+def _insert_snapshot(
+    cur, asset_id: str, venue_id: str, observed_ms: int, *, holders: int | None, liq: float | None, mcap: float | None
+) -> None:
     cur.execute(
         """
         INSERT INTO asset_market_snapshots (snapshot_id, asset_id, venue_id, provider, observed_at_ms,

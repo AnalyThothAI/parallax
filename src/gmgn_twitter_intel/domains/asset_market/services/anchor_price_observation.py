@@ -28,7 +28,7 @@ def observe_anchor_prices(
     limit: int = 100,
 ) -> dict[str, Any]:
     rows = _select_pending_rows(repos.conn, now_ms=now_ms, limit=limit)
-    result = {
+    result: dict[str, Any] = {
         "rows_selected": len(rows),
         "cex_ticker_requests": 0,
         "dex_price_requests": 0,

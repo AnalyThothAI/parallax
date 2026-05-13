@@ -47,9 +47,7 @@ def test_search_returns_platform_hit_for_known_chain() -> None:
 
 def test_search_returns_empty_when_chain_missing() -> None:
     payload = {
-        "coins": [
-            {"id": "trollcoin", "symbol": "troll", "name": "Troll", "platforms": {"polygon-pos": "0xabc"}}
-        ]
+        "coins": [{"id": "trollcoin", "symbol": "troll", "name": "Troll", "platforms": {"polygon-pos": "0xabc"}}]
     }
     client = CoingeckoSearchClient(transport=_mock_transport(payload))
 

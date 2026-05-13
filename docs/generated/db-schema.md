@@ -144,6 +144,31 @@
 | `raw_observation_id` | `TEXT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
+## `asset_profiles`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `asset_id` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `symbol` | `TEXT` | True | `None` |
+| `name` | `TEXT` | True | `None` |
+| `logo_url` | `TEXT` | True | `None` |
+| `banner_url` | `TEXT` | True | `None` |
+| `website_url` | `TEXT` | True | `None` |
+| `twitter_username` | `TEXT` | True | `None` |
+| `twitter_url` | `TEXT` | True | `None` |
+| `telegram_url` | `TEXT` | True | `None` |
+| `gmgn_url` | `TEXT` | True | `None` |
+| `geckoterminal_url` | `TEXT` | True | `None` |
+| `description` | `TEXT` | True | `None` |
+| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
+| `observed_at_ms` | `BIGINT` | True | `None` |
+| `next_refresh_at_ms` | `BIGINT` | False | `None` |
+| `last_error` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `asset_signal_outcomes`
 
 | Column | Type | Nullable | Default |
