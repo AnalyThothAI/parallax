@@ -1,27 +1,24 @@
+import { CockpitLayout } from "@features/cockpit";
+import {
+  EvidenceDetailDrawer,
+  LivePage,
+  LiveRadar,
+  TokenDetailDrawer,
+  useLiveData,
+  useLiveRouteState,
+  useLiveSelection,
+  type EvidenceDetailDrawerProps,
+  type SelectedSignal,
+} from "@features/live";
+import { useNotificationsController } from "@features/notifications";
+import { SearchIntelPage } from "@features/search";
+import { PulseDetailPage, SignalLabInspector, SignalLabPage } from "@features/signal-lab";
+import { StocksRadarPage } from "@features/stocks";
+import { TokenTargetPage, useTokenDetailData } from "@features/token-target";
+import { buildWatchlistRows } from "@lib/watchlist";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
-
-import { CockpitLayout } from "../components/CockpitLayout";
-import {
-  EvidenceDetailDrawer,
-  type EvidenceDetailDrawerProps,
-} from "../components/EvidenceDetailDrawer";
-import { LivePage } from "../components/LivePage";
-import { LiveRadar } from "../components/LiveRadar";
-import { PulseDetailPage } from "../components/PulseDetailPage";
-import { SearchIntelPage } from "../components/SearchIntelPage";
-import { SignalLabInspector } from "../components/SignalLabInspector";
-import { SignalLabPage } from "../components/SignalLabPage";
-import { StocksRadarPage } from "../components/StocksRadarPage";
-import { TokenDetailDrawer } from "../components/TokenDetailDrawer";
-import { TokenTargetPage } from "../components/TokenTargetPage";
-import { useLiveRouteState } from "../features/live/state/liveRouteState";
-import { useLiveData } from "../features/live/useLiveData";
-import { useLiveSelection, type SelectedSignal } from "../features/live/useLiveSelection";
-import { useNotificationsController } from "../features/notifications/useNotificationsController";
-import { useTokenDetailData } from "../features/token-target/useTokenDetailData";
-import { buildWatchlistRows } from "../lib/watchlist";
 
 export function CockpitApp() {
   const queryClient = useQueryClient();

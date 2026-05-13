@@ -1,8 +1,8 @@
+import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type { RadarSortMode, ScopeKey, WindowKey } from "@lib/types";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { OBSERVATION_WINDOWS } from "../../../lib/observationWindows";
 
 const VALID_SCOPES = new Set<ScopeKey>(["all", "matched"]);
 const VALID_SORTS = new Set<RadarSortMode>([

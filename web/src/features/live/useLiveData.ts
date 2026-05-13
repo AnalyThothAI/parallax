@@ -1,5 +1,6 @@
 
 import { getApi, getBootstrap, setAuthToken } from "@lib/api/client";
+import { countDecisions, sortTokenItems, tokenRadarItems } from "@lib/tokenRadar";
 import type {
   LivePayload,
   LiveMarketUpdatePayload,
@@ -17,7 +18,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useIntelSocket } from "../../api/useIntelSocket";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
-import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/tokenRadar";
 
 import { useTokenRadarQuery } from "./api/useTokenRadarQuery";
 import { buildLiveSignalTapeItems } from "./liveTapeModel";

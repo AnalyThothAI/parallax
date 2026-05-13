@@ -1,1 +1,1 @@
-export { StocksRadarPage as StocksRoute } from "../components/StocksRadarPage";
+export { StocksRadarPage as StocksRoute } from "@features/stocks";

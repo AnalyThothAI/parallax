@@ -1,3 +1,4 @@
+import { tokenKey } from "@lib/format";
 import type {
   LivePayload,
   ScopeKey,
@@ -10,10 +11,9 @@ import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import type { MobileTask } from "../../components/MobileTaskNav";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
-import { tokenKey } from "../../lib/format";
-import { requiredMobileTaskForPathname } from "../cockpit/mobileRouteTask";
+import { requiredMobileTaskForPathname } from "../cockpit/model/mobileRouteTask";
+import type { MobileTask } from "../cockpit/model/mobileTask";
 import { useCockpitStore } from "../cockpit/state/cockpitStore";
 import { tokenSearchPath } from "../search/tokenSearchRoute";
 

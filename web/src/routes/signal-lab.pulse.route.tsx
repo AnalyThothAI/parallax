@@ -1,1 +1,1 @@
-export { PulseDetailPage as SignalLabPulseRoute } from "../components/PulseDetailPage";
+export { PulseDetailPage as SignalLabPulseRoute } from "@features/signal-lab";

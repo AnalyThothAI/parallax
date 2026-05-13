@@ -54,6 +54,22 @@ export default [
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/consistent-type-imports": "error",
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@features/*/api/*",
+                "@features/*/model/*",
+                "@features/*/state/*",
+                "@features/*/ui/*",
+              ],
+              message: "Import from the feature public index instead of deep feature layers.",
+            },
+          ],
+        },
+      ],
       // React
       "react/jsx-uses-react": "off",
       "react/react-in-jsx-scope": "off",

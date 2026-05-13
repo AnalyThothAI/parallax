@@ -1,1 +1,1 @@
-export { SignalLabPage as SignalLabRoute } from "../components/SignalLabPage";
+export { SignalLabPage as SignalLabRoute } from "@features/signal-lab";

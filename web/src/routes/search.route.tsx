@@ -1,1 +1,1 @@
-export { SearchIntelPage as SearchRoute } from "../components/SearchIntelPage";
+export { SearchIntelPage as SearchRoute } from "@features/search";

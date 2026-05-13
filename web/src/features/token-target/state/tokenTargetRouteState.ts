@@ -1,3 +1,4 @@
+import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type {
   ScopeKey,
   TokenDetailTab,
@@ -6,7 +7,6 @@ import type {
   WindowKey,
 } from "@lib/types";
 
-import { OBSERVATION_WINDOWS } from "../../../lib/observationWindows";
 
 const VALID_TABS = new Set<TokenDetailTab>(["timeline", "posts", "score", "lab", "accounts"]);
 const VALID_RANGES = new Set<TokenPostRange>(["current_window", "since_ignition", "all_history"]);

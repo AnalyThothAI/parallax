@@ -315,16 +315,16 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Create/modify: `web/src/features/*/index.ts`
 - Move/modify: component tests from `web/src/components/**` to matching feature folders
 
-- [ ] Move live UI components into `features/live/ui/`: `LivePage`, `LiveRadar`, `LiveSignalTape`, `TokenRadarRow`, `TokenRadarTable`, `TokenDetailDrawer`, `TokenTimeline`, `TokenPostsPanel`, `TokenReplayFocus`, score ledger components if they are live/token-radar specific.
-- [ ] Move search UI components into `features/search/ui/`: `SearchIntelPage`, `SearchAgentBrief`, `SearchTimelinePanel`, `SearchTwitterResults`.
-- [ ] Move signal-lab UI components into `features/signal-lab/ui/`: `SignalLabPage`, `SignalLabPulse`, `SignalLabWorkbench`, `SignalLabInspector`, `PulseDetailPage`.
-- [ ] Move stocks UI components into `features/stocks/ui/`: `StocksRadarPage`.
-- [ ] Move token-target UI components into `features/token-target/ui/`: `TokenTargetPage` and target-specific subpanels not shared with live.
-- [ ] Move notifications UI into `features/notifications/ui/`: `NotificationBell`, `NotificationDrawer`, `NotificationToastBridge`, `WatchlistNotificationDot` if still notification-specific.
-- [ ] Move reusable UI into `shared/ui/`: `DecisionTag`, generic `ScoreLedger` only if used across multiple features, `RemoteState`, `IconButton`, segmented controls.
-- [ ] Each feature exposes only intended public entries through `features/<feature>/index.ts`.
-- [ ] Enable `import/no-restricted-paths` full feature-zone rules and no cross-feature deep import rule.
-- [ ] Run:
+- [x] Move live UI components into `features/live/ui/`: `LivePage`, `LiveRadar`, `LiveSignalTape`, `TokenRadarRow`, `TokenRadarTable`, `TokenDetailDrawer`, `TokenTimeline`, `TokenPostsPanel`, `TokenReplayFocus`, score ledger components if they are live/token-radar specific.
+- [x] Move search UI components into `features/search/ui/`: `SearchIntelPage`, `SearchAgentBrief`, `SearchTimelinePanel`, `SearchTwitterResults`.
+- [x] Move signal-lab UI components into `features/signal-lab/ui/`: `SignalLabPage`, `SignalLabPulse`, `SignalLabWorkbench`, `SignalLabInspector`, `PulseDetailPage`.
+- [x] Move stocks UI components into `features/stocks/ui/`: `StocksRadarPage`.
+- [x] Move token-target UI components into `features/token-target/ui/`: `TokenTargetPage` and target-specific subpanels not shared with live.
+- [x] Move notifications UI into `features/notifications/ui/`: `NotificationBell`, `NotificationDrawer`, `NotificationToastBridge`, `WatchlistNotificationDot` if still notification-specific.
+- [x] Move reusable UI into `shared/ui/`: `DecisionTag`, generic `ScoreLedger` only if used across multiple features, `RemoteState`, `IconButton`, segmented controls.
+- [x] Each feature exposes only intended public entries through `features/<feature>/index.ts`.
+- [x] Enable `import/no-restricted-paths` full feature-zone rules and no cross-feature deep import rule.
+- [x] Run:
   ```bash
   cd web
   test ! -d src/components
@@ -334,7 +334,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm test -- --run
   ```
   Expected: `src/components` does not exist; no cross-feature deep imports; lint/typecheck/tests pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "refactor: assign frontend components to feature owners"
@@ -612,6 +612,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 2 completed. Added frontend aliases, env/client/type facade scaffold, app root/routes/error boundaries, staged lint rules, and behavior-preserving compatibility re-exports; passed `npm run typecheck`, `npm run lint`, `npm test -- --run`, and `npm run build`.
 - 2026-05-13: Task 3 completed. Moved server data hooks behind feature API folders, centralized query keys and market cache patching, removed old generated/handwritten API client/type files, and passed the boundary grep checks, `npm run typecheck`, `npm test -- --run`, and `npm run lint`.
 - 2026-05-13: Task 4 completed. Moved shareable live/search/signal-lab/stocks/token-target filters into URL route state modules, split remaining local interaction state into feature/cockpit stores, removed `useTraderStore`, and passed the no-old-store grep, `npm run typecheck`, targeted route-state tests, full Vitest, and `npm run lint`.
+- 2026-05-13: Task 5 completed. Removed `web/src/components`, moved UI/tests to feature owners or `shared/ui`, added feature index barrels for public imports, and passed component-removal/deep-import grep checks, `npm run lint`, `npm run typecheck`, and full Vitest.
 
 ## Decision Log
 
@@ -626,6 +627,8 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Add `.gitkeep` placeholders for target feature layer directories so Task 3's grep validation commands are executable before Tasks 4-5 populate those folders.
 - 2026-05-13: Keep the Task 4 route-state split behavior-preserving by leaving `CockpitApp` as the temporary route host until Task 6; only shareable filters moved to URL, while non-shareable detail/mobile state moved to small feature stores.
 - 2026-05-13: Fix the App integration "token tape click" test by waiting for the token-radar row before clicking the tape row, because Task 4's URL-state rerender exposed that the old test could click the replay-only POST row before token radar data resolved.
+- 2026-05-13: Put cross-feature reusable token UI (`DecisionTag`, `ScoreLedger`, `TokenPostsPanel`, `TokenProfileCard`, drawer primitives, and shared radar controls) under `shared/ui` to avoid cross-feature UI imports while preserving current behavior.
+- 2026-05-13: Keep `CockpitLayout` temporarily under `features/cockpit/ui` for Task 5 so component ownership is explicit; Task 6 remains responsible for splitting and deleting that layout.
 
 ## Verification
 

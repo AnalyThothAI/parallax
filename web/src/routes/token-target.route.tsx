@@ -1,1 +1,1 @@
-export { TokenTargetPage as TokenTargetRoute } from "../components/TokenTargetPage";
+export { TokenTargetPage as TokenTargetRoute } from "@features/token-target";

@@ -134,3 +134,21 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm test -- --run src/features/live/state src/features/search src/features/signal-lab src/features/token-target`: passed, `5 passed`, `20 passed`
 - `cd web && npm test -- --run`: passed, `27 passed`, `145 passed`
 - Extra guard, `cd web && npm run lint`: passed
+
+## Task 5 Verification
+
+### Component Ownership Changes
+
+- Deleted `web/src/components/` by moving all components and component tests into feature-owned `ui/` folders or `web/src/shared/ui/`.
+- Added public feature indexes for cockpit, live, search, signal-lab, stocks, token-target, and notifications.
+- Moved shared UI primitives and cross-feature token UI to `shared/ui`: drawer primitives, `DecisionTag`, `RadarControls`, `ScoreLedger`, `TokenPostsPanel`, and `TokenProfileCard`.
+- Moved cockpit mobile task type/routing helpers into `features/cockpit/model`.
+- Added an ESLint `no-restricted-imports` guard for `@features/*/{api,model,state,ui}/*` deep imports; the plan grep remains the guard for relative deep feature imports.
+
+### Commands
+
+- `cd web && test ! -d src/components`: passed
+- `cd web && rg -n 'from "@features/[^"]+/(api|model|state|ui)/|from "[.][./].*/features/[^"]+/(api|model|state|ui)/' src`: no matches; `rg` exited `1` as expected
+- `cd web && npm run lint`: passed
+- `cd web && npm run typecheck`: passed
+- `cd web && npm test -- --run`: passed, `27 passed`, `145 passed`

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import type { MobileTask } from "../../../components/MobileTaskNav";
+import type { MobileTask } from "../model/mobileTask";
 
 type CockpitState = {
   mobileTask: MobileTask;

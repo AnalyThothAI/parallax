@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { MobileTask } from "../../components/MobileTaskNav";
+import type { MobileTask } from "../cockpit/model/mobileTask";
 
 import {
   getNotifications,
