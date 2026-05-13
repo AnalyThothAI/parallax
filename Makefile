@@ -61,7 +61,7 @@ coverage: ## run coverage report (gates fail_under from pyproject.toml [tool.cov
 contract-check: ## verify OpenAPI types are in sync (gate 2)
 	@uv run python -m pytest tests/contract -m contract
 
-regen-contract: ## regenerate openapi.json + web/src/api/openapi.ts
+regen-contract: ## regenerate openapi.json + web/src/lib/types/openapi.ts
 	@uv run python scripts/regen_openapi.py
 	@cd web && npm run generate:types && cd ..
 

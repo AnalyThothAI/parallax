@@ -1,6 +1,5 @@
+import type { LivePayload } from "@lib/types";
 import { describe, expect, it } from "vitest";
-
-import type { LivePayload } from "../api/types";
 
 import { buildWatchlistRows } from "./watchlist";
 

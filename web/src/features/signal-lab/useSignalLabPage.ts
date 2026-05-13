@@ -1,27 +1,27 @@
+import { getApi, getAuthToken } from "@lib/api/client";
+import type { LivePayload, RecentData, SignalPulseItem } from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
+import { signalLabPulsePath } from "@shared/routing/paths";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { getApi } from "../../api/client";
-import type { LivePayload, RecentData, SignalPulseItem } from "../../api/types";
-import { mergeSignalPulsePages, useSignalPulseList } from "../../api/useSignalPulseQueries";
-import { useTraderStore } from "../../store/useTraderStore";
-
+import { mergeSignalPulsePages, useSignalPulseList } from "./api/useSignalPulseQueries";
 import {
   parseSignalLabRouteState,
   serializeSignalLabRouteState,
   signalLabRouteSearch,
   signalLabRouteStateWith,
   type SignalLabRouteState,
-} from "./signalLabRouteState";
+} from "./state/signalLabRouteState";
 
 type UseSignalLabPageArgs = {
   onSelectAccountEvent?: (item: LivePayload) => void;
 };
 
 export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs = {}) {
-  const token = useTraderStore((state) => state.token);
-  const [searchParams, setSearchParams] = useSearchParams();
+  const token = getAuthToken() ?? "";
+  const [searchParams, replaceUrlSearch] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -38,7 +38,7 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
   });
 
   const signalLabAccountEventsQuery = useQuery({
-    queryKey: ["signal-lab-account-events", token, routeState.scope, activeSignalLabHandle],
+    queryKey: queryKeys.signalLabAccountEvents(token, routeState.scope, activeSignalLabHandle),
     queryFn: () =>
       getApi<RecentData>("/api/recent", {
         token,
@@ -61,13 +61,11 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
 
   const updateRouteState = (patch: Partial<SignalLabRouteState>, replace = true) => {
     const nextState = signalLabRouteStateWith(routeState, patch);
-    setSearchParams(serializeSignalLabRouteState(nextState), { replace });
+    replaceUrlSearch(serializeSignalLabRouteState(nextState), { replace });
   };
 
   const selectPulse = (item: SignalPulseItem) => {
-    navigate(
-      `/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}${signalLabRouteSearch(routeState)}`,
-    );
+    navigate(signalLabPulsePath(item.candidate_id, signalLabRouteSearch(routeState)));
   };
 
   const clearFilters = () => {
@@ -93,7 +91,7 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
     selectAccountEvent,
     selectPulse,
     setHandleFilter: (handle: string) => updateRouteState({ handle }),
-    setSearchFilter: (q: string) => updateRouteState({ q }),
+    updateSearchFilter: (q: string) => updateRouteState({ q }),
     setStatusFilter: (status: SignalLabRouteState["status"]) => updateRouteState({ status }, false),
   };
 }

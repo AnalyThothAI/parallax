@@ -1,0 +1,23 @@
+:root {
+  color-scheme: dark;
+  --bg: #070909;
+  --panel: #0d1111;
+  --panel-2: #101515;
+  --panel-3: #141a1a;
+  --line: #252b2b;
+  --line-soft: #1a2020;
+  --line-strong: #333b3a;
+  --text: #d9dfdc;
+  --ink: #f5f1e8;
+  --muted: #777f7b;
+  --faint: #4f5753;
+  --accent: #f2a51f;
+  --accent-soft: rgba(242, 165, 31, 0.12);
+  --accent-line: rgba(242, 165, 31, 0.46);
+  --green: #55d887;
+  --red: #ff5f66;
+  --blue: #63c7dd;
+  --danger-soft: rgba(255, 95, 102, 0.12);
+  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --sans: Inter, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+}

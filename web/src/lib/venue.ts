@@ -1,4 +1,4 @@
-import type { SignalPulseItem, TokenFlowItem } from "../api/types";
+import type { SignalPulseItem, TokenFlowItem } from "@lib/types";
 
 import { gmgnTokenUrl } from "./gmgn";
 import { requireTokenFactorSnapshot } from "./tokenFactorSnapshot";

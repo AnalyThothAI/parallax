@@ -2,4 +2,5 @@ dist/
 node_modules/
 src/api/types.ts
 src/api/openapi.ts
+src/lib/types/openapi.ts
 package-lock.json

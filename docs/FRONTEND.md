@@ -1,38 +1,62 @@
 # Frontend
 
-> **Scope.** Owns the `web/` architecture, layer responsibilities, component conventions, and the manual UI verification gate. Backend layer boundaries live in `ARCHITECTURE.md`. Build / install commands live in `SETUP.md`.
+> **Scope.** Owns the `web/` architecture, layer responsibilities, component conventions, and the UI verification gate. Backend layer boundaries live in `ARCHITECTURE.md`; public HTTP/WebSocket contracts live in `CONTRACTS.md`; install and run commands live in `SETUP.md`.
 
-## Layer map (`web/src/`)
+## Layer Map (`web/src/`)
 
 | Directory | Responsibility |
 |-----------|----------------|
-| `api/` | Thin clients for `/api/*` HTTP routes and the `/ws` WebSocket. Owns request/response typing aligned with `CONTRACTS.md`; never embeds business logic. |
-| `domain/` | Pure TypeScript domain models, score-decomposition helpers, and time-window arithmetic. Framework-free; unit-testable in isolation. |
-| `store/` | Reactive state holders that bridge `api/` push frames into UI state. Owns subscription lifecycle and replay-window plumbing. |
-| `components/` | React components. Composed from `domain/` types and `store/` state; do not call `api/` directly — go through `store/`. |
-| `features/search/` | Route-state helpers for `/search`; parsing and serialization stay outside JSX. |
-| `lib/` | Cross-cutting utilities (formatting, classnames, env). No domain knowledge. |
-| `test/` | Vitest suites. Mirror the layer they test (`api/`, `domain/`, `store/`, `components/`). |
+| `app/` | Application composition: providers, router wiring, top-level error boundary, and route fallback. It may compose feature route elements, but it must not own feature data queries or business rendering. |
+| `routes/` | Route entries and URL-state orchestration. Route modules parse/serialize shareable state and choose the owning feature view. |
+| `features/<name>/api/` | Feature-owned React Query hooks and endpoint adapters. This is the only feature layer that calls `@lib/api/client` or owns query keys for its server data. |
+| `features/<name>/model/` | Pure feature helpers, view models, and constants. Framework-free where practical. |
+| `features/<name>/state/` | Local client state that is not shareable URL state and not server cache state. Keep it narrow and feature-owned. |
+| `features/<name>/ui/` | Feature screens and components. UI reads data from props or feature hooks exposed through the feature public index, not from another feature's deep files. |
+| `shared/query/` | Cross-feature React Query primitives, query-key helpers, and cache patching utilities. |
+| `shared/routing/` | Reusable route parsing, path building, and URL search-param helpers. |
+| `shared/socket/` | WebSocket provider, route-aware subscription registry, and socket test helpers. |
+| `shared/ui/` | Reusable presentational primitives and cross-feature token display components. No server fetching. |
+| `lib/api/` | Typed HTTP client facade and auth-token plumbing. No feature query hooks. |
+| `lib/env/` | Runtime environment parsing. |
+| `lib/types/` | Generated OpenAPI types and compatibility UI payload types. |
+| `styles/` | Global Tailwind import, design tokens, and base element styles only. Feature/page selectors belong beside their feature as CSS modules. |
+| `test/` | Vitest setup, MSW handlers, and shared test fixtures. |
+
+Do not add new code under old `api/`, `store/`, or `components/` roots. Public feature imports should come from `@features/<name>`; deep imports across feature internals are blocked by lint and grep gates.
 
 ## Conventions
 
-- **Payload contract.** Component props that mirror API payloads share their type names with `api/` clients. A breaking API change updates `api/`, `domain/`, and `components/` together.
-- **State discipline.** Live subscriptions live in `store/`. Route-level pages may call typed React Query hooks from `api/`; leaf components receive payloads as props. Tests for `store/` may stub the WebSocket.
-- **Search route.** `/search` reuses the global cockpit topbar but does not render the main left `views` rail or right detail drawer. The topbar exposes a `Main` button back to `/`, while the page owns a search-local case rail for query/window/scope/candidates/section navigation. It renders resolver-selected `token_result`, `topic_result`, or `ambiguous_result` payloads from `/api/search/inspect`.
-- **Search market chart.** Token-mode Search Intel uses `lightweight-charts` for the market panel. Render candlesticks only when `market_overlay.price_series_type = "ohlc"` and `market_overlay.candles` contains provider OHLC rows; otherwise render anchor-line/social fallback states honestly.
-- **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>` so the richer Search Intel page owns K-line, social timeline, evidence, resolver, and brief details. The row action column is reserved for external venue links.
-- **Score display.** Any displayed ranking score includes its component breakdown (per the rule in `DESIGN_DISCIPLINE.md`); the breakdown comes from the API, not local recomputation.
-- **No business logic in JSX.** Decisions move into `domain/`; `components/` only renders.
+- **Data ownership.** Feature API hooks own server reads/writes. Feature UI and routes must not call `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set*` directly.
+- **URL state.** Shareable filters such as `window`, `scope`, handles, search query, selected target, and radar sort live in route-state helpers. Local stores are only for interaction state that should not survive hard reloads.
+- **Socket lifecycle.** `shared/socket` owns authentication, notification/event streams, and ref-counted market-target subscriptions. Routes register only the market targets they currently need; leaving Token Radar releases radar market targets while preserving global notification subscription.
+- **Search route.** `/search` reuses the cockpit topbar but owns its search-local rail, filters, resolver candidates, and selected result. Topbar submit navigates to `/search?q=<query>`.
+- **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>`; token-target audit routes own persistent target inspection.
+- **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.
+- **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.
+- **Score display.** Any displayed ranking score includes its component breakdown from the API. The UI does not recompute ranking facts locally.
 
-## Build & deploy
+## Build And Test
 
-See `SETUP.md` for `npm install / dev / build / preview` commands. Production bundles ship inside the same Docker image as the Python service and are served by the `api/` static-file mount.
+Common frontend gates:
 
-## UI verification gate
+- `cd web && npm run lint`
+- `cd web && npm run typecheck`
+- `cd web && npm test -- --run`
+- `cd web && npm run build`
+- `cd web && npm run test:e2e`
 
-Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum manual checklist for any `web/`-touching change:
+Full repository completion gate:
 
-1. Hard-reload the browser at the affected route.
-2. Subscribe to a known handle and confirm the live event push reaches the relevant component.
-3. Open the network panel; confirm no failing `/api/*` requests; confirm WebSocket frames arrive.
-4. Verify any displayed ranking score still shows its component breakdown.
+- `make check-all`
+
+Production bundles ship inside the same Docker image as the Python service and are served by the FastAPI static-file mount.
+
+## UI Verification Gate
+
+Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
+
+1. Hard-reload `/`, `/search`, `/signal-lab`, `/stocks`, and `/token/:targetType/:targetId` with representative query params.
+2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
+3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
+4. Confirm no failing `/api/*` requests in the browser session.
+5. Confirm route-aware WebSocket subscription behavior: global notifications remain subscribed, while token-radar `market_targets` are released after leaving `/`.

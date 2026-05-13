@@ -1,3 +1,7 @@
+import asyncio
+import json
+from contextlib import contextmanager
+
 from fastapi.testclient import TestClient
 
 from gmgn_twitter_intel.app.runtime.app import create_app
@@ -224,6 +228,49 @@ def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
     assert message["notification"]["notification_id"] == notification["notification_id"]
 
 
+def test_websocket_repeated_subscribe_replaces_market_targets():
+    hub = PublicWebSocketHub(token="secret", repository_session=_empty_repository_session)
+    client = ClientSubscription(websocket=_DummyWebSocket())
+
+    asyncio.run(
+        hub._handle_client_message(
+            client,
+            json.dumps(
+                {
+                    "type": "subscribe",
+                    "market_targets": [
+                        {
+                            "target_type": "Asset",
+                            "target_id": "asset:solana:token:one",
+                        }
+                    ],
+                    "replay": 0,
+                },
+            ),
+        ),
+    )
+    assert client.market_targets == {("Asset", "asset:solana:token:one")}
+
+    asyncio.run(
+        hub._handle_client_message(
+            client,
+            json.dumps(
+                {
+                    "type": "subscribe",
+                    "market_targets": [
+                        {
+                            "target_type": "CexToken",
+                            "target_id": "cex-token:binance:two",
+                        }
+                    ],
+                    "replay": 0,
+                },
+            ),
+        ),
+    )
+    assert client.market_targets == {("CexToken", "cex-token:binance:two")}
+
+
 def test_websocket_symbol_filter_matches_token_intents_without_entities():
     hub = PublicWebSocketHub(token="secret", repository_session=lambda: None)
     client = ClientSubscription(websocket=None, symbols={"MIRROR"})
@@ -327,3 +374,23 @@ def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
         "token_resolutions": result.token_resolutions,
         "harness": None,
     }
+
+
+class _DummyWebSocket:
+    def __init__(self):
+        self.messages: list[str] = []
+
+    async def send_text(self, message: str) -> None:
+        self.messages.append(message)
+
+
+@contextmanager
+def _empty_repository_session():
+    class Evidence:
+        def recent_events(self, *args, **kwargs):
+            return []
+
+    class Repositories:
+        evidence = Evidence()
+
+    yield Repositories()

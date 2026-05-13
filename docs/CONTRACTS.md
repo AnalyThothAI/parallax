@@ -34,6 +34,11 @@ The only application config source.
 ## HTTP
 
 `/healthz`, `/readyz`, `/api/*`. Each endpoint owns its own response schema.
+FastAPI response models are the source for generated frontend types:
+`make regen-contract` updates `docs/generated/openapi.json` and
+`web/src/lib/types/openapi.ts`. Frontend code consumes those generated types via
+`@lib/types`; do not reintroduce handwritten `web/src/api/types.ts` or
+`web/src/api/client.ts` contract surfaces.
 
 Token Radar market contract:
 

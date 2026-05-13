@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
+from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
@@ -66,7 +67,7 @@ def api_bad_request_response(_: Request, exc: ApiBadRequest) -> JSONResponse:
 def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["api"])
 
-    @router.get("/bootstrap")
+    @router.get("/bootstrap", response_model=api_schemas.ApiEnvelope[api_schemas.BootstrapData])
     async def bootstrap(request: Request) -> JSONResponse:
         runtime = _runtime(request)
         return _json(
@@ -80,13 +81,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.get("/status")
+    @router.get("/status", response_model=api_schemas.ApiEnvelope[api_schemas.StatusData])
     async def status(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         payload, status_code = readiness_payload(runtime)
         return _json({"ok": payload.get("ok", status_code < 500), "data": payload}, status_code=status_code)
 
-    @router.get("/recent")
+    @router.get("/recent", response_model=api_schemas.ApiEnvelope[api_schemas.RecentData])
     async def recent(
         request: Request,
         limit: Annotated[int, Query()] = 20,
@@ -119,7 +120,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.get("/search")
+    @router.get("/search", response_model=api_schemas.ApiEnvelope[api_schemas.SearchData])
     async def search(
         request: Request,
         q: Annotated[str, Query()] = "",
@@ -158,7 +159,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.get("/search/inspect")
+    @router.get(
+        "/search/inspect",
+        response_model=api_schemas.ApiEnvelope[api_schemas.SearchInspectData],
+    )
     async def search_inspect(
         request: Request,
         q: Annotated[str, Query()] = "",
@@ -186,7 +190,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         _enrich_search_inspect_market_overlay(runtime, data, window=parsed_window)
         return _json({"ok": True, "data": data})
 
-    @router.get("/token-radar")
+    @router.get("/token-radar", response_model=api_schemas.ApiEnvelope[api_schemas.TokenRadarData])
     async def token_radar(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -209,7 +213,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
 
-    @router.get("/stocks-radar")
+    @router.get("/stocks-radar", response_model=api_schemas.ApiEnvelope[api_schemas.StocksRadarData])
     async def stocks_radar(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -231,7 +235,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/live-market")
+    @router.get("/live-market", response_model=api_schemas.ApiEnvelope[api_schemas.LiveMarketData])
     async def live_market(
         request: Request,
         target_type: Annotated[str, Query()] = "",
@@ -248,7 +252,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             snapshot = gateway.snapshot(target_type=parsed_target_type, target_id=target_id, now_ms=_now_ms())
         return _json({"ok": True, "data": snapshot})
 
-    @router.get("/target-posts")
+    @router.get("/target-posts", response_model=api_schemas.ApiEnvelope[api_schemas.TargetPostsData])
     async def target_posts(
         request: Request,
         target_type: Annotated[str, Query()] = "",
@@ -286,7 +290,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
-    @router.get("/target-social-timeline")
+    @router.get(
+        "/target-social-timeline",
+        response_model=api_schemas.ApiEnvelope[api_schemas.TargetSocialTimelineData],
+    )
     async def target_social_timeline(
         request: Request,
         target_type: Annotated[str, Query()] = "",
@@ -318,7 +325,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
         return _json({"ok": True, "data": data})
 
-    @router.get("/account-alerts")
+    @router.get(
+        "/account-alerts",
+        response_model=api_schemas.ApiEnvelope[api_schemas.AccountAlertsData],
+    )
     async def account_alerts(
         request: Request,
         window: Annotated[str, Query()] = "24h",
@@ -347,7 +357,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.get("/account-quality")
+    @router.get(
+        "/account-quality",
+        response_model=api_schemas.ApiEnvelope[api_schemas.AccountQualityData],
+    )
     async def account_quality(
         request: Request,
         handles: Annotated[str, Query()] = "",
@@ -360,7 +373,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             ).account_quality_for_handles(sorted(_handle_set(handles)))
         return _json({"ok": True, "data": data})
 
-    @router.get("/notifications")
+    @router.get(
+        "/notifications",
+        response_model=api_schemas.ApiEnvelope[api_schemas.NotificationsData],
+    )
     async def notifications(
         request: Request,
         limit: Annotated[int, Query()] = 50,
@@ -386,14 +402,20 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.get("/notification-summary")
+    @router.get(
+        "/notification-summary",
+        response_model=api_schemas.ApiEnvelope[api_schemas.NotificationSummary],
+    )
     async def notification_summary(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
             data = repos.notifications.summary(subscriber_key="local")
         return _json({"ok": True, "data": data})
 
-    @router.get("/notification-deliveries")
+    @router.get(
+        "/notification-deliveries",
+        response_model=api_schemas.ApiEnvelope[api_schemas.NotificationDeliveriesData],
+    )
     async def notification_deliveries(
         request: Request,
         limit: Annotated[int, Query()] = 50,
@@ -414,21 +436,27 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             }
         )
 
-    @router.post("/notifications/{notification_id}/read")
+    @router.post(
+        "/notifications/{notification_id}/read",
+        response_model=api_schemas.ApiEnvelope[api_schemas.NotificationReadData],
+    )
     async def mark_notification_read(request: Request, notification_id: str) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
             updated = repos.notifications.mark_read(notification_id=notification_id, subscriber_key="local")
         return _json({"ok": True, "data": {"notification_id": notification_id, "updated": updated}})
 
-    @router.post("/notifications/read-all")
+    @router.post(
+        "/notifications/read-all",
+        response_model=api_schemas.ApiEnvelope[api_schemas.NotificationReadAllData],
+    )
     async def mark_all_notifications_read(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
             updated_count = repos.notifications.mark_all_read(subscriber_key="local")
         return _json({"ok": True, "data": {"updated_count": updated_count}})
 
-    @router.get("/social-events")
+    @router.get("/social-events", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def social_events(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -446,7 +474,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/attention-seeds")
+    @router.get("/attention-seeds", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def attention_seeds(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -462,7 +490,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/harness-snapshots")
+    @router.get("/harness-snapshots", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def harness_snapshots(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -480,7 +508,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/harness-outcomes")
+    @router.get("/harness-outcomes", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def harness_outcomes(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -498,7 +526,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/harness-credits")
+    @router.get("/harness-credits", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def harness_credits(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -516,7 +544,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/signal-lab/pulse")
+    @router.get(
+        "/signal-lab/pulse",
+        response_model=api_schemas.ApiEnvelope[api_schemas.SignalPulseData],
+    )
     async def signal_lab_pulse(
         request: Request,
         window: Annotated[str, Query()] = "1h",
@@ -545,7 +576,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/signal-lab/pulse/{candidate_id}")
+    @router.get(
+        "/signal-lab/pulse/{candidate_id}",
+        response_model=api_schemas.ApiEnvelope[api_schemas.SignalPulseItem],
+    )
     async def signal_lab_pulse_by_id(
         request: Request,
         candidate_id: str,
@@ -568,7 +602,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/harness-weights")
+    @router.get("/harness-weights", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def harness_weights(
         request: Request,
         horizon: Annotated[str, Query()] = "",
@@ -582,7 +616,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/harness-health")
+    @router.get("/harness-health", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
     async def harness_health(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
@@ -598,7 +632,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             data["harness_ops_running"] = runtime.harness_ops_task is not None and not runtime.harness_ops_task.done()
         return _json({"ok": True, "data": data})
 
-    @router.get("/harness-score-buckets")
+    @router.get(
+        "/harness-score-buckets",
+        response_model=api_schemas.ApiEnvelope[api_schemas.LooseData],
+    )
     async def harness_score_buckets(
         request: Request,
         horizon: Annotated[str, Query()] = "",
@@ -610,7 +647,10 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
         return _json({"ok": True, "data": data})
 
-    @router.get("/enrichment-jobs")
+    @router.get(
+        "/enrichment-jobs",
+        response_model=api_schemas.ApiEnvelope[api_schemas.EnrichmentJobsData],
+    )
     async def enrichment_jobs(
         request: Request,
         limit: Annotated[int, Query()] = 50,

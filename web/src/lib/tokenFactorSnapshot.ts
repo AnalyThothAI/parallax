@@ -1,4 +1,4 @@
-import type { TokenFactorFamilyKey, TokenFactorSnapshot } from "../api/types";
+import type { TokenFactorFamilyKey, TokenFactorSnapshot } from "@lib/types";
 
 export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v3_social_attention";
 const TOP_LEVEL_KEYS = new Set([

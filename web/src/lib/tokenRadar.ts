@@ -13,7 +13,7 @@ import type {
   TokenFactorSnapshot,
   TokenFlowItem,
   TradeabilityBlock,
-} from "../api/types";
+} from "@lib/types";
 
 import { TOKEN_FACTOR_SNAPSHOT_SCHEMA, requireTokenFactorSnapshot } from "./tokenFactorSnapshot";
 

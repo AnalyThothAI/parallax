@@ -1,40 +1,65 @@
+import { CockpitShell, SearchShell } from "@features/cockpit";
+import {
+  buildLiveSignalTapeItems,
+  EvidenceDetailDrawer,
+  LivePage,
+  LiveRadar,
+  TokenDetailDrawer,
+  useLiveData,
+  useLiveRouteState,
+  useLiveSelection,
+  type EvidenceDetailDrawerProps,
+  type SelectedSignal,
+} from "@features/live";
+import { useNotificationsController } from "@features/notifications";
+import { SearchIntelPage } from "@features/search";
+import { PulseDetailPage, SignalLabInspector, SignalLabPage } from "@features/signal-lab";
+import { StocksRadarPage } from "@features/stocks";
+import { TokenTargetPage, useTokenDetailData } from "@features/token-target";
+import type { LivePayload } from "@lib/types";
+import { buildWatchlistRows } from "@lib/watchlist";
+import { IntelSocketProvider } from "@shared/socket/IntelSocketProvider";
+import { useSocketSnapshot } from "@shared/socket/socketContext";
+import type { MarketTargetRef } from "@shared/socket/socketTypes";
+import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef } from "react";
-import type { KeyboardEvent } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-import { CockpitLayout } from "../components/CockpitLayout";
-import {
-  EvidenceDetailDrawer,
-  type EvidenceDetailDrawerProps,
-} from "../components/EvidenceDetailDrawer";
-import { LivePage } from "../components/LivePage";
-import { LiveRadar } from "../components/LiveRadar";
-import { PulseDetailPage } from "../components/PulseDetailPage";
-import { SearchIntelPage } from "../components/SearchIntelPage";
-import { SignalLabInspector } from "../components/SignalLabInspector";
-import { SignalLabPage } from "../components/SignalLabPage";
-import { StocksRadarPage } from "../components/StocksRadarPage";
-import { TokenDetailDrawer } from "../components/TokenDetailDrawer";
-import { TokenTargetPage } from "../components/TokenTargetPage";
-import { useLiveData } from "../features/live/useLiveData";
-import { useLiveSelection, type SelectedSignal } from "../features/live/useLiveSelection";
-import { useNotificationsController } from "../features/notifications/useNotificationsController";
-import { useTokenDetailData } from "../features/token-target/useTokenDetailData";
-import { buildWatchlistRows } from "../lib/watchlist";
-import { useTraderStore } from "../store/useTraderStore";
+type LiveData = ReturnType<typeof useLiveData>;
+type LiveRouteState = ReturnType<typeof useLiveRouteState>;
 
 export function CockpitApp() {
-  const queryClient = useQueryClient();
+  const liveRoute = useLiveRouteState();
+  const liveData = useLiveData({
+    handles: liveRoute.handles,
+    radarSortMode: liveRoute.sort,
+    scope: liveRoute.scope,
+    windowKey: liveRoute.window,
+  });
 
-  const search = useTraderStore((state) => state.search);
-  const setWindow = useTraderStore((state) => state.setWindow);
-  const setScope = useTraderStore((state) => state.setScope);
-  const setHandles = useTraderStore((state) => state.setHandles);
-  const setSearch = useTraderStore((state) => state.setSearch);
-  const setRadarSortMode = useTraderStore((state) => state.setRadarSortMode);
+  return (
+    <IntelSocketProvider
+      token={liveData.token}
+      handles={liveData.handles}
+      replay={liveData.replayLimit}
+      notifications
+    >
+      <CockpitAppRoutes liveData={liveData} liveRoute={liveRoute} />
+    </IntelSocketProvider>
+  );
+}
+
+function CockpitAppRoutes({
+  liveData,
+  liveRoute,
+}: {
+  liveData: LiveData;
+  liveRoute: LiveRouteState;
+}) {
+  const queryClient = useQueryClient();
+  const socketSnapshot = useSocketSnapshot();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const liveData = useLiveData();
   const {
     bootstrapHandles,
     compactSignalPulseItems,
@@ -42,16 +67,15 @@ export function CockpitApp() {
     handles,
     isAssetFlowLoading,
     isRecentLoading,
-    isSignalLabPulseColdLoading,
-    isSignalLabPulseFetching,
-    liveItems,
-    liveSignalTapeItems,
+    marketTargets,
     radarSortMode,
+    recentReplayItems,
     scope,
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal,
-    socket,
+    signalPulseColdLoading,
+    signalPulseFetching,
     status,
     statusError,
     statusHandles,
@@ -61,10 +85,18 @@ export function CockpitApp() {
     tokenItems,
     windowKey,
   } = liveData;
+  const liveItems = useMemo(
+    () => mergeLiveItems(recentReplayItems, socketSnapshot.eventItems),
+    [recentReplayItems, socketSnapshot.eventItems],
+  );
+  const liveSignalTapeItems = useMemo(
+    () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
+    [liveItems, tokenItems],
+  );
   const selection = useLiveSelection({
     compactSignalPulseItems,
-    isSignalLabPulseFetching,
     scope,
+    signalPulseFetching,
     tokenItems,
     windowKey,
   });
@@ -83,7 +115,7 @@ export function CockpitApp() {
   const notificationsController = useNotificationsController({
     fallbackSummary: status?.notifications?.summary ?? null,
     setMobileTask: selection.setMobileTask,
-    socketNotifications: socket.notifications,
+    socketNotifications: socketSnapshot.notificationItems,
     token,
   });
   const watchlistRows = useMemo(
@@ -101,7 +133,7 @@ export function CockpitApp() {
     ],
   );
 
-  const handleHotkey = (event: KeyboardEvent<HTMLElement>) => {
+  const handleHotkey = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement;
     const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
     if (event.key === "/" && !isTyping) {
@@ -112,10 +144,10 @@ export function CockpitApp() {
     if (isTyping) {
       return;
     }
-    if (event.key === "1") setWindow("5m");
-    if (event.key === "2") setWindow("1h");
-    if (event.key === "3") setWindow("4h");
-    if (event.key === "4") setWindow("24h");
+    if (event.key === "1") liveRoute.updateWindow("5m");
+    if (event.key === "2") liveRoute.updateWindow("1h");
+    if (event.key === "3") liveRoute.updateWindow("4h");
+    if (event.key === "4") liveRoute.updateWindow("24h");
   };
 
   const detailPanel = selection.selectedPulseItem ? (
@@ -130,7 +162,7 @@ export function CockpitApp() {
       detailWindow={selection.detailWindow}
       hideDuplicateClusters={selection.hideDuplicateClusters}
       isAccountQualityLoading={tokenDetail.isAccountQualityLoading}
-      isSignalLabLoading={isSignalLabPulseFetching}
+      signalLabLoading={signalPulseFetching}
       isPostsFetchingNextPage={tokenDetail.isPostsFetchingNextPage}
       isPostsLoading={tokenDetail.isPostsLoading}
       isTimelineLoading={tokenDetail.isTimelineLoading}
@@ -156,60 +188,84 @@ export function CockpitApp() {
     />
   );
 
-  const layoutElement = (
-    <CockpitLayout
-      searchInputRef={searchInputRef}
-      searchValue={search}
-      onSearchChange={setSearch}
-      onSubmitSearch={selection.submitEvidenceSearch}
-      socketStatus={socket.status}
-      lastSocketMessageAt={socket.lastMessageAt}
-      status={status}
-      statusLoading={statusLoading}
-      statusError={statusError}
-      configReady={Boolean(token)}
-      liveItemsCount={liveItems.length}
-      tokenItemsCount={tokenItems.length}
-      windowKey={windowKey}
-      signalLabSummaryTrade={signalLabOverviewData?.summary.trade_candidate ?? 0}
-      signalLabSummaryToken={signalLabOverviewData?.summary.token_watch ?? 0}
-      signalLabSummaryTheme={signalLabOverviewData?.summary.theme_watch ?? 0}
-      signalLabPulseTotal={signalLabPulseTotal}
-      notifications={notificationsController.notifications}
-      notificationSummary={notificationsController.notificationSummary}
-      notificationDrawerOpen={notificationsController.drawerOpen}
-      onToggleNotificationDrawer={notificationsController.toggleDrawer}
-      onCloseNotificationDrawer={notificationsController.closeDrawer}
-      notificationsLoading={notificationsController.notificationsLoading}
-      onMarkAllRead={notificationsController.markAllRead}
-      onMarkRead={notificationsController.markRead}
-      onOpenNotification={notificationsController.openNotification}
-      socketNotifications={socket.notifications}
-      onRefresh={() => void queryClient.invalidateQueries()}
-      scope={scope}
-      onScopeChange={setScope}
-      handles={handles}
-      onHandlesChange={setHandles}
-      onWindowChange={setWindow}
-      decisionCounts={decisionCounts}
-      watchlistRows={watchlistRows}
-      mobileTask={selection.mobileTask}
-      detailAvailable={selection.detailAvailable}
-      onMobileTaskChange={selection.handleMobileTaskChange}
+  const topbarProps = {
+    search: {
+      inputRef: searchInputRef,
+      onSubmitQuery: selection.submitEvidenceSearch,
+    },
+    status: {
+      socketStatus: socketSnapshot.status,
+      lastSocketMessageAt: socketSnapshot.lastMessageAt,
+      status,
+      statusLoading,
+      statusError,
+      configReady: Boolean(token),
+    },
+    stats: {
+      tokenItemsCount: tokenItems.length,
+      windowKey,
+      signalLabSummaryTrade: signalLabOverviewData?.summary.trade_candidate ?? 0,
+      signalLabSummaryToken: signalLabOverviewData?.summary.token_watch ?? 0,
+      signalLabSummaryTheme: signalLabOverviewData?.summary.theme_watch ?? 0,
+    },
+    notifications: {
+      summary: notificationsController.notificationSummary,
+      drawerOpen: notificationsController.drawerOpen,
+      onToggleDrawer: notificationsController.toggleDrawer,
+    },
+    onRefresh: () => void queryClient.invalidateQueries(),
+  };
+  const notificationProps = {
+    notifications: notificationsController.notifications,
+    notificationSummary: notificationsController.notificationSummary,
+    notificationDrawerOpen: notificationsController.drawerOpen,
+    notificationsLoading: notificationsController.notificationsLoading,
+    onCloseNotificationDrawer: notificationsController.closeDrawer,
+    onMarkAllRead: notificationsController.markAllRead,
+    onMarkRead: notificationsController.markRead,
+    onOpenNotification: notificationsController.openNotification,
+    socketNotifications: socketSnapshot.notificationItems,
+  };
+  const sideRailProps = {
+    tokenItemsCount: tokenItems.length,
+    signalLabPulseTotal,
+    scope,
+    onScopeChange: liveRoute.updateScope,
+    handles,
+    onHandlesChange: liveRoute.updateHandles,
+    onWindowChange: liveRoute.updateWindow,
+    decisionCounts,
+    watchlistRows,
+    onMobileTaskChange: selection.handleMobileTaskChange,
+  };
+  const mobileProps = {
+    mobileTask: selection.mobileTask,
+    detailAvailable: selection.detailAvailable,
+    onMobileTaskChange: selection.handleMobileTaskChange,
+  };
+  const cockpitShellElement = (
+    <CockpitShell
       detailPanel={detailPanel}
+      mobile={mobileProps}
+      notifications={notificationProps}
+      sideRail={sideRailProps}
+      topbar={topbarProps}
       onHotkey={handleHotkey}
     />
+  );
+  const searchShellElement = (
+    <SearchShell notifications={notificationProps} topbar={topbarProps} onHotkey={handleHotkey} />
   );
 
   const livePageElement = (
     <LivePage
       liveSignalTapeItems={liveSignalTapeItems}
       isRecentLoading={isRecentLoading}
-      socketStatus={socket.status}
+      socketStatus={socketSnapshot.status}
       selectedTapeEventId={selection.selectedTapeEventId}
       onTapeSelect={selection.handleTapeSelect}
       signalLabPulseData={signalLabPulseData ?? null}
-      isSignalLabPulseLoading={isSignalLabPulseColdLoading}
+      signalPulseLoading={signalPulseColdLoading}
       selectedPulseItemId={selection.selectedPulseItemId}
       onOpenLab={selection.onOpenLab}
       onSelectPulse={selection.selectPulseItem}
@@ -225,22 +281,28 @@ export function CockpitApp() {
       radarSortMode={radarSortMode}
       onOpenTokenSearch={selection.openTokenSearchPage}
       onSelectToken={selection.selectToken}
-      onSortModeChange={setRadarSortMode}
+      onSortModeChange={liveRoute.updateSort}
       scope={scope}
       windowKey={windowKey}
-      onScopeChange={setScope}
-      onWindowChange={setWindow}
+      onScopeChange={liveRoute.updateScope}
+      onWindowChange={liveRoute.updateWindow}
     />
   );
 
   return (
     <Routes>
-      <Route element={layoutElement}>
+      <Route element={cockpitShellElement}>
         <Route element={livePageElement}>
-          <Route index element={liveRadarElement} />
+          <Route
+            index
+            element={
+              <LiveMarketSubscription targets={marketTargets}>
+                {liveRadarElement}
+              </LiveMarketSubscription>
+            }
+          />
           <Route path="token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Route>
-        <Route path="search" element={<SearchIntelPage />} />
         <Route
           path="stocks"
           element={
@@ -248,8 +310,8 @@ export function CockpitApp() {
               token={token ?? ""}
               windowKey={windowKey}
               scope={scope}
-              onScopeChange={setScope}
-              onWindowChange={setWindow}
+              onScopeChange={liveRoute.updateScope}
+              onWindowChange={liveRoute.updateWindow}
             />
           }
         />
@@ -265,9 +327,34 @@ export function CockpitApp() {
         >
           <Route path="pulse/:candidateId" element={<PulseDetailPage />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
+      <Route element={searchShellElement}>
+        <Route path="search" element={<SearchIntelPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  );
+}
+
+function LiveMarketSubscription({
+  children,
+  targets,
+}: {
+  children: ReactNode;
+  targets: MarketTargetRef[];
+}) {
+  useMarketSubscription(targets);
+  return <>{children}</>;
+}
+
+function mergeLiveItems(replayItems: LivePayload[], eventItems: LivePayload[]): LivePayload[] {
+  const byId = new Map<string, LivePayload>();
+  for (const item of [...replayItems, ...eventItems]) {
+    byId.set(item.event.event_id, item);
+  }
+  return [...byId.values()].sort(
+    (left, right) =>
+      Number(right.event.received_at_ms ?? 0) - Number(left.event.received_at_ms ?? 0),
   );
 }
 

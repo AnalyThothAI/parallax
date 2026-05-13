@@ -1,4 +1,4 @@
-import type { EventRecord, TokenFlowItem } from "../api/types";
+import type { EventRecord, TokenFlowItem } from "@lib/types";
 
 export function compactNumber(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {

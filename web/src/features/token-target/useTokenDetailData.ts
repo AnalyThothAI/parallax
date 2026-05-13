@@ -1,20 +1,22 @@
-import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
-
-import { getApi } from "../../api/client";
+import { getApi } from "@lib/api/client";
 import type {
   AccountQualityData,
   ScopeKey,
   TokenPostRange,
   TokenPostSortMode,
   WindowKey,
-} from "../../api/types";
+} from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+
+import type { TargetRef } from "../../domain/tokenTarget";
+
 import {
   mergeTokenPostPages,
   useTokenTargetPosts,
   useTokenTargetTimeline,
-} from "../../api/useTokenTargetQueries";
-import type { TargetRef } from "../../domain/tokenTarget";
+} from "./api/useTokenTargetQueries";
 
 type UseTokenDetailDataArgs = {
   detailWindow: WindowKey;
@@ -52,7 +54,7 @@ export function useTokenDetailData({
     [tokenTimelineQuery.data?.data.authors],
   );
   const accountQualityQuery = useQuery({
-    queryKey: ["account-quality", accountQualityHandles],
+    queryKey: queryKeys.accountQuality(accountQualityHandles),
     queryFn: () =>
       getApi<AccountQualityData>("/api/account-quality", {
         token,

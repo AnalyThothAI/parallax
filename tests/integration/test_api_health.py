@@ -388,6 +388,7 @@ def _minimal_runtime():
         anchor_price_task=None,
         asset_profile_refresh_worker=None,
         asset_profile_refresh_task=None,
+        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         live_price_gateway=None,
         live_price_gateway_task=None,
         resolution_refresh_worker=None,

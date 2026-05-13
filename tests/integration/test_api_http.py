@@ -39,7 +39,7 @@ def _pulse_factor_snapshot(
 ) -> dict[str, object]:
     blocked = blocked_reasons or []
     market_ready = market_status == "fresh"
-    market_health = "ready" if market_ready else "missing"
+    market_health = "ready" if market_ready else "partial"
     observation = {
         "target_type": "Asset",
         "target_id": target_id,
@@ -50,10 +50,10 @@ def _pulse_factor_snapshot(
         "price_quote": None,
         "quote_symbol": "USD" if market_ready else None,
         "price_basis": "usd" if market_ready else None,
-        "market_cap_usd": None,
-        "liquidity_usd": None,
-        "holders": None,
-        "volume_24h_usd": None,
+        "market_cap_usd": 120_000 if market_ready else None,
+        "liquidity_usd": 55_000 if market_ready else None,
+        "holders": 800 if market_ready else None,
+        "volume_24h_usd": 2_300_000 if market_ready else None,
         "open_interest_usd": None,
         "observed_at_ms": 1_700_000_000_000 if market_ready else None,
         "received_at_ms": 1_700_000_000_000 if market_ready else None,
@@ -74,8 +74,8 @@ def _pulse_factor_snapshot(
             "readiness": {
                 "anchor_status": "ready" if market_ready else "missing",
                 "latest_status": "live" if market_ready else "missing",
-                "dex_floor_status": "missing_fields",
-                "missing_fields": ["holders", "liquidity_usd", "market_cap_usd"],
+                "dex_floor_status": "ready" if market_ready else "missing_fields",
+                "missing_fields": [] if market_ready else ["holders", "liquidity_usd", "market_cap_usd"],
                 "stale_fields": [],
             },
         },
@@ -592,7 +592,7 @@ def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_pat
     assert "NEWTOKEN" in data["projection"]["unresolved"]["sample_symbols"]
 
 
-def test_token_radar_payload_ignores_process_local_live_gateway_snapshot(tmp_path):
+def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
     class FakeLiveGateway:
         def stop(self) -> None:
             return None
@@ -643,12 +643,24 @@ def test_token_radar_payload_ignores_process_local_live_gateway_snapshot(tmp_pat
             headers={"Authorization": "Bearer secret"},
         )
 
-    assert response.status_code == 200
-    row = response.json()["data"]["targets"][0]
+        assert response.status_code == 200
+        row = response.json()["data"]["targets"][0]
+        live_market = client.get(
+            "/api/live-market",
+            params={"target_type": row["target"]["target_type"], "target_id": row["target"]["target_id"]},
+            headers={"Authorization": "Bearer secret"},
+        )
+
     assert "live_market" not in row
     assert row["market"]["event_anchor"] is None
     assert row["market"]["decision_latest"] is None
     assert row["market"]["readiness"]["anchor_status"] == "missing"
+    assert live_market.status_code == 200
+    payload = live_market.json()["data"]
+    assert payload["status"] == "live"
+    assert payload["price_usd"] == 0.123
+    assert payload["market_cap_usd"] == 123_000
+    assert payload["provider"] == "test_live"
 
 
 def test_stocks_radar_returns_us_equity_market_instruments_with_partial_quotes(tmp_path):

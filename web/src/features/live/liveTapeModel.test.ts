@@ -1,6 +1,5 @@
+import type { LivePayload, TokenFlowItem } from "@lib/types";
 import { describe, expect, it } from "vitest";
-
-import type { LivePayload, TokenFlowItem } from "../../api/types";
 
 import { buildLiveSignalTapeItems, tapeItemId, tokenTapeReason } from "./liveTapeModel";
 
