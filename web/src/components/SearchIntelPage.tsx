@@ -28,6 +28,7 @@ import {
 import { SearchAgentBrief } from "./SearchAgentBrief";
 import { SearchTimelinePanel } from "./SearchTimelinePanel";
 import { SearchTwitterResults } from "./SearchTwitterResults";
+import { TokenProfileCard } from "./TokenProfileCard";
 
 const WINDOW_OPTIONS: WindowKey[] = ["5m", "1h", "4h", "24h"];
 const SCOPE_OPTIONS: ScopeKey[] = ["all", "matched"];
@@ -306,6 +307,7 @@ function TokenResult({ data, result }: { data: SearchInspectData; result: Search
           />
         </div>
         <aside className="search-insight-stack">
+          <TokenProfileCard profile={result.profile} />
           <SearchAgentBrief brief={result.agent_brief} />
           <SearchRadarPanel radarItem={result.radar_item} />
         </aside>

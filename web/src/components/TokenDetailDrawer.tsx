@@ -26,6 +26,7 @@ import {
 } from "./DetailDrawer";
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsPanel } from "./TokenPostsPanel";
+import { TokenProfileCard } from "./TokenProfileCard";
 import { tokenDrawerSummary } from "./TokenRadarRow";
 import { TokenReplayFocus } from "./TokenReplayFocus";
 import { TokenTimeline } from "./TokenTimeline";
@@ -188,6 +189,7 @@ export function TokenDetailDrawer({
           </select>
         </label>
       </DetailDrawerHeader>
+      <TokenProfileCard compact profile={token.profile} />
 
       <nav className="tabs" aria-label="token detail tabs">
         {TABS.map((item) => (

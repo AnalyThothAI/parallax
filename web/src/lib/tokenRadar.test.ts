@@ -86,6 +86,40 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.market.snapshot_received_at_ms).toBe(1_778_426_440_000);
   });
 
+  it("preserves token profile facts from asset flow rows", () => {
+    const profile = {
+      status: "ready",
+      provider: "gmgn",
+      observed_at_ms: 1_778_426_440_000,
+      identity: {
+        symbol: "ZEC",
+        name: "Zcash",
+        logo_url: "https://cdn.example.test/zec.png",
+        banner_url: null,
+        description: "Privacy coin profile facts.",
+      },
+      links: {
+        website_url: "https://z.cash",
+        twitter_url: "https://x.com/zcash",
+        twitter_username: "zcash",
+        telegram_url: null,
+        gmgn_url: "https://gmgn.ai/cex/ZEC",
+        geckoterminal_url: null,
+      },
+      source: {
+        provider: "gmgn",
+        raw_available: true,
+        last_error: null,
+      },
+    };
+    const row = productionFactorSnapshotRow() as AssetFlowRow & { profile: typeof profile };
+    row.profile = profile;
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect((item as { profile?: unknown }).profile).toEqual(profile);
+  });
+
   it("normalizes CEX venue identity from pricefeed-only production rows", () => {
     const row = productionFactorSnapshotRow();
     delete row.target!.native_market_id;
