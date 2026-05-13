@@ -31,6 +31,26 @@ where token identity is extracted, resolved, refreshed, scored, and served.
 
 Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.toml` points the installed command at `gmgn_twitter_intel.cli:main`. They contain no logic.
 
+## Role Markers
+
+Plans and subsystem architecture docs may tag files with these role markers.
+They are descriptive labels for ownership and data-flow review; dependency
+direction is still enforced by the package rules below.
+
+| Marker | Meaning |
+|--------|---------|
+| `[ADAPTER]` | Translates third-party shapes such as GMGN, OKX, Marketlane, or OpenAI Agents into internal values. Does not own product decisions. |
+| `[COMMAND]` | Handles write-side use cases: ingesting events, resolving identity, refreshing facts, or writing material observations. |
+| `[FACT]` | Owns persisted business facts or value types that represent those facts. |
+| `[WAKE]` | Emits or consumes wake hints such as LISTEN/NOTIFY. Wake hints are never the source of correctness. |
+| `[PROJECTION]` | Builds derived read models from facts. Projection output must be rebuildable. |
+| `[READ MODEL]` | Product-facing derived state such as Token Radar rows, profile blocks, or Signal Pulse candidates. |
+| `[QUERY]` | Owns read-side queries over facts or read models. |
+| `[SCORING]` | Computes deterministic scores, gates, readiness, and diagnostics from query results. |
+| `[SURFACE]` | HTTP, WebSocket, or CLI translation layer. Surfaces do not perform provider calls, scoring, token resolution, or raw SQL joins. |
+| `[UI]` | Frontend code that consumes public contracts. |
+| `[DELETE]` | Legacy runtime path scheduled for removal by an active hard-cut plan. |
+
 ## Domains
 
 | Domain | Owns |

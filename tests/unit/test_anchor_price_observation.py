@@ -5,7 +5,7 @@ from gmgn_twitter_intel.domains.asset_market.services.anchor_price_observation i
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 
 
-def test_anchor_price_observation_writes_cex_message_anchor():
+def test_anchor_price_observation_writes_cex_event_anchor():
     repos = FakeRepos(
         rows=[
             {
@@ -44,7 +44,7 @@ def test_anchor_price_observation_writes_cex_message_anchor():
     assert result["anchor_observations_written"] == 1
     observation = repos.price_observations.observations[0]
     assert observation["provider"] == "okx"
-    assert observation["observation_kind"] == "message_anchor"
+    assert observation["observation_kind"] == "event_anchor"
     assert observation["source_event_id"] == "event-1"
     assert observation["source_intent_id"] == "intent-1"
     assert observation["source_resolution_id"] == "resolution-1"
@@ -60,7 +60,7 @@ def test_anchor_price_observation_writes_cex_message_anchor():
     assert repos.conn.params[-1] == 10
 
 
-def test_anchor_price_observation_writes_dex_message_anchor_per_message():
+def test_anchor_price_observation_writes_dex_event_anchor_per_message():
     repos = FakeRepos(
         rows=[
             {
@@ -128,7 +128,7 @@ def test_anchor_price_observation_writes_dex_message_anchor_per_message():
     dex_quote_observations = [
         item
         for item in repos.price_observations.observations
-        if item["provider"] == "gmgn_dex_quote" and item["observation_kind"] == "message_anchor"
+        if item["provider"] == "gmgn_dex_quote" and item["observation_kind"] == "event_anchor"
     ]
     assert len(dex_quote_observations) == 2
     assert all(item["price_usd"] == 1.23 for item in dex_quote_observations)
@@ -318,11 +318,42 @@ class FakePriceObservations:
     def __init__(self):
         self.observations = []
 
-    def insert_observation(self, **kwargs):
-        if kwargs.get("event_received_at_ms") is not None:
-            kwargs["observation_lag_ms"] = kwargs["observed_at_ms"] - kwargs["event_received_at_ms"]
-        self.observations.append(kwargs)
-        return kwargs
+    def insert_market_observation(
+        self,
+        observation,
+        *,
+        observation_kind,
+        source_event_id,
+        source_intent_id,
+        source_resolution_id,
+        event_received_at_ms,
+        commit,
+    ):
+        payload = {
+            "provider": observation.provider,
+            "pricefeed_id": observation.pricefeed_id,
+            "observed_at_ms": observation.observed_at_ms,
+            "subject_type": observation.target.target_type,
+            "subject_id": observation.target.target_id,
+            "price_usd": observation.price_usd,
+            "price_quote": observation.price_quote,
+            "quote_symbol": observation.quote_symbol,
+            "price_basis": observation.price_basis,
+            "market_cap_usd": observation.market_cap_usd,
+            "liquidity_usd": observation.liquidity_usd,
+            "volume_24h_usd": observation.volume_24h_usd,
+            "open_interest_usd": observation.open_interest_usd,
+            "holders": observation.holders,
+            "source_event_id": source_event_id,
+            "source_intent_id": source_intent_id,
+            "source_resolution_id": source_resolution_id,
+            "observation_kind": observation_kind,
+            "event_received_at_ms": event_received_at_ms,
+            "observation_lag_ms": observation.observed_at_ms - event_received_at_ms,
+            "commit": commit,
+        }
+        self.observations.append(payload)
+        return "observation-id"
 
 
 class FakeRegistry:

@@ -16,7 +16,7 @@ from gmgn_twitter_intel.domains.token_intel.services.token_radar_projection impo
     TokenRadarProjection,
     _analysis_since_ms,
     _display_symbol,
-    _market,
+    _market_context,
     _project_group,
     _rank_key,
 )
@@ -420,7 +420,7 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     assert result["status"] == "ready"
     snapshot = token_radar.rows[0]["factor_snapshot_json"]
     assert snapshot["data_health"]["market"] == "ready"
-    assert snapshot["families"]["timing_risk"]["data_health"] == "anchor_only"
+    assert snapshot["families"]["timing_risk"]["data_health"] != "anchor_only"
     assert not hasattr(repos, "current_market")
     assert token_radar.rows[0]["market_json"] == {}
 
@@ -462,73 +462,46 @@ def test_projection_marks_market_missing_when_anchor_price_has_not_arrived(monke
 
 
 def test_projection_market_uses_latest_market_snapshot_fields():
-    market = _market(
-        [
-            {
-                "target_type": "Asset",
-                "target_id": "asset:eip155:1:erc20:0x6982508145454ce325ddbe47a25d4ec3d2311933",
-                "received_at_ms": 1_777_800_000_000,
-                "event_price_usd": 0.01,
-                "event_price_provider": "gmgn_dex_quote",
-                "event_price_observed_at_ms": 1_777_800_000_500,
-                "event_price_basis": "usd",
-                "event_price_quote_symbol": "USD",
-                "event_price_market_cap_usd": 1_000_000,
-                "event_price_liquidity_usd": 250_000,
-                "event_price_volume_24h_usd": 12_000,
-                "event_price_open_interest_usd": None,
-                "event_price_holders": 1000,
-                "before_event_price_usd": None,
-                "first_price_usd": 0.01,
-                "first_price_observed_at_ms": 1_777_800_000_000,
-            }
-        ],
-        resolved=True,
-        now_ms=1_777_800_060_000,
-    )
+    row = source_row("event-market", received_at_ms=1_777_800_000_000)
+    row["decision_latest_price_usd"] = 0.012
+    row["decision_latest_market_cap_usd"] = 1_000_000
+    row["decision_latest_liquidity_usd"] = 250_000
+    row["decision_latest_volume_24h_usd"] = 12_000
+    row["decision_latest_holders"] = 1000
 
-    assert market["market_status"] == "anchored"
-    assert market["market_observation_status"] == "ready"
-    assert market["provider"] == "gmgn_dex_quote"
-    assert market["price_usd"] is None
-    assert market["market_cap_usd"] == 1_000_000
-    assert market["liquidity_usd"] == 250_000
-    assert market["volume_24h_usd"] == 12_000
-    assert market["holders"] == 1000
-    assert market["market_cap_status"] == "ready"
-    assert market["liquidity_status"] == "ready"
-    assert market["holders_status"] == "ready"
-    assert market["anchor_price_usd"] == 0.01
-    assert market["price_at_social_start"] == 0.01
-    assert market["price_change_since_social_pct"] is None
-    assert market["snapshot_age_ms"] is None
-    assert market["snapshot_observed_at_ms"] is None
-    assert market["market_readiness"] == {
-        "status": "anchored",
-        "observation_status": "ready",
-        "provider": "gmgn_dex_quote",
-        "snapshot_age_ms": None,
-        "snapshot_observed_at_ms": None,
+    market = _market_context([row], resolved=True, now_ms=1_777_800_060_000)
+
+    assert market["event_anchor"]["price_usd"] == 0.01
+    assert market["event_anchor"]["provider"] == "okx"
+    assert market["decision_latest"]["price_usd"] == 0.012
+    assert market["decision_latest"]["market_cap_usd"] == 1_000_000
+    assert market["decision_latest"]["liquidity_usd"] == 250_000
+    assert market["decision_latest"]["volume_24h_usd"] == 12_000
+    assert market["decision_latest"]["holders"] == 1000
+    assert market["readiness"] == {
+        "anchor_status": "ready",
+        "latest_status": "live",
+        "dex_floor_status": "ready",
+        "missing_fields": [],
+        "stale_fields": [],
     }
-    assert market["event_price_readiness"] == {
-        "status": "ready",
-        "source": "message_or_history",
-        "social_signal_start_ms": 1_777_800_000_000,
-        "price_at_social_start": 0.01,
-        "price_change_status": "live_not_persisted",
-    }
+    assert "anchor_price_usd" not in market
+    assert "live_price_persisted" not in market
 
 
 def test_projection_market_uses_social_start_row_not_latest_row():
-    market = _market(
+    market = _market_context(
         [
             {
+                "target_type": "Asset",
+                "target_id": "asset-1",
                 "received_at_ms": 1_777_800_000_000,
                 "market_provider": "okx_dex_search",
                 "market_observed_at_ms": 1_777_800_120_000,
                 "market_price_usd": 1.5,
                 "market_price_basis": "usd",
                 "event_price_usd": 1.0,
+                "event_price_observed_at_ms": 1_777_800_000_500,
                 "event_price_basis": "usd",
                 "before_event_price_usd": 0.9,
                 "before_event_price_basis": "usd",
@@ -536,12 +509,15 @@ def test_projection_market_uses_social_start_row_not_latest_row():
                 "first_price_observed_at_ms": 1_777_799_000_000,
             },
             {
+                "target_type": "Asset",
+                "target_id": "asset-1",
                 "received_at_ms": 1_777_800_120_000,
                 "market_provider": "okx_dex_search",
                 "market_observed_at_ms": 1_777_800_120_000,
                 "market_price_usd": 1.5,
                 "market_price_basis": "usd",
                 "event_price_usd": 1.4,
+                "event_price_observed_at_ms": 1_777_800_120_500,
                 "event_price_basis": "usd",
                 "first_price_usd": 0.8,
                 "first_price_observed_at_ms": 1_777_799_000_000,
@@ -551,11 +527,9 @@ def test_projection_market_uses_social_start_row_not_latest_row():
         now_ms=1_777_800_180_000,
     )
 
-    assert market["price_at_social_start"] == 1.0
-    assert market["price_at_reference"] is None
-    assert market["price_change_since_social_pct"] is None
-    assert market["price_at_first_snapshot"] == 0.8
-    assert market["price_change_since_first_snapshot_pct"] is None
+    assert market["event_anchor"]["price_usd"] == 1.0
+    assert market["decision_latest"] is None
+    assert market["readiness"]["anchor_status"] == "ready"
 
 
 def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefeed():
@@ -577,16 +551,18 @@ def test_source_rows_does_not_read_historical_price_observations():
 
     assert "latest_feed_price" not in conn.sql
     assert "latest_subject_price" not in conn.sql
-    assert "LEFT JOIN price_observations event_price_observation" in conn.sql
-    assert "event_price_observation.observation_id = price_baselines.event_price_observation_id" in conn.sql
+    assert "LEFT JOIN LATERAL" in conn.sql
+    assert "event_price_observation" in conn.sql
+    assert "decision_latest_observation" in conn.sql
+    assert "token_market_price_baselines" not in conn.sql
     assert "message_event_price" not in conn.sql
     assert "event_history_price" not in conn.sql
-    assert "latest_price" not in conn.sql
+    assert "latest_price_observation" not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
     assert "WITH window_events AS MATERIALIZED" in conn.sql
     assert "events.received_at_ms <= %s" in conn.sql
-    assert conn.params == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION)
+    assert conn.params == (1, 2, TOKEN_RADAR_RESOLVER_POLICY_VERSION, 2)
 
 
 def test_projection_commits_ready_coverage_atomically_with_finished_run(monkeypatch):
@@ -711,6 +687,21 @@ def source_row(event_id: str, *, received_at_ms: int, author: str = "alice") -> 
         "event_price_volume_24h_usd": None,
         "event_price_open_interest_usd": None,
         "event_price_holders": 1_000,
+        "decision_latest_provider": "okx_dex_ws_price_info",
+        "decision_latest_pricefeed_id": (
+            "pricefeed:dex-token:okx_dex_search:eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933"
+        ),
+        "decision_latest_observed_at_ms": received_at_ms + 1_000,
+        "decision_latest_received_at_ms": received_at_ms + 1_000,
+        "decision_latest_price_usd": 0.01,
+        "decision_latest_price_quote": None,
+        "decision_latest_quote_symbol": "USD",
+        "decision_latest_price_basis": "usd",
+        "decision_latest_market_cap_usd": 1_000_000,
+        "decision_latest_liquidity_usd": 250_000,
+        "decision_latest_volume_24h_usd": None,
+        "decision_latest_open_interest_usd": None,
+        "decision_latest_holders": 1_000,
         "first_price_usd": 0.01,
         "first_price_observed_at_ms": received_at_ms,
     }
@@ -729,7 +720,17 @@ def ranking_row(
         "factor_snapshot_json": {
             "schema_version": "token_factor_snapshot_v3_social_attention",
             "subject": {"target_id": target_id},
-            "market": {},
+            "market": {
+                "event_anchor": None,
+                "decision_latest": None,
+                "readiness": {
+                    "anchor_status": "missing",
+                    "latest_status": "missing",
+                    "dex_floor_status": "missing_fields",
+                    "missing_fields": [],
+                    "stale_fields": [],
+                },
+            },
             "gates": {"max_decision": "high_alert"},
             "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
             "normalization": {"status": "pending_cross_section", "cohort": {}, "factor_ranks": {}, "alpha_rank": None},

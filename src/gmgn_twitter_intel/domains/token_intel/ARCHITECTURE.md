@@ -17,10 +17,10 @@ GMGN frame
       → token_intents + token_intent_lookup_keys
       → token_intent_resolutions
       → registry_assets + asset_identity_evidence/current
-  → ResolutionRefreshWorker + AnchorPriceWorker reprocess unresolved keys / anchor prices
+  → ResolutionRefreshWorker + AnchorPriceWorker write refreshed identity / event_anchor facts
+  → LivePriceGateway writes material decision_latest facts
   → TokenRadarProjectionWorker
       → token_radar_rows.factor_snapshot_json
-  → LivePriceGateway publishes process-local live prices
   → read models / Signal Pulse / notifications
   → HTTP / WebSocket / CLI / frontend
 ```
@@ -35,10 +35,10 @@ GMGN frame
 | Intent construction | `services/token_intent_builder.py` | `token_intents`, evidence links | One event can produce multiple token intents. Local cashtag aliases may attach to a nearby CA; a free cashtag stays a symbol-only intent. |
 | Deterministic resolution | `services/token_intent_resolver.py`, `services/deterministic_token_resolver.py` | `token_intent_resolutions`, `token_intent_lookup_keys` | Resolver outputs identity status and reason codes, not probabilistic guesses. CEX token matches win first; symbol-only confirmed US equities become `MarketInstrument`/`NON_CRYPTO` before DEX same-symbol assets; explicit chain+address wins through the address path as exact asset identity. |
 | Asset identity ledger | `../asset_market/identity_evidence_policy.py`, `../asset_market/repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
-| Discovery and reprocess | `../asset_market/runtime/resolution_refresh_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current` | Recent NIL / AMBIGUOUS symbol and address lookup keys are refreshed through OKX DEX, then affected intents are reprocessed. Symbol search writes bounded candidate evidence; exact address lookup writes exact evidence. Successful refresh immediately triggers anchor observation and hot Token Radar projection rebuild. |
+| Discovery and reprocess | `../asset_market/runtime/resolution_refresh_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current` | Recent NIL / AMBIGUOUS symbol and address lookup keys are refreshed through OKX DEX, then affected intents are reprocessed. Symbol search writes bounded candidate evidence; exact address lookup writes exact evidence. Successful refresh wakes downstream fact readers; it does not inline Token Radar projection. |
 | Asset profile facts | `../asset_market/runtime/asset_profile_refresh_worker.py`, `../asset_market/services/asset_profile_refresh.py`, `../asset_market/repositories/asset_profile_repository.py`, `../asset_market/read_models/token_profile_read_model.py` | `asset_profiles` | Resolved DEX assets are enriched through the GMGN exact-token profile role after deterministic resolution. Profile facts are asset-level current facts and never resolver evidence, ranking factors, or `factor_snapshot_json` fields. Public read models consume persisted profile facts through `TokenProfileReadModel`; API and frontend code do not call providers. |
-| Anchor and live market | `../asset_market/runtime/{anchor_price_worker.py,live_price_gateway.py}`, `../asset_market/services/{anchor_price_observation.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `price_observations` | AnchorPriceWorker writes one `message_anchor` observation for each resolved social signal, delayed if needed. CEX route sync maintains token/feed routing without refreshing prices. LivePriceGateway keeps latest DEX/CEX prices in process memory and publishes `live_market_update` without writing DB rows. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, and anchor price observations, then emits `token_factor_snapshot_v3_social_attention`. Projection never hydrates current/live market from DB refresh rows. |
+| Market observations | `../asset_market/runtime/{anchor_price_worker.py,live_price_gateway.py}`, `../asset_market/services/{anchor_price_observation.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `price_observations` | AnchorPriceWorker writes `event_anchor` observations for resolved social signals. CEX route sync maintains token/feed routing without refreshing prices. LivePriceGateway may receive high-frequency provider frames, but only material `decision_latest` observations are persisted; raw frames are not business facts. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, and `price_observations` roles, then emits `token_factor_snapshot_v3_social_attention`. TokenRadarProjectionWorker is the only runtime writer for `token_radar_rows`; wake notifications are hints and missed notifications are covered by periodic catch-up. |
 | Search read model | `read_models/search_service.py`, `queries/search_events_query.py`, `services/query_parser.py`, `services/search_aliases.py` | `events.search_tsv`, `token_intent_resolutions`, `cex_tokens`, `registry_assets`, `asset_identity_current` | Search resolves query intent against current production identity first, retrieves target / lexical / trigram route hits, fuses them into cursor pages, and never performs provider calls, extraction, resolution mutation, scoring projection, or legacy `assets / asset_aliases / asset_venues` identity reads. |
 
 ## Factor Snapshot Contract
@@ -50,9 +50,11 @@ contract. It contains:
   snapshot version accepted by readers.
 - `subject` — deterministic target identity selected by the resolver and asset
   identity ledger, plus target-market identity facts.
-- `market` — immutable anchor-price/readiness context for the social signal.
-  Live/current prices are not persisted in this block. Market remains context
-  and gate input, not an alpha family.
+- `market` — market context for the social signal. It contains explicit
+  `event_anchor`, `decision_latest`, and `readiness` roles. `event_anchor`
+  describes the event-time observation; `decision_latest` describes the latest
+  material observation available to ranking, UI, and Signal Pulse. Market remains
+  context and gate input, not an alpha family.
 - `gates` — deterministic blockers, risk reasons, high-alert eligibility, and
   maximum decision. Identity readiness, CEX native-market identity, DEX
   market-cap / liquidity / holder floors, and market freshness are gates or
@@ -68,12 +70,13 @@ contract. It contains:
 - `provenance` — source event ids and computation time.
 
 Token Radar current runtime explanation source is `factor_snapshot_json`.
-`anchor_price` is projected from the factor snapshot's top-level market block;
-`live_market` comes from process-local gateway updates. Legacy score-centered
-JSON fields, v1 snapshot fields, and DB current-market refresh snapshots are not
-runtime fallback sources. `profile` comes from the asset-level `asset_profiles`
-read model and is intentionally outside the scoring snapshot. Signal Lab Pulse
-recommendations consume v3 factor snapshots and deterministic gates.
+The market block is the single product-facing market contract; public readers do
+not reconstruct old top-level `anchor_price` or process-local `live_market`
+fallbacks. Legacy score-centered JSON fields, v1 snapshot fields, and old
+current-market refresh snapshots are not runtime fallback sources. `profile`
+comes from the asset-level `asset_profiles` read model and is intentionally
+outside the scoring snapshot. Signal Lab Pulse recommendations consume v3 factor
+snapshots, `market.decision_latest`, and deterministic gates.
 
 Historical `token_radar_rows` are retained by `computed_at_ms` so
 `TokenFactorEvaluationService` can settle forward returns point-in-time. Latest
@@ -126,7 +129,7 @@ symbol remains `None` rather than falling back to the mention symbol.
   clean duplication only removes that penalty.
 - Token Radar target display uses current identity. Intent display symbol is
   preserved separately as what the tweet mentioned.
-- Signal Pulse reads v2 `factor_snapshot_json`, `agent_recommendation_json`, and
+- Signal Pulse reads v3 `factor_snapshot_json`, `agent_recommendation_json`, and
   deterministic gate output. Product decisions must not fall back to legacy
   Signal Pulse `thesis_json`, `radar_score_json`, or `market_context_json`.
 

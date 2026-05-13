@@ -5,7 +5,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable
-from contextlib import AbstractContextManager, nullcontext
+from contextlib import AbstractContextManager, nullcontext, suppress
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -115,6 +115,7 @@ class PulseCandidateWorker:
         max_attempts: int = 3,
         trigger_thresholds: PulseTriggerThresholds | None = None,
         gate_thresholds: PulseGateThresholds | None = None,
+        wake_listener: Any | None = None,
     ) -> None:
         self.repository_session = repository_session
         self.recommendation_client = recommendation_client
@@ -126,23 +127,43 @@ class PulseCandidateWorker:
         self.max_attempts = max(1, int(max_attempts))
         self.trigger_thresholds = trigger_thresholds or PulseTriggerThresholds()
         self.gate_thresholds = gate_thresholds or PulseGateThresholds()
+        self.wake_listener = wake_listener
         self.last_started_at_ms: int | None = None
         self.last_run_at_ms: int | None = None
         self.last_result: dict[str, Any] | None = None
         self.last_error: str | None = None
-        self._stopped = False
+        self._stopped: bool = False
+        self._wake_queue: asyncio.Queue[None] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     async def run(self) -> None:
-        while not self._stopped:
-            try:
-                await self.run_once_async()
-            except Exception as exc:  # pragma: no cover - watchdog path
-                self.last_error = str(exc)
-                logger.exception(f"pulse candidate worker failed: {exc}")
-            await asyncio.sleep(self.poll_interval)
+        self._loop = asyncio.get_running_loop()
+        self._wake_queue = asyncio.Queue(maxsize=1)
+        listener_task = asyncio.create_task(self._listen_for_wake_hints())
+        try:
+            while not self._stopped:
+                try:
+                    await self.run_once_async()
+                except asyncio.CancelledError:
+                    self._stopped = True
+                    raise
+                except Exception as exc:  # pragma: no cover - watchdog path
+                    self.last_error = str(exc)
+                    logger.exception(f"pulse candidate worker failed: {exc}")
+                if self._stopped:
+                    break
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(self._wake_queue.get(), timeout=self.poll_interval)
+        finally:
+            listener_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await listener_task
+            self._wake_queue = None
+            self._loop = None
 
     def stop(self) -> None:
         self._stopped = True
+        self._enqueue_wake()
 
     async def aclose(self) -> None:
         close = getattr(self.recommendation_client, "aclose", None)
@@ -152,6 +173,37 @@ class PulseCandidateWorker:
         close_sync = getattr(self.recommendation_client, "close", None)
         if close_sync is not None:
             close_sync()
+
+    async def _listen_for_wake_hints(self) -> None:
+        while not self._stopped:
+            if self.wake_listener is None:
+                await asyncio.sleep(self.poll_interval)
+                continue
+            try:
+                listen_pulse_wakes = cast(Callable[..., None], self.wake_listener.listen_pulse_wakes)
+                await asyncio.to_thread(
+                    listen_pulse_wakes,
+                    on_wake=self._enqueue_wake_threadsafe,
+                    should_stop=lambda: self._stopped,
+                    interval_seconds=self.poll_interval,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # pragma: no cover - listener diagnostics
+                logger.debug(f"pulse candidate wake listener unavailable: {exc}")
+                await asyncio.sleep(self.poll_interval)
+
+    def _enqueue_wake_threadsafe(self) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+        loop.call_soon_threadsafe(self._enqueue_wake)
+
+    def _enqueue_wake(self) -> None:
+        queue = self._wake_queue
+        if queue is None or queue.full():
+            return
+        queue.put_nowait(None)
 
     async def run_once_async(self, *, now_ms: int | None = None) -> dict[str, Any]:
         started_at_ms = int(now_ms if now_ms is not None else _now_ms())
@@ -979,17 +1031,15 @@ def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
             "source_event_id": source_event_id,
         },
         "market": {
-            "market_status": "missing",
-            "price_change_status": "missing_anchor",
-            "provider": None,
-            "anchor_price_usd": None,
-            "anchor_price_quote": None,
-            "anchor_quote_symbol": None,
-            "anchor_price_basis": None,
-            "anchor_observed_at_ms": None,
-            "social_signal_start_ms": computed_at_ms,
-            "anchor_lag_ms": None,
-            "event_price_readiness": {"status": "missing"},
+            "event_anchor": None,
+            "decision_latest": None,
+            "readiness": {
+                "anchor_status": "missing",
+                "latest_status": "missing",
+                "dex_floor_status": "not_applicable",
+                "missing_fields": [],
+                "stale_fields": [],
+            },
         },
         "gates": {
             "eligible_for_high_alert": False,
@@ -1006,6 +1056,7 @@ def _source_seed_factor_snapshot(event: dict[str, Any]) -> dict[str, Any]:
         "families": {family: _empty_family_shell(family) for family in TOKEN_RADAR_FACTOR_FAMILIES},
         "normalization": {
             "status": "not_applicable",
+            "cohort_status": "not_applicable",
             "cohort": {},
             "factor_ranks": {},
             "alpha_rank": None,

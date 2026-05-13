@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import contextmanager
 from typing import Any
 
@@ -184,7 +185,8 @@ def test_source_seed_factor_snapshot_is_v3_without_legacy_hard_gates() -> None:
         "provenance",
     }
     assert "hard_gates" not in snapshot
-    assert snapshot["market"]["market_status"] == "missing"
+    assert snapshot["market"]["decision_latest"] is None
+    assert snapshot["market"]["readiness"]["latest_status"] == "missing"
     assert snapshot["gates"]["blocked_reasons"] == ["identity_unresolved"]
     assert set(snapshot["families"]) == {
         "social_heat",
@@ -192,6 +194,29 @@ def test_source_seed_factor_snapshot_is_v3_without_legacy_hard_gates() -> None:
         "semantic_catalyst",
         "timing_risk",
     }
+
+
+def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
+    repos = FakeRepos()
+    wake_listener = FakeWakeListener()
+    worker = PulseCandidateWorker(
+        repository_session=lambda: _session(repos),
+        recommendation_client=FakeClient(),
+        poll_interval=60.0,
+        wake_listener=wake_listener,
+    )
+
+    async def scenario() -> None:
+        task = asyncio.create_task(worker.run())
+        try:
+            await _wait_until(lambda: repos.token_radar.latest_calls >= 1)
+            await _wait_until(lambda: repos.token_radar.latest_calls >= 2)
+        finally:
+            worker.stop()
+            await task
+
+    asyncio.run(scenario())
+    assert wake_listener.listen_calls >= 1
 
 
 def test_legacy_previous_candidate_gate_json_does_not_bypass_cooldown() -> None:
@@ -258,8 +283,10 @@ class FakeConn:
 class FakeTokenRadar:
     def __init__(self) -> None:
         self.rows: list[dict[str, Any]] = []
+        self.latest_calls = 0
 
     def latest_rows(self, **_: Any) -> list[dict[str, Any]]:
+        self.latest_calls += 1
         return list(self.rows)
 
 
@@ -413,6 +440,26 @@ class FakeClient:
         return PulseRecommendationResult(payload=payload, agent_run_audit={**audit, "output_hash": "output-hash"})
 
 
+class FakeWakeListener:
+    def __init__(self) -> None:
+        self.listen_calls = 0
+        self.emitted = False
+
+    def listen_pulse_wakes(self, *, on_wake, should_stop, interval_seconds):
+        self.listen_calls += 1
+        if not self.emitted:
+            self.emitted = True
+            on_wake()
+
+
+async def _wait_until(predicate, *, timeout_seconds: float = 1.0) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+    while not predicate():
+        if asyncio.get_running_loop().time() >= deadline:
+            raise AssertionError("timed out waiting for condition")
+        await asyncio.sleep(0.01)
+
+
 def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "row_id": "row-1",
@@ -439,12 +486,33 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
             "symbol": "TEST",
         },
         "market": {
-            "market_status": "anchored",
-            "price_change_status": "live_not_persisted",
-            "provider": "okx",
-            "anchor_price_usd": 0.42,
-            "social_signal_start_ms": NOW_MS - 20_000,
-            "event_price_readiness": {"status": "ready"},
+            "event_anchor": None,
+            "decision_latest": {
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "observed_at_ms": NOW_MS - 1_000,
+                "received_at_ms": NOW_MS - 1_000,
+                "source": "decision_latest",
+                "provider": "okx",
+                "pricefeed_id": "pf-test",
+                "price_usd": 0.42,
+                "price_quote": None,
+                "quote_symbol": "USD",
+                "price_basis": "usd",
+                "market_cap_usd": 1_000_000,
+                "liquidity_usd": 250_000,
+                "holders": 1_000,
+                "volume_24h_usd": 12_000,
+                "open_interest_usd": None,
+                "raw_payload_hash": None,
+            },
+            "readiness": {
+                "anchor_status": "ready",
+                "latest_status": "live",
+                "dex_floor_status": "ready",
+                "missing_fields": [],
+                "stale_fields": [],
+            },
         },
         "gates": {
             "eligible_for_high_alert": not blocked_reasons,
@@ -499,7 +567,13 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
                 "factors": {"price_change_status": {"family": "timing_risk", "key": "price_change_status"}},
             },
         },
-        "normalization": {"status": "pending_cross_section"},
+        "normalization": {
+            "status": "ranked",
+            "cohort_status": "ready",
+            "cohort": {"size": 12, "in_cohort": True},
+            "factor_ranks": {},
+            "alpha_rank": 0.82,
+        },
         "composite": {
             "family_scores": {
                 "social_heat": rank_score,

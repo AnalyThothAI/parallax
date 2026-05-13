@@ -126,6 +126,44 @@ class CollectorServiceTests(unittest.TestCase):
             self.assertEqual(len(store.twitter_events), 1)
             self.assertEqual(store.twitter_events[0].content.text, "complete")
             self.assertEqual(store.watched_flags, [True])
+            self.assertEqual(service.status.snapshot_gate_outcomes["debounced_complete"], 1)
+
+        asyncio.run(scenario())
+
+    def test_snapshot_gate_records_timeout_and_non_tw_outcomes(self):
+        async def scenario():
+            store = MemoryStore()
+            publisher = MemoryPublisher()
+            service = CollectorService(
+                handles=("toly",),
+                store=store,
+                publisher=publisher,
+                upstream_client=None,
+                snapshot_timeout=0.01,
+            )
+            non_tw = json.dumps({"channel": "public_broadcast", "data": [{"hello": "world"}]})
+            snapshot = json.dumps(
+                {
+                    "channel": "twitter_monitor_basic",
+                    "data": [
+                        {
+                            "i": "timeout-id",
+                            "tw": "tweet",
+                            "ti": "1",
+                            "cp": 0,
+                            "u": {"s": "toly"},
+                            "c": {"t": "snapshot"},
+                        }
+                    ],
+                }
+            )
+
+            await service.handle_frame(non_tw, received_at_ms=900)
+            await service.handle_frame(snapshot, received_at_ms=1000)
+            await asyncio.sleep(0.03)
+
+            self.assertEqual(service.status.snapshot_gate_outcomes["non_tw_channel"], 1)
+            self.assertEqual(service.status.snapshot_gate_outcomes["debounced_timeout"], 1)
 
         asyncio.run(scenario())
 

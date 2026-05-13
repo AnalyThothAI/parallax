@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TokenFlowItem } from "../api/types";
+import { tokenMarketBlockFixture } from "../test/marketFixtures";
 
 import { ScoreLedger } from "./ScoreLedger";
 
@@ -43,7 +44,10 @@ function token(): TokenFlowItem {
       symbol: "TEST",
       venue_type: "dex",
     },
-    market: { market_status: "stale", price_change_status: "insufficient_history" },
+    market: tokenMarketBlockFixture({
+      market_status: "stale",
+      price_change_status: "insufficient_history",
+    }),
     flow: {
       window: "1h",
       mentions: 3,

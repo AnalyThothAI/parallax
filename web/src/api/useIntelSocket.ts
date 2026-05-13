@@ -12,6 +12,7 @@ type Options = {
   replay: number;
   notifications?: boolean;
   marketTargets?: Array<{ target_type?: string | null; target_id?: string | null }>;
+  onLiveMarketUpdate?: (payload: LiveMarketUpdatePayload) => void;
 };
 
 export function useIntelSocket({
@@ -20,6 +21,7 @@ export function useIntelSocket({
   replay,
   notifications = false,
   marketTargets = [],
+  onLiveMarketUpdate,
 }: Options) {
   const [status, setStatus] = useState<SocketStatus>("idle");
   const [events, setEvents] = useState<LivePayload[]>([]);
@@ -84,6 +86,7 @@ export function useIntelSocket({
         return;
       }
       if (payload.type === "live_market_update") {
+        onLiveMarketUpdate?.(payload as LiveMarketUpdatePayload);
         setLiveMarketUpdates((current) =>
           [payload as LiveMarketUpdatePayload, ...current].slice(0, 100),
         );
@@ -97,7 +100,7 @@ export function useIntelSocket({
       socketRef.current = null;
       ws.close();
     };
-  }, [token, handles, replay, notifications, marketTargetKey]);
+  }, [token, handles, replay, notifications, marketTargetKey, onLiveMarketUpdate]);
 
   return { status, events, notifications: notificationEvents, liveMarketUpdates, lastMessageAt };
 }

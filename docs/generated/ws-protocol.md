@@ -6,5 +6,5 @@ Source: `src/gmgn_twitter_intel/app/surfaces/api/ws.py`
 
 | Message class | Doc |
 |---------------|-----|
-| `ClientSubscription` |  |
-| `PublicWebSocketHub` |  |
+| `ClientSubscription` | Client filters for replay events and material live market target updates. |
+| `PublicWebSocketHub` | Publishes event/replay payloads and material live_market_update messages. |

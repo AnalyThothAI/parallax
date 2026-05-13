@@ -384,12 +384,15 @@ def factor_snapshot():
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "subject": {"target_type": "Asset", "target_id": "asset:pepe", "symbol": "PEPE"},
         "market": {
-            "market_status": "anchored",
-            "price_change_status": "live_not_persisted",
-            "provider": "okx",
-            "anchor_price_usd": 0.42,
-            "social_signal_start_ms": 1_700_000_000_000,
-            "event_price_readiness": {"status": "ready"},
+            "event_anchor": market_observation("event_anchor"),
+            "decision_latest": market_observation("decision_latest"),
+            "readiness": {
+                "anchor_status": "ready",
+                "latest_status": "live",
+                "dex_floor_status": "ready",
+                "missing_fields": [],
+                "stale_fields": [],
+            },
         },
         "gates": {"eligible_for_high_alert": True, "blocked_reasons": [], "risk_reasons": []},
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
@@ -415,6 +418,28 @@ def family(facts: dict):
         "data_health": "ready",
         "facts": facts,
         "factors": {"test": {"score": 80, "data_health": "ready"}},
+    }
+
+
+def market_observation(source: str) -> dict:
+    return {
+        "target_type": "Asset",
+        "target_id": "asset:pepe",
+        "source": source,
+        "provider": "okx",
+        "pricefeed_id": None,
+        "price_usd": 0.42,
+        "price_quote": None,
+        "quote_symbol": "USD",
+        "price_basis": "usd",
+        "market_cap_usd": 120_000,
+        "liquidity_usd": 55_000,
+        "holders": 800,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "observed_at_ms": 1_700_000_000_000,
+        "received_at_ms": 1_700_000_000_000,
+        "raw_payload_hash": None,
     }
 
 

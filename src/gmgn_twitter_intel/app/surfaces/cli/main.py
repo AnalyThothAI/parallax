@@ -270,11 +270,6 @@ def build_parser() -> argparse.ArgumentParser:
     audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
     audit_token_radar.add_argument("--limit", type=int, default=100)
     audit_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
-    backfill_price_baselines = ops_subcommands.add_parser(
-        "backfill-token-price-baselines",
-        help="backfill token radar event price baselines from message observations",
-    )
-    backfill_price_baselines.add_argument("--limit", type=int, default=1000)
     factor_diagnostics = ops_subcommands.add_parser(
         "factor-diagnostics",
         help="inspect token factor distribution health for latest radar rows",
@@ -459,11 +454,6 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
                 generated_at_ms=args.now_ms if args.now_ms is not None else _now_ms(),
                 limit=args.limit,
             )
-            _emit({"ok": True, "data": data}, stdout)
-            return 0
-
-        if command == "ops" and args.ops_command == "backfill-token-price-baselines":
-            data = repos.price_observations.backfill_token_price_baselines(limit=args.limit)
             _emit({"ok": True, "data": data}, stdout)
             return 0
 

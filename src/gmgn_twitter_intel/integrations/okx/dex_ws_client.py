@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -10,12 +11,16 @@ from dataclasses import dataclass
 from typing import Any
 
 import websockets
+from loguru import logger
 
 from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE
 
 
 class OkxDexWsClientError(RuntimeError):
     pass
+
+
+WS_CONNECTION_STATES = frozenset({"disconnected", "connecting", "authenticating", "subscribed", "streaming", "failed"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +52,15 @@ class OkxDexWebSocketMarketProvider:
         self.secret_key = secret_key
         self.passphrase = passphrase
         self.subscription_limit = max(1, int(subscription_limit))
+        self.connection_state = "disconnected"
+        self.last_state_change_at_ms = _now_ms()
+
+    def connection_state_payload(self) -> dict[str, Any]:
+        return {
+            "provider": "okx_dex_ws",
+            "state": self.connection_state,
+            "last_state_change_at_ms": self.last_state_change_at_ms,
+        }
 
     async def stream_price_info(
         self,
@@ -66,19 +80,43 @@ class OkxDexWebSocketMarketProvider:
         ]
         if not args:
             return
-        async with websockets.connect(self.url, ping_interval=20, close_timeout=5) as websocket:
-            await websocket.send(json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase)))
-            await _wait_for_login(websocket)
-            await websocket.send(json.dumps({"op": "subscribe", "args": args}))
-            while True:
-                raw_message = await websocket.recv()
-                message = json.loads(str(raw_message))
-                if isinstance(message, dict) and message.get("event") == "error":
-                    raise OkxDexWsClientError(_error_message(message))
-                for row in _rows_from_message(message):
-                    update = _price_info_update_from_row(row)
-                    if update is not None:
-                        yield update
+        try:
+            self._set_connection_state("connecting")
+            async with websockets.connect(self.url, ping_interval=20, close_timeout=5) as websocket:
+                self._set_connection_state("authenticating")
+                await websocket.send(json.dumps(_login_payload(self.api_key, self.secret_key, self.passphrase)))
+                await _wait_for_login(websocket)
+                await websocket.send(json.dumps({"op": "subscribe", "args": args}))
+                self._set_connection_state("subscribed")
+                while True:
+                    raw_message = await websocket.recv()
+                    message = json.loads(str(raw_message))
+                    if isinstance(message, dict) and message.get("event") == "error":
+                        raise OkxDexWsClientError(_error_message(message))
+                    for row in _rows_from_message(message):
+                        update = _price_info_update_from_row(row)
+                        if update is not None:
+                            self._set_connection_state("streaming")
+                            yield update
+        except asyncio.CancelledError:
+            self._set_connection_state("disconnected")
+            raise
+        except Exception:
+            self._set_connection_state("failed")
+            raise
+
+    def _set_connection_state(self, state: str) -> None:
+        if state not in WS_CONNECTION_STATES:
+            raise ValueError(f"unsupported OKX DEX WS state: {state}")
+        if state == self.connection_state:
+            return
+        self.connection_state = state
+        self.last_state_change_at_ms = _now_ms()
+        logger.info(
+            "OKX DEX WS connection state changed | state={} last_state_change_at_ms={}",
+            self.connection_state,
+            self.last_state_change_at_ms,
+        )
 
 
 def _login_payload(api_key: str, secret_key: str, passphrase: str) -> dict[str, Any]:
@@ -167,6 +205,10 @@ def _login_signature(*, secret_key: str, timestamp: str) -> str:
 
 def _okx_timestamp() -> str:
     return str(int(time.time()))
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 def _error_message(row: dict[str, Any]) -> str:

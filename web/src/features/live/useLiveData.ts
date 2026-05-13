@@ -1,15 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import { getApi, getBootstrap } from "../../api/client";
 import type {
-  AssetFlowData,
   LivePayload,
+  LiveMarketUpdatePayload,
   RecentData,
   SignalPulseData,
   StatusData,
 } from "../../api/types";
 import { useIntelSocket } from "../../api/useIntelSocket";
+import { useTokenRadarQuery } from "../../api/useTokenRadarQuery";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/tokenRadar";
 import { useTraderStore } from "../../store/useTraderStore";
@@ -61,16 +62,7 @@ export function useLiveData() {
     refetchInterval: 15_000,
   });
 
-  const assetFlowQuery = useQuery({
-    queryKey: ["token-radar", windowKey, scope],
-    queryFn: () =>
-      getApi<AssetFlowData>("/api/token-radar", {
-        token,
-        params: { window: windowKey, limit: 48, scope },
-      }),
-    enabled: Boolean(token),
-    refetchInterval: 10_000,
-  });
+  const assetFlowQuery = useTokenRadarQuery({ token, window: windowKey, scope, limit: 48 });
 
   const signalPulseOverviewQuery = useQuery({
     queryKey: ["signal-lab-overview", SIGNAL_LAB_COMPACT_WINDOW, SIGNAL_LAB_COMPACT_SCOPE],
@@ -120,12 +112,18 @@ export function useLiveData() {
     [rawTokenItems],
   );
 
+  const handleLiveMarketUpdate = useCallback(
+    (payload: LiveMarketUpdatePayload) => patchTokenRadarLiveMarketUpdate(queryClient, payload),
+    [queryClient],
+  );
+
   const socket = useIntelSocket({
     token,
     handles,
     replay: replayLimit,
     notifications: true,
     marketTargets,
+    onLiveMarketUpdate: handleLiveMarketUpdate,
   });
   const liveItems = useMemo(() => {
     const replayItems = recentQuery.data?.data.items ?? [];
@@ -147,14 +145,6 @@ export function useLiveData() {
     [liveItems, tokenItems],
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
-
-  useEffect(() => {
-    const liveMarketUpdates = socket.liveMarketUpdates ?? [];
-    if (!liveMarketUpdates.length) {
-      return;
-    }
-    patchTokenRadarLiveMarketUpdate(queryClient, liveMarketUpdates[0]);
-  }, [assetFlowQuery.dataUpdatedAt, queryClient, socket.liveMarketUpdates]);
 
   return {
     assetFlowError: assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null,

@@ -243,7 +243,6 @@ def _settings_with_okx_dex_ws_and_gmgn_enabled() -> Settings:
         providers={
             "okx": {
                 "cex_sync_enabled": False,
-                "dex_ws_enabled": True,
                 "dex_api_key": "okx-key",
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",

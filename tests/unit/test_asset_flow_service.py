@@ -7,7 +7,7 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
-def test_asset_flow_returns_anchor_price_and_no_current_market():
+def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     service = asset_flow_service(
         rows=[
             radar_row(lane="resolved", symbol="BTC", target_type="CexToken", target_id="cex_token:BTC"),
@@ -19,9 +19,11 @@ def test_asset_flow_returns_anchor_price_and_no_current_market():
 
     btc = result["targets"][0]
     assert btc["target"]["symbol"] == "BTC"
-    assert btc["anchor_price"]["status"] == "ready"
-    assert btc["anchor_price"]["price_usd"] == 70_000.0
-    assert btc["live_market"]["status"] == "missing"
+    assert btc["market"]["event_anchor"]["price_usd"] == 70_000.0
+    assert btc["market"]["decision_latest"]["price_usd"] == 70_000.0
+    assert btc["market"]["readiness"]["anchor_status"] == "ready"
+    assert "anchor_price" not in btc
+    assert "live_market" not in btc
     assert "current_market" not in btc
     assert result["attention"] == []
     assert result["projection"]["version"] == TOKEN_RADAR_PROJECTION_VERSION
@@ -210,17 +212,35 @@ def factor_snapshot_json(
     decision,
 ):
     ready_anchor = target_id is not None
-    market = {
-        "market_status": "anchored" if ready_anchor else "missing",
-        "event_price_readiness": {"status": "ready" if ready_anchor else "missing"},
+    observation = {
+        "target_type": target_type,
+        "target_id": target_id,
+        "source": "event_anchor",
         "provider": "okx" if ready_anchor else None,
-        "anchor_price_usd": 70_000.0 if ready_anchor else None,
-        "anchor_price_quote": None,
-        "anchor_quote_symbol": "USD" if ready_anchor else None,
-        "anchor_price_basis": "usd" if ready_anchor else None,
-        "anchor_observed_at_ms": 1_700_000_000_500 if ready_anchor else None,
-        "social_signal_start_ms": 1_700_000_000_000,
-        "anchor_lag_ms": 500 if ready_anchor else None,
+        "pricefeed_id": None,
+        "price_usd": 70_000.0 if ready_anchor else None,
+        "price_quote": None,
+        "quote_symbol": "USD" if ready_anchor else None,
+        "price_basis": "usd" if ready_anchor else None,
+        "market_cap_usd": None,
+        "liquidity_usd": None,
+        "holders": None,
+        "volume_24h_usd": None,
+        "open_interest_usd": None,
+        "observed_at_ms": 1_700_000_000_500 if ready_anchor else None,
+        "received_at_ms": 1_700_000_000_500 if ready_anchor else None,
+        "raw_payload_hash": None,
+    }
+    market = {
+        "event_anchor": observation if ready_anchor else None,
+        "decision_latest": {**observation, "source": "decision_latest"} if ready_anchor else None,
+        "readiness": {
+            "anchor_status": "ready" if ready_anchor else "missing",
+            "latest_status": "live" if ready_anchor else "missing",
+            "dex_floor_status": "ready" if target_type != "Asset" else "missing_fields",
+            "missing_fields": [] if target_type != "Asset" else ["holders", "liquidity_usd", "market_cap_usd"],
+            "stale_fields": [],
+        },
     }
     families = {
         "social_heat": family("social_heat", {"mentions_1h": 1}, weight=0.35),

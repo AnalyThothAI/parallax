@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from loguru import logger
@@ -29,6 +29,14 @@ class CollectorStatus:
     duplicate_twitter_events: int = 0
     duplicate_matched_twitter_events: int = 0
     parse_errors: int = 0
+    snapshot_gate_outcomes: dict[str, int] = field(
+        default_factory=lambda: {
+            "immediate_complete": 0,
+            "debounced_complete": 0,
+            "debounced_timeout": 0,
+            "non_tw_channel": 0,
+        }
+    )
 
     def to_dict(self) -> dict[str, int | None]:
         return asdict(self)
@@ -95,11 +103,13 @@ class CollectorService:
 
     async def _handle_item(self, channel: str, item: dict[str, Any], received_at_ms: int) -> None:
         if channel == "public_broadcast" or not item.get("tw"):
+            self._record_snapshot_gate_outcome("non_tw_channel")
             await self._process_item(channel, item, received_at_ms)
             return
 
         internal_id = item.get("i")
         if not internal_id:
+            self._record_snapshot_gate_outcome("immediate_complete")
             await self._process_item(channel, item, received_at_ms)
             return
 
@@ -107,6 +117,9 @@ class CollectorService:
             pending_task = self._pending_snapshots.pop(str(internal_id), None)
             if pending_task:
                 pending_task.cancel()
+                self._record_snapshot_gate_outcome("debounced_complete")
+            else:
+                self._record_snapshot_gate_outcome("immediate_complete")
             await self._process_item(channel, item, received_at_ms)
             return
 
@@ -125,6 +138,7 @@ class CollectorService:
         try:
             await asyncio.sleep(self.snapshot_timeout)
             self._pending_snapshots.pop(internal_id, None)
+            self._record_snapshot_gate_outcome("debounced_timeout")
             await self._process_item(channel, item, received_at_ms)
         except asyncio.CancelledError:
             raise
@@ -158,6 +172,9 @@ class CollectorService:
                     "token_resolutions": ingested.token_resolutions,
                 }
             )
+
+    def _record_snapshot_gate_outcome(self, outcome: str) -> None:
+        self.status.snapshot_gate_outcomes[outcome] = self.status.snapshot_gate_outcomes.get(outcome, 0) + 1
 
 
 def _now_ms() -> int:

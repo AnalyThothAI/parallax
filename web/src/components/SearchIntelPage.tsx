@@ -529,35 +529,38 @@ function radarSummary(result: SearchTokenResult) {
   const composite = asRecord(snapshot.composite);
   const gates = asRecord(snapshot.gates);
   const dataHealth = nonEmptyRecord(radar.data_health) ?? asRecord(snapshot.data_health);
-  const live = asRecord(radar.live_market);
-  const anchor = asRecord(radar.anchor_price);
-  const snapshotMarket = asRecord(snapshot.market);
+  const market = asRecord(radar.market);
+  const eventAnchor = asRecord(market.event_anchor);
+  const decisionLatest = asRecord(market.decision_latest);
+  const readiness = asRecord(market.readiness);
   const marketOverlay = asRecord(result.market_overlay);
   const firstBucketPrice = result.timeline.buckets.find((bucket) => bucket.price?.price_usd)?.price;
   const candleClose = latestCandleClose(result.market_overlay.candles);
   const isDexMarket =
     result.target.target_type === "Asset" || stringValue(radarTarget.target_type) === "Asset";
-  const liveMarketCap = numberValue(live.market_cap_usd);
-  const anchoredMarketCap = numberValue(snapshotMarket.market_cap_usd);
-  const marketCap = liveMarketCap ?? anchoredMarketCap;
+  const latestMarketCap = numberValue(decisionLatest.market_cap_usd);
+  const anchoredMarketCap = numberValue(eventAnchor.market_cap_usd);
+  const marketCap = latestMarketCap ?? anchoredMarketCap;
   const marketCapStatus =
-    liveMarketCap !== null
-      ? stringValue(live.status)
+    latestMarketCap !== null
+      ? stringValue(readiness.latest_status)
       : anchoredMarketCap !== null
         ? "anchored"
         : "missing";
   const price =
     candleClose ??
-    numberValue(live.price_usd) ??
-    numberValue(anchor.price_usd) ??
+    numberValue(decisionLatest.price_usd) ??
+    numberValue(eventAnchor.price_usd) ??
     numberValue(firstBucketPrice?.price_usd);
   const priceStatus =
     stringValue(marketOverlay.candle_status) === "ready"
       ? "ohlc ready"
-      : stringValue(live.status) !== "-"
-        ? stringValue(live.status)
-        : stringValue(anchor.status);
-  const provider = stringValue(live.provider ?? anchor.provider ?? marketOverlay.provider);
+      : stringValue(readiness.latest_status) !== "-"
+        ? stringValue(readiness.latest_status)
+        : stringValue(readiness.anchor_status);
+  const provider = stringValue(
+    decisionLatest.provider ?? eventAnchor.provider ?? marketOverlay.provider,
+  );
   const primaryMarketLabel = isDexMarket ? "market cap" : "price";
   const primaryMarketValue = isDexMarket
     ? marketCap === null

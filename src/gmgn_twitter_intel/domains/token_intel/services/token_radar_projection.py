@@ -14,6 +14,7 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
 from gmgn_twitter_intel.domains.token_intel.queries.token_radar_source_query import TokenRadarSourceQuery
 from gmgn_twitter_intel.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from gmgn_twitter_intel.domains.token_intel.scoring.cross_section_normalizer import (
+    MIN_COHORT_SIZE,
     NORMALIZER_VERSION,
     rank_factors_within_cohort,
     weighted_rank_score,
@@ -35,6 +36,13 @@ from gmgn_twitter_intel.domains.token_intel.services.atomic_mention import HIGH_
 PROJECTION_VERSION = TOKEN_RADAR_PROJECTION_VERSION
 STALE_RUNNING_PROJECTION_MS = 10 * 60 * 1000
 MAX_ANALYSIS_LOOKBACK_MS = 48 * 60 * 60 * 1000
+DEX_DECISION_FLOORS = {
+    "holders": 100,
+    "liquidity_usd": 25_000.0,
+    "market_cap_usd": 50_000.0,
+}
+LIVE_LATEST_MAX_AGE_MS = 90 * 1000
+FRESH_LATEST_MAX_AGE_MS = 5 * 60 * 1000
 
 
 class TokenRadarProjection:
@@ -268,6 +276,7 @@ class TokenRadarProjection:
                 "symbol": symbol,
             }
 
+        cohort_status = _cohort_rank_status(factor_scores=factor_scores, cohort=cohort)
         factor_ranks_by_id = rank_factors_within_cohort(factor_scores=factor_scores, cohort=cohort)
 
         for row in projected:
@@ -279,7 +288,7 @@ class TokenRadarProjection:
                 family: _family_weight(families.get(family)) for family in TOKEN_RADAR_FACTOR_FAMILIES
             }
             alpha_rank = weighted_rank_score(factor_ranks, weights)
-            normalization_status = "ranked" if alpha_rank is not None else "insufficient_cohort"
+            normalization_status = "ranked" if alpha_rank is not None else "no_signal"
             for family in TOKEN_RADAR_FACTOR_FAMILIES:
                 rank = factor_ranks.get(family)
                 if rank is not None and isinstance(families.get(family), dict):
@@ -293,6 +302,7 @@ class TokenRadarProjection:
             }
             factor_snapshot["normalization"] = {
                 "status": normalization_status,
+                "cohort_status": cohort_status,
                 "cohort": {
                     "in_cohort": target_id in cohort,
                     "size": len(cohort),
@@ -313,6 +323,23 @@ class TokenRadarProjection:
                     row.pop(key, None)
 
         return projected
+
+
+def _cohort_rank_status(
+    *,
+    factor_scores: dict[str, dict[str, float | None]],
+    cohort: set[str],
+) -> str:
+    rankable = [
+        tuple(scores.get(family) for family in TOKEN_RADAR_FACTOR_FAMILIES)
+        for token_id, scores in factor_scores.items()
+        if token_id in cohort and any(scores.get(family) is not None for family in TOKEN_RADAR_FACTOR_FAMILIES)
+    ]
+    if len(rankable) < MIN_COHORT_SIZE:
+        return "insufficient"
+    if len(set(rankable)) <= 1:
+        return "all_tied"
+    return "ready"
 
 
 def _analysis_since_ms(*, computed_at_ms: int, window_ms: int) -> int:
@@ -356,7 +383,7 @@ def _project_group(
     resolved = _has_resolved_target(latest)
     lane = "resolved" if resolved else "attention"
     target = _target(latest)
-    market = _market(window_rows, resolved=resolved, now_ms=now_ms)
+    market = _market_context(window_rows, resolved=resolved, now_ms=now_ms)
     scored_window_rows = [{**row, **_market_prefix_for_features(market)} for row in window_rows]
     features = build_radar_features(
         window_rows=scored_window_rows,
@@ -601,165 +628,186 @@ def _target(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _market(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
+def _market_context(window_rows: list[dict[str, Any]], *, resolved: bool, now_ms: int) -> dict[str, Any]:
     if not resolved:
         latest = max(window_rows, key=lambda item: int(item.get("received_at_ms") or 0)) if window_rows else {}
-        return _missing_market("no_resolved_target", native_market_id=latest.get("native_market_id"))
+        return _market_context_dict(
+            event_anchor=None,
+            decision_latest=None,
+            readiness=_market_readiness(
+                event_anchor=None,
+                decision_latest=None,
+                target_type=latest.get("target_type"),
+                now_ms=now_ms,
+            ),
+        )
     if not window_rows:
-        return _missing_market("missing_anchor")
+        return _market_context_dict(
+            event_anchor=None,
+            decision_latest=None,
+            readiness=_market_readiness(
+                event_anchor=None,
+                decision_latest=None,
+                target_type=None,
+                now_ms=now_ms,
+            ),
+        )
     social_start = min(window_rows, key=lambda item: int(item.get("received_at_ms") or 0))
-    anchor_price_usd = social_start.get("event_price_usd")
-    anchor_price_quote = social_start.get("event_price_quote")
-    if anchor_price_usd is None and anchor_price_quote is None:
-        missing = _missing_market("missing_anchor", native_market_id=social_start.get("native_market_id"))
-        missing["social_signal_start_ms"] = social_start.get("received_at_ms")
-        return _with_readiness(missing)
-    anchor_observed_at_ms = _int_or_none(social_start.get("event_price_observed_at_ms"))
-    event_received_at_ms = _int_or_none(social_start.get("received_at_ms"))
-    anchor_lag_ms = (
-        max(0, int(anchor_observed_at_ms) - int(event_received_at_ms))
-        if anchor_observed_at_ms is not None and event_received_at_ms is not None
-        else None
+    event_anchor = _observation_from_row(social_start, prefix="event_price", source="event_anchor")
+    latest_row = max(
+        window_rows,
+        key=lambda item: int(item.get("decision_latest_observed_at_ms") or 0),
     )
-    market_cap_usd = social_start.get("event_price_market_cap_usd")
-    liquidity_usd = social_start.get("event_price_liquidity_usd")
-    volume_24h_usd = social_start.get("event_price_volume_24h_usd")
-    open_interest_usd = social_start.get("event_price_open_interest_usd")
-    holders = social_start.get("event_price_holders")
-    market: dict[str, Any] = {
-        "market_status": "anchored",
-        "market_observation_status": "ready",
-        "price_change_status": "live_not_persisted",
-        "provider": social_start.get("event_price_provider"),
-        "pricefeed_id": social_start.get("pricefeed_id"),
-        "native_market_id": social_start.get("native_market_id"),
-        "price_usd": None,
-        "price_quote": None,
-        "quote_symbol": social_start.get("event_price_quote_symbol"),
-        "price_basis": social_start.get("event_price_basis"),
-        "market_cap_usd": market_cap_usd,
-        "liquidity_usd": liquidity_usd,
-        "volume_24h_usd": volume_24h_usd,
-        "open_interest_usd": open_interest_usd,
-        "holders": holders,
-        "field_statuses": {
-            "market_cap_usd": _field_status(market_cap_usd),
-            "liquidity_usd": _field_status(liquidity_usd),
-            "volume_24h_usd": _field_status(volume_24h_usd),
-            "holders": _field_status(holders),
-        },
-        "price_status": "anchor_only",
-        "market_cap_status": _field_status(market_cap_usd),
-        "liquidity_status": _field_status(liquidity_usd),
-        "holders_status": _field_status(holders),
-        "snapshot_age_ms": None,
-        "snapshot_observed_at_ms": None,
-        "social_signal_start_ms": event_received_at_ms,
-        "anchor_price_usd": anchor_price_usd,
-        "anchor_price_quote": anchor_price_quote,
-        "anchor_quote_symbol": social_start.get("event_price_quote_symbol"),
-        "anchor_price_basis": social_start.get("event_price_basis"),
-        "anchor_observed_at_ms": anchor_observed_at_ms,
-        "anchor_lag_ms": anchor_lag_ms,
-        "price_at_social_start": anchor_price_usd if anchor_price_usd is not None else anchor_price_quote,
-        "price_at_reference": None,
-        "price_change_since_social_pct": None,
-        "price_change_basis": "anchor_only",
-        "price_before_social_start": None,
-        "price_change_before_social_pct": None,
-        "price_at_first_snapshot": social_start.get("first_price_usd") or social_start.get("first_price_quote"),
-        "first_snapshot_observed_at_ms": social_start.get("first_price_observed_at_ms"),
-        "price_change_since_first_snapshot_pct": None,
-        "live_price_persisted": False,
-    }
-    return _with_readiness(market)
+    decision_latest = _observation_from_row(latest_row, prefix="decision_latest", source="decision_latest")
+    return _market_context_dict(
+        event_anchor=event_anchor,
+        decision_latest=decision_latest,
+        readiness=_market_readiness(
+            event_anchor=event_anchor,
+            decision_latest=decision_latest,
+            target_type=social_start.get("target_type"),
+            now_ms=now_ms,
+        ),
+    )
 
 
-def _missing_market(status: str, *, native_market_id: Any = None) -> dict[str, Any]:
-    market = {
-        "market_status": "missing",
-        "market_observation_status": status,
-        "price_change_status": status,
-        "provider": None,
-        "pricefeed_id": None,
-        "native_market_id": native_market_id,
-        "price_usd": None,
-        "price_quote": None,
-        "quote_symbol": None,
-        "price_basis": None,
-        "market_cap_usd": None,
-        "liquidity_usd": None,
-        "volume_24h_usd": None,
-        "open_interest_usd": None,
-        "holders": None,
-        "field_statuses": {},
-        "price_status": None,
-        "market_cap_status": None,
-        "liquidity_status": None,
-        "holders_status": None,
-        "snapshot_age_ms": None,
-        "snapshot_observed_at_ms": None,
-        "social_signal_start_ms": None,
-        "anchor_price_usd": None,
-        "anchor_price_quote": None,
-        "anchor_quote_symbol": None,
-        "anchor_price_basis": None,
-        "anchor_observed_at_ms": None,
-        "anchor_lag_ms": None,
-        "price_at_social_start": None,
-        "price_at_reference": None,
-        "price_before_social_start": None,
-        "price_at_first_snapshot": None,
-        "first_snapshot_observed_at_ms": None,
-        "price_change_since_social_pct": None,
-        "price_change_before_social_pct": None,
-        "price_change_since_first_snapshot_pct": None,
-        "live_price_persisted": False,
-    }
-    return _with_readiness(market)
-
-
-def _with_readiness(market: dict[str, Any]) -> dict[str, Any]:
+def _market_context_dict(
+    *,
+    event_anchor: dict[str, Any] | None,
+    decision_latest: dict[str, Any] | None,
+    readiness: dict[str, Any],
+) -> dict[str, Any]:
     return {
-        **market,
-        "market_readiness": _market_readiness(market),
-        "event_price_readiness": _event_price_readiness(market),
+        "event_anchor": event_anchor,
+        "decision_latest": decision_latest,
+        "readiness": readiness,
     }
 
 
-def _market_readiness(market: dict[str, Any]) -> dict[str, Any]:
+def _observation_from_row(row: dict[str, Any], *, prefix: str, source: str) -> dict[str, Any] | None:
+    price_usd = row.get(_observation_column(prefix, "price_usd"))
+    price_quote = row.get(_observation_column(prefix, "price_quote"))
+    observed_at_ms = _int_or_none(row.get(f"{prefix}_observed_at_ms"))
+    if observed_at_ms is None or (price_usd is None and price_quote is None):
+        return None
     return {
-        "status": market.get("market_status") or "missing",
-        "observation_status": market.get("market_observation_status") or "missing",
-        "provider": market.get("provider"),
-        "snapshot_age_ms": market.get("snapshot_age_ms"),
-        "snapshot_observed_at_ms": market.get("snapshot_observed_at_ms"),
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "observed_at_ms": observed_at_ms,
+        "received_at_ms": _int_or_none(row.get(f"{prefix}_received_at_ms") or row.get("received_at_ms")),
+        "source": source,
+        "provider": row.get(f"{prefix}_provider"),
+        "pricefeed_id": row.get(f"{prefix}_pricefeed_id") or row.get("pricefeed_id"),
+        "price_usd": _float_or_none(price_usd),
+        "price_quote": _float_or_none(price_quote),
+        "quote_symbol": row.get(f"{prefix}_quote_symbol"),
+        "price_basis": row.get(_observation_column(prefix, "price_basis")),
+        "market_cap_usd": _float_or_none(row.get(f"{prefix}_market_cap_usd")),
+        "liquidity_usd": _float_or_none(row.get(f"{prefix}_liquidity_usd")),
+        "holders": _int_or_none(row.get(f"{prefix}_holders")),
+        "volume_24h_usd": _float_or_none(row.get(f"{prefix}_volume_24h_usd")),
+        "open_interest_usd": _float_or_none(row.get(f"{prefix}_open_interest_usd")),
+        "raw_payload_hash": None,
     }
 
 
-def _event_price_readiness(market: dict[str, Any]) -> dict[str, Any]:
-    value = market.get("price_at_social_start")
-    status = "ready" if value is not None else "missing"
+def _observation_column(prefix: str, field: str) -> str:
+    if prefix == "event_price" and field in {"price_usd", "price_quote", "price_basis"}:
+        return f"event_{field}"
+    return f"{prefix}_{field}"
+
+
+def _market_readiness(
+    *,
+    event_anchor: dict[str, Any] | None,
+    decision_latest: dict[str, Any] | None,
+    target_type: Any,
+    now_ms: int,
+) -> dict[str, Any]:
+    missing_fields = _missing_decision_fields(decision_latest, target_type=target_type)
+    stale_fields = []
+    latest_status = _latest_status(decision_latest, now_ms=now_ms)
+    if latest_status == "stale":
+        stale_fields.append("decision_latest")
     return {
-        "status": status,
-        "source": "message_or_history" if status == "ready" else market.get("price_change_status"),
-        "social_signal_start_ms": market.get("social_signal_start_ms"),
-        "price_at_social_start": value,
-        "price_change_status": market.get("price_change_status"),
+        "anchor_status": "ready" if event_anchor is not None else "missing",
+        "latest_status": latest_status,
+        "dex_floor_status": _dex_floor_status(decision_latest, target_type=target_type, missing_fields=missing_fields),
+        "missing_fields": missing_fields,
+        "stale_fields": stale_fields,
     }
+
+
+def _missing_decision_fields(decision_latest: dict[str, Any] | None, *, target_type: Any) -> list[str]:
+    if str(target_type or "") != "Asset":
+        return []
+    latest = decision_latest or {}
+    return [field for field in DEX_DECISION_FLOORS if latest.get(field) is None]
+
+
+def _latest_status(decision_latest: dict[str, Any] | None, *, now_ms: int) -> str:
+    if decision_latest is None:
+        return "missing"
+    observed_at_ms = _int_or_none(decision_latest.get("received_at_ms") or decision_latest.get("observed_at_ms"))
+    if observed_at_ms is None:
+        return "missing"
+    age_ms = max(0, int(now_ms) - observed_at_ms)
+    if age_ms <= LIVE_LATEST_MAX_AGE_MS:
+        return "live"
+    if age_ms <= FRESH_LATEST_MAX_AGE_MS:
+        return "fresh"
+    return "stale"
+
+
+def _dex_floor_status(
+    decision_latest: dict[str, Any] | None,
+    *,
+    target_type: Any,
+    missing_fields: list[str],
+) -> str:
+    if str(target_type or "") != "Asset":
+        return "ready"
+    if missing_fields:
+        return "missing_fields"
+    latest = decision_latest or {}
+    for field, floor in DEX_DECISION_FLOORS.items():
+        value = _float_or_none(latest.get(field))
+        if value is None:
+            return "missing_fields"
+        if value < floor:
+            return "below_floor"
+    return "ready"
+
+
+def _readiness_status(market: dict[str, Any]) -> str:
+    readiness = _dict(market.get("readiness"))
+    if readiness.get("anchor_status") != "ready":
+        return "missing"
+    latest_status = str(readiness.get("latest_status") or "missing")
+    return "ready" if latest_status in {"live", "fresh"} else "partial"
+
+
+def _price_change_between(current: dict[str, Any], base: dict[str, Any]) -> float | None:
+    if current.get("price_usd") is not None and base.get("price_usd") is not None:
+        return _pct_change(current.get("price_usd"), base.get("price_usd"))
+    if current.get("quote_symbol") and current.get("quote_symbol") == base.get("quote_symbol"):
+        return _pct_change(current.get("price_quote"), base.get("price_quote"))
+    return None
 
 
 def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
+    event_anchor = _dict(market.get("event_anchor"))
+    decision_latest = _dict(market.get("decision_latest"))
     return {
-        "market_status": market.get("market_status"),
-        "market_observation_status": market.get("market_observation_status"),
-        "market_market_cap_usd": market.get("market_cap_usd"),
-        "market_liquidity_usd": market.get("liquidity_usd"),
-        "market_volume_24h_usd": market.get("volume_24h_usd"),
-        "market_open_interest_usd": market.get("open_interest_usd"),
-        "market_holders": market.get("holders"),
-        "price_change_since_social_pct": market.get("price_change_since_social_pct"),
-        "price_change_before_social_pct": market.get("price_change_before_social_pct"),
+        "market_status": _readiness_status(market),
+        "market_observation_status": _dict(market.get("readiness")).get("anchor_status"),
+        "market_market_cap_usd": decision_latest.get("market_cap_usd"),
+        "market_liquidity_usd": decision_latest.get("liquidity_usd"),
+        "market_volume_24h_usd": decision_latest.get("volume_24h_usd"),
+        "market_open_interest_usd": decision_latest.get("open_interest_usd"),
+        "market_holders": decision_latest.get("holders"),
+        "price_change_since_social_pct": _price_change_between(decision_latest, event_anchor),
+        "price_change_before_social_pct": None,
     }
 
 

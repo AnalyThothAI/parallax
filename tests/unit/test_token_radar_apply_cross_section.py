@@ -79,13 +79,64 @@ def _family(score: float | None, weight: float) -> dict[str, Any]:
 
 
 def _market(status: str = "anchored") -> dict[str, Any]:
+    if status == "missing":
+        return {
+            "event_anchor": None,
+            "decision_latest": None,
+            "readiness": {
+                "anchor_status": "missing",
+                "latest_status": "missing",
+                "dex_floor_status": "missing_fields",
+                "missing_fields": ["holders", "liquidity_usd", "market_cap_usd"],
+                "stale_fields": [],
+            },
+        }
     return {
-        "market_status": status,
-        "price_change_status": "live_not_persisted" if status != "missing" else "missing_anchor",
-        "provider": "okx" if status != "missing" else None,
-        "anchor_price_usd": 0.42 if status != "missing" else None,
-        "social_signal_start_ms": 1_700_000_000_000,
-        "event_price_readiness": {"status": "ready" if status != "missing" else "missing"},
+        "event_anchor": {
+            "target_type": "Asset",
+            "target_id": "asset:pepe",
+            "observed_at_ms": 1_700_000_000_000,
+            "received_at_ms": 1_700_000_000_000,
+            "source": "event_anchor",
+            "provider": "okx",
+            "pricefeed_id": "pf",
+            "price_usd": 0.42,
+            "price_quote": None,
+            "quote_symbol": "USD",
+            "price_basis": "usd",
+            "market_cap_usd": None,
+            "liquidity_usd": None,
+            "holders": None,
+            "volume_24h_usd": None,
+            "open_interest_usd": None,
+            "raw_payload_hash": None,
+        },
+        "decision_latest": {
+            "target_type": "Asset",
+            "target_id": "asset:pepe",
+            "observed_at_ms": 1_700_000_030_000,
+            "received_at_ms": 1_700_000_030_000,
+            "source": "decision_latest",
+            "provider": "okx",
+            "pricefeed_id": "pf",
+            "price_usd": 0.44,
+            "price_quote": None,
+            "quote_symbol": "USD",
+            "price_basis": "usd",
+            "market_cap_usd": 500_000.0,
+            "liquidity_usd": 150_000.0,
+            "holders": 1_500,
+            "volume_24h_usd": None,
+            "open_interest_usd": None,
+            "raw_payload_hash": None,
+        },
+        "readiness": {
+            "anchor_status": "ready",
+            "latest_status": "live" if status != "stale" else "stale",
+            "dex_floor_status": "ready",
+            "missing_fields": [],
+            "stale_fields": [] if status != "stale" else ["decision_latest"],
+        },
     }
 
 
@@ -102,14 +153,29 @@ def test_cross_section_ranks_cohort_members_and_excludes_stablecoins():
 
     by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
 
-    assert by_id["asset:wif"]["alpha_rank"] == 1.0
-    assert by_id["asset:bonk"]["alpha_rank"] == pytest.approx(2 / 3)
-    assert by_id["asset:pepe"]["alpha_rank"] == pytest.approx(1 / 3)
+    assert by_id["asset:wif"]["alpha_rank"] is None
+    assert by_id["asset:bonk"]["alpha_rank"] is None
+    assert by_id["asset:pepe"]["alpha_rank"] is None
+    assert by_id["asset:wif"]["cohort_status"] == "insufficient"
 
     assert by_id["cex_token:USDT"]["alpha_rank"] is None
     assert by_id["cex_token:USDC"]["alpha_rank"] is None
     assert by_id["cex_token:USDT"]["cohort"]["in_cohort"] is False
     assert by_id["cex_token:USDC"]["cohort"]["in_cohort"] is False
+
+
+def test_small_or_all_tied_cohort_returns_no_signal():
+    small_rows = [_row(target_id=f"asset:small-{index}", symbol=f"SMALL{index}") for index in range(9)]
+    tied_rows = [_row(target_id=f"asset:tied-{index}", symbol=f"TIED{index}") for index in range(10)]
+
+    small_result = TokenRadarProjection._apply_cross_section(small_rows)
+    tied_result = TokenRadarProjection._apply_cross_section(tied_rows)
+
+    assert {row["factor_snapshot_json"]["normalization"]["status"] for row in small_result} == {"no_signal"}
+    assert {row["factor_snapshot_json"]["normalization"]["cohort_status"] for row in small_result} == {"insufficient"}
+    assert {row["factor_snapshot_json"]["normalization"]["status"] for row in tied_result} == {"no_signal"}
+    assert {row["factor_snapshot_json"]["normalization"]["cohort_status"] for row in tied_result} == {"all_tied"}
+    assert all(row["factor_snapshot_json"]["normalization"]["alpha_rank"] is None for row in tied_result)
 
 
 def test_cross_section_writes_cohort_metadata_with_versions():
@@ -250,7 +316,8 @@ def test_cross_section_skips_non_qualifying_tokens_from_cohort():
     assert by_id["asset:noise"]["cohort"]["in_cohort"] is False
     assert by_id["asset:noise"]["alpha_rank"] is None
     assert by_id["asset:real"]["cohort"]["in_cohort"] is True
-    assert by_id["asset:real"]["alpha_rank"] == 1.0
+    assert by_id["asset:real"]["alpha_rank"] is None
+    assert by_id["asset:real"]["cohort_status"] == "insufficient"
 
 
 def test_cross_section_uses_family_scores_when_composite_rank_score_is_missing():
@@ -262,8 +329,9 @@ def test_cross_section_uses_family_scores_when_composite_rank_score_is_missing()
     result = TokenRadarProjection._apply_cross_section(rows)
     by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
 
-    assert by_id["asset:has_score"]["alpha_rank"] == 1.0
-    assert by_id["asset:no_score"]["alpha_rank"] == 0.5
+    assert by_id["asset:has_score"]["alpha_rank"] is None
+    assert by_id["asset:no_score"]["alpha_rank"] is None
+    assert by_id["asset:has_score"]["cohort_status"] == "insufficient"
     assert by_id["asset:no_score"]["cohort"]["in_cohort"] is True
 
 
@@ -277,15 +345,16 @@ def test_cross_section_updates_family_scores_composite_and_decision_from_factor_
     hot = next(r for r in result if r["target_id"] == "asset:hot")
     cold = next(r for r in result if r["target_id"] == "asset:cold")
 
-    assert hot["factor_snapshot_json"]["normalization"]["status"] == "ranked"
-    assert hot["factor_snapshot_json"]["families"]["social_heat"]["score"] == 100
-    assert hot["factor_snapshot_json"]["composite"]["rank_score"] == 100
+    assert hot["factor_snapshot_json"]["normalization"]["status"] == "no_signal"
+    assert hot["factor_snapshot_json"]["normalization"]["cohort_status"] == "insufficient"
+    assert hot["factor_snapshot_json"]["families"]["social_heat"]["score"] == 90.0
+    assert hot["factor_snapshot_json"]["composite"]["rank_score"] == 90
     assert hot["factor_snapshot_json"]["composite"]["recommended_decision"] == "high_alert"
     assert hot["decision"] == "high_alert"
-    assert cold["factor_snapshot_json"]["families"]["social_heat"]["score"] == 50
-    assert cold["factor_snapshot_json"]["composite"]["rank_score"] == 50
-    assert cold["factor_snapshot_json"]["composite"]["recommended_decision"] == "watch"
-    assert cold["decision"] == "watch"
+    assert cold["factor_snapshot_json"]["families"]["social_heat"]["score"] == 10.0
+    assert cold["factor_snapshot_json"]["composite"]["rank_score"] == 10
+    assert cold["factor_snapshot_json"]["composite"]["recommended_decision"] == "discard"
+    assert cold["decision"] == "discard"
 
 
 def test_cross_section_zero_weight_timing_risk_cannot_dominate_alpha_rank():
@@ -317,8 +386,9 @@ def test_cross_section_zero_weight_timing_risk_cannot_dominate_alpha_rank():
     result = TokenRadarProjection._apply_cross_section(rows)
     by_id = {r["target_id"]: r["factor_snapshot_json"]["normalization"] for r in result}
 
-    assert by_id["asset:social"]["alpha_rank"] == 1.0
-    assert by_id["asset:timing"]["alpha_rank"] == 0.5
+    assert by_id["asset:social"]["alpha_rank"] is None
+    assert by_id["asset:timing"]["alpha_rank"] is None
+    assert by_id["asset:social"]["cohort_status"] == "insufficient"
 
 
 def test_cross_section_rejects_snapshot_with_legacy_hard_gates():

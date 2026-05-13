@@ -1,6 +1,7 @@
 import { ArrowRight } from "lucide-react";
 
 import type { TokenFlowItem } from "../api/types";
+import { isDexMarket } from "../domain/tokenTarget";
 import {
   compactNumber,
   formatPercentShare,
@@ -203,10 +204,6 @@ function marketFreshnessDetails(item: TokenFlowItem): string[] {
     details.push(`liq ${compactLabel(item.market.liquidity_status)}`);
   }
   return details;
-}
-
-function isDexMarket(item: TokenFlowItem): boolean {
-  return item.identity.venue_type === "dex" || item.identity.target_type === "Asset";
 }
 
 function shouldShowFieldStatus(

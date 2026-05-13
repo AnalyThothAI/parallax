@@ -13,6 +13,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import (
 from gmgn_twitter_intel.domains.asset_market.queries.pending_anchor_price_query import (
     PendingAnchorPriceQuery,
 )
+from gmgn_twitter_intel.domains.asset_market.types import MarketObservation, MarketTargetRef
 
 ANCHOR_PRICE_DEX_BATCH_SIZE = 20
 
@@ -38,6 +39,7 @@ def observe_anchor_prices(
         "skipped_missing_market": 0,
         "provider_errors": 0,
         "errors": [],
+        "written_targets": [],
     }
     cex_quotes = _fetch_cex_quotes(rows, cex_market=cex_market, result=result)
     dex_quotes = _fetch_dex_quotes(rows, dex_quote_market=dex_quote_market, result=result)
@@ -63,6 +65,7 @@ def observe_anchor_prices(
             written = False
         if written:
             result["anchor_observations_written"] += 1
+            result["written_targets"].append({"target_type": target_type, "target_id": str(row.get("target_id"))})
     if result["anchor_observations_written"]:
         repos.conn.commit()
     return result
@@ -179,24 +182,30 @@ def _write_cex_observation(
         result["skipped_missing_pricefeed"] += 1
         return False
     price_basis = _cex_price_basis(quote_symbol)
-    repos.price_observations.insert_observation(
-        provider="okx",
-        pricefeed_id=pricefeed_id,
-        observed_at_ms=now_ms,
-        subject_type="CexToken",
-        subject_id=str(row["target_id"]),
-        price_usd=ticker.last_price if price_basis == "quote_as_usd" else None,
-        price_quote=ticker.last_price,
-        quote_symbol=quote_symbol,
-        price_basis=price_basis,
-        volume_24h_usd=ticker.volume_24h,
-        open_interest_usd=ticker.open_interest,
+    repos.price_observations.insert_market_observation(
+        MarketObservation(
+            target=MarketTargetRef(target_type="CexToken", target_id=str(row["target_id"])),
+            observed_at_ms=int(now_ms),
+            received_at_ms=int(now_ms),
+            source="event_anchor",
+            provider="okx",
+            pricefeed_id=pricefeed_id,
+            price_usd=ticker.last_price if price_basis == "quote_as_usd" else None,
+            price_quote=ticker.last_price,
+            quote_symbol=quote_symbol,
+            price_basis=price_basis,
+            market_cap_usd=None,
+            liquidity_usd=None,
+            holders=None,
+            volume_24h_usd=ticker.volume_24h,
+            open_interest_usd=ticker.open_interest,
+            raw_payload_hash=_payload_hash(ticker.raw),
+        ),
+        observation_kind="event_anchor",
         source_event_id=str(row["event_id"]),
         source_intent_id=str(row["intent_id"]),
         source_resolution_id=str(row["resolution_id"]),
-        observation_kind="message_anchor",
         event_received_at_ms=int(row["event_received_at_ms"]),
-        raw_payload={**ticker.raw, "payload_hash": _payload_hash(ticker.raw)},
         commit=False,
     )
     return True
@@ -220,25 +229,30 @@ def _write_dex_observation(
         base_symbol=str(row["asset_symbol"]) if row.get("asset_symbol") else None,
         commit=False,
     )
-    repos.price_observations.insert_observation(
-        provider="gmgn_dex_quote",
-        pricefeed_id=str(pricefeed["pricefeed_id"]),
-        observed_at_ms=price.observed_at_ms or now_ms,
-        subject_type="Asset",
-        subject_id=str(row["target_id"]),
-        price_usd=price.price_usd,
-        price_basis="usd",
-        market_cap_usd=price.market_cap_usd,
-        liquidity_usd=price.liquidity_usd,
-        volume_24h_usd=price.volume_24h_usd,
-        open_interest_usd=None,
-        holders=price.holders,
+    repos.price_observations.insert_market_observation(
+        MarketObservation(
+            target=MarketTargetRef(target_type="Asset", target_id=str(row["target_id"])),
+            observed_at_ms=int(price.observed_at_ms or now_ms),
+            received_at_ms=int(now_ms),
+            source="event_anchor",
+            provider="gmgn_dex_quote",
+            pricefeed_id=str(pricefeed["pricefeed_id"]),
+            price_usd=price.price_usd,
+            price_quote=None,
+            quote_symbol="USD",
+            price_basis="usd" if price.price_usd is not None else "unavailable",
+            market_cap_usd=price.market_cap_usd,
+            liquidity_usd=price.liquidity_usd,
+            holders=price.holders,
+            volume_24h_usd=price.volume_24h_usd,
+            open_interest_usd=None,
+            raw_payload_hash=_payload_hash(price.raw),
+        ),
+        observation_kind="event_anchor",
         source_event_id=str(row["event_id"]),
         source_intent_id=str(row["intent_id"]),
         source_resolution_id=str(row["resolution_id"]),
-        observation_kind="message_anchor",
         event_received_at_ms=int(row["event_received_at_ms"]),
-        raw_payload={**price.raw, "payload_hash": _payload_hash(price.raw)},
         commit=False,
     )
     return True

@@ -1,11 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { getApi } from "../api/client";
 import type {
-  AssetFlowData,
   TokenFlowItem,
   TokenPostRange,
   TokenPostSortMode,
@@ -14,12 +11,13 @@ import type {
   TokenTimelineStage,
   WindowKey,
 } from "../api/types";
+import { useTokenRadarQuery } from "../api/useTokenRadarQuery";
 import {
   mergeTokenPostPages,
   useTokenTargetPosts,
   useTokenTargetTimeline,
 } from "../api/useTokenTargetQueries";
-import { type TargetRef, targetRefEquals } from "../domain/tokenTarget";
+import { isDexMarket, type TargetRef, targetRefEquals } from "../domain/tokenTarget";
 import {
   compactNumber,
   eventText,
@@ -73,21 +71,12 @@ export function TokenTargetPage() {
 
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
 
-  const assetFlowQuery = useQuery({
-    queryKey: [
-      "token-radar-page",
-      windowKey,
-      scope,
-      target?.target_type ?? null,
-      target?.target_id ?? null,
-    ],
-    queryFn: () =>
-      getApi<AssetFlowData>("/api/token-radar", {
-        token,
-        params: { window: windowKey, limit: 48, scope },
-      }),
-    enabled: Boolean(token && target),
-    refetchInterval: 10_000,
+  const assetFlowQuery = useTokenRadarQuery({
+    token,
+    window: windowKey,
+    scope,
+    limit: 48,
+    enabled: Boolean(target),
   });
 
   const timelineQuery = useTokenTargetTimeline({ token, target, window: windowKey, scope });
@@ -566,8 +555,4 @@ function marketLine(token: TokenFlowItem): string {
     return formatTokenPriceUsd(token.market.price);
   }
   return token.market.market_status ?? "-";
-}
-
-function isDexMarket(token: TokenFlowItem): boolean {
-  return token.identity.venue_type === "dex" || token.identity.target_type === "Asset";
 }

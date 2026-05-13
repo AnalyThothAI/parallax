@@ -27,3 +27,7 @@ export function targetRefEquals(
   }
   return left.target_type === right.target_type && left.target_id === right.target_id;
 }
+
+export function isDexMarket(item: TokenFlowItem): boolean {
+  return item.identity.venue_type === "dex" || item.identity.target_type === "Asset";
+}

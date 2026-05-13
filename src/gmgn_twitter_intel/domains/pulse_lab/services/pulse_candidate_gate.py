@@ -55,7 +55,13 @@ def gate_pulse_candidate_from_factor_snapshot(
     snapshot = _valid_snapshot(factor_snapshot)
     resolved_thresholds = thresholds or PulseGateThresholds()
     score = float(clamp_score(safe_float(_nested(snapshot, "composite", "rank_score"))))
-    blocked_reasons = _stable_strings(_nested(snapshot, "gates", "blocked_reasons"))
+    blocked_reasons = _dedupe(
+        [
+            *_stable_strings(_nested(snapshot, "gates", "blocked_reasons")),
+            *_market_contract_blockers(snapshot),
+            *_cohort_blockers(snapshot),
+        ]
+    )
     risk_reasons = _dedupe([*blocked_reasons, *_factor_risks(snapshot)])
     hard_risks = list(blocked_reasons)
     eligible_for_high_alert = bool(_nested(snapshot, "gates", "eligible_for_high_alert")) and not blocked_reasons
@@ -138,6 +144,36 @@ def _factor_risks(snapshot: dict[str, Any]) -> list[str]:
     for factor in _factor_values(snapshot):
         risks.extend(_stable_strings(factor.get("risk_flags")))
     return _dedupe(risks)
+
+
+def _market_contract_blockers(snapshot: dict[str, Any]) -> list[str]:
+    subject = _mapping(snapshot.get("subject"))
+    target_type = str(subject.get("target_type") or "").strip()
+    target_id = str(subject.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return []
+    market = _mapping(snapshot.get("market"))
+    decision_latest = market.get("decision_latest")
+    if not isinstance(decision_latest, dict) or not decision_latest:
+        return ["decision_latest_missing"]
+    return []
+
+
+def _cohort_blockers(snapshot: dict[str, Any]) -> list[str]:
+    subject = _mapping(snapshot.get("subject"))
+    target_type = str(subject.get("target_type") or "").strip()
+    target_id = str(subject.get("target_id") or "").strip()
+    if not target_type or not target_id:
+        return []
+    normalization = _mapping(snapshot.get("normalization"))
+    cohort_status = str(normalization.get("cohort_status") or "").strip()
+    if cohort_status == "insufficient":
+        return ["cohort_insufficient"]
+    if cohort_status == "all_tied":
+        return ["cohort_all_tied"]
+    if str(normalization.get("status") or "").strip() == "no_signal" and cohort_status != "ready":
+        return ["cohort_no_signal"]
+    return []
 
 
 def _factor_values(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
