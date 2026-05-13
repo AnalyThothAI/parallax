@@ -1,4 +1,5 @@
 import { UserRound } from "lucide-react";
+import { useId } from "react";
 
 import type { ScopeKey, WindowKey } from "../api/types";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
@@ -22,6 +23,7 @@ export function RadarControls({
   onScopeChange,
   onHandlesChange,
 }: RadarControlsProps) {
+  const handlesInputId = useId();
   return (
     <>
       <div className="segmented" aria-label="radar window">
@@ -53,9 +55,11 @@ export function RadarControls({
         </button>
       </div>
       {onHandlesChange ? (
-        <label className="handle-filter compact">
+        <label className="handle-filter compact" htmlFor={handlesInputId}>
           <UserRound aria-hidden />
           <input
+            aria-label="radar handles"
+            id={handlesInputId}
             value={handles ?? ""}
             onChange={(event) => onHandlesChange(event.target.value)}
             placeholder={handlePlaceholder}

@@ -60,7 +60,7 @@ Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in
 - Task 9 requires new dev dependency: `@playwright/test`.
 - Task 10 requires new production dependency: `clsx`.
 
-Per the execution pause conditions, dependency installation must pause for user confirmation before those tasks proceed.
+Per the execution pause conditions, dependency installation must pause for user confirmation before adding the Task 10 production dependency.
 
 ## Task 1 Verification
 
@@ -76,3 +76,21 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `make regen-contract`: passed; regenerated `docs/generated/openapi.json` and `web/src/lib/types/openapi.ts`
 - `rg -n '"application/json": unknown|content: \\{\\s*"application/json": unknown' web/src/lib/types/openapi.ts`: no matches
 - `make contract-check`: passed, `2 passed in 2.64s`
+
+## Task 2 Verification
+
+### Frontend Scaffold Changes
+
+- Added path aliases in `tsconfig.json` and `vite.config.ts`.
+- Added `@lib/env`, `@lib/api/client`, and `@lib/types` facade while keeping `web/src/api/client.ts` as a compatibility re-export.
+- Added `AppRoot`, `AppRoutes`, route entry scaffolds, `ErrorBoundary`, and `RouteFallback`.
+- Enabled staged lint rules for `react-refresh`, `jsx-a11y`, and lib/shared import boundaries.
+- Added dev-only `eslint-plugin-react-refresh` to satisfy the planned Fast Refresh lint gate.
+- Moved the exported token drawer summary helper out of `TokenRadarRow.tsx` so the component file passes Fast Refresh rules.
+
+### Commands
+
+- `cd web && npm run typecheck`: passed
+- `cd web && npm run lint`: passed
+- `cd web && npm test -- --run`: passed, `25 passed`, `136 passed`
+- `cd web && npm run build`: passed; Vite emitted the existing `Some chunks are larger than 500 kB` warning

@@ -1,5 +1,5 @@
 import { Clock3, Home, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
+import { useEffect, type ReactNode, type RefObject } from "react";
 import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type {
@@ -72,7 +72,7 @@ type CockpitLayoutProps = {
   // detail panel content
   detailPanel: ReactNode;
   // hotkeys
-  onHotkey: (event: KeyboardEvent<HTMLElement>) => void;
+  onHotkey: (event: KeyboardEvent) => void;
 };
 
 const SIGNAL_LAB_PATH = "/signal-lab";
@@ -131,11 +131,14 @@ export function CockpitLayout(props: CockpitLayoutProps) {
   const activeWatchHandle = isSignalLab ? (searchParams.get("handle") ?? "") : "";
   const detailEnabled = detailAvailable && !isStocks;
 
+  useEffect(() => {
+    document.addEventListener("keydown", onHotkey);
+    return () => document.removeEventListener("keydown", onHotkey);
+  }, [onHotkey]);
+
   return (
-    <main
+    <div
       className={`cockpit-shell ${isSearch ? "search-shell" : ""}`.trim()}
-      onKeyDown={onHotkey}
-      tabIndex={-1}
     >
       <header className="topbar">
         <div className="brand">
@@ -170,6 +173,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
         >
           <Search aria-hidden />
           <input
+            aria-label="global search"
             ref={searchInputRef}
             value={searchValue}
             onChange={(event) => onSearchChange(event.target.value)}
@@ -261,9 +265,11 @@ export function CockpitLayout(props: CockpitLayoutProps) {
                   all stream
                 </button>
               </div>
-              <label className="handle-filter">
+              <label className="handle-filter" htmlFor="cockpit-handle-filter">
                 <UserRound aria-hidden />
                 <input
+                  aria-label="watchlist handles"
+                  id="cockpit-handle-filter"
                   value={handles}
                   onChange={(event) => onHandlesChange(event.target.value)}
                   placeholder="toly, ansem"
@@ -353,7 +359,7 @@ export function CockpitLayout(props: CockpitLayoutProps) {
         notifications={socketNotifications.map((item) => item.notification)}
         onOpenNotification={onOpenNotification}
       />
-    </main>
+    </div>
   );
 }
 

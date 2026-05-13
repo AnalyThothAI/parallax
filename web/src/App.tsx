@@ -1,5 +1,5 @@
-import { CockpitApp } from "./app/CockpitApp";
+import { AppRoutes } from "./app/AppRoutes";
 
 export function App() {
-  return <CockpitApp />;
+  return <AppRoutes />;
 }

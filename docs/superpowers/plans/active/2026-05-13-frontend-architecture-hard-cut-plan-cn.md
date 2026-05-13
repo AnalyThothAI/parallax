@@ -188,25 +188,25 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Modify: `web/eslint.config.js`
 - Modify: `web/package.json`
 
-- [ ] Add path aliases in `tsconfig.json` and `vite.config.ts`: `@app/*`, `@routes/*`, `@features/*`, `@shared/*`, `@lib/*`.
-- [ ] Add `web/src/lib/env/env.ts` with typed same-origin defaults:
+- [x] Add path aliases in `tsconfig.json` and `vite.config.ts`: `@app/*`, `@routes/*`, `@features/*`, `@shared/*`, `@lib/*`.
+- [x] Add `web/src/lib/env/env.ts` with typed same-origin defaults:
   - `apiBaseUrl`: `import.meta.env.VITE_API_BASE_URL || window.location.origin`
   - `wsUrl`: `import.meta.env.VITE_WS_URL || ws(same host)`
   - `mode`: `import.meta.env.MODE`
-- [ ] Move `web/src/api/client.ts` behavior into `web/src/lib/api/client.ts`; add closure auth helpers:
+- [x] Move `web/src/api/client.ts` behavior into `web/src/lib/api/client.ts`; add closure auth helpers:
   - `setAuthToken(token: string | null): void`
   - `getAuthToken(): string | null`
   - `getApi<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>>`
   - `postApi<T>(path: string, options?: RequestOptions): Promise<ApiResponse<T>>`
   - `getBootstrap(): Promise<ApiResponse<BootstrapData>>`
   - `websocketUrl(): string`
-- [ ] Create `web/src/lib/types/index.ts` facade from generated OpenAPI types and local UI unions. Any type still not representable from OpenAPI must be listed in a `// local-ui-contract` section with a line comment explaining why it is not part of HTTP schema.
-- [ ] Add app and route error boundaries. Route files may temporarily import old `web/src/components/*` so Task 2 is behavior-preserving.
-- [ ] Enable ESLint plugins/rules in staged mode:
+- [x] Create `web/src/lib/types/index.ts` facade from generated OpenAPI types and local UI unions. Any type still not representable from OpenAPI must be listed in a `// local-ui-contract` section with a line comment explaining why it is not part of HTTP schema.
+- [x] Add app and route error boundaries. Route files may temporarily import old `web/src/components/*` so Task 2 is behavior-preserving.
+- [x] Enable ESLint plugins/rules in staged mode:
   - `react-refresh/only-export-components`: error
   - `jsx-a11y/recommended`: warn during this task
   - `import/no-restricted-paths`: lib/shared zones only during this task
-- [ ] Run:
+- [x] Run:
   ```bash
   cd web
   npm run typecheck
@@ -215,7 +215,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm run build
   ```
   Expected: pass with no lint warnings because `npm run lint` uses `--max-warnings=0`.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "refactor: add frontend app root and typed client scaffold"
@@ -609,6 +609,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 
 - 2026-05-13: Task 0 completed. Created the isolated worktree, copied this untracked source-of-truth plan into it, recorded the App test matrix, aligned two stale baseline tests with current market/socket contracts, and passed `npm install`, `npm run typecheck`, `npm test -- --run`, `npm run build`, `npm run lint`, and `make contract-check`.
 - 2026-05-13: Task 1 completed. Added OpenAPI response models, moved generated frontend OpenAPI types to `web/src/lib/types/openapi.ts`, regenerated contract artefacts, verified no `application/json: unknown` response entries remain, and passed `make contract-check`.
+- 2026-05-13: Task 2 completed. Added frontend aliases, env/client/type facade scaffold, app root/routes/error boundaries, staged lint rules, and behavior-preserving compatibility re-exports; passed `npm run typecheck`, `npm run lint`, `npm test -- --run`, and `npm run build`.
 
 ## Decision Log
 
@@ -616,6 +617,9 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Include the copied plan file in the Task 0 commit so subsequent milestone progress and decision logs are versioned inside the worktree.
 - 2026-05-13: Keep Task 0 baseline fixes limited to test fixtures/mocks. Production code was unchanged; the Search test now uses the current `radar_item.market` contract, and the App socket mock now models the real `onLiveMarketUpdate` callback.
 - 2026-05-13: Task 1 also typed `/readyz` in `app.py` because the generated OpenAPI TypeScript file contains non-`/api` readiness routes and the plan's unknown-response scan runs against the whole generated file.
+- 2026-05-13: Added `eslint-plugin-react-refresh` as a dev-only dependency for Task 2 because the plan requires `react-refresh/only-export-components` and the package was not installed.
+- 2026-05-13: Keep `AppRoutes` delegating to the existing `CockpitApp` for Task 2 so the scaffold is behavior-preserving; route ownership is still reserved for Tasks 4-6.
+- 2026-05-13: Move global cockpit hotkeys from a DOM `onKeyDown` prop to a document listener to satisfy the new a11y lint gate without changing shortcut behavior.
 
 ## Verification
 

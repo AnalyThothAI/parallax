@@ -103,8 +103,10 @@ export function SearchTwitterResults({
           <option value="recent">recent</option>
           <option value="quality">quality</option>
         </select>
-        <label>
+        <label htmlFor="search-evidence-watched-only">
           <input
+            aria-label="watched evidence only"
+            id="search-evidence-watched-only"
             checked={watchedOnly}
             onChange={(event) => setWatchedOnly(event.target.checked)}
             type="checkbox"

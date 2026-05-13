@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import type {
   LivePayload,
   SignalPulseData,
@@ -329,11 +331,13 @@ function FilterField({
   placeholder: string;
   value: string;
 }) {
+  const inputId = useId();
   return (
-    <label className="filter-cell signal-filter-cell">
+    <label className="filter-cell signal-filter-cell" htmlFor={inputId}>
       <span>{label}</span>
       <input
         aria-label={ariaLabel}
+        id={inputId}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}

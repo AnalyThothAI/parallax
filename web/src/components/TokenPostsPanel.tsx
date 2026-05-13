@@ -118,16 +118,20 @@ export function TokenPostsPanel({
             quality
           </button>
         </div>
-        <label>
+        <label htmlFor="token-posts-watched-only">
           <input
+            aria-label="watched posts only"
+            id="token-posts-watched-only"
             checked={watchedPostsOnly}
             onChange={(event) => onWatchedPostsOnlyChange(event.target.checked)}
             type="checkbox"
           />
           watched
         </label>
-        <label>
+        <label htmlFor="token-posts-hide-duplicates">
           <input
+            aria-label="hide duplicate clusters"
+            id="token-posts-hide-duplicates"
             checked={hideDuplicateClusters}
             onChange={(event) => onHideDuplicateClustersChange(event.target.checked)}
             type="checkbox"

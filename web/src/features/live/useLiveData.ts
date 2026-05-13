@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { getApi, getBootstrap } from "../../api/client";
+import { getApi, getBootstrap, setAuthToken } from "../../api/client";
 import type {
   LivePayload,
   LiveMarketUpdatePayload,
@@ -38,7 +38,9 @@ export function useLiveData() {
 
   useEffect(() => {
     if (bootstrapQuery.data?.data.ws_token) {
-      setToken(bootstrapQuery.data.data.ws_token);
+      const wsToken = bootstrapQuery.data.data.ws_token;
+      setAuthToken(wsToken);
+      setToken(wsToken);
     }
   }, [bootstrapQuery.data?.data.ws_token, setToken]);
 

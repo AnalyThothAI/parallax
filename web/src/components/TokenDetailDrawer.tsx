@@ -27,7 +27,7 @@ import {
 import { ScoreLedger } from "./ScoreLedger";
 import { TokenPostsPanel } from "./TokenPostsPanel";
 import { TokenProfileCard } from "./TokenProfileCard";
-import { tokenDrawerSummary } from "./TokenRadarRow";
+import { tokenDrawerSummary } from "./TokenRadarRow.model";
 import { TokenReplayFocus } from "./TokenReplayFocus";
 import { TokenTimeline } from "./TokenTimeline";
 
@@ -174,10 +174,11 @@ export function TokenDetailDrawer({
           featuredItem={token.opportunity.decision}
           items={risks.slice(0, 8)}
         />
-        <label className="detail-window-control">
+        <label className="detail-window-control" htmlFor="selected-token-detail-window">
           <span>detail window</span>
           <select
             aria-label="selected token detail window"
+            id="selected-token-detail-window"
             value={detailWindow}
             onChange={(event) => onDetailWindowChange(event.target.value as WindowKey)}
           >

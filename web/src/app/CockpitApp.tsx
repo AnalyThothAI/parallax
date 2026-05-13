@@ -1,6 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useRef } from "react";
-import type { KeyboardEvent } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { CockpitLayout } from "../components/CockpitLayout";
@@ -101,7 +100,7 @@ export function CockpitApp() {
     ],
   );
 
-  const handleHotkey = (event: KeyboardEvent<HTMLElement>) => {
+  const handleHotkey = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement;
     const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA";
     if (event.key === "/" && !isTyping) {

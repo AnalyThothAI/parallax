@@ -17,6 +17,7 @@ import {
 import { tokenVenueAction } from "../lib/venue";
 
 import { DecisionTag } from "./DecisionTag";
+import { compactLabel, qualityLabel, timingTitle } from "./TokenRadarRow.model";
 
 type TokenRadarRowProps = {
   item: TokenFlowItem;
@@ -247,55 +248,12 @@ function qualityMeta(item: TokenFlowItem): string {
   return `dup ${formatPercentShare(item.discussion_quality.duplicate_text_share)} · info ${compactNumber(item.discussion_quality.informative_post_count)}`;
 }
 
-function qualityLabel(item: TokenFlowItem): string {
-  const reason = item.discussion_quality.reasons[0] ?? item.discussion_quality.risks[0] ?? "";
-  const labels: Record<string, string> = {
-    resolved_direct_evidence: "CA direct",
-    informative_discussion: "informative",
-    low_duplicate_share: "low dup",
-    seed_linked: "seed+CA",
-    catalyst: "catalyst",
-    duplicate_text_cluster: "repeat",
-    repeated_text_cluster: "repeat",
-    low_information_posts: "meme only",
-  };
-  return labels[reason] ?? compactLabel(reason);
-}
-
-function drawerQualityLabel(item: TokenFlowItem): string {
-  const label = qualityLabel(item);
-  return label === "CA direct" ? "direct" : label;
-}
-
-export function tokenDrawerSummary(item: TokenFlowItem) {
-  return {
-    heat: `${formatScore(item.social_heat.score)} / ${compactLabel(item.social_heat.status)}`,
-    quality: `${formatScore(item.discussion_quality.score)} / ${drawerQualityLabel(item)}`,
-    spread: `${compactNumber(item.propagation.independent_authors)} authors`,
-    timing: timingDrawerLabel(item),
-  };
-}
-
 function propagationTitle(item: TokenFlowItem): string {
   return `${compactLabel(item.propagation.phase)} · ${compactNumber(item.propagation.independent_authors)} author`;
 }
 
 function propagationMeta(item: TokenFlowItem): string {
   return `top ${formatPercentShare(item.propagation.top_author_share)} · repro ${trimDecimal(item.propagation.reproduction_rate)}`;
-}
-
-function timingTitle(item: TokenFlowItem): string {
-  const labels: Record<string, string> = {
-    neutral: "neutral",
-    market_pending: "market pending",
-    market_unavailable: "market unavailable",
-    chase_risk: "chase risk",
-  };
-  return labels[item.timing.status] ?? compactLabel(item.timing.status);
-}
-
-function timingDrawerLabel(item: TokenFlowItem): string {
-  return timingTitle(item);
 }
 
 function timingMeta(item: TokenFlowItem): string {
@@ -348,10 +306,6 @@ function Barline({ score }: { score: number }) {
       ))}
     </div>
   );
-}
-
-function compactLabel(value: string | null | undefined): string {
-  return value ? value.replaceAll("_", " ") : "-";
 }
 
 function trimDecimal(value: number | null | undefined): string {
