@@ -53,7 +53,7 @@ class CoingeckoSearchClient:
 
     def _get_with_retry(self, params: dict[str, str]) -> httpx.Response | None:
         """Return response, or None when we give up due to persistent 429s."""
-        for attempt in range(self._max_429_retries + 1):
+        for _attempt in range(self._max_429_retries + 1):
             self._pace()
             response = self._client.get("/api/v3/search", params=params)
             if response.status_code != 429:

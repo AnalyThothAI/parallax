@@ -241,8 +241,7 @@ class FakeTokenRadar:
                 "reason": None,
                 "row_count": len(self.rows),
                 "source_rows": len(self.rows),
-                "computed_at_ms": max((int(row.get("computed_at_ms") or 0) for row in self.rows), default=0)
-                or None,
+                "computed_at_ms": max((int(row.get("computed_at_ms") or 0) for row in self.rows), default=0) or None,
             }
             for window in windows
             for scope in scopes
