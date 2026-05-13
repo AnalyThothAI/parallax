@@ -162,19 +162,24 @@ class PriceObservationRepository:
         max_age_ms: int | None,
     ) -> MarketObservation | None:
         min_observed_at_ms = int(now_ms) - int(max_age_ms) if max_age_ms is not None else None
+        min_observed_filter = ""
+        params: tuple[Any, ...] = (target_type, target_id, int(now_ms))
+        if min_observed_at_ms is not None:
+            min_observed_filter = "AND observed_at_ms >= %s"
+            params = (target_type, target_id, min_observed_at_ms, int(now_ms))
         row = self.conn.execute(
-            """
+            f"""
             SELECT *
             FROM price_observations
             WHERE subject_type = %s
               AND subject_id = %s
               AND observation_kind = 'decision_latest'
-              AND (%s IS NULL OR observed_at_ms >= %s)
+              {min_observed_filter}
               AND observed_at_ms <= %s
             ORDER BY observed_at_ms DESC, observation_id DESC
             LIMIT 1
             """,
-            (target_type, target_id, min_observed_at_ms, min_observed_at_ms, int(now_ms)),
+            params,
         ).fetchone()
         return market_observation_from_row(row) if row else None
 
