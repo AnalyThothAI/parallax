@@ -61,3 +61,18 @@ Created `web/src/test/app-test-case-matrix.md`; every current `it(...)` entry in
 - Task 10 requires new production dependency: `clsx`.
 
 Per the execution pause conditions, dependency installation must pause for user confirmation before those tasks proceed.
+
+## Task 1 Verification
+
+### Contract Model Changes
+
+- Added `src/gmgn_twitter_intel/app/surfaces/api/schemas.py` with `ApiEnvelope[T]` and named response data models for frontend-consumed endpoints.
+- Added `response_model=...` to existing `/api/*` route declarations without changing return payload construction or status codes.
+- Added a `response_model` for `/readyz` because the generated OpenAPI TS file includes that route and the Task 1 unknown-response scan covers the whole file.
+- Changed generated frontend OpenAPI output from `web/src/api/openapi.ts` to `web/src/lib/types/openapi.ts`.
+
+### Commands
+
+- `make regen-contract`: passed; regenerated `docs/generated/openapi.json` and `web/src/lib/types/openapi.ts`
+- `rg -n '"application/json": unknown|content: \\{\\s*"application/json": unknown' web/src/lib/types/openapi.ts`: no matches
+- `make contract-check`: passed, `2 passed in 2.64s`

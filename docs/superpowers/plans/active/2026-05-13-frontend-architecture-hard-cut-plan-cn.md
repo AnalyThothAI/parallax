@@ -146,20 +146,20 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Generate: `docs/generated/openapi.json`
 - Generate: `web/src/lib/types/openapi.ts`
 
-- [ ] In `schemas.py`, add `ApiEnvelope[T]` plus Pydantic models for every frontend-consumed endpoint: bootstrap, status, recent, search, search inspect, token radar, stocks radar, live market, target posts, target social timeline, account alerts, account quality, notifications, notification summary, notification read mutation, notification read-all mutation, signal pulse list, signal pulse detail.
-- [ ] Set Pydantic models to preserve existing payload compatibility: `model_config = ConfigDict(extra="allow", populate_by_name=True)` for extensible blocks; use explicit field names for fields already consumed by `web/src`.
-- [ ] In `http.py`, add `response_model=ApiEnvelope[ConcreteDataModel]` on the endpoints consumed by the frontend. Keep return values and status codes unchanged.
-- [ ] Change `web/package.json` `generate:types` output from `src/api/openapi.ts` to `src/lib/types/openapi.ts`.
-- [ ] Change `Makefile regen-contract` to run the updated `web` generation command.
-- [ ] Update `tests/contract/test_openapi_drift.py` paths and comments so generated TS is checked at `web/src/lib/types/openapi.ts`.
-- [ ] Run:
+- [x] In `schemas.py`, add `ApiEnvelope[T]` plus Pydantic models for every frontend-consumed endpoint: bootstrap, status, recent, search, search inspect, token radar, stocks radar, live market, target posts, target social timeline, account alerts, account quality, notifications, notification summary, notification read mutation, notification read-all mutation, signal pulse list, signal pulse detail.
+- [x] Set Pydantic models to preserve existing payload compatibility: `model_config = ConfigDict(extra="allow", populate_by_name=True)` for extensible blocks; use explicit field names for fields already consumed by `web/src`.
+- [x] In `http.py`, add `response_model=ApiEnvelope[ConcreteDataModel]` on the endpoints consumed by the frontend. Keep return values and status codes unchanged.
+- [x] Change `web/package.json` `generate:types` output from `src/api/openapi.ts` to `src/lib/types/openapi.ts`.
+- [x] Change `Makefile regen-contract` to run the updated `web` generation command.
+- [x] Update `tests/contract/test_openapi_drift.py` paths and comments so generated TS is checked at `web/src/lib/types/openapi.ts`.
+- [x] Run:
   ```bash
   make regen-contract
   rg -n '"application/json": unknown|content: \\{\\s*"application/json": unknown' web/src/lib/types/openapi.ts
   make contract-check
   ```
   Expected: no `unknown` 200 responses for frontend-consumed `/api/*` endpoints; contract tests pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/app/surfaces/api/schemas.py src/gmgn_twitter_intel/app/surfaces/api/http.py Makefile web/package.json web/package-lock.json tests/contract/test_openapi_drift.py docs/generated/openapi.json web/src/lib/types/openapi.ts
   git commit -m "build: generate typed frontend api contracts"
@@ -608,12 +608,14 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 ## Progress Log
 
 - 2026-05-13: Task 0 completed. Created the isolated worktree, copied this untracked source-of-truth plan into it, recorded the App test matrix, aligned two stale baseline tests with current market/socket contracts, and passed `npm install`, `npm run typecheck`, `npm test -- --run`, `npm run build`, `npm run lint`, and `make contract-check`.
+- 2026-05-13: Task 1 completed. Added OpenAPI response models, moved generated frontend OpenAPI types to `web/src/lib/types/openapi.ts`, regenerated contract artefacts, verified no `application/json: unknown` response entries remain, and passed `make contract-check`.
 
 ## Decision Log
 
 - 2026-05-13: Treat this plan file as the requested `PLAN.md` because no separate `PLAN.md` exists in the repository.
 - 2026-05-13: Include the copied plan file in the Task 0 commit so subsequent milestone progress and decision logs are versioned inside the worktree.
 - 2026-05-13: Keep Task 0 baseline fixes limited to test fixtures/mocks. Production code was unchanged; the Search test now uses the current `radar_item.market` contract, and the App socket mock now models the real `onLiveMarketUpdate` callback.
+- 2026-05-13: Task 1 also typed `/readyz` in `app.py` because the generated OpenAPI TypeScript file contains non-`/api` readiness routes and the plan's unknown-response scan runs against the whole generated file.
 
 ## Verification
 

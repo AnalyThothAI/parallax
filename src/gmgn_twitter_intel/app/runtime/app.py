@@ -23,6 +23,7 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
     api_unauthorized_response,
     create_api_router,
 )
+from gmgn_twitter_intel.app.surfaces.api.schemas import StatusData
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
@@ -142,7 +143,7 @@ def create_app(
     async def healthz() -> str:
         return "ok\n"
 
-    @app.get("/readyz")
+    @app.get("/readyz", response_model=StatusData)
     async def readyz() -> JSONResponse:
         runtime = app.state.service
         payload, status_code = _readiness_payload(runtime)
