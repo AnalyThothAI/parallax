@@ -56,6 +56,15 @@ Token Radar market contract:
   token snapshot carries address / chain / symbol metadata. Embedded price /
   market-cap values are not written during ingest; anchor prices are written by
   the anchor worker using provider payloads or delayed OKX lookup.
+- Resolved DEX asset rows may expose a top-level `profile` block. Profile facts
+  come from the persisted `asset_profiles` read model, not request-time provider
+  calls and not `factor_snapshot_json`. `profile.status` is one of `ready`,
+  `pending`, `missing`, `unsupported`, or `error`. A `ready` block contains
+  `identity` fields (`symbol`, `name`, `logo_url`, `banner_url`,
+  `description`), normalized `links` (`website_url`, `twitter_url`,
+  `twitter_username`, `telegram_url`, `gmgn_url`, `geckoterminal_url`), and
+  provider-attributed `source` metadata. Frontend clients must not derive
+  provider URLs from raw payloads; URL normalization is server-side.
 
 US Stocks radar contract:
 
@@ -92,7 +101,8 @@ Search V2 contract:
   - `data.resolver`: confidence, target candidates, selected target when there
     is exactly one resolved target, and deterministic resolver reasons.
   - `data.token_result`: target, `target-social-timeline`, `target-posts`,
-    matched radar row when available, market overlay, and `agent_brief`.
+    matched radar row when available, profile block when the selected target is
+    a resolved DEX asset, market overlay, and `agent_brief`.
   - `data.topic_result`: 24h search items, post/author summary, and
     `agent_brief`.
   - `data.ambiguous_result`: candidates plus topic evidence; callers must not
@@ -111,10 +121,18 @@ Search V2 contract:
     `error` when provider OHLC cannot be fetched.
   - The UI must never synthesize candlesticks from sparse message-anchor
     prices.
+- `token_result.profile` uses the same `TokenProfileBlock` contract as
+  `/api/token-radar` rows. Search Inspect continues to return timeline, posts,
+  market overlay, and deterministic brief when profile facts are pending,
+  missing, or errored.
 
 ## CLI
 
-`gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The `--help` output is the source of truth — do not enumerate verbs in this document.
+`gmgn-twitter-intel <verb>` plus the `db` and `ops` subcommand groups. The
+`--help` output is the source of truth — do not enumerate verbs in this
+document. `ops refresh-asset-profiles` is the one-shot operator path for due
+GMGN exact-token profile refreshes; it returns an explicit skipped result when
+the GMGN profile provider is not configured.
 
 ## Token Radar Factor Snapshot Discipline
 

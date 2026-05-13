@@ -37,7 +37,7 @@ Top-level entry shims `cli.py` and `__main__.py` exist only because `pyproject.t
 |--------|------|
 | `domains/ingestion/` | GMGN public-stream frame handling, snapshot gate, handle filtering, raw public-stream normalisation, collector status. |
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
-| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, anchor price observations, live price gateway, discovery, and CEX route sync. |
+| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile facts, anchor price observations, live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
@@ -90,6 +90,28 @@ Transaction ownership follows the same rule: domain services and runtime workers
 Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, and `pulse_lab`. Do not add empty provider files.
 
 CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.
+
+## Asset Profile Facts
+
+Resolved DEX asset profile facts live in `domains/asset_market`, not in Token
+Radar scoring snapshots. The runtime profile lane is:
+
+```
+resolved Asset(chain,address)
+  → AssetProfileRefreshWorker
+  → dex_profile_market.token_profile(...)
+  → asset_profiles
+  → TokenProfileReadModel
+  → /api/token-radar + /api/search/inspect + CLI asset-flow
+  → shared frontend TokenProfileCard
+```
+
+Only `asset_market` workers and ops commands may call the profile provider.
+HTTP handlers, CLI read commands, Token Radar projection, Search read models,
+and frontend components read persisted `asset_profiles` through
+`TokenProfileReadModel`. Official links and descriptions must be visible without
+running a narrative agent; future narrative jobs may consume profile facts, but
+they do not own official profile data.
 
 ## Generated and reference material
 
