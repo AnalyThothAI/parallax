@@ -388,15 +388,15 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Test: `web/src/shared/socket/IntelSocketProvider.test.tsx`
 - Test: `tests/integration/test_api_websocket.py`
 
-- [ ] Add a backend regression test proving repeated `subscribe` frames replace `market_targets` and do not union stale targets.
-- [ ] Implement one mounted socket provider that authenticates once after bootstrap token is available, keeps status/lastMessageAt, emits event and notification streams, and sends a new subscribe frame whenever handles/replay/notifications/market target registry changes.
-- [ ] Implement `useMarketSubscription(targets)` with deterministic keying, ref-count add/remove, and cleanup on unmount.
-- [ ] Live route registers visible radar market targets only while the live route is mounted.
-- [ ] Token target route registers the current target.
-- [ ] Search route registers selected target only for `token_result` after inspect data resolves.
-- [ ] Signal Lab and Stocks register no market targets.
-- [ ] All WS market updates call `patchMarketUpdate(queryClient, payload)`; components never read raw `socket.liveMarketUpdates`.
-- [ ] Run:
+- [x] Add a backend regression test proving repeated `subscribe` frames replace `market_targets` and do not union stale targets.
+- [x] Implement one mounted socket provider that authenticates once after bootstrap token is available, keeps status/lastMessageAt, emits event and notification streams, and sends a new subscribe frame whenever handles/replay/notifications/market target registry changes.
+- [x] Implement `useMarketSubscription(targets)` with deterministic keying, ref-count add/remove, and cleanup on unmount.
+- [x] Live route registers visible radar market targets only while the live route is mounted.
+- [x] Token target route registers the current target.
+- [x] Search route registers selected target only for `token_result` after inspect data resolves.
+- [x] Signal Lab and Stocks register no market targets.
+- [x] All WS market updates call `patchMarketUpdate(queryClient, payload)`; components never read raw `socket.liveMarketUpdates`.
+- [x] Run:
   ```bash
   uv run pytest tests/integration/test_api_websocket.py -q
   cd web
@@ -405,7 +405,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm run typecheck
   ```
   Expected: backend test passes; frontend `rg` only matches provider/context internals or approved tests; frontend tests/typecheck pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add src/gmgn_twitter_intel/app/surfaces/api/ws.py tests/integration/test_api_websocket.py web
   git commit -m "refactor: make websocket subscriptions route-aware"
@@ -614,6 +614,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 4 completed. Moved shareable live/search/signal-lab/stocks/token-target filters into URL route state modules, split remaining local interaction state into feature/cockpit stores, removed `useTraderStore`, and passed the no-old-store grep, `npm run typecheck`, targeted route-state tests, full Vitest, and `npm run lint`.
 - 2026-05-13: Task 5 completed. Removed `web/src/components`, moved UI/tests to feature owners or `shared/ui`, added feature index barrels for public imports, and passed component-removal/deep-import grep checks, `npm run lint`, `npm run typecheck`, and full Vitest.
 - 2026-05-13: Task 6 completed. Replaced `CockpitLayout` with route-owned cockpit/search shells, split topbar/side rail/mobile nav components, removed raw pathname branch patterns from app/cockpit/route files, and passed the Task 6 grep, `npm run typecheck`, `npm run lint`, and full Vitest.
+- 2026-05-13: Task 7 completed. Added the route-aware socket provider, ref-counted market target subscriptions, route-scoped live/search/token-target registrations, and backend regression coverage for replacing repeated `market_targets`; deleted the old socket hook and passed the Task 7 backend, grep, targeted Vitest, typecheck, lint, and full Vitest checks.
 
 ## Decision Log
 
@@ -632,6 +633,8 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Keep `CockpitLayout` temporarily under `features/cockpit/ui` for Task 5 so component ownership is explicit; Task 6 remains responsible for splitting and deleting that layout.
 - 2026-05-13: Keep `CockpitApp` as the temporary data controller for Task 6 while moving shell/layout ownership into route elements; Task 7 will still replace the socket/data lifecycle with a provider.
 - 2026-05-13: Preserve the existing `/stocks` grid class and disabled detail mobile task behavior inside `CockpitShell` with `useMatch`, because App integration tests and current CSS depend on that mode class.
+- 2026-05-13: Mount `IntelSocketProvider` inside `CockpitApp` rather than `AppRoot` because bootstrap token ownership still lives in `useLiveData` and `AppRoutes` currently delegates all frontend routes to `CockpitApp`; this keeps one socket provider mounted across live/search/stocks/signal-lab/token-target without moving bootstrap behavior.
+- 2026-05-13: Split socket context and market target normalization out of `IntelSocketProvider.tsx` so the provider file exports only a React component and satisfies the Fast Refresh lint gate.
 
 ## Verification
 

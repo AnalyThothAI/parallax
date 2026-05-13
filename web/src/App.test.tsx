@@ -21,7 +21,7 @@ import type {
 } from "@lib/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useEffect, useRef, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -90,32 +90,54 @@ vi.mock("@lib/api/client", async () => {
   };
 });
 
-vi.mock("./api/useIntelSocket", () => ({
-  useIntelSocket: ({
-    marketTargets = [],
-    onLiveMarketUpdate,
-  }: {
-    marketTargets?: Array<{ target_type?: string | null; target_id?: string | null }>;
-    onLiveMarketUpdate?: (payload: LiveMarketUpdatePayload) => void;
-  }) => {
-    const marketTargetKey = JSON.stringify(marketTargets);
-    const dispatchedMarketUpdateKeys = useRef(new Set<string>());
-    useEffect(() => {
-      for (const update of socketMock.liveMarketUpdates) {
-        if (!marketTargets.some((target) => marketTargetMatchesUpdate(target, update))) {
-          continue;
-        }
-        const updateKey = liveMarketUpdateKey(update);
-        if (dispatchedMarketUpdateKeys.current.has(updateKey)) {
-          continue;
-        }
-        dispatchedMarketUpdateKeys.current.add(updateKey);
-        onLiveMarketUpdate?.(update);
-      }
-    }, [marketTargetKey, marketTargets, onLiveMarketUpdate]);
-    return socketMock;
-  },
+vi.mock("@shared/socket/IntelSocketProvider", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  return {
+    IntelSocketProvider: ({ children }: { children: ReactNode }) =>
+      React.createElement(React.Fragment, null, children),
+  };
+});
+
+vi.mock("@shared/socket/socketContext", () => ({
+  useSocketSnapshot: () => ({
+    status: socketMock.status,
+    eventItems: socketMock.events,
+    notificationItems: socketMock.notifications,
+    lastMessageAt: socketMock.lastMessageAt,
+  }),
 }));
+
+vi.mock("@shared/socket/useMarketSubscription", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  const query = await vi.importActual<typeof import("@tanstack/react-query")>(
+    "@tanstack/react-query",
+  );
+  const marketPatch = await vi.importActual<typeof import("@shared/query/patchMarketUpdate")>(
+    "@shared/query/patchMarketUpdate",
+  );
+  return {
+    useMarketSubscription: (
+      marketTargets: Array<{ target_type?: string | null; target_id?: string | null }> = [],
+    ) => {
+      const queryClient = query.useQueryClient();
+      const marketTargetKey = JSON.stringify(marketTargets);
+      const dispatchedMarketUpdateKeys = React.useRef(new Set<string>());
+      React.useEffect(() => {
+        for (const update of socketMock.liveMarketUpdates) {
+          if (!marketTargets.some((target) => marketTargetMatchesUpdate(target, update))) {
+            continue;
+          }
+          const updateKey = liveMarketUpdateKey(update);
+          if (dispatchedMarketUpdateKeys.current.has(updateKey)) {
+            continue;
+          }
+          dispatchedMarketUpdateKeys.current.add(updateKey);
+          marketPatch.patchTokenRadarLiveMarketUpdate(queryClient, update);
+        }
+      }, [marketTargetKey, marketTargets, queryClient]);
+    },
+  };
+});
 
 function marketTargetMatchesUpdate(
   target: { target_type?: string | null; target_id?: string | null },

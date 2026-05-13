@@ -2,8 +2,6 @@
 import { getApi, getBootstrap, setAuthToken } from "@lib/api/client";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "@lib/tokenRadar";
 import type {
-  LivePayload,
-  LiveMarketUpdatePayload,
   RadarSortMode,
   RecentData,
   ScopeKey,
@@ -11,16 +9,13 @@ import type {
   StatusData,
   WindowKey,
 } from "@lib/types";
-import { patchTokenRadarLiveMarketUpdate } from "@shared/query/patchMarketUpdate";
 import { queryKeys } from "@shared/query/queryKeys";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 
-import { useIntelSocket } from "../../api/useIntelSocket";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 
 import { useTokenRadarQuery } from "./api/useTokenRadarQuery";
-import { buildLiveSignalTapeItems } from "./liveTapeModel";
 
 const SIGNAL_LAB_COMPACT_WINDOW = "1h";
 const SIGNAL_LAB_COMPACT_SCOPE = "all";
@@ -33,7 +28,6 @@ type UseLiveDataArgs = {
 };
 
 export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiveDataArgs) {
-  const queryClient = useQueryClient();
   const [token, updateToken] = useState("");
 
   const bootstrapQuery = useQuery({
@@ -120,38 +114,10 @@ export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiv
     [rawTokenItems],
   );
 
-  const handleLiveMarketUpdate = useCallback(
-    (payload: LiveMarketUpdatePayload) => patchTokenRadarLiveMarketUpdate(queryClient, payload),
-    [queryClient],
-  );
-
-  const socket = useIntelSocket({
-    token,
-    handles,
-    replay: replayLimit,
-    notifications: true,
-    marketTargets,
-    onLiveMarketUpdate: handleLiveMarketUpdate,
-  });
-  const liveItems = useMemo(() => {
-    const replayItems = recentQuery.data?.data.items ?? [];
-    const byId = new Map<string, LivePayload>();
-    for (const item of [...replayItems, ...socket.events]) {
-      byId.set(item.event.event_id, item);
-    }
-    return [...byId.values()].sort(
-      (a, b) => Number(b.event.received_at_ms ?? 0) - Number(a.event.received_at_ms ?? 0),
-    );
-  }, [recentQuery.data?.data.items, socket.events]);
-
   const signalLabOverviewData =
     signalPulseOverviewQuery.data?.data ?? signalLabPulseQuery.data?.data;
   const signalLabPulseData = signalLabPulseQuery.data?.data ?? signalLabOverviewData;
   const compactSignalPulseItems = signalLabPulseData?.items ?? [];
-  const liveSignalTapeItems = useMemo(
-    () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
-    [liveItems, tokenItems],
-  );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
 
   return {
@@ -162,16 +128,16 @@ export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiv
     handles,
     isAssetFlowLoading: assetFlowQuery.isPending,
     isRecentLoading: recentQuery.isPending,
-    liveItems,
-    liveSignalTapeItems,
+    marketTargets,
     radarSortMode,
+    recentReplayItems: recentQuery.data?.data.items ?? [],
+    replayLimit,
     scope,
     signalPulseColdLoading: signalLabPulseQuery.isPending && !signalLabPulseData,
     signalPulseFetching: signalLabPulseQuery.isFetching,
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal: signalPulseTotal(signalLabOverviewData?.summary),
-    socket,
     status: statusQuery.data?.data ?? null,
     statusError: statusQuery.isError,
     statusHandles: statusQuery.data?.data.handles ?? [],

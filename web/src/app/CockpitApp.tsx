@@ -1,5 +1,6 @@
 import { CockpitShell, SearchShell } from "@features/cockpit";
 import {
+  buildLiveSignalTapeItems,
   EvidenceDetailDrawer,
   LivePage,
   LiveRadar,
@@ -15,22 +16,50 @@ import { SearchIntelPage } from "@features/search";
 import { PulseDetailPage, SignalLabInspector, SignalLabPage } from "@features/signal-lab";
 import { StocksRadarPage } from "@features/stocks";
 import { TokenTargetPage, useTokenDetailData } from "@features/token-target";
+import type { LivePayload } from "@lib/types";
 import { buildWatchlistRows } from "@lib/watchlist";
+import { IntelSocketProvider } from "@shared/socket/IntelSocketProvider";
+import { useSocketSnapshot } from "@shared/socket/socketContext";
+import type { MarketTargetRef } from "@shared/socket/socketTypes";
+import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
-export function CockpitApp() {
-  const queryClient = useQueryClient();
+type LiveData = ReturnType<typeof useLiveData>;
+type LiveRouteState = ReturnType<typeof useLiveRouteState>;
 
+export function CockpitApp() {
   const liveRoute = useLiveRouteState();
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const liveData = useLiveData({
     handles: liveRoute.handles,
     radarSortMode: liveRoute.sort,
     scope: liveRoute.scope,
     windowKey: liveRoute.window,
   });
+
+  return (
+    <IntelSocketProvider
+      token={liveData.token}
+      handles={liveData.handles}
+      replay={liveData.replayLimit}
+      notifications
+    >
+      <CockpitAppRoutes liveData={liveData} liveRoute={liveRoute} />
+    </IntelSocketProvider>
+  );
+}
+
+function CockpitAppRoutes({
+  liveData,
+  liveRoute,
+}: {
+  liveData: LiveData;
+  liveRoute: LiveRouteState;
+}) {
+  const queryClient = useQueryClient();
+  const socketSnapshot = useSocketSnapshot();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     bootstrapHandles,
     compactSignalPulseItems,
@@ -38,16 +67,15 @@ export function CockpitApp() {
     handles,
     isAssetFlowLoading,
     isRecentLoading,
-    liveItems,
-    liveSignalTapeItems,
+    marketTargets,
     radarSortMode,
+    recentReplayItems,
     scope,
     signalLabOverviewData,
     signalLabPulseData,
     signalLabPulseTotal,
     signalPulseColdLoading,
     signalPulseFetching,
-    socket,
     status,
     statusError,
     statusHandles,
@@ -57,6 +85,14 @@ export function CockpitApp() {
     tokenItems,
     windowKey,
   } = liveData;
+  const liveItems = useMemo(
+    () => mergeLiveItems(recentReplayItems, socketSnapshot.eventItems),
+    [recentReplayItems, socketSnapshot.eventItems],
+  );
+  const liveSignalTapeItems = useMemo(
+    () => buildLiveSignalTapeItems({ liveItems, tokenItems }),
+    [liveItems, tokenItems],
+  );
   const selection = useLiveSelection({
     compactSignalPulseItems,
     scope,
@@ -79,7 +115,7 @@ export function CockpitApp() {
   const notificationsController = useNotificationsController({
     fallbackSummary: status?.notifications?.summary ?? null,
     setMobileTask: selection.setMobileTask,
-    socketNotifications: socket.notifications,
+    socketNotifications: socketSnapshot.notificationItems,
     token,
   });
   const watchlistRows = useMemo(
@@ -158,8 +194,8 @@ export function CockpitApp() {
       onSubmitQuery: selection.submitEvidenceSearch,
     },
     status: {
-      socketStatus: socket.status,
-      lastSocketMessageAt: socket.lastMessageAt,
+      socketStatus: socketSnapshot.status,
+      lastSocketMessageAt: socketSnapshot.lastMessageAt,
       status,
       statusLoading,
       statusError,
@@ -188,7 +224,7 @@ export function CockpitApp() {
     onMarkAllRead: notificationsController.markAllRead,
     onMarkRead: notificationsController.markRead,
     onOpenNotification: notificationsController.openNotification,
-    socketNotifications: socket.notifications,
+    socketNotifications: socketSnapshot.notificationItems,
   };
   const sideRailProps = {
     tokenItemsCount: tokenItems.length,
@@ -229,7 +265,7 @@ export function CockpitApp() {
     <LivePage
       liveSignalTapeItems={liveSignalTapeItems}
       isRecentLoading={isRecentLoading}
-      socketStatus={socket.status}
+      socketStatus={socketSnapshot.status}
       selectedTapeEventId={selection.selectedTapeEventId}
       onTapeSelect={selection.handleTapeSelect}
       signalLabPulseData={signalLabPulseData ?? null}
@@ -261,7 +297,14 @@ export function CockpitApp() {
     <Routes>
       <Route element={cockpitShellElement}>
         <Route element={livePageElement}>
-          <Route index element={liveRadarElement} />
+          <Route
+            index
+            element={
+              <LiveMarketSubscription targets={marketTargets}>
+                {liveRadarElement}
+              </LiveMarketSubscription>
+            }
+          />
           <Route path="token/:targetType/:targetId" element={<TokenTargetPage />} />
         </Route>
         <Route
@@ -294,6 +337,28 @@ export function CockpitApp() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  );
+}
+
+function LiveMarketSubscription({
+  children,
+  targets,
+}: {
+  children: ReactNode;
+  targets: MarketTargetRef[];
+}) {
+  useMarketSubscription(targets);
+  return <>{children}</>;
+}
+
+function mergeLiveItems(replayItems: LivePayload[], eventItems: LivePayload[]): LivePayload[] {
+  const byId = new Map<string, LivePayload>();
+  for (const item of [...replayItems, ...eventItems]) {
+    byId.set(item.event.event_id, item);
+  }
+  return [...byId.values()].sort(
+    (left, right) =>
+      Number(right.event.received_at_ms ?? 0) - Number(left.event.received_at_ms ?? 0),
   );
 }
 

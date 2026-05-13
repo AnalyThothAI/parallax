@@ -16,6 +16,7 @@ import type {
   SearchTokenResult,
   WindowKey,
 } from "@lib/types";
+import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
 import { useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -41,6 +42,8 @@ export function SearchIntelPage() {
   const routeState = parseSearchRouteState(searchParams);
   const query = useSearchInspectQuery(routeState);
   const data = query.data?.data ?? null;
+  const marketTargets = useMemo(() => searchMarketTargets(data), [data]);
+  useMarketSubscription(marketTargets);
 
   const updateRoute = (patch: Partial<SearchRouteState>) => {
     const next = serializeSearchRouteState({ ...routeState, ...patch });
@@ -68,6 +71,14 @@ export function SearchIntelPage() {
       )}
     </section>
   );
+}
+
+function searchMarketTargets(data: SearchInspectData | null) {
+  const target = data?.query.result_kind === "token_result" ? data.resolver.selected_target : null;
+  if (!target?.target_type || !target.target_id) {
+    return [];
+  }
+  return [{ target_type: target.target_type, target_id: target.target_id }];
 }
 
 function SearchTopBar({

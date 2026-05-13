@@ -21,6 +21,7 @@ import type {
   TokenTimelineStage,
 } from "@lib/types";
 import { tokenVenueAction } from "@lib/venue";
+import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { DecisionTag } from "@shared/ui/DecisionTag";
 import { ScoreLedger } from "@shared/ui/ScoreLedger";
 import { TokenPostsPanel } from "@shared/ui/TokenPostsPanel";
@@ -72,6 +73,8 @@ export function TokenTargetPage() {
         : null,
     [isValidParams, params.targetId, targetType],
   );
+  const subscribedTargets = useMemo(() => (target ? [target] : []), [target]);
+  useMarketSubscription(subscribedTargets);
 
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
 

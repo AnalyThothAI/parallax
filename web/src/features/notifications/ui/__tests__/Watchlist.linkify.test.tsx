@@ -1,18 +1,27 @@
 import * as client from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { App } from "../../../../App";
 
-vi.mock("../../../../api/useIntelSocket", () => ({
-  useIntelSocket: () => ({
+vi.mock("@shared/socket/IntelSocketProvider", () => ({
+  IntelSocketProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("@shared/socket/socketContext", () => ({
+  useSocketSnapshot: () => ({
     status: "connected",
-    events: [],
-    notifications: [],
+    eventItems: [],
+    notificationItems: [],
     lastMessageAt: null,
   }),
+}));
+
+vi.mock("@shared/socket/useMarketSubscription", () => ({
+  useMarketSubscription: () => undefined,
 }));
 
 beforeEach(() => {

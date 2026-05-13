@@ -169,3 +169,26 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm run typecheck`: passed
 - `cd web && npm run lint`: passed
 - `cd web && npm test -- --run`: passed, `27 passed`, `145 passed`
+
+## Task 7 Verification
+
+### Route-Aware Socket Changes
+
+- Added `IntelSocketProvider`, socket context helpers, market target normalization, and `useMarketSubscription`.
+- The socket provider authenticates after bootstrap token availability, stores status/lastMessageAt/event/notification streams, and sends replacement `subscribe` frames when handles, replay, notifications, or registered market targets change.
+- Live radar registers visible radar market targets only for the index live route.
+- Token target routes register the current route target.
+- Search registers the resolver selected target only after a `token_result` inspect response resolves.
+- Signal Lab and Stocks do not register market targets.
+- Live market updates now patch React Query through `patchTokenRadarLiveMarketUpdate`; components no longer read raw `socket.liveMarketUpdates`.
+- Deleted old `web/src/api/useIntelSocket.ts`.
+- Added a backend regression proving repeated `subscribe` frames replace `client.market_targets` instead of unioning stale targets.
+
+### Commands
+
+- `uv run pytest tests/integration/test_api_websocket.py -q`: passed, `11 passed in 70.22s`
+- `cd web && rg -n 'useIntelSocket|liveMarketUpdates|socket\\.events|socket\\.notifications' src/features src/routes src/app`: no matches; `rg` exited `1` as expected
+- `cd web && npm test -- --run src/shared/socket src/features/live src/features/search src/features/token-target`: passed, `10 passed`, `28 passed`
+- `cd web && npm run typecheck`: passed
+- Extra guard, `cd web && npm run lint`: passed
+- Extra guard, `cd web && npm test -- --run`: passed, `28 passed`, `146 passed`
