@@ -10,10 +10,11 @@ from .token_target_social_timeline_service import TokenTargetSocialTimelineServi
 
 
 class SearchInspectService:
-    def __init__(self, *, search_query: Any, token_radar: Any, targets: Any) -> None:
+    def __init__(self, *, search_query: Any, token_radar: Any, targets: Any, profiles: Any) -> None:
         self.search_query = search_query
         self.token_radar = token_radar
         self.targets = targets
+        self.profiles = profiles
 
     def inspect(
         self,
@@ -107,15 +108,17 @@ class SearchInspectService:
             limit=min(max(1, int(limit)), 200),
             now_ms=now_ms,
         )
-        radar = AssetFlowService(token_radar=self.token_radar).asset_flow(
+        radar = AssetFlowService(token_radar=self.token_radar, profiles=self.profiles).asset_flow(
             window=window,
             scope=scope,
             limit=96,
             now_ms=now_ms,
         )
         radar_item = _radar_item(radar=radar, selected=selected)
+        profile = self.profiles.profile_for_target(target_type=target_type, target_id=target_id)
         return {
             "target": selected,
+            "profile": profile,
             "timeline": timeline,
             "posts": posts,
             "radar_item": radar_item,

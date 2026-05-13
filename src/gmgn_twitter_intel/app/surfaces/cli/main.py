@@ -22,6 +22,7 @@ from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_c
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
+from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import run_resolution_refresh_once
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
 from gmgn_twitter_intel.domains.asset_market.services.asset_profile_refresh import refresh_asset_profiles_once
@@ -527,7 +528,10 @@ def main(argv: list[str] | None = None, *, stdout: TextIO = sys.stdout) -> int:
             return 0 if results.ok else 1
 
         if command == "asset-flow":
-            data = AssetFlowService(token_radar=repos.token_radar).asset_flow(
+            data = AssetFlowService(
+                token_radar=repos.token_radar,
+                profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+            ).asset_flow(
                 window=args.window,
                 limit=args.limit,
                 scope=args.scope,

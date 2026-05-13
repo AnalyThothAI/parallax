@@ -517,11 +517,15 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert inspect_data["query"]["result_kind"] == "token_result"
     assert inspect_data["resolver"]["target_candidates"]
     assert inspect_data["token_result"]["posts"]["items"][0]["event_id"] == "event-1"
+    assert inspect_data["token_result"]["profile"]["status"] == "pending"
+    assert inspect_data["token_result"]["profile"]["provider"] == "gmgn_dex_profile"
     assert inspect_data["token_result"]["market_overlay"]["price_series_type"] == "anchor_line"
     assert inspect_data["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
 
     assert asset_flow.status_code == 200
     assert asset_flow.json()["data"]["targets"][0]["target"]["symbol"] == "PEPE"
+    assert asset_flow.json()["data"]["targets"][0]["profile"]["status"] == "pending"
+    assert asset_flow.json()["data"]["targets"][0]["profile"]["provider"] == "gmgn_dex_profile"
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"

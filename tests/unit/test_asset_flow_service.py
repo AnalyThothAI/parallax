@@ -128,7 +128,12 @@ def asset_flow_service(
     rows: list[dict],
     coverage: dict[tuple[str, str], dict] | None = None,
 ) -> AssetFlowService:
-    return AssetFlowService(token_radar=FakeTokenRadar(rows=rows, coverage=coverage))
+    return AssetFlowService(token_radar=FakeTokenRadar(rows=rows, coverage=coverage), profiles=FakeProfiles())
+
+
+class FakeProfiles:
+    def profiles_for_targets(self, targets):
+        return {}
 
 
 def radar_row(

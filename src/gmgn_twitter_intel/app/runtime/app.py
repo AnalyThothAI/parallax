@@ -26,6 +26,7 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
 )
 from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
+from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import AnchorPriceWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
@@ -388,7 +389,10 @@ def _notification_rule_engine(settings: Settings, repos) -> NotificationRuleEngi
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        asset_flow=AssetFlowService(token_radar=repos.token_radar),
+        asset_flow=AssetFlowService(
+            token_radar=repos.token_radar,
+            profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+        ),
         harness=HarnessService(repos.harness),
         pulse=repos.pulse,
     )
