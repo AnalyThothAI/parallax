@@ -1,9 +1,9 @@
+import * as client from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-import * as client from "../../api/client";
 import { useTraderStore } from "../../store/useTraderStore";
 import { TokenTargetPage } from "../TokenTargetPage";
 

@@ -1,12 +1,12 @@
-import { ExternalLink } from "lucide-react";
-
 import type {
   AlertRecord,
   EntityRecord,
   EventRecord,
   TokenIntentRecord,
   TokenResolutionRecord,
-} from "../api/types";
+} from "@lib/types";
+import { ExternalLink } from "lucide-react";
+
 import { eventHandle, eventText, formatRelativeTime, shortAddress } from "../lib/format";
 
 import { DetailDrawerHeader, DetailDrawerSection, DetailDrawerShell } from "./DetailDrawer";

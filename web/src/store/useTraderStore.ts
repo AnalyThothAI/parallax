@@ -1,5 +1,3 @@
-import { create } from "zustand";
-
 import type {
   RadarSortMode,
   ScopeKey,
@@ -8,7 +6,9 @@ import type {
   TokenPostRange,
   TokenPostSortMode,
   WindowKey,
-} from "../api/types";
+} from "@lib/types";
+import { create } from "zustand";
+
 
 type TraderState = {
   token: string;

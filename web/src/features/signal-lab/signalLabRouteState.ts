@@ -1,4 +1,5 @@
-import type { ScopeKey, SignalPulseStatusFilter, WindowKey } from "../../api/types";
+import type { ScopeKey, SignalPulseStatusFilter, WindowKey } from "@lib/types";
+
 import { OBSERVATION_WINDOWS } from "../../lib/observationWindows";
 
 export type SignalLabRouteState = {

@@ -1,6 +1,3 @@
-import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-
 import type {
   ScopeKey,
   SearchAmbiguousResult,
@@ -9,8 +6,11 @@ import type {
   SearchTopicResult,
   SearchTokenResult,
   WindowKey,
-} from "../api/types";
-import { useSearchInspectQuery } from "../api/useSearchInspectQuery";
+} from "@lib/types";
+import { useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+
+import { useSearchInspectQuery } from "../features/search/api/useSearchInspectQuery";
 import {
   parseSearchRouteState,
   serializeSearchRouteState,

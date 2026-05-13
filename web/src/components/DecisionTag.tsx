@@ -1,4 +1,5 @@
-import type { Decision } from "../api/types";
+import type { Decision } from "@lib/types";
+
 import { formatDecision } from "../lib/format";
 
 export function DecisionTag({ decision }: { decision: Decision }) {

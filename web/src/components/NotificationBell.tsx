@@ -1,6 +1,6 @@
+import type { NotificationSummary } from "@lib/types";
 import { Bell } from "lucide-react";
 
-import type { NotificationSummary } from "../api/types";
 
 type Props = {
   summary?: NotificationSummary | null;

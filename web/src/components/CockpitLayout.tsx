@@ -1,7 +1,3 @@
-import { Clock3, Home, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
-import { useEffect, type ReactNode, type RefObject } from "react";
-import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-
 import type {
   Decision,
   NotificationItem,
@@ -10,7 +6,11 @@ import type {
   ScopeKey,
   StatusData,
   WindowKey,
-} from "../api/types";
+} from "@lib/types";
+import { Clock3, Home, RefreshCw, Search, UserRound, Wifi, Zap } from "lucide-react";
+import { useEffect, type ReactNode, type RefObject } from "react";
+import { Link, Outlet, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+
 import { compactNumber, formatRelativeTime } from "../lib/format";
 import type { WatchlistRow } from "../lib/watchlist";
 

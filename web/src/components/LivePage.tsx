@@ -1,6 +1,6 @@
+import type { SignalPulseData, SignalPulseItem } from "@lib/types";
 import { Outlet } from "react-router-dom";
 
-import type { SignalPulseData, SignalPulseItem } from "../api/types";
 import type { LiveSignalTapeItem } from "../features/live/liveTapeModel";
 
 import { LiveSignalTape } from "./LiveSignalTape";

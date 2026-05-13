@@ -1,6 +1,6 @@
+import type { SearchItem, TokenReference, TokenTimelinePost } from "@lib/types";
 import { useMemo, useState } from "react";
 
-import type { SearchItem, TokenReference, TokenTimelinePost } from "../api/types";
 import {
   formatRelativeTime,
   formatScore,

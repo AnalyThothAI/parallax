@@ -1,7 +1,7 @@
+import type { TokenFlowItem } from "@lib/types";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { TokenFlowItem } from "../api/types";
 import { tokenMarketBlockFixture } from "../test/marketFixtures";
 
 import { ScoreLedger } from "./ScoreLedger";

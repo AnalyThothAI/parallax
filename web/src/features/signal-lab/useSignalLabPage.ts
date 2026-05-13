@@ -1,12 +1,14 @@
+import { getApi } from "@lib/api/client";
+import type { LivePayload, RecentData, SignalPulseItem } from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
-import { getApi } from "../../api/client";
-import type { LivePayload, RecentData, SignalPulseItem } from "../../api/types";
-import { mergeSignalPulsePages, useSignalPulseList } from "../../api/useSignalPulseQueries";
+
 import { useTraderStore } from "../../store/useTraderStore";
 
+import { mergeSignalPulsePages, useSignalPulseList } from "./api/useSignalPulseQueries";
 import {
   parseSignalLabRouteState,
   serializeSignalLabRouteState,
@@ -38,7 +40,7 @@ export function useSignalLabPage({ onSelectAccountEvent }: UseSignalLabPageArgs 
   });
 
   const signalLabAccountEventsQuery = useQuery({
-    queryKey: ["signal-lab-account-events", token, routeState.scope, activeSignalLabHandle],
+    queryKey: queryKeys.signalLabAccountEvents(token, routeState.scope, activeSignalLabHandle),
     queryFn: () =>
       getApi<RecentData>("/api/recent", {
         token,

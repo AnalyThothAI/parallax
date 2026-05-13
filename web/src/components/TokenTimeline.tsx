@@ -1,4 +1,5 @@
-import type { TokenSocialTimelineData } from "../api/types";
+import type { TokenSocialTimelineData } from "@lib/types";
+
 import {
   compactNumber,
   formatPercentShare,

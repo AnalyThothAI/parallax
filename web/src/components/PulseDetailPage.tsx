@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 
-import { useSignalPulseCandidate } from "../api/useSignalPulseQueries";
+import { useSignalPulseCandidate } from "../features/signal-lab/api/useSignalPulseQueries";
 import { PanelSkeleton, RouteStatePanel } from "../shared/ui/RemoteState";
 import { useTraderStore } from "../store/useTraderStore";
 

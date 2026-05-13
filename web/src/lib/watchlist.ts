@@ -1,4 +1,4 @@
-import type { LivePayload } from "../api/types";
+import type { LivePayload } from "@lib/types";
 
 export type WatchlistRow = {
   handle: string;

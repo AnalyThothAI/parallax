@@ -1,4 +1,4 @@
-import type { MarketContext, MarketObservationSnapshot, TokenMarketBlock } from "../api/types";
+import type { MarketContext, MarketObservationSnapshot, TokenMarketBlock } from "@lib/types";
 
 export function marketObservationFixture(
   overrides: Partial<MarketObservationSnapshot> = {},

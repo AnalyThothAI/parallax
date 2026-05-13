@@ -1,7 +1,7 @@
+import type { ScopeKey, WindowKey } from "@lib/types";
 import { UserRound } from "lucide-react";
 import { useId } from "react";
 
-import type { ScopeKey, WindowKey } from "../api/types";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 
 type RadarControlsProps = {

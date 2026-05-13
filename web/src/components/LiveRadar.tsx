@@ -1,4 +1,4 @@
-import type { RadarSortMode, ScopeKey, TokenFlowItem, WindowKey } from "../api/types";
+import type { RadarSortMode, ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
 
 import { RadarControls } from "./RadarControls";
 import { TokenRadarTable } from "./TokenRadarTable";

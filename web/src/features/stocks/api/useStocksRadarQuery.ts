@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 
-import { getApi } from "./client";
-import type { ScopeKey, StocksRadarData, WindowKey } from "./types";
+import { getApi } from "@lib/api/client";
+import type { ScopeKey, StocksRadarData, WindowKey } from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
+import { useQuery } from "@tanstack/react-query";
 
 type StocksRadarArgs = {
   token: string;
@@ -12,7 +13,7 @@ type StocksRadarArgs = {
 
 export function useStocksRadarQuery({ token, window, scope, limit = 48 }: StocksRadarArgs) {
   return useQuery({
-    queryKey: ["stocks-radar", window, scope, limit],
+    queryKey: queryKeys.stocksRadar(window, scope, limit),
     queryFn: async () => {
       const response = await getApi<StocksRadarData>("/api/stocks-radar", {
         token,

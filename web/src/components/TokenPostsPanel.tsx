@@ -1,11 +1,11 @@
-import { ExternalLink } from "lucide-react";
-
 import type {
   TokenPostItem,
   TokenPostRange,
   TokenPostSortMode,
   TokenPostsData,
-} from "../api/types";
+} from "@lib/types";
+import { ExternalLink } from "lucide-react";
+
 import {
   compactNumber,
   eventText,

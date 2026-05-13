@@ -1,13 +1,14 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { getApi } from "./client";
+import { getApi } from "@lib/api/client";
 import type {
   ScopeKey,
   SignalPulseData,
   SignalPulseItem,
   SignalPulseStatusFilter,
   WindowKey,
-} from "./types";
+} from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 type ListArgs = {
   token: string;
@@ -29,7 +30,7 @@ export function useSignalPulseList({
   limit = 80,
 }: ListArgs) {
   return useInfiniteQuery({
-    queryKey: ["signal-lab-pulse", window, scope, status, handle, q, limit],
+    queryKey: queryKeys.signalPulseList(window, scope, status, handle, q, limit),
     queryFn: async ({ pageParam }) => {
       const response = await getApi<SignalPulseData>("/api/signal-lab/pulse", {
         token,
@@ -59,7 +60,7 @@ type CandidateArgs = {
 
 export function useSignalPulseCandidate({ token, candidateId }: CandidateArgs) {
   return useQuery({
-    queryKey: ["signal-lab-pulse-candidate", candidateId],
+    queryKey: queryKeys.signalPulseCandidate(candidateId),
     queryFn: () =>
       getApi<SignalPulseItem>("/api/signal-lab/pulse/" + encodeURIComponent(candidateId!), {
         token,

@@ -1,12 +1,12 @@
-import { useId } from "react";
-
 import type {
   LivePayload,
   SignalPulseData,
   SignalPulseItem,
   SignalPulseStatus,
   SignalPulseStatusFilter,
-} from "../api/types";
+} from "@lib/types";
+import { useId } from "react";
+
 import { eventHandle, eventText, formatRelativeTime } from "../lib/format";
 import { SkeletonRows } from "../shared/ui/RemoteState";
 

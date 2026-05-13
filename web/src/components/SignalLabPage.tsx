@@ -1,6 +1,6 @@
+import type { LivePayload, SignalPulseData } from "@lib/types";
 import { Outlet } from "react-router-dom";
 
-import type { LivePayload, SignalPulseData } from "../api/types";
 import { useSignalLabPage } from "../features/signal-lab/useSignalLabPage";
 
 import { SignalLabWorkbench } from "./SignalLabWorkbench";

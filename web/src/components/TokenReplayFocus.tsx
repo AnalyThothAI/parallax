@@ -1,6 +1,6 @@
+import type { TokenSocialTimelineData, TokenTimelinePost } from "@lib/types";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 
-import type { TokenSocialTimelineData, TokenTimelinePost } from "../api/types";
 import { eventText, formatRelativeTime, formatRisk, formatScore } from "../lib/format";
 
 type TokenReplayFocusProps = {

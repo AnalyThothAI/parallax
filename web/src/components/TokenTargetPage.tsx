@@ -1,7 +1,3 @@
-import { ArrowLeft, ExternalLink } from "lucide-react";
-import { useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-
 import type {
   TokenFlowItem,
   TokenPostRange,
@@ -10,14 +6,18 @@ import type {
   TokenTimelinePost,
   TokenTimelineStage,
   WindowKey,
-} from "../api/types";
-import { useTokenRadarQuery } from "../api/useTokenRadarQuery";
+} from "@lib/types";
+import { ArrowLeft, ExternalLink } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+
+import { isDexMarket, type TargetRef, targetRefEquals } from "../domain/tokenTarget";
+import { useTokenRadarQuery } from "../features/live/api/useTokenRadarQuery";
 import {
   mergeTokenPostPages,
   useTokenTargetPosts,
   useTokenTargetTimeline,
-} from "../api/useTokenTargetQueries";
-import { isDexMarket, type TargetRef, targetRefEquals } from "../domain/tokenTarget";
+} from "../features/token-target/api/useTokenTargetQueries";
 import {
   compactNumber,
   eventText,

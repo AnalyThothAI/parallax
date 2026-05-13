@@ -1,4 +1,5 @@
-import type { ScoreBlock, TimingBlock, TokenFlowItem } from "../api/types";
+import type { ScoreBlock, TimingBlock, TokenFlowItem } from "@lib/types";
+
 import { formatReason, formatRisk, formatScore } from "../lib/format";
 
 type LedgerItem = {

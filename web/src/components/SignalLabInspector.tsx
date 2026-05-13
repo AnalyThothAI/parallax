@@ -1,4 +1,5 @@
-import type { SignalPulseItem } from "../api/types";
+import type { SignalPulseItem } from "@lib/types";
+
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { requireTokenFactorSnapshot } from "../lib/tokenFactorSnapshot";
 import { signalPulseVenueActions } from "../lib/venue";

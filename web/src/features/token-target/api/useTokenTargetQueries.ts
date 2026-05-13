@@ -1,9 +1,5 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import type { TargetRef } from "../domain/tokenTarget";
-import { targetRefKey } from "../domain/tokenTarget";
-
-import { getApi } from "./client";
+import { getApi } from "@lib/api/client";
 import type {
   ScopeKey,
   TokenPostRange,
@@ -11,7 +7,12 @@ import type {
   TokenPostsData,
   TokenSocialTimelineData,
   WindowKey,
-} from "./types";
+} from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+
+import type { TargetRef } from "../../../domain/tokenTarget";
+import { targetRefKey } from "../../../domain/tokenTarget";
 
 type TimelineArgs = {
   token: string;
@@ -28,7 +29,7 @@ type PostsArgs = TimelineArgs & {
 
 export function useTokenTargetTimeline({ token, target, window, scope }: TimelineArgs) {
   return useQuery({
-    queryKey: ["target-social-timeline", target ? targetRefKey(target) : null, window, scope],
+    queryKey: queryKeys.targetSocialTimeline(target ? targetRefKey(target) : null, window, scope),
     queryFn: () =>
       getApi<TokenSocialTimelineData>("/api/target-social-timeline", {
         token,
@@ -48,15 +49,14 @@ export function useTokenTargetPosts({
   limit = 24,
 }: PostsArgs) {
   return useInfiniteQuery({
-    queryKey: [
-      "target-posts",
+    queryKey: queryKeys.targetPosts(
       target ? targetRefKey(target) : null,
       window,
       scope,
       range,
       sort,
       limit,
-    ],
+    ),
     queryFn: async ({ pageParam }) => {
       const response = await getApi<TokenPostsData>("/api/target-posts", {
         token,

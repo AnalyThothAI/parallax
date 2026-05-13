@@ -1,7 +1,7 @@
+import type { SignalPulseItem } from "@lib/types";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { SignalPulseItem } from "../api/types";
 import { marketContextFixture, marketObservationFixture } from "../test/marketFixtures";
 
 import { SignalLabInspector } from "./SignalLabInspector";

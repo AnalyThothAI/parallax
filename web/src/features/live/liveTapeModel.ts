@@ -1,4 +1,5 @@
-import type { LivePayload, TokenFlowItem } from "../../api/types";
+import type { LivePayload, TokenFlowItem } from "@lib/types";
+
 import { compactNumber, eventText, formatRelativeTime } from "../../lib/format";
 
 type LiveSignalTapeBase = {

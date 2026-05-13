@@ -1,4 +1,4 @@
-import type { ScopeKey, TokenFlowItem, WindowKey } from "../../api/types";
+import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
 
 import { serializeSearchRouteState } from "./searchRouteState";
 

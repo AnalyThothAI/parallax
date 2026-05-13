@@ -1,9 +1,10 @@
+import * as client from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import * as client from "../client";
-import { useSignalPulseCandidate } from "../useSignalPulseQueries";
+
+import { useSignalPulseCandidate } from "./useSignalPulseQueries";
 
 beforeEach(() => {
   vi.restoreAllMocks();

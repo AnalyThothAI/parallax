@@ -1,8 +1,8 @@
+import { websocketUrl } from "@lib/api/client";
+import type { LiveMarketUpdatePayload, LivePayload, NotificationLivePayload } from "@lib/types";
 import { useEffect, useRef, useState } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
 
-import { websocketUrl } from "./client";
-import type { LiveMarketUpdatePayload, LivePayload, NotificationLivePayload } from "./types";
 
 type SocketStatus = "idle" | "connecting" | "authenticating" | "connected" | "closed" | "error";
 

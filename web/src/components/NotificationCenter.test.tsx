@@ -1,7 +1,7 @@
+import type { NotificationItem, NotificationSummary } from "@lib/types";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { NotificationItem, NotificationSummary } from "../api/types";
 
 import { NotificationBell } from "./NotificationBell";
 import { NotificationDrawer } from "./NotificationDrawer";

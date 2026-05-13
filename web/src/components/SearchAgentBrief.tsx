@@ -1,4 +1,4 @@
-import type { SearchAgentBrief as SearchAgentBriefData } from "../api/types";
+import type { SearchAgentBrief as SearchAgentBriefData } from "@lib/types";
 
 type SearchAgentBriefProps = {
   brief: SearchAgentBriefData;

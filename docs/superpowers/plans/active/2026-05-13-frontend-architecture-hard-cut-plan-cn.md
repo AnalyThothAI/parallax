@@ -236,12 +236,12 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - Modify: `web/src/features/live/liveMarketUpdatePatch.ts`
 - Modify tests that spy on old `web/src/api/client.ts`
 
-- [ ] Add query key factories for bootstrap, status, live recent, token radar, signal pulse list/detail, search inspect, stocks radar, target timeline, target posts, account quality, notifications, notification summary.
-- [ ] Move each React Query hook from `web/src/api/*` or feature root files into the owning `features/*/api/` directory.
-- [ ] Convert every hook to import `getApi/postApi` from `@lib/api/client` and keys from `@shared/query/queryKeys`.
-- [ ] Move `patchTokenRadarLiveMarketUpdate` to `@shared/query/patchMarketUpdate` or make the current live patch a thin wrapper around the shared helper.
-- [ ] Delete `web/src/api/client.ts`, `web/src/api/openapi.ts`, and `web/src/api/types.ts` only after all imports use `@lib/api` and `@lib/types`.
-- [ ] Run:
+- [x] Add query key factories for bootstrap, status, live recent, token radar, signal pulse list/detail, search inspect, stocks radar, target timeline, target posts, account quality, notifications, notification summary.
+- [x] Move each React Query hook from `web/src/api/*` or feature root files into the owning `features/*/api/` directory.
+- [x] Convert every hook to import `getApi/postApi` from `@lib/api/client` and keys from `@shared/query/queryKeys`.
+- [x] Move `patchTokenRadarLiveMarketUpdate` to `@shared/query/patchMarketUpdate` or make the current live patch a thin wrapper around the shared helper.
+- [x] Delete `web/src/api/client.ts`, `web/src/api/openapi.ts`, and `web/src/api/types.ts` only after all imports use `@lib/api` and `@lib/types`.
+- [x] Run:
   ```bash
   cd web
   rg -n 'from "[.][./].*/api/types"|from "[.][./].*/api/client"|src/api/types|src/api/client|src/api/openapi' src
@@ -251,7 +251,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
   npm test -- --run
   ```
   Expected: all `rg` commands have no matches except tests explicitly listed in `app-test-case-matrix.md`; typecheck/tests pass.
-- [ ] Commit:
+- [x] Commit:
   ```bash
   git add web
   git commit -m "refactor: move server data access behind feature api hooks"
@@ -610,6 +610,7 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Task 0 completed. Created the isolated worktree, copied this untracked source-of-truth plan into it, recorded the App test matrix, aligned two stale baseline tests with current market/socket contracts, and passed `npm install`, `npm run typecheck`, `npm test -- --run`, `npm run build`, `npm run lint`, and `make contract-check`.
 - 2026-05-13: Task 1 completed. Added OpenAPI response models, moved generated frontend OpenAPI types to `web/src/lib/types/openapi.ts`, regenerated contract artefacts, verified no `application/json: unknown` response entries remain, and passed `make contract-check`.
 - 2026-05-13: Task 2 completed. Added frontend aliases, env/client/type facade scaffold, app root/routes/error boundaries, staged lint rules, and behavior-preserving compatibility re-exports; passed `npm run typecheck`, `npm run lint`, `npm test -- --run`, and `npm run build`.
+- 2026-05-13: Task 3 completed. Moved server data hooks behind feature API folders, centralized query keys and market cache patching, removed old generated/handwritten API client/type files, and passed the boundary grep checks, `npm run typecheck`, `npm test -- --run`, and `npm run lint`.
 
 ## Decision Log
 
@@ -620,6 +621,8 @@ The plan is a single implementation plan and should ship as one final PR, but ta
 - 2026-05-13: Added `eslint-plugin-react-refresh` as a dev-only dependency for Task 2 because the plan requires `react-refresh/only-export-components` and the package was not installed.
 - 2026-05-13: Keep `AppRoutes` delegating to the existing `CockpitApp` for Task 2 so the scaffold is behavior-preserving; route ownership is still reserved for Tasks 4-6.
 - 2026-05-13: Move global cockpit hotkeys from a DOM `onKeyDown` prop to a document listener to satisfy the new a11y lint gate without changing shortcut behavior.
+- 2026-05-13: Keep `web/src/api/useIntelSocket.ts` until Task 7 because it is not a React Query hook and the plan explicitly deletes the old socket hook during the route-aware socket provider milestone.
+- 2026-05-13: Add `.gitkeep` placeholders for target feature layer directories so Task 3's grep validation commands are executable before Tasks 4-5 populate those folders.
 
 ## Verification
 

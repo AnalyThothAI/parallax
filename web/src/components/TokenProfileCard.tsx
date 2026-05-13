@@ -1,7 +1,7 @@
+import type { TokenProfileBlock } from "@lib/types";
 import { ExternalLink, Globe, MessageCircle, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type { TokenProfileBlock } from "../api/types";
 
 type TokenProfileCardProps = {
   profile?: TokenProfileBlock | null;

@@ -1,7 +1,7 @@
+import type { ScopeKey, StockRadarRow, WindowKey } from "@lib/types";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
-import type { ScopeKey, StockRadarRow, WindowKey } from "../api/types";
-import { useStocksRadarQuery } from "../api/useStocksRadarQuery";
+import { useStocksRadarQuery } from "../features/stocks/api/useStocksRadarQuery";
 import {
   compactNumber,
   formatRelativeTime,

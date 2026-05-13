@@ -1,4 +1,5 @@
-import type { RadarSortMode, TokenFlowItem } from "../api/types";
+import type { RadarSortMode, TokenFlowItem } from "@lib/types";
+
 import { tokenKey } from "../lib/format";
 
 import { TokenRadarRow } from "./TokenRadarRow";

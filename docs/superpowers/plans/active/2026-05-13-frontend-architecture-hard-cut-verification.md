@@ -94,3 +94,22 @@ Per the execution pause conditions, dependency installation must pause for user 
 - `cd web && npm run lint`: passed
 - `cd web && npm test -- --run`: passed, `25 passed`, `136 passed`
 - `cd web && npm run build`: passed; Vite emitted the existing `Some chunks are larger than 500 kB` warning
+
+## Task 3 Verification
+
+### Query/API Boundary Changes
+
+- Added `web/src/shared/query/queryKeys.ts`.
+- Moved token radar, search inspect, signal pulse, stocks radar, token-target, and notification API helpers into owning `features/*/api/` folders.
+- Moved market-update cache patching to `web/src/shared/query/patchMarketUpdate.ts` and kept a temporary live wrapper for compatibility.
+- Moved legacy UI/domain types to `web/src/lib/types/legacy-ui.ts`, kept generated types at `web/src/lib/types/openapi.ts`, and deleted old `web/src/api/types.ts`, `web/src/api/client.ts`, and `web/src/api/openapi.ts`.
+- Added `.gitkeep` files for target `features/*/{ui,state,model}` directories so the plan's boundary grep commands run against real directories.
+
+### Commands
+
+- `cd web && rg -n 'from "[.][./].*/api/types"|from "[.][./].*/api/client"|src/api/types|src/api/client|src/api/openapi' src`: no matches
+- `cd web && rg -n 'useQuery\\(|useMutation\\(|useInfiniteQuery\\(' src/features/*/ui src/features/*/state src/features/*/model src/routes src/shared/ui`: no matches
+- `cd web && rg -n 'getApi|postApi|setQueryData|setQueriesData' src/features/*/ui src/features/*/state src/features/*/model src/routes src/shared/ui`: no matches
+- `cd web && npm run typecheck`: passed
+- `cd web && npm test -- --run`: passed, `25 passed`, `136 passed`
+- Extra guard, `cd web && npm run lint`: passed

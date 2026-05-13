@@ -1,4 +1,4 @@
-import type { TokenFlowItem } from "../api/types";
+import type { TokenFlowItem } from "@lib/types";
 
 export type TargetRef = {
   target_type: "Asset" | "CexToken";

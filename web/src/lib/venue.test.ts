@@ -1,6 +1,6 @@
+import type { SignalPulseItem, TokenFlowItem } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
-import type { SignalPulseItem, TokenFlowItem } from "../api/types";
 import {
   marketContextFixture,
   marketObservationFixture,

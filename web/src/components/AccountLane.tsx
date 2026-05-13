@@ -1,4 +1,5 @@
-import type { AccountQualityData, TokenSocialTimelineData } from "../api/types";
+import type { AccountQualityData, TokenSocialTimelineData } from "@lib/types";
+
 import { compactNumber, formatRelativeTime, formatScore } from "../lib/format";
 
 type AccountLaneProps = {

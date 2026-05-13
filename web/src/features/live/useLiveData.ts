@@ -1,21 +1,23 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo } from "react";
 
-import { getApi, getBootstrap, setAuthToken } from "../../api/client";
+import { getApi, getBootstrap, setAuthToken } from "@lib/api/client";
 import type {
   LivePayload,
   LiveMarketUpdatePayload,
   RecentData,
   SignalPulseData,
   StatusData,
-} from "../../api/types";
+} from "@lib/types";
+import { patchTokenRadarLiveMarketUpdate } from "@shared/query/patchMarketUpdate";
+import { queryKeys } from "@shared/query/queryKeys";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo } from "react";
+
 import { useIntelSocket } from "../../api/useIntelSocket";
-import { useTokenRadarQuery } from "../../api/useTokenRadarQuery";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "../../lib/tokenRadar";
 import { useTraderStore } from "../../store/useTraderStore";
 
-import { patchTokenRadarLiveMarketUpdate } from "./liveMarketUpdatePatch";
+import { useTokenRadarQuery } from "./api/useTokenRadarQuery";
 import { buildLiveSignalTapeItems } from "./liveTapeModel";
 
 const SIGNAL_LAB_COMPACT_WINDOW = "1h";
@@ -31,7 +33,7 @@ export function useLiveData() {
   const setToken = useTraderStore((state) => state.setToken);
 
   const bootstrapQuery = useQuery({
-    queryKey: ["bootstrap"],
+    queryKey: queryKeys.bootstrap(),
     queryFn: getBootstrap,
     staleTime: Infinity,
   });
@@ -47,14 +49,14 @@ export function useLiveData() {
   const replayLimit = Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25);
 
   const statusQuery = useQuery({
-    queryKey: ["status"],
+    queryKey: queryKeys.status(),
     queryFn: () => getApi<StatusData>("/api/status", { token }),
     enabled: Boolean(token),
     refetchInterval: 12_000,
   });
 
   const recentQuery = useQuery({
-    queryKey: ["recent", scope, handles],
+    queryKey: queryKeys.liveRecent(scope, handles),
     queryFn: () =>
       getApi<RecentData>("/api/recent", {
         token,
@@ -67,7 +69,7 @@ export function useLiveData() {
   const assetFlowQuery = useTokenRadarQuery({ token, window: windowKey, scope, limit: 48 });
 
   const signalPulseOverviewQuery = useQuery({
-    queryKey: ["signal-lab-overview", SIGNAL_LAB_COMPACT_WINDOW, SIGNAL_LAB_COMPACT_SCOPE],
+    queryKey: queryKeys.signalLabOverview(SIGNAL_LAB_COMPACT_WINDOW, SIGNAL_LAB_COMPACT_SCOPE),
     queryFn: () =>
       getApi<SignalPulseData>("/api/signal-lab/pulse", {
         token,
@@ -82,7 +84,7 @@ export function useLiveData() {
   });
 
   const signalLabPulseQuery = useQuery({
-    queryKey: ["signal-lab-pulse-compact", SIGNAL_LAB_COMPACT_SCOPE, SIGNAL_LAB_COMPACT_WINDOW],
+    queryKey: queryKeys.signalPulseCompact(SIGNAL_LAB_COMPACT_SCOPE, SIGNAL_LAB_COMPACT_WINDOW),
     queryFn: () =>
       getApi<SignalPulseData>("/api/signal-lab/pulse", {
         token,

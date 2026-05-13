@@ -1,4 +1,4 @@
-import type { ScopeKey, WindowKey } from "../../api/types";
+import type { ScopeKey, WindowKey } from "@lib/types";
 
 const VALID_WINDOWS = new Set<WindowKey>(["5m", "1h", "4h", "24h"]);
 const VALID_SCOPES = new Set<ScopeKey>(["all", "matched"]);

@@ -1,6 +1,6 @@
+import type { NotificationItem, NotificationSummary } from "@lib/types";
 import { Check, CheckCheck, ExternalLink, X } from "lucide-react";
 
-import type { NotificationItem, NotificationSummary } from "../api/types";
 import { formatRelativeTime } from "../lib/format";
 
 type Props = {

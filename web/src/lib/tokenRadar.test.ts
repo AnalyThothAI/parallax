@@ -1,6 +1,6 @@
+import type { AssetFlowRow, MarketContext } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
-import type { AssetFlowRow, MarketContext } from "../api/types";
 
 import { tokenRadarRowToTokenItem } from "./tokenRadar";
 

@@ -1,5 +1,3 @@
-import { ArrowUpRight } from "lucide-react";
-
 import type {
   AccountQualityData,
   TokenDetailMode,
@@ -10,7 +8,9 @@ import type {
   TokenPostsData,
   TokenSocialTimelineData,
   WindowKey,
-} from "../api/types";
+} from "@lib/types";
+import { ArrowUpRight } from "lucide-react";
+
 import { formatScore, shortAddress, tokenLabel } from "../lib/format";
 import { OBSERVATION_WINDOWS } from "../lib/observationWindows";
 import { tokenVenueAction } from "../lib/venue";

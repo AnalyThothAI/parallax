@@ -1,5 +1,5 @@
-import { getApi, postApi } from "./client";
-import type { ApiResponse, NotificationsData, NotificationSummary } from "./types";
+import { getApi, postApi } from "@lib/api/client";
+import type { ApiResponse, NotificationsData, NotificationSummary } from "@lib/types";
 
 export function getNotifications(
   token: string,

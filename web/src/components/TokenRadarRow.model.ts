@@ -1,4 +1,5 @@
-import type { TokenFlowItem } from "../api/types";
+import type { TokenFlowItem } from "@lib/types";
+
 import { compactNumber, formatScore } from "../lib/format";
 
 export function compactLabel(value: string | null | undefined): string {

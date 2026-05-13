@@ -1,7 +1,7 @@
+import type { SearchAgentBrief as SearchAgentBriefData } from "@lib/types";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import type { SearchAgentBrief as SearchAgentBriefData } from "../../api/types";
 import { SearchAgentBrief } from "../SearchAgentBrief";
 
 describe("SearchAgentBrief", () => {

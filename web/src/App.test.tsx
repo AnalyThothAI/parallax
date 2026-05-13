@@ -1,11 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useEffect, useRef, type ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { App } from "./App";
-import { ApiError, getApi, getBootstrap, postApi } from "./api/client";
+import { ApiError, getApi, getBootstrap, postApi } from "@lib/api/client";
 import type {
   ApiResponse,
   AssetFlowData,
@@ -25,7 +18,14 @@ import type {
   TokenPostsData,
   TokenSocialTimelineData,
   WindowKey,
-} from "./api/types";
+} from "@lib/types";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { App } from "./App";
 import { tokenRadarRowToTokenItem } from "./lib/tokenRadar";
 import { useTraderStore } from "./store/useTraderStore";
 import {
@@ -79,8 +79,8 @@ const socketMock: {
   lastMessageAt: 1_777_770_000_000,
 };
 
-vi.mock("./api/client", async () => {
-  const actual = await vi.importActual<typeof import("./api/client")>("./api/client");
+vi.mock("@lib/api/client", async () => {
+  const actual = await vi.importActual<typeof import("@lib/api/client")>("@lib/api/client");
   return {
     ...actual,
     getApi: apiMock.getApi,

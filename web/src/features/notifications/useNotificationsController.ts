@@ -1,19 +1,22 @@
+import type {
+  NotificationItem,
+  NotificationLivePayload,
+  NotificationSummary,
+} from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+
+import type { MobileTask } from "../../components/MobileTaskNav";
 
 import {
   getNotifications,
   getNotificationSummary,
   markAllNotificationsRead,
   markNotificationRead,
-} from "../../api/notifications";
-import type {
-  NotificationItem,
-  NotificationLivePayload,
-  NotificationSummary,
-} from "../../api/types";
-import type { MobileTask } from "../../components/MobileTaskNav";
+} from "./api/notifications";
+
 
 type UseNotificationsControllerArgs = {
   fallbackSummary?: NotificationSummary | null;
@@ -33,14 +36,14 @@ export function useNotificationsController({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const summaryQuery = useQuery({
-    queryKey: ["notification-summary"],
+    queryKey: queryKeys.notificationSummary(),
     queryFn: () => getNotificationSummary(token),
     enabled: Boolean(token),
     refetchInterval: 12_000,
   });
 
   const notificationsQuery = useQuery({
-    queryKey: ["notifications"],
+    queryKey: queryKeys.notifications(),
     queryFn: () => getNotifications(token),
     enabled: Boolean(token),
     refetchInterval: drawerOpen ? 8_000 : 20_000,
@@ -49,16 +52,16 @@ export function useNotificationsController({
   const markReadMutation = useMutation({
     mutationFn: (notificationId: string) => markNotificationRead(token, notificationId),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
-      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationSummary() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications() });
     },
   });
 
   const markAllReadMutation = useMutation({
     mutationFn: () => markAllNotificationsRead(token),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
-      void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notificationSummary() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.notifications() });
     },
   });
 
@@ -67,8 +70,8 @@ export function useNotificationsController({
     if (!latestSocketNotificationId) {
       return;
     }
-    void queryClient.invalidateQueries({ queryKey: ["notification-summary"] });
-    void queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.notificationSummary() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.notifications() });
   }, [latestSocketNotificationId, queryClient]);
 
   const openNotification = (notification: NotificationItem) => {

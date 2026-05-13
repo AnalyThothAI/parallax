@@ -1,6 +1,6 @@
+import type { TokenFlowItem } from "@lib/types";
 import { ArrowRight } from "lucide-react";
 
-import type { TokenFlowItem } from "../api/types";
 import { isDexMarket } from "../domain/tokenTarget";
 import {
   compactNumber,

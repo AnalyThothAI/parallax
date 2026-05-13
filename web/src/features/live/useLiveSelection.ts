@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-
 import type {
   LivePayload,
   ScopeKey,
   SignalPulseItem,
   TokenFlowItem,
   WindowKey,
-} from "../../api/types";
+} from "@lib/types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+
 import type { MobileTask } from "../../components/MobileTaskNav";
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
 import { tokenKey } from "../../lib/format";

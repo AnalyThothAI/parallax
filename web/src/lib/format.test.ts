@@ -1,6 +1,6 @@
+import type { TokenFlowItem } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
-import type { TokenFlowItem } from "../api/types";
 import { tokenMarketBlockFixture } from "../test/marketFixtures";
 
 import {

@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
 
-import { getApi } from "./client";
-import type { AssetFlowData, ScopeKey, WindowKey } from "./types";
+import { getApi } from "@lib/api/client";
+import type { AssetFlowData, ScopeKey, WindowKey } from "@lib/types";
+import { queryKeys } from "@shared/query/queryKeys";
+import { useQuery } from "@tanstack/react-query";
 
 export function useTokenRadarQuery({
   token,
@@ -17,7 +18,7 @@ export function useTokenRadarQuery({
   enabled?: boolean;
 }) {
   return useQuery({
-    queryKey: ["token-radar", window, scope],
+    queryKey: queryKeys.tokenRadar(window, scope, limit),
     queryFn: () =>
       getApi<AssetFlowData>("/api/token-radar", {
         token,

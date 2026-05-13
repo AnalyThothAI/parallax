@@ -1,7 +1,7 @@
+import type { TokenProfileBlock } from "@lib/types";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { TokenProfileBlock } from "../api/types";
 
 import { TokenProfileCard } from "./TokenProfileCard";
 

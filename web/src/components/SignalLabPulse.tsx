@@ -1,6 +1,6 @@
+import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "@lib/types";
 import { FlaskConical } from "lucide-react";
 
-import type { SignalPulseData, SignalPulseItem, SignalPulseStatus } from "../api/types";
 import { compactNumber, formatRelativeTime, formatUsdCompact } from "../lib/format";
 import { signalPulseVenueActions } from "../lib/venue";
 import { SkeletonRows } from "../shared/ui/RemoteState";

@@ -1,7 +1,7 @@
+import type { NotificationItem } from "@lib/types";
 import { useEffect, useRef } from "react";
 import { Toaster, toast } from "sonner";
 
-import type { NotificationItem } from "../api/types";
 
 type Props = {
   notifications: NotificationItem[];
