@@ -47,16 +47,16 @@ class ExternalArbiter:
             return ExternalArbiterResult(winner_id=None, source="unsupported_chain", external_address=None)
 
         # Map normalized address -> (asset_id, original_address)
-        addr_map: dict[str, tuple[str, str]] = {
-            _normalize_addr(c.address): (c.asset_id, c.address) for c in candidates
-        }
+        addr_map: dict[str, tuple[str, str]] = {_normalize_addr(c.address): (c.asset_id, c.address) for c in candidates}
 
         for okx_hit in self._okx.search_tokens(query=symbol, chain_indexes=[chain_index]):
             normalized = _normalize_addr(okx_hit.address)
             if normalized in addr_map:
                 asset_id, original_addr = addr_map[normalized]
                 return ExternalArbiterResult(
-                    winner_id=asset_id, source="okx_dex", external_address=original_addr,
+                    winner_id=asset_id,
+                    source="okx_dex",
+                    external_address=original_addr,
                 )
 
         for cg_hit in self._cg.search(symbol=symbol, chain=chain):
@@ -64,7 +64,9 @@ class ExternalArbiter:
             if normalized in addr_map:
                 asset_id, original_addr = addr_map[normalized]
                 return ExternalArbiterResult(
-                    winner_id=asset_id, source="coingecko", external_address=original_addr,
+                    winner_id=asset_id,
+                    source="coingecko",
+                    external_address=original_addr,
                 )
 
         return ExternalArbiterResult(winner_id=None, source="none", external_address=None)

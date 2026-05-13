@@ -93,7 +93,4 @@ def fetch_duplicate_groups(conn) -> list[DuplicateGroup]:
                 )
             )
 
-    return [
-        DuplicateGroup(chain=k[0], symbol=k[1], candidates=tuple(v))
-        for k, v in sorted(grouped.items())
-    ]
+    return [DuplicateGroup(chain=k[0], symbol=k[1], candidates=tuple(v)) for k, v in sorted(grouped.items())]

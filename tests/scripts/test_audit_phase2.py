@@ -88,8 +88,7 @@ def test_phase2_apply_drops_losers() -> None:
         cur.execute("SELECT COUNT(*) FROM asset_venues WHERE asset_id IN ('asset:dex:solana:b','asset:dex:solana:c')")
         assert cur.fetchone()[0] == 0  # CASCADE
         cur.execute(
-            "SELECT COUNT(*) FROM asset_market_snapshots"
-            " WHERE asset_id IN ('asset:dex:solana:b','asset:dex:solana:c')"
+            "SELECT COUNT(*) FROM asset_market_snapshots WHERE asset_id IN ('asset:dex:solana:b','asset:dex:solana:c')"
         )
         assert cur.fetchone()[0] == 0  # CASCADE
 

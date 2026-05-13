@@ -50,11 +50,18 @@ def test_main_dry_run_writes_report_without_mutation(tmp_path: Path, monkeypatch
     monkeypatch.setattr(cli, "_build_external_arbiter", lambda *args, **kwargs: _FailingArbiter())
 
     report_path = tmp_path / "report.md"
-    rc = cli.main([
-        "--dry-run", "--report", str(report_path),
-        "--threshold-holders", "200", "--threshold-liq-usd", "5000",
-        "--no-external",
-    ])
+    rc = cli.main(
+        [
+            "--dry-run",
+            "--report",
+            str(report_path),
+            "--threshold-holders",
+            "200",
+            "--threshold-liq-usd",
+            "5000",
+            "--no-external",
+        ]
+    )
 
     assert rc == 0
     text = report_path.read_text(encoding="utf-8")
@@ -72,10 +79,14 @@ def test_main_apply_drops_losers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(cli, "_open_connection", lambda: conn)
 
-    rc = cli.main([
-        "--apply", "--report", str(tmp_path / "report.md"),
-        "--no-external",
-    ])
+    rc = cli.main(
+        [
+            "--apply",
+            "--report",
+            str(tmp_path / "report.md"),
+            "--no-external",
+        ]
+    )
 
     assert rc == 0
     with conn.cursor() as cur:

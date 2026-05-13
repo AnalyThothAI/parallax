@@ -2,6 +2,7 @@
 
 See docs/superpowers/specs/active/2026-05-12-duplicate-token-audit-and-dedup-design-cn.md
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,16 +22,28 @@ def _build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true", help="Compute audit but do not mutate DB.")
     mode.add_argument("--apply", action="store_true", help="Apply the audit; single transaction per phase.")
 
-    parser.add_argument("--report", type=Path, default=Path("docs/generated/duplicate-token-audit.md"),
-                        help="Markdown report output path.")
+    parser.add_argument(
+        "--report",
+        type=Path,
+        default=Path("docs/generated/duplicate-token-audit.md"),
+        help="Markdown report output path.",
+    )
     parser.add_argument("--chain", type=str, default=None, help="Filter to one chain (debug).")
     parser.add_argument("--symbol", type=str, default=None, help="Filter to one symbol (debug).")
-    parser.add_argument("--threshold-holders", type=int, default=200,
-                        help="Minimum holders for in-db winner; below triggers external arbitration.")
-    parser.add_argument("--threshold-liq-usd", type=float, default=5000.0,
-                        help="Minimum liquidity_usd for in-db winner.")
-    parser.add_argument("--no-external", action="store_true",
-                        help="Skip OKX/CoinGecko fallback; under-threshold groups always group-drop.")
+    parser.add_argument(
+        "--threshold-holders",
+        type=int,
+        default=200,
+        help="Minimum holders for in-db winner; below triggers external arbitration.",
+    )
+    parser.add_argument(
+        "--threshold-liq-usd", type=float, default=5000.0, help="Minimum liquidity_usd for in-db winner."
+    )
+    parser.add_argument(
+        "--no-external",
+        action="store_true",
+        help="Skip OKX/CoinGecko fallback; under-threshold groups always group-drop.",
+    )
     parser.add_argument("--only-phase1", action="store_true", help="Only run chain-name normalization.")
     parser.add_argument("--only-phase2", action="store_true", help="Only run (chain, symbol) dedup.")
     return parser
@@ -101,7 +114,9 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     markdown = render_markdown_report(
-        mode="apply" if apply else "dry-run", phase1=phase1, phase2=phase2,
+        mode="apply" if apply else "dry-run",
+        phase1=phase1,
+        phase2=phase2,
     )
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(markdown, encoding="utf-8")

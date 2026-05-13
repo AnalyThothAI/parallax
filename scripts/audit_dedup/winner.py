@@ -41,10 +41,7 @@ def pick_in_db_winner(
         return WinnerOutcome(
             winner_id=top.asset_id,
             loser_ids=losers,
-            reason=(
-                f"top1 holders={top.holders} liq={top.liquidity_usd} mcap={top.market_cap_usd} "
-                "≥ thresholds"
-            ),
+            reason=(f"top1 holders={top.holders} liq={top.liquidity_usd} mcap={top.market_cap_usd} ≥ thresholds"),
             needs_external=False,
         )
 
