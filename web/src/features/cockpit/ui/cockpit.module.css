@@ -2,6 +2,11 @@
   --module-keep: 1;
 }
 
+:global(:root) {
+  --cockpit-rail-width: 196px;
+  --cockpit-topbar-height: 53px;
+}
+
 :global(.cockpit-shell) {
   min-height: 100vh;
   outline: 0;
@@ -320,8 +325,8 @@
 
 :global(.cockpit-grid) {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
-  min-height: calc(100vh - 46px);
+  grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
+  min-height: calc(100vh - var(--cockpit-topbar-height));
 }
 
 :global(.side-rail) {
@@ -331,10 +336,10 @@
 
 :global(.side-rail) {
   position: sticky;
-  top: 46px;
+  top: var(--cockpit-topbar-height);
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 46px);
+  height: calc(100vh - var(--cockpit-topbar-height));
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--line);
@@ -894,7 +899,7 @@
 /* Obsidian Desk shell language ownership */
 :global(.cockpit-shell) {
   display: grid;
-  grid-template-rows: 53px minmax(0, 1fr);
+  grid-template-rows: var(--cockpit-topbar-height) minmax(0, 1fr);
   width: 100vw;
   height: 100dvh;
   min-height: 0;
@@ -909,10 +914,10 @@
 :global(.topbar) {
   position: relative;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) auto 32px 32px;
+  grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr) auto 32px 32px;
   gap: 10px;
   align-items: center;
-  min-height: 52px;
+  min-height: var(--cockpit-topbar-height);
   border-bottom: 1px solid var(--line);
   background: rgba(7, 9, 8, 0.92);
   padding: 0 12px 0 0;
@@ -920,7 +925,7 @@
 }
 
 :global(.brand) {
-  height: 52px;
+  height: var(--cockpit-topbar-height);
   border-right: 1px solid var(--line);
   padding: 0 14px;
 }
@@ -1033,13 +1038,13 @@
 
 :global(.cockpit-grid) {
   display: grid;
-  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
 
 :global(.cockpit-grid.search-focus-mode) {
-  grid-template-columns: 196px minmax(0, 1fr);
+  grid-template-columns: var(--cockpit-rail-width) minmax(0, 1fr);
 }
 
 :global(.search-shell .cockpit-grid.search-focus-mode) {
@@ -1115,7 +1120,9 @@
 :global(.center-column) {
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border-right: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(241, 234, 214, 0.025), transparent 220px), var(--obsidian);

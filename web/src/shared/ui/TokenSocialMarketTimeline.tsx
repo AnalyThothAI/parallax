@@ -51,7 +51,7 @@ export function TokenSocialMarketTimeline({
   const candleStatus = String(
     overlay.candle_status ?? (chartData.candles.length ? "ready" : "anchor"),
   );
-  const candleBar = String(overlay.candle_bar ?? timeline.query.bucket ?? "");
+  const candleBar = String(overlay.candle_bar ?? timeline.query?.bucket ?? "");
   const marketLabel = chartData.candles.length
     ? `${candleBar} OHLC`
     : `${priceSeriesType} · ${candleStatus}`;
@@ -72,7 +72,7 @@ export function TokenSocialMarketTimeline({
           <b>All</b>
           <span>{timeline.summary.posts} posts</span>
         </button>
-        {timeline.stages.map((stage) => (
+        {(timeline.stages ?? []).map((stage) => (
           <button
             className={activeStageId === stage.stage_id ? "active" : ""}
             key={stage.stage_id}
@@ -218,6 +218,8 @@ function createTimelineChart(container: HTMLDivElement): IChartApi {
       horzLines: { color: "rgba(118, 128, 121, 0.12)" },
       vertLines: { color: "rgba(118, 128, 121, 0.1)" },
     },
+    handleScale: false,
+    handleScroll: false,
     layout: {
       background: { color: "transparent", type: ColorType.Solid },
       textColor: "rgba(229, 234, 227, 0.64)",
@@ -237,10 +239,11 @@ function createTimelineChart(container: HTMLDivElement): IChartApi {
 
 function buildChartData(
   timeline: TokenSocialTimelineData,
-  marketOverlay: MarketOverlay,
+  marketOverlay: Record<string, unknown>,
 ): TimelineChartData {
   const candles = parseCandles(marketOverlay.candles);
-  const anchorLine = timeline.buckets
+  const buckets = Array.isArray(timeline.buckets) ? timeline.buckets : [];
+  const anchorLine = buckets
     .map((bucket) => {
       const price = numberValue(bucket.price?.price_usd);
       if (price === null) {
@@ -249,7 +252,7 @@ function buildChartData(
       return { time: toChartTime(bucket.start_ms), value: price } satisfies LineData<UTCTimestamp>;
     })
     .filter((item): item is LineData<UTCTimestamp> => item !== null);
-  const social = timeline.buckets.map((bucket) => ({
+  const social = buckets.map((bucket) => ({
     time: toChartTime(bucket.start_ms),
     value: Math.max(0, Number(bucket.posts) || 0),
     color: bucket.watched_posts ? "rgba(85, 199, 174, 0.52)" : "rgba(231, 169, 39, 0.42)",

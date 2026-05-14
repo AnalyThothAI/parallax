@@ -826,7 +826,7 @@ describe("App Token Radar social heat cockpit", () => {
 
     await openTokenItem();
 
-    expect(await screen.findByText("stage tape")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Social x Market Timeline" })).toBeInTheDocument();
     expect(await screen.findByText("message evidence")).toBeInTheDocument();
     expect(await screen.findByText("score audit")).toBeInTheDocument();
     await waitFor(() => {
@@ -955,7 +955,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(item).queryByRole("button", { name: "30 秒" })).not.toBeInTheDocument();
     expect(within(item).queryByRole("button", { name: "1 分钟" })).not.toBeInTheDocument();
     expect(within(item).queryByRole("button", { name: "5 分钟" })).not.toBeInTheDocument();
-    expect(await screen.findByText("stage tape")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Social x Market Timeline" })).toBeInTheDocument();
     expect(within(item).queryByText("auto bucket 5m")).not.toBeInTheDocument();
 
     mockedGetApi.mockClear();
@@ -974,15 +974,13 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     await openTokenItem();
-    const bucket = await screen.findByRole("button", {
-      name: /select stage seed/i,
-    });
+    const bucket = await screen.findByRole("button", { name: /种子/ });
 
     fireEvent.click(bucket);
 
     expect(await screen.findByText("stage filtered")).toBeInTheDocument();
     expect(screen.getAllByText("$UPEG watched account evidence").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "clear filter" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /All/ })).toBeInTheDocument();
   });
 
   it("keeps Posts as the evidence surface with explicit range controls", async () => {

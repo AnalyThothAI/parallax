@@ -98,6 +98,36 @@ describe("Obsidian Desk architecture cleanout", () => {
     expect(cockpitCss).toMatch(/:global\(\.center-column\)\s*{[^}]*overflow:\s*auto;/s);
   });
 
+  it("keeps shared market timeline from trapping page scroll", () => {
+    const timeline = readSource("shared/ui/TokenSocialMarketTimeline.tsx");
+
+    expect(timeline).toContain("handleScroll: false");
+    expect(timeline).toContain("handleScale: false");
+  });
+
+  it("does not keep dead timeline compatibility selectors after shared timeline reuse", () => {
+    const forbidden = [
+      /stage-tape/,
+      /search-stage-rail/,
+      /search-chart-/,
+      /search-lightweight-chart/,
+      /search-timeline-summary/,
+      /(^|[^a-z-])legend-candle/,
+      /(^|[^a-z-])legend-social/,
+    ];
+    const offenders = collectFiles(srcRoot)
+      .filter((path) => sourceExtensions.has(extname(path)))
+      .filter((path) => relative(srcRoot, path) !== "test/obsidianArchitectureCleanout.test.ts")
+      .flatMap((path) => {
+        const text = readFileSync(path, "utf8");
+        return forbidden
+          .filter((pattern) => pattern.test(text))
+          .map((pattern) => `${relative(webRoot, path)}: ${pattern.source}`);
+      });
+
+    expect(offenders).toEqual([]);
+  });
+
   it("removes legacy watchlist and notification routing shims", () => {
     expect(existsSync(join(srcRoot, "lib/watchlist.ts"))).toBe(false);
 

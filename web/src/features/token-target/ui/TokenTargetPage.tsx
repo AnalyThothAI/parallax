@@ -1,19 +1,14 @@
 import { getAuthToken } from "@lib/api/client";
 import {
-  compactNumber,
-  eventText,
-  formatReason,
-  formatSignedPercent,
   shortAddress,
 } from "@lib/format";
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "@lib/tokenRadar";
-import type { TokenSocialTimelineData, TokenTimelinePost, TokenTimelineStage } from "@lib/types";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { RemoteState } from "@shared/ui/RemoteState";
 import { ScoreLedger } from "@shared/ui/ScoreLedger";
 import { TokenPostsPanel } from "@shared/ui/TokenPostsPanel";
-import clsx from "clsx";
+import { TokenSocialMarketTimeline } from "@shared/ui/TokenSocialMarketTimeline";
 import { ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -179,31 +174,14 @@ export function TokenTargetPage() {
               </p>
             </div>
 
-            <section className="case-section stage-tape-section">
-              <header>
-                <span>stage tape</span>
-                <b>
-                  {timelineQuery.isFetching
-                    ? "loading"
-                    : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}
-                </b>
-                {selectedStageFilter ? (
-                  <button
-                    className="inline-clear-button"
-                    type="button"
-                    onClick={() => setSelectedStageId(null)}
-                  >
-                    clear filter
-                  </button>
-                ) : null}
-              </header>
-              <StageTape
-                stages={stages}
-                selectedStageId={selectedStageFilter}
+            {timeline ? (
+              <TokenSocialMarketTimeline
+                activeStageId={selectedStageFilter ?? "all"}
+                marketOverlay={timeline.market_overlay}
                 timeline={timeline}
-                onSelect={setSelectedStageId}
+                onStageSelect={(stageId) => setSelectedStageId(stageId === "all" ? null : stageId)}
               />
-            </section>
+            ) : null}
 
             <section className="case-section">
               <header>
@@ -271,31 +249,14 @@ export function TokenTargetPage() {
           onWindowChange={(window) => updateRouteState({ window })}
         />
 
-        <section className="case-section stage-tape-section">
-          <header>
-            <span>stage tape</span>
-            <b>
-              {timelineQuery.isFetching
-                ? "loading"
-                : `${stages.length} stages · ${compactNumber(timeline?.summary.posts ?? 0)} posts`}
-            </b>
-            {selectedStageFilter ? (
-              <button
-                className="inline-clear-button"
-                type="button"
-                onClick={() => setSelectedStageId(null)}
-              >
-                clear filter
-              </button>
-            ) : null}
-          </header>
-          <StageTape
-            stages={stages}
-            selectedStageId={selectedStageFilter}
+        {timeline ? (
+          <TokenSocialMarketTimeline
+            activeStageId={selectedStageFilter ?? "all"}
+            marketOverlay={timeline.market_overlay}
             timeline={timeline}
-            onSelect={setSelectedStageId}
+            onStageSelect={(stageId) => setSelectedStageId(stageId === "all" ? null : stageId)}
           />
-        </section>
+        ) : null}
 
         <section className="case-section">
           <header>
@@ -329,65 +290,6 @@ export function TokenTargetPage() {
       </section>
     </section>
   );
-}
-
-function StageTape({
-  stages,
-  selectedStageId,
-  timeline,
-  onSelect,
-}: {
-  stages: TokenTimelineStage[];
-  selectedStageId: string | null;
-  timeline: TokenSocialTimelineData | null;
-  onSelect: (stageId: string | null) => void;
-}) {
-  if (!stages.length) {
-    return <RemoteState.Empty title="暂无阶段证据" />;
-  }
-  return (
-    <div className="stage-tape">
-      {stages.map((stage) => {
-        const posts = representativePosts(stage, timeline);
-        const lead = posts[0];
-        return (
-          <button
-            key={stage.stage_id}
-            className={clsx(selectedStageId === stage.stage_id && "active")}
-            type="button"
-            onClick={() => onSelect(stage.stage_id)}
-            aria-label={`select stage ${stage.phase}`}
-          >
-            <span className="stage-phase">{stage.phase}</span>
-            <span>
-              {compactNumber(stage.people.posts)}p · {compactNumber(stage.people.authors)}a · top{" "}
-              {Math.round(stage.people.top_author_share * 100)}%
-            </span>
-            <span className={clsx((stage.price.delta_pct ?? 0) >= 0 ? "up" : "down")}>
-              {stage.price.status} {formatSignedPercent(stage.price.delta_pct)}
-            </span>
-            <span>{formatReason(stage.trigger_reason)}</span>
-            <p>
-              {lead
-                ? `@${lead.handle ?? "unknown"} · ${eventText({ event_id: lead.event_id, text_clean: lead.text })}`
-                : "no representative post"}
-            </p>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function representativePosts(
-  stage: TokenTimelineStage,
-  timeline: TokenSocialTimelineData | null,
-): TokenTimelinePost[] {
-  const stagePosts = timeline?.posts ?? [];
-  const representativeIds = new Set(stage.representative_event_ids);
-  return stagePosts
-    .filter((post) => post.stage_id === stage.stage_id || representativeIds.has(post.event_id))
-    .slice(0, 3);
 }
 
 function symbolFromTarget(target: TargetRef): string | null {

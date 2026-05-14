@@ -1,6 +1,6 @@
 import { setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -154,7 +154,9 @@ describe("TokenTargetPage routing", () => {
         }),
       }),
     );
-    expect(screen.getByRole("heading", { name: "Social x Market Timeline" })).toBeInTheDocument();
+    expect(
+      within(container).getByRole("heading", { name: "Social x Market Timeline" }),
+    ).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 
