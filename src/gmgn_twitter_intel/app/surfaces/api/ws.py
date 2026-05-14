@@ -262,4 +262,7 @@ def _event_handle(event: Any) -> str | None:
 
 async def _close_if_connected(websocket: WebSocket, *, code: int, reason: str) -> None:
     if websocket.client_state != WebSocketState.DISCONNECTED:
-        await websocket.close(code=code, reason=reason)
+        try:
+            await websocket.close(code=code, reason=reason)
+        except (AttributeError, RuntimeError):
+            return
