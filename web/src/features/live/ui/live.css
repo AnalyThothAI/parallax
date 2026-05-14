@@ -1188,8 +1188,7 @@
 }
 
 .radar-data-table {
-  --token-radar-columns:
-    minmax(258px, 1.24fr) minmax(136px, 0.62fr) minmax(214px, 0.98fr)
+  --token-radar-columns: minmax(258px, 1.24fr) minmax(136px, 0.62fr) minmax(214px, 0.98fr)
     minmax(288px, 1.26fr) 62px 132px;
 
   display: grid;
