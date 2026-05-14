@@ -1,1 +1,5 @@
-export { TokenTargetPage as TokenTargetRoute } from "@features/token-target";
+import { TokenTargetPage } from "@features/token-target";
+
+export function TokenTargetRoute() {
+  return <TokenTargetPage />;
+}

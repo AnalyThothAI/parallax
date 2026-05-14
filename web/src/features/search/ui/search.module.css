@@ -43,7 +43,7 @@
 :global(.search-side-panel > span),
 :global(.search-panel header span),
 :global(.search-agent-brief > header span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   text-transform: uppercase;
@@ -54,7 +54,7 @@
 :global(.search-panel h3),
 :global(.search-agent-brief h3) {
   margin: 0;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 13px;
 }
@@ -62,7 +62,7 @@
 :global(.search-intel-topbar strong) {
   overflow: hidden;
   min-width: 0;
-  color: var(--accent);
+  color: var(--opportunity);
   font-family: var(--mono);
   font-size: 11px;
   text-overflow: ellipsis;
@@ -85,7 +85,7 @@
 :global(.search-side-reasons code),
 :global(.search-data-health code) {
   padding: 4px 7px;
-  color: var(--muted);
+  color: var(--ash);
   border: 1px solid var(--line-strong);
   background: rgba(10, 13, 13, 0.9);
   font-family: var(--mono);
@@ -116,13 +116,13 @@
 
 :global(.search-side-query b),
 :global(.search-side-panel > b) {
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 14px;
 }
 
 :global(.search-side-panel small) {
-  color: var(--muted);
+  color: var(--ash);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -141,7 +141,7 @@
 :global(.search-side-nav a) {
   min-width: 0;
   min-height: 28px;
-  color: var(--muted);
+  color: var(--ash);
   border: 1px solid var(--line);
   border-radius: 3px;
   background: rgba(7, 10, 10, 0.9);
@@ -151,8 +151,8 @@
 
 :global(.search-segmented button.active),
 :global(.search-side-nav a:hover) {
-  color: var(--ink);
-  border-color: var(--accent-line);
+  color: var(--bone);
+  border-color: var(--opportunity-line);
   background: rgba(231, 169, 39, 0.12);
 }
 
@@ -171,8 +171,8 @@
 }
 
 :global(.search-sidebar-candidate.selected) {
-  border-color: var(--accent-line);
-  box-shadow: inset 2px 0 0 var(--accent);
+  border-color: var(--opportunity-line);
+  box-shadow: inset 2px 0 0 var(--opportunity);
 }
 
 :global(.search-sidebar-candidate b),
@@ -185,14 +185,14 @@
 }
 
 :global(.search-sidebar-candidate b) {
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 11px;
 }
 
 :global(.search-sidebar-candidate code) {
   grid-column: 1 / -1;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -222,7 +222,7 @@
 :global(.search-case-header p) {
   grid-column: 1 / -1;
   margin: 0;
-  color: var(--muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 11px;
   overflow-wrap: anywhere;
@@ -266,19 +266,19 @@
 }
 
 :global(.search-metric-strip span) {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 10px;
 }
 
 :global(.search-metric-strip b) {
   margin-top: 4px;
-  color: var(--ink);
+  color: var(--bone);
   font-size: 17px;
 }
 
 :global(.search-metric-strip em) {
   margin-top: 4px;
-  color: var(--muted);
+  color: var(--ash);
   font-size: 10px;
   font-style: normal;
 }
@@ -323,7 +323,7 @@
 }
 
 :global(.search-stage-rail button.active) {
-  border-color: var(--accent-line);
+  border-color: var(--opportunity-line);
   background: rgba(231, 169, 39, 0.11);
 }
 
@@ -338,13 +338,13 @@
 }
 
 :global(.search-stage-rail b) {
-  color: var(--ink);
+  color: var(--bone);
   font-size: 11px;
 }
 
 :global(.search-stage-rail span),
 :global(.search-stage-rail em) {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 10px;
   font-style: normal;
 }
@@ -362,7 +362,7 @@
   gap: 10px;
   min-height: 22px;
   margin-bottom: 6px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -375,7 +375,7 @@
 
 :global(.search-chart-legend b) {
   margin-left: auto;
-  color: var(--muted);
+  color: var(--ash);
   font-weight: 700;
 }
 
@@ -413,17 +413,17 @@
 }
 
 :global(.search-chart-empty b) {
-  color: var(--ink);
+  color: var(--bone);
   font-size: 11px;
 }
 
 :global(.search-chart-empty span) {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 10px;
 }
 
 :global(.search-timeline-summary span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   font-style: normal;
@@ -449,7 +449,7 @@
 :global(.search-evidence-toolbar select) {
   min-width: 0;
   height: 30px;
-  color: var(--ink);
+  color: var(--bone);
   border: 1px solid var(--line);
   border-radius: 3px;
   outline: 0;
@@ -466,7 +466,7 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  color: var(--muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -485,7 +485,7 @@
 }
 
 :global(.search-evidence-list article.watched) {
-  box-shadow: inset 2px 0 0 var(--green);
+  box-shadow: inset 2px 0 0 var(--health);
 }
 
 :global(.search-evidence-time),
@@ -506,13 +506,13 @@
 
 :global(.search-evidence-time b),
 :global(.search-evidence-copy b) {
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.search-evidence-time span),
 :global(.search-evidence-copy span),
 :global(.search-evidence-copy code) {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 :global(.search-evidence-copy > div) {
@@ -523,14 +523,14 @@
 
 :global(.search-evidence-copy p) {
   margin: 0;
-  color: var(--text);
+  color: var(--bone-2);
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
 :global(.search-evidence-list a) {
-  color: var(--accent);
+  color: var(--opportunity);
   font-family: var(--mono);
   font-size: 10px;
   text-decoration: none;
@@ -559,7 +559,7 @@
 }
 
 :global(.search-topic-bars span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   text-align: center;
@@ -593,13 +593,13 @@
 }
 
 :global(.search-candidate-grid b) {
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.search-candidate-grid code),
 :global(.search-candidate-grid small),
 :global(.search-candidate-grid p) {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 10px;
 }
 
@@ -637,14 +637,14 @@
 
 :global(.search-score-summary span),
 :global(.search-score-families span) {
-  color: var(--faint);
+  color: var(--dim);
   font-size: 10px;
 }
 
 :global(.search-score-summary b),
 :global(.search-score-families b) {
   margin-top: 4px;
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.search-data-health) {
@@ -655,7 +655,7 @@
   display: grid;
   gap: 4px;
   padding: 24px;
-  color: var(--muted);
+  color: var(--ash);
   border: 1px solid var(--line);
   background: rgba(13, 17, 17, 0.96);
   font-family: var(--mono);
@@ -672,11 +672,11 @@
 }
 
 :global(.search-empty-state b) {
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.search-empty-state span) {
-  color: var(--red);
+  color: var(--risk);
 }
 
 :global(.search-agent-grid) {
@@ -709,20 +709,20 @@
 
 :global(.search-agent-card h4) {
   margin: 0 0 7px;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 12px;
 }
 
 :global(.search-agent-card b),
 :global(.search-agent-card strong) {
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
 }
 
 :global(.search-agent-card p),
 :global(.search-agent-card li) {
-  color: var(--text);
+  color: var(--bone-2);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -753,7 +753,7 @@
 :global(.search-candidate-list span),
 :global(.search-candidate-list code) {
   display: block;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   font-style: normal;

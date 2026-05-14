@@ -7,7 +7,7 @@ import {
   ObsidianFieldGrid,
   ObsidianPill,
   ObsidianSection,
-} from "@shared/ui/obsidian";
+} from "@shared/ui/case-file";
 import { Link } from "react-router-dom";
 
 import { buildPulseCaseView } from "../model/pulseCase";

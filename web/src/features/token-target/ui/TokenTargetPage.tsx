@@ -1,4 +1,3 @@
-import { useTokenRadarQuery } from "@features/live";
 import { getAuthToken } from "@lib/api/client";
 import {
   compactNumber,
@@ -34,6 +33,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { isDexMarket, type TargetRef, targetRefEquals } from "../../../domain/tokenTarget";
 import {
   mergeTokenPostPages,
+  useTokenTargetRadarQuery,
   useTokenTargetPosts,
   useTokenTargetTimeline,
 } from "../api/useTokenTargetQueries";
@@ -78,7 +78,7 @@ export function TokenTargetPage() {
 
   const tokenPostRequestSort = postSortMode === "catalyst" ? "catalyst" : "recent";
 
-  const assetFlowQuery = useTokenRadarQuery({
+  const assetFlowQuery = useTokenTargetRadarQuery({
     token,
     window: windowKey,
     scope,

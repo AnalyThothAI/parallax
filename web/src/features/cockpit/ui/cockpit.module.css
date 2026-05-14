@@ -7,7 +7,7 @@
   outline: 0;
   background:
     linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px) 0 0 / 48px 48px,
-    var(--bg);
+    var(--void);
 }
 
 :global(.topbar) {
@@ -42,8 +42,8 @@
   height: 16px;
   place-items: center;
   border-radius: 3px;
-  background: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent-line);
+  background: var(--opportunity);
+  box-shadow: 0 0 0 1px var(--opportunity-line);
 }
 
 :global(.brand-mark::after) {
@@ -51,7 +51,7 @@
   width: 7px;
   height: 7px;
   border-radius: 1px;
-  background: var(--bg);
+  background: var(--void);
 }
 
 :global(.brand-copy) {
@@ -63,7 +63,7 @@
 
 :global(.brand h1) {
   margin: 0;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 700;
@@ -80,7 +80,7 @@
 :global(.brand p) {
   overflow: hidden;
   margin: 0;
-  color: var(--faint);
+  color: var(--dim);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -95,7 +95,7 @@
   padding: 0 8px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: var(--ink);
+  color: var(--bone);
   background: rgba(18, 22, 21, 0.94);
   font-family: var(--mono);
   font-size: 11px;
@@ -107,8 +107,8 @@
 }
 
 :global(.main-route-button:hover) {
-  color: var(--accent);
-  border-color: var(--accent-line);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
 }
 
 :global(.search-shell .brand-copy p) {
@@ -116,9 +116,9 @@
 }
 
 :global(.search-shell .main-route-button) {
-  border-color: var(--accent-line);
-  color: var(--accent);
-  background: var(--accent-soft);
+  border-color: var(--opportunity-line);
+  color: var(--opportunity);
+  background: var(--opportunity-soft);
 }
 
 :global(.ws-status-beacon) {
@@ -173,14 +173,14 @@
 }
 
 :global(.searchbar svg) {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 :global(.searchbar input) {
   min-width: 0;
   border: 0;
   outline: 0;
-  color: var(--ink);
+  color: var(--bone);
   background: transparent;
   font-family: var(--mono);
   font-size: 11px;
@@ -194,8 +194,8 @@
 :global(.icon-button) {
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: var(--muted);
-  background: var(--panel-2);
+  color: var(--ash);
+  background: var(--slab);
 }
 
 :global(.searchbar button) {
@@ -215,8 +215,8 @@
 
 :global(.icon-button:hover),
 :global(.searchbar button:hover) {
-  color: var(--accent);
-  border-color: var(--accent-line);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
 }
 
 :global(.notification-bell) {
@@ -227,15 +227,15 @@
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: var(--muted);
-  background: var(--panel-2);
+  color: var(--ash);
+  background: var(--slab);
   padding: 0;
 }
 
 :global(.notification-bell:hover),
 :global(.notification-bell.open) {
-  color: var(--accent);
-  border-color: var(--accent-line);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
 }
 
 :global(.notification-bell span) {
@@ -249,7 +249,7 @@
   border: 1px solid rgba(7, 9, 9, 0.9);
   border-radius: 999px;
   color: #170f03;
-  background: var(--accent);
+  background: var(--opportunity);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 800;
@@ -258,7 +258,7 @@
 
 :global(.notification-bell.has-high span) {
   color: #fff4f4;
-  background: var(--red);
+  background: var(--risk);
 }
 
 :global(.status-pills),
@@ -267,7 +267,7 @@
   align-items: center;
   min-width: 0;
   gap: 9px;
-  color: var(--faint);
+  color: var(--dim);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -283,7 +283,7 @@
 }
 
 :global(.top-stats b) {
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.pill) {
@@ -291,7 +291,7 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
-  color: var(--muted);
+  color: var(--ash);
 }
 
 :global(.pill svg) {
@@ -304,17 +304,17 @@
   width: 7px;
   height: 7px;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--opportunity);
   box-shadow: 0 0 10px rgba(242, 165, 31, 0.4);
 }
 
 :global(.pill.good) {
-  color: var(--text);
+  color: var(--bone-2);
 }
 
 :global(.pill.good:first-child::before),
 :global(.pill.good:nth-child(2)::before) {
-  background: var(--green);
+  background: var(--health);
   box-shadow: 0 0 10px rgba(85, 216, 135, 0.35);
 }
 
@@ -361,7 +361,7 @@
 
 :global(.rail-section h2) {
   margin: 0 0 8px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 600;
@@ -376,7 +376,7 @@
   gap: 7px;
   border: 0;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--ash);
   background: transparent;
   padding: 5px 4px;
   text-align: left;
@@ -388,7 +388,7 @@
   place-items: center;
   border: 1px solid var(--line-strong);
   border-radius: 3px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -404,27 +404,27 @@
 }
 
 :global(.rail-button em) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
 
 :global(.rail-button.active),
 :global(.rail-button:hover) {
-  color: var(--ink);
+  color: var(--bone);
   background: #1b2020;
 }
 
 :global(.rail-button.active span) {
-  color: var(--accent);
-  border-color: var(--accent-line);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
 }
 
 :global(.scope-stack button),
 :global(.segmented button) {
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--ash);
   background: #0a0e0e;
   font-family: var(--mono);
   font-size: 10px;
@@ -432,9 +432,9 @@
 
 :global(.scope-stack button.active),
 :global(.segmented button.active) {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
 }
 
 :global(.scope-stack) {
@@ -461,14 +461,14 @@
 }
 
 :global(.handle-filter svg) {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 :global(.handle-filter input) {
   min-width: 0;
   border: 0;
   outline: 0;
-  color: var(--text);
+  color: var(--bone-2);
   background: transparent;
   font-family: var(--mono);
   font-size: 10px;
@@ -483,7 +483,7 @@
 }
 
 :global(.decision-count b) {
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 11px;
 }
@@ -504,13 +504,13 @@
 }
 
 :global(.decision-tag.driver) {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
 }
 
 :global(.decision-tag.watch) {
-  color: var(--blue);
+  color: var(--info);
   border-color: rgba(99, 199, 221, 0.34);
   background: rgba(99, 199, 221, 0.08);
 }
@@ -522,7 +522,7 @@
 }
 
 :global(.decision-tag.discard) {
-  color: var(--muted);
+  color: var(--ash);
   text-decoration: line-through;
   background: rgba(255, 255, 255, 0.03);
 }
@@ -547,7 +547,7 @@
   min-width: 0;
   border: 0;
   border-radius: 4px;
-  color: var(--muted);
+  color: var(--ash);
   background: transparent;
   padding: 4px 3px;
   text-align: left;
@@ -560,14 +560,14 @@
 :global(.watchlist-row:hover),
 :global(.watchlist-row:focus-visible),
 :global(.watchlist-row.active) {
-  color: var(--text);
+  color: var(--bone-2);
   background: rgba(255, 255, 255, 0.035);
   outline: 0;
 }
 
 :global(.watchlist button.active),
 :global(.watchlist-row.active) {
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--opportunity);
 }
 
 :global(.watchlist-copy) {
@@ -589,7 +589,7 @@
 }
 
 :global(.watchlist small) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
   line-height: 1.15;
@@ -600,9 +600,9 @@
   width: 17px;
   height: 17px;
   place-items: center;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--opportunity-line);
   border-radius: 3px;
-  color: var(--accent);
+  color: var(--opportunity);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -614,7 +614,7 @@
   place-items: center;
   border-radius: 999px;
   color: #fff4f4;
-  background: var(--red);
+  background: var(--risk);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 800;
@@ -654,14 +654,14 @@
 
 :global(.notification-drawer > header span),
 :global(.notification-row-main span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   text-transform: uppercase;
 }
 
 :global(.notification-drawer > header b) {
-  color: var(--ink);
+  color: var(--bone);
   font-size: 12px;
 }
 
@@ -672,7 +672,7 @@
 
 :global(.notification-empty) {
   padding: 18px 12px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   text-align: center;
 }
@@ -691,7 +691,7 @@
 
 :global(.notification-row.severity-high),
 :global(.notification-row.severity-critical) {
-  border-left: 2px solid var(--red);
+  border-left: 2px solid var(--risk);
 }
 
 :global(.notification-row-main) {
@@ -713,17 +713,17 @@
 }
 
 :global(.notification-row-main b) {
-  color: var(--ink);
+  color: var(--bone);
   font-size: 12px;
 }
 
 :global(.notification-row-main em) {
-  color: var(--muted);
+  color: var(--ash);
   font-style: normal;
 }
 
 :global(.notification-row-main small) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -740,7 +740,7 @@
   gap: 5px;
   margin-top: auto;
   padding: 12px 14px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -905,7 +905,7 @@
     gap: 3px;
     border: 1px solid transparent;
     border-radius: 5px;
-    color: var(--muted);
+    color: var(--ash);
     background: transparent;
     font-family: var(--mono);
     font-size: 10px;
@@ -913,9 +913,9 @@
 
   :global(.mobile-task-nav button.active),
   :global(.mobile-task-nav button[aria-current="page"]) {
-    color: var(--accent);
-    border-color: var(--accent-line);
-    background: var(--accent-soft);
+    color: var(--opportunity);
+    border-color: var(--opportunity-line);
+    background: var(--opportunity-soft);
   }
 }
 

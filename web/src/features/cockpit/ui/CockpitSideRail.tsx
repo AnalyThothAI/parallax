@@ -1,7 +1,7 @@
 import { WatchlistNotificationDot } from "@features/notifications";
+import type { WatchlistRow } from "@features/watchlist";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
-import type { WatchlistRow } from "@lib/watchlist";
 import { signalLabPath, stocksPath, watchlistPath } from "@shared/routing/paths";
 import clsx from "clsx";
 import { UserRound } from "lucide-react";

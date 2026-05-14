@@ -1,7 +1,8 @@
 import { eventText, formatRelativeTime } from "@lib/format";
 import type { LivePayload } from "@lib/types";
-import type { WatchlistRow } from "@lib/watchlist";
 import { searchPath } from "@shared/routing/paths";
+
+import type { WatchlistRow } from "./watchlistRows";
 
 export type WatchlistEvidence = {
   body: string;

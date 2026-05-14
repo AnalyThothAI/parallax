@@ -10,7 +10,7 @@ import {
   ObsidianPill,
   ObsidianRecord,
   ObsidianSection,
-} from "@shared/ui/obsidian";
+} from "@shared/ui/case-file";
 import clsx from "clsx";
 import { Link, useSearchParams } from "react-router-dom";
 

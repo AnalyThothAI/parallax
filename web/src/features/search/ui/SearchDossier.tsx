@@ -4,7 +4,7 @@ import {
   ObsidianFieldGrid,
   ObsidianPill,
   ObsidianSection,
-} from "@shared/ui/obsidian";
+} from "@shared/ui/case-file";
 
 import type { SearchCaseView } from "../model/searchCase";
 

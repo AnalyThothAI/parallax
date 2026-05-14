@@ -14,7 +14,7 @@ body,
 body {
   margin: 0;
   overflow: hidden;
-  color: var(--text);
+  color: var(--bone-2);
   background:
     linear-gradient(90deg, rgba(241, 234, 214, 0.025) 1px, transparent 1px),
     linear-gradient(180deg, rgba(241, 234, 214, 0.02) 1px, transparent 1px),

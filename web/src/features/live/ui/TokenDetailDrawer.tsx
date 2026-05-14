@@ -26,7 +26,7 @@ import {
   ObsidianPill,
   ObsidianSection,
   ObsidianTokenMark,
-} from "@shared/ui/obsidian";
+} from "@shared/ui/case-file";
 import { ArrowUpRight } from "lucide-react";
 
 import { buildTokenCaseView } from "../model/tokenCase";

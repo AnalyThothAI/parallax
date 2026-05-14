@@ -11,8 +11,8 @@
   min-width: 0;
   border: 1px solid var(--line-soft);
   border-radius: 6px;
-  color: var(--text);
-  background: var(--panel);
+  color: var(--bone-2);
+  background: var(--obsidian);
   padding: 8px;
   text-decoration: none;
 }
@@ -20,8 +20,8 @@
 :global(.watchlist-case-row:hover),
 :global(.watchlist-case-row:focus-visible),
 :global(.watchlist-case-row.active) {
-  border-color: var(--accent-line);
-  background: var(--panel-2);
+  border-color: var(--opportunity-line);
+  background: var(--slab);
 }
 
 :global(.watchlist-case-row span:not(.watchlist-avatar)) {
@@ -39,11 +39,11 @@
 }
 
 :global(.watchlist-case-row b) {
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.watchlist-case-row small) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -55,7 +55,7 @@
   place-items: center;
   border-radius: 999px;
   color: #120b02;
-  background: var(--accent);
+  background: var(--opportunity);
   font-family: var(--mono);
   font-size: 10px;
   font-style: normal;

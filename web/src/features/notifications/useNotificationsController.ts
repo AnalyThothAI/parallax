@@ -1,5 +1,6 @@
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
+import { signalLabPath, watchlistPath } from "@shared/routing/paths";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -84,7 +85,7 @@ export function useNotificationsController({
       } else if (notification.source_id) {
         q = notification.source_id;
       }
-      navigate(buildSignalLabUrl({ q }));
+      navigate(signalLabPath({ q }));
       setMobileTask("lab");
       return;
     }
@@ -101,22 +102,27 @@ export function useNotificationsController({
       } else if (notification.event_id) {
         q = notification.event_id;
       }
-      navigate(buildSignalLabUrl({ q, handle }));
-      setMobileTask("lab");
+      if (handle && !q) {
+        navigate(watchlistPath({ handle }));
+        setMobileTask("radar");
+      } else {
+        navigate(signalLabPath({ q, handle }));
+        setMobileTask("lab");
+      }
       return;
     }
     if (notification.symbol) {
-      navigate(buildSignalLabUrl({ q: notification.symbol }));
+      navigate(signalLabPath({ q: notification.symbol }));
       setMobileTask("lab");
       return;
     }
     if (notification.author_handle) {
-      navigate(buildSignalLabUrl({ handle: normalizedHandle(notification.author_handle) }));
-      setMobileTask("lab");
+      navigate(watchlistPath({ handle: normalizedHandle(notification.author_handle) }));
+      setMobileTask("radar");
       return;
     }
     if (notification.event_id) {
-      navigate(buildSignalLabUrl({ q: notification.event_id }));
+      navigate(signalLabPath({ q: notification.event_id }));
       setMobileTask("lab");
     }
   };
@@ -138,16 +144,4 @@ export function useNotificationsController({
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
-}
-
-function buildSignalLabUrl({ q, handle }: { q?: string | null; handle?: string | null }): string {
-  const params = new URLSearchParams();
-  if (handle) {
-    params.set("handle", handle);
-  }
-  if (q) {
-    params.set("q", q);
-  }
-  const search = params.toString();
-  return "/signal-lab" + (search ? "?" + search : "");
 }

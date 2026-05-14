@@ -1,5 +1,5 @@
 import type { TokenFlowItem } from "@lib/types";
-import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/obsidian";
+import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
 

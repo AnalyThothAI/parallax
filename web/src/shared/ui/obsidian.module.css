@@ -28,32 +28,32 @@
 }
 
 :global(.ods-pill.opportunity) {
-  border-color: #71501e;
-  color: #ffd184;
+  border-color: var(--opportunity-line-strong);
+  color: var(--opportunity-ink);
   background: var(--opportunity-soft);
 }
 
 :global(.ods-pill.health) {
-  border-color: #2a7147;
-  color: #91eab5;
+  border-color: var(--health-line-strong);
+  color: var(--health-ink);
   background: var(--health-soft);
 }
 
 :global(.ods-pill.info) {
-  border-color: #2d647d;
-  color: #acdfff;
+  border-color: var(--info-line-strong);
+  color: var(--info-ink);
   background: var(--info-soft);
 }
 
 :global(.ods-pill.risk) {
-  border-color: #7a2c3b;
-  color: #f0a1ad;
+  border-color: var(--risk-line-strong);
+  color: var(--risk-ink);
   background: var(--risk-soft);
 }
 
 :global(.ods-pill.agent) {
   border-color: var(--agent-line);
-  color: #d9c7ff;
+  color: var(--agent-ink);
   background: var(--agent-soft);
 }
 
@@ -62,35 +62,35 @@
   width: 44px;
   height: 44px;
   place-items: center;
-  border: 1px solid #70521f;
+  border: 1px solid var(--opportunity-line-muted);
   border-radius: 9px;
-  color: #ffd184;
+  color: var(--opportunity-ink);
   background: var(--opportunity-soft);
   font-family: var(--mono);
   font-weight: 900;
 }
 
 :global(.ods-token-mark.health) {
-  border-color: #2a7147;
-  color: #91eab5;
+  border-color: var(--health-line-strong);
+  color: var(--health-ink);
   background: var(--health-soft);
 }
 
 :global(.ods-token-mark.info) {
-  border-color: #2d647d;
-  color: #acdfff;
+  border-color: var(--info-line-strong);
+  color: var(--info-ink);
   background: var(--info-soft);
 }
 
 :global(.ods-token-mark.risk) {
-  border-color: #7a2c3b;
-  color: #f0a1ad;
+  border-color: var(--risk-line-strong);
+  color: var(--risk-ink);
   background: var(--risk-soft);
 }
 
 :global(.ods-token-mark.agent) {
   border-color: var(--agent-line);
-  color: #d9c7ff;
+  color: var(--agent-ink);
   background: var(--agent-soft);
 }
 
@@ -102,7 +102,7 @@
   border-radius: var(--radius);
   background:
     linear-gradient(180deg, rgba(241, 234, 214, 0.032), rgba(241, 234, 214, 0)), var(--slab);
-  box-shadow: var(--case-shadow);
+  box-shadow: var(--shadow-elevated);
 }
 
 :global(.ods-case-head) {
@@ -257,46 +257,46 @@
 
 :global(.ods-field.opportunity),
 :global(.ods-evidence.opportunity) {
-  border-color: #71501e;
+  border-color: var(--opportunity-line-strong);
 }
 
 :global(.ods-field.opportunity .ods-field-value),
 :global(.ods-evidence.opportunity .ods-evidence-line b),
 :global(.ods-evidence.opportunity .ods-evidence-line a) {
-  color: #ffd184;
+  color: var(--opportunity-ink);
 }
 
 :global(.ods-field.health),
 :global(.ods-evidence.health) {
-  border-color: #2a7147;
+  border-color: var(--health-line-strong);
 }
 
 :global(.ods-field.health .ods-field-value),
 :global(.ods-evidence.health .ods-evidence-line b),
 :global(.ods-evidence.health .ods-evidence-line a) {
-  color: #91eab5;
+  color: var(--health-ink);
 }
 
 :global(.ods-field.info),
 :global(.ods-evidence.info) {
-  border-color: #2d647d;
+  border-color: var(--info-line-strong);
 }
 
 :global(.ods-field.info .ods-field-value),
 :global(.ods-evidence.info .ods-evidence-line b),
 :global(.ods-evidence.info .ods-evidence-line a) {
-  color: #acdfff;
+  color: var(--info-ink);
 }
 
 :global(.ods-field.risk),
 :global(.ods-evidence.risk) {
-  border-color: #7a2c3b;
+  border-color: var(--risk-line-strong);
 }
 
 :global(.ods-field.risk .ods-field-value),
 :global(.ods-evidence.risk .ods-evidence-line b),
 :global(.ods-evidence.risk .ods-evidence-line a) {
-  color: #f0a1ad;
+  color: var(--risk-ink);
 }
 
 :global(.ods-field.agent),
@@ -307,7 +307,7 @@
 :global(.ods-field.agent .ods-field-value),
 :global(.ods-evidence.agent .ods-evidence-line b),
 :global(.ods-evidence.agent .ods-evidence-line a) {
-  color: #d9c7ff;
+  color: var(--agent-ink);
 }
 
 :global(.ods-action-bar) {
@@ -336,8 +336,8 @@
 
 :global(.ods-action-bar a:first-child),
 :global(.ods-action-bar button:first-child) {
-  border-color: #71501e;
-  color: #ffd184;
+  border-color: var(--opportunity-line-strong);
+  color: var(--opportunity-ink);
   background: var(--opportunity-soft);
 }
 
@@ -443,22 +443,22 @@
 }
 
 :global(.ods-metric.opportunity) {
-  border-color: #71501e;
+  border-color: var(--opportunity-line-strong);
   background: var(--opportunity-soft);
 }
 
 :global(.ods-metric.health) {
-  border-color: #2a7147;
+  border-color: var(--health-line-strong);
   background: var(--health-soft);
 }
 
 :global(.ods-metric.info) {
-  border-color: #2d647d;
+  border-color: var(--info-line-strong);
   background: var(--info-soft);
 }
 
 :global(.ods-metric.risk) {
-  border-color: #7a2c3b;
+  border-color: var(--risk-line-strong);
   background: var(--risk-soft);
 }
 
@@ -503,7 +503,7 @@
 
 :global(.ods-record-link.active .ods-record),
 :global(.ods-record-link:hover .ods-record) {
-  border-color: #71501e;
+  border-color: var(--opportunity-line-strong);
   background:
     linear-gradient(90deg, rgba(217, 154, 40, 0.12), transparent 30%), rgba(7, 9, 8, 0.74);
 }
@@ -515,7 +515,7 @@
   place-items: center;
   border: 1px solid var(--line-2);
   border-radius: 8px;
-  color: #ffd184;
+  color: var(--opportunity-ink);
   background: var(--opportunity-soft);
   font-family: var(--mono);
   font-weight: 800;
@@ -553,7 +553,7 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--obsidian);
-  box-shadow: var(--case-shadow);
+  box-shadow: var(--shadow-elevated);
 }
 
 :global(.ods-mini-page-head) {

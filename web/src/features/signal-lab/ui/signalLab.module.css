@@ -19,7 +19,7 @@
 }
 
 :global(.signal-attention-summary span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
   line-height: 1;
@@ -27,16 +27,16 @@
 }
 
 :global(.signal-attention-summary b) {
-  color: var(--accent);
+  color: var(--opportunity);
   font-weight: 800;
 }
 
 :global(.text-action) {
   height: 22px;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--opportunity-line);
   border-radius: 4px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  background: var(--opportunity-soft);
   padding: 0 8px;
   font-family: var(--mono);
   font-size: 10px;
@@ -103,11 +103,11 @@
 
 :global(.signal-chain-row:hover),
 :global(.signal-chain-row.selected) {
-  border-color: var(--accent-line);
+  border-color: var(--opportunity-line);
   background:
     linear-gradient(90deg, rgba(242, 165, 31, 0.16), rgba(242, 165, 31, 0.035) 38%, transparent),
     #101414;
-  box-shadow: inset 4px 0 0 var(--accent);
+  box-shadow: inset 4px 0 0 var(--opportunity);
 }
 
 :global(.signal-chain-twitter-link) {
@@ -119,14 +119,14 @@
   margin: 10px 10px 0 0;
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: var(--faint);
+  color: var(--dim);
   background: rgba(255, 255, 255, 0.02);
 }
 
 :global(.signal-chain-twitter-link:hover) {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
 }
 
 :global(.signal-chain-twitter-link svg) {
@@ -163,7 +163,7 @@
   place-items: center;
   border: 1px solid var(--line);
   border-radius: 3px;
-  color: var(--muted);
+  color: var(--ash);
   background: rgba(255, 255, 255, 0.03);
   font-family: var(--mono);
   font-size: 9px;
@@ -177,9 +177,9 @@
 :global(.signal-stage-badge.frozen),
 :global(.signal-stage-badge.settled),
 :global(.signal-stage-badge.credited) {
-  color: var(--accent);
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
 }
 
 :global(.signal-chain-list.compact .signal-stage-badge) {
@@ -199,7 +199,7 @@
 
 :global(.signal-chain-main strong) {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 800;
@@ -215,7 +215,7 @@
 :global(.signal-chain-time),
 :global(.signal-chain-score small) {
   overflow: hidden;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
   font-style: normal;
@@ -233,7 +233,7 @@
   -webkit-line-clamp: 2;
   overflow: hidden;
   margin: 0;
-  color: var(--text);
+  color: var(--bone-2);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -249,10 +249,10 @@
   min-width: 0;
   max-width: 150px;
   overflow: hidden;
-  border: 1px solid var(--case-line-soft);
+  border: 1px solid var(--line-soft);
   border-radius: 999px;
-  color: var(--case-muted);
-  background: var(--case-panel-raised);
+  color: var(--ash);
+  background: var(--slab);
   padding: 2px 7px;
   font-family: var(--mono);
   font-size: 9px;
@@ -286,7 +286,7 @@
 }
 
 :global(.signal-chain-score b) {
-  color: var(--accent);
+  color: var(--opportunity);
   font-family: var(--mono);
   font-size: 24px;
   line-height: 1;
@@ -357,7 +357,7 @@
 
 :global(.signal-lab-workbench-head h2) {
   margin: 0 0 5px;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 28px;
   line-height: 1.05;
@@ -365,7 +365,7 @@
 
 :global(.signal-lab-workbench-head p) {
   margin: 0;
-  color: var(--muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 13px;
 }
@@ -384,7 +384,7 @@
   min-height: 24px;
   border: 1px solid var(--line);
   border-radius: 4px;
-  color: var(--faint);
+  color: var(--dim);
   background: #090d0d;
   padding: 0 8px;
   font-family: var(--mono);
@@ -393,7 +393,7 @@
 }
 
 :global(.signal-lab-workbench-state b) {
-  color: var(--accent);
+  color: var(--opportunity);
 }
 
 :global(.signal-filter-bar) {
@@ -417,7 +417,7 @@
 }
 
 :global(.filter-cell span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
@@ -426,7 +426,7 @@
 
 :global(.filter-cell b) {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 13px;
   font-weight: 800;
@@ -438,7 +438,7 @@
   min-width: 0;
   border: 0;
   outline: none;
-  color: var(--ink);
+  color: var(--bone);
   background: transparent;
   font-family: var(--mono);
   font-size: 13px;
@@ -446,16 +446,16 @@
 }
 
 :global(.signal-filter-cell input::placeholder) {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 :global(.signal-clear-filters) {
   min-width: 0;
   min-height: 100%;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--opportunity-line);
   border-radius: 6px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  background: var(--opportunity-soft);
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 800;
@@ -464,7 +464,7 @@
 :global(.signal-clear-filters:disabled) {
   cursor: default;
   border-color: var(--line);
-  color: var(--faint);
+  color: var(--dim);
   background: #090d0d;
 }
 
@@ -484,7 +484,7 @@
   gap: 9px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  color: var(--muted);
+  color: var(--ash);
   background: rgba(12, 17, 16, 0.74);
   padding: 16px;
   text-align: left;
@@ -492,12 +492,12 @@
 
 :global(.signal-stage-grid button:hover),
 :global(.signal-stage-grid button.active) {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
 }
 
 :global(.signal-stage-grid span) {
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 800;
@@ -505,7 +505,7 @@
 }
 
 :global(.signal-stage-grid b) {
-  color: var(--accent);
+  color: var(--opportunity);
   font-family: var(--mono);
   font-size: 28px;
   line-height: 1;
@@ -516,7 +516,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 12px;
   font-style: normal;
@@ -539,7 +539,7 @@
 
 :global(.signal-chain-workbench-list h3) {
   margin: 0;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 12px;
 }
@@ -586,7 +586,7 @@
 }
 
 :global(.signal-chain-workbench-list header span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -594,10 +594,10 @@
 :global(.signal-load-more) {
   height: 34px;
   margin-top: 10px;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--opportunity-line);
   border-radius: 4px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--opportunity-soft);
+  color: var(--opportunity);
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
@@ -615,17 +615,17 @@
 }
 
 :global(.signal-empty-panel b) {
-  color: var(--muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 12px;
 }
 
 :global(.signal-empty-panel button) {
   min-height: 28px;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--opportunity-line);
   border-radius: 4px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--opportunity);
+  background: var(--opportunity-soft);
   padding: 0 10px;
   font-family: var(--mono);
   font-size: 11px;
@@ -643,7 +643,7 @@
 
 :global(.signal-pulse-memo) {
   margin: 0;
-  color: var(--case-text);
+  color: var(--bone-2);
   line-height: 1.5;
 }
 
@@ -659,15 +659,15 @@
   align-content: start;
   gap: 6px;
   min-width: 0;
-  border: 1px solid var(--case-line-soft);
+  border: 1px solid var(--line-soft);
   border-radius: 6px;
-  background: var(--case-panel-raised);
+  background: var(--slab);
   padding: 10px;
 }
 
 :global(.signal-pulse-memo-list h4) {
   margin: 0;
-  color: var(--case-ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 10px;
   line-height: 1.2;
@@ -684,20 +684,20 @@
 :global(.signal-pulse-memo-list li),
 :global(.signal-pulse-memo-list p) {
   margin: 0;
-  color: var(--case-muted);
+  color: var(--ash);
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
 :global(.pulse-debug-disclosure) {
-  border-top: 1px solid var(--case-line-soft);
+  border-top: 1px solid var(--line-soft);
   padding: 13px 14px;
 }
 
 :global(.pulse-debug-disclosure summary) {
   cursor: pointer;
-  color: var(--case-muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 800;
@@ -717,7 +717,7 @@
 
 :global(.pulse-debug-json h4) {
   margin: 0;
-  color: var(--case-muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 10px;
 }
@@ -729,7 +729,7 @@
   overflow: auto;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  border: 1px solid var(--case-line-soft);
+  border: 1px solid var(--line-soft);
   border-radius: 6px;
   background: #060909;
   margin: 0;
@@ -767,9 +767,9 @@
   width: 26px;
   height: 26px;
   place-items: center;
-  border: 1px solid var(--accent-line);
+  border: 1px solid var(--opportunity-line);
   border-radius: 50%;
-  color: var(--accent);
+  color: var(--opportunity);
   background: #090d0d;
   font-family: var(--mono);
   font-size: 10px;
@@ -778,7 +778,7 @@
 
 :global(.signal-trace-step.complete > span) {
   border-color: rgba(85, 216, 135, 0.42);
-  color: var(--green);
+  color: var(--health);
 }
 
 :global(.signal-trace-step > div) {
@@ -792,12 +792,12 @@
 :global(.signal-trace-step strong) {
   display: block;
   margin-bottom: 4px;
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.signal-trace-step p) {
   margin: 2px 0;
-  color: var(--muted);
+  color: var(--ash);
   line-height: 1.35;
   overflow-wrap: anywhere;
   white-space: normal;
@@ -810,7 +810,7 @@
 }
 
 :global(.signal-trace-field span) {
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
   text-transform: uppercase;
@@ -818,7 +818,7 @@
 
 :global(.signal-trace-field b) {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 10px;
   font-weight: 500;
@@ -837,7 +837,7 @@
 :global(.ledger-box h3) {
   overflow: hidden;
   margin: 0 0 8px;
-  color: var(--ink);
+  color: var(--bone);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -863,7 +863,7 @@
 :global(.credit-row span),
 :global(.weight-drift-row span) {
   overflow: hidden;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   text-overflow: ellipsis;
@@ -874,7 +874,7 @@
 :global(.weight-drift-row b),
 :global(.weight-drift-row em) {
   overflow: hidden;
-  color: var(--muted);
+  color: var(--ash);
   font-family: var(--mono);
   font-size: 10px;
   font-style: normal;
@@ -893,7 +893,7 @@
 
 :global(.ledger-row span) {
   overflow: hidden;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   text-overflow: ellipsis;
@@ -902,7 +902,7 @@
 
 :global(.ledger-row b) {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 10px;
   text-align: right;
@@ -918,7 +918,7 @@
 
 :global(.ledger-subsection h4) {
   margin: 0 0 5px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
   font-weight: 700;
@@ -942,16 +942,16 @@
 }
 
 :global(.ledger-mini-row b) {
-  color: var(--ink);
+  color: var(--bone);
 }
 
 :global(.ledger-mini-row span) {
-  color: var(--faint);
+  color: var(--dim);
 }
 
 :global(.ledger-note) {
   margin: 0 0 6px;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   line-height: 1.35;
@@ -979,7 +979,7 @@
 }
 
 :global(.score-bucket-table td) {
-  color: var(--muted);
+  color: var(--ash);
   font-size: 10px;
 }
 
@@ -1005,11 +1005,11 @@
 }
 
 :global(.score-bucket-bar i.positive) {
-  background: var(--green);
+  background: var(--health);
 }
 
 :global(.score-bucket-bar i.negative) {
-  background: var(--red);
+  background: var(--risk);
 }
 
 :global(.settlement-grid) {
@@ -1027,7 +1027,7 @@
 }
 
 :global(.weight-drift-row em) {
-  color: var(--accent);
+  color: var(--opportunity);
 }
 
 :global(.evidence-body) {
@@ -1037,7 +1037,7 @@
 
 :global(.evidence-text) {
   margin: 0;
-  color: var(--ink);
+  color: var(--bone);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1067,7 +1067,7 @@
 
 :global(.evidence-kv-row strong) {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--bone);
   font-family: var(--mono);
   font-size: 11px;
   text-overflow: ellipsis;
@@ -1076,7 +1076,7 @@
 
 :global(.evidence-kv-row span) {
   overflow: hidden;
-  color: var(--faint);
+  color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
   text-overflow: ellipsis;
@@ -1103,7 +1103,7 @@
 
 :global(.evidence-match-row strong) {
   overflow: hidden;
-  color: var(--ink);
+  color: var(--bone);
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1111,7 +1111,7 @@
 
 :global(.evidence-match-row span) {
   overflow: hidden;
-  color: var(--faint);
+  color: var(--dim);
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1121,7 +1121,7 @@
   display: -webkit-box;
   overflow: hidden;
   margin: 0;
-  color: var(--text);
+  color: var(--bone-2);
   font-size: 11px;
   line-height: 1.42;
   -webkit-box-orient: vertical;

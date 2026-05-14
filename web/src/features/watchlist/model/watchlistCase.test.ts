@@ -1,8 +1,8 @@
 import type { LivePayload } from "@lib/types";
-import type { WatchlistRow } from "@lib/watchlist";
 import { describe, expect, it } from "vitest";
 
 import { buildWatchlistAccountCases, normalizeWatchlistHandle } from "./watchlistCase";
+import type { WatchlistRow } from "./watchlistRows";
 
 describe("watchlist account cases", () => {
   it("derives account files from handles, unread state, recent evidence, tokens, and narratives", () => {

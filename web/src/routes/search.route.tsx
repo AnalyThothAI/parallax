@@ -1,1 +1,5 @@
-export { SearchIntelPage as SearchRoute } from "@features/search";
+import { SearchIntelPage } from "@features/search";
+
+export function SearchRoute() {
+  return <SearchIntelPage />;
+}

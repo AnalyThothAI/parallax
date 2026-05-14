@@ -1,7 +1,7 @@
 import type { LivePayload } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
-import { buildWatchlistRows } from "./watchlist";
+import { buildWatchlistRows } from "./watchlistRows";
 
 describe("watchlist helpers", () => {
   it("keeps every configured handle and ranks unread then latest activity", () => {

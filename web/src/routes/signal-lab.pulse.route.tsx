@@ -1,1 +1,5 @@
-export { PulseDetailPage as SignalLabPulseRoute } from "@features/signal-lab";
+import { PulseDetailPage } from "@features/signal-lab";
+
+export function SignalLabPulseRoute() {
+  return <PulseDetailPage />;
+}
