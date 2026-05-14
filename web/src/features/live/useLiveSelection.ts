@@ -1,3 +1,5 @@
+import { requiredMobileTaskForPathname, useCockpitStore, type MobileTask } from "@features/cockpit";
+import { tokenSearchPath } from "@features/search";
 import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
 import {
   livePath,
@@ -11,10 +13,6 @@ import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { targetRefFromTokenItem } from "../../domain/tokenTarget";
-import { requiredMobileTaskForPathname } from "../cockpit/model/mobileRouteTask";
-import type { MobileTask } from "../cockpit/model/mobileTask";
-import { useCockpitStore } from "../cockpit/state/cockpitStore";
-import { tokenSearchPath } from "../search/tokenSearchRoute";
 
 import { tapeItemId, type LiveSignalTapeItem } from "./liveTapeModel";
 
