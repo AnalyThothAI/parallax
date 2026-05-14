@@ -78,6 +78,40 @@ def test_diff_reports_only_material_state_edges() -> None:
     assert pulse_edge_signature(previous) != pulse_edge_signature(current)
 
 
+def test_diff_reports_pulse_version_bump_without_other_state_changes() -> None:
+    previous = build_pulse_edge_state(
+        candidate_id="pulse-1",
+        candidate_type="token_target",
+        target_type="Asset",
+        target_id="asset:pepe",
+        window="1h",
+        scope="all",
+        trigger_signature="sha256:trigger",
+        timeline_signature="sha256:timeline",
+        factor_snapshot=_snapshot(rank_score=82, watched_mentions=1),
+        gate=_gate(status="trade_candidate", score_band="high_conviction"),
+        pulse_version="pulse-v1",
+        gate_version="gate-v1",
+    )
+    current = build_pulse_edge_state(
+        candidate_id="pulse-1",
+        candidate_type="token_target",
+        target_type="Asset",
+        target_id="asset:pepe",
+        window="1h",
+        scope="all",
+        trigger_signature="sha256:trigger",
+        timeline_signature="sha256:timeline",
+        factor_snapshot=_snapshot(rank_score=82, watched_mentions=1),
+        gate=_gate(status="trade_candidate", score_band="high_conviction"),
+        pulse_version="pulse-v2",
+        gate_version="gate-v1",
+    )
+
+    assert diff_pulse_edge_events(previous, current) == ["pulse_version_bumped"]
+    assert pulse_edge_signature(previous) != pulse_edge_signature(current)
+
+
 def _gate(*, status: str, score_band: str, hard_risks: list[str] | None = None) -> PulseGateResult:
     return PulseGateResult(
         pulse_status=status,

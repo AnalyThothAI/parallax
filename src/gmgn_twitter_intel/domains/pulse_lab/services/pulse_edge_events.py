@@ -7,6 +7,7 @@ from typing import Any
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 
 PULSE_EDGE_EVENTS = (
+    "pulse_version_bumped",
     "pulse_status_changed",
     "score_band_crossed",
     "hard_risk_added",
@@ -66,6 +67,10 @@ def diff_pulse_edge_events(previous: dict[str, Any] | None, current: dict[str, A
         return ["pulse_status_changed"]
 
     events: list[str] = []
+    if before.get("pulse_version") != after.get("pulse_version") or before.get("gate_version") != after.get(
+        "gate_version"
+    ):
+        events.append("pulse_version_bumped")
     if before.get("pulse_status") != after.get("pulse_status"):
         events.append("pulse_status_changed")
     if before.get("score_band") != after.get("score_band"):

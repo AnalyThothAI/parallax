@@ -431,6 +431,7 @@ class PulseRepository:
         harness_version: str,
         harness_hash: str,
         input_hash: str,
+        outcome: str,
         request_json: dict[str, Any] | None = None,
         backend: str = "openai_agents_sdk",
         sdk_trace_id: str | None = None,
@@ -439,7 +440,6 @@ class PulseRepository:
         usage_json: dict[str, Any] | None = None,
         latency_ms: int = 0,
         status: str = "running",
-        outcome: str = "running",
         decision_route: str = "research_only",
         decision_stage_count: int = 0,
         response_json: dict[str, Any] | None = None,
@@ -508,7 +508,8 @@ class PulseRepository:
         error: str | None = None,
         output_hash: str | None = None,
         usage_json: dict[str, Any] | None = None,
-        outcome: str | None = None,
+        *,
+        outcome: str,
         decision_route: str | None = None,
         decision_stage_count: int | None = None,
         finished_at_ms: int | None = None,
@@ -523,9 +524,6 @@ class PulseRepository:
         now = int(finished_at_ms if finished_at_ms is not None else _now_ms())
         latency_ms = max(0, now - int(existing["started_at_ms"]))
         next_usage = usage_json if usage_json is not None else _decode_json_value(existing["usage_json"])
-        resolved_outcome = outcome or (
-            "failed" if status == "failed" else "completed" if status == "done" else "running"
-        )
         row = self.conn.execute(
             """
             UPDATE pulse_agent_runs
@@ -549,7 +547,7 @@ class PulseRepository:
                 output_hash,
                 _json(next_usage or {}),
                 latency_ms,
-                resolved_outcome,
+                outcome,
                 decision_route,
                 max(0, int(decision_stage_count)) if decision_stage_count is not None else None,
                 now,

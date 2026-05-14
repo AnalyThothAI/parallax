@@ -5,6 +5,8 @@ import inspect
 import json
 from typing import Any
 
+import pytest
+
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
 from gmgn_twitter_intel.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from gmgn_twitter_intel.domains.pulse_lab.repositories import pulse_repository
@@ -396,6 +398,36 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
     assert finished["outcome"] == "completed"
     assert finished["decision_route"] == "meme"
     assert finished["decision_stage_count"] == 3
+
+
+def test_agent_run_outcome_has_no_database_default_and_finish_requires_explicit_outcome(tmp_path) -> None:
+    signature = inspect.signature(PulseRepository.finish_agent_run)
+    assert signature.parameters["outcome"].default is inspect.Parameter.empty
+    assert signature.parameters["outcome"].kind is inspect.Parameter.KEYWORD_ONLY
+
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        row = conn.execute(
+            """
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'pulse_agent_runs'
+              AND column_name = 'outcome'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert row is not None
+    assert row["column_default"] is None
+    with pytest.raises(TypeError):
+        PulseRepository.finish_agent_run(  # type: ignore[call-arg]
+            object(),
+            "run-missing-outcome",
+            "done",
+        )
 
 
 def test_agent_harness_version_round_trip(tmp_path) -> None:

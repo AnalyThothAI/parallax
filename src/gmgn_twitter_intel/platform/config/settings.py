@@ -81,7 +81,7 @@ class LlmConfig(BaseModel):
     pulse_agent_batch_size: int = 10
     pulse_agent_max_attempts: int = 3
     pulse_agent_model: str | None = None
-    pulse_agent_trigger_min_rank_score: int = 70
+    pulse_agent_trigger_min_rank_score: int = 45
     pulse_agent_gate_trade_candidate_min: int = 72
     pulse_agent_gate_token_watch_min: int = 45
     pulse_agent_gate_high_info_rejection_min: int = 30
@@ -760,7 +760,7 @@ llm:
   pulse_agent_batch_size: 10
   pulse_agent_max_attempts: 3
   pulse_agent_model:
-  pulse_agent_trigger_min_rank_score: 70
+  pulse_agent_trigger_min_rank_score: 45
   pulse_agent_gate_trade_candidate_min: 72
   pulse_agent_gate_token_watch_min: 45
   pulse_agent_gate_high_info_rejection_min: 30

@@ -43,7 +43,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.pulse_agent_max_attempts == 3
     assert settings.pulse_agent_model is None
     assert settings.pulse_agent_configured is False
-    assert settings.pulse_agent_trigger_min_rank_score == 70
+    assert settings.pulse_agent_trigger_min_rank_score == 45
     assert settings.pulse_agent_gate_trade_candidate_min == 72
     assert settings.pulse_agent_gate_token_watch_min == 45
     assert settings.pulse_agent_gate_high_info_rejection_min == 30

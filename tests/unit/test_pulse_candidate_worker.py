@@ -46,6 +46,49 @@ def test_malformed_v3_factor_snapshot_is_not_enqueued() -> None:
     assert repos.pulse.jobs == []
 
 
+def test_default_trigger_floor_enqueues_rank_45_without_decision_or_watched_shortcuts() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [
+        _radar_row(
+            factor_snapshot_json=_factor_snapshot(
+                rank_score=45,
+                recommended_decision="low_info",
+                watched_mentions=0,
+            )
+        )
+    ]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 1
+    assert repos.pulse.jobs
+
+
+def test_default_trigger_floor_skips_rank_44_without_decision_or_watched_shortcuts() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [
+        _radar_row(
+            factor_snapshot_json=_factor_snapshot(
+                rank_score=44,
+                recommended_decision="low_info",
+                watched_mentions=0,
+            )
+        )
+    ]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse.jobs == []
+
+
 def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> None:
     repos = FakeRepos()
     snapshot = _factor_snapshot(rank_score=82)
@@ -614,7 +657,14 @@ def _radar_row(*, factor_snapshot_json: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
-def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = None) -> dict[str, Any]:
+def _factor_snapshot(
+    *,
+    rank_score: int,
+    blocked_reasons: list[str] | None = None,
+    recommended_decision: str | None = None,
+    watched_mentions: int = 1,
+) -> dict[str, Any]:
+    decision = recommended_decision or ("high_alert" if rank_score >= 72 else "watch")
     return {
         "schema_version": "token_factor_snapshot_v3_social_attention",
         "subject": {
@@ -665,7 +715,7 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
                 "score": rank_score,
                 "weight": 0.35,
                 "data_health": "ready",
-                "facts": {"mentions_1h": 8, "unique_authors": 7, "watched_mentions": 1},
+                "facts": {"mentions_1h": 8, "unique_authors": 7, "watched_mentions": watched_mentions},
                 "factors": {
                     "watched_mentions": {
                         "family": "social_heat",
@@ -720,7 +770,7 @@ def _factor_snapshot(*, rank_score: int, blocked_reasons: list[str] | None = Non
                 "timing_risk": rank_score,
             },
             "rank_score": rank_score,
-            "recommended_decision": "high_alert" if rank_score >= 72 else "watch",
+            "recommended_decision": decision,
         },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": NOW_MS - 1_000},
     }

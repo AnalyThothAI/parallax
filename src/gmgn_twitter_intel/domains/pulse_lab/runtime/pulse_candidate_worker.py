@@ -106,7 +106,7 @@ class PulseCandidateContext:
 
 @dataclass(frozen=True)
 class PulseTriggerThresholds:
-    min_rank_score: int = 70
+    min_rank_score: int = 45
 
 
 class PulseCandidateWorker:

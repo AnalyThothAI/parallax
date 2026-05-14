@@ -38,7 +38,7 @@ def upgrade() -> None:
         WHERE outcome = 'pending'
         """
     )
-    op.execute("ALTER TABLE pulse_agent_runs ALTER COLUMN outcome SET DEFAULT 'running'")
+    op.execute("ALTER TABLE pulse_agent_runs ALTER COLUMN outcome DROP DEFAULT")
     op.execute("ALTER TABLE pulse_agent_jobs DROP COLUMN IF EXISTS cooldown_until_ms")
     op.execute(
         """
