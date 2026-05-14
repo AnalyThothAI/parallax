@@ -22,7 +22,7 @@ describe("ScoreLedger", () => {
     expect(screen.queryByText("Identity")).not.toBeInTheDocument();
     expect(screen.queryByText("Market")).not.toBeInTheDocument();
 
-    expect(screen.getByText("market freshness missing")).toBeInTheDocument();
+    expect(screen.getByText("市场新鲜度不足")).toBeInTheDocument();
     expect(screen.getByText("#7 / 42")).toBeInTheDocument();
     expect(screen.getByText("market:partial")).toBeInTheDocument();
     expect(screen.getByText("alpha:partial")).toBeInTheDocument();
