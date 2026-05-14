@@ -39,12 +39,23 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
 
   const scoreHeaderBox = await page.locator(".radar-head-cell.score").boundingBox();
   const scoreCellBox = await radarRow.locator(".radar-score-cell").boundingBox();
+  const listedHeaderBox = await page.locator(".radar-head-cell.listed").boundingBox();
+  const listedActionBox = await radarRow.locator(".radar-listed-action-cell").boundingBox();
   expect(scoreHeaderBox).not.toBeNull();
   expect(scoreCellBox).not.toBeNull();
+  expect(listedHeaderBox).not.toBeNull();
+  expect(listedActionBox).not.toBeNull();
   expect(
     Math.abs(
       Math.round((scoreHeaderBox?.x ?? 0) + (scoreHeaderBox?.width ?? 0)) -
         Math.round((scoreCellBox?.x ?? 0) + (scoreCellBox?.width ?? 0)),
+    ),
+  ).toBeLessThanOrEqual(2);
+  expect(Math.round(scoreCellBox?.x ?? 0)).toBeLessThan(Math.round(listedActionBox?.x ?? 0));
+  expect(
+    Math.abs(
+      Math.round((listedHeaderBox?.x ?? 0) + (listedHeaderBox?.width ?? 0)) -
+        Math.round((listedActionBox?.x ?? 0) + (listedActionBox?.width ?? 0)),
     ),
   ).toBeLessThanOrEqual(2);
 

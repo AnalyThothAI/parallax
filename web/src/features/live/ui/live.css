@@ -1197,7 +1197,7 @@
   display: grid;
   grid-template-columns:
     minmax(258px, 1.24fr) minmax(136px, 0.62fr) minmax(214px, 0.98fr)
-    minmax(288px, 1.26fr) minmax(92px, 0.38fr) 88px;
+    minmax(288px, 1.26fr) 58px 124px;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -1219,11 +1219,21 @@
 }
 
 .radar-head-cell.score {
-  justify-self: end;
-  width: 85px;
+  justify-self: center;
+  width: 58px;
 }
 
 .radar-head-cell.score .radar-sort-button {
+  justify-content: center;
+  width: 100%;
+}
+
+.radar-head-cell.listed {
+  justify-self: end;
+  width: 124px;
+}
+
+.radar-head-cell.listed .radar-sort-button {
   justify-content: flex-end;
   width: 100%;
 }
@@ -1509,13 +1519,8 @@
 
 .radar-score-cell {
   display: grid;
-  grid-template-columns: 48px 32px;
-  align-content: center;
-  align-items: center;
-  justify-content: end;
-  justify-self: end;
-  gap: 5px;
-  width: 85px;
+  justify-self: center;
+  width: 58px;
   min-width: 0;
 }
 
@@ -1533,14 +1538,24 @@
   font-weight: 900;
 }
 
-.radar-score-cell .row-drilldown-button {
+.radar-listed-action-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  justify-self: end;
+  gap: 7px;
+  width: 124px;
+  min-width: 0;
+}
+
+.radar-listed-action-cell .row-drilldown-button {
   display: inline-flex;
   width: 32px;
   height: 32px;
   border-radius: 5px;
 }
 
-.radar-score-cell .row-drilldown-button svg {
+.radar-listed-action-cell .row-drilldown-button svg {
   width: 14px;
   height: 14px;
 }
@@ -1576,15 +1591,19 @@
   }
 
   .radar-score-cell {
-    grid-column: 1 / -1;
-    grid-template-columns: minmax(0, 1fr) 40px;
-    justify-content: stretch;
-    justify-self: stretch;
+    grid-column: 1;
+    justify-self: start;
     width: auto;
     padding: 0;
   }
 
   .radar-score {
-    width: 100%;
+    width: 48px;
+  }
+
+  .radar-listed-action-cell {
+    grid-column: 2;
+    justify-self: end;
+    width: min(124px, 100%);
   }
 }

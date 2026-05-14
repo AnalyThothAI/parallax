@@ -93,13 +93,15 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
         </span>
       </span>
 
-      <span className="radar-fact listed-fact" data-radar-metric="listed">
-        <b>{tokenCase.listed.value}</b>
-        <em>{tokenCase.listed.detail}</em>
+      <span className="radar-score-cell" data-case-section="score">
+        <span className="radar-score">{tokenCase.score}</span>
       </span>
 
-      <span className="radar-score-cell" data-case-section="action">
-        <span className="radar-score">{tokenCase.score}</span>
+      <span className="radar-listed-action-cell" data-case-section="action">
+        <span className="radar-fact listed-fact" data-radar-metric="listed">
+          <b>{tokenCase.listed.value}</b>
+          <em>{tokenCase.listed.detail}</em>
+        </span>
         <button
           aria-label={`Open Search Intel for ${tokenCase.label}`}
           className="row-drilldown-button"

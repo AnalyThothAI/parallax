@@ -156,15 +156,15 @@ function tokenRadarColumns(): ColumnDef<TokenFlowItem>[] {
         -1,
     },
     {
+      id: "score",
+      header: "Score",
+      accessorFn: (item) => item.opportunity.score,
+    },
+    {
       id: "listed",
       header: "Listed",
       accessorFn: (item) =>
         item.radar?.listed_at_ms ?? item.radar?.computed_at_ms ?? item.flow.window_end_ms ?? 0,
-    },
-    {
-      id: "score",
-      header: "Score",
-      accessorFn: (item) => item.opportunity.score,
     },
   ];
 }

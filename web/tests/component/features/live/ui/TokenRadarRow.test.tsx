@@ -228,6 +228,27 @@ describe("TokenRadarRow", () => {
     expect(screen.queryByText(/2026-/)).not.toBeInTheDocument();
   });
 
+  it("keeps score before listed time and drilldown action", () => {
+    render(
+      <TokenRadarRow
+        item={mixedFreshnessToken()}
+        selected={false}
+        onOpenSearch={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
+    const children = Array.from(row.children);
+    expect(children.at(-2)).toHaveClass("radar-score-cell");
+    expect(children.at(-1)).toHaveClass("radar-listed-action-cell");
+    expect(
+      within(children.at(-1) as HTMLElement).getByRole("button", {
+        name: "Open Search Intel for $TROLL",
+      }),
+    ).toBeInTheDocument();
+  });
+
   it("uses score ranking as the default table sort", () => {
     const low = withRadarMeta(
       {
