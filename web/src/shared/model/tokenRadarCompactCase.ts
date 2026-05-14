@@ -1,9 +1,9 @@
 import {
   compactNumber,
   formatReason,
+  formatRelativeTime,
   formatRisk,
   formatSignedPercent,
-  formatUtcTimestamp,
   formatUsdCompact,
 } from "@lib/format";
 import type { TokenFlowItem } from "@lib/types";
@@ -19,7 +19,6 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
 
   return {
     externalLinks: compactExternalLinks(item, tokenCase.actions),
-    holders: compactHolders(item),
     label: tokenCase.label,
     listed: compactListedAt(item),
     logoUrl: item.profile?.identity?.logo_url ?? null,
@@ -27,6 +26,7 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     market: {
       ...tokenCase.market,
       detail: compactMarketDetail(item),
+      stats: compactMarketStats(item),
     },
     marketMove,
     narrative: {
@@ -108,32 +108,53 @@ function compactMarketMove(item: TokenFlowItem): {
   };
 }
 
-function compactHolders(item: TokenFlowItem): { detail: string; value: string } {
-  const holders = item.market.holder_count;
-  return {
-    detail:
-      holders === null || holders === undefined
-        ? "holder data unavailable"
-        : statusLabel(item.market.holder_count_status),
-    value: compactNumber(holders),
-  };
+function compactMarketDetail(item: TokenFlowItem): string {
+  const stats = compactMarketStats(item);
+  return stats.length
+    ? stats.map((stat) => `${stat.label} ${stat.value}`).join(" · ")
+    : marketMeta(item, "-");
 }
 
-function compactMarketDetail(item: TokenFlowItem): string {
-  const stats = [
-    item.market.liquidity !== null && item.market.liquidity !== undefined
-      ? `liq ${formatUsdCompact(item.market.liquidity)}`
-      : null,
-    item.market.volume_24h !== null && item.market.volume_24h !== undefined
-      ? `vol ${formatUsdCompact(item.market.volume_24h)}`
-      : null,
-  ].filter((part): part is string => Boolean(part));
-  const health = marketMeta(item, "-");
-  return (
-    [...stats, health === "market data unavailable" ? null : health]
-      .filter((part): part is string => Boolean(part))
-      .join(" · ") || health
-  );
+type CompactMarketStat = {
+  key: "holders" | "liq" | "vol";
+  label: string;
+  status: string;
+  tone: "holders" | "liquidity" | "volume";
+  value: string;
+};
+
+function compactMarketStats(item: TokenFlowItem): CompactMarketStat[] {
+  return [
+    marketStat("liq", "liq", item.market.liquidity, item.market.liquidity_status, "liquidity"),
+    marketStat("vol", "vol", item.market.volume_24h, item.market.volume_24h_status, "volume"),
+    marketStat(
+      "holders",
+      "holders",
+      item.market.holder_count,
+      item.market.holder_count_status,
+      "holders",
+    ),
+  ].filter((stat): stat is CompactMarketStat => Boolean(stat));
+}
+
+function marketStat(
+  key: CompactMarketStat["key"],
+  label: CompactMarketStat["label"],
+  value: number | null | undefined,
+  status: string | null | undefined,
+  tone: CompactMarketStat["tone"],
+): CompactMarketStat | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const formatted = key === "holders" ? compactNumber(value) : formatUsdCompact(value);
+  return {
+    key,
+    label,
+    status: statusLabel(status, label),
+    tone,
+    value: formatted,
+  };
 }
 
 function compactListedAt(item: TokenFlowItem): {
@@ -146,7 +167,7 @@ function compactListedAt(item: TokenFlowItem): {
   return {
     detail: item.radar?.rank ? `#${item.radar.rank}` : "rank -",
     timestampMs: listedAtMs,
-    value: formatUtcTimestamp(listedAtMs, { suffix: false }),
+    value: listedAtMs ? `${formatRelativeTime(listedAtMs)}前` : "-",
   };
 }
 
@@ -204,9 +225,9 @@ function cleanText(value?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
-function statusLabel(value?: string | null): string {
+function statusLabel(value?: string | null, readyLabel = "live"): string {
   if (!value || value === "live" || value === "ready" || value === "fresh") {
-    return "holder count";
+    return readyLabel;
   }
   return value.replaceAll("_", " ");
 }

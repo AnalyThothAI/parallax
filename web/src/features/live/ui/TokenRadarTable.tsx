@@ -83,7 +83,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
           <div className="radar-data-table">
             <div>
               {table.getHeaderGroups().map((headerGroup) => (
-                <div className="radar-head" key={headerGroup.id}>
+                <div className="token-radar-head" key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <div
                       aria-sort={ariaSort(header.column.getIsSorted())}
@@ -145,14 +145,15 @@ function tokenRadarColumns(): ColumnDef<TokenFlowItem>[] {
       accessorFn: (item) => item.discussion_quality.informative_post_count,
     },
     {
-      id: "holders",
-      header: "Holders",
-      accessorFn: (item) => item.market.holder_count ?? -1,
-    },
-    {
       id: "market",
       header: "Market",
-      accessorFn: (item) => item.market.market_cap ?? item.market.price ?? -1,
+      accessorFn: (item) =>
+        item.market.market_cap ??
+        item.market.price ??
+        item.market.liquidity ??
+        item.market.volume_24h ??
+        item.market.holder_count ??
+        -1,
     },
     {
       id: "listed",
@@ -173,7 +174,6 @@ function headerLabel(columnId: string): string {
     case: "token case",
     social: "social",
     why: "why now",
-    holders: "holders",
     market: "market",
     listed: "listed",
     score: "score",

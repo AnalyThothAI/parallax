@@ -5,7 +5,10 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("TokenRadarRow", () => {
   it("does not render unresolved intent ids as address-like token subtitles", () => {
@@ -66,9 +69,14 @@ describe("TokenRadarRow", () => {
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
     expect(market).toHaveTextContent("-");
-    expect(market).toHaveTextContent("partial");
-    expect(market).toHaveTextContent("cap stale");
-    expect(market).not.toHaveTextContent("- fresh");
+    expect(market).toHaveTextContent("liq");
+    expect(market).toHaveTextContent("$3M");
+    expect(market).toHaveTextContent("vol");
+    expect(market).toHaveTextContent("$1.3M");
+    expect(market).toHaveTextContent("holders");
+    expect(market).toHaveTextContent("52K");
+    expect(market).not.toHaveTextContent("partial");
+    expect(market).not.toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("$0.104");
     expect(await axe(container)).toHaveNoViolations();
   });
@@ -94,7 +102,9 @@ describe("TokenRadarRow", () => {
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("-");
-    expect(market).toHaveTextContent("cap missing");
+    expect(market).toHaveTextContent("liq");
+    expect(market).toHaveTextContent("holders");
+    expect(market).not.toHaveTextContent("cap missing");
     expect(market).not.toHaveTextContent("$0.104");
   });
 
@@ -185,7 +195,9 @@ describe("TokenRadarRow", () => {
     }
   });
 
-  it("renders holder and listed-at columns for ranked rows", () => {
+  it("renders market stats and relative listed age for ranked rows", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1_778_426_440_000));
     const item = withRadarMeta(mixedFreshnessToken(), {
       listed_at_ms: 1_778_420_000_000,
       rank: 4,
@@ -206,11 +218,14 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /sort by holders/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sort by holders/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sort by market/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /sort by listed/i })).toBeInTheDocument();
     expect(screen.getByText("52K")).toBeInTheDocument();
+    expect(screen.getByText("$1.3M")).toBeInTheDocument();
     expect(screen.getByText("#4")).toBeInTheDocument();
-    expect(screen.getByText(/2026-/)).toBeInTheDocument();
+    expect(screen.getByText("1h前")).toBeInTheDocument();
+    expect(screen.queryByText(/2026-/)).not.toBeInTheDocument();
   });
 
   it("uses score ranking as the default table sort", () => {
@@ -245,7 +260,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const rows = Array.from(container.querySelectorAll(".radar-row"));
+    const rows = Array.from(container.querySelectorAll(".token-radar-row"));
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent("$HIGH");
     expect(rows[1]).toHaveTextContent("$LOW");
@@ -314,6 +329,8 @@ function mixedFreshnessToken(): TokenFlowItem {
       market_cap_status: "stale",
       liquidity: 3_000_000,
       liquidity_status: "stale",
+      volume_24h: 1_300_000,
+      volume_24h_status: "stale",
       holder_count: 52_000,
       holder_count_status: "stale",
       pool_status: "missing",

@@ -18,7 +18,7 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
   return (
     <article
       aria-label={`Token Radar item ${tokenCase.label}`}
-      className={clsx("radar-row", selected && "selected")}
+      className={clsx("token-radar-row", selected && "selected")}
     >
       <div className="radar-case-cell" data-case-section="identity">
         {tokenCase.logoUrl ? (
@@ -69,21 +69,27 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
         <em>{tokenCase.narrative.detail}</em>
       </span>
 
-      <span className="radar-fact holders-fact" data-radar-metric="holders">
-        <b>{tokenCase.holders.value}</b>
-        <em>{tokenCase.holders.detail}</em>
-      </span>
-
       <span className="radar-fact market-fact" data-radar-metric="market">
-        <span>
-          <b>{tokenCase.market.value}</b>
-          <em>{tokenCase.market.detail}</em>
+        <span className="market-primary-line">
+          <b className="market-primary-value">{tokenCase.market.value}</b>
+          <span className={clsx("market-move", tokenCase.marketMove.direction)}>
+            {tokenCase.marketMove.direction === "up" ? <ArrowUpRight aria-hidden /> : null}
+            {tokenCase.marketMove.direction === "down" ? <ArrowDownRight aria-hidden /> : null}
+            {tokenCase.marketMove.direction === "flat" ? <Minus aria-hidden /> : null}
+            <b>{tokenCase.marketMove.value}</b>
+          </span>
         </span>
-        <span className={clsx("market-move", tokenCase.marketMove.direction)}>
-          {tokenCase.marketMove.direction === "up" ? <ArrowUpRight aria-hidden /> : null}
-          {tokenCase.marketMove.direction === "down" ? <ArrowDownRight aria-hidden /> : null}
-          {tokenCase.marketMove.direction === "flat" ? <Minus aria-hidden /> : null}
-          <b>{tokenCase.marketMove.value}</b>
+        <span className="market-stats" aria-label={tokenCase.market.detail}>
+          {tokenCase.market.stats.length ? (
+            tokenCase.market.stats.map((stat) => (
+              <span className={clsx("market-stat", stat.tone)} key={stat.key} title={stat.status}>
+                <span>{stat.label}</span>
+                <b>{stat.value}</b>
+              </span>
+            ))
+          ) : (
+            <em>market data unavailable</em>
+          )}
         </span>
       </span>
 
@@ -92,8 +98,8 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
         <em>{tokenCase.listed.detail}</em>
       </span>
 
-      <span className="score-cell" data-case-section="action">
-        <span className="score">{tokenCase.score}</span>
+      <span className="radar-score-cell" data-case-section="action">
+        <span className="radar-score">{tokenCase.score}</span>
         <button
           aria-label={`Open Search Intel for ${tokenCase.label}`}
           className="row-drilldown-button"
