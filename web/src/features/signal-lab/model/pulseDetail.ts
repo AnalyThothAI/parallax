@@ -81,6 +81,7 @@ export type EvidenceRow = {
   cited: boolean;
   authorTag: EvidenceAuthorTag;
   cohortPosition: string | null;
+  canonicalUrl: string | null;
 };
 export type EvidenceGroupId = "earlier" | "burst_window" | "post_burst" | "latest";
 export type EvidenceGroup = {
@@ -223,16 +224,16 @@ function buildHero(
 ): PulseDetailViewModel["hero"] {
   const subject = item.factor_snapshot.subject;
   const pills: Pill[] = [
-    { id: "score_band", label: item.score_band ?? "-", tone: scoreBandTone(item.score_band) },
+    { id: "score_band", label: scoreBandLabel(item.score_band), tone: scoreBandTone(item.score_band) },
   ];
   if (item.decision.route) {
-    pills.push({ id: "route", label: `${item.decision.route} route`, tone: "info" });
+    pills.push({ id: "route", label: `${item.decision.route} 路由`, tone: "info" });
   }
   if (agent.mismatch) {
-    pills.push({ id: "gate_agent_mismatch", label: "gate-agent mismatch", tone: "risk" });
+    pills.push({ id: "gate_agent_mismatch", label: "策略门 ↔ Agent 失谐", tone: "risk" });
   }
   if (!item.factor_snapshot.market.event_anchor || item.factor_snapshot.market.readiness.latest_status === "stale") {
-    pills.push({ id: "market_data_stale", label: "market data stale", tone: "risk" });
+    pills.push({ id: "market_data_stale", label: "市场数据陈旧", tone: "risk" });
   }
   return {
     subject: {
@@ -336,12 +337,12 @@ function buildTimeline(item: SignalPulseItem, burst: BurstHistogram, now: number
   if (latest?.observed_at_ms) {
     nodes.push({
       kind: "market_anchor",
-      title: "decision_latest snapshot",
+      title: "市场锚点 (decision_latest)",
       timestampLabel: formatUtcTimestamp(latest.observed_at_ms),
       relativeAgeLabel: formatRelativeAge(latest.observed_at_ms, now),
-      meta: `mcap ${formatUsdCompact(latest.market_cap_usd)} · liq ${formatUsdCompact(
+      meta: `市值 ${formatUsdCompact(latest.market_cap_usd)} · 流动性 ${formatUsdCompact(
         latest.liquidity_usd,
-      )} · ${compactNumber(latest.holders)} holders · vol24h ${formatUsdCompact(
+      )} · 持仓 ${compactNumber(latest.holders)} · 24h 成交 ${formatUsdCompact(
         latest.volume_24h_usd,
       )}`,
       tone: item.factor_snapshot.market.readiness.latest_status === "stale" ? "risk" : "health",
@@ -350,31 +351,31 @@ function buildTimeline(item: SignalPulseItem, burst: BurstHistogram, now: number
   if (burst.firstEventAt) {
     nodes.push({
       kind: "first",
-      title: "first mention",
+      title: "首次提及",
       timestampLabel: formatUtcTimestamp(burst.firstEventAt),
       relativeAgeLabel: formatRelativeAge(burst.firstEventAt, now),
-      meta: "first source event captured",
+      meta: "捕获到第一条 source event",
       tone: "neutral",
     });
   }
   if (burst.peakAt) {
     nodes.push({
       kind: "peak",
-      title: "burst peak",
+      title: "爆发峰值",
       timestampLabel: formatUtcTimestamp(burst.peakAt),
       relativeAgeLabel: formatRelativeAge(burst.peakAt, now),
-      meta: `${burst.bins[burst.peakBucketIndex].count} mentions / 1h · ${burst.uniqueAuthors} unique authors total`,
+      meta: `${burst.bins[burst.peakBucketIndex].count} 条 / 小时 · 共 ${burst.uniqueAuthors} 位独立作者`,
       tone: "opportunity",
     });
   }
   nodes.push({
     kind: "now",
-    title: "pulse decision",
+    title: "Pulse 决策落地",
     timestampLabel: formatUtcTimestamp(item.updated_at_ms),
     relativeAgeLabel: formatRelativeAge(item.updated_at_ms, now),
-    meta: `stages ${item.decision.stage_count ?? 0} · ${
+    meta: `${item.decision.stage_count ?? 0} 阶段 · ${
       item.decision.recommendation ?? "-"
-    } · conf ${formatConfidence(item.decision.confidence)}`,
+    } · 置信度 ${formatConfidence(item.decision.confidence)}`,
     tone: "health",
   });
   return nodes;
@@ -391,10 +392,10 @@ function buildFamilies(
     "timing_risk",
   ];
   const names: Record<TokenFactorFamilyKey, string> = {
-    social_heat: "social heat",
-    social_propagation: "propagation",
-    semantic_catalyst: "semantic catalyst",
-    timing_risk: "timing / risk",
+    social_heat: "社交热度",
+    social_propagation: "传播",
+    semantic_catalyst: "语义催化",
+    timing_risk: "时机 / 风险",
   };
   return order.map((id) =>
     buildFamily(
@@ -546,29 +547,30 @@ function buildMarket(item: SignalPulseItem): PulseDetailViewModel["market"] {
   const holders = latest?.holders ?? null;
   const volRatio = marketCap && volume ? volume / marketCap : null;
   const metrics: MarketMetric[] = [
-    { id: "mcap", label: "market cap", value: formatUsdCompact(marketCap), subValue: null, tone: "neutral" },
+    { id: "mcap", label: "市值", value: formatUsdCompact(marketCap), subValue: null, tone: "neutral" },
     {
       id: "liq",
-      label: liquidity != null && liquidity < LIQ_WARN_MAX ? "liquidity · thin" : "liquidity",
+      label: liquidity != null && liquidity < LIQ_WARN_MAX ? "流动性 · 偏薄" : "流动性",
       value: formatUsdCompact(liquidity),
       subValue: null,
       tone: liquidity != null && liquidity < LIQ_WARN_MAX ? "warn" : "neutral",
     },
     {
       id: "vol_24h",
-      label: "vol 24h",
+      label: "24h 成交",
       value: formatUsdCompact(volume),
-      subValue: volRatio != null && volRatio >= VOL_MCAP_RISK_RATIO ? `${volRatio.toFixed(1)}x mcap` : null,
+      subValue:
+        volRatio != null && volRatio >= VOL_MCAP_RISK_RATIO ? `${volRatio.toFixed(1)}× 市值` : null,
       tone: volRatio != null && volRatio >= VOL_MCAP_RISK_RATIO ? "risk" : "neutral",
     },
-    { id: "holders", label: "holders", value: compactNumber(holders), subValue: null, tone: "neutral" },
+    { id: "holders", label: "持仓数", value: compactNumber(holders), subValue: null, tone: "neutral" },
   ];
   const stale = [];
   if (!item.factor_snapshot.market.event_anchor) {
-    stale.push("event_anchor null");
+    stale.push("event_anchor 为空");
   }
   if (readiness.latest_status === "stale") {
-    stale.push("decision_latest stale");
+    stale.push("decision_latest 陈旧");
   }
   if (readiness.stale_fields.length) {
     stale.push(`stale_fields: [${readiness.stale_fields.join(", ")}]`);
@@ -606,6 +608,7 @@ function buildEvidence(
       cited: citedSet.has(event.event_id),
       authorTag,
       cohortPosition: postCount >= 2 ? `${authorRunIndex(events, event, index)}/${postCount}` : null,
+      canonicalUrl: event.canonical_url ?? null,
     };
   });
   const groups = bucketGroups(rows, burst, item.updated_at_ms);
@@ -661,10 +664,10 @@ function bucketGroups(
     }
   }
   const titles: Record<EvidenceGroupId, string> = {
-    earlier: "earlier",
-    burst_window: "burst window",
-    post_burst: "post-burst",
-    latest: "latest",
+    earlier: "早期事件",
+    burst_window: "爆发窗口",
+    post_burst: "后续传播",
+    latest: "最新",
   };
   return (Object.keys(raw) as EvidenceGroupId[])
     .filter((id) => raw[id].length > 0)
@@ -810,9 +813,9 @@ function detectMismatch(item: SignalPulseItem): GateAgentMismatch {
     return null;
   }
   return {
-    gateLabel: `score gate: ${item.score_band ?? "-"} (${item.candidate_score ?? 0})`,
-    agentLabel: `agent: ${recommendation ?? "-"} · ${confidence.toFixed(2)}`,
-    note: "composite rank score said top tier; the 3-stage agent collapsed confidence.",
+    gateLabel: `策略门：${scoreBandLabel(item.score_band)} (score ${item.candidate_score ?? 0})`,
+    agentLabel: `Agent：${recommendation ?? "-"} · 置信度 ${confidence.toFixed(2)}`,
+    note: "综合排名将该资产推到 top 区间，但三阶段 Agent 在 Critic 处收窄了置信度。详见下方 Critic 卡片。",
   };
 }
 
@@ -854,6 +857,23 @@ function scoreBandTone(value: string | null | undefined): Tone {
     return "risk";
   }
   return "info";
+}
+
+function scoreBandLabel(value: string | null | undefined): string {
+  switch (value) {
+    case "high_conviction":
+      return "高确信度";
+    case "trade_candidate":
+      return "可交易候选";
+    case "token_watch":
+      return "代币观察";
+    case "theme_watch":
+      return "主题观察";
+    case "risk_rejected_high_info":
+      return "高信号但被风控驳回";
+    default:
+      return value ?? "-";
+  }
 }
 
 function authorRunIndex(events: SocialEventDetail[], event: SocialEventDetail, index: number): number {

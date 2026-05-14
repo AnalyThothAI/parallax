@@ -59,7 +59,7 @@ describe("buildPulseDetailView", () => {
     ]);
     expect(view.market.metrics.find((metric) => metric.id === "liq")?.tone).toBe("warn");
     expect(view.market.metrics.find((metric) => metric.id === "vol_24h")?.tone).toBe("risk");
-    expect(view.market.staleNotice).toMatch(/decision_latest stale/);
+    expect(view.market.staleNotice).toMatch(/decision_latest 陈旧/);
   });
 
   it("enriches factor family breakdowns with all spec'd rows", () => {

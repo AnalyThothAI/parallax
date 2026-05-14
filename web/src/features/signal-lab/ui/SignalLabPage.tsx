@@ -89,9 +89,9 @@ function InlinePulseActions({ item }: { item: SignalPulseItem }) {
   const subject = item.factor_snapshot.subject.symbol ?? item.symbol ?? item.subject_key;
   return (
     <>
-      <Link to={`/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}`}>Open full</Link>
+      <Link to={`/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}`}>打开完整视图 ↗</Link>
       <Link to={searchPath({ q: subject ? `$${subject.replace(/^\$+/, "")}` : item.subject_key })}>
-        Search Intel
+        搜索情报
       </Link>
       {signalPulseVenueActions(item).map((action) => (
         <a href={action.url} key={`${action.label}:${action.url}`} rel="noreferrer" target="_blank">

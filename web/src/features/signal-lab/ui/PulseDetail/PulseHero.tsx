@@ -41,7 +41,7 @@ export function PulseHero({ actions, density, hero }: Props) {
 
       <div className={styles.burst} aria-label="social burst histogram">
         <div className={styles.kicker}>
-          social burst · 24h · {totalMentions} mentions · {hero.burstHistogram.uniqueAuthors} authors
+          社交热度 · 24h · {totalMentions} 条推文 · {hero.burstHistogram.uniqueAuthors} 位作者
         </div>
         <div className={styles.bars}>
           {hero.burstHistogram.bins.map((bin, index) => {
@@ -63,7 +63,7 @@ export function PulseHero({ actions, density, hero }: Props) {
         <dl className={styles.burstAnchors}>
           {anchors.map((anchor) => (
             <div key={anchor.id} data-anchor={anchor.id}>
-              <dt>{anchor.label}</dt>
+              <dt>{anchorLabel(anchor.id)}</dt>
               <dd>
                 <time>{formatUtcTimestamp(anchor.at, { suffix: false })}</time>
               </dd>
@@ -73,14 +73,55 @@ export function PulseHero({ actions, density, hero }: Props) {
       </div>
 
       <dl className={styles.freshness} aria-label="data freshness">
-        <div className={styles.kicker}>freshness · UTC</div>
+        <div className={styles.kicker}>数据新鲜度 · UTC</div>
         {hero.freshness.map((row) => (
           <div key={row.label} data-freshness-row data-tone={row.tone}>
-            <dt>{row.label}</dt>
-            <dd>{row.value}</dd>
+            <dt>{freshnessLabel(row.label)}</dt>
+            <dd>{freshnessValue(row.value)}</dd>
           </div>
         ))}
       </dl>
     </header>
   );
+}
+
+function anchorLabel(id: string): string {
+  switch (id) {
+    case "first":
+      return "首次";
+    case "peak":
+      return "峰值";
+    case "now":
+      return "当前";
+    default:
+      return id;
+  }
+}
+
+function freshnessLabel(key: string): string {
+  switch (key) {
+    case "identity":
+      return "资产身份";
+    case "social":
+      return "社交数据";
+    case "event_anchor":
+      return "事件锚点";
+    case "decision_latest":
+      return "最新行情";
+    case "cohort":
+      return "同侪 cohort";
+    case "alpha rank":
+      return "alpha 排名";
+    default:
+      return key;
+  }
+}
+
+function freshnessValue(value: string): string {
+  return value
+    .replace(/^ready$/i, "就绪")
+    .replace(/^missing$/i, "缺失")
+    .replace(/^stale\b/i, "陈旧")
+    .replace(/\branked\b/i, "已排名")
+    .replace(/\btop /i, "前 ");
 }

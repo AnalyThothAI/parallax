@@ -31,10 +31,9 @@ export function PulseEvidenceList({ evidence }: Props) {
     <section className={styles.evidence} aria-label="source events">
       <header className={styles.head}>
         <div>
-          <h2>Source events</h2>
+          <h2>原始推文</h2>
           <p>
-            {evidence.totalCount} events · {evidence.citedCount} cited ·{" "}
-            {evidence.totalUniqueAuthors} authors
+            {evidence.totalCount} 条 · 已引用 {evidence.citedCount} 条 · {evidence.totalUniqueAuthors} 位作者
           </p>
         </div>
       </header>
@@ -45,7 +44,7 @@ export function PulseEvidenceList({ evidence }: Props) {
             data-active={view === "all" ? "true" : "false"}
             onClick={() => setView("all")}
           >
-            All <em>{evidence.totalCount}</em>
+            全部 <em>{evidence.totalCount}</em>
           </button>
           <button
             type="button"
@@ -53,7 +52,7 @@ export function PulseEvidenceList({ evidence }: Props) {
             disabled={evidence.citedCount === 0}
             onClick={() => setView("cited")}
           >
-            ★ Cited <em>{evidence.citedCount}</em>
+            ★ 已引用 <em>{evidence.citedCount}</em>
           </button>
         </div>
         <AuthorChips
@@ -65,14 +64,14 @@ export function PulseEvidenceList({ evidence }: Props) {
           totalUnique={evidence.totalUniqueAuthors}
         />
         <label className={styles.sort}>
-          <span>sort</span>
+          <span>排序</span>
           <select
             value={sortMode}
             onChange={(event) => setSortMode(event.target.value as SortMode)}
           >
-            <option value="time_asc">time ↑</option>
-            <option value="time_desc">time ↓</option>
-            <option value="followers_desc">followers ↓</option>
+            <option value="time_asc">时间 ↑</option>
+            <option value="time_desc">时间 ↓</option>
+            <option value="followers_desc">粉丝数 ↓</option>
           </select>
         </label>
       </div>
@@ -80,14 +79,14 @@ export function PulseEvidenceList({ evidence }: Props) {
       <Concentration evidence={evidence} />
       <div className={styles.groups}>
         {filteredGroups.length === 0 ? (
-          <p className={styles.empty}>No events match the current filters.</p>
+          <p className={styles.empty}>当前筛选下没有匹配的事件。</p>
         ) : (
           filteredGroups.map((group) => (
             <details key={group.id} open={group.defaultExpanded}>
               <summary>
                 <span>{group.title}</span>
                 <small>
-                  {group.rows.length} events · {group.uniqueAuthors} authors · {group.rangeLabel}
+                  {group.rows.length} 条 · {group.uniqueAuthors} 位作者 · {group.rangeLabel}
                 </small>
               </summary>
               <div className={styles.rows}>
@@ -104,22 +103,62 @@ export function PulseEvidenceList({ evidence }: Props) {
 }
 
 function EvidenceRowItem({ row }: { row: EvidenceRow }) {
+  const tweetUrl = row.canonicalUrl;
   return (
     <article data-cited={row.cited ? "true" : "false"} data-empty={row.isEmptyBody ? "true" : "false"}>
       <div className={styles.rowMeta}>
         {row.cited ? <span className={styles.star} aria-label="agent cited">★</span> : null}
-        <strong>@{row.handle}</strong>
-        <span data-tag={row.authorTag}>{row.authorTag.replaceAll("_", " ")}</span>
+        {tweetUrl ? (
+          <a className={styles.authorLink} href={tweetUrl} target="_blank" rel="noreferrer">
+            @{row.handle}
+          </a>
+        ) : (
+          <strong>@{row.handle}</strong>
+        )}
+        <span data-tag={row.authorTag}>{formatAuthorTag(row.authorTag)}</span>
         {row.cohortPosition ? <span className={styles.position}>{row.cohortPosition}</span> : null}
         <time>{row.timestampLabel}</time>
+        {tweetUrl ? (
+          <a className={styles.openLink} href={tweetUrl} target="_blank" rel="noreferrer" aria-label="open tweet">
+            ↗
+          </a>
+        ) : null}
       </div>
-      <p>{row.body || "(empty repost / quote without captured body)"}</p>
+      <p>{row.body || "（空转发 / 引用，无正文）"}</p>
       <small>
-        {row.action} · {formatChannel(row.channel)}
-        {row.followers != null ? ` · ${row.followers.toLocaleString()} followers` : ""}
+        {formatAction(row.action)} · {formatChannel(row.channel)}
+        {row.followers != null ? ` · ${row.followers.toLocaleString()} 粉丝` : ""}
       </small>
     </article>
   );
+}
+
+function formatAuthorTag(tag: EvidenceRow["authorTag"]): string {
+  switch (tag) {
+    case "watched":
+      return "已关注";
+    case "spam_suspect":
+      return "疑似营销号";
+    case "kol_signal":
+      return "KOL";
+    default:
+      return "普通";
+  }
+}
+
+function formatAction(action: string): string {
+  switch (action) {
+    case "tweet":
+      return "原推";
+    case "quote":
+      return "引用";
+    case "repost":
+      return "转推";
+    case "reply":
+      return "回复";
+    default:
+      return action;
+  }
 }
 
 function AuthorChips({
@@ -161,10 +200,9 @@ function Concentration({ evidence }: { evidence: EvidenceView }) {
   return (
     <section className={styles.concentrationWrap} aria-label="author concentration">
       <header>
-        <span>Author concentration</span>
+        <span>作者集中度</span>
         <span>
-          top author {Math.round(evidence.concentration.topAuthorShare * 100)}% · {segments.length}{" "}
-          authors
+          头部作者占比 {Math.round(evidence.concentration.topAuthorShare * 100)}% · 共 {segments.length} 位
         </span>
       </header>
       <div className={styles.concentrationBar}>

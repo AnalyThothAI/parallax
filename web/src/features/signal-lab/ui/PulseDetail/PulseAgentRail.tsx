@@ -17,14 +17,14 @@ export function PulseAgentRail({ agent }: Props) {
   return (
     <aside className={styles.rail} aria-label="agent reasoning">
       <header>
-        <h2>Agent rail</h2>
+        <h2>Agent 推理栏</h2>
         <p>
-          {agent.model} · {formatSeconds(agent.totalLatencyMs)}
+          {agent.model} · 总耗时 {formatSeconds(agent.totalLatencyMs)}
         </p>
       </header>
       {agent.mismatch ? (
         <section className={styles.mismatch}>
-          <strong>Gate / agent mismatch</strong>
+          <strong>策略门与 Agent 失谐</strong>
           <span>{agent.mismatch.gateLabel}</span>
           <span>{agent.mismatch.agentLabel}</span>
           <p>{agent.mismatch.note}</p>
@@ -32,33 +32,33 @@ export function PulseAgentRail({ agent }: Props) {
       ) : null}
       {agent.kind === "research_only" ? (
         <StageCard
-          title="pre-LLM gate"
-          subtitle="deterministic"
+          title="预 LLM 门控"
+          subtitle="确定性"
           status={agent.researchOnlyGate?.status ?? "skipped"}
         >
           <Metric
-            label="abstain_reason"
-            value={agent.researchOnlyGate?.abstainReason || "(unset)"}
+            label="弃判原因"
+            value={agent.researchOnlyGate?.abstainReason || "（未设置）"}
           />
         </StageCard>
       ) : (
         <>
           <StageCard
-            title="stage 1 · analyst"
+            title="阶段 1 · 分析"
             tone="info"
             status={agent.analyst?.status ?? "skipped"}
           >
             <AnalystBody analyst={agent.analyst} />
           </StageCard>
           <StageCard
-            title="stage 2 · critic"
+            title="阶段 2 · 评审"
             tone="warn"
             status={agent.critic?.status ?? "skipped"}
           >
             <CriticBody critic={agent.critic} />
           </StageCard>
           <StageCard
-            title="stage 3 · judge · final"
+            title="阶段 3 · 终裁"
             tone="agent"
             status={agent.judge?.status ?? "skipped"}
           >
@@ -67,7 +67,7 @@ export function PulseAgentRail({ agent }: Props) {
         </>
       )}
       <details className={styles.replay}>
-        <summary>Replay · versions · raw payloads</summary>
+        <summary>回放 · 版本 · 原始载荷</summary>
         <dl>
           <Meta label="pulse" value={agent.replay.pulseVersion} />
           <Meta label="gate" value={agent.replay.gateVersion} />
@@ -83,21 +83,17 @@ export function PulseAgentRail({ agent }: Props) {
 
 function AnalystBody({ analyst }: { analyst: AnalystView }) {
   if (!analyst) {
-    return <p className={styles.skipped}>(stage skipped or unavailable)</p>;
+    return <p className={styles.skipped}>（阶段被跳过或不可用）</p>;
   }
   return (
     <>
       <div className={styles.kpis}>
-        <Metric label="recommendation" value={analyst.recommendation} />
-        <Metric
-          label="confidence"
-          value={formatConf(analyst.confidence)}
-          tone="info"
-        />
+        <Metric label="建议" value={analyst.recommendation} />
+        <Metric label="置信度" value={formatConf(analyst.confidence)} tone="info" />
       </div>
-      <p>{analyst.summary || "(no summary)"}</p>
+      <p>{analyst.summary || "（无摘要）"}</p>
       <BulletGroup
-        label={`evidence (${analyst.evidence.length})`}
+        label={`论据 (${analyst.evidence.length})`}
         items={analyst.evidence}
         tone="neutral"
       />
@@ -107,18 +103,18 @@ function AnalystBody({ analyst }: { analyst: AnalystView }) {
 
 function CriticBody({ critic }: { critic: CriticView }) {
   if (!critic) {
-    return <p className={styles.skipped}>(stage skipped or unavailable)</p>;
+    return <p className={styles.skipped}>（阶段被跳过或不可用）</p>;
   }
   return (
     <>
       <div className={styles.kpis}>
         <Metric
-          label="should_abstain"
-          value={critic.shouldAbstain ? "true" : "false"}
+          label="是否弃判"
+          value={critic.shouldAbstain ? "是" : "否"}
           tone={critic.shouldAbstain ? "risk" : "neutral"}
         />
         <Metric
-          label="confidence ceiling"
+          label="置信度上限"
           value={formatConf(critic.confidenceCeiling)}
           delta={
             critic.ceilingDeltaFromAnalyst != null
@@ -129,12 +125,12 @@ function CriticBody({ critic }: { critic: CriticView }) {
         />
       </div>
       <BulletGroup
-        label={`weaknesses (${critic.weaknesses.length})`}
+        label={`Critic 列出的弱点 (${critic.weaknesses.length})`}
         items={critic.weaknesses}
         tone="warn"
       />
       <BulletGroup
-        label={`missing fact impacts (${critic.missingFactImpacts.length})`}
+        label={`缺数据影响 (${critic.missingFactImpacts.length})`}
         items={critic.missingFactImpacts}
         tone="risk"
       />
@@ -144,33 +140,33 @@ function CriticBody({ critic }: { critic: CriticView }) {
 
 function JudgeBody({ judge }: { judge: JudgeView }) {
   if (!judge) {
-    return <p className={styles.skipped}>(stage skipped or unavailable)</p>;
+    return <p className={styles.skipped}>（阶段被跳过或不可用）</p>;
   }
   return (
     <>
       <div className={styles.kpis}>
-        <Metric label="route" value={judge.route} tone="info" />
-        <Metric label="recommendation" value={judge.recommendation} tone="agent" />
+        <Metric label="路由" value={judge.route} tone="info" />
+        <Metric label="建议" value={judge.recommendation} tone="agent" />
         <Metric
-          label="confidence"
+          label="置信度"
           value={formatConf(judge.confidence)}
-          delta={judge.belowCeiling ? "under ceiling" : null}
+          delta={judge.belowCeiling ? "低于 Critic 上限" : null}
           tone="risk"
         />
         <Metric
-          label="abstain_reason"
-          value={judge.abstainReason ?? "null"}
+          label="弃判原因"
+          value={judge.abstainReason ?? "—"}
           tone={judge.abstainReason ? "warn" : "neutral"}
         />
       </div>
-      <p>{judge.summary || "(no summary)"}</p>
+      <p>{judge.summary || "（无摘要）"}</p>
       <BulletGroup
-        label={`residual risks (${judge.residualRisks.length})`}
+        label={`残留风险 (${judge.residualRisks.length})`}
         items={judge.residualRisks}
         tone="risk"
       />
       <BulletGroup
-        label={`invalidation conditions (${judge.invalidationConditions.length})`}
+        label={`失效条件 (${judge.invalidationConditions.length})`}
         items={judge.invalidationConditions}
         tone="warn"
       />
@@ -246,7 +242,7 @@ function BulletGroup({
   tone: "warn" | "risk" | "neutral";
 }) {
   if (!items.length) {
-    return <p className={styles.empty}>{label} · (no entries)</p>;
+    return <p className={styles.empty}>{label} · （无条目）</p>;
   }
   return (
     <section className={styles.bullets} data-tone={tone}>
