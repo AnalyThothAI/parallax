@@ -106,6 +106,45 @@ class DirectWebSocketProtocolTests(unittest.TestCase):
         with self.assertRaises(UpstreamIdleTimeoutError):
             asyncio.run(client._receive_frames(SilentWebSocket()))
 
+    def test_direct_client_yields_between_hot_upstream_frames(self):
+        import asyncio
+
+        class StopAfterYield(RuntimeError):
+            pass
+
+        class HotWebSocket:
+            async def recv(self):
+                return "{}"
+
+        async def run_probe():
+            yielded = asyncio.Event()
+            processed = 0
+            marker_tasks = []
+
+            async def mark_yielded():
+                yielded.set()
+
+            def on_frame(_):
+                nonlocal processed
+                processed += 1
+                if processed == 1:
+                    marker_tasks.append(asyncio.create_task(mark_yielded()))
+                if yielded.is_set() and processed >= 2:
+                    raise StopAfterYield
+                if processed > 1_000:
+                    raise AssertionError("hot upstream frames starved the event loop")
+
+            client = DirectGmgnWebSocketClient(
+                app_version="20260429-12894-ccec416",
+                channels=["twitter_monitor_basic"],
+                chains=["sol"],
+                on_frame=on_frame,
+            )
+            await client._receive_frames(HotWebSocket())
+
+        with self.assertRaises(StopAfterYield):
+            asyncio.run(run_probe())
+
 
 if __name__ == "__main__":
     unittest.main()

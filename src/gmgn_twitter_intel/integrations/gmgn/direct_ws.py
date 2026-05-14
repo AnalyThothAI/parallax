@@ -175,6 +175,7 @@ class DirectGmgnWebSocketClient:
             result = self.on_frame(frame)
             if inspect.isawaitable(result):
                 await result
+            await asyncio.sleep(0)
 
     async def _subscribe_all(self, websocket) -> None:
         data = [{"chain": chain} for chain in self.chains]
