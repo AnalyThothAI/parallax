@@ -1,4 +1,13 @@
-import type { AssetFlowData, RecentData, SignalPulseData, StatusData } from "@lib/types";
+import type {
+  AssetFlowData,
+  NotificationItem,
+  RecentData,
+  SearchInspectData,
+  SignalPulseData,
+  StatusData,
+  TokenPostsData,
+  TokenSocialTimelineData,
+} from "@lib/types";
 
 const NOW = 1_777_770_000_000;
 
@@ -112,6 +121,95 @@ export function signalPulseFixture(overrides: Partial<SignalPulseData> = {}): Si
     returned_count: 0,
     has_more: false,
     next_cursor: null,
+    ...overrides,
+  };
+}
+
+export function searchInspectFixture(
+  overrides: Partial<SearchInspectData> = {},
+): SearchInspectData {
+  return {
+    query: {
+      q: "$RKC",
+      normalized_q: "rkc",
+      window: "24h",
+      scope: "all",
+      result_kind: "empty_result",
+    },
+    resolver: {
+      confidence: 0,
+      target_candidates: [],
+      selected_target: null,
+      reasons: ["route_fixture_empty"],
+    },
+    token_result: null,
+    topic_result: null,
+    ambiguous_result: null,
+    ...overrides,
+  };
+}
+
+export function targetSocialTimelineFixture(
+  overrides: Partial<TokenSocialTimelineData> = {},
+): TokenSocialTimelineData {
+  return {
+    query: { window: "1h", scope: "all", bucket: "5m" },
+    summary: {
+      posts: 0,
+      authors: 0,
+      effective_authors: 0,
+      watched_posts: 0,
+      phase: "seed",
+      top_author_share: 0,
+      latest_seen_ms: null,
+    },
+    market_overlay: {
+      price_series_type: "anchor_line",
+      candle_status: "missing_market_id",
+      candle_bar: "1H",
+    },
+    stages: [],
+    buckets: [],
+    authors: [],
+    posts: [],
+    cascade: { edges: [], unresolved_parents: [] },
+    ...overrides,
+  } as TokenSocialTimelineData;
+}
+
+export function targetPostsFixture(overrides: Partial<TokenPostsData> = {}): TokenPostsData {
+  return {
+    items: [],
+    returned_count: 0,
+    total_count: 0,
+    has_more: false,
+    score_window: { window: "1h" },
+    query: { sort: "recent" },
+    ...overrides,
+  } as TokenPostsData;
+}
+
+export function notificationFixture(overrides: Partial<NotificationItem> = {}): NotificationItem {
+  return {
+    notification_id: "notification-route-1",
+    dedup_key: "route:notification:1",
+    rule_id: "signal_pulse",
+    severity: "high",
+    title: "Signal Pulse",
+    body: "$RKC moved into watch",
+    entity_type: "signal_pulse",
+    entity_key: "candidate:rkc",
+    symbol: "RKC",
+    source_table: "signal_pulse_candidates",
+    source_id: "candidate:rkc",
+    occurrence_count: 1,
+    first_seen_at_ms: NOW,
+    last_seen_at_ms: NOW,
+    created_at_ms: NOW,
+    updated_at_ms: NOW,
+    read_at_ms: null,
+    payload: { route: "/signal-lab/pulse/candidate%3Arkc" },
+    channels: ["in_app"],
     ...overrides,
   };
 }
