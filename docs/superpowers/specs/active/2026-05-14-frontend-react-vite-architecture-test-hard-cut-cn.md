@@ -14,7 +14,7 @@ Modern React/Vite practice does not mean "use more libraries" or "convert everyt
 
 1. CSS Modules are used mostly as globally injected stylesheet buckets through `main.tsx` and `moduleKeep`.
 2. App/route integration is still centralized in `AppRoutes`, with `live` acting as an app-level data coordinator.
-3. Tests are partly co-located correctly, but route/app integration tests live inside feature folders and assert implementation selectors and old copy.
+3. Tests are split across production source folders and `web/src/test`, so source ownership and test ownership are visually mixed. Route/app integration tests also live inside feature folders and assert implementation selectors and old copy.
 
 This spec defines the hard cut: delete compatibility selectors and legacy names, localize styles, move route-level tests to route/app harnesses, and add architectural gates so "old frame with new paint" cannot reappear.
 
@@ -28,7 +28,7 @@ The baseline comes from current official docs, not taste alone:
 - Custom hooks are for reusable stateful logic, not for hiding arbitrary lifecycle code or sharing state itself. Source: [Reusing Logic with Custom Hooks](https://react.dev/learn/reusing-logic-with-custom-hooks).
 - Complex UI state may move into pure reducers when it is bug-prone or has many transitions. Source: [Extracting State Logic into a Reducer](https://react.dev/learn/extracting-state-logic-into-a-reducer).
 - Vite supports CSS Modules as a first-class local styling mechanism and recommends modern CSS primitives such as CSS variables. Env access should go through `import.meta.env` and `VITE_*` variables. Source: [Vite Features](https://vite.dev/guide/features), [Vite Env Variables and Modes](https://vite.dev/guide/env-and-mode/).
-- Vitest explicitly supports co-located tests. Co-location is not the bug; wrong ownership is. Source: [Vitest Writing Tests](https://vitest.dev/guide/learn/writing-tests).
+- Vitest explicitly supports colocated tests. That is a valid framework option, but this repo's current shape has enough test sprawl that the hard cut should choose one visible frontend test root instead. Source: [Vitest Writing Tests](https://vitest.dev/guide/learn/writing-tests).
 
 ## Best Practice Target For This App
 
@@ -91,7 +91,9 @@ Largest tests by line count:
 - `web/src/features/search/ui/__tests__/SearchIntelPage.routing.test.tsx`: 391 lines
 - `web/src/lib/venue.test.ts`: 324 lines
 
-The problem is not that tests live near code. Vitest supports co-located tests, and co-location is useful for pure models and focused components. The problem is that some route/app tests are placed inside a feature and import across feature internals. `CockpitApp.integration.test.tsx` lives under `features/live`, but it verifies app routing, shell behavior, search routing, watchlist, Signal Pulse, stocks, token target pages, socket mocks, API mocks, and responsive shell contracts. That file is an app/route integration harness, not a live feature test.
+The problem is not that Vitest cannot support colocated tests. It can. The repo problem is that tests currently live both beside source files and under `web/src/test`, while some route/app tests are placed inside a feature and import across feature internals. `CockpitApp.integration.test.tsx` lives under `features/live`, but it verifies app routing, shell behavior, search routing, watchlist, Signal Pulse, stocks, token target pages, socket mocks, API mocks, and responsive shell contracts. That file is an app/route integration harness, not a live feature test.
+
+The hard cut is therefore stricter than the generic Vitest default: all frontend tests move under `web/tests/`. The repository root `tests/` remains the Python/FastAPI pytest suite because `pyproject.toml` already points pytest at `tests`, and mixing TypeScript/Vitest fixtures into that tree would blur tool ownership.
 
 This creates three forms of coupling:
 
@@ -105,12 +107,12 @@ This creates three forms of coupling:
 
 Location:
 
-- Co-located with model/lib source: `features/<name>/model/*.test.ts`, `shared/model/*.test.ts`, `lib/*.test.ts`
+- Centralized under `web/tests/unit/**`, mirroring the production path: `web/tests/unit/features/<name>/model/*.test.ts`, `web/tests/unit/shared/model/*.test.ts`, `web/tests/unit/lib/*.test.ts`
 
 Allowed:
 
 - Pure imports from the unit under test.
-- Fixture imports from `web/src/test/fixtures/*`.
+- Fixture imports from `@tests/fixtures/*`.
 - Exact value assertions.
 
 Not allowed:
@@ -124,14 +126,14 @@ Not allowed:
 
 Location:
 
-- Co-located with owning component/hook: `features/<name>/ui/*.test.tsx`, `shared/ui/*.test.tsx`, `features/<name>/api/*.test.tsx`
+- Centralized under `web/tests/component/**`, mirroring the production path: `web/tests/component/features/<name>/ui/*.test.tsx`, `web/tests/component/shared/ui/*.test.tsx`, `web/tests/component/features/<name>/api/*.test.tsx`
 
 Allowed:
 
 - React Testing Library.
 - Accessibility checks with `axe`.
 - Role/label based assertions.
-- Minimal local wrappers from `web/src/test/render/*`.
+- Minimal local wrappers from `@tests/render/*`.
 
 Not allowed:
 
@@ -143,7 +145,7 @@ Not allowed:
 
 Location:
 
-- Centralized route harness: `web/src/test/routes/*.test.tsx`
+- Centralized route harness: `web/tests/routes/*.test.tsx`
 
 Allowed:
 
@@ -164,7 +166,7 @@ Not allowed:
 
 Location:
 
-- `web/e2e/golden-paths/*.spec.ts`
+- `web/tests/e2e/golden-paths/*.spec.ts`
 
 Allowed:
 
@@ -180,7 +182,7 @@ Not allowed:
 
 Location:
 
-- `web/src/test/architecture/*.test.ts`
+- `web/tests/architecture/*.test.ts`
 
 Allowed:
 
@@ -195,16 +197,16 @@ Not allowed:
 
 Create these shared test harness modules:
 
-- `web/src/test/render/renderWithProviders.tsx`: QueryClient, Router, common wrappers.
-- `web/src/test/render/renderRoute.tsx`: route-entry rendering with initial URL.
-- `web/src/test/msw/scenarios.ts`: named API scenarios instead of local giant `mockApi` functions.
-- `web/src/test/socket/scenarios.ts`: socket snapshot and subscription test utilities.
-- `web/src/test/fixtures/tokenRadar.ts`: token radar fixtures.
-- `web/src/test/fixtures/search.ts`: search fixtures.
-- `web/src/test/fixtures/signalPulse.ts`: Signal Pulse fixtures.
-- `web/src/test/fixtures/watchlist.ts`: watchlist fixtures.
+- `web/tests/render/renderWithProviders.tsx`: QueryClient, Router, common wrappers.
+- `web/tests/render/renderRoute.tsx`: route-entry rendering with initial URL.
+- `web/tests/msw/scenarios.ts`: named API scenarios instead of local giant `mockApi` functions.
+- `web/tests/socket/scenarios.ts`: socket snapshot and subscription test utilities.
+- `web/tests/fixtures/tokenRadar.ts`: token radar fixtures.
+- `web/tests/fixtures/search.ts`: search fixtures.
+- `web/tests/fixtures/signalPulse.ts`: Signal Pulse fixtures.
+- `web/tests/fixtures/watchlist.ts`: watchlist fixtures.
 
-The old `web/src/test/app-test-case-matrix.md` should be replaced by a live test ownership matrix generated from actual file paths or maintained manually under `docs/generated/` only if it remains useful. It currently says `Source: web/src/App.test.tsx`, which is stale and should not remain a governance source.
+The old `web/src/test/app-test-case-matrix.md` should be deleted or replaced by a live test ownership matrix generated from actual file paths under `docs/generated/` only if it remains useful. It currently says `Source: web/src/App.test.tsx`, which is stale and should not remain a governance source.
 
 ## Required Hard Cuts
 
@@ -251,24 +253,27 @@ Acceptance:
 
 ### Cut 5: Test Level Relocation
 
-Move app/route integration tests out of feature folders. Keep true L0/L1 tests co-located.
+Move all frontend tests out of `web/src` into `web/tests`. Keep source ownership visible by mirroring production paths inside `web/tests/unit` and `web/tests/component`.
 
 Acceptance:
 
-- `features/live/__tests__/CockpitApp.integration.test.tsx` is split into route-level files under `web/src/test/routes/`.
+- `features/live/__tests__/CockpitApp.integration.test.tsx` is split into route-level files under `web/tests/routes/`.
+- `find web/src -name "*.test.*" -o -name "*.spec.*"` returns no files.
+- `find web/tests -type f` contains all Vitest, RTL, MSW, fixture, architecture, and Playwright files.
 - No L2 route integration test exceeds 500 lines.
 - L2 tests use shared scenario builders rather than local all-app fixture factories.
 - Component tests query by role/label where possible and avoid CSS selectors except when testing public class state.
 
 ## Implementation Order
 
-1. Add architecture gates for relative cross-feature imports, `moduleKeep`, global CSS leakage, and route-test placement.
-2. Build the shared test harness and scenario fixtures.
-3. Split `CockpitApp.integration.test.tsx` by route workflow into `web/src/test/routes/`.
-4. Move route data orchestration out of `AppRoutes` into route-owned adapters.
-5. Convert one feature at a time from global CSS selectors to local CSS module bindings.
-6. Delete `moduleKeep` from `main.tsx` once no feature CSS relies on global retention.
-7. Run full frontend gates and browser visual checks after each route slice.
+1. Move all frontend test files and frontend test tooling into `web/tests/`.
+2. Add architecture gates for test placement, relative cross-feature imports, `moduleKeep`, global CSS leakage, and route-test placement.
+3. Build the shared test harness and scenario fixtures.
+4. Split `CockpitApp.integration.test.tsx` by route workflow into `web/tests/routes/`.
+5. Move route data orchestration out of `AppRoutes` into route-owned adapters.
+6. Convert one feature at a time from global CSS selectors to local CSS module bindings.
+7. Delete `moduleKeep` from `main.tsx` once no feature CSS relies on global retention.
+8. Run full frontend gates and browser visual checks after each route slice.
 
 ## Non-Goals
 
@@ -295,6 +300,7 @@ Every implementation plan generated from this spec must include:
 - `cd web && npm run test:e2e`
 - Browser smoke for `/`, `/search`, `/signal-lab`, `/stocks`, `/watchlist`, and `/token/:targetType/:targetId`
 - Static gates:
+  - `find web/src -name "*.test.*" -o -name "*.spec.*"`
   - `rg "moduleKeep|documentElement.classList.add" web/src`
   - `rg "\\.\\./(cockpit|live|search|signal-lab|stocks|token-target|watchlist)/(api|model|state|ui)" web/src/features web/src/routes`
   - `rg "compat|legacy|stage-tape|detail-drawer|obsidian-hard-cut" web/src`
@@ -307,6 +313,5 @@ The hard cut is done when:
 2. Route state, server state, derived view models, and presentation have separate owners.
 3. Shared components are actually shared, not copied or imported from another feature's internals.
 4. Feature CSS is local by default, global by exception, and exception-gated.
-5. Tests communicate ownership: model/component tests can be co-located; app/route tests live in a route harness.
+5. Tests communicate ownership from directory structure: production code lives under `web/src`; frontend tests live under `web/tests`; backend pytest remains under repository-root `tests`.
 6. No compatibility CSS, dead component names, or stale test matrix entries remain.
-
