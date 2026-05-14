@@ -979,38 +979,6 @@
   -webkit-line-clamp: 2;
 }
 
-.score-cell {
-  display: grid;
-  align-content: stretch;
-  gap: 6px;
-  min-width: 0;
-}
-
-.score-cell small {
-  color: var(--dim);
-  font-family: var(--mono);
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.score {
-  display: grid;
-  min-height: 45px;
-  place-items: center;
-  border: 1px solid #765620;
-  border-radius: var(--radius);
-  color: #ffd184;
-  background: var(--opportunity-soft);
-  font-family: var(--mono);
-  font-size: 23px;
-  font-weight: 900;
-}
-
-.score-cell .ods-pill {
-  justify-content: center;
-  border-radius: 6px;
-}
-
 @media (max-width: 767px) {
   .bottom-deck {
     display: contents;
@@ -1185,7 +1153,7 @@
   }
 }
 
-/* Token Radar compact case layout */
+/* Token Radar dense table */
 .radar-toolbar {
   align-items: center;
   min-height: 52px;
@@ -1219,120 +1187,185 @@
   display: none;
 }
 
-.radar-head,
-.radar-row {
-  grid-template-columns: minmax(0, 1fr) 116px;
+.radar-data-table {
+  display: grid;
+  min-width: 1060px;
+}
+
+.radar-data-table .token-radar-head,
+.radar-data-table .token-radar-row {
+  display: grid;
+  grid-template-columns:
+    minmax(258px, 1.24fr) minmax(136px, 0.62fr) minmax(214px, 0.98fr)
+    minmax(288px, 1.26fr) 58px 124px;
+  align-items: center;
+  gap: 12px;
   min-width: 0;
 }
 
-.radar-head,
-.radar-row {
-  grid-template-columns:
-    minmax(250px, 1.14fr) minmax(160px, 0.68fr) minmax(260px, 1.08fr)
-    minmax(230px, 0.92fr) 112px;
-}
-
-.radar-head {
-  margin: 0 0 8px;
+.radar-data-table .token-radar-head {
+  position: sticky;
+  top: -12px;
+  z-index: 2;
+  height: 27px;
+  margin: -2px 0 0;
+  border-bottom: 1px solid var(--line);
+  background: #0a0d0d;
   padding: 0 10px;
 }
 
-.radar-head span {
-  display: block;
+.radar-head-cell {
+  min-width: 0;
 }
 
-.radar-head span:not(:first-child):not(:last-child) {
-  display: block;
+.radar-head-cell.score {
+  justify-self: center;
+  width: 58px;
 }
 
-.radar-head span:last-child {
-  grid-column: auto;
+.radar-head-cell.score .radar-sort-button {
+  justify-content: center;
+  width: 100%;
 }
 
-.radar-row {
-  position: relative;
-  gap: 12px;
-  min-height: 86px;
-  padding: 9px 10px;
+.radar-head-cell.listed {
+  justify-self: end;
+  width: 124px;
 }
 
-.radar-row-select {
-  grid-template-columns:
-    minmax(250px, 1.14fr) minmax(160px, 0.68fr) minmax(260px, 1.08fr)
-    minmax(230px, 0.92fr);
-  grid-column: 1 / 5;
-  grid-row: 1;
+.radar-head-cell.listed .radar-sort-button {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.radar-sort-button {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  min-height: 68px;
+  gap: 4px;
+  max-width: 100%;
+  border: 0;
+  color: var(--dim);
+  background: transparent;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: uppercase;
 }
 
-.radar-case-identity {
-  align-items: start;
-  padding-bottom: 24px;
+.radar-sort-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.radar-token-logo {
-  width: 44px;
-  height: 44px;
+.radar-sort-button svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+.radar-sort-button:hover,
+.radar-head-cell[aria-sort="ascending"] .radar-sort-button,
+.radar-head-cell[aria-sort="descending"] .radar-sort-button {
+  color: #ffd184;
+}
+
+.radar-data-table .token-radar-row {
+  min-height: 62px;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  color: var(--bone-2);
+  background: rgba(14, 18, 15, 0.72);
+  padding: 7px 10px;
+}
+
+.radar-data-table .token-radar-row:hover,
+.radar-data-table .token-radar-row.selected {
+  border-color: var(--line-soft);
+  background: rgba(26, 32, 28, 0.9);
+  box-shadow: inset 3px 0 0 var(--opportunity);
+}
+
+.radar-case-cell {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.radar-case-cell .ods-token-mark,
+.radar-case-cell .radar-token-logo {
+  width: 36px;
+  height: 36px;
   border: 1px solid var(--line);
   border-radius: 50%;
   background: rgba(7, 9, 8, 0.62);
   object-fit: cover;
 }
 
-.radar-fact {
+.radar-case-copy {
   display: grid;
   align-content: center;
-  gap: 5px;
   min-width: 0;
-  overflow: hidden;
 }
 
-.radar-fact b {
+.radar-case-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.radar-case-button {
+  min-width: 0;
+  border: 0;
+  color: #ffd184;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.radar-case-button strong {
+  display: block;
   overflow: hidden;
-  color: var(--bone);
+  color: inherit;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.radar-fact em {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--ash);
-  font-size: 11px;
-  font-style: normal;
-  line-height: 1.32;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 .radar-case-links {
-  z-index: 2;
-  display: flex;
-  grid-column: 1;
-  grid-row: 1;
-  flex-wrap: wrap;
-  align-self: end;
-  gap: 5px;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
   min-width: 0;
-  margin-left: 54px;
+  margin: 0;
 }
 
 .radar-case-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 22px;
+  min-height: 18px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 4px;
   color: var(--ash);
   background: rgba(7, 9, 8, 0.72);
-  padding: 0 8px;
+  padding: 0 5px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   line-height: 1;
   text-decoration: none;
@@ -1351,45 +1384,83 @@
   background: var(--opportunity-soft);
 }
 
-.social-fact b {
-  color: var(--health);
+.radar-case-meta {
+  margin-top: 3px;
+  font-size: 10px;
 }
 
-.market-fact b {
-  color: var(--info);
-  font-size: 14px;
+.radar-data-table .radar-fact {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.radar-data-table .radar-fact b {
+  overflow: hidden;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-data-table .radar-fact em {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ash);
+  font-style: normal;
+  -webkit-line-clamp: 1;
+  font-size: 10px;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+}
+
+.listed-fact b {
+  color: var(--bone);
+}
+
+.listed-fact {
+  justify-self: start;
 }
 
 .market-fact {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 10px;
+  align-content: center;
+  gap: 5px;
 }
 
-.market-fact > span:first-child {
-  display: grid;
-  gap: 5px;
+.market-primary-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
 }
 
-.market-move {
+.market-primary-value {
+  min-width: 0;
+  color: var(--info);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.radar-data-table .market-move {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 5px;
-  min-width: 70px;
-  color: var(--ash);
+  flex: 0 0 auto;
+  gap: 4px;
+  color: var(--dim);
   font-family: var(--mono);
+  line-height: 1;
 }
 
-.market-move svg {
-  width: 14px;
-  height: 14px;
+.radar-data-table .market-move b {
+  font-size: 12px;
 }
 
-.market-move b {
-  color: inherit;
-  font-size: 14px;
+.radar-data-table .market-move svg {
+  width: 12px;
+  height: 12px;
 }
 
 .market-move.up {
@@ -1404,70 +1475,135 @@
   color: var(--dim);
 }
 
-.score-cell {
-  display: grid;
-  grid-column: 5;
-  grid-row: 1;
-  grid-template-columns: 52px 42px;
-  align-content: center;
-  align-items: center;
-  justify-content: end;
-  gap: 5px;
+.market-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  min-width: 0;
 }
 
-.score {
-  min-height: 42px;
-  font-size: 19px;
-}
-
-.score-cell .row-drilldown-button {
+.market-stat {
   display: inline-flex;
-  width: 42px;
-  height: 34px;
-  gap: 5px;
+  align-items: baseline;
+  gap: 3px;
+  min-width: 0;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.1;
 }
 
-.score-cell .row-drilldown-button svg {
+.market-stat span {
+  color: var(--dim);
+}
+
+.market-stat b {
+  overflow: hidden;
+  max-width: 64px;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.market-stat.liquidity b {
+  color: var(--info);
+}
+
+.market-stat.volume b {
+  color: var(--health);
+}
+
+.market-stat.holders b {
+  color: #ffd184;
+}
+
+.radar-score-cell {
+  display: grid;
+  justify-self: center;
+  width: 58px;
+  min-width: 0;
+}
+
+.radar-score {
+  display: grid;
+  width: 48px;
+  min-height: 32px;
+  place-items: center;
+  border: 1px solid #765620;
+  border-radius: 5px;
+  color: #ffd184;
+  background: var(--opportunity-soft);
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.radar-listed-action-cell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  justify-self: end;
+  gap: 7px;
+  width: 124px;
+  min-width: 0;
+}
+
+.radar-listed-action-cell .row-drilldown-button {
+  display: inline-flex;
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+}
+
+.radar-listed-action-cell .row-drilldown-button svg {
   width: 14px;
   height: 14px;
 }
 
 @media (max-width: 767px) {
-  .radar-toolbar {
-    align-items: stretch;
-    flex-direction: column;
+  .radar-data-table {
+    min-width: 0;
+  }
+
+  .radar-data-table .token-radar-head {
+    display: none;
+  }
+
+  .radar-data-table .token-radar-row {
+    grid-template-columns: minmax(0, 1fr) minmax(86px, auto);
+    gap: 8px;
     min-height: 0;
+    padding: 10px;
   }
 
-  .radar-scan-title {
-    justify-content: space-between;
-  }
-
-  .radar-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
-    padding: 0;
-  }
-
-  .radar-row-select {
-    grid-column: 1;
-    grid-template-columns: minmax(0, 1fr);
-    padding: 12px;
-  }
-
-  .radar-case-identity {
-    padding-bottom: 0;
+  .radar-case-cell,
+  .narrative-fact,
+  .market-fact {
+    grid-column: 1 / -1;
   }
 
   .radar-case-links {
-    grid-column: 1;
-    grid-row: auto;
-    margin: -2px 12px 10px 66px;
+    overflow-x: auto;
   }
 
-  .score-cell {
+  .listed-fact {
+    justify-self: end;
+  }
+
+  .radar-score-cell {
     grid-column: 1;
-    grid-row: auto;
-    padding: 0 12px 12px;
+    justify-self: start;
+    width: auto;
+    padding: 0;
+  }
+
+  .radar-score {
+    width: 48px;
+  }
+
+  .radar-listed-action-cell {
+    grid-column: 2;
+    justify-self: end;
+    width: min(124px, 100%);
   }
 }

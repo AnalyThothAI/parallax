@@ -1,4 +1,11 @@
-import { compactNumber, formatReason, formatRisk, formatSignedPercent } from "@lib/format";
+import {
+  compactNumber,
+  formatReason,
+  formatRelativeTime,
+  formatRisk,
+  formatSignedPercent,
+  formatUsdCompact,
+} from "@lib/format";
 import type { TokenFlowItem } from "@lib/types";
 
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
@@ -13,11 +20,13 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
   return {
     externalLinks: compactExternalLinks(item, tokenCase.actions),
     label: tokenCase.label,
+    listed: compactListedAt(item),
     logoUrl: item.profile?.identity?.logo_url ?? null,
     markTone: tokenCase.decision.tone,
     market: {
       ...tokenCase.market,
-      detail: marketMeta(item, "-"),
+      detail: compactMarketDetail(item),
+      stats: compactMarketStats(item),
     },
     marketMove,
     narrative: {
@@ -99,6 +108,69 @@ function compactMarketMove(item: TokenFlowItem): {
   };
 }
 
+function compactMarketDetail(item: TokenFlowItem): string {
+  const stats = compactMarketStats(item);
+  return stats.length
+    ? stats.map((stat) => `${stat.label} ${stat.value}`).join(" · ")
+    : marketMeta(item, "-");
+}
+
+type CompactMarketStat = {
+  key: "holders" | "liq" | "vol";
+  label: string;
+  status: string;
+  tone: "holders" | "liquidity" | "volume";
+  value: string;
+};
+
+function compactMarketStats(item: TokenFlowItem): CompactMarketStat[] {
+  return [
+    marketStat("liq", "liq", item.market.liquidity, item.market.liquidity_status, "liquidity"),
+    marketStat("vol", "vol", item.market.volume_24h, item.market.volume_24h_status, "volume"),
+    marketStat(
+      "holders",
+      "holders",
+      item.market.holder_count,
+      item.market.holder_count_status,
+      "holders",
+    ),
+  ].filter((stat): stat is CompactMarketStat => Boolean(stat));
+}
+
+function marketStat(
+  key: CompactMarketStat["key"],
+  label: CompactMarketStat["label"],
+  value: number | null | undefined,
+  status: string | null | undefined,
+  tone: CompactMarketStat["tone"],
+): CompactMarketStat | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const formatted = key === "holders" ? compactNumber(value) : formatUsdCompact(value);
+  return {
+    key,
+    label,
+    status: statusLabel(status, label),
+    tone,
+    value: formatted,
+  };
+}
+
+function compactListedAt(item: TokenFlowItem): {
+  detail: string;
+  timestampMs: number | null;
+  value: string;
+} {
+  const listedAtMs =
+    item.radar?.listed_at_ms ?? item.radar?.computed_at_ms ?? item.flow.window_end_ms ?? null;
+  return {
+    detail: item.radar?.rank ? `#${item.radar.rank}` : "rank -",
+    timestampMs: listedAtMs,
+    value: listedAtMs ? `${formatRelativeTime(listedAtMs)}前` : "-",
+  };
+}
+
 function compactWhyNowTitle(item: TokenFlowItem): string {
   return `${phaseLabel(item.propagation.phase)} · ${compactNumber(
     item.discussion_quality.informative_post_count,
@@ -151,4 +223,11 @@ function twitterHref(value?: string | null): string | null {
 function cleanText(value?: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function statusLabel(value?: string | null, readyLabel = "live"): string {
+  if (!value || value === "live" || value === "ready" || value === "fresh") {
+    return readyLabel;
+  }
+  return value.replaceAll("_", " ");
 }

@@ -204,6 +204,7 @@ def test_replace_rows_retains_older_runs_but_latest_rows_reads_newest(tmp_path):
 
     assert [row["row_id"] for row in retained] == ["row-factor-older", "row-factor-newer"]
     assert [row["row_id"] for row in latest] == ["row-factor-newer"]
+    assert latest[0]["listed_at_ms"] == 1_778_000_000_000
 
 
 def test_replace_rows_insert_uses_factor_snapshot_columns_without_legacy_score_contract():

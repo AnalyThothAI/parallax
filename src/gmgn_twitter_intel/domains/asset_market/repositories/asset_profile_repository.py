@@ -83,7 +83,7 @@ class AssetProfileRepository:
                 _optional_text(gmgn_url),
                 _optional_text(geckoterminal_url),
                 _optional_text(description),
-                Jsonb(raw_payload or {}),
+                Jsonb(_sanitize_json(raw_payload or {})),
                 int(observed_at_ms),
                 int(next_refresh_at_ms),
                 updated_at_ms,
@@ -144,7 +144,7 @@ class AssetProfileRepository:
                 asset_id,
                 _required_text(provider),
                 normalized_status,
-                Jsonb(raw_payload or {}),
+                Jsonb(_sanitize_json(raw_payload or {})),
                 int(observed_at_ms) if observed_at_ms is not None else None,
                 int(next_refresh_at_ms),
                 _optional_text(last_error),
@@ -176,12 +176,28 @@ class AssetProfileRepository:
 
 
 def _optional_text(value: str | None) -> str | None:
-    text = str(value or "").strip()
+    text = _clean_text(value).strip()
     return text or None
 
 
 def _required_text(value: str) -> str:
-    return str(value).strip()
+    return _clean_text(value).strip()
+
+
+def _clean_text(value: Any) -> str:
+    return str(value or "").replace("\x00", "")
+
+
+def _sanitize_json(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.replace("\x00", "")
+    if isinstance(value, list):
+        return [_sanitize_json(item) for item in value]
+    if isinstance(value, tuple):
+        return [_sanitize_json(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key).replace("\x00", ""): _sanitize_json(item) for key, item in value.items()}
+    return value
 
 
 def _now_ms() -> int:

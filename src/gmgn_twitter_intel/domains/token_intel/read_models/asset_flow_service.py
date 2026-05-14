@@ -79,6 +79,7 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
         "target": _target_from_snapshot(factor_snapshot),
         "attention": _attention_from_snapshot(factor_snapshot),
         "market": _market_from_snapshot(factor_snapshot),
+        "radar": _radar_from_row(row),
         "resolution": row.get("resolution_json") or {},
         "score": _composite_from_snapshot(factor_snapshot),
         "factor_snapshot": factor_snapshot,
@@ -117,6 +118,16 @@ def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
 
 def _market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     return _mapping(snapshot.get("market"))
+
+
+def _radar_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "lane": row.get("lane"),
+        "rank": _int_or_none(row.get("rank")),
+        "listed_at_ms": _int_or_none(row.get("listed_at_ms")),
+        "computed_at_ms": _int_or_none(row.get("computed_at_ms")),
+        "source_max_received_at_ms": _int_or_none(row.get("source_max_received_at_ms")),
+    }
 
 
 def _anchor_coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -174,6 +185,13 @@ def _mapping(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError, OverflowError):
+        return None
 
 
 def _pending_projection_payload(coverage: dict[str, Any] | None) -> dict[str, Any]:

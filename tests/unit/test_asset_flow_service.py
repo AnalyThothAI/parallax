@@ -19,6 +19,13 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
 
     btc = result["targets"][0]
     assert btc["target"]["symbol"] == "BTC"
+    assert btc["radar"] == {
+        "lane": "resolved",
+        "rank": 1,
+        "listed_at_ms": 1_699_999_880_000,
+        "computed_at_ms": 1_700_000_060_000,
+        "source_max_received_at_ms": 1_700_000_000_000,
+    }
     assert btc["market"]["event_anchor"]["price_usd"] == 70_000.0
     assert btc["market"]["decision_latest"]["price_usd"] == 70_000.0
     assert btc["market"]["readiness"]["anchor_status"] == "ready"
@@ -197,6 +204,8 @@ def radar_row(
         },
         "source_event_ids_json": event_ids,
         "source_max_received_at_ms": 1_700_000_000_000,
+        "computed_at_ms": 1_700_000_060_000,
+        "listed_at_ms": 1_699_999_880_000,
     }
 
 

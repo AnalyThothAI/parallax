@@ -445,12 +445,21 @@ export type MarketContext = {
   readiness: MarketReadiness;
 };
 
+export type TokenRadarRowMeta = {
+  lane?: "resolved" | "attention" | string | null;
+  rank?: number | null;
+  listed_at_ms?: number | null;
+  computed_at_ms?: number | null;
+  source_max_received_at_ms?: number | null;
+};
+
 export type AssetFlowRow = {
   intent?: TokenRadarIntentBlock;
   target?: AssetFlowTargetBlock;
   attention: AssetFlowAttentionBlock;
   source_event_ids?: string[];
   market: MarketContext;
+  radar?: TokenRadarRowMeta;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
@@ -798,6 +807,7 @@ export type TokenFlowItem = {
   factor_data_health?: TokenFactorSnapshot["data_health"];
   factor_gates?: TokenFactorSnapshot["gates"];
   factor_normalization?: TokenFactorSnapshot["normalization"];
+  radar?: TokenRadarRowMeta;
   evidence_total_count: number;
   posts_query: TokenPostsQuery;
   timeline_query: TokenSocialTimelineParams;

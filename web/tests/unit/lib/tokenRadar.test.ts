@@ -1,5 +1,5 @@
 import { tokenRadarRowToTokenItem } from "@lib/tokenRadar";
-import type { AssetFlowRow, MarketContext } from "@lib/types";
+import type { AssetFlowRow, MarketContext, TokenFlowItem } from "@lib/types";
 import { describe, expect, it } from "vitest";
 
 const PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933";
@@ -118,6 +118,23 @@ describe("token radar factor snapshot mapper", () => {
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
     expect((item as { profile?: unknown }).profile).toEqual(profile);
+  });
+
+  it("preserves radar row metadata for ranking and listed-at UI", () => {
+    const row = productionChainAssetRow() as AssetFlowRow & {
+      radar: NonNullable<TokenFlowItem["radar"]>;
+    };
+    row.radar = {
+      lane: "resolved",
+      rank: 3,
+      listed_at_ms: 1_778_420_000_000,
+      computed_at_ms: 1_778_426_440_000,
+      source_max_received_at_ms: 1_778_426_100_000,
+    };
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.radar).toEqual(row.radar);
   });
 
   it("normalizes CEX venue identity from pricefeed-only production rows", () => {

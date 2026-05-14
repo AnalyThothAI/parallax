@@ -107,6 +107,17 @@ class TokenRadarRepository:
               FROM token_radar_rows
               WHERE projection_version = %s AND "window" = %s AND scope = %s
             ),
+            listed AS (
+              SELECT
+                COALESCE(target_type, '') AS target_type_key,
+                COALESCE(target_id, intent_id) AS target_key,
+                MIN(computed_at_ms) AS listed_at_ms
+              FROM token_radar_rows
+              WHERE projection_version = %s
+                AND "window" = %s
+                AND scope = %s
+              GROUP BY COALESCE(target_type, ''), COALESCE(target_id, intent_id)
+            ),
             ranked AS (
               SELECT
                 token_radar_rows.*,
@@ -118,13 +129,21 @@ class TokenRadarRepository:
                 AND token_radar_rows."window" = %s
                 AND token_radar_rows.scope = %s
             )
-            SELECT *
+            SELECT
+              ranked.*,
+              listed.listed_at_ms
             FROM ranked
+            LEFT JOIN listed
+              ON listed.target_type_key = COALESCE(ranked.target_type, '')
+             AND listed.target_key = COALESCE(ranked.target_id, ranked.intent_id)
             WHERE lane_rank <= %s
             ORDER BY lane DESC, rank ASC
             LIMIT %s
             """,
             (
+                projection_version,
+                window,
+                scope,
                 projection_version,
                 window,
                 scope,

@@ -151,6 +151,42 @@ def test_ready_profile_normalizes_blank_strings_to_none(tmp_path):
         assert row[key] is None
 
 
+def test_ready_profile_strips_nul_bytes_from_text_and_raw_payload(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        asset_id = _insert_asset(conn)
+        repo = AssetProfileRepository(conn)
+
+        repo.upsert_ready_profile(
+            asset_id=asset_id,
+            provider=GMGN_DEX_PROFILE_PROVIDER,
+            symbol="ZEC\x00\x00",
+            name="Zero\x00Coin",
+            logo_url=None,
+            banner_url=None,
+            website_url=None,
+            twitter_username=None,
+            twitter_url=None,
+            telegram_url=None,
+            gmgn_url=None,
+            geckoterminal_url=None,
+            description="profile\x00 text",
+            raw_payload={"symbol\x00": "ZEC\x00", "links": ["https://x.example/\x00zec"]},
+            observed_at_ms=1_778_000_000_000,
+            next_refresh_at_ms=1_778_000_000_000 + READY_REFRESH_MS,
+        )
+
+        row = repo.profiles_for_asset_ids([asset_id])[asset_id]
+    finally:
+        conn.close()
+
+    assert row["symbol"] == "ZEC"
+    assert row["name"] == "ZeroCoin"
+    assert row["description"] == "profile text"
+    assert row["raw_payload_json"] == {"symbol": "ZEC", "links": ["https://x.example/zec"]}
+
+
 def test_profiles_for_asset_ids_empty_input_returns_empty_dict():
     repo = AssetProfileRepository(conn=None)
 
