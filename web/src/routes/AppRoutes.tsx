@@ -1,11 +1,14 @@
-import { CockpitShell, SearchShell } from "@features/cockpit";
+import type { AppSession } from "@app/useAppSession";
+import { CockpitShell, SearchShell, useCockpitStatusQuery } from "@features/cockpit";
 import {
   buildLiveSignalTapeItems,
+  useLiveRadarRouteData,
+  useLiveRecentQuery,
+  useLiveRouteState,
   useLiveSelection,
-  type useLiveData,
-  type useLiveRouteState,
 } from "@features/live";
 import { useNotificationsController } from "@features/notifications";
+import { useSignalLabCompactQuery } from "@features/signal-lab";
 import { buildWatchlistAccountCases, buildWatchlistRows } from "@features/watchlist";
 import type { LivePayload } from "@lib/types";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
@@ -23,41 +26,46 @@ import { StocksRoute } from "./stocks.route";
 import { TokenTargetRoute } from "./token-target.route";
 import { WatchlistRoute } from "./watchlist.route";
 
-type LiveData = ReturnType<typeof useLiveData>;
-type LiveRouteState = ReturnType<typeof useLiveRouteState>;
+const EMPTY_HANDLES: string[] = [];
+const EMPTY_LIVE_ITEMS: LivePayload[] = [];
 
-export function AppRoutes({
-  liveData,
-  liveRoute,
-}: {
-  liveData: LiveData;
-  liveRoute: LiveRouteState;
-}) {
+export function AppRoutes({ session }: { session: AppSession }) {
   const queryClient = useQueryClient();
+  const liveRoute = useLiveRouteState();
+  const statusQuery = useCockpitStatusQuery({ token: session.token });
+  const recentQuery = useLiveRecentQuery({
+    handles: liveRoute.handles,
+    scope: liveRoute.scope,
+    token: session.token,
+  });
+  const liveRadar = useLiveRadarRouteData({
+    scope: liveRoute.scope,
+    token: session.token,
+    window: liveRoute.window,
+  });
+  const signalLabCompact = useSignalLabCompactQuery({ token: session.token });
   const socketSnapshot = useSocketSnapshot();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const {
-    bootstrapHandles,
-    decisionCounts,
-    handles,
-    isAssetFlowLoading,
-    isRecentLoading,
-    marketTargets,
-    recentReplayItems,
-    scope,
-    signalLabOverviewData,
-    signalLabPulseData,
-    signalLabPulseTotal,
-    signalPulseColdLoading,
-    status,
-    statusError,
-    statusHandles,
-    statusLoading,
-    assetFlowError,
-    token,
-    tokenItems,
-    windowKey,
-  } = liveData;
+  const bootstrapHandles = session.bootstrapHandles;
+  const decisionCounts = liveRadar.decisionCounts;
+  const handles = liveRoute.handles;
+  const isAssetFlowLoading = liveRadar.isAssetFlowLoading;
+  const isRecentLoading = recentQuery.isPending;
+  const marketTargets = liveRadar.marketTargets;
+  const recentReplayItems = recentQuery.data?.data.items ?? EMPTY_LIVE_ITEMS;
+  const scope = liveRoute.scope;
+  const signalLabOverviewData = signalLabCompact.overviewData;
+  const signalLabPulseData = signalLabCompact.pulseData;
+  const signalLabPulseTotal = signalLabCompact.signalPulseTotal;
+  const signalPulseColdLoading = signalLabCompact.signalPulseColdLoading;
+  const status = statusQuery.data?.data ?? null;
+  const statusError = statusQuery.isError;
+  const statusHandles = statusQuery.data?.data.handles ?? EMPTY_HANDLES;
+  const statusLoading = Boolean(session.token) && statusQuery.isPending;
+  const assetFlowError = liveRadar.assetFlowError;
+  const token = session.token;
+  const tokenItems = liveRadar.tokenItems;
+  const windowKey = liveRoute.window;
   const liveItems = useMemo(
     () => mergeLiveItems(recentReplayItems, socketSnapshot.eventItems),
     [recentReplayItems, socketSnapshot.eventItems],

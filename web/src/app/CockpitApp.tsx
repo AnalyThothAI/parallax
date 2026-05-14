@@ -1,23 +1,19 @@
-import { useLiveData, useLiveRouteState } from "@features/live";
 import { AppRoutes } from "@routes/AppRoutes";
 import { IntelSocketProvider } from "@shared/socket/IntelSocketProvider";
 
+import { useAppSession } from "./useAppSession";
+
 export function CockpitApp() {
-  const liveRoute = useLiveRouteState();
-  const liveData = useLiveData({
-    handles: liveRoute.handles,
-    scope: liveRoute.scope,
-    windowKey: liveRoute.window,
-  });
+  const session = useAppSession();
 
   return (
     <IntelSocketProvider
-      token={liveData.token}
-      handles={liveData.handles}
-      replay={liveData.replayLimit}
+      token={session.token}
+      handles={session.bootstrapHandles.join(",")}
+      replay={session.replayLimit}
       notifications
     >
-      <AppRoutes liveData={liveData} liveRoute={liveRoute} />
+      <AppRoutes session={session} />
     </IntelSocketProvider>
   );
 }

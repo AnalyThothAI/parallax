@@ -1,3 +1,4 @@
+export { useCockpitStatusQuery } from "./api/useCockpitStatusQuery";
 export { requiredMobileTaskForPathname } from "./model/mobileRouteTask";
 export type { MobileTask } from "./model/mobileTask";
 export { useCockpitStore } from "./state/cockpitStore";
