@@ -1188,6 +1188,10 @@
 }
 
 .radar-data-table {
+  --token-radar-columns:
+    minmax(258px, 1.24fr) minmax(136px, 0.62fr) minmax(214px, 0.98fr)
+    minmax(288px, 1.26fr) 62px 132px;
+
   display: grid;
   min-width: 1060px;
 }
@@ -1195,9 +1199,7 @@
 .radar-data-table .token-radar-head,
 .radar-data-table .token-radar-row {
   display: grid;
-  grid-template-columns:
-    minmax(258px, 1.24fr) minmax(136px, 0.62fr) minmax(214px, 0.98fr)
-    minmax(288px, 1.26fr) 58px 124px;
+  grid-template-columns: var(--token-radar-columns);
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -1220,7 +1222,7 @@
 
 .radar-head-cell.score {
   justify-self: center;
-  width: 58px;
+  width: 62px;
 }
 
 .radar-head-cell.score .radar-sort-button {
@@ -1229,12 +1231,11 @@
 }
 
 .radar-head-cell.listed {
-  justify-self: end;
-  width: 124px;
+  justify-self: stretch;
 }
 
 .radar-head-cell.listed .radar-sort-button {
-  justify-content: flex-end;
+  justify-content: flex-start;
   width: 100%;
 }
 
@@ -1269,8 +1270,8 @@
 }
 
 .radar-sort-button:hover,
-.radar-head-cell[aria-sort="ascending"] .radar-sort-button,
-.radar-head-cell[aria-sort="descending"] .radar-sort-button {
+.radar-head-cell[data-sort="ascending"] .radar-sort-button,
+.radar-head-cell[data-sort="descending"] .radar-sort-button {
   color: #ffd184;
 }
 
@@ -1290,6 +1291,19 @@
   border-color: var(--line-soft);
   background: rgba(26, 32, 28, 0.9);
   box-shadow: inset 3px 0 0 var(--opportunity);
+}
+
+.token-radar-cell {
+  min-width: 0;
+}
+
+.token-radar-cell.score {
+  display: grid;
+  justify-items: center;
+}
+
+.token-radar-cell.listed {
+  display: grid;
 }
 
 .radar-case-cell {
@@ -1520,7 +1534,7 @@
 .radar-score-cell {
   display: grid;
   justify-self: center;
-  width: 58px;
+  width: 62px;
   min-width: 0;
 }
 
@@ -1542,9 +1556,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 32px;
   align-items: center;
-  justify-self: end;
   gap: 7px;
-  width: 124px;
+  width: 100%;
   min-width: 0;
 }
 
@@ -1576,6 +1589,9 @@
     padding: 10px;
   }
 
+  .token-radar-cell.case,
+  .token-radar-cell.why,
+  .token-radar-cell.market,
   .radar-case-cell,
   .narrative-fact,
   .market-fact {
@@ -1591,7 +1607,6 @@
   }
 
   .radar-score-cell {
-    grid-column: 1;
     justify-self: start;
     width: auto;
     padding: 0;
@@ -1602,7 +1617,6 @@
   }
 
   .radar-listed-action-cell {
-    grid-column: 2;
     justify-self: end;
     width: min(124px, 100%);
   }

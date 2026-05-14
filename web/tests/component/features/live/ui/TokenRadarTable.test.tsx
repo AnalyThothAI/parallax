@@ -1,4 +1,3 @@
-import { TokenRadarRow } from "@features/live/ui/TokenRadarRow";
 import { TokenRadarTable } from "@features/live/ui/TokenRadarTable";
 import type { TokenFlowItem } from "@lib/types";
 import { cleanup, render, screen, within } from "@testing-library/react";
@@ -10,16 +9,9 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("TokenRadarRow", () => {
+describe("TokenRadarTable rows", () => {
   it("does not render unresolved intent ids as address-like token subtitles", () => {
-    render(
-      <TokenRadarRow
-        item={unresolvedSymbolOnly()}
-        selected={false}
-        onOpenSearch={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+    renderTokenRadarTable([unresolvedSymbolOnly()]);
 
     expect(screen.getByText("$SLOP")).toBeInTheDocument();
     expect(
@@ -29,14 +21,7 @@ describe("TokenRadarRow", () => {
   });
 
   it("renders DEX market cap as the primary market value", async () => {
-    const { container } = render(
-      <TokenRadarRow
-        item={mixedFreshnessToken()}
-        selected={false}
-        onOpenSearch={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+    const { container } = renderTokenRadarTable([mixedFreshnessToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
@@ -83,21 +68,16 @@ describe("TokenRadarRow", () => {
 
   it("does not fall back to token price for DEX rows without market cap", () => {
     const item = mixedFreshnessToken();
-    render(
-      <TokenRadarRow
-        item={{
-          ...item,
-          market: {
-            ...item.market,
-            market_cap: null,
-            market_cap_status: "missing",
-          },
-        }}
-        selected={false}
-        onOpenSearch={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+    renderTokenRadarTable([
+      {
+        ...item,
+        market: {
+          ...item.market,
+          market_cap: null,
+          market_cap_status: "missing",
+        },
+      },
+    ]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
@@ -110,28 +90,23 @@ describe("TokenRadarRow", () => {
 
   it("suppresses anchored readiness noise from compact radar cells", () => {
     const item = mixedFreshnessToken();
-    render(
-      <TokenRadarRow
-        item={{
-          ...item,
-          market: {
-            ...item.market,
-            market_status: "anchored",
-            price_status: "ready",
-            market_cap: 236_000,
-            market_cap_status: "live",
-            liquidity: 9_000,
-            liquidity_status: "live",
-            price_change_since_social_pct: null,
-            price_change_since_first_snapshot_pct: null,
-            price_change_status: "live_not_persisted",
-          },
-        }}
-        selected={false}
-        onOpenSearch={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+    renderTokenRadarTable([
+      {
+        ...item,
+        market: {
+          ...item.market,
+          market_status: "anchored",
+          price_status: "ready",
+          market_cap: 236_000,
+          market_cap_status: "live",
+          liquidity: 9_000,
+          liquidity_status: "live",
+          price_change_since_social_pct: null,
+          price_change_since_first_snapshot_pct: null,
+          price_change_status: "live_not_persisted",
+        },
+      },
+    ]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
@@ -145,14 +120,7 @@ describe("TokenRadarRow", () => {
   });
 
   it("renders CEX venue links directly without a profile abstraction", () => {
-    render(
-      <TokenRadarRow
-        item={cexToken()}
-        selected={false}
-        onOpenSearch={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+    renderTokenRadarTable([cexToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $OPN" });
     expect(within(row).getByRole("link", { name: "X" })).toHaveAttribute(
@@ -229,19 +197,19 @@ describe("TokenRadarRow", () => {
   });
 
   it("keeps score before listed time and drilldown action", () => {
-    render(
-      <TokenRadarRow
-        item={mixedFreshnessToken()}
-        selected={false}
-        onOpenSearch={vi.fn()}
-        onSelect={vi.fn()}
-      />,
-    );
+    renderTokenRadarTable([mixedFreshnessToken()]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const children = Array.from(row.children);
-    expect(children.at(-2)).toHaveClass("radar-score-cell");
-    expect(children.at(-1)).toHaveClass("radar-listed-action-cell");
+    expect(children.map((child) => child.className)).toEqual([
+      "token-radar-cell case",
+      "token-radar-cell social",
+      "token-radar-cell why",
+      "token-radar-cell market",
+      "token-radar-cell score",
+      "token-radar-cell listed",
+    ]);
+    expect((children.at(-2) as HTMLElement).querySelector(".radar-score")).toBeInTheDocument();
     expect(
       within(children.at(-1) as HTMLElement).getByRole("button", {
         name: "Open Search Intel for $TROLL",
@@ -287,6 +255,23 @@ describe("TokenRadarRow", () => {
     expect(rows[1]).toHaveTextContent("$LOW");
   });
 });
+
+function renderTokenRadarTable(items: TokenFlowItem[]) {
+  return render(
+    <TokenRadarTable
+      error={null}
+      isLoading={false}
+      items={items}
+      scope="all"
+      selectedKey={null}
+      windowKey="1h"
+      onOpenSearch={vi.fn()}
+      onScopeChange={vi.fn()}
+      onSelect={vi.fn()}
+      onWindowChange={vi.fn()}
+    />,
+  );
+}
 
 function withRadarMeta(
   item: TokenFlowItem,

@@ -1,7 +1,9 @@
 import { tokenKey } from "@lib/format";
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
+import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
 import { RadarControls } from "@shared/ui/RadarControls";
 import { RemoteState } from "@shared/ui/RemoteState";
+import { ObsidianTokenMark } from "@shared/ui/case-file";
 import {
   flexRender,
   getCoreRowModel,
@@ -11,10 +13,17 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import clsx from "clsx";
+import {
+  ArrowDown,
+  ArrowDownRight,
+  ArrowUp,
+  ArrowUpRight,
+  ChevronsUpDown,
+  ExternalLink,
+  Minus,
+} from "lucide-react";
 import { useMemo, useState } from "react";
-
-import { TokenRadarRow } from "./TokenRadarRow";
 
 type TokenRadarTableProps = {
   items: TokenFlowItem[];
@@ -43,7 +52,10 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     onWindowChange,
   } = props;
   const resultLabel = `${items.length} live ${items.length === 1 ? "case" : "cases"}`;
-  const columns = useMemo<ColumnDef<TokenFlowItem>[]>(() => tokenRadarColumns(), []);
+  const columns = useMemo<ColumnDef<TokenFlowItem>[]>(
+    () => tokenRadarColumns({ onOpenSearch, onSelect, selectedKey }),
+    [onOpenSearch, onSelect, selectedKey],
+  );
   const [sorting, setSorting] = useState<SortingState>([{ id: "score", desc: true }]);
   const table = useReactTable({
     data: items,
@@ -86,8 +98,8 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
                 <div className="token-radar-head" key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <div
-                      aria-sort={ariaSort(header.column.getIsSorted())}
                       className={`radar-head-cell ${header.column.id}`}
+                      data-sort={sortState(header.column.getIsSorted())}
                       key={header.id}
                     >
                       <button
@@ -109,14 +121,19 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
             <div>
               {table.getRowModel().rows.map((row) => {
                 const key = tokenKey(row.original);
+                const tokenCase = buildTokenRadarCompactCase(row.original);
                 return (
-                  <TokenRadarRow
+                  <article
+                    aria-label={`Token Radar item ${tokenCase.label}`}
+                    className={clsx("token-radar-row", selectedKey === key && "selected")}
                     key={row.id}
-                    item={row.original}
-                    selected={selectedKey === key}
-                    onOpenSearch={onOpenSearch}
-                    onSelect={onSelect}
-                  />
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <div className={`token-radar-cell ${cell.column.id}`} key={cell.id}>
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </div>
+                    ))}
+                  </article>
                 );
               })}
             </div>
@@ -127,22 +144,41 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
   );
 }
 
-function tokenRadarColumns(): ColumnDef<TokenFlowItem>[] {
+type TokenRadarColumnDeps = {
+  onOpenSearch: (item: TokenFlowItem) => void;
+  onSelect: (item: TokenFlowItem) => void;
+  selectedKey: string | null;
+};
+
+function tokenRadarColumns({
+  onOpenSearch,
+  onSelect,
+  selectedKey,
+}: TokenRadarColumnDeps): ColumnDef<TokenFlowItem>[] {
   return [
     {
       id: "case",
       header: "Token case",
       accessorFn: (item) => item.identity.symbol ?? tokenKey(item),
+      cell: ({ row }) => (
+        <TokenCaseCell
+          item={row.original}
+          selected={selectedKey === tokenKey(row.original)}
+          onSelect={onSelect}
+        />
+      ),
     },
     {
       id: "social",
       header: "Social",
       accessorFn: (item) => item.flow.mentions,
+      cell: ({ row }) => <SocialCell item={row.original} />,
     },
     {
       id: "why",
       header: "Why now",
       accessorFn: (item) => item.discussion_quality.informative_post_count,
+      cell: ({ row }) => <WhyNowCell item={row.original} />,
     },
     {
       id: "market",
@@ -154,19 +190,159 @@ function tokenRadarColumns(): ColumnDef<TokenFlowItem>[] {
         item.market.volume_24h ??
         item.market.holder_count ??
         -1,
+      cell: ({ row }) => <MarketCell item={row.original} />,
     },
     {
       id: "score",
       header: "Score",
       accessorFn: (item) => item.opportunity.score,
+      cell: ({ row }) => <ScoreCell item={row.original} />,
     },
     {
       id: "listed",
       header: "Listed",
       accessorFn: (item) =>
         item.radar?.listed_at_ms ?? item.radar?.computed_at_ms ?? item.flow.window_end_ms ?? 0,
+      cell: ({ row }) => <ListedActionCell item={row.original} onOpenSearch={onOpenSearch} />,
     },
   ];
+}
+
+function TokenCaseCell({
+  item,
+  selected,
+  onSelect,
+}: {
+  item: TokenFlowItem;
+  selected: boolean;
+  onSelect: (item: TokenFlowItem) => void;
+}) {
+  const tokenCase = buildTokenRadarCompactCase(item);
+  return (
+    <div className="radar-case-cell" data-case-section="identity">
+      {tokenCase.logoUrl ? (
+        <img alt="" className="radar-token-logo" src={tokenCase.logoUrl} />
+      ) : (
+        <ObsidianTokenMark label={tokenCase.label} tone={tokenCase.markTone} />
+      )}
+      <span className="radar-case-copy">
+        <span className="radar-case-symbol-row">
+          <button
+            aria-label={`Open token item ${tokenCase.label}`}
+            className={clsx("radar-case-button", selected && "selected")}
+            type="button"
+            onClick={() => onSelect(item)}
+          >
+            <strong>{tokenCase.label}</strong>
+          </button>
+          {tokenCase.externalLinks.length ? (
+            <nav className="radar-case-links" aria-label={`External links for ${tokenCase.label}`}>
+              {tokenCase.externalLinks.map((link) => (
+                <a
+                  className={clsx("radar-case-link", link.tone)}
+                  href={link.href}
+                  key={`${link.label}:${link.href}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </nav>
+          ) : null}
+        </span>
+        <span className="radar-case-meta">{tokenCase.subtitle}</span>
+      </span>
+    </div>
+  );
+}
+
+function SocialCell({ item }: { item: TokenFlowItem }) {
+  const tokenCase = buildTokenRadarCompactCase(item);
+  return (
+    <span className="radar-fact social-fact" data-case-section="social">
+      <b>{tokenCase.socialFact}</b>
+      <em>{tokenCase.socialDetail}</em>
+    </span>
+  );
+}
+
+function WhyNowCell({ item }: { item: TokenFlowItem }) {
+  const tokenCase = buildTokenRadarCompactCase(item);
+  return (
+    <span className="radar-fact narrative-fact" data-case-section="why-now">
+      <b>{tokenCase.narrative.value}</b>
+      <em>{tokenCase.narrative.detail}</em>
+    </span>
+  );
+}
+
+function MarketCell({ item }: { item: TokenFlowItem }) {
+  const tokenCase = buildTokenRadarCompactCase(item);
+  return (
+    <span className="radar-fact market-fact" data-radar-metric="market">
+      <span className="market-primary-line">
+        <b className="market-primary-value">{tokenCase.market.value}</b>
+        <span className={clsx("market-move", tokenCase.marketMove.direction)}>
+          {tokenCase.marketMove.direction === "up" ? <ArrowUpRight aria-hidden /> : null}
+          {tokenCase.marketMove.direction === "down" ? <ArrowDownRight aria-hidden /> : null}
+          {tokenCase.marketMove.direction === "flat" ? <Minus aria-hidden /> : null}
+          <b>{tokenCase.marketMove.value}</b>
+        </span>
+      </span>
+      <span className="market-stats" aria-label={tokenCase.market.detail}>
+        {tokenCase.market.stats.length ? (
+          tokenCase.market.stats.map((stat) => (
+            <span className={clsx("market-stat", stat.tone)} key={stat.key} title={stat.status}>
+              <span>{stat.label}</span>
+              <b>{stat.value}</b>
+            </span>
+          ))
+        ) : (
+          <em>market data unavailable</em>
+        )}
+      </span>
+    </span>
+  );
+}
+
+function ScoreCell({ item }: { item: TokenFlowItem }) {
+  const tokenCase = buildTokenRadarCompactCase(item);
+  return (
+    <span className="radar-score-cell" data-case-section="score">
+      <span className="radar-score">{tokenCase.score}</span>
+    </span>
+  );
+}
+
+function ListedActionCell({
+  item,
+  onOpenSearch,
+}: {
+  item: TokenFlowItem;
+  onOpenSearch: (item: TokenFlowItem) => void;
+}) {
+  const tokenCase = buildTokenRadarCompactCase(item);
+  return (
+    <span className="radar-listed-action-cell" data-case-section="action">
+      <span className="radar-fact listed-fact" data-radar-metric="listed">
+        <b>{tokenCase.listed.value}</b>
+        <em>{tokenCase.listed.detail}</em>
+      </span>
+      <button
+        aria-label={`Open Search Intel for ${tokenCase.label}`}
+        className="row-drilldown-button"
+        title={tokenCase.searchTitle}
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenSearch(item);
+        }}
+      >
+        <ExternalLink aria-hidden />
+      </button>
+    </span>
+  );
 }
 
 function headerLabel(columnId: string): string {
@@ -181,7 +357,7 @@ function headerLabel(columnId: string): string {
   return labels[columnId] ?? columnId;
 }
 
-function ariaSort(direction: false | SortDirection): "ascending" | "descending" | "none" {
+function sortState(direction: false | SortDirection): "ascending" | "descending" | "none" {
   if (direction === "asc") {
     return "ascending";
   }
