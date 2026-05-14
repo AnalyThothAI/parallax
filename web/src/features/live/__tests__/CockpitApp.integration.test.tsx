@@ -777,7 +777,7 @@ describe("App Token Radar social heat cockpit", () => {
     fireEvent.click(traderpowLink);
 
     expect(await screen.findByRole("heading", { name: "@traderpow" })).toBeInTheDocument();
-    expect(screen.getByText("watchlist account file")).toBeInTheDocument();
+    expect(screen.getByText("source monitor")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Token mentions" })).toBeInTheDocument();
     expect(screen.getByText("$UPEG watched account evidence")).toBeInTheDocument();
     expect(traderpowLink).toHaveClass("active");

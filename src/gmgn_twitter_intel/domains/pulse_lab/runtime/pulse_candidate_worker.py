@@ -39,7 +39,7 @@ from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import (
     gate_pulse_candidate_from_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_timeline_context import build_pulse_timeline_context
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, StageRunAudit
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure, StageRunAudit
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -683,7 +683,34 @@ class PulseCandidateWorker:
                 repos.pulse.mark_job_succeeded(str(job["job_id"]), now_ms=finished_at_ms, commit=False)
         except Exception as exc:
             failed_at_ms = _now_ms()
+            failed_audits: tuple[StageRunAudit, ...] = ()
+            if isinstance(exc, PulseStageFailure):
+                failed_audits = exc.audits
             with self.repository_session() as repos, _transaction(repos.conn):
+                for stage_audit in failed_audits:
+                    repos.pulse.insert_agent_run_step(
+                        step_id=_stable_id(run_id, stage_audit.stage, str(stage_audit.attempt_index)),
+                        run_id=run_id,
+                        stage=stage_audit.stage,
+                        route=stage_audit.route,
+                        attempt_index=stage_audit.attempt_index,
+                        provider=getattr(self.decision_client, "provider", "openai"),
+                        model=getattr(self.decision_client, "model", ""),
+                        prompt_version=str(audit.get("prompt_version") if audit else PULSE_DECISION_PROMPT_VERSION),
+                        schema_version=str(audit.get("schema_version") if audit else PULSE_DECISION_SCHEMA_VERSION),
+                        input_json=stage_audit.input_json,
+                        prompt_text=stage_audit.prompt_text,
+                        response_json=stage_audit.response_json,
+                        trace_metadata_json=stage_audit.trace_metadata_json,
+                        usage_json=stage_audit.usage_json,
+                        latency_ms=stage_audit.latency_ms,
+                        status=stage_audit.status,
+                        error=stage_audit.error,
+                        started_at_ms=failed_at_ms,
+                        finished_at_ms=failed_at_ms,
+                        created_at_ms=failed_at_ms,
+                        commit=False,
+                    )
                 if audit is not None:
                     repos.pulse.finish_agent_run(
                         run_id,

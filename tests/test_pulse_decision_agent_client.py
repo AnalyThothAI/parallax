@@ -12,7 +12,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
 )
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import (
     OpenAIAgentsPulseDecisionClient,
+    PulseStageFailure,
+    _JsonOutputSchema,
 )
+from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
 
 
 class FakeRunner:
@@ -144,7 +147,7 @@ def test_runner_rejects_execution_language_in_final_output() -> None:
     )
     client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
 
-    with pytest.raises(ValueError, match="trading execution"):
+    with pytest.raises(PulseStageFailure) as exc_info:
         asyncio.run(
             client.run_decision_pipeline(
                 context=_context(),
@@ -155,6 +158,83 @@ def test_runner_rejects_execution_language_in_final_output() -> None:
                 harness=_harness(),
             )
         )
+
+    failure = exc_info.value
+    assert [audit.stage for audit in failure.audits] == ["analyst", "critic", "judge"]
+    judge_audit = failure.audits[-1]
+    assert judge_audit.status == "failed"
+    assert "trading execution" in (judge_audit.error or "")
+
+
+def test_stage_prompt_embeds_output_schema_and_demands_json_only() -> None:
+    prompt = pulse_stage_prompt(route="meme", stage="analyst", output_type=AnalystOpinion)
+    assert "Return ONLY a JSON object" in prompt
+    assert '"properties"' in prompt
+    assert "recommendation" in prompt
+    assert "confidence" in prompt
+
+
+def test_json_output_schema_disables_strict() -> None:
+    schema = _JsonOutputSchema(AnalystOpinion)
+    assert schema.is_strict_json_schema() is False
+    assert schema.is_plain_text() is False
+    assert "type" in schema.json_schema()
+
+
+def test_json_output_schema_parses_plain_json_object() -> None:
+    schema = _JsonOutputSchema(AnalystOpinion)
+    raw = (
+        '{"route":"meme","recommendation":"watchlist","confidence":0.5,'
+        '"summary_zh":"x","evidence":["event-1"]}'
+    )
+    result = schema.validate_json(raw)
+    assert result.route == "meme"
+    assert result.recommendation == "watchlist"
+
+
+def test_json_output_schema_extracts_embedded_json_object_from_prose() -> None:
+    schema = _JsonOutputSchema(AnalystOpinion)
+    raw = (
+        "Sure, here is the analysis:\n"
+        '{"route":"meme","recommendation":"watchlist","confidence":0.5,'
+        '"summary_zh":"x","evidence":["event-1"]}\n'
+        "Hope this helps!"
+    )
+    result = schema.validate_json(raw)
+    assert result.recommendation == "watchlist"
+
+
+def test_stage_failure_carries_collected_audits_when_analyst_raises() -> None:
+    class _RaisingRunner:
+        def __init__(self) -> None:
+            self.calls: list[dict[str, object]] = []
+
+        async def run(self, starting_agent, input, *, max_turns, run_config):
+            self.calls.append({"agent": starting_agent})
+            raise RuntimeError("model parse error")
+
+    runner = _RaisingRunner()
+    client = OpenAIAgentsPulseDecisionClient(api_key="sk-test", model="gpt-test", runner=runner)
+
+    with pytest.raises(PulseStageFailure) as exc_info:
+        asyncio.run(
+            client.run_decision_pipeline(
+                context=_context(),
+                run_id="run-1",
+                job={},
+                route="meme",
+                completeness={"score": 1.0, "missing_fields": []},
+                harness=_harness(),
+            )
+        )
+
+    failure = exc_info.value
+    assert len(failure.audits) == 1
+    audit = failure.audits[0]
+    assert audit.stage == "analyst"
+    assert audit.status == "failed"
+    assert "model parse error" in (audit.error or "")
+    assert audit.prompt_text  # captured even on failure
 
 
 def _context() -> dict[str, object]:

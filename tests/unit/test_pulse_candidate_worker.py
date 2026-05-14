@@ -12,7 +12,7 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     _source_seed_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, StageRunAudit
+from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure, StageRunAudit
 
 NOW_MS = 1_800_000
 
@@ -264,6 +264,46 @@ def test_legacy_previous_candidate_gate_json_does_not_bypass_cooldown() -> None:
     assert result["asset_enqueued"] == 0
     assert result["asset_skipped"] == 1
     assert repos.pulse.jobs == []
+
+
+def test_worker_persists_failed_stage_audits_when_provider_raises_stage_failure() -> None:
+    repos = FakeRepos()
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=_factor_snapshot(rank_score=82))]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+
+    class FailingClient(FakeClient):
+        async def run_decision_pipeline(self, **kwargs: Any) -> Any:
+            self.run_calls += 1
+            failed_audit = StageRunAudit(
+                stage="analyst",
+                route=kwargs["route"],
+                attempt_index=0,
+                input_json={"context": kwargs["context"]},
+                prompt_text="fake analyst prompt",
+                response_json={"raw_output": "**Analyst Report:** prose only"},
+                trace_metadata_json={"stage": "analyst"},
+                usage_json={},
+                latency_ms=42,
+                status="failed",
+                error="ModelBehaviorError: invalid JSON",
+            )
+            raise PulseStageFailure("analyst stage failed", audits=(failed_audit,))
+
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FailingClient())
+
+    worker.scan_triggers_once(now_ms=NOW_MS)
+    result = worker.process_due_jobs_once(now_ms=NOW_MS)
+
+    assert result["processed"] == 0
+    assert result["failed"] == 1
+    assert len(repos.pulse.agent_run_steps) == 1
+    step = repos.pulse.agent_run_steps[0]
+    assert step["stage"] == "analyst"
+    assert step["status"] == "failed"
+    assert step["error"] == "ModelBehaviorError: invalid JSON"
+    assert step["response_json"] == {"raw_output": "**Analyst Report:** prose only"}
+    assert any(row["status"] == "failed" for row in repos.pulse.finished_runs)
+    assert len(repos.pulse.failures) == 1
 
 
 @contextmanager

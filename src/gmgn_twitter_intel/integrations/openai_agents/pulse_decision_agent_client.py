@@ -11,7 +11,6 @@ from agents import (
     Agent,
     AgentOutputSchema,
     AgentOutputSchemaBase,
-    ModelBehaviorError,
     ModelRetrySettings,
     ModelSettings,
     RunConfig,
@@ -19,7 +18,7 @@ from agents import (
     retry_policies,
     set_tracing_export_api_key,
 )
-from agents.models.openai_responses import OpenAIResponsesModel
+from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
 from gmgn_twitter_intel.domains.pulse_lab.interfaces import BACKEND
@@ -30,8 +29,10 @@ from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import (
     DecisionRoute,
     FinalDecision,
     PulseDecisionPayload,
+    PulseStageFailure,
     StageName,
     StageRunAudit,
+    StageStatus,
 )
 from gmgn_twitter_intel.integrations.openai_agents.pulse_stage_prompts import pulse_stage_prompt
 
@@ -48,9 +49,16 @@ class PulseDecisionAgentResult:
     stage_audits: tuple[StageRunAudit, ...]
 
 
-class _JsonFenceTolerantOutputSchema(AgentOutputSchemaBase):
+class _JsonOutputSchema(AgentOutputSchemaBase):
+    """Prompt-based JSON output: schema lives in instructions, not in strict response_format.
+
+    Works across OpenAI / DeepSeek / qwen on the OpenAI-compatible Chat Completions surface
+    because it relies on the model following the prompt, not on the provider honoring strict
+    json_schema. Recovers JSON embedded in prose by extracting the first balanced object.
+    """
+
     def __init__(self, output_type: type[Any]) -> None:
-        self._schema = AgentOutputSchema(output_type)
+        self._schema = AgentOutputSchema(output_type, strict_json_schema=False)
 
     def is_plain_text(self) -> bool:
         return self._schema.is_plain_text()
@@ -62,16 +70,16 @@ class _JsonFenceTolerantOutputSchema(AgentOutputSchemaBase):
         return self._schema.json_schema()
 
     def is_strict_json_schema(self) -> bool:
-        return self._schema.is_strict_json_schema()
+        return False
 
     def validate_json(self, json_str: str) -> Any:
-        try:
-            return self._schema.validate_json(json_str)
-        except ModelBehaviorError:
-            normalized = _strip_single_json_fence(json_str)
-            if normalized == json_str:
-                raise
-            return self._schema.validate_json(normalized)
+        text = str(json_str or "")
+        start = text.find("{")
+        end = text.rfind("}")
+        candidate = text[start : end + 1] if start != -1 and end > start else text
+        return self._schema.validate_json(candidate)
+
+
 
 
 class OpenAIAgentsPulseDecisionClient:
@@ -149,6 +157,7 @@ class OpenAIAgentsPulseDecisionClient:
             completeness=completeness,
             harness=harness,
         )
+        stage_audits: list[StageRunAudit] = []
         analyst = await self._run_stage(
             stage="analyst",
             route=route,
@@ -157,6 +166,12 @@ class OpenAIAgentsPulseDecisionClient:
             run_id=run_id,
             audit=audit,
         )
+        stage_audits.append(analyst)
+        if analyst.status != "ok":
+            raise PulseStageFailure(
+                f"analyst stage {analyst.status}: {analyst.error}",
+                audits=tuple(stage_audits),
+            )
         analyst_output = AnalystOpinion.model_validate(analyst.response_json)
         critic = await self._run_stage(
             stage="critic",
@@ -171,8 +186,13 @@ class OpenAIAgentsPulseDecisionClient:
             run_id=run_id,
             audit=audit,
         )
+        stage_audits.append(critic)
+        if critic.status != "ok":
+            raise PulseStageFailure(
+                f"critic stage {critic.status}: {critic.error}",
+                audits=tuple(stage_audits),
+            )
         critic_output = CritiqueReport.model_validate(critic.response_json)
-        stage_audits: list[StageRunAudit] = [analyst, critic]
         if critic_output.should_abstain:
             final = FinalDecision(
                 route=route,
@@ -201,10 +221,15 @@ class OpenAIAgentsPulseDecisionClient:
             run_id=run_id,
             audit=audit,
         )
+        stage_audits.append(judge)
+        if judge.status != "ok":
+            raise PulseStageFailure(
+                f"judge stage {judge.status}: {judge.error}",
+                audits=tuple(stage_audits),
+            )
         final = FinalDecision.model_validate(judge.response_json)
         if final.confidence > critic_output.confidence_ceiling:
             final = final.model_copy(update={"confidence": critic_output.confidence_ceiling})
-        stage_audits.append(judge)
         PulseDecisionPayload(final_decision=final, stage_audits=tuple(stage_audits))
         audit = {**audit, "output_hash": _sha256(final.model_dump(mode="json"))}
         return PulseDecisionAgentResult(final_decision=final, run_audit=audit, stage_audits=tuple(stage_audits))
@@ -219,31 +244,51 @@ class OpenAIAgentsPulseDecisionClient:
         run_id: str,
         audit: dict[str, Any],
     ) -> StageRunAudit:
-        prompt = pulse_stage_prompt(route=route, stage=stage)
+        prompt = pulse_stage_prompt(route=route, stage=stage, output_type=output_type)
         agent = Agent(
             name=_stage_agent_name(route=route, stage=stage),
             instructions=prompt,
-            output_type=_JsonFenceTolerantOutputSchema(output_type),
+            output_type=_JsonOutputSchema(output_type),
             tools=[],
             model=self._model,
             model_settings=_model_settings(),
         )
         stage_input = json.dumps(input_json, ensure_ascii=False, sort_keys=True)
+        trace_metadata = {**audit["trace_metadata"], "stage": stage, "route": route}
         started = int(time.time() * 1000)
-        result = await self._runner.run(
-            agent,
-            stage_input,
-            max_turns=1,
-            run_config=RunConfig(
-                workflow_name=self.workflow_name,
-                trace_id=audit["sdk_trace_id"],
-                group_id=_group_id(input_json.get("context")),
-                trace_include_sensitive_data=self.trace_include_sensitive_data,
-                tracing_disabled=not self.trace_enabled,
-                trace_metadata={**audit["trace_metadata"], "stage": stage, "route": route},
-            ),
-        )
-        output = output_type.model_validate(result.final_output)
+        raw_output: Any = None
+        try:
+            result = await self._runner.run(
+                agent,
+                stage_input,
+                max_turns=1,
+                run_config=RunConfig(
+                    workflow_name=self.workflow_name,
+                    trace_id=audit["sdk_trace_id"],
+                    group_id=_group_id(input_json.get("context")),
+                    trace_include_sensitive_data=self.trace_include_sensitive_data,
+                    tracing_disabled=not self.trace_enabled,
+                    trace_metadata=trace_metadata,
+                ),
+            )
+            raw_output = result.final_output
+            output = output_type.model_validate(raw_output)
+        except Exception as exc:
+            finished = int(time.time() * 1000)
+            status: StageStatus = "timeout" if isinstance(exc, TimeoutError) else "failed"
+            return StageRunAudit(
+                stage=stage,
+                route=route,
+                attempt_index=0,
+                input_json=input_json,
+                prompt_text=prompt,
+                response_json={"raw_output": _truncate(raw_output)} if raw_output is not None else None,
+                trace_metadata_json=trace_metadata,
+                usage_json={},
+                latency_ms=max(0, finished - started),
+                status=status,
+                error=f"{type(exc).__name__}: {exc}"[:1000],
+            )
         finished = int(time.time() * 1000)
         return StageRunAudit(
             stage=stage,
@@ -252,7 +297,7 @@ class OpenAIAgentsPulseDecisionClient:
             input_json=input_json,
             prompt_text=prompt,
             response_json=output.model_dump(mode="json"),
-            trace_metadata_json={**audit["trace_metadata"], "stage": stage, "route": route},
+            trace_metadata_json=trace_metadata,
             usage_json={},
             latency_ms=max(0, finished - started),
             status="ok",
@@ -308,7 +353,7 @@ class OpenAIAgentsPulseDecisionClient:
 
     def _build_model(self):
         self._http_client = httpx.AsyncClient(trust_env=False)
-        return OpenAIResponsesModel(
+        return OpenAIChatCompletionsModel(
             model=self.model,
             openai_client=AsyncOpenAI(
                 api_key=str(self.api_key or ""),
@@ -383,16 +428,9 @@ def _sha256(value: Any) -> str:
     return f"sha256:{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
 
-def _strip_single_json_fence(value: str) -> str:
-    text = str(value or "").strip()
-    lines = text.splitlines()
-    if len(lines) < 3:
-        return value
-    if lines[0].strip().lower() != "```json":
-        return value
-    if lines[-1].strip() != "```":
-        return value
-    return "\n".join(lines[1:-1]).strip()
+def _truncate(value: Any, *, limit: int = 4000) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False, default=str)
+    return text[:limit]
 
 
 __all__ = [

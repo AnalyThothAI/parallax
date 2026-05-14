@@ -27,6 +27,7 @@ def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
         app_route = client.get("/app")
         token_route = client.get("/token/CexToken/cex_token%3AZEC")
         signal_lab_route = client.get("/signal-lab")
+        watchlist_route = client.get("/watchlist?handle=toly")
         asset = client.get("/assets/app.js")
         favicon = client.get("/favicon.svg")
         health = client.get("/healthz")
@@ -39,6 +40,8 @@ def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
     assert "text/html" in token_route.headers["content-type"]
     assert signal_lab_route.status_code == 200
     assert "text/html" in signal_lab_route.headers["content-type"]
+    assert watchlist_route.status_code == 200
+    assert "text/html" in watchlist_route.headers["content-type"]
     assert asset.status_code == 200
     assert "window.__cockpit" in asset.text
     assert favicon.status_code == 200
@@ -60,6 +63,7 @@ def test_frontend_dist_serves_browser_routes_for_spa(tmp_path):
     with TestClient(app) as client:
         token_route = client.get("/token/CexToken/cex_token%3AZEC")
         signal_lab_route = client.get("/signal-lab")
+        watchlist_route = client.get("/watchlist?handle=toly")
         missing_api = client.get("/api/not-a-route")
 
     assert token_route.status_code == 200
@@ -67,4 +71,6 @@ def test_frontend_dist_serves_browser_routes_for_spa(tmp_path):
     assert "cockpit" in token_route.text
     assert signal_lab_route.status_code == 200
     assert "text/html" in signal_lab_route.headers["content-type"]
+    assert watchlist_route.status_code == 200
+    assert "text/html" in watchlist_route.headers["content-type"]
     assert missing_api.status_code == 404

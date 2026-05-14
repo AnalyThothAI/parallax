@@ -189,6 +189,8 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
     app.add_api_route("/stocks/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/token", frontend_index, include_in_schema=False)
     app.add_api_route("/token/{path:path}", frontend_index, include_in_schema=False)
+    app.add_api_route("/watchlist", frontend_index, include_in_schema=False)
+    app.add_api_route("/watchlist/{path:path}", frontend_index, include_in_schema=False)
 
 
 def _frontend_dist_dir(frontend_dist: str | Path | None = None) -> Path | None:

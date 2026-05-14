@@ -116,6 +116,18 @@ class PulseDecisionPayload(BaseModel):
     stage_audits: tuple[StageRunAudit, ...]
 
 
+class PulseStageFailure(Exception):
+    """Raised when an agent decision stage fails.
+
+    Carries the audits collected up to and including the failed stage so the worker
+    can persist them to pulse_agent_run_steps before marking the run failed.
+    """
+
+    def __init__(self, message: str, *, audits: tuple[StageRunAudit, ...]) -> None:
+        super().__init__(message)
+        self.audits = audits
+
+
 def contains_trading_execution_instruction(text: str) -> bool:
     return bool(_FORBIDDEN_EXECUTION_RE.search(text))
 
@@ -145,6 +157,7 @@ __all__ = [
     "DecisionRoute",
     "FinalDecision",
     "PulseDecisionPayload",
+    "PulseStageFailure",
     "StageName",
     "StageRunAudit",
     "StageStatus",
