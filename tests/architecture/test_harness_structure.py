@@ -22,6 +22,7 @@ EXPECTED_GOVERNANCE = {
     "SECURITY.md",
     "RELIABILITY.md",
     "FRONTEND.md",
+    "WORKERS.md",
     "TECH_DEBT.md",
 }
 
