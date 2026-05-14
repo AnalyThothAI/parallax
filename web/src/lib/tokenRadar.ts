@@ -5,7 +5,6 @@ import type {
   FactorPoint,
   MarketContext,
   MarketObservationSnapshot,
-  RadarSortMode,
   ScoreBlock,
   ScoreContribution,
   TimingBlock,
@@ -17,17 +16,9 @@ import type {
 
 import { TOKEN_FACTOR_SNAPSHOT_SCHEMA, requireTokenFactorSnapshot } from "./tokenFactorSnapshot";
 
-export function sortTokenItems(items: TokenFlowItem[], mode: RadarSortMode): TokenFlowItem[] {
+export function sortTokenItems(items: TokenFlowItem[]): TokenFlowItem[] {
   const copy = [...items];
-  return copy.sort((a, b) => sortValue(b, mode) - sortValue(a, mode));
-}
-
-function sortValue(item: TokenFlowItem, mode: RadarSortMode): number {
-  if (mode === "heat") return item.social_heat.score;
-  if (mode === "quality") return item.discussion_quality.score;
-  if (mode === "propagation") return item.propagation.score;
-  if (mode === "timing") return (item.timing.chase_risk ? -1000 : 0) + item.timing.score;
-  return item.opportunity.score;
+  return copy.sort((a, b) => b.opportunity.score - a.opportunity.score);
 }
 
 export function countDecisions(items: TokenFlowItem[]): Record<Decision, number> {

@@ -1,5 +1,4 @@
 import type {
-  RadarSortMode,
   ScopeKey,
   SignalPulseStatusFilter,
   TokenPostRange,
@@ -14,8 +13,6 @@ export const queryKeys = {
   tokenRadarRoot: () => ["token-radar"] as const,
   tokenRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
     ["token-radar", window, scope, limit] as const,
-  tokenRadarView: (window: WindowKey, scope: ScopeKey, sort: RadarSortMode) =>
-    ["token-radar-view", window, scope, sort] as const,
   signalLabOverview: (window: WindowKey, scope: ScopeKey) =>
     ["signal-lab-overview", window, scope] as const,
   signalPulseCompact: (scope: ScopeKey, window: WindowKey) =>

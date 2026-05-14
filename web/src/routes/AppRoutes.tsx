@@ -6,10 +6,7 @@ import {
   type useLiveRouteState,
 } from "@features/live";
 import { useNotificationsController } from "@features/notifications";
-import {
-  buildWatchlistAccountCases,
-  buildWatchlistRows,
-} from "@features/watchlist";
+import { buildWatchlistAccountCases, buildWatchlistRows } from "@features/watchlist";
 import type { LivePayload } from "@lib/types";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import type { MarketTargetRef } from "@shared/socket/socketTypes";
@@ -46,7 +43,6 @@ export function AppRoutes({
     isAssetFlowLoading,
     isRecentLoading,
     marketTargets,
-    radarSortMode,
     recentReplayItems,
     scope,
     signalLabOverviewData,
@@ -204,10 +200,8 @@ export function AppRoutes({
       isAssetFlowLoading={isAssetFlowLoading}
       assetFlowError={assetFlowError}
       selectedTokenKey={null}
-      radarSortMode={radarSortMode}
       onOpenTokenSearch={selection.openTokenSearchPage}
       onSelectToken={selection.selectToken}
-      onSortModeChange={liveRoute.updateSort}
       scope={scope}
       windowKey={windowKey}
       onScopeChange={liveRoute.updateScope}

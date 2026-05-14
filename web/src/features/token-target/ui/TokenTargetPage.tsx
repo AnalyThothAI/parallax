@@ -8,11 +8,7 @@ import {
 } from "@lib/format";
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "@lib/tokenRadar";
-import type {
-  TokenSocialTimelineData,
-  TokenTimelinePost,
-  TokenTimelineStage,
-} from "@lib/types";
+import type { TokenSocialTimelineData, TokenTimelinePost, TokenTimelineStage } from "@lib/types";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { RemoteState } from "@shared/ui/RemoteState";
 import { ScoreLedger } from "@shared/ui/ScoreLedger";

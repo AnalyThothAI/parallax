@@ -1057,7 +1057,6 @@
   :global(.mobile-task-lab [data-mobile-task-panel="lab"]) {
     display: block;
   }
-
 }
 
 @media (max-width: 1279px) {
@@ -1215,5 +1214,182 @@
 
   :global(.tape-row time) {
     grid-column: 2 / -1;
+  }
+}
+
+/* Token Radar compact case layout */
+:global(.radar-toolbar) {
+  align-items: center;
+  min-height: 52px;
+  padding: 10px 14px;
+}
+
+:global(.radar-scan-title) {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  min-width: 0;
+}
+
+:global(.radar-toolbar .radar-scan-title h2) {
+  margin: 0;
+  color: var(--bone);
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+:global(.radar-scan-title span) {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+:global(.radar-toolbar p) {
+  display: none;
+}
+
+:global(.radar-head),
+:global(.radar-row) {
+  grid-template-columns: minmax(0, 1fr) 116px;
+  min-width: 0;
+}
+
+:global(.radar-head) {
+  grid-template-columns:
+    minmax(150px, 1.1fr) minmax(190px, 1fr) minmax(120px, 0.7fr) minmax(100px, 0.5fr)
+    116px;
+  margin: 0 0 8px;
+  padding: 0 10px;
+}
+
+:global(.radar-head span) {
+  display: block;
+}
+
+:global(.radar-head span:not(:first-child):not(:last-child)) {
+  display: block;
+}
+
+:global(.radar-head span:last-child) {
+  grid-column: auto;
+}
+
+:global(.radar-row) {
+  min-height: 84px;
+}
+
+:global(.radar-row-select) {
+  grid-template-columns:
+    minmax(150px, 1.1fr) minmax(145px, 0.84fr) minmax(190px, 1fr) minmax(120px, 0.72fr)
+    minmax(86px, 0.48fr);
+  grid-column: 1;
+  align-items: center;
+}
+
+:global(.radar-case-identity) {
+  align-items: center;
+}
+
+:global(.radar-token-logo) {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(7, 9, 8, 0.62);
+  object-fit: cover;
+}
+
+:global(.radar-fact) {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+:global(.radar-fact b) {
+  overflow: hidden;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:global(.radar-fact em) {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ash);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 1.32;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+:global(.social-fact b) {
+  color: var(--health);
+}
+
+:global(.market-fact b) {
+  color: var(--info);
+  font-size: 14px;
+}
+
+:global(.score-cell) {
+  align-content: center;
+  gap: 5px;
+}
+
+:global(.score) {
+  min-height: 32px;
+  font-size: 18px;
+}
+
+:global(.case-row-actions) {
+  align-content: center;
+  grid-column: 2;
+}
+
+:global(.case-row-actions .row-drilldown-button) {
+  display: inline-flex;
+  gap: 5px;
+  width: 100%;
+}
+
+:global(.case-row-actions .row-drilldown-button svg) {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 767px) {
+  :global(.radar-toolbar) {
+    align-items: stretch;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  :global(.radar-scan-title) {
+    justify-content: space-between;
+  }
+
+  :global(.radar-row) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0;
+  }
+
+  :global(.radar-row-select) {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 12px;
+  }
+
+  :global(.case-row-actions) {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    padding: 0 12px 12px;
   }
 }

@@ -1,70 +1,62 @@
 import { tokenKey } from "@lib/format";
-import type { RadarSortMode, TokenFlowItem } from "@lib/types";
+import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
+import { RadarControls } from "@shared/ui/RadarControls";
 import { RemoteState } from "@shared/ui/RemoteState";
 
 import { TokenRadarRow } from "./TokenRadarRow";
 
-const SORT_LABELS: Array<{ mode: RadarSortMode; label: string }> = [
-  { mode: "opportunity", label: "Desk pick" },
-  { mode: "heat", label: "Attention" },
-  { mode: "quality", label: "Proof" },
-  { mode: "propagation", label: "Reach" },
-  { mode: "timing", label: "Entry" },
-];
-
 type TokenRadarTableProps = {
   items: TokenFlowItem[];
   selectedKey: string | null;
-  sortMode: RadarSortMode;
+  scope: ScopeKey;
+  windowKey: WindowKey;
   isLoading: boolean;
   error?: Error | null;
   onSelect: (item: TokenFlowItem) => void;
   onOpenSearch: (item: TokenFlowItem) => void;
-  onSortModeChange: (mode: RadarSortMode) => void;
+  onScopeChange: (scope: ScopeKey) => void;
+  onWindowChange: (window: WindowKey) => void;
 };
 
-export function TokenRadarTable({
-  items,
-  selectedKey,
-  sortMode,
-  isLoading,
-  error,
-  onSelect,
-  onOpenSearch,
-  onSortModeChange,
-}: TokenRadarTableProps) {
+export function TokenRadarTable(props: TokenRadarTableProps) {
+  const {
+    items,
+    selectedKey,
+    scope,
+    windowKey,
+    isLoading,
+    error,
+    onSelect,
+    onOpenSearch,
+    onScopeChange,
+    onWindowChange,
+  } = props;
+  const resultLabel = `${items.length} live ${items.length === 1 ? "case" : "cases"}`;
+
   return (
     <section className="radar-panel" aria-label="Token Radar">
       <header className="radar-toolbar">
-        <div>
+        <div className="radar-scan-title">
           <h2>Token Radar</h2>
-          <p>快速扫“这是什么、谁在推、为什么现在、能不能行动”。</p>
+          <span>{resultLabel}</span>
         </div>
-        <div className="toolbar-controls" aria-label="token radar toolbar">
-          <div className="segmented sort-toggle" aria-label="token radar sort">
-            {SORT_LABELS.map((item) => (
-              <button
-                key={item.mode}
-                className={sortMode === item.mode ? "active" : ""}
-                onClick={() => onSortModeChange(item.mode)}
-                type="button"
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+        <div className="toolbar-controls" aria-label="token radar scan controls">
+          <RadarControls
+            scope={scope}
+            windowKey={windowKey}
+            onScopeChange={onScopeChange}
+            onWindowChange={onWindowChange}
+          />
         </div>
       </header>
 
       <div className="token-radar-table">
-        <div className="radar-head">
+        <div className="radar-head" aria-hidden="true">
           <span>Token case</span>
-          <span>Official</span>
-          <span>Community</span>
-          <span>Narrative</span>
+          <span>Social</span>
+          <span>Why now</span>
           <span>Market</span>
-          <span>Decision</span>
-          <span>Actions</span>
+          <span>Action</span>
         </div>
         {isLoading ? <RadarSkeleton /> : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}

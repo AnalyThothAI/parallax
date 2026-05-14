@@ -112,7 +112,11 @@ function profileLinks(
 ): ProfileLink[] {
   return [
     { label: "Website", href: cleanText(links.website_url), Icon: Globe },
-    { label: "X", href: cleanText(links.twitter_url) ?? twitterHref(twitterUsername), Icon: ExternalLink },
+    {
+      label: "X",
+      href: cleanText(links.twitter_url) ?? twitterHref(twitterUsername),
+      Icon: ExternalLink,
+    },
     { label: "Telegram", href: cleanText(links.telegram_url), Icon: MessageCircle },
     { label: "GMGN", href: cleanText(links.gmgn_url), Icon: Search },
     { label: "GeckoTerminal", href: cleanText(links.geckoterminal_url), Icon: ExternalLink },

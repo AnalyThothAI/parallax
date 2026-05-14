@@ -367,9 +367,10 @@ function narrativeTone(item: TokenFlowItem): TokenCaseTone {
 
 function searchHref(item: TokenFlowItem): string {
   const query =
-    item.identity.symbol ??
     item.identity.address ??
+    item.identity.inst_id ??
     item.identity.target_id ??
+    item.identity.symbol ??
     item.identity.identity_key;
   return `/search?q=${encodeURIComponent(query)}`;
 }

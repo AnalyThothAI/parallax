@@ -4,6 +4,7 @@ import { axe } from "jest-axe";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TokenRadarRow } from "./TokenRadarRow";
+import { TokenRadarTable } from "./TokenRadarTable";
 
 afterEach(() => cleanup());
 
@@ -41,11 +42,15 @@ describe("TokenRadarRow", () => {
     expect(searchButton).toBeInTheDocument();
     expect(venueLink.parentElement?.children[0]).toBe(venueLink);
     expect(venueLink.parentElement?.children[1]).toBe(searchButton);
-    expect(within(row).getByText("Identity")).toBeInTheDocument();
-    expect(within(row).getByText("Official")).toBeInTheDocument();
-    expect(within(row).getByText("Community")).toBeInTheDocument();
-    expect(within(row).getByText("Narrative")).toBeInTheDocument();
-    expect(within(row).getByText("Decision")).toBeInTheDocument();
+    expect(within(row).getByText("$TROLL")).toBeInTheDocument();
+    expect(within(row).getByText("eth · 0x111111...111111")).toBeInTheDocument();
+    expect(within(row).getByText("1 posts · 1 authors · 0 watched")).toBeInTheDocument();
+    expect(within(row).getByText(/seed/)).toBeInTheDocument();
+    expect(within(row).getByText("investigate")).toBeInTheDocument();
+    expect(within(row).queryByText("Official")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Community")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Narrative")).not.toBeInTheDocument();
+    expect(within(row).queryByText("Decision")).not.toBeInTheDocument();
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
     expect(market).toHaveTextContent("partial");
@@ -115,6 +120,35 @@ describe("TokenRadarRow", () => {
     expect(row.querySelector('[data-radar-metric="timing"]')).not.toBeInTheDocument();
     expect(row).not.toHaveTextContent("live not persisted");
   });
+
+  it("renders the compact scan bar without old sort controls or table labels", () => {
+    render(
+      <TokenRadarTable
+        error={null}
+        isLoading={false}
+        items={[mixedFreshnessToken()]}
+        scope="matched"
+        selectedKey={null}
+        windowKey="5m"
+        onOpenSearch={vi.fn()}
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Token Radar" })).toBeInTheDocument();
+    expect(screen.getByText("1 live case")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "5m" })).toHaveClass("active");
+    expect(screen.getByRole("button", { name: "watched" })).toHaveClass("active");
+
+    for (const label of ["Attention", "Proof", "Reach", "Entry"]) {
+      expect(screen.queryByRole("button", { name: label })).not.toBeInTheDocument();
+    }
+    for (const label of ["Official", "Community", "Narrative"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+  });
 });
 
 function mixedFreshnessToken(): TokenFlowItem {
@@ -177,6 +211,15 @@ function mixedFreshnessToken(): TokenFlowItem {
       status: "neutral",
       risks: [],
       market_observation_status: "partial",
+    },
+    tradeability: {
+      ...item.tradeability,
+      identity_tradeable: true,
+      market_fresh: true,
+      market_cap_present: true,
+      liquidity_present: true,
+      risks: [],
+      score: 64,
     },
   };
 }

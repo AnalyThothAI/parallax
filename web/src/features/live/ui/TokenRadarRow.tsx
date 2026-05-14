@@ -1,5 +1,5 @@
 import type { TokenFlowItem } from "@lib/types";
-import { buildTokenCaseView } from "@shared/model/tokenCase";
+import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
 import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
@@ -12,7 +12,7 @@ type TokenRadarRowProps = {
 };
 
 export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenRadarRowProps) {
-  const tokenCase = buildTokenCaseView(item);
+  const tokenCase = buildTokenRadarCompactCase(item);
 
   return (
     <article className={clsx("radar-row", selected && "selected")}>
@@ -23,46 +23,35 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
         onClick={() => onSelect(item)}
       >
         <span className="radar-case-identity" data-case-section="identity">
-          <ObsidianTokenMark label={tokenCase.label} tone={tokenCase.decision.tone} />
+          {tokenCase.logoUrl ? (
+            <img alt="" className="radar-token-logo" src={tokenCase.logoUrl} />
+          ) : (
+            <ObsidianTokenMark label={tokenCase.label} tone={tokenCase.decision.tone} />
+          )}
           <span>
-            <span className="radar-case-kicker">Identity</span>
             <span className="radar-case-symbol">
               <strong>{tokenCase.label}</strong>
-              <ObsidianPill tone={tokenCase.official.tone}>
-                {officialStatus(tokenCase)}
-              </ObsidianPill>
+              <ObsidianPill tone={tokenCase.trust.tone}>{tokenCase.trust.value}</ObsidianPill>
             </span>
-            <span className="radar-case-meta">{tokenCase.identity.detail}</span>
-            <span className="radar-case-micro">
-              <span data-radar-metric="market">
-                {tokenCase.market.value}
-                <em>{tokenCase.market.detail}</em>
-              </span>
-              <span>{tokenCase.actions.venueLabel ?? "venue pending"}</span>
-            </span>
+            <span className="radar-case-meta">{tokenCase.subtitle}</span>
           </span>
         </span>
 
-        <span className="case-cell" data-case-section="official">
-          <small>Official</small>
-          <b>{tokenCase.official.value}</b>
-          <em>{tokenCase.official.detail}</em>
+        <span className="radar-fact social-fact" data-case-section="social">
+          <b>{tokenCase.socialFact}</b>
         </span>
 
-        <span className="case-cell community-cell" data-case-section="community">
-          <small>{tokenCase.community.label}</small>
-          <b>{tokenCase.community.value}</b>
-          <em>{tokenCase.community.detail}</em>
-        </span>
-
-        <span className="case-cell narrative-cell" data-case-section="narrative">
-          <small>{tokenCase.narrative.label}</small>
-          <b>{tokenCase.narrative.value}</b>
+        <span className="radar-fact narrative-fact" data-case-section="why-now">
+          <ObsidianPill tone={tokenCase.narrative.tone}>{tokenCase.narrative.value}</ObsidianPill>
           <em>{tokenCase.narrative.detail}</em>
         </span>
 
-        <span className="score-cell" data-case-section="decision">
-          <small>Decision</small>
+        <span className="radar-fact market-fact" data-radar-metric="market">
+          <b>{tokenCase.market.value}</b>
+          <em>{tokenCase.market.detail}</em>
+        </span>
+
+        <span className="score-cell" data-case-section="action">
           <span className="score">{tokenCase.score}</span>
           <ObsidianPill tone={tokenCase.decision.tone}>{tokenCase.decision.value}</ObsidianPill>
         </span>
@@ -88,16 +77,10 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
           type="button"
           onClick={() => onOpenSearch(item)}
         >
+          <span>{tokenCase.actions.searchLabel}</span>
           <ArrowRight aria-hidden />
         </button>
       </span>
     </article>
   );
-}
-
-function officialStatus(tokenCase: ReturnType<typeof buildTokenCaseView>): string {
-  if (tokenCase.official.tone === "info" || tokenCase.official.tone === "health") {
-    return "verified";
-  }
-  return tokenCase.identity.source === "deterministic" ? "resolved" : "partial";
 }

@@ -6,7 +6,6 @@ export function CockpitApp() {
   const liveRoute = useLiveRouteState();
   const liveData = useLiveData({
     handles: liveRoute.handles,
-    radarSortMode: liveRoute.sort,
     scope: liveRoute.scope,
     windowKey: liveRoute.window,
   });

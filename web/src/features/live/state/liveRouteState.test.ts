@@ -8,7 +8,6 @@ describe("liveRouteState", () => {
       window: "1h",
       scope: "all",
       handles: "",
-      sort: "opportunity",
     });
   });
 
@@ -21,7 +20,6 @@ describe("liveRouteState", () => {
       window: "4h",
       scope: "matched",
       handles: "toly,traderpow",
-      sort: "heat",
     });
   });
 
@@ -30,17 +28,13 @@ describe("liveRouteState", () => {
       window: "24h",
       scope: "matched",
       handles: "toly",
-      sort: "quality",
     });
-    expect(search.toString()).toBe("window=24h&scope=matched&handles=toly&sort=quality");
+    expect(search.toString()).toBe("window=24h&scope=matched&handles=toly");
   });
 
   it("normalizes patches before returning next state", () => {
     expect(
-      liveRouteStateWith(
-        { window: "1h", scope: "all", handles: "", sort: "opportunity" },
-        { handles: " @Toly ", sort: "heat" },
-      ),
-    ).toEqual({ window: "1h", scope: "all", handles: "toly", sort: "heat" });
+      liveRouteStateWith({ window: "1h", scope: "all", handles: "" }, { handles: " @Toly " }),
+    ).toEqual({ window: "1h", scope: "all", handles: "toly" });
   });
 });

@@ -13,16 +13,16 @@ export function ScoreLedger({ token }: { token: TokenFlowItem | null }) {
     return null;
   }
   const items: LedgerItem[] = [
-    { key: "heat", label: "Attention", block: token.social_heat },
-    { key: "quality", label: "Discussion", block: token.discussion_quality },
-    { key: "propagation", label: "Spread", block: token.propagation },
-    { key: "timing", label: "Entry", block: token.timing },
+    { key: "heat", label: "Social demand", block: token.social_heat },
+    { key: "quality", label: "Evidence quality", block: token.discussion_quality },
+    { key: "propagation", label: "Diffusion", block: token.propagation },
+    { key: "timing", label: "Timing risk", block: token.timing },
   ];
   const alphaComponents = [
-    ["heat", "attention", token.opportunity.components.heat],
-    ["quality", "discussion", token.opportunity.components.quality],
-    ["propagation", "spread", token.opportunity.components.propagation],
-    ["timing", "entry", token.opportunity.components.timing],
+    ["heat", "demand", token.opportunity.components.heat],
+    ["quality", "quality", token.opportunity.components.quality],
+    ["propagation", "diffusion", token.opportunity.components.propagation],
+    ["timing", "timing", token.opportunity.components.timing],
   ] as const;
   const healthWarnings = dataHealthWarnings(token.factor_data_health);
   return (

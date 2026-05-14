@@ -51,11 +51,15 @@ export function TokenTargetCaseSummary({
             onWindowChange={onWindowChange}
           />
         }
-        badge={<ObsidianPill tone={tokenCase.decision.tone}>{tokenCase.decision.value}</ObsidianPill>}
+        badge={
+          <ObsidianPill tone={tokenCase.decision.tone}>{tokenCase.decision.value}</ObsidianPill>
+        }
         eyebrow="token item"
         lead={<TokenProfileCard profile={token.profile} />}
         mark={<ObsidianTokenMark label={tokenCase.label} tone={tokenCase.decision.tone} />}
-        meta={<span className="token-target-score">score {formatScore(token.opportunity.score)}</span>}
+        meta={
+          <span className="token-target-score">score {formatScore(token.opportunity.score)}</span>
+        }
         subtitle={tokenCase.subtitle}
         title={tokenLabel(token)}
       />
@@ -107,7 +111,12 @@ function TokenTargetActions({
 }) {
   return (
     <div className="token-target-actions">
-      <button className="ghost-icon-button" type="button" onClick={onBack} aria-label="Back to Radar">
+      <button
+        className="ghost-icon-button"
+        type="button"
+        onClick={onBack}
+        aria-label="Back to Radar"
+      >
         <ArrowLeft aria-hidden />
         <span>Radar</span>
       </button>

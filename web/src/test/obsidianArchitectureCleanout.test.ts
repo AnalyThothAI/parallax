@@ -81,7 +81,9 @@ describe("Obsidian Desk architecture cleanout", () => {
 
     const routeShells = collectFiles(join(srcRoot, "routes"))
       .filter((path) => extname(path) === ".tsx")
-      .filter((path) => /^export\s+\{[^}]+Route[^}]+\}\s+from\s+/.test(readFileSync(path, "utf8").trim()))
+      .filter((path) =>
+        /^export\s+\{[^}]+Route[^}]+\}\s+from\s+/.test(readFileSync(path, "utf8").trim()),
+      )
       .map((path) => relative(webRoot, path));
 
     expect(routeShells).toEqual([]);
@@ -90,7 +92,9 @@ describe("Obsidian Desk architecture cleanout", () => {
   it("removes legacy watchlist and notification routing shims", () => {
     expect(existsSync(join(srcRoot, "lib/watchlist.ts"))).toBe(false);
 
-    const notificationsController = readSource("features/notifications/useNotificationsController.ts");
+    const notificationsController = readSource(
+      "features/notifications/useNotificationsController.ts",
+    );
     expect(notificationsController).not.toContain("buildSignalLabUrl");
     expect(notificationsController).toContain("watchlistPath");
   });
@@ -133,6 +137,28 @@ describe("Obsidian Desk architecture cleanout", () => {
       });
 
     expect(drawerCss).toEqual([]);
+  });
+
+  it("keeps old Radar scoring labels out of live UI copy", () => {
+    const forbiddenLabels = ["Attention", "Proof", "Reach", "Entry"];
+    const liveUiFiles = collectFiles(join(srcRoot, "features/live/ui"))
+      .filter((path) => sourceExtensions.has(extname(path)))
+      .filter((path) => !path.endsWith(".test.tsx"))
+      .flatMap((path) => {
+        const text = readFileSync(path, "utf8");
+        return forbiddenLabels
+          .filter((label) => text.includes(label))
+          .map((label) => `${relative(webRoot, path)}: ${label}`);
+      });
+
+    expect(liveUiFiles).toEqual([]);
+  });
+
+  it("keeps Search token_result free of resolver candidate sidebar rendering", () => {
+    const searchPage = readSource("features/search/ui/SearchIntelPage.tsx");
+    const tokenPage = readSource("features/search/ui/SearchTokenIntelPage.tsx");
+
+    expect(`${searchPage}\n${tokenPage}`).not.toContain("search-sidebar-candidates");
   });
 });
 

@@ -200,24 +200,32 @@ describe("App Token Radar social heat cockpit", () => {
   it("renders radar rows with mock-aligned semantic fields and item route action", async () => {
     const { container } = renderWithQuery(<App />);
 
-    expect((await screen.findAllByText("Identity")).length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Official").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Community").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Narrative").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Market").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Decision").length).toBeGreaterThan(0);
+    expect(await screen.findByRole("heading", { name: "Token Radar" })).toBeInTheDocument();
+    expect(screen.getByText("Token case")).toBeInTheDocument();
+    expect(screen.getByText("Social")).toBeInTheDocument();
+    expect(screen.getByText("Why now")).toBeInTheDocument();
+    expect(screen.getByText("Market")).toBeInTheDocument();
+    expect(screen.getByText("Action")).toBeInTheDocument();
+    expect(screen.queryByText("Official")).not.toBeInTheDocument();
+    expect(screen.queryByText("Community")).not.toBeInTheDocument();
+    expect(screen.queryByText("Narrative")).not.toBeInTheDocument();
     expect(screen.queryByText("Heat")).not.toBeInTheDocument();
     expect(screen.queryByText("Quality")).not.toBeInTheDocument();
     expect(screen.queryByText("Propagation")).not.toBeInTheDocument();
     expect(screen.queryByText("Timing")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Attention" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Proof" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reach" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Entry" })).not.toBeInTheDocument();
     expect(screen.queryByText("EV")).not.toBeInTheDocument();
     const row = await screen.findByRole("button", { name: "Open token item $UPEG" });
     expect(row).not.toHaveClass("selected");
     expect(row).not.toHaveClass("is-selected");
     expect(within(row).getByText("$UPEG")).toBeInTheDocument();
-    expect(within(row).getByText("Official profile unavailable")).toBeInTheDocument();
-    expect(within(row).getByText("4 posts · 3 authors")).toBeInTheDocument();
-    expect(within(row).getByText("expansion · semantic catalyst snapshot")).toBeInTheDocument();
+    expect(within(row).getByText("unverified")).toBeInTheDocument();
+    expect(within(row).getByText("4 posts · 3 authors · 1 watched")).toBeInTheDocument();
+    expect(within(row).getByText("market freshness missing")).toBeInTheDocument();
+    expect(within(row).getByText("semantic catalyst snapshot · 3 informative")).toBeInTheDocument();
     expect(within(row).getByText("missing · cap missing")).toBeInTheDocument();
     expect(row.querySelector(".barline")).not.toBeInTheDocument();
     expect(screen.getAllByText("driver").length).toBeGreaterThan(0);
@@ -363,7 +371,7 @@ describe("App Token Radar social heat cockpit", () => {
         mockedGetApi.mock.calls.some(
           ([path, options]) =>
             path === "/api/search/inspect" &&
-            options?.params?.q === "UPEG" &&
+            options?.params?.q === "0x6982508145454Ce325dDbE47a25d4ec3d2311933" &&
             options?.params?.window === "24h" &&
             options?.params?.scope === "all",
         ),
@@ -388,7 +396,7 @@ describe("App Token Radar social heat cockpit", () => {
         mockedGetApi.mock.calls.some(
           ([path, options]) =>
             path === "/api/search/inspect" &&
-            options?.params?.q === "$UPEG" &&
+            options?.params?.q === "0x6982508145454Ce325dDbE47a25d4ec3d2311933" &&
             options?.params?.window === "1h" &&
             options?.params?.scope === "all",
         ),
@@ -427,17 +435,17 @@ describe("App Token Radar social heat cockpit", () => {
     const rowButton = await screen.findByRole("button", { name: "Open token item $UPEG" });
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-case-section="identity"]')).toHaveTextContent("$UPEG");
-    expect(rowButton.querySelector('[data-case-section="official"]')).toHaveTextContent(
-      "Official profile unavailable",
+    expect(rowButton.querySelector('[data-case-section="identity"]')).toHaveTextContent(
+      "unverified",
     );
-    expect(rowButton.querySelector('[data-case-section="community"]')).toHaveTextContent(
-      "4 posts · 3 authors",
+    expect(rowButton.querySelector('[data-case-section="social"]')).toHaveTextContent(
+      "4 posts · 3 authors · 1 watched",
     );
-    expect(rowButton.querySelector('[data-case-section="narrative"]')).toHaveTextContent(
-      "expansion · semantic catalyst snapshot",
-    );
+    const whyNow = rowButton.querySelector('[data-case-section="why-now"]');
+    expect(whyNow).toHaveTextContent("market freshness missing");
+    expect(whyNow).toHaveTextContent("semantic catalyst snapshot · 3 informative");
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("missing");
-    expect(rowButton.querySelector('[data-case-section="decision"]')).toHaveTextContent("driver");
+    expect(rowButton.querySelector('[data-case-section="action"]')).toHaveTextContent("driver");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toBeInTheDocument();
     expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
   });
@@ -805,7 +813,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(item).getAllByText("market freshness missing").length).toBeGreaterThan(0);
     expect(container.querySelector(".detail-drawer")).not.toBeInTheDocument();
     expect(container.querySelector(".tabs")).not.toBeInTheDocument();
-    });
+  });
 
   it("opens the item evidence sections by default and requests timeline/posts", async () => {
     renderWithQuery(<App />);
@@ -980,9 +988,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(postRange).getByRole("button", { name: "window" })).toHaveClass("active");
     expect(within(postRange).getByRole("button", { name: "ignition" })).toBeInTheDocument();
     expect(within(postRange).getByRole("button", { name: "history" })).toBeInTheDocument();
-    expect(
-      await screen.findByText("3 total · 3 loaded · score window 1h"),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("3 total · 3 loaded · score window 1h")).toBeInTheDocument();
 
     mockedGetApi.mockClear();
     fireEvent.click(within(postRange).getByRole("button", { name: "history" }));
@@ -1204,7 +1210,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.queryByText(["missing", "market"].join("_"))).not.toBeInTheDocument();
   });
 
-  it("dedupes replay/live tape rows and token tape click does not change sort mode", async () => {
+  it("dedupes replay/live tape rows and token tape click opens the item case", async () => {
     renderWithQuery(<App />);
 
     await screen.findByText("实时信号 Tape");
@@ -1213,8 +1219,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getAllByText("@traderpow -> $UPEG")).toHaveLength(1);
     expect(within(tape).getByText("$UPEG watched account evidence")).toBeInTheDocument();
     await screen.findByRole("button", { name: "Open token item $UPEG" });
-    fireEvent.click(screen.getByRole("button", { name: "Attention" }));
-    expect(screen.getByRole("button", { name: "Attention" })).toHaveClass("active");
+    expect(screen.queryByRole("button", { name: "Attention" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("@traderpow -> $UPEG"));
     expect(await screen.findByRole("region", { name: "Token item $UPEG" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Timeline" })).not.toBeInTheDocument();
@@ -1225,8 +1230,7 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     const tokenButton = await screen.findByRole("button", { name: "Open token item $UPEG" });
-    expect(within(tokenButton).getByText("Community")).toBeInTheDocument();
-    expect(within(tokenButton).getByText("4 posts · 3 authors")).toBeInTheDocument();
+    expect(within(tokenButton).getByText("4 posts · 3 authors · 1 watched")).toBeInTheDocument();
     expect(within(tokenButton).getByText("missing · cap missing")).toBeInTheDocument();
   });
 

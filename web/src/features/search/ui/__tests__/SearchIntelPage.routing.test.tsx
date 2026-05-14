@@ -1,4 +1,5 @@
 import { setAuthToken } from "@lib/api/client";
+import type { SearchInspectData } from "@lib/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { axe } from "jest-axe";
@@ -44,20 +45,24 @@ describe("SearchIntelPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: "Search case $RKC" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("region", { name: "Token intelligence for RKC" }),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("navigation", { name: "Token profile links" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("group", { name: "search window" })).toBeInTheDocument();
     expect(await screen.findByText("项目总结")).toBeInTheDocument();
     expect(screen.getByText("传播")).toBeInTheDocument();
     expect(screen.getByText("多头观点")).toBeInTheDocument();
     expect(screen.getByText("空头观点")).toBeInTheDocument();
     expect(screen.getByText("1H OHLC")).toBeInTheDocument();
     expect(screen.getByText("24h Evidence Stream")).toBeInTheDocument();
-    expect(screen.getByText(/Runtime narrative/)).toBeInTheDocument();
-    for (const link of within(
-      screen.getByRole("navigation", { name: "Search sections" }),
-    ).getAllByRole("link")) {
-      const id = link.getAttribute("href")?.replace("#", "");
-      expect(id).toBeTruthy();
-      expect(document.getElementById(id as string)).toBeInTheDocument();
-    }
+    expect(screen.getAllByText(/Runtime narrative/).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("navigation", { name: "Search sections" })).not.toBeInTheDocument();
+    expect(screen.queryByText("candidates")).not.toBeInTheDocument();
+    expect(screen.queryByText("94% confidence")).not.toBeInTheDocument();
+    expect(container.querySelector(".search-sidebar-candidates")).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(apiMock.readApi).toHaveBeenCalledWith(
@@ -68,57 +73,106 @@ describe("SearchIntelPage", () => {
       );
     });
     expect(await axe(container)).toHaveNoViolations();
+  }, 10_000);
+
+  it("keeps candidate compare for ambiguous search results", async () => {
+    const base = searchInspectData();
+    const tokenResult = requiredTokenResult(base);
+    const data: SearchInspectData = {
+      ...base,
+      query: { ...base.query, result_kind: "ambiguous_result" },
+      token_result: null,
+      ambiguous_result: {
+        candidates: [
+          {
+            target_type: "Asset",
+            target_id: "asset:solana:rkc",
+            symbol: "RKC",
+            status: "resolved",
+            source: "asset_identity_current",
+            reason: "CANONICAL_SYMBOL_MATCH",
+          },
+          {
+            target_type: "Asset",
+            target_id: "asset:solana:rocky",
+            symbol: "ROCKY",
+            status: "candidate",
+            source: "asset_identity_current",
+            reason: "FUZZY_SYMBOL_MATCH",
+          },
+        ],
+        summary: { posts: 9, authors: 4 },
+        items: [],
+        agent_brief: tokenResult.agent_brief,
+      },
+    };
+    apiMock.readApiImpl = async () => ok(data);
+
+    renderAt("/search?q=%24RKC&window=24h&scope=all");
+
+    expect(await screen.findByText("Ambiguous query")).toBeInTheDocument();
+    const compare = screen.getByRole("heading", { name: "Candidate Compare" }).closest("section");
+    expect(compare).toBeTruthy();
+    expect(within(compare as HTMLElement).getByText("$RKC")).toBeInTheDocument();
+    expect(within(compare as HTMLElement).getByText("$ROCKY")).toBeInTheDocument();
   });
 
   it("uses market cap as the primary DEX market metric in search details", async () => {
-    const data = searchInspectData() as any;
-    data.token_result.radar_item = {
-      target: {
-        target_type: "Asset",
-        target_id: "asset:solana:rkc",
-      },
-      score: {
-        rank_score: 74,
-        recommended_decision: "token_watch",
-      },
-      factor_snapshot: {
-        composite: {
-          rank_score: 74,
-          recommended_decision: "token_watch",
+    const base = searchInspectData();
+    const tokenResult = requiredTokenResult(base);
+    const data: SearchInspectData = {
+      ...base,
+      token_result: {
+        ...tokenResult,
+        radar_item: {
+          target: {
+            target_type: "Asset",
+            target_id: "asset:solana:rkc",
+          },
+          score: {
+            rank_score: 74,
+            recommended_decision: "token_watch",
+          },
+          factor_snapshot: {
+            composite: {
+              rank_score: 74,
+              recommended_decision: "token_watch",
+            },
+            gates: {
+              max_decision: "token_watch",
+            },
+            data_health: {
+              market: "live",
+              identity: "ready",
+            },
+            market: {
+              market_cap_usd: 33_000_000,
+            },
+          },
+          data_health: {
+            market: "live",
+            identity: "ready",
+          },
+          market: marketContextFixture({
+            event_anchor: marketObservationFixture({
+              target_type: "Asset",
+              target_id: "asset:solana:rkc",
+              source: "event_anchor",
+              provider: "gmgn_dex_quote",
+              price_usd: 0.007,
+              market_cap_usd: 33_000_000,
+            }),
+            decision_latest: marketObservationFixture({
+              target_type: "Asset",
+              target_id: "asset:solana:rkc",
+              source: "decision_latest",
+              provider: "okx_dex_ws_price_info",
+              price_usd: 0.0078,
+              market_cap_usd: 51_000_000,
+            }),
+          }),
         },
-        gates: {
-          max_decision: "token_watch",
-        },
-        data_health: {
-          market: "live",
-          identity: "ready",
-        },
-        market: {
-          market_cap_usd: 33_000_000,
-        },
       },
-      data_health: {
-        market: "live",
-        identity: "ready",
-      },
-      market: marketContextFixture({
-        event_anchor: marketObservationFixture({
-          target_type: "Asset",
-          target_id: "asset:solana:rkc",
-          source: "event_anchor",
-          provider: "gmgn_dex_quote",
-          price_usd: 0.007,
-          market_cap_usd: 33_000_000,
-        }),
-        decision_latest: marketObservationFixture({
-          target_type: "Asset",
-          target_id: "asset:solana:rkc",
-          source: "decision_latest",
-          provider: "okx_dex_ws_price_info",
-          price_usd: 0.0078,
-          market_cap_usd: 51_000_000,
-        }),
-      }),
     };
     apiMock.readApiImpl = async () => ok(data);
 
@@ -130,7 +184,14 @@ describe("SearchIntelPage", () => {
   });
 });
 
-function searchInspectData() {
+function requiredTokenResult(data: SearchInspectData) {
+  if (!data.token_result) {
+    throw new Error("Search inspect fixture is missing token_result");
+  }
+  return data.token_result;
+}
+
+function searchInspectData(): SearchInspectData {
   return {
     query: {
       q: "$RKC",
@@ -190,12 +251,7 @@ function searchInspectData() {
           peak_new_authors_per_bucket: 5,
           reproduction_rate: null,
         },
-        market_overlay: {
-          price_series_type: "ohlc",
-          candle_status: "ready",
-          candle_bar: "1H",
-          candles: [],
-        },
+        market_overlay: {},
         stages: [],
         buckets: [
           {
@@ -233,17 +289,44 @@ function searchInspectData() {
           {
             event_id: "ev_482",
             handle: "toly",
-            author_handle: "toly",
             text: "Runtime narrative validates $RKC",
             received_at_ms: 1_700_000_000_000,
             stage_phase: "expansion",
             is_watched: true,
             price: { status: "ready", price_usd: 0.0078 },
-            post_quality: { score_version: "post_quality_v1", score: 80 },
+            post_quality: {
+              score_version: "post_quality_v1",
+              score: 80,
+              reasons: [],
+              risks: [],
+              contributions: [],
+              risk_caps: [],
+            },
           },
         ],
       },
       radar_item: null,
+      profile: {
+        status: "ready",
+        provider: "gmgn",
+        identity: {
+          symbol: "RKC",
+          name: "Runtime Coin",
+          logo_url: null,
+          description: "Runtime narrative token profile",
+        },
+        links: {
+          website_url: "https://rkc.example",
+          twitter_url: "https://x.com/rkc",
+          gmgn_url: "https://gmgn.ai/sol/token/rkc",
+          geckoterminal_url: "https://www.geckoterminal.com/solana/pools/rkc",
+        },
+        source: {
+          provider: "gmgn",
+          raw_available: true,
+          last_error: null,
+        },
+      },
       market_overlay: {
         price_series_type: "ohlc",
         candle_status: "ready",

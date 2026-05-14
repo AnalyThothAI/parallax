@@ -1,13 +1,6 @@
 import { getApi, getBootstrap, setAuthToken } from "@lib/api/client";
 import { countDecisions, sortTokenItems, tokenRadarItems } from "@lib/tokenRadar";
-import type {
-  RadarSortMode,
-  RecentData,
-  ScopeKey,
-  SignalPulseData,
-  StatusData,
-  WindowKey,
-} from "@lib/types";
+import type { RecentData, ScopeKey, SignalPulseData, StatusData, WindowKey } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -21,12 +14,11 @@ const SIGNAL_LAB_COMPACT_SCOPE = "all";
 
 type UseLiveDataArgs = {
   handles: string;
-  radarSortMode: RadarSortMode;
   scope: ScopeKey;
   windowKey: WindowKey;
 };
 
-export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiveDataArgs) {
+export function useLiveData({ handles, scope, windowKey }: UseLiveDataArgs) {
   const [token, updateToken] = useState("");
 
   const bootstrapQuery = useQuery({
@@ -100,10 +92,7 @@ export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiv
     () => tokenRadarItems(assetFlowQuery.data?.data, windowKey, scope),
     [assetFlowQuery.data?.data, scope, windowKey],
   );
-  const tokenItems = useMemo(
-    () => sortTokenItems(rawTokenItems, radarSortMode),
-    [rawTokenItems, radarSortMode],
-  );
+  const tokenItems = useMemo(() => sortTokenItems(rawTokenItems), [rawTokenItems]);
   const marketTargets = useMemo(
     () =>
       rawTokenItems.flatMap((item) => {
@@ -128,7 +117,6 @@ export function useLiveData({ handles, radarSortMode, scope, windowKey }: UseLiv
     isAssetFlowLoading: assetFlowQuery.isPending,
     isRecentLoading: recentQuery.isPending,
     marketTargets,
-    radarSortMode,
     recentReplayItems: recentQuery.data?.data.items ?? [],
     replayLimit,
     scope,

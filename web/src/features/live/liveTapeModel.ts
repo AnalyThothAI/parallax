@@ -95,7 +95,7 @@ export function tokenTapeReason(token: TokenFlowItem): string {
 function tokenTapeBody(item: TokenFlowItem): string {
   return [
     `${compactNumber(item.social_heat.mentions)} 帖`,
-    `Attention ${compactNumber(item.social_heat.score)}`,
+    `score ${compactNumber(item.opportunity.score)}`,
     `作者 ${compactNumber(item.propagation.independent_authors)}`,
     item.timing.status === "market_pending"
       ? "市场观测处理中"

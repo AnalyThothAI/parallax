@@ -1,29 +1,20 @@
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
-import type { RadarSortMode, ScopeKey, WindowKey } from "@lib/types";
+import type { ScopeKey, WindowKey } from "@lib/types";
 import { useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 
 const VALID_SCOPES = new Set<ScopeKey>(["all", "matched"]);
-const VALID_SORTS = new Set<RadarSortMode>([
-  "opportunity",
-  "heat",
-  "quality",
-  "propagation",
-  "timing",
-]);
 
 export type LiveRouteState = {
   window: WindowKey;
   scope: ScopeKey;
   handles: string;
-  sort: RadarSortMode;
 };
 
 export const LIVE_ROUTE_DEFAULTS: LiveRouteState = {
   window: "1h",
   scope: "all",
   handles: "",
-  sort: "opportunity",
 };
 
 export function parseLiveRouteState(searchParams: URLSearchParams): LiveRouteState {
@@ -31,7 +22,6 @@ export function parseLiveRouteState(searchParams: URLSearchParams): LiveRouteSta
     window: parseWindow(searchParams.get("window")),
     scope: parseScope(searchParams.get("scope")),
     handles: normalizeHandles(searchParams.get("handles") ?? ""),
-    sort: parseSort(searchParams.get("sort")),
   };
 }
 
@@ -41,7 +31,6 @@ export function serializeLiveRouteState(state: LiveRouteState): URLSearchParams 
   if (normalized.window !== LIVE_ROUTE_DEFAULTS.window) params.set("window", normalized.window);
   if (normalized.scope !== LIVE_ROUTE_DEFAULTS.scope) params.set("scope", normalized.scope);
   if (normalized.handles) params.set("handles", normalized.handles);
-  if (normalized.sort !== LIVE_ROUTE_DEFAULTS.sort) params.set("sort", normalized.sort);
   return params;
 }
 
@@ -63,7 +52,6 @@ export function useLiveRouteState() {
     updateWindow: (window: WindowKey) => update({ window }),
     updateScope: (scope: ScopeKey) => update({ scope }),
     updateHandles: (handles: string) => update({ handles }),
-    updateSort: (sort: RadarSortMode) => update({ sort }),
   };
 }
 
@@ -72,7 +60,6 @@ function normalizeLiveRouteState(routeState: LiveRouteState): LiveRouteState {
     window: parseWindow(routeState.window),
     scope: parseScope(routeState.scope),
     handles: normalizeHandles(routeState.handles),
-    sort: parseSort(routeState.sort),
   };
 }
 
@@ -86,12 +73,6 @@ function parseScope(value: string | null): ScopeKey {
   return value && VALID_SCOPES.has(value as ScopeKey)
     ? (value as ScopeKey)
     : LIVE_ROUTE_DEFAULTS.scope;
-}
-
-function parseSort(value: string | null): RadarSortMode {
-  return value && VALID_SORTS.has(value as RadarSortMode)
-    ? (value as RadarSortMode)
-    : LIVE_ROUTE_DEFAULTS.sort;
 }
 
 function normalizeHandles(value: string): string {

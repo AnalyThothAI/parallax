@@ -783,7 +783,6 @@
   :global(.center-column) {
     border-right: 0;
   }
-
 }
 
 @media (max-width: 767px) {
