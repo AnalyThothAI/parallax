@@ -159,6 +159,50 @@
   background: var(--opportunity);
 }
 
+.bars span[data-now="true"] {
+  outline: 1px solid var(--opportunity-ink);
+  outline-offset: -1px;
+}
+
+.burstAnchors {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+}
+
+.burstAnchors > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.burstAnchors dt {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  margin: 0;
+}
+
+.burstAnchors[data-anchor="peak"] dt,
+.burstAnchors > div[data-anchor="peak"] dt {
+  color: var(--opportunity-ink);
+}
+
+.burstAnchors dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--bone);
+}
+
+.burstAnchors > div[data-anchor="now"] dd {
+  color: var(--opportunity-ink);
+}
+
 .freshness {
   display: grid;
   align-content: start;

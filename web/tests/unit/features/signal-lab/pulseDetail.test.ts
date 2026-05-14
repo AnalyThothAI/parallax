@@ -62,6 +62,43 @@ describe("buildPulseDetailView", () => {
     expect(view.market.staleNotice).toMatch(/decision_latest stale/);
   });
 
+  it("enriches factor family breakdowns with all spec'd rows", () => {
+    const heat = view.families[0];
+    expect(heat.breakdown.map((row) => row.label)).toEqual([
+      "mentions 1h / 4h / 24h",
+      "unique authors",
+      "attention surprise",
+      "watched seed mentions",
+    ]);
+
+    const propagation = view.families[1];
+    expect(propagation.breakdown.map((row) => row.label)).toEqual([
+      "independent authors",
+      "time to 2nd / 3rd author",
+      "top author share",
+      "duplicate text share",
+      "watched / kol authors",
+    ]);
+    const topAuthor = propagation.breakdown.find((row) => row.label === "top author share");
+    expect(topAuthor?.value).toMatch(/← @cache100x/);
+    expect(topAuthor?.tone).toBe("warn");
+
+    const semantic = view.families[2];
+    expect(semantic.breakdown.map((row) => row.label)).toEqual([
+      "llm covered mentions",
+      "direction mix",
+      "impact / novelty",
+    ]);
+
+    const timing = view.families[3];
+    expect(timing.breakdown.map((row) => row.label)).toEqual([
+      "price change before social",
+      "price change since social",
+      "dex floor",
+    ]);
+    expect(timing.breakdown.find((row) => row.label === "dex floor")?.value).toBe("ready");
+  });
+
   it("groups evidence and classifies authors", () => {
     expect(view.evidence.groups.map((group) => group.id)).toContain("burst_window");
     expect(view.evidence.totalUniqueAuthors).toBe(3);

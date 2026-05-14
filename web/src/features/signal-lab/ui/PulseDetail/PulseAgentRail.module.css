@@ -16,15 +16,22 @@
 
 .rail h2,
 .rail h3,
+.rail h4,
 .rail p,
 .rail dl,
 .rail ul {
   margin: 0;
 }
 
+.rail > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
 .rail h2,
-.stage h3,
-.replay h3 {
+.stage h3 {
   color: var(--bone);
   font-size: 13px;
   text-transform: uppercase;
@@ -34,7 +41,7 @@
 .metric dt,
 .replay dt,
 .replay dd,
-.stage span {
+.stage > header span {
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
@@ -60,33 +67,56 @@
 }
 
 .mismatch p,
-.stage p,
-.stage li {
+.stage > p {
   color: var(--ash);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .stage {
   display: grid;
   gap: 8px;
+  border-left-width: 3px;
 }
 
-.stage header {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  align-items: center;
+.stage[data-tone="info"] {
+  border-left-color: var(--info);
+}
+
+.stage[data-tone="warn"] {
+  border-left-color: var(--opportunity);
+}
+
+.stage[data-tone="agent"] {
+  border-left-color: var(--agent);
 }
 
 .stage[data-status="failed"] {
   border-color: var(--risk-line);
 }
 
-.metric {
+.stage[data-status="skipped"] {
+  opacity: 0.62;
+}
+
+.stage > header {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  gap: 8px;
+  align-items: center;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 12px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .metric dd {
@@ -94,26 +124,125 @@
   color: var(--bone);
   font-family: var(--mono);
   font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.stage ul {
+.metric dd small {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--ash);
+}
+
+.metric[data-tone="info"] dd {
+  color: var(--info-ink);
+}
+
+.metric[data-tone="warn"] dd {
+  color: var(--opportunity-ink);
+}
+
+.metric[data-tone="risk"] dd {
+  color: var(--risk-ink);
+}
+
+.metric[data-tone="agent"] dd {
+  color: var(--agent-ink);
+}
+
+.bullets {
+  display: grid;
+  gap: 4px;
+}
+
+.bullets h4 {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.bullets ul {
   display: grid;
   gap: 5px;
   padding-left: 16px;
 }
 
+.bullets li {
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.bullets[data-tone="warn"] li {
+  color: var(--opportunity-ink);
+}
+
+.bullets[data-tone="risk"] li {
+  color: var(--risk-ink);
+}
+
+.empty {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-style: italic;
+}
+
+.skipped {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-style: italic;
+}
+
+.replay {
+  padding: 0;
+  background: transparent;
+  border-color: var(--line);
+}
+
+.replay summary {
+  cursor: pointer;
+  padding: 10px 11px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ash);
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.replay summary::-webkit-details-marker {
+  display: none;
+}
+
+.replay summary::before {
+  content: "▸ ";
+  color: var(--dim);
+  margin-right: 4px;
+}
+
+.replay[open] summary::before {
+  content: "▾ ";
+}
+
 .replay dl {
   display: grid;
   gap: 5px;
+  padding: 0 11px 11px;
 }
 
 .replay dl div {
   display: grid;
-  grid-template-columns: 62px minmax(0, 1fr);
-  gap: 8px;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 10px;
 }
 
 .replay dd {
+  margin: 0;
+  color: var(--bone);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

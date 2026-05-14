@@ -200,11 +200,15 @@ export function buildPulseDetailView({
   const burst = buildBurst(events, now);
   const evidence = buildEvidence(item, events, burst);
   const agent = buildAgent(item);
+  const topAuthorHandle =
+    evidence.concentration.segments[0]?.share && evidence.concentration.segments[0].share >= 0.3
+      ? evidence.concentration.segments[0].handle
+      : null;
   return {
     candidateId: item.candidate_id,
     hero: buildHero(item, burst, agent, now),
     timeline: { nodes: buildTimeline(item, burst, now) },
-    families: buildFamilies(item),
+    families: buildFamilies(item, topAuthorHandle),
     market: buildMarket(item),
     evidence,
     agent,
@@ -376,7 +380,10 @@ function buildTimeline(item: SignalPulseItem, burst: BurstHistogram, now: number
   return nodes;
 }
 
-function buildFamilies(item: SignalPulseItem): FactorFamilyView[] {
+function buildFamilies(
+  item: SignalPulseItem,
+  topAuthorHandle: string | null,
+): FactorFamilyView[] {
   const order: TokenFactorFamilyKey[] = [
     "social_heat",
     "social_propagation",
@@ -396,6 +403,8 @@ function buildFamilies(item: SignalPulseItem): FactorFamilyView[] {
       item.factor_snapshot.families[id],
       item.factor_snapshot.normalization.factor_ranks?.[id],
       item.factor_snapshot.normalization.cohort_size,
+      item.factor_snapshot.market.readiness.dex_floor_status ?? null,
+      topAuthorHandle,
     ),
   );
 }
@@ -406,6 +415,8 @@ function buildFamily(
   family: TokenFactorFamily,
   rank: unknown,
   cohortSize: number | null | undefined,
+  dexFloorStatus: string | null,
+  topAuthorHandle: string | null,
 ): FactorFamilyView {
   const facts = family.facts;
   const dataHealth = family.data_health ?? "missing";
@@ -426,10 +437,20 @@ function buildFamily(
             : "n/a",
         tone: num(facts.baseline_sample_count) < 10 ? "warn" : "neutral",
       },
+      {
+        label: "watched seed mentions",
+        value: String(num(facts.watched_mentions)),
+        tone: num(facts.watched_mentions) > 0 ? "health" : "neutral",
+      },
     );
   }
   if (id === "social_propagation") {
     const topAuthorShare = typeof facts.top_author_share === "number" ? facts.top_author_share : 0;
+    const topAuthorTone: Tone = topAuthorShare >= 0.7 ? "risk" : topAuthorShare >= 0.5 ? "warn" : "neutral";
+    const topAuthorSuffix = topAuthorHandle ? ` ← @${topAuthorHandle}` : "";
+    const duplicateShare =
+      typeof facts.duplicate_text_share === "number" ? facts.duplicate_text_share : null;
+    const watchedCount = num(facts.watched_author_count);
     breakdown.push(
       { label: "independent authors", value: String(num(facts.independent_authors)), tone: "neutral" },
       {
@@ -441,8 +462,18 @@ function buildFamily(
       },
       {
         label: "top author share",
-        value: topAuthorShare.toFixed(2),
-        tone: topAuthorShare >= 0.7 ? "risk" : topAuthorShare >= 0.5 ? "warn" : "neutral",
+        value: `${topAuthorShare.toFixed(2)}${topAuthorSuffix}`,
+        tone: topAuthorTone,
+      },
+      {
+        label: "duplicate text share",
+        value: duplicateShare != null ? duplicateShare.toFixed(2) : "n/a",
+        tone: duplicateShare != null && duplicateShare >= 0.3 ? "warn" : "neutral",
+      },
+      {
+        label: "watched / kol authors",
+        value: String(watchedCount),
+        tone: watchedCount > 0 ? "health" : "neutral",
       },
     );
   }
@@ -453,7 +484,16 @@ function buildFamily(
         value: `${num(facts.llm_covered_mentions)} / ${num(facts.mentions)}`,
         tone: num(facts.llm_covered_mentions) === 0 ? "risk" : "neutral",
       },
-      { label: "direction mix", value: "n/a", tone: "neutral" },
+      {
+        label: "direction mix",
+        value: dataHealth === "missing" ? "n/a (missing)" : "see raw",
+        tone: dataHealth === "missing" ? "risk" : "neutral",
+      },
+      {
+        label: "impact / novelty",
+        value: dataHealth === "missing" ? "n/a (missing)" : "see raw",
+        tone: dataHealth === "missing" ? "risk" : "neutral",
+      },
     );
   }
   if (id === "timing_risk") {
@@ -473,6 +513,11 @@ function buildFamily(
             ? `${facts.price_change_since_social_pct.toFixed(2)}%`
             : "n/a",
         tone: typeof facts.price_change_since_social_pct === "number" ? "neutral" : "risk",
+      },
+      {
+        label: "dex floor",
+        value: dexFloorStatus ?? "unknown",
+        tone: dexFloorStatus === "ready" || dexFloorStatus === "passed" ? "health" : dexFloorStatus ? "warn" : "neutral",
       },
     );
   }
