@@ -969,7 +969,7 @@
 | `error` | `TEXT` | True | `None` |
 | `started_at_ms` | `BIGINT` | False | `None` |
 | `finished_at_ms` | `BIGINT` | False | `None` |
-| `outcome` | `TEXT` | False | `'running'::text` |
+| `outcome` | `TEXT` | False | `None` |
 | `decision_route` | `TEXT` | False | `'research_only'::text` |
 | `decision_stage_count` | `BIGINT` | False | `0` |
 | `harness_version` | `TEXT` | False | `'pulse-decision-harness-v1'::text` |
