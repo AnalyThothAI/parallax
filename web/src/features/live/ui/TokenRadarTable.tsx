@@ -56,7 +56,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
           <span>Social</span>
           <span>Why now</span>
           <span>Market</span>
-          <span>Action</span>
+          <span>Score</span>
         </div>
         {isLoading ? <RadarSkeleton /> : null}
         {error ? <RemoteState.Error error={`Token Radar 暂不可用 · ${error.message}`} /> : null}

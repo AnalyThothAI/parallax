@@ -1,9 +1,8 @@
 import type { TokenFlowItem } from "@lib/types";
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
-import { TokenProfileLinks } from "@shared/ui/TokenProfileCard";
-import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
+import { ObsidianTokenMark } from "@shared/ui/case-file";
 import clsx from "clsx";
-import { ArrowRight } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Minus } from "lucide-react";
 
 type TokenRadarRowProps = {
   item: TokenFlowItem;
@@ -16,7 +15,10 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
   const tokenCase = buildTokenRadarCompactCase(item);
 
   return (
-    <article className={clsx("radar-row", selected && "selected")}>
+    <article
+      aria-label={`Token Radar item ${tokenCase.label}`}
+      className={clsx("radar-row", selected && "selected")}
+    >
       <button
         aria-label={`Open token item ${tokenCase.label}`}
         className={clsx("radar-row-select", selected && "selected")}
@@ -27,12 +29,11 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
           {tokenCase.logoUrl ? (
             <img alt="" className="radar-token-logo" src={tokenCase.logoUrl} />
           ) : (
-            <ObsidianTokenMark label={tokenCase.label} tone={tokenCase.decision.tone} />
+            <ObsidianTokenMark label={tokenCase.label} tone={tokenCase.markTone} />
           )}
           <span>
             <span className="radar-case-symbol">
               <strong>{tokenCase.label}</strong>
-              <ObsidianPill tone={tokenCase.trust.tone}>{tokenCase.trust.value}</ObsidianPill>
             </span>
             <span className="radar-case-meta">{tokenCase.subtitle}</span>
           </span>
@@ -40,55 +41,56 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
 
         <span className="radar-fact social-fact" data-case-section="social">
           <b>{tokenCase.socialFact}</b>
+          <em>{tokenCase.socialDetail}</em>
         </span>
 
         <span className="radar-fact narrative-fact" data-case-section="why-now">
-          <ObsidianPill tone={tokenCase.narrative.tone}>{tokenCase.narrative.value}</ObsidianPill>
+          <b>{tokenCase.narrative.value}</b>
           <em>{tokenCase.narrative.detail}</em>
         </span>
 
         <span className="radar-fact market-fact" data-radar-metric="market">
-          <b>{tokenCase.market.value}</b>
-          <em>{tokenCase.market.detail}</em>
-        </span>
-
-        <span className="score-cell" data-case-section="action">
-          <span className="score">{tokenCase.score}</span>
-          <ObsidianPill tone={tokenCase.decision.tone}>{tokenCase.decision.value}</ObsidianPill>
+          <span>
+            <b>{tokenCase.market.value}</b>
+            <em>{tokenCase.market.detail}</em>
+          </span>
+          <span className={clsx("market-move", tokenCase.marketMove.direction)}>
+            {tokenCase.marketMove.direction === "up" ? <ArrowUpRight aria-hidden /> : null}
+            {tokenCase.marketMove.direction === "down" ? <ArrowDownRight aria-hidden /> : null}
+            {tokenCase.marketMove.direction === "flat" ? <Minus aria-hidden /> : null}
+            <b>{tokenCase.marketMove.value}</b>
+          </span>
         </span>
       </button>
 
-      <div className="case-row-actions" data-radar-action="venue">
-        <TokenProfileLinks
-          ariaLabel={`Official links for ${tokenCase.label}`}
-          compact
-          includeLabels={["Website", "X"]}
-          links={item.profile?.links}
-          maxLinks={2}
-        />
-        {tokenCase.actions.venueHref ? (
-          <a
-            aria-label={`Open ${tokenCase.label} on ${tokenCase.actions.venueLabel}`}
-            className="venue-link"
-            href={tokenCase.actions.venueHref}
-            rel="noreferrer"
-            target="_blank"
-          >
-            {tokenCase.actions.venueLabel}
-          </a>
-        ) : null}
-        {!tokenCase.actions.venueHref ? <span className="muted">-</span> : null}
+      {tokenCase.externalLinks.length ? (
+        <nav className="radar-case-links" aria-label={`External links for ${tokenCase.label}`}>
+          {tokenCase.externalLinks.map((link) => (
+            <a
+              className={clsx("radar-case-link", link.tone)}
+              href={link.href}
+              key={`${link.label}:${link.href}`}
+              rel="noreferrer"
+              target="_blank"
+            >
+              {link.label}
+            </a>
+          ))}
+        </nav>
+      ) : null}
+
+      <span className="score-cell" data-case-section="action">
+        <span className="score">{tokenCase.score}</span>
         <button
           aria-label={`Open Search Intel for ${tokenCase.label}`}
           className="row-drilldown-button"
-          title={tokenCase.actions.searchLabel}
+          title={tokenCase.searchTitle}
           type="button"
           onClick={() => onOpenSearch(item)}
         >
-          <span>{tokenCase.actions.searchLabel}</span>
           <ArrowRight aria-hidden />
         </button>
-      </div>
+      </span>
     </article>
   );
 }

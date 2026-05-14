@@ -205,7 +205,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(screen.getByText("Social")).toBeInTheDocument();
     expect(screen.getByText("Why now")).toBeInTheDocument();
     expect(screen.getByText("Market")).toBeInTheDocument();
-    expect(screen.getByText("Action")).toBeInTheDocument();
+    expect(screen.getByText("Score")).toBeInTheDocument();
     expect(screen.queryByText("Official")).not.toBeInTheDocument();
     expect(screen.queryByText("Community")).not.toBeInTheDocument();
     expect(screen.queryByText("Narrative")).not.toBeInTheDocument();
@@ -222,13 +222,16 @@ describe("App Token Radar social heat cockpit", () => {
     expect(row).not.toHaveClass("selected");
     expect(row).not.toHaveClass("is-selected");
     expect(within(row).getByText("$UPEG")).toBeInTheDocument();
-    expect(within(row).getByText("unverified")).toBeInTheDocument();
-    expect(within(row).getByText("4 posts · 3 authors · 1 watched")).toBeInTheDocument();
-    expect(within(row).getByText("market freshness missing")).toBeInTheDocument();
-    expect(within(row).getByText("semantic catalyst snapshot · 3 informative")).toBeInTheDocument();
+    expect(within(row).queryByText("unverified")).not.toBeInTheDocument();
+    expect(within(row).getByText("4 帖 · 3 作者")).toBeInTheDocument();
+    expect(within(row).getByText("关注源 1 · 较前窗 +4")).toBeInTheDocument();
+    expect(within(row).getByText("风险：市场新鲜度不足")).toBeInTheDocument();
+    expect(within(row).getByText("扩散中 · 3 条有效讨论")).toBeInTheDocument();
     expect(within(row).getByText("missing · cap missing")).toBeInTheDocument();
     expect(row.querySelector(".barline")).not.toBeInTheDocument();
-    expect(screen.getAllByText("driver").length).toBeGreaterThan(0);
+    expect(
+      row.closest(".radar-row")?.querySelector('[data-case-section="action"]'),
+    ).toHaveTextContent("79");
     expect(container.querySelector(".decision-controls")).not.toBeInTheDocument();
     expect(await screen.findByText("实时信号 Tape")).toBeInTheDocument();
     await waitFor(() => expect(screen.getAllByText("$UPEG").length).toBeGreaterThan(0));
@@ -421,7 +424,7 @@ describe("App Token Radar social heat cockpit", () => {
   it("exposes a venue link for resolved radar tokens", async () => {
     renderWithQuery(<App />);
 
-    const link = await screen.findByRole("link", { name: "Open $UPEG on GMGN" });
+    const link = await screen.findByRole("link", { name: "GMGN" });
     expect(link).toHaveAttribute(
       "href",
       "https://gmgn.ai/eth/token/0x6982508145454Ce325dDbE47a25d4ec3d2311933",
@@ -435,19 +438,22 @@ describe("App Token Radar social heat cockpit", () => {
     const rowButton = await screen.findByRole("button", { name: "Open token item $UPEG" });
     const row = rowButton.closest(".radar-row") as HTMLElement;
     expect(rowButton.querySelector('[data-case-section="identity"]')).toHaveTextContent("$UPEG");
-    expect(rowButton.querySelector('[data-case-section="identity"]')).toHaveTextContent(
+    expect(rowButton.querySelector('[data-case-section="identity"]')).not.toHaveTextContent(
       "unverified",
     );
     expect(rowButton.querySelector('[data-case-section="social"]')).toHaveTextContent(
-      "4 posts · 3 authors · 1 watched",
+      "4 帖 · 3 作者",
+    );
+    expect(rowButton.querySelector('[data-case-section="social"]')).toHaveTextContent(
+      "关注源 1 · 较前窗 +4",
     );
     const whyNow = rowButton.querySelector('[data-case-section="why-now"]');
-    expect(whyNow).toHaveTextContent("market freshness missing");
-    expect(whyNow).toHaveTextContent("semantic catalyst snapshot · 3 informative");
+    expect(whyNow).toHaveTextContent("风险：市场新鲜度不足");
+    expect(whyNow).toHaveTextContent("扩散中 · 3 条有效讨论");
     expect(rowButton.querySelector('[data-radar-metric="market"]')).toHaveTextContent("missing");
-    expect(rowButton.querySelector('[data-case-section="action"]')).toHaveTextContent("driver");
+    expect(row.querySelector('[data-case-section="action"]')).toHaveTextContent("79");
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toBeInTheDocument();
-    expect(row.querySelector('[data-radar-action="venue"]')).toBeInTheDocument();
+    expect(row.querySelector(".radar-case-links")).toBeInTheDocument();
   });
 
   it("renders valid token radar rows regardless of backend projection version metadata", async () => {
@@ -509,7 +515,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(rowButton.querySelector('[data-radar-metric="timing"]')).not.toBeInTheDocument();
     expect(rowButton).not.toHaveTextContent("历史不足");
     expect(rowButton).not.toHaveTextContent("market pending");
-    expect(await screen.findByRole("link", { name: "Open $BTC on OKX" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "OKX" })).toHaveAttribute(
       "href",
       "https://www.okx.com/trade-spot/btc-usdt",
     );
@@ -810,7 +816,7 @@ describe("App Token Radar social heat cockpit", () => {
     expect(within(item).getByText("4 posts · 3 authors")).toBeInTheDocument();
     expect(within(item).getByText("expansion · semantic catalyst snapshot")).toBeInTheDocument();
     expect(within(item).getByText("missing · cap missing")).toBeInTheDocument();
-    expect(within(item).getAllByText("market freshness missing").length).toBeGreaterThan(0);
+    expect(within(item).getAllByText("市场新鲜度不足").length).toBeGreaterThan(0);
     expect(container.querySelector(".detail-drawer")).not.toBeInTheDocument();
     expect(container.querySelector(".tabs")).not.toBeInTheDocument();
   });
@@ -1230,7 +1236,8 @@ describe("App Token Radar social heat cockpit", () => {
     renderWithQuery(<App />);
 
     const tokenButton = await screen.findByRole("button", { name: "Open token item $UPEG" });
-    expect(within(tokenButton).getByText("4 posts · 3 authors · 1 watched")).toBeInTheDocument();
+    expect(within(tokenButton).getByText("4 帖 · 3 作者")).toBeInTheDocument();
+    expect(within(tokenButton).getByText("关注源 1 · 较前窗 +4")).toBeInTheDocument();
     expect(within(tokenButton).getByText("missing · cap missing")).toBeInTheDocument();
   });
 

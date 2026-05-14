@@ -36,31 +36,37 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "Open token item $TROLL" });
+    const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
-    const venueLink = screen.getByRole("link", { name: "Open $TROLL on GMGN" });
-    const officialLinks = screen.getByRole("navigation", { name: "Official links for $TROLL" });
     expect(searchButton).toBeInTheDocument();
-    expect(within(officialLinks).getByRole("link", { name: "Website" })).toHaveAttribute(
+    expect(within(row).getByRole("link", { name: "官网" })).toHaveAttribute(
       "href",
       "https://troll.example",
     );
-    expect(within(officialLinks).getByRole("link", { name: "X" })).toHaveAttribute(
+    expect(within(row).getByRole("link", { name: "X" })).toHaveAttribute(
       "href",
       "https://x.com/troll",
     );
-    expect(venueLink.parentElement?.lastElementChild).toBe(searchButton);
+    expect(within(row).getByRole("link", { name: "GMGN" })).toHaveAttribute(
+      "href",
+      "https://gmgn.ai/eth/token/0x1111111111111111111111111111111111111111",
+    );
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
     expect(within(row).getByText("eth · 0x111111...111111")).toBeInTheDocument();
-    expect(within(row).getByText("1 posts · 1 authors · 0 watched")).toBeInTheDocument();
-    expect(within(row).getByText(/seed/)).toBeInTheDocument();
-    expect(within(row).getByText("investigate")).toBeInTheDocument();
+    expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
+    expect(within(row).getByText("关注源 0 · 较前窗 +1")).toBeInTheDocument();
+    expect(within(row).getByText("种子中 · 1 条有效讨论")).toBeInTheDocument();
+    expect(within(row).queryByText("profile")).not.toBeInTheDocument();
+    expect(within(row).queryByText("links")).not.toBeInTheDocument();
+    expect(within(row).queryByText("unverified")).not.toBeInTheDocument();
+    expect(within(row).queryByText("investigate")).not.toBeInTheDocument();
     expect(within(row).queryByText("Official")).not.toBeInTheDocument();
     expect(within(row).queryByText("Community")).not.toBeInTheDocument();
     expect(within(row).queryByText("Narrative")).not.toBeInTheDocument();
     expect(within(row).queryByText("Decision")).not.toBeInTheDocument();
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$51M");
+    expect(market).toHaveTextContent("-");
     expect(market).toHaveTextContent("partial");
     expect(market).toHaveTextContent("cap stale");
     expect(market).not.toHaveTextContent("- fresh");
@@ -86,7 +92,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "Open token item $TROLL" });
+    const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("-");
     expect(market).toHaveTextContent("cap missing");
@@ -118,7 +124,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "Open token item $TROLL" });
+    const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$236K");
     expect(market).not.toHaveTextContent("anchored");
@@ -127,6 +133,28 @@ describe("TokenRadarRow", () => {
     expect(market).not.toHaveTextContent("liq live");
     expect(row.querySelector('[data-radar-metric="timing"]')).not.toBeInTheDocument();
     expect(row).not.toHaveTextContent("live not persisted");
+  });
+
+  it("renders CEX venue links directly without a profile abstraction", () => {
+    render(
+      <TokenRadarRow
+        item={cexToken()}
+        selected={false}
+        onOpenSearch={vi.fn()}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("article", { name: "Token Radar item $OPN" });
+    expect(within(row).getByRole("link", { name: "X" })).toHaveAttribute(
+      "href",
+      "https://x.com/opn",
+    );
+    expect(within(row).getByRole("link", { name: "OKX" })).toHaveAttribute(
+      "href",
+      "https://www.okx.com/trade-swap/opn-usdt-swap",
+    );
+    expect(within(row).queryByText("profile")).not.toBeInTheDocument();
   });
 
   it("renders the compact scan bar without old sort controls or table labels", () => {
@@ -240,6 +268,51 @@ function mixedFreshnessToken(): TokenFlowItem {
         website_url: "https://troll.example",
         twitter_url: "https://x.com/troll",
         gmgn_url: "https://gmgn.ai/eth/token/0x1111111111111111111111111111111111111111",
+      },
+    },
+  };
+}
+
+function cexToken(): TokenFlowItem {
+  const item = mixedFreshnessToken();
+  return {
+    ...item,
+    identity: {
+      ...item.identity,
+      identity_key: "cex_token:OPN",
+      identity_status: "EXACT",
+      target_type: "CexToken",
+      target_id: "cex_token:OPN",
+      asset_id: null,
+      asset_type: "CexToken",
+      venue_type: "cex",
+      exchange: "okx",
+      inst_id: "OPN-USDT-SWAP",
+      inst_type: "SWAP",
+      chain: null,
+      address: null,
+      symbol: "OPN",
+      resolution_reasons: [],
+    },
+    market: {
+      ...item.market,
+      market_cap: null,
+      market_cap_status: "missing",
+      price: 0.084,
+      price_status: "fresh",
+      price_change_since_social_pct: -0.032,
+      price_change_status: "ready",
+      provider: "okx",
+    },
+    profile: {
+      status: "ready",
+      provider: "okx",
+      identity: {
+        symbol: "OPN",
+        name: "Open Protocol",
+      },
+      links: {
+        twitter_username: "opn",
       },
     },
   };

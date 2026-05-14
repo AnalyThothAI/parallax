@@ -195,6 +195,8 @@ export function formatRisk(value: string | null | undefined): string {
     chase_risk: "追高风险",
     missing_price: "价格缺失",
     missing_social_history: "社交历史不足",
+    market_freshness_missing: "市场新鲜度不足",
+    market_metadata_missing: "市场元数据不足",
     SYMBOL_NOT_IN_REGISTRY: "registry 未命中",
     SYMBOL_CANDIDATES_STALE: "候选价格过期",
     ADDRESS_NOT_IN_REGISTRY: "地址未入库",
