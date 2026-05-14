@@ -103,15 +103,21 @@ describe("TokenTargetPage routing", () => {
       }
       if (path === "/api/target-social-timeline") {
         return ok({
-          stages: [],
-          posts: [],
           summary: {
             posts: 0,
             authors: 0,
             effective_authors: 0,
             watched_posts: 0,
             phase: "seed",
+            top_author_share: 0,
+            latest_seen_ms: null,
           },
+          market_overlay: { price_series_type: "anchor_line", candle_status: "missing_market_id" },
+          stages: [],
+          buckets: [],
+          authors: [],
+          posts: [],
+          cascade: { edges: [], unresolved_parents: [] },
         } as any);
       }
       if (path === "/api/target-posts") {
@@ -148,6 +154,7 @@ describe("TokenTargetPage routing", () => {
         }),
       }),
     );
+    expect(screen.getByRole("heading", { name: "Social x Market Timeline" })).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 

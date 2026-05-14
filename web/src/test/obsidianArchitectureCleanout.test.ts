@@ -89,6 +89,15 @@ describe("Obsidian Desk architecture cleanout", () => {
     expect(routeShells).toEqual([]);
   });
 
+  it("keeps cockpit shell geometry centralized and route content scrollable", () => {
+    const cockpitCss = readSource("features/cockpit/ui/cockpit.module.css");
+
+    expect(cockpitCss).toContain("--cockpit-rail-width");
+    expect(cockpitCss).toContain("--cockpit-topbar-height");
+    expect(cockpitCss).not.toContain("grid-template-columns: 220px");
+    expect(cockpitCss).toMatch(/:global\(\.center-column\)\s*{[^}]*overflow:\s*auto;/s);
+  });
+
   it("removes legacy watchlist and notification routing shims", () => {
     expect(existsSync(join(srcRoot, "lib/watchlist.ts"))).toBe(false);
 
