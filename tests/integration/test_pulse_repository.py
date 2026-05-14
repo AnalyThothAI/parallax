@@ -456,6 +456,116 @@ def test_agent_harness_version_round_trip(tmp_path) -> None:
     assert fetched["manifest_json"]["runtime"]["stages"] == ["analyst", "critic", "judge"]
 
 
+def test_agent_harness_versions_keep_distinct_hashes_for_same_model_identity(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        first = repo.upsert_agent_harness_version(
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-a",
+            strategy="signal_pulse_decision",
+            provider="openai",
+            model="qwen3.6",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            manifest_json={"runtime": {"timeout_seconds": 30}},
+            created_at_ms=1_000,
+        )
+        second = repo.upsert_agent_harness_version(
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-b",
+            strategy="signal_pulse_decision",
+            provider="openai",
+            model="qwen3.6",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            manifest_json={"runtime": {"timeout_seconds": 120}},
+            created_at_ms=2_000,
+        )
+        fetched_first = repo.agent_harness_version("sha256:harness-a")
+        fetched_second = repo.agent_harness_version("sha256:harness-b")
+    finally:
+        conn.close()
+
+    assert first["harness_hash"] == "sha256:harness-a"
+    assert second["harness_hash"] == "sha256:harness-b"
+    assert fetched_first is not None
+    assert fetched_first["manifest_json"]["runtime"]["timeout_seconds"] == 30
+    assert fetched_second is not None
+    assert fetched_second["manifest_json"]["runtime"]["timeout_seconds"] == 120
+
+
+def test_mark_stale_agent_runs_failed_closes_orphaned_running_audit_rows(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        repo.enqueue_job(
+            job_id="job-stale-run",
+            candidate_id="candidate-stale-run",
+            candidate_type="token_target",
+            subject_key="toly",
+            window="1h",
+            scope="global",
+            trigger_signature="trigger-stale",
+            timeline_signature="timeline-stale",
+            priority=10,
+            next_run_at_ms=1_000,
+            now_ms=900,
+        )
+        repo.upsert_agent_harness_version(
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-stale",
+            strategy="signal_pulse_decision",
+            provider="openai",
+            model="qwen3.6",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            manifest_json={"runtime": {"stages": ["analyst", "critic", "judge"]}},
+            created_at_ms=1_000,
+        )
+        repo.insert_agent_run(
+            run_id="run-stale",
+            job_id="job-stale-run",
+            candidate_id="candidate-stale-run",
+            provider="openai",
+            model="qwen3.6",
+            workflow_name="signal_lab_pulse",
+            agent_name="pulse_decision_pipeline",
+            artifact_version_hash="artifact-hash",
+            prompt_version="pulse-decision-v1",
+            schema_version="pulse_decision_v1",
+            input_hash="input-hash",
+            harness_version="pulse-decision-harness-v1",
+            harness_hash="sha256:harness-stale",
+            request_json={},
+            trace_metadata_json={},
+            usage_json={},
+            status="running",
+            outcome="running",
+            decision_route="meme",
+            decision_stage_count=0,
+            started_at_ms=1_000,
+        )
+
+        updated = repo.mark_stale_agent_runs_failed(
+            now_ms=11_000,
+            stale_before_ms=5_000,
+        )
+        row = conn.execute("SELECT * FROM pulse_agent_runs WHERE run_id = 'run-stale'").fetchone()
+    finally:
+        conn.close()
+
+    assert updated == 1
+    assert row is not None
+    assert row["status"] == "failed"
+    assert row["outcome"] == "failed"
+    assert row["error"] == "stale_running_timeout"
+    assert row["finished_at_ms"] == 11_000
+    assert row["latency_ms"] == 10_000
+
+
 def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

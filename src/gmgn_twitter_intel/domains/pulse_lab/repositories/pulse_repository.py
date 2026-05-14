@@ -137,6 +137,7 @@ class PulseRepository:
     def claim_due_job(self, now_ms: int | None = None) -> dict[str, Any] | None:
         now = int(now_ms if now_ms is not None else _now_ms())
         stale_before = now - self.running_timeout_ms
+        self.mark_stale_agent_runs_failed(now_ms=now, stale_before_ms=stale_before, commit=False)
         self.conn.execute(
             """
             UPDATE pulse_agent_jobs
@@ -414,6 +415,32 @@ class PulseRepository:
         if commit:
             self.conn.commit()
         return _optional_row(row)
+
+    def mark_stale_agent_runs_failed(
+        self,
+        *,
+        now_ms: int | None = None,
+        stale_before_ms: int | None = None,
+        commit: bool = True,
+    ) -> int:
+        now = int(now_ms if now_ms is not None else _now_ms())
+        stale_before = int(stale_before_ms if stale_before_ms is not None else now - self.running_timeout_ms)
+        cursor = self.conn.execute(
+            """
+            UPDATE pulse_agent_runs
+            SET status = 'failed',
+                outcome = 'failed',
+                error = COALESCE(NULLIF(error, ''), 'stale_running_timeout'),
+                latency_ms = GREATEST(0, %s - started_at_ms),
+                finished_at_ms = %s
+            WHERE status = 'running'
+              AND started_at_ms < %s
+            """,
+            (now, now, stale_before),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount or 0)
 
     def insert_agent_run(
         self,
