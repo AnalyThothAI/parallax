@@ -222,6 +222,21 @@ class AccountQualityRepository:
     def accounts_quality(self, handles: list[str]) -> list[dict[str, Any]]:
         return [self.account_quality(handle) for handle in handles]
 
+    def profiles_by_handles(self, handles: list[str]) -> dict[str, dict[str, Any]]:
+        normalized = sorted({_handle(handle) for handle in handles if handle.strip()})
+        if not normalized:
+            return {}
+        placeholders = ",".join("%s" for _ in normalized)
+        rows = self.conn.execute(
+            f"""
+            SELECT handle, watched_status
+            FROM account_profiles
+            WHERE handle IN ({placeholders})
+            """,
+            normalized,
+        ).fetchall()
+        return {str(row["handle"]): dict(row) for row in rows}
+
     def account_token_rows(self, *, resolver_policy_version: str, limit: int) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """

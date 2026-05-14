@@ -153,12 +153,52 @@ class SignalPulseData(ApiSchema):
     agent_worker_running: bool | None = None
 
 
+class SignalPulseStagePayload(ApiSchema):
+    stage: str | None = None
+    route: str | None = None
+    status: str | None = None
+    model: str | None = None
+    started_at_ms: int | None = None
+    finished_at_ms: int | None = None
+    latency_ms: int | None = None
+    attempt_index: int | None = None
+    response: JsonObject | None = None
+    error: str | None = None
+
+
+class SignalPulseStages(ApiSchema):
+    analyst: SignalPulseStagePayload | None = None
+    critic: SignalPulseStagePayload | None = None
+    judge: SignalPulseStagePayload | None = None
+    research_only_gate: SignalPulseStagePayload | None = None
+
+
 class SignalPulseItem(ApiSchema):
     candidate_id: str | None = None
     status: str | None = None
     target: JsonObject | None = None
     fact_card: JsonObject | None = None
     recommendation: JsonObject | None = None
+    stages: SignalPulseStages | None = None
+
+
+class SocialEventDetail(ApiSchema):
+    event_id: str
+    timestamp_ms: int
+    source_provider: str
+    channel: str
+    action: str
+    author_handle: str | None = None
+    author_name: str | None = None
+    author_followers: int | None = None
+    author_watched: bool = False
+    text_clean: str | None = None
+    canonical_url: str | None = None
+
+
+class SocialEventsByIdsData(ApiSchema):
+    events: list[SocialEventDetail] = Field(default_factory=list)
+    not_found: list[str] = Field(default_factory=list)
 
 
 class ItemsData(ApiSchema):

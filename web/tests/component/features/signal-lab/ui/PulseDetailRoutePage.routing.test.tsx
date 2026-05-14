@@ -1,4 +1,4 @@
-import { PulseDetailPage } from "@features/signal-lab";
+import { PulseDetailRoutePage } from "@features/signal-lab";
 import { ApiError, setAuthToken } from "@lib/api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -23,14 +23,14 @@ function renderAt(url: string) {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[url]}>
         <Routes>
-          <Route path="/signal-lab/pulse/:candidateId" element={<PulseDetailPage />} />
+          <Route path="/signal-lab/pulse/:candidateId" element={<PulseDetailRoutePage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
 }
 
-describe("PulseDetailPage", () => {
+describe("PulseDetailRoutePage", () => {
   it("renders a structural skeleton while the candidate request is pending", () => {
     apiMock.readApiImpl = () => new Promise(() => undefined);
     renderAt("/signal-lab/pulse/cand-1");
@@ -38,11 +38,11 @@ describe("PulseDetailPage", () => {
     expect(screen.getByLabelText("loading pulse detail")).toBeInTheDocument();
   });
 
-  it("renders inspector when candidate exists", async () => {
+  it("renders detail view when candidate exists", async () => {
     apiMock.readApiImpl = async () => ok(minimalPulseItem());
     renderAt("/signal-lab/pulse/cand-1");
     await waitFor(() => {
-      expect(screen.getAllByText(/PEPE|cand-1/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/\$PEPE|cand-1/).length).toBeGreaterThan(0);
     });
   });
 

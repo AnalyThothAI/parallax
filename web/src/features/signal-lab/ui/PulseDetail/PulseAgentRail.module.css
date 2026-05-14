@@ -1,0 +1,120 @@
+.rail {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.rail > header,
+.stage,
+.mismatch,
+.replay {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 11px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.rail h2,
+.rail h3,
+.rail p,
+.rail dl,
+.rail ul {
+  margin: 0;
+}
+
+.rail h2,
+.stage h3,
+.replay h3 {
+  color: var(--bone);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.rail header p,
+.metric dt,
+.replay dt,
+.replay dd,
+.stage span {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.mismatch {
+  display: grid;
+  gap: 6px;
+  border-color: var(--risk-line);
+  background: var(--risk-soft);
+}
+
+.mismatch strong,
+.mismatch span,
+.mismatch p {
+  color: var(--risk-ink);
+}
+
+.mismatch strong,
+.mismatch span {
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.mismatch p,
+.stage p,
+.stage li {
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.stage {
+  display: grid;
+  gap: 8px;
+}
+
+.stage header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.stage[data-status="failed"] {
+  border-color: var(--risk-line);
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.metric dd {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.stage ul {
+  display: grid;
+  gap: 5px;
+  padding-left: 16px;
+}
+
+.replay dl {
+  display: grid;
+  gap: 5px;
+}
+
+.replay dl div {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.replay dd {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

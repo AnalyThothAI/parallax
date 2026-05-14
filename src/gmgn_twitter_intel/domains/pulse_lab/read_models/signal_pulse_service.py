@@ -76,7 +76,30 @@ class SignalPulseService:
             return None
         if not _is_displayable(row):
             return None
-        return pulse_item_from_row(row)
+        item = pulse_item_from_row(row)
+        item["stages"] = self._stages_for(row.get("agent_run_id"))
+        return item
+
+    def _stages_for(self, run_id: Any) -> dict[str, Any]:
+        empty = {"analyst": None, "critic": None, "judge": None, "research_only_gate": None}
+        if not run_id:
+            return empty
+        try:
+            steps = self.pulse_repository.list_agent_run_steps(str(run_id))
+        except Exception:
+            return empty
+        by_stage: dict[str, dict[str, Any]] = {}
+        for step in steps:
+            stage = step.get("stage")
+            if stage not in empty:
+                continue
+            prior = by_stage.get(stage)
+            if prior is None or _is_better_step(step, prior):
+                by_stage[stage] = step
+        result = dict(empty)
+        for stage, step in by_stage.items():
+            result[stage] = _stage_payload(step)
+        return result
 
     def _settlement_coverage(self) -> float | None:
         if self.harness is None:
@@ -240,3 +263,26 @@ def _list(value: Any) -> list[Any]:
 
 def _string_list(value: Any) -> list[str]:
     return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
+
+
+def _is_better_step(candidate: dict[str, Any], existing: dict[str, Any]) -> bool:
+    candidate_ok = candidate.get("status") == "ok"
+    existing_ok = existing.get("status") == "ok"
+    if candidate_ok != existing_ok:
+        return candidate_ok
+    return int(candidate.get("attempt_index") or 0) >= int(existing.get("attempt_index") or 0)
+
+
+def _stage_payload(step: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "stage": step.get("stage"),
+        "route": step.get("route"),
+        "status": step.get("status"),
+        "model": step.get("model"),
+        "started_at_ms": step.get("started_at_ms"),
+        "finished_at_ms": step.get("finished_at_ms"),
+        "latency_ms": step.get("latency_ms"),
+        "attempt_index": step.get("attempt_index"),
+        "response": _dict(step.get("response_json")) or step.get("response_json"),
+        "error": step.get("error"),
+    }

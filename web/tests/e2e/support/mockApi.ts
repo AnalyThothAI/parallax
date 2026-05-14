@@ -24,6 +24,7 @@ export async function installMockApi(page: Page) {
       return fulfill(route, searchInspectData(url.searchParams.get("q") ?? ""));
     if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
     if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
+    if (path === "/api/social-events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, postsData());
     if (path === "/api/account-quality") return fulfill(route, accountQualityData());
@@ -358,6 +359,18 @@ function signalPulseData(url: URL) {
   };
 }
 
+function socialEventsByIds(url: URL) {
+  const ids = (url.searchParams.get("ids") ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const byId = new Map(postsData().items.map((item) => [item.event_id, sourceEvent(item)]));
+  return {
+    events: ids.map((id) => byId.get(id)).filter(Boolean),
+    not_found: ids.filter((id) => !byId.has(id)),
+  };
+}
+
 function pulseItem() {
   const row = assetFlowRow();
   return {
@@ -375,8 +388,8 @@ function pulseItem() {
     narrative_type: "direct_token",
     candidate_score: 88,
     score_band: "trade",
-    evidence_event_ids: ["event-upeg-1"],
-    source_event_ids: ["event-upeg-1"],
+    evidence_event_ids: ["event-upeg-1", "event-upeg-2"],
+    source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3"],
     factor_snapshot: {
       ...row.factor_snapshot,
       subject: { ...row.factor_snapshot.subject, symbol: "BNB" },
@@ -390,7 +403,7 @@ function pulseItem() {
       summary_zh: "BNB social pulse is live for e2e.",
       invalidation_conditions: [],
       residual_risks: [],
-      evidence_event_ids: ["event-upeg-1"],
+      evidence_event_ids: ["event-upeg-1", "event-upeg-2"],
     },
     gate: {
       pulse_status: "trade_candidate",
@@ -404,10 +417,74 @@ function pulseItem() {
       mentions_1h: 4,
       unique_authors: 3,
     },
-    agent_run_id: null,
+    stages: {
+      analyst: {
+        stage: "analyst",
+        status: "ok",
+        model: "gpt-5.2",
+        attempt_index: 0,
+        latency_ms: 410,
+        response: {
+          recommendation: "trade_candidate",
+          confidence: 0.82,
+          summary_zh: "Watched-account seed followed by public amplification.",
+          evidence: ["event-upeg-1", "event-upeg-2"],
+        },
+      },
+      critic: {
+        stage: "critic",
+        status: "ok",
+        model: "gpt-5.2",
+        attempt_index: 0,
+        latency_ms: 280,
+        response: {
+          confidence_ceiling: 0.74,
+          should_abstain: false,
+          weaknesses: ["Thin liquidity requires sizing discipline."],
+          missing_fact_impacts: [],
+        },
+      },
+      judge: {
+        stage: "judge",
+        status: "ok",
+        model: "gpt-5.2",
+        attempt_index: 0,
+        latency_ms: 360,
+        response: {
+          route: "meme",
+          recommendation: "trade_candidate",
+          confidence: 0.72,
+          summary_zh: "Accept as trade candidate with liquidity risk noted.",
+          residual_risks: ["Low-liquidity reversal."],
+          invalidation_conditions: ["No fresh independent authors."],
+        },
+      },
+      research_only_gate: null,
+    },
+    agent_run_id: "run-pulse-bnb",
+    pulse_version: "pulse-v1",
+    gate_version: "gate-v1",
+    prompt_version: "prompt-v1",
+    schema_version: "signal-pulse-v1",
     created_at_ms: NOW,
     updated_at_ms: NOW,
     playbooks: [],
+  };
+}
+
+function sourceEvent(item: ReturnType<typeof post>) {
+  return {
+    event_id: item.event_id,
+    timestamp_ms: item.received_at_ms,
+    source_provider: "gmgn",
+    channel: "twitter_monitor_basic",
+    action: item.reference?.type ?? "tweet",
+    author_handle: item.author_handle,
+    author_name: item.author_handle,
+    author_followers: item.post_quality.score >= 80 ? 168_905 : 220,
+    author_watched: item.is_watched,
+    text_clean: item.text,
+    canonical_url: item.url,
   };
 }
 

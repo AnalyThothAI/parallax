@@ -31,6 +31,7 @@ class FakePulseRepository:
         self.calls: list[dict[str, Any]] = []
         self.summary_calls: list[dict[str, Any]] = []
         self.candidate_rows: dict[str, dict[str, Any]] = {}
+        self.agent_run_steps: dict[str, list[dict[str, Any]]] = {}
 
     def list_candidates(
         self,
@@ -66,6 +67,9 @@ class FakePulseRepository:
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidate_rows.get(candidate_id)
+
+    def list_agent_run_steps(self, run_id: str) -> list[dict[str, Any]]:
+        return list(self.agent_run_steps.get(run_id, []))
 
 
 class FakeHarnessRepository:
@@ -435,6 +439,122 @@ def test_candidate_returns_full_item() -> None:
     assert result["decision"]["summary_zh"] == "链上质量允许继续观察。"
     assert "agent_recommendation" not in result
     assert result["playbooks"] == []
+
+
+def test_candidate_includes_stages_from_run_steps() -> None:
+    pulse = FakePulseRepository()
+    pulse.candidate_rows["pulse-1"] = _candidate_row(
+        "pulse-1",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    pulse.agent_run_steps["run-1"] = [
+        {
+            "stage": "analyst",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 100,
+            "finished_at_ms": 200,
+            "latency_ms": 100,
+            "attempt_index": 0,
+            "response_json": {"confidence": 0.82, "recommendation": "trade_candidate"},
+        },
+        {
+            "stage": "critic",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 200,
+            "finished_at_ms": 350,
+            "latency_ms": 150,
+            "attempt_index": 0,
+            "response_json": {"confidence_ceiling": 0.45, "should_abstain": False},
+        },
+        {
+            "stage": "judge",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 350,
+            "finished_at_ms": 500,
+            "latency_ms": 150,
+            "attempt_index": 0,
+            "response_json": {"confidence": 0.35, "recommendation": "trade_candidate"},
+        },
+    ]
+
+    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-1")
+
+    assert item is not None
+    stages = item["stages"]
+    assert stages["analyst"]["response"]["confidence"] == 0.82
+    assert stages["analyst"]["latency_ms"] == 100
+    assert stages["critic"]["response"]["confidence_ceiling"] == 0.45
+    assert stages["judge"]["response"]["confidence"] == 0.35
+    assert stages.get("research_only_gate") is None
+
+
+def test_candidate_stages_takes_latest_ok_attempt_per_stage() -> None:
+    pulse = FakePulseRepository()
+    pulse.candidate_rows["pulse-2"] = _candidate_row(
+        "pulse-2",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    pulse.agent_run_steps["run-1"] = [
+        {
+            "stage": "analyst",
+            "route": "meme",
+            "status": "failed",
+            "model": "qwen3.6",
+            "started_at_ms": 100,
+            "finished_at_ms": 200,
+            "latency_ms": 100,
+            "attempt_index": 0,
+            "response_json": None,
+        },
+        {
+            "stage": "analyst",
+            "route": "meme",
+            "status": "ok",
+            "model": "qwen3.6",
+            "started_at_ms": 300,
+            "finished_at_ms": 400,
+            "latency_ms": 100,
+            "attempt_index": 1,
+            "response_json": {"confidence": 0.7},
+        },
+    ]
+
+    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-2")
+
+    assert item is not None
+    assert item["stages"]["analyst"]["status"] == "ok"
+    assert item["stages"]["analyst"]["response"]["confidence"] == 0.7
+
+
+def test_candidate_stages_absent_when_no_run() -> None:
+    pulse = FakePulseRepository()
+    pulse.candidate_rows["pulse-3"] = _candidate_row(
+        "pulse-3",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    pulse.candidate_rows["pulse-3"]["agent_run_id"] = None
+
+    item = SignalPulseService(pulse=pulse).candidate(candidate_id="pulse-3")
+
+    assert item is not None
+    assert item["stages"] == {
+        "analyst": None,
+        "critic": None,
+        "judge": None,
+        "research_only_gate": None,
+    }
 
 
 def test_default_listing_hides_abstain_decisions() -> None:

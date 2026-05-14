@@ -2,6 +2,7 @@ import {
   compactNumber,
   eventHandle,
   formatPercentShare,
+  formatRelativeAge,
   formatPropagationPhase,
   formatRelativeTime,
   formatRisk,
@@ -9,6 +10,7 @@ import {
   formatSignedPercent,
   formatTokenPriceUsd,
   formatTimingStatus,
+  formatUtcTimestamp,
   formatUsdCompact,
   tokenLabel,
 } from "@lib/format";
@@ -25,6 +27,22 @@ describe("format helpers", () => {
   it("formats relative milliseconds without locale noise", () => {
     expect(formatRelativeTime(1_000, 31_000)).toBe("30s");
     expect(formatRelativeTime(1_000, 181_000)).toBe("3m");
+  });
+
+  it("formats absolute UTC timestamps", () => {
+    expect(formatUtcTimestamp(1778726642689)).toBe("2026-05-14 02:44 UTC");
+    expect(formatUtcTimestamp(1778726642689, { suffix: false })).toBe("2026-05-14 02:44");
+    expect(formatUtcTimestamp(null)).toBe("-");
+    expect(formatUtcTimestamp(Number.NaN)).toBe("-");
+  });
+
+  it("formats relative age labels", () => {
+    const now = 1778726642689;
+    expect(formatRelativeAge(now - 59 * 60_000, now)).toBe("(59m ago)");
+    expect(formatRelativeAge(now - 2 * 3_600_000, now)).toBe("(2h ago)");
+    expect(formatRelativeAge(now - 10_000, now)).toBe("(just now)");
+    expect(formatRelativeAge(now + 4 * 60_000, now)).toBe("(in 4m)");
+    expect(formatRelativeAge(null, now)).toBe("");
   });
 
   it("formats normalized mindshare as a compact percent", () => {

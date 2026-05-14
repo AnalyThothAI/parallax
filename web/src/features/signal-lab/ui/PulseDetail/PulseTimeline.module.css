@@ -1,0 +1,65 @@
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.timeline[data-density="compact"] {
+  grid-template-columns: 1fr;
+}
+
+.timeline article {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.timeline article > span {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--slab-3);
+}
+
+.timeline article[data-tone="opportunity"] > span {
+  border-color: var(--opportunity-line-strong);
+  background: var(--opportunity);
+}
+
+.timeline article[data-tone="risk"] > span {
+  border-color: var(--risk-line-strong);
+  background: var(--risk);
+}
+
+.timeline h2,
+.timeline p {
+  margin: 0;
+}
+
+.timeline h2 {
+  color: var(--bone);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.timeline time,
+.timeline small {
+  display: block;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.timeline p {
+  margin-top: 6px;
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.35;
+}

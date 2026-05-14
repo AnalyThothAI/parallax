@@ -4,6 +4,8 @@ import type {
   SignalPulseData,
   SignalPulseItem,
   SignalPulseStatusFilter,
+  SocialEventDetail,
+  SocialEventsByIdsData,
   WindowKey,
 } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
@@ -67,6 +69,27 @@ export function useSignalPulseCandidate({ token, candidateId }: CandidateArgs) {
     enabled: Boolean(token && candidateId),
     staleTime: 8_000,
     retry: false,
+  });
+}
+
+type SourceEventsArgs = {
+  token: string;
+  ids: string[];
+};
+
+export function useSourceEvents({ token, ids }: SourceEventsArgs) {
+  const normalizedIds = ids.filter(Boolean);
+  return useQuery({
+    queryKey: queryKeys.sourceEventsByIds(normalizedIds),
+    queryFn: async (): Promise<SocialEventDetail[]> => {
+      const response = await getApi<SocialEventsByIdsData>("/api/social-events/by-ids", {
+        token,
+        params: { ids: normalizedIds.join(",") },
+      });
+      return response.data.events;
+    },
+    enabled: Boolean(token) && normalizedIds.length > 0,
+    staleTime: 30_000,
   });
 }
 

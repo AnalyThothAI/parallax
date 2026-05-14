@@ -15,5 +15,9 @@ test("cold Signal Pulse load preserves filters and opens pulse detail", async ({
 
   await page.getByRole("button", { name: "open pulse case $BNB" }).click();
   await expect(page).toHaveURL(/\/signal-lab\/pulse\/pulse-bnb/);
-  await expect(page.getByRole("region", { name: "Signal Pulse case $BNB" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "$BNB" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agent rail" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "source events" })).toContainText(
+    "$UPEG watched account evidence",
+  );
 });

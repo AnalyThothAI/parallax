@@ -1,11 +1,15 @@
-import type { LivePayload, SignalPulseData } from "@lib/types";
+import { getAuthToken } from "@lib/api/client";
+import type { LivePayload, SignalPulseData, SignalPulseItem } from "@lib/types";
+import { signalPulseVenueActions } from "@lib/venue";
+import { searchPath } from "@shared/routing/paths";
 import { RemoteState } from "@shared/ui/RemoteState";
 import clsx from "clsx";
-import { Outlet } from "react-router-dom";
+import { Link } from "react-router-dom";
 
+import { useSourceEvents } from "../api/useSignalPulseQueries";
 import { useSignalLabPage } from "../useSignalLabPage";
 
-import { SignalLabInspector } from "./SignalLabInspector";
+import { PulseDetailView } from "./PulseDetail";
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
 import "./signalLab.css";
 
@@ -28,6 +32,8 @@ export function SignalLabPage({
     signalLab.signalPulseData?.items[0] ??
     null;
   const shouldShowDetail = true;
+  const token = getAuthToken() ?? "";
+  const sourceEvents = useSourceEvents({ token, ids: inlinePulseItem?.source_event_ids ?? [] });
 
   return (
     <section
@@ -64,14 +70,34 @@ export function SignalLabPage({
         />
       </div>
       <aside className="signal-lab-inspector-pane">
-        {signalLab.isPulseRoute ? (
-          <Outlet />
-        ) : inlinePulseItem ? (
-          <SignalLabInspector item={inlinePulseItem} />
+        {inlinePulseItem ? (
+          <PulseDetailView
+            actions={<InlinePulseActions item={inlinePulseItem} />}
+            density="compact"
+            item={inlinePulseItem}
+            sourceEvents={sourceEvents.data ?? []}
+          />
         ) : (
           <RemoteState.Empty title="No selected Signal Pulse case." />
         )}
       </aside>
     </section>
+  );
+}
+
+function InlinePulseActions({ item }: { item: SignalPulseItem }) {
+  const subject = item.factor_snapshot.subject.symbol ?? item.symbol ?? item.subject_key;
+  return (
+    <>
+      <Link to={`/signal-lab/pulse/${encodeURIComponent(item.candidate_id)}`}>Open full</Link>
+      <Link to={searchPath({ q: subject ? `$${subject.replace(/^\$+/, "")}` : item.subject_key })}>
+        Search Intel
+      </Link>
+      {signalPulseVenueActions(item).map((action) => (
+        <a href={action.url} key={`${action.label}:${action.url}`} rel="noreferrer" target="_blank">
+          {action.label}
+        </a>
+      ))}
+    </>
   );
 }

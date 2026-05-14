@@ -253,9 +253,8 @@ export function AppRoutes({ session }: { session: AppSession }) {
               onSelectAccountEvent={selection.selectAccountEvent}
             />
           }
-        >
-          <Route path="pulse/:candidateId" element={<SignalLabPulseRoute />} />
-        </Route>
+        />
+        <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
       </Route>
       <Route element={searchShellElement}>
         <Route path="search" element={<SearchRoute />} />

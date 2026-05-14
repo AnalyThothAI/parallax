@@ -31,6 +31,53 @@ export function formatRelativeTime(value: number | null | undefined, now = Date.
   return `${Math.floor(delta / 86_400_000)}d`;
 }
 
+type UtcFormatOptions = { suffix?: boolean };
+
+export function formatUtcTimestamp(
+  value: number | null | undefined,
+  options: UtcFormatOptions = {},
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "-";
+  }
+  const date = new Date(value);
+  const yyyy = date.getUTCFullYear();
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const min = String(date.getUTCMinutes()).padStart(2, "0");
+  const base = `${yyyy}-${mm}-${dd} ${hh}:${min}`;
+  return options.suffix === false ? base : `${base} UTC`;
+}
+
+export function formatRelativeAge(
+  value: number | null | undefined,
+  now: number = Date.now(),
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return "";
+  }
+  const delta = value - now;
+  const abs = Math.abs(delta);
+  if (abs < 30_000) {
+    return "(just now)";
+  }
+  const inFuture = delta > 0;
+  let unit: string;
+  let amount: number;
+  if (abs < 3_600_000) {
+    unit = "m";
+    amount = Math.round(abs / 60_000);
+  } else if (abs < 86_400_000) {
+    unit = "h";
+    amount = Math.round(abs / 3_600_000);
+  } else {
+    unit = "d";
+    amount = Math.round(abs / 86_400_000);
+  }
+  return inFuture ? `(in ${amount}${unit})` : `(${amount}${unit} ago)`;
+}
+
 export function formatPercentShare(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "-";

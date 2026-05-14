@@ -27,6 +27,7 @@ export const queryKeys = {
   ) => ["signal-lab-pulse", window, scope, status, handle, q, limit] as const,
   signalPulseCandidate: (candidateId: string | null) =>
     ["signal-lab-pulse-candidate", candidateId] as const,
+  sourceEventsByIds: (ids: string[]) => ["social-events", "by-ids", [...ids].sort()] as const,
   signalLabAccountEvents: (token: string, scope: ScopeKey, handle: string) =>
     ["signal-lab-account-events", token, scope, handle] as const,
   searchInspect: (token: string, q: string, window: WindowKey, scope: ScopeKey) =>

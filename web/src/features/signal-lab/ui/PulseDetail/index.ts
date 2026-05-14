@@ -1,0 +1,1 @@
+export { PulseDetailView } from "./PulseDetailView";

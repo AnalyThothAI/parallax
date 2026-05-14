@@ -1,0 +1,65 @@
+.market {
+  display: grid;
+  gap: 10px;
+}
+
+.market dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.market dl div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.market dt,
+.market dd,
+.market p {
+  margin: 0;
+}
+
+.market dt,
+.market small,
+.market p {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.market strong {
+  display: block;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 18px;
+}
+
+.market div[data-tone="warn"] strong {
+  color: var(--opportunity-ink);
+}
+
+.market div[data-tone="risk"] strong,
+.market div[data-tone="risk"] small {
+  color: var(--risk-ink);
+}
+
+.market p {
+  border: 1px solid var(--risk-line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  background: var(--risk-soft);
+  color: var(--risk-ink);
+}
+
+@media (max-width: 900px) {
+  .market dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

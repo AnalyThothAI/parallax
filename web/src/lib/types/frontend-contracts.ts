@@ -1153,6 +1153,28 @@ export type PulseDecision = {
   evidence_event_ids?: string[];
 };
 
+export type SignalPulseStageName = "analyst" | "critic" | "judge" | "research_only_gate";
+
+export type SignalPulseStagePayload = {
+  stage: SignalPulseStageName | string | null;
+  route: string | null;
+  status: "ok" | "failed" | "timeout" | "skipped" | string | null;
+  model: string | null;
+  started_at_ms: number | null;
+  finished_at_ms: number | null;
+  latency_ms: number | null;
+  attempt_index: number | null;
+  response: Record<string, unknown> | null;
+  error: string | null;
+};
+
+export type SignalPulseStages = {
+  analyst: SignalPulseStagePayload | null;
+  critic: SignalPulseStagePayload | null;
+  judge: SignalPulseStagePayload | null;
+  research_only_gate: SignalPulseStagePayload | null;
+};
+
 export type SignalPulseItem = {
   candidate_id: string;
   candidate_type: string;
@@ -1182,6 +1204,7 @@ export type SignalPulseItem = {
   created_at_ms: number;
   updated_at_ms: number;
   playbooks: unknown[];
+  stages?: SignalPulseStages | null;
 };
 
 export type SignalPulseData = {
@@ -1192,6 +1215,25 @@ export type SignalPulseData = {
   returned_count: number;
   has_more: boolean;
   next_cursor?: string | null;
+};
+
+export type SocialEventDetail = {
+  event_id: string;
+  timestamp_ms: number;
+  source_provider: string;
+  channel: string;
+  action: "tweet" | "quote" | "repost" | "reply" | string;
+  author_handle: string | null;
+  author_name: string | null;
+  author_followers: number | null;
+  author_watched: boolean;
+  text_clean: string | null;
+  canonical_url: string | null;
+};
+
+export type SocialEventsByIdsData = {
+  events: SocialEventDetail[];
+  not_found: string[];
 };
 
 export type AccountQualityItem = {

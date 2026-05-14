@@ -15,6 +15,7 @@ from gmgn_twitter_intel.app.surfaces.api.http import (
     api_unauthorized_response,
     create_api_router,
 )
+from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from gmgn_twitter_intel.domains.closed_loop_harness.services.harness_snapshot_builder import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
@@ -1431,7 +1432,7 @@ def test_api_rejects_removed_narrative_product_surfaces(tmp_path):
     assert frontier.status_code == 404
 
 
-def _seed_displayable_candidate(app, *, candidate_id: str) -> None:
+def _seed_displayable_candidate(app, *, candidate_id: str, agent_run_id: str | None = None) -> None:
     """Seed one displayable pulse_candidates row for HTTP-layer tests."""
     with app.state.service.repositories() as repos:
         repos.pulse.upsert_candidate(
@@ -1467,6 +1468,7 @@ def _seed_displayable_candidate(app, *, candidate_id: str) -> None:
             risk_reasons_json=[],
             evidence_event_ids_json=["event-1"],
             source_event_ids_json=["event-1"],
+            agent_run_id=agent_run_id,
         )
 
 
@@ -1484,6 +1486,171 @@ def test_api_signal_pulse_by_id_returns_item(tmp_path):
     assert payload["ok"] is True
     assert payload["data"]["candidate_id"] == "cand-real"
     assert payload["data"]["pulse_status"] == "token_watch"
+
+
+def test_api_signal_pulse_by_id_returns_stages(tmp_path):
+    settings = make_settings(tmp_path)
+    app = create_app(settings=settings, start_collector=False)
+    with TestClient(app) as client:
+        with client.app.state.service.repositories() as repos:
+            repos.pulse.enqueue_job(
+                job_id="job-stages",
+                candidate_id="cand-stages",
+                candidate_type="token_target",
+                subject_key="toly",
+                target_type="Asset",
+                target_id="asset:pepe",
+                window="1h",
+                scope="all",
+                trigger_signature="trigger-sig",
+                timeline_signature="timeline-sig",
+                priority=1,
+                status="done",
+            )
+            repos.pulse.insert_agent_run(
+                run_id="run-stages",
+                job_id="job-stages",
+                candidate_id="cand-stages",
+                provider="openai",
+                model="qwen3.6",
+                workflow_name="pulse-decision",
+                agent_name="pulse-agent",
+                artifact_version_hash="hash",
+                prompt_version="prompt-v1",
+                schema_version="schema-v1",
+                harness_version="harness-v1",
+                harness_hash="harness-hash",
+                input_hash="input-hash",
+                status="ok",
+                outcome="trade_candidate",
+                decision_route="meme",
+                decision_stage_count=3,
+            )
+        _seed_displayable_candidate(client.app, candidate_id="cand-stages", agent_run_id="run-stages")
+        with client.app.state.service.repositories() as repos:
+            for stage, response_json, started_at_ms, finished_at_ms in [
+                ("analyst", {"confidence": 0.82, "recommendation": "trade_candidate"}, 100, 200),
+                ("critic", {"confidence_ceiling": 0.45, "should_abstain": False}, 200, 350),
+                ("judge", {"confidence": 0.35, "recommendation": "trade_candidate"}, 350, 500),
+            ]:
+                repos.pulse.insert_agent_run_step(
+                    step_id=f"run-stages:{stage}:0",
+                    run_id="run-stages",
+                    stage=stage,
+                    route="meme",
+                    attempt_index=0,
+                    provider="openai",
+                    model="qwen3.6",
+                    prompt_version="prompt-v1",
+                    schema_version="schema-v1",
+                    input_json={},
+                    prompt_text="",
+                    response_json=response_json,
+                    latency_ms=finished_at_ms - started_at_ms,
+                    started_at_ms=started_at_ms,
+                    finished_at_ms=finished_at_ms,
+                )
+        response = client.get(
+            "/api/signal-lab/pulse/cand-stages",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    stages = response.json()["data"]["stages"]
+    assert set(stages.keys()) == {"analyst", "critic", "judge", "research_only_gate"}
+    assert stages["analyst"]["status"] == "ok"
+    assert stages["analyst"]["response"]["confidence"] == 0.82
+    assert stages["judge"]["response"]["confidence"] == 0.35
+
+
+def test_social_events_by_ids_returns_full_records(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    ids = ["event-watched", "event-public"]
+    with TestClient(app) as client:
+        _seed_social_event_batch(client.app)
+        response = client.get(
+            "/api/social-events/by-ids",
+            params={"ids": ",".join(ids)},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    events = response.json()["data"]["events"]
+    assert {event["event_id"] for event in events} == set(ids)
+    by_handle = {event["author_handle"]: event for event in events}
+    assert by_handle["watched_kol"]["author_watched"] is True
+    assert by_handle["random_dude"]["author_watched"] is False
+    assert by_handle["watched_kol"]["source_provider"] == "gmgn"
+    assert by_handle["watched_kol"]["channel"] == "twitter_monitor_basic"
+
+
+def test_social_events_by_ids_skips_missing(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    with TestClient(app) as client:
+        _seed_social_event_batch(client.app)
+        response = client.get(
+            "/api/social-events/by-ids",
+            params={"ids": "event-watched,nonexistent-id"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [event["event_id"] for event in body["data"]["events"]] == ["event-watched"]
+    assert body["data"]["not_found"] == ["nonexistent-id"]
+
+
+def test_social_events_by_ids_rejects_too_many(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    huge = ",".join(f"id-{i}" for i in range(201))
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/social-events/by-ids",
+            params={"ids": huge},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "too_many_ids"
+
+
+def test_social_events_by_ids_requires_ids(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/social-events/by-ids",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "ids_required"
+
+
+def _seed_social_event_batch(app) -> None:
+    with app.state.service.repositories() as repos:
+        account_quality = AccountQualityRepository(repos.conn)
+        account_quality.upsert_profile(
+            handle="watched_kol",
+            first_seen_ms=1_700_000_000_000,
+            latest_seen_ms=1_700_000_100_000,
+            follower_max=12_000,
+            watched_status="watched",
+        )
+        account_quality.upsert_profile(
+            handle="random_dude",
+            first_seen_ms=1_700_000_000_000,
+            latest_seen_ms=1_700_000_100_000,
+            follower_max=200,
+            watched_status="public",
+        )
+        repos.evidence.insert_event(
+            make_event("event-watched", handle="watched_kol", text="$PEPE watched", received_at_ms=1_700_000_000_000),
+            is_watched=True,
+        )
+        repos.evidence.insert_event(
+            make_event("event-public", handle="random_dude", text="$PEPE public", received_at_ms=1_700_000_010_000),
+            is_watched=False,
+        )
 
 
 def test_api_signal_pulse_by_id_returns_404_when_missing(tmp_path):
