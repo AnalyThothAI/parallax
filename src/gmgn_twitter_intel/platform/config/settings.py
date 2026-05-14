@@ -86,6 +86,17 @@ class LlmConfig(BaseModel):
     pulse_agent_gate_token_watch_min: int = 45
     pulse_agent_gate_high_info_rejection_min: int = 30
     pulse_agent_gate_high_conviction_min: int = 78
+    watchlist_handle_summary_enabled: bool = True
+    watchlist_handle_summary_model: str | None = None
+    watchlist_handle_summary_signal_threshold: int = 10
+    watchlist_handle_summary_time_threshold_ms: int = 30 * 60 * 1000
+    watchlist_handle_summary_min_interval_ms: int = 5 * 60 * 1000
+    watchlist_handle_summary_poll_interval_seconds: float = 2.0
+    watchlist_handle_summary_concurrency: int = 1
+    watchlist_handle_summary_input_limit: int = 80
+    watchlist_handle_summary_window_days: int = 7
+    watchlist_handle_summary_lease_ms: int = 120_000
+    watchlist_handle_summary_max_attempts: int = 3
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -95,7 +106,14 @@ class LlmConfig(BaseModel):
             raise ValueError("llm.provider must be 'openai'")
         return normalized
 
-    @field_validator("api_key", "model", "trace_api_key", "pulse_agent_model", mode="before")
+    @field_validator(
+        "api_key",
+        "model",
+        "trace_api_key",
+        "pulse_agent_model",
+        "watchlist_handle_summary_model",
+        mode="before",
+    )
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
@@ -492,6 +510,54 @@ class Settings(BaseModel):
         return _clamp_int(self.llm.pulse_agent_gate_high_conviction_min, low=0, high=100)
 
     @property
+    def watchlist_handle_summary_enabled(self) -> bool:
+        return bool(self.llm.watchlist_handle_summary_enabled)
+
+    @property
+    def watchlist_handle_summary_model(self) -> str | None:
+        return self.llm.watchlist_handle_summary_model or self.llm_model
+
+    @property
+    def watchlist_handle_summary_configured(self) -> bool:
+        return bool(self.llm_api_key and self.watchlist_handle_summary_model)
+
+    @property
+    def watchlist_handle_summary_signal_threshold(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_signal_threshold, low=1, high=1000)
+
+    @property
+    def watchlist_handle_summary_time_threshold_ms(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_time_threshold_ms, low=60_000, high=86_400_000)
+
+    @property
+    def watchlist_handle_summary_min_interval_ms(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_min_interval_ms, low=60_000, high=86_400_000)
+
+    @property
+    def watchlist_handle_summary_poll_interval_seconds(self) -> float:
+        return _clamp_float(self.llm.watchlist_handle_summary_poll_interval_seconds, low=1.0, high=3600.0)
+
+    @property
+    def watchlist_handle_summary_concurrency(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_concurrency, low=1, high=8)
+
+    @property
+    def watchlist_handle_summary_input_limit(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_input_limit, low=1, high=500)
+
+    @property
+    def watchlist_handle_summary_window_days(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_window_days, low=1, high=30)
+
+    @property
+    def watchlist_handle_summary_lease_ms(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_lease_ms, low=10_000, high=3_600_000)
+
+    @property
+    def watchlist_handle_summary_max_attempts(self) -> int:
+        return _clamp_int(self.llm.watchlist_handle_summary_max_attempts, low=1, high=10)
+
+    @property
     def llm_trace_enabled(self) -> bool:
         return bool(self.llm.trace_enabled)
 
@@ -765,6 +831,17 @@ llm:
   pulse_agent_gate_token_watch_min: 45
   pulse_agent_gate_high_info_rejection_min: 30
   pulse_agent_gate_high_conviction_min: 78
+  watchlist_handle_summary_enabled: true
+  watchlist_handle_summary_model:
+  watchlist_handle_summary_signal_threshold: 10
+  watchlist_handle_summary_time_threshold_ms: 1800000
+  watchlist_handle_summary_min_interval_ms: 300000
+  watchlist_handle_summary_poll_interval_seconds: 2
+  watchlist_handle_summary_concurrency: 1
+  watchlist_handle_summary_input_limit: 80
+  watchlist_handle_summary_window_days: 7
+  watchlist_handle_summary_lease_ms: 120000
+  watchlist_handle_summary_max_attempts: 3
 
 gmgn:
   api_key:

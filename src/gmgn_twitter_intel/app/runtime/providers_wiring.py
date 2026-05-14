@@ -33,6 +33,9 @@ from gmgn_twitter_intel.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDe
 from gmgn_twitter_intel.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
 from gmgn_twitter_intel.integrations.openai_agents.pulse_decision_agent_client import OpenAIAgentsPulseDecisionClient
 from gmgn_twitter_intel.integrations.openai_agents.social_event_agent_client import OpenAIAgentsSocialEventClient
+from gmgn_twitter_intel.integrations.openai_agents.watchlist_summary_agent_client import (
+    OpenAIAgentsWatchlistSummaryClient,
+)
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 UpstreamClientFactory = Callable[[Callable[..., Any]], UpstreamClientProtocol | None]
@@ -76,6 +79,11 @@ class PulseLabProviders:
 
 
 @dataclass(frozen=True, slots=True)
+class WatchlistIntelProviders:
+    summary_provider: object | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class MarketlaneProviders:
     stock_quote_provider: object | None = None
 
@@ -86,6 +94,7 @@ class WiredProviders:
     asset_market: AssetMarketProviders
     social_enrichment: SocialEnrichmentProviders
     pulse_lab: PulseLabProviders
+    watchlist_intel: WatchlistIntelProviders
     marketlane: MarketlaneProviders
 
 
@@ -326,6 +335,11 @@ def wire_providers(settings: Settings, *, start_collector: bool) -> WiredProvide
             if settings.pulse_agent_enabled and settings.pulse_agent_configured
             else None,
         ),
+        watchlist_intel=WatchlistIntelProviders(
+            summary_provider=_openai_watchlist_summary_provider(settings)
+            if settings.watchlist_handle_summary_enabled and settings.watchlist_handle_summary_configured
+            else None,
+        ),
         marketlane=_wire_marketlane(settings),
     )
 
@@ -514,6 +528,18 @@ def _openai_pulse_decision_provider(settings: Settings) -> OpenAIPulseDecisionPr
             trace_api_key=settings.llm_trace_api_key,
             trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
         )
+    )
+
+
+def _openai_watchlist_summary_provider(settings: Settings) -> OpenAIAgentsWatchlistSummaryClient:
+    return OpenAIAgentsWatchlistSummaryClient(
+        api_key=settings.llm_api_key or "",
+        model=settings.watchlist_handle_summary_model or "",
+        base_url=settings.llm_base_url,
+        timeout_seconds=settings.llm_timeout_seconds,
+        trace_enabled=settings.llm_trace_enabled,
+        trace_api_key=settings.llm_trace_api_key,
+        trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
     )
 
 

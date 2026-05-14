@@ -11,6 +11,10 @@ from loguru import logger
 
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessSnapshotBuilder
 from gmgn_twitter_intel.domains.social_enrichment.providers import SocialEventEnrichmentProvider
+from gmgn_twitter_intel.domains.watchlist_intel.interfaces import (
+    HandleSummaryTriggerConfig,
+    WatchlistHandleSummaryService,
+)
 
 
 class EnrichmentWorker:
@@ -22,12 +26,14 @@ class EnrichmentWorker:
         repository_session: Callable[[], AbstractContextManager[Any]],
         poll_interval: float = 2.0,
         concurrency: int = 1,
+        watchlist_summary_config: HandleSummaryTriggerConfig | None = None,
     ) -> None:
         self.repository_session = repository_session
         self.client = client
         self.publisher = publisher
         self.poll_interval = max(0.2, float(poll_interval))
         self.concurrency = max(1, min(16, int(concurrency)))
+        self.watchlist_summary_config = watchlist_summary_config
         self._stopped = asyncio.Event()
 
     async def run(self) -> None:
@@ -205,13 +211,22 @@ class EnrichmentWorker:
                 finished_at_ms=finished_at_ms,
                 commit=False,
             )
-            return HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+            materialized = HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
                 event=event,
                 extraction=result,
                 run_id=str(run["run_id"]),
                 model_version=self.client.model,
                 commit=False,
             )
+            if self.watchlist_summary_config is not None and bool(getattr(result, "is_signal_event", False)):
+                handle = str(getattr(result, "author_handle", "") or event.get("author_handle") or "")
+                if handle:
+                    WatchlistHandleSummaryService(
+                        repository=repos.watchlist_intel,
+                        provider=None,
+                        config=self.watchlist_summary_config,
+                    ).enqueue_handle_summary_if_due(handle=handle, now_ms=finished_at_ms, commit=False)
+            return materialized
 
 
 def _now_ms() -> int:

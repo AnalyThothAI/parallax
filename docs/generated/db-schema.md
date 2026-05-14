@@ -1491,3 +1491,53 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `watchlist_handle_summaries`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `handle` | `TEXT` | False | `None` |
+| `generated_at_ms` | `BIGINT` | False | `None` |
+| `input_window_start_ms` | `BIGINT` | False | `None` |
+| `input_window_end_ms` | `BIGINT` | False | `None` |
+| `input_event_count` | `BIGINT` | False | `None` |
+| `signal_count_at_generation` | `BIGINT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `summary_zh` | `TEXT` | False | `None` |
+| `topics_json` | `JSONB` | False | `'[]'::jsonb` |
+| `raw_response_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `watchlist_handle_summary_jobs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `handle` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `next_run_at_ms` | `BIGINT` | False | `None` |
+| `pending_signal_count` | `BIGINT` | False | `0` |
+| `trigger_reason` | `TEXT` | False | `None` |
+| `lease_expires_at_ms` | `BIGINT` | True | `None` |
+| `lease_token` | `TEXT` | True | `None` |
+| `attempt_count` | `BIGINT` | False | `0` |
+| `max_attempts` | `BIGINT` | False | `3` |
+| `last_error` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `watchlist_handle_summary_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `run_id` | `TEXT` | False | `None` |
+| `handle` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `request_json` | `JSONB` | False | `'{}'::jsonb` |
+| `response_json` | `JSONB` | True | `None` |
+| `input_event_count` | `BIGINT` | False | `0` |
+| `usage_json` | `JSONB` | False | `'{}'::jsonb` |
+| `error` | `TEXT` | True | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |

@@ -14,6 +14,7 @@ export type TokenPostRange = "current_window" | "since_ignition" | "all_history"
 export type TokenPostSortMode = "recent" | "quality" | "catalyst";
 export type TokenPostServerSort = "recent" | "catalyst";
 export type TokenDetailMode = "compact" | "replay";
+export type WatchlistTimelineScope = "signal" | "all";
 
 export type BootstrapData = {
   ws_token: string;
@@ -174,6 +175,72 @@ export type RecentData = {
   scope: ScopeKey;
   events: EventRecord[];
   items: LivePayload[];
+};
+
+export type WatchlistTopic = {
+  title: string;
+  description: string;
+  event_count: number;
+  top_event_ids?: string[];
+  symbols?: string[];
+  confidence?: number | null;
+};
+
+export type WatchlistHandleSummaryData = {
+  handle: string;
+  status: "ready" | "not_ready" | string;
+  generated_at_ms?: number | null;
+  staleness_ms?: number | null;
+  is_stale: boolean;
+  pending_recompute: boolean;
+  signal_count: number;
+  input_event_count: number;
+  signal_count_at_generation: number;
+  model?: string | null;
+  summary_zh: string;
+  topics: WatchlistTopic[];
+};
+
+export type WatchlistSocialEvent = {
+  event_type?: string | null;
+  source_action?: string | null;
+  subject?: string | null;
+  direction_hint?: string | null;
+  attention_mechanism?: string | null;
+  impact_hint?: number | null;
+  semantic_novelty_hint?: number | null;
+  confidence?: number | null;
+  is_signal_event?: boolean | null;
+  anchor_terms?: Array<Record<string, unknown>>;
+  token_candidates?: Array<Record<string, unknown>>;
+  semantic_risks?: string[];
+  summary_zh?: string | null;
+};
+
+export type WatchlistTimelineItem = {
+  event_id: string;
+  received_at_ms: number;
+  author_handle?: string | null;
+  action?: string | null;
+  text_clean?: string | null;
+  canonical_url?: string | null;
+  cashtags?: string[];
+  hashtags?: string[];
+  mentions?: string[];
+  event?: EventRecord;
+  token_resolutions?: TokenResolutionRecord[];
+  social_event?: WatchlistSocialEvent | null;
+};
+
+export type WatchlistHandleTimelineData = {
+  query: {
+    handle: string;
+    scope: WatchlistTimelineScope;
+    limit: number;
+  };
+  items: WatchlistTimelineItem[];
+  has_more: boolean;
+  next_cursor?: string | null;
 };
 
 export type SearchItem = {

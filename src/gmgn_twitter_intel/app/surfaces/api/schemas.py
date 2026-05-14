@@ -35,6 +35,7 @@ class StatusData(ApiSchema):
     anchor_price: JsonObject | None = None
     live_price_gateway: JsonObject | None = None
     notifications: JsonObject | None = None
+    watchlist_handle_summary: JsonObject | None = None
 
 
 class RecentData(ApiSchema):
@@ -199,6 +200,28 @@ class SocialEventDetail(ApiSchema):
 class SocialEventsByIdsData(ApiSchema):
     events: list[SocialEventDetail] = Field(default_factory=list)
     not_found: list[str] = Field(default_factory=list)
+
+
+class WatchlistHandleSummaryData(ApiSchema):
+    handle: str
+    status: str
+    generated_at_ms: int | None = None
+    staleness_ms: int | None = None
+    is_stale: bool = False
+    pending_recompute: bool = False
+    signal_count: int = 0
+    input_event_count: int = 0
+    signal_count_at_generation: int = 0
+    model: str | None = None
+    summary_zh: str = ""
+    topics: list[JsonObject] = Field(default_factory=list)
+
+
+class WatchlistHandleTimelineData(ApiSchema):
+    query: JsonObject
+    items: list[JsonObject] = Field(default_factory=list)
+    has_more: bool = False
+    next_cursor: str | None = None
 
 
 class ItemsData(ApiSchema):

@@ -15,6 +15,7 @@ from gmgn_twitter_intel.domains.social_enrichment.types.social_event_extraction 
     SocialTokenCandidate,
 )
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
+from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import HandleSummaryTriggerConfig
 from tests.integration.test_enrichment_repository import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -135,6 +136,36 @@ def test_enrichment_worker_run_can_process_jobs_concurrently():
     asyncio.run(worker.run())
 
     assert worker.max_active > 1
+
+
+def test_enrichment_worker_enqueues_watchlist_summary_job_in_completion_transaction(tmp_path):
+    conn, ingest, worker, enrichment, _ = open_runtime(tmp_path)
+    worker.watchlist_summary_config = HandleSummaryTriggerConfig(
+        signal_threshold=1,
+        time_threshold_ms=60_000,
+        min_interval_ms=60_000,
+        input_limit=20,
+        window_days=7,
+        max_attempts=2,
+    )
+    try:
+        event = make_event("event-watchlist-summary", text="Solana XDP scaling is nearly ready")
+        ingest.ingest_event(event, is_watched=True)
+
+        processed = asyncio.run(worker.process_one(now_ms=int(time.time() * 1000)))
+        job = enrichment.list_jobs(limit=10)[0]
+        summary_job = conn.execute(
+            "SELECT * FROM watchlist_handle_summary_jobs WHERE handle = %s",
+            ("toly",),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert processed is True
+    assert job["status"] == "done"
+    assert summary_job is not None
+    assert summary_job["status"] == "pending"
+    assert summary_job["trigger_reason"] == "cold_start"
 
 
 @pytest.mark.skip(

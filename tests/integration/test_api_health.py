@@ -250,6 +250,16 @@ def test_watchdog_reports_stopped_pulse_worker_when_created():
     assert "pulse_candidate_worker_stopped" in reasons
 
 
+def test_watchdog_flags_stopped_watchlist_handle_summary_worker():
+    runtime = _minimal_runtime()
+    runtime.watchlist_handle_summary_worker = FakePulseWorker()
+    runtime.watchlist_handle_summary_task = DoneTask()
+
+    reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
+
+    assert "watchlist_handle_summary_worker_stopped" in reasons
+
+
 def test_readiness_includes_pulse_agent_fields(monkeypatch):
     runtime = _minimal_runtime()
     runtime.pulse_candidate_worker = SimpleNamespace(
@@ -369,6 +379,12 @@ def _minimal_runtime():
         pulse_agent_batch_size=7,
         pulse_agent_interval_seconds=11.0,
         pulse_agent_max_attempts=4,
+        watchlist_handle_summary_enabled=True,
+        watchlist_handle_summary_configured=True,
+        watchlist_handle_summary_model="gpt-watchlist",
+        watchlist_handle_summary_concurrency=2,
+        watchlist_handle_summary_poll_interval_seconds=13.0,
+        watchlist_handle_summary_max_attempts=3,
         okx_cex_sync_enabled=False,
     )
     return SimpleNamespace(
@@ -397,6 +413,8 @@ def _minimal_runtime():
         token_radar_projection_task=None,
         pulse_candidate_worker=None,
         pulse_candidate_task=None,
+        watchlist_handle_summary_worker=None,
+        watchlist_handle_summary_task=None,
         supervisor_task=None,
         db_pool=SimpleNamespace(close=lambda: None),
     )

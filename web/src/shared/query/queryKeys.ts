@@ -3,6 +3,7 @@ import type {
   SignalPulseStatusFilter,
   TokenPostRange,
   TokenPostServerSort,
+  WatchlistTimelineScope,
   WindowKey,
 } from "@lib/types";
 
@@ -47,4 +48,7 @@ export const queryKeys = {
   accountQuality: (handles: string) => ["account-quality", handles] as const,
   notifications: () => ["notifications"] as const,
   notificationSummary: () => ["notification-summary"] as const,
+  watchlistHandleSummary: (handle: string) => ["watchlist-handle-summary", handle] as const,
+  watchlistHandleTimeline: (handle: string, scope: WatchlistTimelineScope, limit: number) =>
+    ["watchlist-handle-timeline", handle, scope, limit] as const,
 };

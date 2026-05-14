@@ -17,11 +17,12 @@ DOMAINS = {
     "closed_loop_harness",
     "notifications",
     "pulse_lab",
+    "watchlist_intel",
     "account_quality",
 }
 
 ALLOWED_ROOTS = {"app", "domains", "integrations", "platform"}
-PROVIDER_DOMAINS = {"ingestion", "asset_market", "social_enrichment", "pulse_lab"}
+PROVIDER_DOMAINS = {"ingestion", "asset_market", "social_enrichment", "pulse_lab", "watchlist_intel"}
 LEGACY_PACKAGES = {"collector", "pipeline", "retrieval", "storage", "market"}
 SQL_ALLOWED_PARTS = {
     "repositories",

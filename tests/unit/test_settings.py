@@ -48,6 +48,18 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.pulse_agent_gate_token_watch_min == 45
     assert settings.pulse_agent_gate_high_info_rejection_min == 30
     assert settings.pulse_agent_gate_high_conviction_min == 78
+    assert settings.watchlist_handle_summary_enabled is True
+    assert settings.watchlist_handle_summary_model is None
+    assert settings.watchlist_handle_summary_configured is False
+    assert settings.watchlist_handle_summary_signal_threshold == 10
+    assert settings.watchlist_handle_summary_time_threshold_ms == 1_800_000
+    assert settings.watchlist_handle_summary_min_interval_ms == 300_000
+    assert settings.watchlist_handle_summary_poll_interval_seconds == 2
+    assert settings.watchlist_handle_summary_concurrency == 1
+    assert settings.watchlist_handle_summary_input_limit == 80
+    assert settings.watchlist_handle_summary_window_days == 7
+    assert settings.watchlist_handle_summary_lease_ms == 120_000
+    assert settings.watchlist_handle_summary_max_attempts == 3
     assert settings.gmgn_configured is False
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
@@ -123,6 +135,17 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
                 "pulse_agent_gate_token_watch_min": 40,
                 "pulse_agent_gate_high_info_rejection_min": 25,
                 "pulse_agent_gate_high_conviction_min": 74,
+                "watchlist_handle_summary_enabled": True,
+                "watchlist_handle_summary_model": " ",
+                "watchlist_handle_summary_signal_threshold": 0,
+                "watchlist_handle_summary_time_threshold_ms": 1,
+                "watchlist_handle_summary_min_interval_ms": 1,
+                "watchlist_handle_summary_poll_interval_seconds": 0,
+                "watchlist_handle_summary_concurrency": 99,
+                "watchlist_handle_summary_input_limit": 9999,
+                "watchlist_handle_summary_window_days": 99,
+                "watchlist_handle_summary_lease_ms": 1,
+                "watchlist_handle_summary_max_attempts": 0,
             },
         },
     )
@@ -156,6 +179,17 @@ def test_postgres_storage_and_llm_enrichment_can_be_explicitly_configured(tmp_pa
     assert settings.pulse_agent_gate_token_watch_min == 40
     assert settings.pulse_agent_gate_high_info_rejection_min == 25
     assert settings.pulse_agent_gate_high_conviction_min == 74
+    assert settings.watchlist_handle_summary_model == "gpt-test"
+    assert settings.watchlist_handle_summary_configured is True
+    assert settings.watchlist_handle_summary_signal_threshold == 1
+    assert settings.watchlist_handle_summary_time_threshold_ms == 60_000
+    assert settings.watchlist_handle_summary_min_interval_ms == 60_000
+    assert settings.watchlist_handle_summary_poll_interval_seconds == 1
+    assert settings.watchlist_handle_summary_concurrency == 8
+    assert settings.watchlist_handle_summary_input_limit == 500
+    assert settings.watchlist_handle_summary_window_days == 30
+    assert settings.watchlist_handle_summary_lease_ms == 10_000
+    assert settings.watchlist_handle_summary_max_attempts == 1
 
 
 def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
@@ -179,6 +213,29 @@ def test_pulse_agent_model_can_override_llm_model(tmp_path, monkeypatch):
     assert settings.llm_model == "gpt-base"
     assert settings.pulse_agent_model == "gpt-pulse"
     assert settings.pulse_agent_configured is True
+
+
+def test_watchlist_summary_model_can_override_llm_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    write_config(
+        tmp_path,
+        {
+            "ws_token": "secret",
+            "handles": ["toly"],
+            "llm": {
+                "provider": "openai",
+                "api_key": "sk-test",
+                "model": "gpt-base",
+                "watchlist_handle_summary_model": "gpt-watchlist",
+            },
+        },
+    )
+
+    settings = load_settings()
+
+    assert settings.llm_model == "gpt-base"
+    assert settings.watchlist_handle_summary_model == "gpt-watchlist"
+    assert settings.watchlist_handle_summary_configured is True
 
 
 def test_pulse_agent_can_be_configured_without_enrichment_model(tmp_path, monkeypatch):
