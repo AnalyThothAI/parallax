@@ -5,7 +5,7 @@ import hashlib
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -56,20 +56,16 @@ class EnrichmentWorker:
         self._stopped.set()
 
     async def process_one(self, *, now_ms: int | None = None) -> bool:
-        with self.repository_session() as repos:
-            job = repos.enrichment.claim_next_job(now_ms=now_ms or _now_ms())
+        job = await asyncio.to_thread(self._claim_next_job_sync, now_ms=now_ms or _now_ms())
         if job is None:
             return False
 
-        with self.repository_session() as repos:
-            event = repos.evidence.events_by_ids([str(job["event_id"])]).get(str(job["event_id"]))
+        event = await asyncio.to_thread(self._event_by_id_sync, event_id=str(job["event_id"]))
         if event is None:
-            with self.repository_session() as repos:
-                repos.enrichment.fail_job(job=job, error="event_not_found")
+            await asyncio.to_thread(self._fail_job_sync, job=job, error="event_not_found")
             return True
 
-        with self.repository_session() as repos:
-            entities = repos.entities.entities_for_event(str(job["event_id"]))
+        entities = await asyncio.to_thread(self._entities_for_event_sync, event_id=str(job["event_id"]))
         run_id = _run_id(job)
         request = {
             "run_id": run_id,
@@ -90,61 +86,45 @@ class EnrichmentWorker:
             )
         except TimeoutError:
             error = f"Agents SDK request timed out after {timeout_seconds:g}s"
-            with self.repository_session() as repos:
-                repos.enrichment.record_model_run_failure(
-                    job=job,
-                    run_id=run_id,
-                    provider=self.client.provider,
-                    model=self.client.model,
-                    request=request,
-                    error=error,
-                    audit=request_audit,
-                    started_at_ms=started_at_ms,
-                    finished_at_ms=_now_ms(),
-                )
-                repos.enrichment.fail_job(job=job, error=error)
+            await asyncio.to_thread(
+                self._record_model_run_failure_sync,
+                job=job,
+                run_id=run_id,
+                request=request,
+                error=error,
+                audit=request_audit,
+                started_at_ms=started_at_ms,
+                finished_at_ms=_now_ms(),
+            )
             return True
         except Exception as exc:
             error = str(exc)
-            with self.repository_session() as repos:
-                repos.enrichment.record_model_run_failure(
-                    job=job,
-                    run_id=run_id,
-                    provider=self.client.provider,
-                    model=self.client.model,
-                    request=request,
-                    error=error,
-                    audit=request_audit,
-                    started_at_ms=started_at_ms,
-                    finished_at_ms=_now_ms(),
-                )
-                repos.enrichment.fail_job(job=job, error=error)
+            await asyncio.to_thread(
+                self._record_model_run_failure_sync,
+                job=job,
+                run_id=run_id,
+                request=request,
+                error=error,
+                audit=request_audit,
+                started_at_ms=started_at_ms,
+                finished_at_ms=_now_ms(),
+            )
             return True
 
         try:
-            with self.repository_session() as repos, repos.unit_of_work():
-                run = repos.enrichment.complete_social_event_job(
-                    job=job,
-                    run_id=run_id,
-                    result=result,
-                    provider=self.client.provider,
-                    model=self.client.model,
-                    request=request,
-                    started_at_ms=started_at_ms,
-                    finished_at_ms=_now_ms(),
-                    commit=False,
-                )
-                materialized = HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
-                    event=event,
-                    extraction=result,
-                    run_id=str(run["run_id"]),
-                    model_version=self.client.model,
-                    commit=False,
-                )
+            materialized = await asyncio.to_thread(
+                self._complete_job_sync,
+                job=job,
+                event=event,
+                result=result,
+                run_id=run_id,
+                request=request,
+                started_at_ms=started_at_ms,
+                finished_at_ms=_now_ms(),
+            )
         except Exception as exc:
             logger.exception(f"harness materialization failed event_id={event.get('event_id')}: {exc}")
-            with self.repository_session() as repos:
-                repos.enrichment.fail_job(job=job, error=str(exc))
+            await asyncio.to_thread(self._fail_job_sync, job=job, error=str(exc))
             return True
 
         if self.publisher is not None:
@@ -157,6 +137,81 @@ class EnrichmentWorker:
                 }
             )
         return True
+
+    def _claim_next_job_sync(self, *, now_ms: int) -> dict[str, Any] | None:
+        with self.repository_session() as repos:
+            job = repos.enrichment.claim_next_job(now_ms=now_ms or _now_ms())
+        return cast(dict[str, Any] | None, job)
+
+    def _event_by_id_sync(self, *, event_id: str) -> dict[str, Any] | None:
+        with self.repository_session() as repos:
+            event = repos.evidence.events_by_ids([event_id]).get(event_id)
+        return cast(dict[str, Any] | None, event)
+
+    def _entities_for_event_sync(self, *, event_id: str) -> list[dict[str, Any]]:
+        with self.repository_session() as repos:
+            entities = repos.entities.entities_for_event(event_id)
+        return cast(list[dict[str, Any]], entities)
+
+    def _fail_job_sync(self, *, job: dict[str, Any], error: str) -> None:
+        with self.repository_session() as repos:
+            repos.enrichment.fail_job(job=job, error=error)
+
+    def _record_model_run_failure_sync(
+        self,
+        *,
+        job: dict[str, Any],
+        run_id: str,
+        request: dict[str, Any],
+        error: str,
+        audit: dict[str, Any],
+        started_at_ms: int,
+        finished_at_ms: int,
+    ) -> None:
+        with self.repository_session() as repos:
+            repos.enrichment.record_model_run_failure(
+                job=job,
+                run_id=run_id,
+                provider=self.client.provider,
+                model=self.client.model,
+                request=request,
+                error=error,
+                audit=audit,
+                started_at_ms=started_at_ms,
+                finished_at_ms=finished_at_ms,
+            )
+            repos.enrichment.fail_job(job=job, error=error)
+
+    def _complete_job_sync(
+        self,
+        *,
+        job: dict[str, Any],
+        event: dict[str, Any],
+        result: Any,
+        run_id: str,
+        request: dict[str, Any],
+        started_at_ms: int,
+        finished_at_ms: int,
+    ) -> dict[str, Any]:
+        with self.repository_session() as repos, repos.unit_of_work():
+            run = repos.enrichment.complete_social_event_job(
+                job=job,
+                run_id=run_id,
+                result=result,
+                provider=self.client.provider,
+                model=self.client.model,
+                request=request,
+                started_at_ms=started_at_ms,
+                finished_at_ms=finished_at_ms,
+                commit=False,
+            )
+            return HarnessSnapshotBuilder(repos.harness, assets=repos.assets).materialize(
+                event=event,
+                extraction=result,
+                run_id=str(run["run_id"]),
+                model_version=self.client.model,
+                commit=False,
+            )
 
 
 def _now_ms() -> int:
