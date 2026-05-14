@@ -53,9 +53,16 @@ class NotificationWorker:
 
     async def process_once(self, *, now_ms: int | None = None) -> list[dict[str, Any]]:
         now = int(now_ms if now_ms is not None else _now_ms())
+        created = await asyncio.to_thread(self._process_once_sync, now_ms=now)
+        if self.publisher is not None:
+            for row in created:
+                await self.publisher.publish({"type": "notification", "notification": row})
+        return created
+
+    def _process_once_sync(self, *, now_ms: int) -> list[dict[str, Any]]:
         with self.repository_session() as repos:
             rule_engine = self.rule_engine_factory(repos) if self.rule_engine_factory is not None else self.rule_engine
-            candidates = rule_engine.evaluate(now_ms=now)
+            candidates = rule_engine.evaluate(now_ms=now_ms)
             created: list[dict[str, Any]] = []
             for candidate in candidates:
                 row = self._insert_candidate_with_repository(repos.notifications, candidate)
@@ -63,10 +70,6 @@ class NotificationWorker:
                     continue
                 self._enqueue_external_deliveries_with_repository(repos.notifications, row, candidate)
                 created.append(row)
-
-        if self.publisher is not None:
-            for row in created:
-                await self.publisher.publish({"type": "notification", "notification": row})
         return created
 
     @staticmethod
