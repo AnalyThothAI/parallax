@@ -100,23 +100,22 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_scope = _scope(scope)
-        with runtime.repositories() as repos:
-            events = repos.evidence.recent_events(
-                limit=_limit(limit),
-                handles=_handle_set(handles),
-                ca=ca or None,
-                chain=chain or None,
-                symbol=symbol or None,
-                watched_only=parsed_scope == "matched",
-            )
-            items = [_payload_for_event(repos, event) for event in events]
+        data = await asyncio.to_thread(
+            _recent_data,
+            runtime,
+            limit=_limit(limit),
+            handles=_handle_set(handles),
+            ca=ca or None,
+            chain=chain or None,
+            symbol=symbol or None,
+            scope=parsed_scope,
+        )
         return _json(
             {
                 "ok": True,
                 "data": {
                     "scope": parsed_scope,
-                    "events": events,
-                    "items": items,
+                    **data,
                 },
             }
         )
@@ -805,6 +804,31 @@ def _dict(value: Any) -> dict[str, Any]:
 
 def _limit(value: int, *, maximum: int = 1000) -> int:
     return max(0, min(int(value), maximum))
+
+
+def _recent_data(
+    runtime: Any,
+    *,
+    limit: int,
+    handles: set[str],
+    ca: str | None,
+    chain: str | None,
+    symbol: str | None,
+    scope: str,
+) -> dict[str, Any]:
+    with runtime.repositories() as repos:
+        events = repos.evidence.recent_events(
+            limit=limit,
+            handles=handles,
+            ca=ca,
+            chain=chain,
+            symbol=symbol,
+            watched_only=scope == "matched",
+        )
+        return {
+            "events": events,
+            "items": [_payload_for_event(repos, event) for event in events],
+        }
 
 
 def _token_radar_data(

@@ -2,14 +2,15 @@ import ast
 from pathlib import Path
 
 
-def test_token_radar_route_offloads_blocking_read_model() -> None:
+def test_home_hot_read_routes_offload_blocking_read_models() -> None:
     source = Path("src/gmgn_twitter_intel/app/surfaces/api/http.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
-    token_radar = next(
-        node for node in ast.walk(tree) if isinstance(node, ast.AsyncFunctionDef) and node.name == "token_radar"
-    )
 
-    assert any(_is_asyncio_to_thread_await(node) for node in ast.walk(token_radar))
+    for function_name in ("recent", "token_radar"):
+        route = next(
+            node for node in ast.walk(tree) if isinstance(node, ast.AsyncFunctionDef) and node.name == function_name
+        )
+        assert any(_is_asyncio_to_thread_await(node) for node in ast.walk(route)), function_name
 
 
 def _is_asyncio_to_thread_await(node: ast.AST) -> bool:
