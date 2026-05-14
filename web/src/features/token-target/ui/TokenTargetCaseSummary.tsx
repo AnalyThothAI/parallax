@@ -2,15 +2,8 @@ import { formatRisk, formatScore, formatSignedPercent, tokenLabel } from "@lib/f
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import type { TokenFlowItem, TokenSocialTimelineData, WindowKey } from "@lib/types";
 import { buildTokenCaseView } from "@shared/model/tokenCase";
-import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
-import {
-  ObsidianActionBar,
-  ObsidianCase,
-  ObsidianCaseHeader,
-  ObsidianFieldGrid,
-  ObsidianPill,
-  ObsidianTokenMark,
-} from "@shared/ui/case-file";
+import { TokenIntelHeader } from "@shared/ui/TokenIntelHeader";
+import { ObsidianActionBar, ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
 import { ArrowLeft, ExternalLink, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -38,57 +31,53 @@ export function TokenTargetCaseSummary({
       : tokenCase.community.detail;
 
   return (
-    <ObsidianCase aria-label={`Token item ${tokenCase.label}`} className="token-target-case">
-      <ObsidianCaseHeader
-        actions={
-          <TokenTargetActions
-            searchHref={tokenCase.actions.searchHref}
-            searchLabel={tokenCase.actions.searchLabel}
-            venueHref={tokenCase.actions.venueHref}
-            venueLabel={tokenCase.actions.venueLabel}
-            windowKey={windowKey}
-            onBack={onBack}
-            onWindowChange={onWindowChange}
-          />
-        }
-        badge={
-          <ObsidianPill tone={tokenCase.decision.tone}>{tokenCase.decision.value}</ObsidianPill>
-        }
-        eyebrow="token item"
-        lead={<TokenProfileCard profile={token.profile} />}
-        mark={<ObsidianTokenMark label={tokenCase.label} tone={tokenCase.decision.tone} />}
-        meta={
-          <span className="token-target-score">score {formatScore(token.opportunity.score)}</span>
-        }
-        subtitle={tokenCase.subtitle}
-        title={tokenLabel(token)}
-      />
-
-      <ObsidianFieldGrid
-        fields={[
-          tokenCase.official,
-          { ...tokenCase.community, detail: socialDetail },
-          tokenCase.narrative,
-          tokenCase.market,
-          {
-            detail: token.market.price_at_social_start
-              ? `from ${token.market.price_at_social_start}`
-              : "social anchor pending",
-            label: "Since social",
-            source: "market",
-            tone: deltaTone(token.market.price_change_since_social_pct),
-            value: formatSignedPercent(token.market.price_change_since_social_pct),
-          },
-          {
-            detail: token.flow.baseline_status,
-            label: "Risk flag",
-            source: "deterministic",
-            tone: riskLead ? "risk" : "health",
-            value: riskLead ? formatRisk(riskLead) : "clear",
-          },
-        ]}
-      />
-    </ObsidianCase>
+    <TokenIntelHeader
+      actions={
+        <TokenTargetActions
+          searchHref={tokenCase.actions.searchHref}
+          searchLabel={tokenCase.actions.searchLabel}
+          venueHref={tokenCase.actions.venueHref}
+          venueLabel={tokenCase.actions.venueLabel}
+          windowKey={windowKey}
+          onBack={onBack}
+          onWindowChange={onWindowChange}
+        />
+      }
+      ariaLabel={`Token item ${tokenCase.label}`}
+      badge={<ObsidianPill tone={tokenCase.decision.tone}>{tokenCase.decision.value}</ObsidianPill>}
+      className="token-target-case"
+      eyebrow="token item"
+      fields={[
+        tokenCase.official,
+        { ...tokenCase.community, detail: socialDetail },
+        tokenCase.narrative,
+        tokenCase.market,
+        {
+          detail: token.market.price_at_social_start
+            ? `from ${token.market.price_at_social_start}`
+            : "social anchor pending",
+          label: "Since social",
+          source: "market",
+          tone: deltaTone(token.market.price_change_since_social_pct),
+          value: formatSignedPercent(token.market.price_change_since_social_pct),
+        },
+        {
+          detail: token.flow.baseline_status,
+          label: "Risk flag",
+          source: "deterministic",
+          tone: riskLead ? "risk" : "health",
+          value: riskLead ? formatRisk(riskLead) : "clear",
+        },
+      ]}
+      mark={<ObsidianTokenMark label={tokenCase.label} tone={tokenCase.decision.tone} />}
+      meta={
+        <span className="token-target-score">score {formatScore(token.opportunity.score)}</span>
+      }
+      profile={token.profile}
+      profileLabel={`Official profile for ${tokenCase.label}`}
+      subtitle={tokenCase.subtitle}
+      title={tokenLabel(token)}
+    />
   );
 }
 

@@ -1,5 +1,6 @@
 import type { TokenFlowItem } from "@lib/types";
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
+import { TokenProfileLinks } from "@shared/ui/TokenProfileCard";
 import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
@@ -57,7 +58,14 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
         </span>
       </button>
 
-      <span className="case-row-actions" data-radar-action="venue">
+      <div className="case-row-actions" data-radar-action="venue">
+        <TokenProfileLinks
+          ariaLabel={`Official links for ${tokenCase.label}`}
+          compact
+          includeLabels={["Website", "X"]}
+          links={item.profile?.links}
+          maxLinks={2}
+        />
         {tokenCase.actions.venueHref ? (
           <a
             aria-label={`Open ${tokenCase.label} on ${tokenCase.actions.venueLabel}`}
@@ -80,7 +88,7 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
           <span>{tokenCase.actions.searchLabel}</span>
           <ArrowRight aria-hidden />
         </button>
-      </span>
+      </div>
     </article>
   );
 }

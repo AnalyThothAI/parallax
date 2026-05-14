@@ -8,6 +8,14 @@ type TokenProfileCardProps = {
   compact?: boolean;
 };
 
+type TokenProfileLinksProps = {
+  ariaLabel?: string;
+  compact?: boolean;
+  includeLabels?: string[];
+  links?: TokenProfileBlock["links"] | null;
+  maxLinks?: number;
+};
+
 type ProfileLink = {
   label: string;
   href: string;
@@ -28,7 +36,6 @@ export function TokenProfileCard({ profile, compact = false }: TokenProfileCardP
   const logoUrl = cleanText(identity.logo_url);
   const provider = cleanText(profile.provider) ?? cleanText(source.provider);
   const twitterUsername = twitterUsernameText(linksBlock.twitter_username);
-  const links = profileLinks(linksBlock, twitterUsername);
 
   return (
     <section
@@ -58,17 +65,39 @@ export function TokenProfileCard({ profile, compact = false }: TokenProfileCardP
         </div>
       </div>
 
-      {links.length ? (
-        <nav className="token-profile-links" aria-label="Token profile links">
-          {links.map(({ label, href, Icon }) => (
-            <a href={href} key={label} rel="noreferrer" target="_blank">
-              <Icon aria-hidden />
-              <span>{label}</span>
-            </a>
-          ))}
-        </nav>
-      ) : null}
+      <TokenProfileLinks links={linksBlock} />
     </section>
+  );
+}
+
+export function TokenProfileLinks({
+  ariaLabel = "Token profile links",
+  compact = false,
+  includeLabels,
+  links,
+  maxLinks,
+}: TokenProfileLinksProps) {
+  const linksBlock = links ?? {};
+  const twitterUsername = twitterUsernameText(linksBlock.twitter_username);
+  const includedLabels = includeLabels ? new Set(includeLabels) : null;
+  const profileLinks = buildProfileLinks(linksBlock, twitterUsername).filter((item) =>
+    includedLabels ? includedLabels.has(item.label) : true,
+  );
+  const visibleLinks = maxLinks ? profileLinks.slice(0, maxLinks) : profileLinks;
+
+  if (!visibleLinks.length) {
+    return null;
+  }
+
+  return (
+    <nav className={clsx("token-profile-links", compact && "is-compact")} aria-label={ariaLabel}>
+      {visibleLinks.map(({ label, href, Icon }) => (
+        <a href={href} key={label} rel="noreferrer" target="_blank">
+          <Icon aria-hidden />
+          <span>{label}</span>
+        </a>
+      ))}
+    </nav>
   );
 }
 
@@ -106,7 +135,7 @@ function TokenProfileState({
   );
 }
 
-function profileLinks(
+function buildProfileLinks(
   links: NonNullable<TokenProfileBlock["links"]>,
   twitterUsername: string | null,
 ): ProfileLink[] {

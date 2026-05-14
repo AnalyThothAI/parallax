@@ -1,14 +1,10 @@
-import {
-  compactNumber,
-  formatPercentShare,
-  formatPropagationPhase,
-  formatScore,
-  shortAddress,
-} from "@lib/format";
+import { compactNumber, formatPropagationPhase, formatScore, shortAddress } from "@lib/format";
 import type { SearchInspectData, SearchTargetCandidate, SearchTokenResult } from "@lib/types";
-import { TokenProfileCard } from "@shared/ui/TokenProfileCard";
+import { TokenIntelHeader } from "@shared/ui/TokenIntelHeader";
+import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
 import { useMemo, useState } from "react";
 
+import { buildSearchCaseView } from "../model/searchCase";
 import { buildSearchRadarSummary } from "../model/searchRadar";
 import type { SearchRouteState } from "../state/searchRouteState";
 
@@ -32,76 +28,74 @@ export function SearchTokenIntelPage({
   onRouteChange,
 }: SearchTokenIntelPageProps) {
   const [selectedStageId, setSelectedStageId] = useState<string>("all");
+  const tokenCase = useMemo(() => buildSearchCaseView(data), [data]);
   const radar = useMemo(() => buildSearchRadarSummary(result), [result]);
   const title = tokenTitle(result);
   const caseLabel = tokenCaseLabel(result);
   const subtitle = targetIdentityLine(result.target, result.market_overlay);
-  const narrative = result.agent_brief.project_summary.one_liner;
+  const radarTone = radar.radarStatusLabel === "radar row" ? "info" : "neutral";
+  const marketTone = radar.primaryMarketTone === "positive" ? "health" : "neutral";
 
   return (
     <div className="search-content search-token-intel">
-      <section className="search-token-hero" aria-label={`Search case ${caseLabel}`}>
-        <div className="search-token-identity">
-          <span>token intelligence</span>
-          <h3>{title}</h3>
-          <p>{subtitle}</p>
+      <TokenIntelHeader
+        actions={<SearchIntelControls routeState={routeState} onRouteChange={onRouteChange} />}
+        ariaLabel={`Search case ${caseLabel}`}
+        badge={
+          <ObsidianPill tone={radarTone}>{radar.decision || radar.radarStatusLabel}</ObsidianPill>
+        }
+        className="search-token-case"
+        eyebrow="token intelligence"
+        fields={[
+          tokenCase.official,
+          tokenCase.community,
+          {
+            detail: radar.primaryMarketDetail,
+            label: radar.primaryMarketLabel,
+            source: "market",
+            tone: marketTone,
+            value: radar.primaryMarketValue,
+          },
+          {
+            detail: `${radar.dataHealthLine} · ${radar.gateLine}`,
+            label: "Radar",
+            source: "deterministic",
+            tone: radarTone,
+            value: radar.rankScore
+              ? `${formatScore(radar.rankScore)} / 100`
+              : radar.radarStatusLabel,
+          },
+          {
+            detail: result.agent_brief.project_summary.one_liner,
+            label: "Narrative",
+            source: "agent",
+            tone: "agent",
+            value: formatPropagationPhase(result.timeline.summary.phase),
+          },
+          {
+            detail: `${compactNumber(result.posts.total_count)} total · ${
+              selectedStageId === "all" ? "all stages" : selectedStageId
+            }`,
+            label: "Evidence",
+            source: "social",
+            tone: result.posts.returned_count ? "health" : "neutral",
+            value: `${compactNumber(result.posts.returned_count)} shown`,
+          },
+        ]}
+        mark={<ObsidianTokenMark label={caseLabel} tone={radarTone} />}
+        meta={
           <div className="search-token-meta">
             <code>{result.target.target_type}</code>
             <code>{result.target.status}</code>
             <code>{data.query.window}</code>
             <code>{data.query.scope}</code>
           </div>
-        </div>
-
-        <div className="search-token-action-block">
-          <div className="search-token-decision">
-            <span>decision</span>
-            <b>{radar.decision || result.agent_brief.bull_bear.stance}</b>
-            <small>
-              {radar.rankScore ? `${formatScore(radar.rankScore)} / 100` : radar.radarStatusLabel}
-            </small>
-          </div>
-          <SearchIntelControls routeState={routeState} onRouteChange={onRouteChange} />
-        </div>
-      </section>
-
-      <div
-        className="search-token-profile-row"
-        role="region"
-        aria-label={`Token intelligence for ${plainSymbol(title)}`}
-      >
-        <TokenProfileCard profile={result.profile} />
-      </div>
-
-      <section className="search-token-decision-strip" aria-label="Token decision summary">
-        <SummaryTile
-          label="social proof"
-          value={`${compactNumber(result.timeline.summary.posts)} posts`}
-          detail={`${compactNumber(result.timeline.summary.authors)} authors · watched ${compactNumber(
-            result.timeline.summary.watched_posts ?? 0,
-          )} · top ${formatPercentShare(result.timeline.summary.top_author_share)}`}
-        />
-        <SummaryTile
-          label={radar.primaryMarketLabel}
-          value={radar.primaryMarketValue}
-          detail={radar.primaryMarketDetail}
-        />
-        <SummaryTile
-          label="narrative"
-          value={formatPropagationPhase(result.timeline.summary.phase)}
-          detail={narrative}
-        />
-        <SummaryTile
-          label="data health"
-          value={radar.marketHealth}
-          detail={`${radar.dataHealthLine} · ${radar.gateLine}`}
-        />
-        <SummaryTile
-          label="evidence"
-          value={`${compactNumber(result.posts.returned_count)} shown`}
-          detail={`${compactNumber(result.posts.total_count)} total · ${selectedStageId === "all" ? "all stages" : selectedStageId}`}
-        />
-      </section>
+        }
+        profile={result.profile}
+        profileLabel={`Token intelligence for ${plainSymbol(title)}`}
+        subtitle={subtitle}
+        title={title}
+      />
 
       <div className="search-content-grid">
         <div className="search-primary-stack">
@@ -124,16 +118,6 @@ export function SearchTokenIntelPage({
           <SearchRadarPanel summary={radar} />
         </div>
       </div>
-    </div>
-  );
-}
-
-function SummaryTile({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return (
-    <div>
-      <span>{label}</span>
-      <b>{value}</b>
-      <em>{detail}</em>
     </div>
   );
 }

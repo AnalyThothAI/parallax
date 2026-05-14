@@ -190,6 +190,20 @@
   font-size: 10px;
 }
 
+:global(.search-token-case) {
+  background:
+    linear-gradient(120deg, rgba(112, 188, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(241, 234, 214, 0.04), transparent 180px), var(--slab);
+}
+
+:global(.search-token-case .ods-case-actions-slot) {
+  align-self: start;
+}
+
+:global(.search-token-case .search-token-meta) {
+  justify-content: flex-end;
+}
+
 :global(.search-token-action-block) {
   justify-items: stretch;
 }

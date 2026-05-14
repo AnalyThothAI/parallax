@@ -39,9 +39,17 @@ describe("TokenRadarRow", () => {
     const row = screen.getByRole("button", { name: "Open token item $TROLL" });
     const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
     const venueLink = screen.getByRole("link", { name: "Open $TROLL on GMGN" });
+    const officialLinks = screen.getByRole("navigation", { name: "Official links for $TROLL" });
     expect(searchButton).toBeInTheDocument();
-    expect(venueLink.parentElement?.children[0]).toBe(venueLink);
-    expect(venueLink.parentElement?.children[1]).toBe(searchButton);
+    expect(within(officialLinks).getByRole("link", { name: "Website" })).toHaveAttribute(
+      "href",
+      "https://troll.example",
+    );
+    expect(within(officialLinks).getByRole("link", { name: "X" })).toHaveAttribute(
+      "href",
+      "https://x.com/troll",
+    );
+    expect(venueLink.parentElement?.lastElementChild).toBe(searchButton);
     expect(within(row).getByText("$TROLL")).toBeInTheDocument();
     expect(within(row).getByText("eth · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 posts · 1 authors · 0 watched")).toBeInTheDocument();
@@ -220,6 +228,19 @@ function mixedFreshnessToken(): TokenFlowItem {
       liquidity_present: true,
       risks: [],
       score: 64,
+    },
+    profile: {
+      status: "ready",
+      provider: "gmgn_dex_profile",
+      identity: {
+        symbol: "TROLL",
+        name: "Troll Protocol",
+      },
+      links: {
+        website_url: "https://troll.example",
+        twitter_url: "https://x.com/troll",
+        gmgn_url: "https://gmgn.ai/eth/token/0x1111111111111111111111111111111111111111",
+      },
     },
   };
 }
