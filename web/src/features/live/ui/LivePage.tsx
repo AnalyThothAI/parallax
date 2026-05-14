@@ -21,8 +21,8 @@ type LivePageProps = {
 
 /**
  * LivePage frames the live cockpit: it renders the routed top region above a persistent
- * bottom-deck (tape + signal-lab compact pulse). Token Radar rows select the drawer; the
- * drawer owns the Search Intel drilldown.
+ * bottom-deck (tape + signal-lab compact pulse). Token Radar rows open the item route; compact
+ * pulse rows open the Signal Pulse route.
  */
 export function LivePage({
   liveSignalTapeItems,

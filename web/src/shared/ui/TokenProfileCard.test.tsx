@@ -25,7 +25,7 @@ describe("TokenProfileCard", () => {
     expectLink("GeckoTerminal", "https://www.geckoterminal.com/zec");
   });
 
-  it("does not derive an X link from twitter_username alone", () => {
+  it("derives an X link from twitter_username when twitter_url is absent", () => {
     render(
       <TokenProfileCard
         profile={{
@@ -38,7 +38,7 @@ describe("TokenProfileCard", () => {
       />,
     );
 
-    expect(screen.queryByRole("link", { name: "X" })).not.toBeInTheDocument();
+    expectLink("X", "https://x.com/zcash");
     expect(screen.getByText("@zcash")).toBeInTheDocument();
   });
 

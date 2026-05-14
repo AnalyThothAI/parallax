@@ -1,1 +1,1 @@
-export type MobileTask = "radar" | "tape" | "lab" | "detail";
+export type MobileTask = "radar" | "tape" | "lab";

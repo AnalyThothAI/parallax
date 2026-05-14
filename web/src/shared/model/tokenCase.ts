@@ -19,7 +19,7 @@ import type {
   ObsidianTone,
 } from "@shared/ui/obsidianLanguage";
 
-import { isDexMarket } from "../../../domain/tokenTarget";
+import { isDexMarket } from "../../domain/tokenTarget";
 
 export type TokenCaseTone = ObsidianTone;
 

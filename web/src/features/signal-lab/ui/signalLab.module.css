@@ -1161,8 +1161,7 @@
 
 @media (max-width: 767px) {
   :global(.mobile-task-radar .signal-lab-pulse[data-mobile-task-panel="lab"]),
-  :global(.mobile-task-tape .signal-lab-pulse[data-mobile-task-panel="lab"]),
-  :global(.mobile-task-detail .signal-lab-pulse[data-mobile-task-panel="lab"]) {
+  :global(.mobile-task-tape .signal-lab-pulse[data-mobile-task-panel="lab"]) {
     display: none;
   }
 

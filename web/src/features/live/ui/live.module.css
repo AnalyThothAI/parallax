@@ -498,8 +498,7 @@
 }
 
 :global(.venue-link),
-:global(.external-row),
-:global(.drawer-action-link) {
+:global(.external-row) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -518,31 +517,9 @@
 }
 
 :global(.venue-link:hover),
-:global(.external-row:hover),
-:global(.drawer-action-link:hover) {
+:global(.external-row:hover) {
   border-color: var(--opportunity-line);
   background: var(--opportunity-soft);
-}
-
-:global(.drawer-actions) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  width: max-content;
-  margin-top: 7px;
-}
-
-:global(.drawer-venue-link) {
-  width: max-content;
-}
-
-:global(.drawer-search-link) {
-  color: var(--bone);
-  background: rgba(18, 22, 21, 0.94);
-}
-
-:global(.drawer-search-link:hover) {
-  color: var(--opportunity);
 }
 
 :global(.table-state) {
@@ -1077,14 +1054,10 @@
 
   :global(.mobile-task-radar [data-mobile-task-panel="radar"]),
   :global(.mobile-task-tape [data-mobile-task-panel="tape"]),
-  :global(.mobile-task-lab [data-mobile-task-panel="lab"]),
-  :global(.mobile-task-detail [data-mobile-task-panel="detail"]) {
+  :global(.mobile-task-lab [data-mobile-task-panel="lab"]) {
     display: block;
   }
 
-  :global(.mobile-task-lab.signal-lab-mode [data-mobile-task-panel="radar"]) {
-    display: none;
-  }
 }
 
 @media (max-width: 1279px) {
@@ -1199,16 +1172,6 @@
     min-height: 32px;
   }
 
-  :global(.drawer-actions) {
-    width: 100%;
-  }
-
-  :global(.drawer-actions .drawer-action-link),
-  :global(.drawer-actions .venue-link) {
-    flex: 1 1 128px;
-  }
-
-  :global(.drawer-kv),
   :global(.timeline-summary),
   :global(.score-overview),
   :global(.settlement-grid),

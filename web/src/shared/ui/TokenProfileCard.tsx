@@ -28,7 +28,7 @@ export function TokenProfileCard({ profile, compact = false }: TokenProfileCardP
   const logoUrl = cleanText(identity.logo_url);
   const provider = cleanText(profile.provider) ?? cleanText(source.provider);
   const twitterUsername = twitterUsernameText(linksBlock.twitter_username);
-  const links = profileLinks(linksBlock);
+  const links = profileLinks(linksBlock, twitterUsername);
 
   return (
     <section
@@ -106,10 +106,13 @@ function TokenProfileState({
   );
 }
 
-function profileLinks(links: NonNullable<TokenProfileBlock["links"]>): ProfileLink[] {
+function profileLinks(
+  links: NonNullable<TokenProfileBlock["links"]>,
+  twitterUsername: string | null,
+): ProfileLink[] {
   return [
     { label: "Website", href: cleanText(links.website_url), Icon: Globe },
-    { label: "X", href: cleanText(links.twitter_url), Icon: ExternalLink },
+    { label: "X", href: cleanText(links.twitter_url) ?? twitterHref(twitterUsername), Icon: ExternalLink },
     { label: "Telegram", href: cleanText(links.telegram_url), Icon: MessageCircle },
     { label: "GMGN", href: cleanText(links.gmgn_url), Icon: Search },
     { label: "GeckoTerminal", href: cleanText(links.geckoterminal_url), Icon: ExternalLink },
@@ -119,6 +122,11 @@ function profileLinks(links: NonNullable<TokenProfileBlock["links"]>): ProfileLi
 function twitterUsernameText(value?: string | null): string | null {
   const username = cleanText(value)?.replace(/^@+/, "");
   return username ? `@${username}` : null;
+}
+
+function twitterHref(value: string | null): string | null {
+  const username = value?.replace(/^@+/, "");
+  return username ? `https://x.com/${encodeURIComponent(username)}` : null;
 }
 
 function normalizedStatus(profile?: TokenProfileBlock | null): string {

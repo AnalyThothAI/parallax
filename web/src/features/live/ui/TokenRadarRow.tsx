@@ -1,9 +1,8 @@
 import type { TokenFlowItem } from "@lib/types";
+import { buildTokenCaseView } from "@shared/model/tokenCase";
 import { ObsidianPill, ObsidianTokenMark } from "@shared/ui/case-file";
 import clsx from "clsx";
 import { ArrowRight } from "lucide-react";
-
-import { buildTokenCaseView } from "../model/tokenCase";
 
 type TokenRadarRowProps = {
   item: TokenFlowItem;
@@ -18,7 +17,7 @@ export function TokenRadarRow({ item, selected, onOpenSearch, onSelect }: TokenR
   return (
     <article className={clsx("radar-row", selected && "selected")}>
       <button
-        aria-label={`Select token case ${tokenCase.label}`}
+        aria-label={`Open token item ${tokenCase.label}`}
         className={clsx("radar-row-select", selected && "selected")}
         type="button"
         onClick={() => onSelect(item)}

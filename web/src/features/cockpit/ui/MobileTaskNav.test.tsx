@@ -1,8 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { MobileTask } from "../model/mobileTask";
-
 import { MobileTaskNav } from "./MobileTaskNav";
 
 describe("MobileTaskNav", () => {
@@ -10,31 +8,29 @@ describe("MobileTaskNav", () => {
     cleanup();
   });
 
-  it("renders task buttons with accessible active and disabled states", () => {
+  it("renders only the primary cockpit tasks", () => {
     const onChange = vi.fn();
 
-    render(<MobileTaskNav activeTask="radar" detailAvailable={false} onTaskChange={onChange} />);
+    render(<MobileTaskNav activeTask="radar" onTaskChange={onChange} />);
 
     expect(screen.getByRole("navigation", { name: "mobile cockpit tasks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "Detail" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Detail" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Tape" }));
 
     expect(onChange).toHaveBeenCalledWith("tape");
   });
 
-  it("allows detail task when a selected object exists", () => {
-    const onChange = vi.fn<(task: MobileTask) => void>();
+  it("switches into the lab task without a selected sidecar state", () => {
+    const onChange = vi.fn();
 
-    render(<MobileTaskNav activeTask="detail" detailAvailable onTaskChange={onChange} />);
+    render(<MobileTaskNav activeTask="lab" onTaskChange={onChange} />);
 
-    const detail = screen.getByRole("button", { name: "Detail" });
-    expect(detail).toHaveAttribute("aria-current", "page");
-    expect(detail).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
 
-    fireEvent.click(screen.getByRole("button", { name: "Lab" }));
+    fireEvent.click(screen.getByRole("button", { name: "Radar" }));
 
-    expect(onChange).toHaveBeenCalledWith("lab");
+    expect(onChange).toHaveBeenCalledWith("radar");
   });
 });

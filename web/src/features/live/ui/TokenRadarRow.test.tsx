@@ -35,7 +35,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "Select token case $TROLL" });
+    const row = screen.getByRole("button", { name: "Open token item $TROLL" });
     const searchButton = screen.getByRole("button", { name: "Open Search Intel for $TROLL" });
     const venueLink = screen.getByRole("link", { name: "Open $TROLL on GMGN" });
     expect(searchButton).toBeInTheDocument();
@@ -73,7 +73,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "Select token case $TROLL" });
+    const row = screen.getByRole("button", { name: "Open token item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("-");
     expect(market).toHaveTextContent("cap missing");
@@ -105,7 +105,7 @@ describe("TokenRadarRow", () => {
       />,
     );
 
-    const row = screen.getByRole("button", { name: "Select token case $TROLL" });
+    const row = screen.getByRole("button", { name: "Open token item $TROLL" });
     const market = row.querySelector('[data-radar-metric="market"]') as HTMLElement;
     expect(market).toHaveTextContent("$236K");
     expect(market).not.toHaveTextContent("anchored");

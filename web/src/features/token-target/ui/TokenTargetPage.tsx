@@ -3,34 +3,26 @@ import {
   compactNumber,
   eventText,
   formatReason,
-  formatRisk,
-  formatScore,
   formatSignedPercent,
-  formatTokenPriceUsd,
-  formatUsdCompact,
   shortAddress,
-  tokenLabel,
 } from "@lib/format";
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "@lib/tokenRadar";
 import type {
-  TokenFlowItem,
   TokenSocialTimelineData,
   TokenTimelinePost,
   TokenTimelineStage,
 } from "@lib/types";
-import { tokenVenueAction } from "@lib/venue";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
-import { DecisionTag } from "@shared/ui/DecisionTag";
 import { RemoteState } from "@shared/ui/RemoteState";
 import { ScoreLedger } from "@shared/ui/ScoreLedger";
 import { TokenPostsPanel } from "@shared/ui/TokenPostsPanel";
 import clsx from "clsx";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-import { isDexMarket, type TargetRef, targetRefEquals } from "../../../domain/tokenTarget";
+import { type TargetRef, targetRefEquals } from "../../../domain/tokenTarget";
 import {
   mergeTokenPostPages,
   useTokenTargetRadarQuery,
@@ -42,6 +34,8 @@ import {
   serializeTokenTargetRouteState,
   type TokenTargetRouteState,
 } from "../state/tokenTargetRouteState";
+
+import { TokenTargetCaseSummary } from "./TokenTargetCaseSummary";
 
 const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken"]);
 
@@ -269,103 +263,17 @@ export function TokenTargetPage() {
     selectedStageId && stages.some((stage) => stage.stage_id === selectedStageId)
       ? selectedStageId
       : null;
-  const venueAction = tokenVenueAction(tokenItem);
-  const riskLead =
-    tokenItem.opportunity.hard_risks?.[0] ??
-    tokenItem.opportunity.risks[0] ??
-    tokenItem.timing.risks[0];
 
   return (
     <section className="mobile-task-surface" data-mobile-task-panel="radar">
       <section className="token-target-page" aria-label="Token audit page">
-        <header className="token-case-header">
-          <button
-            className="ghost-icon-button"
-            type="button"
-            onClick={() => navigate(-1)}
-            aria-label="Back to Token Radar"
-          >
-            <ArrowLeft aria-hidden />
-            <span>Radar</span>
-          </button>
-          <div className="token-case-title">
-            <span>
-              {tokenItem.identity.target_type ?? "unresolved"} ·{" "}
-              {tokenItem.identity.inst_id ??
-                tokenItem.identity.chain ??
-                tokenItem.identity.identity_key}
-            </span>
-            <h2>{tokenLabel(tokenItem)}</h2>
-          </div>
-          <div className="token-case-actions">
-            <DecisionTag decision={tokenItem.opportunity.decision} />
-            <strong>{formatScore(tokenItem.opportunity.score)}</strong>
-            <div className="segmented mini range" aria-label="audit page window">
-              {OBSERVATION_WINDOWS.map((item) => (
-                <button
-                  key={item}
-                  className={windowKey === item ? "active" : ""}
-                  type="button"
-                  onClick={() => updateRouteState({ window: item })}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {venueAction ? (
-              <a
-                aria-label={`Open ${tokenLabel(tokenItem)} on ${venueAction.label}`}
-                href={venueAction.url}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {venueAction.label}
-                <ExternalLink aria-hidden />
-              </a>
-            ) : null}
-          </div>
-        </header>
-
-        <section className="token-audit-strip" aria-label="token audit facts">
-          <AuditMetric
-            label="identity"
-            value={identityLine(tokenItem)}
-            detail={tokenItem.identity.identity_status}
-          />
-          <AuditMetric
-            label="social"
-            value={`${compactNumber(timeline?.summary.posts ?? tokenItem.evidence_total_count)} posts`}
-            detail={`${compactNumber(timeline?.summary.authors ?? tokenItem.propagation.independent_authors)} authors`}
-          />
-          <AuditMetric
-            label="market"
-            value={marketLine(tokenItem)}
-            detail={tokenItem.market.price_change_status ?? tokenItem.market.market_status}
-          />
-          <AuditMetric
-            label="since social"
-            value={formatSignedPercent(tokenItem.market.price_change_since_social_pct)}
-            detail={
-              tokenItem.market.price_at_social_start
-                ? formatTokenPriceUsd(tokenItem.market.price_at_social_start)
-                : "no start price"
-            }
-          />
-          <AuditMetric
-            label="first snapshot"
-            value={formatSignedPercent(tokenItem.market.price_change_since_first_snapshot_pct)}
-            detail={
-              tokenItem.market.price_at_first_snapshot
-                ? formatTokenPriceUsd(tokenItem.market.price_at_first_snapshot)
-                : "no snapshot"
-            }
-          />
-          <AuditMetric
-            label="risk"
-            value={riskLead ? formatRisk(riskLead) : "clear"}
-            detail={tokenItem.flow.baseline_status}
-          />
-        </section>
+        <TokenTargetCaseSummary
+          token={tokenItem}
+          timeline={timeline}
+          windowKey={windowKey}
+          onBack={() => navigate(-1)}
+          onWindowChange={(window) => updateRouteState({ window })}
+        />
 
         <section className="case-section stage-tape-section">
           <header>
@@ -424,24 +332,6 @@ export function TokenTargetPage() {
         </section>
       </section>
     </section>
-  );
-}
-
-function AuditMetric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail?: string | null;
-}) {
-  return (
-    <div>
-      <span>{label}</span>
-      <b>{value || "-"}</b>
-      {detail ? <em>{detail}</em> : null}
-    </div>
   );
 }
 
@@ -527,33 +417,4 @@ function targetDisplayLabel(target: TargetRef): string {
   }
   const address = target.target_id.split(":").at(-1);
   return address ? shortAddress(address) : target.target_id;
-}
-
-function identityLine(token: TokenFlowItem): string {
-  if (token.identity.venue_type === "cex") {
-    return (
-      [token.identity.exchange?.toUpperCase(), token.identity.inst_id]
-        .filter(Boolean)
-        .join(" · ") || "CEX"
-    );
-  }
-  if (token.identity.address) {
-    return `${token.identity.chain ?? "chain?"} · ${shortAddress(token.identity.address)}`;
-  }
-  return token.identity.target_type ?? "unresolved";
-}
-
-function marketLine(token: TokenFlowItem): string {
-  if (isDexMarket(token)) {
-    return token.market.market_cap !== null && token.market.market_cap !== undefined
-      ? formatUsdCompact(token.market.market_cap)
-      : "-";
-  }
-  if (token.market.market_cap !== null && token.market.market_cap !== undefined) {
-    return formatUsdCompact(token.market.market_cap);
-  }
-  if (token.market.price !== null && token.market.price !== undefined) {
-    return formatTokenPriceUsd(token.market.price);
-  }
-  return token.market.market_status ?? "-";
 }

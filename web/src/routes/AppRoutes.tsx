@@ -1,17 +1,11 @@
 import { CockpitShell, SearchShell } from "@features/cockpit";
 import {
   buildLiveSignalTapeItems,
-  EvidenceDetailDrawer,
-  TokenDetailDrawer,
   useLiveSelection,
-  type EvidenceDetailDrawerProps,
-  type SelectedSignal,
   type useLiveData,
   type useLiveRouteState,
 } from "@features/live";
 import { useNotificationsController } from "@features/notifications";
-import { SignalLabInspector } from "@features/signal-lab";
-import { useTokenDetailData } from "@features/token-target";
 import {
   buildWatchlistAccountCases,
   buildWatchlistRows,
@@ -47,7 +41,6 @@ export function AppRoutes({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const {
     bootstrapHandles,
-    compactSignalPulseItems,
     decisionCounts,
     handles,
     isAssetFlowLoading,
@@ -60,7 +53,6 @@ export function AppRoutes({
     signalLabPulseData,
     signalLabPulseTotal,
     signalPulseColdLoading,
-    signalPulseFetching,
     status,
     statusError,
     statusHandles,
@@ -79,24 +71,9 @@ export function AppRoutes({
     [liveItems, tokenItems],
   );
   const selection = useLiveSelection({
-    compactSignalPulseItems,
     scope,
-    signalPulseFetching,
-    tokenItems,
     windowKey,
   });
-  const tokenDetail = useTokenDetailData({
-    detailWindow: selection.detailWindow,
-    postRange: selection.postRange,
-    postSortMode: selection.postSortMode,
-    scope,
-    target: selection.drawerTargetRef,
-    token,
-  });
-  const selectedEvidenceDetails = useMemo(
-    () => resolveEvidenceDetails(selection.selectedSignal),
-    [selection.selectedSignal],
-  );
   const notificationsController = useNotificationsController({
     fallbackSummary: status?.notifications?.summary ?? null,
     setMobileTask: selection.setMobileTask,
@@ -138,44 +115,6 @@ export function AppRoutes({
     if (event.key === "3") liveRoute.updateWindow("4h");
     if (event.key === "4") liveRoute.updateWindow("24h");
   };
-
-  const detailPanel = selection.selectedPulseItem ? (
-    <SignalLabInspector item={selection.selectedPulseItem} />
-  ) : selectedEvidenceDetails ? (
-    <EvidenceDetailDrawer {...selectedEvidenceDetails} />
-  ) : (
-    <TokenDetailDrawer
-      accountQuality={tokenDetail.accountQuality}
-      activeTab={selection.detailTab}
-      detailMode={selection.detailMode}
-      detailWindow={selection.detailWindow}
-      hideDuplicateClusters={selection.hideDuplicateClusters}
-      isAccountQualityLoading={tokenDetail.isAccountQualityLoading}
-      signalLabLoading={signalPulseFetching}
-      isPostsFetchingNextPage={tokenDetail.isPostsFetchingNextPage}
-      isPostsLoading={tokenDetail.isPostsLoading}
-      isTimelineLoading={tokenDetail.isTimelineLoading}
-      postRange={selection.postRange}
-      postSortMode={selection.postSortMode}
-      posts={tokenDetail.posts}
-      selectedBucketStartMs={selection.selectedBucketStartMs}
-      selectedEventId={selection.selectedEventId}
-      timeline={tokenDetail.timeline}
-      token={selection.selectedToken}
-      watchedPostsOnly={selection.watchedPostsOnly}
-      onHideDuplicateClustersChange={selection.setHideDuplicateClusters}
-      onBackToTimeline={selection.handleTimelineBack}
-      onDetailWindowChange={selection.handleDetailWindowChange}
-      onLoadMorePosts={tokenDetail.loadMorePosts}
-      onOpenSearchIntel={selection.openTokenSearchPage}
-      onPostRangeChange={selection.setPostRange}
-      onPostSortModeChange={selection.setPostSortMode}
-      onSelectedEventChange={selection.setSelectedEventId}
-      onTabChange={selection.handleDetailTabChange}
-      onTimelineBucketSelect={selection.handleTimelineBucketSelect}
-      onWatchedPostsOnlyChange={selection.setWatchedPostsOnly}
-    />
-  );
 
   const topbarProps = {
     search: {
@@ -229,12 +168,10 @@ export function AppRoutes({
   };
   const mobileProps = {
     mobileTask: selection.mobileTask,
-    detailAvailable: selection.detailAvailable,
     onMobileTaskChange: selection.handleMobileTaskChange,
   };
   const cockpitShellElement = (
     <CockpitShell
-      detailPanel={detailPanel}
       mobile={mobileProps}
       notifications={notificationProps}
       sideRail={sideRailProps}
@@ -266,7 +203,7 @@ export function AppRoutes({
       tokenItems={tokenItems}
       isAssetFlowLoading={isAssetFlowLoading}
       assetFlowError={assetFlowError}
-      selectedTokenKey={selection.selectedTokenKey}
+      selectedTokenKey={null}
       radarSortMode={radarSortMode}
       onOpenTokenSearch={selection.openTokenSearchPage}
       onSelectToken={selection.selectToken}
@@ -290,8 +227,8 @@ export function AppRoutes({
               </LiveMarketSubscription>
             }
           />
-          <Route path="token/:targetType/:targetId" element={<TokenTargetRoute />} />
         </Route>
+        <Route path="token/:targetType/:targetId" element={<TokenTargetRoute />} />
         <Route
           path="stocks"
           element={
@@ -346,22 +283,4 @@ function mergeLiveItems(replayItems: LivePayload[], eventItems: LivePayload[]): 
     (left, right) =>
       Number(right.event.received_at_ms ?? 0) - Number(left.event.received_at_ms ?? 0),
   );
-}
-
-function resolveEvidenceDetails(signal: SelectedSignal): EvidenceDetailDrawerProps | null {
-  if (!signal) {
-    return null;
-  }
-  if (signal.kind === "event") {
-    return {
-      mode: "event",
-      event: signal.item.event,
-      entities: signal.item.entities,
-      alerts: signal.item.alerts,
-      tokenIntents: signal.item.token_intents ?? [],
-      tokenResolutions: signal.item.token_resolutions ?? [],
-      sourceLabel: "live",
-    };
-  }
-  return null;
 }

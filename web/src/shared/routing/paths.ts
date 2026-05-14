@@ -63,7 +63,6 @@ export function tokenTargetPath({
   targetId,
   window = "1h",
   scope = "all",
-  tab,
   postRange,
   postSort,
 }: {
@@ -71,11 +70,10 @@ export function tokenTargetPath({
   targetId: string;
   window?: WindowKey;
   scope?: ScopeKey;
-  tab?: string;
   postRange?: TokenPostRange;
   postSort?: TokenPostSortMode;
 }): string {
-  const search = compactSearch({ window, scope, tab, postRange, postSort });
+  const search = compactSearch({ window, scope, postRange, postSort });
   return `/token/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}${
     search ? `?${search}` : ""
   }`;

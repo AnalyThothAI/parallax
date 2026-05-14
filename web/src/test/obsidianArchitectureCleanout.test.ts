@@ -104,6 +104,36 @@ describe("Obsidian Desk architecture cleanout", () => {
 
     expect(tokenTargetFiles).toEqual([]);
   });
+
+  it("removes the legacy selected sidecar and its drawer-only components", () => {
+    const removedDrawerFiles = [
+      "features/live/ui/AccountLane.tsx",
+      "features/live/ui/EvidenceDetailDrawer.tsx",
+      "features/live/ui/TokenDetailDrawer.tsx",
+      "features/live/ui/TokenReplayFocus.tsx",
+      "features/live/ui/TokenTimeline.tsx",
+      "shared/ui/DetailDrawer.tsx",
+    ].filter((path) => existsSync(join(srcRoot, path)));
+
+    expect(removedDrawerFiles).toEqual([]);
+
+    const cockpitShell = readSource("features/cockpit/ui/CockpitShell.tsx");
+    expect(cockpitShell).not.toContain("detailPanel");
+    expect(cockpitShell).not.toContain("detail-task-panel");
+
+    const mobileTask = readSource("features/cockpit/model/mobileTask.ts");
+    expect(mobileTask).not.toContain("detail");
+
+    const drawerCss = collectFiles(srcRoot)
+      .filter((path) => extname(path) === ".css")
+      .flatMap((path) => {
+        const text = readFileSync(path, "utf8");
+        const matches = [...text.matchAll(/\.detail-(?:task-panel|drawer|window-control)\b/g)];
+        return matches.map((match) => `${relative(webRoot, path)}: ${match[0]}`);
+      });
+
+    expect(drawerCss).toEqual([]);
+  });
 });
 
 function readSource(path: string): string {

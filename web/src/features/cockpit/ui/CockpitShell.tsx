@@ -1,9 +1,8 @@
 import { NotificationDrawer, NotificationToastBridge } from "@features/notifications";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import clsx from "clsx";
-import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { Outlet, useMatch } from "react-router-dom";
+import { Outlet } from "react-router-dom";
 
 import { CockpitMobileNav, type CockpitMobileNavProps } from "./CockpitMobileNav";
 import { CockpitSideRail, type CockpitSideRailProps } from "./CockpitSideRail";
@@ -27,7 +26,6 @@ export type CockpitShellProps = {
   sideRail: CockpitSideRailProps;
   notifications: ShellNotificationProps;
   mobile: CockpitMobileNavProps;
-  detailPanel: ReactNode;
   onHotkey: (event: KeyboardEvent) => void;
 };
 
@@ -36,27 +34,14 @@ export function CockpitShell({
   sideRail,
   notifications,
   mobile,
-  detailPanel,
   onHotkey,
 }: CockpitShellProps) {
   useShellHotkeys(onHotkey);
-  const stockRouteMatch = useMatch("/stocks/*");
-  const labRouteMatch = useMatch("/signal-lab/*");
-  const watchlistRouteMatch = useMatch("/watchlist/*");
-  const shouldHideOuterDetail = Boolean(stockRouteMatch || labRouteMatch || watchlistRouteMatch);
-  const routeModeClass = [
-    stockRouteMatch ? "stocks-main-nav-mode" : "",
-    labRouteMatch ? "signal-lab-mode" : "",
-    watchlistRouteMatch ? "watchlist-mode" : "",
-    shouldHideOuterDetail ? "no-drawer-mode" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
 
   return (
     <div className={clsx("cockpit-shell", `mobile-task-${mobile.mobileTask}`)}>
       <CockpitTopbar {...topbar} />
-      <div className={clsx("cockpit-grid", `mobile-task-${mobile.mobileTask}`, routeModeClass)}>
+      <div className={clsx("cockpit-grid", `mobile-task-${mobile.mobileTask}`)}>
         <CockpitSideRail {...sideRail} />
         <section className="responsive-control-panel" aria-label="cockpit controls">
           <RadarControls
@@ -72,16 +57,8 @@ export function CockpitShell({
         <section className="center-column">
           <Outlet />
         </section>
-        {!shouldHideOuterDetail ? (
-          <section className="detail-task-panel" data-mobile-task-panel="detail">
-            {detailPanel}
-          </section>
-        ) : null}
       </div>
-      <CockpitMobileNav
-        {...mobile}
-        detailAvailable={mobile.detailAvailable && !shouldHideOuterDetail}
-      />
+      <CockpitMobileNav {...mobile} />
       <NotificationLayer {...notifications} />
     </div>
   );
