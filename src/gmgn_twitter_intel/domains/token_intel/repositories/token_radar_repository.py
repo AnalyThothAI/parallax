@@ -107,43 +107,40 @@ class TokenRadarRepository:
               FROM token_radar_rows
               WHERE projection_version = %s AND "window" = %s AND scope = %s
             ),
-            listed AS (
-              SELECT
-                COALESCE(target_type, '') AS target_type_key,
-                COALESCE(target_id, intent_id) AS target_key,
-                MIN(computed_at_ms) AS listed_at_ms
-              FROM token_radar_rows
-              WHERE projection_version = %s
-                AND "window" = %s
-                AND scope = %s
-              GROUP BY COALESCE(target_type, ''), COALESCE(target_id, intent_id)
-            ),
             ranked AS (
-              SELECT
-                token_radar_rows.*,
-                row_number() OVER (PARTITION BY lane ORDER BY rank ASC) AS lane_rank
-              FROM token_radar_rows
-              JOIN latest
-                ON token_radar_rows.computed_at_ms = latest.computed_at_ms
-              WHERE token_radar_rows.projection_version = %s
-                AND token_radar_rows."window" = %s
-                AND token_radar_rows.scope = %s
+              SELECT *
+              FROM (
+                SELECT
+                  token_radar_rows.*,
+                  row_number() OVER (PARTITION BY lane ORDER BY rank ASC) AS lane_rank
+                FROM token_radar_rows
+                JOIN latest
+                  ON token_radar_rows.computed_at_ms = latest.computed_at_ms
+                WHERE token_radar_rows.projection_version = %s
+                  AND token_radar_rows."window" = %s
+                  AND token_radar_rows.scope = %s
+              ) latest_ranked
+              WHERE lane_rank <= %s
             )
             SELECT
               ranked.*,
               listed.listed_at_ms
             FROM ranked
-            LEFT JOIN listed
-              ON listed.target_type_key = COALESCE(ranked.target_type, '')
-             AND listed.target_key = COALESCE(ranked.target_id, ranked.intent_id)
-            WHERE lane_rank <= %s
+            LEFT JOIN LATERAL (
+              SELECT history.computed_at_ms AS listed_at_ms
+              FROM token_radar_rows history
+              WHERE history.projection_version = ranked.projection_version
+                AND history."window" = ranked."window"
+                AND history.scope = ranked.scope
+                AND COALESCE(history.target_type, '') = COALESCE(ranked.target_type, '')
+                AND COALESCE(history.target_id, history.intent_id) = COALESCE(ranked.target_id, ranked.intent_id)
+              ORDER BY history.computed_at_ms ASC
+              LIMIT 1
+            ) listed ON TRUE
             ORDER BY lane DESC, rank ASC
             LIMIT %s
             """,
             (
-                projection_version,
-                window,
-                scope,
                 projection_version,
                 window,
                 scope,

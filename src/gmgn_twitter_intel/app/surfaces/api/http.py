@@ -85,7 +85,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     @router.get("/status", response_model=api_schemas.ApiEnvelope[api_schemas.StatusData])
     async def status(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        payload, status_code = readiness_payload(runtime)
+        payload, status_code = await asyncio.to_thread(readiness_payload, runtime)
         return _json({"ok": payload.get("ok", status_code < 500), "data": payload}, status_code=status_code)
 
     @router.get("/recent", response_model=api_schemas.ApiEnvelope[api_schemas.RecentData])
@@ -381,21 +381,18 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         rule_id: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        with runtime.repositories() as repos:
-            rows = repos.notifications.list_notifications(
-                limit=_limit(limit, maximum=500),
-                subscriber_key="local",
-                unread_only=bool(unread_only),
-                rule_id=rule_id or None,
-            )
-            summary = repos.notifications.summary(subscriber_key="local")
+        data = await asyncio.to_thread(
+            _notifications_data,
+            runtime,
+            limit=_limit(limit, maximum=500),
+            unread_only=bool(unread_only),
+            rule_id=rule_id or None,
+            subscriber_key="local",
+        )
         return _json(
             {
                 "ok": True,
-                "data": {
-                    "items": [_notification_payload(row) for row in rows],
-                    "summary": summary,
-                },
+                "data": data,
             }
         )
 
@@ -595,17 +592,18 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_scope = _scope(scope)
         parsed_limit = _limit(limit, maximum=500)
         parsed_status = _signal_pulse_status(status)
-        with runtime.repositories() as repos:
-            data = SignalPulseService(pulse=repos.pulse, harness=repos.harness).pulse(
-                window=parsed_window,
-                scope=parsed_scope,
-                status=parsed_status,
-                handle=handle or None,
-                q=q or None,
-                limit=parsed_limit,
-                cursor=cursor or None,
-                agent_worker_running=_task_running(getattr(runtime, "pulse_candidate_task", None)),
-            )
+        data = await asyncio.to_thread(
+            _signal_lab_pulse_data,
+            runtime,
+            window=parsed_window,
+            scope=parsed_scope,
+            status=parsed_status,
+            handle=handle or None,
+            q=q or None,
+            limit=parsed_limit,
+            cursor=cursor or None,
+            agent_worker_running=_task_running(getattr(runtime, "pulse_candidate_task", None)),
+        )
         return _json({"ok": True, "data": data})
 
     @router.get(
@@ -830,6 +828,28 @@ def _recent_data(
         }
 
 
+def _notifications_data(
+    runtime: Any,
+    *,
+    limit: int,
+    unread_only: bool,
+    rule_id: str | None,
+    subscriber_key: str,
+) -> dict[str, Any]:
+    with runtime.repositories() as repos:
+        rows = repos.notifications.list_notifications(
+            limit=limit,
+            subscriber_key=subscriber_key,
+            unread_only=unread_only,
+            rule_id=rule_id,
+        )
+        summary = repos.notifications.summary(subscriber_key=subscriber_key)
+    return {
+        "items": [_notification_payload(row) for row in rows],
+        "summary": summary,
+    }
+
+
 def _token_radar_data(
     runtime: Any,
     *,
@@ -854,6 +874,31 @@ def _token_radar_data(
 def _notification_summary_data(runtime: Any, *, subscriber_key: str) -> dict[str, Any]:
     with runtime.repositories() as repos:
         return repos.notifications.summary(subscriber_key=subscriber_key)
+
+
+def _signal_lab_pulse_data(
+    runtime: Any,
+    *,
+    window: str,
+    scope: str,
+    status: str | None,
+    handle: str | None,
+    q: str | None,
+    limit: int,
+    cursor: str | None,
+    agent_worker_running: bool,
+) -> dict[str, Any]:
+    with runtime.repositories() as repos:
+        return SignalPulseService(pulse=repos.pulse, harness=repos.harness).pulse(
+            window=window,
+            scope=scope,
+            status=status,
+            handle=handle,
+            q=q,
+            limit=limit,
+            cursor=cursor,
+            agent_worker_running=agent_worker_running,
+        )
 
 
 def _scope(value: str) -> str:

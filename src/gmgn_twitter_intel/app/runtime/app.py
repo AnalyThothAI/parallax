@@ -147,7 +147,7 @@ def create_app(
     @app.get("/readyz", response_model=StatusData)
     async def readyz() -> JSONResponse:
         runtime = app.state.service
-        payload, status_code = _readiness_payload(runtime)
+        payload, status_code = await asyncio.to_thread(_readiness_payload, runtime)
         return JSONResponse(payload, status_code=status_code)
 
     @app.websocket("/ws")
