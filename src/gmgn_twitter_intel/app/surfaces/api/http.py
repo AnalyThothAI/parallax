@@ -13,7 +13,6 @@ from gmgn_twitter_intel.app.surfaces.api import schemas as api_schemas
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.account_quality.read_models.account_quality_service import AccountQualityService
 from gmgn_twitter_intel.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
-from gmgn_twitter_intel.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessService
 from gmgn_twitter_intel.domains.pulse_lab.read_models.signal_pulse_service import SignalPulseService
@@ -22,6 +21,12 @@ from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service impor
 from gmgn_twitter_intel.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 from gmgn_twitter_intel.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
 from gmgn_twitter_intel.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
+from gmgn_twitter_intel.domains.token_intel.read_models.token_case_service import (
+    TokenCaseInvalidScope,
+    TokenCaseService,
+    TokenCaseTargetNotFound,
+    normalize_token_case_scope,
+)
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_cursor import TokenTargetCursorError
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_service import (
     TokenTargetPostsCursorError,
@@ -178,6 +183,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 token_radar=repos.token_radar,
                 targets=repos.token_targets,
                 profiles=profiles,
+                live_price_gateway=getattr(runtime, "live_price_gateway", None),
             ).inspect(
                 q,
                 window=parsed_window,
@@ -185,7 +191,44 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 limit=_limit(limit, maximum=200),
                 now_ms=_now_ms(),
             )
-        _enrich_search_inspect_market_overlay(runtime, data, window=parsed_window)
+        return _json({"ok": True, "data": data})
+
+    @router.get("/token-case", response_model=api_schemas.ApiEnvelope[api_schemas.TokenCaseData])
+    def token_case(
+        request: Request,
+        target_type: Annotated[str, Query()] = "",
+        target_id: Annotated[str, Query()] = "",
+        window: Annotated[str, Query()] = "1h",
+        scope: Annotated[str, Query()] = "all",
+        posts_limit: Annotated[int, Query()] = 24,
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        parsed_target_type = _target_type(target_type)
+        if not parsed_target_type:
+            raise ApiBadRequest("invalid_target", field="target_type")
+        if not target_id:
+            raise ApiBadRequest("invalid_target", field="target_id")
+        parsed_window = _window(window)
+        try:
+            normalize_token_case_scope(scope)
+        except TokenCaseInvalidScope as exc:
+            raise ApiBadRequest("invalid_scope", field="scope") from exc
+        try:
+            with runtime.repositories() as repos:
+                data = TokenCaseService(
+                    targets=repos.token_targets,
+                    profiles=TokenProfileReadModel(asset_profiles=repos.asset_profiles),
+                    live_price_gateway=getattr(runtime, "live_price_gateway", None),
+                ).dossier(
+                    target_type=parsed_target_type,
+                    target_id=target_id,
+                    window=parsed_window,
+                    scope=scope,
+                    posts_limit=max(1, _limit(posts_limit, maximum=50)),
+                    now_ms=_now_ms(),
+                )
+        except TokenCaseTargetNotFound:
+            return _json({"ok": False, "error": "target_not_found"}, status_code=404)
         return _json({"ok": True, "data": data})
 
     @router.get("/token-radar", response_model=api_schemas.ApiEnvelope[api_schemas.TokenRadarData])
@@ -697,17 +740,6 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         )
 
     return router
-
-
-def _enrich_search_inspect_market_overlay(runtime: Any, data: dict[str, Any], *, window: str) -> None:
-    token_result = data.get("token_result")
-    if not isinstance(token_result, dict):
-        return
-    providers = runtime.providers.asset_market
-    token_result["market_overlay"] = MarketCandlesService(
-        cex_market=providers.message_cex_market,
-        dex_candle_market=providers.dex_candle_market,
-    ).enrich_overlay(token_result.get("market_overlay"), window=window)
 
 
 def _runtime(request: Request) -> Any:

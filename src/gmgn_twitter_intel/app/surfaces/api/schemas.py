@@ -58,6 +58,15 @@ class SearchInspectData(ApiSchema):
     error: str | None = None
 
 
+class TokenCaseData(ApiSchema):
+    target: JsonObject
+    profile: JsonObject | None = None
+    timeline: JsonObject
+    posts: JsonObject
+    agent_brief: JsonObject
+    market_live: JsonObject
+
+
 class TokenRadarData(ApiSchema):
     window: str
     scope: str
