@@ -6,6 +6,14 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 
 `gmgn-twitter-intel`: a single Python service that ingests GMGN's anonymous public WebSocket, extracts Twitter-mentioned crypto entities, scores them, and serves results over HTTP / WebSocket / CLI to a small React frontend. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
+The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`,
+`token_intents`, `token_intent_resolutions`, `asset_identity_*`,
+`price_observations`) are the only business truth. Derived read models
+(`token_radar_rows`, `pulse_candidates`, ...) each have exactly one
+runtime writer and are rebuildable. `NOTIFY` is a wake hint; every
+listener re-reads DB and runs a bounded `interval_seconds` catch-up.
+Provider raw frames are inputs, not facts.
+
 ## Where to read what
 
 | Need | File |
@@ -19,6 +27,8 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 | Testing & completion gates | `docs/TESTING.md` |
 | Secrets, config, authn changes | `docs/SECURITY.md` |
 | Operational invariants | `docs/RELIABILITY.md` |
+| Cross-domain worker inventory | `docs/WORKERS.md` |
+| Module architecture maps | `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` (currently `token_intel`, `asset_market`, `pulse_lab`) |
 | Active / done specs & plans | `docs/superpowers/{specs,plans}/{active,completed}/` |
 | External references & papers | `docs/references/` |
 | Auto-generated artefacts | `docs/generated/` |
