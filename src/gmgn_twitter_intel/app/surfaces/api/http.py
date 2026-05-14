@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Callable
@@ -200,17 +201,14 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
-        with runtime.repositories() as repos:
-            profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
-            data = AssetFlowService(
-                token_radar=repos.token_radar,
-                profiles=profiles,
-            ).asset_flow(
-                window=parsed_window,
-                limit=_limit(limit),
-                scope=parsed_scope,
-                now_ms=_now_ms(),
-            )
+        data = await asyncio.to_thread(
+            _token_radar_data,
+            runtime,
+            window=parsed_window,
+            limit=_limit(limit),
+            scope=parsed_scope,
+            now_ms=_now_ms(),
+        )
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
 
     @router.get("/stocks-radar", response_model=api_schemas.ApiEnvelope[api_schemas.StocksRadarData])
@@ -807,6 +805,27 @@ def _dict(value: Any) -> dict[str, Any]:
 
 def _limit(value: int, *, maximum: int = 1000) -> int:
     return max(0, min(int(value), maximum))
+
+
+def _token_radar_data(
+    runtime: Any,
+    *,
+    window: str,
+    limit: int,
+    scope: str,
+    now_ms: int,
+) -> dict[str, Any]:
+    with runtime.repositories() as repos:
+        profiles = TokenProfileReadModel(asset_profiles=repos.asset_profiles)
+        return AssetFlowService(
+            token_radar=repos.token_radar,
+            profiles=profiles,
+        ).asset_flow(
+            window=window,
+            limit=limit,
+            scope=scope,
+            now_ms=now_ms,
+        )
 
 
 def _scope(value: str) -> str:
