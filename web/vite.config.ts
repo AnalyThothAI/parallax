@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { configDefaults, defineConfig } from "vitest/config";
 
 const srcPath = (path: string) => new URL(`./src/${path}`, import.meta.url).pathname;
+const testsPath = (path: string) => new URL(`./tests/${path}`, import.meta.url).pathname;
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -12,21 +13,22 @@ export default defineConfig({
       "@routes": srcPath("routes"),
       "@features": srcPath("features"),
       "@shared": srcPath("shared"),
-      "@lib": srcPath("lib")
-    }
+      "@lib": srcPath("lib"),
+      "@tests": testsPath(""),
+    },
   },
   server: {
     proxy: {
       "/api": "http://127.0.0.1:8765",
       "/ws": {
         target: "ws://127.0.0.1:8765",
-        ws: true
-      }
-    }
+        ws: true,
+      },
+    },
   },
   test: {
     environment: "jsdom",
-    exclude: [...configDefaults.exclude, "e2e/**"],
-    setupFiles: "./src/test/setup.ts"
-  }
+    exclude: [...configDefaults.exclude, "tests/e2e/**"],
+    setupFiles: "./tests/setup.ts",
+  },
 });

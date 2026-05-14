@@ -11,9 +11,9 @@
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint --max-warnings=0 src",
-    "format:check": "prettier --check 'src/**/*.{ts,tsx,css,json}'",
-    "format": "prettier --write 'src/**/*.{ts,tsx,css,json}'",
+    "lint": "eslint --max-warnings=0 src tests vite.config.ts playwright.config.ts",
+    "format:check": "prettier --check '{src,tests}/**/*.{ts,tsx,css,json}' '*.config.ts'",
+    "format": "prettier --write '{src,tests}/**/*.{ts,tsx,css,json}' '*.config.ts'",
     "generate:types": "openapi-typescript ../docs/generated/openapi.json -o src/lib/types/openapi.ts"
   },
   "dependencies": {

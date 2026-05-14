@@ -12,6 +12,7 @@ import clsx from "clsx";
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 import { useStocksRadarQuery } from "../api/useStocksRadarQuery";
+import "./stocks.css";
 
 type StocksRadarPageProps = {
   token: string;

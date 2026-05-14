@@ -19,7 +19,8 @@
       "@routes/*": ["src/routes/*"],
       "@features/*": ["src/features/*"],
       "@shared/*": ["src/shared/*"],
-      "@lib/*": ["src/lib/*"]
+      "@lib/*": ["src/lib/*"],
+      "@tests/*": ["tests/*"]
     },
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -27,5 +28,5 @@
     "jsx": "react-jsx",
     "types": ["vitest/globals"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "tests", "vite.config.ts", "playwright.config.ts"]
 }

@@ -11,6 +11,8 @@ import type { TokenPostItem, TokenPostRange, TokenPostSortMode, TokenPostsData }
 import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
 import { ExternalLink } from "lucide-react";
 
+import "./shared.css";
+
 type TokenPostsPanelProps = {
   posts?: TokenPostsData | null;
   isLoading: boolean;

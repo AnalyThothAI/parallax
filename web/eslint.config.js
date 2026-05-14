@@ -22,7 +22,7 @@ export default [
     ],
   },
   {
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "tests/**/*.{ts,tsx}", "*.config.ts"],
     languageOptions: {
       parser: tsParser,
       parserOptions: {
@@ -92,6 +92,7 @@ export default [
             { target: "./src/shared", from: "./src/features" },
             { target: "./src/shared", from: "./src/routes" },
             { target: "./src/shared", from: "./src/app" },
+            { target: "./src", from: "./tests" },
           ],
         },
       ],
@@ -109,11 +110,22 @@ export default [
     },
   },
   {
-    files: ["src/**/*.test.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
+    files: ["tests/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/no-explicit-any": "off",
       "@typescript-eslint/consistent-type-imports": "off", // vi.importActual type parameter is not a type import
+      "import/no-restricted-paths": "off",
+      "no-restricted-imports": "off",
       "no-console": "off",
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
+    files: ["*.config.ts"],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 ];

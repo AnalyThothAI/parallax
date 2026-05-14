@@ -1,0 +1,369 @@
+.watchlist-page {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  background:
+    linear-gradient(90deg, rgba(241, 234, 214, 0.025) 1px, transparent 1px) 0 0 / 32px 32px,
+    rgba(7, 9, 9, 0.92);
+  padding: 12px;
+}
+
+.watchlist-monitor-shell {
+  display: grid;
+  max-width: 1320px;
+  min-height: 100%;
+  gap: 10px;
+  margin: 0 auto;
+}
+
+.watchlist-monitor-hero,
+.watchlist-signal-card,
+.watchlist-evidence-panel,
+.watchlist-cluster-panel {
+  min-width: 0;
+  border: 1px solid var(--line);
+  background: rgba(13, 17, 17, 0.96);
+}
+
+.watchlist-monitor-hero {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+}
+
+.watchlist-source-mark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid var(--opportunity-line);
+  border-radius: 6px;
+  color: var(--opportunity);
+  background: var(--opportunity-soft);
+}
+
+.watchlist-source-mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.watchlist-monitor-title {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.watchlist-kicker,
+.watchlist-section-head span,
+.watchlist-signal-card span,
+.watchlist-evidence-time span {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.watchlist-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.watchlist-kicker svg {
+  width: 11px;
+  height: 11px;
+  color: var(--health);
+}
+
+.watchlist-monitor-title h2 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 27px;
+  line-height: 1.06;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-monitor-title p,
+.watchlist-section-head p,
+.watchlist-signal-card p,
+.watchlist-evidence-card p {
+  margin: 0;
+  color: var(--ash);
+  line-height: 1.45;
+}
+
+.watchlist-monitor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.watchlist-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--bone-2);
+  background: var(--slab);
+  padding: 0 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.watchlist-action.primary {
+  border-color: var(--opportunity-line);
+  color: var(--opportunity-ink);
+  background: var(--opportunity-soft);
+}
+
+.watchlist-action:hover,
+.watchlist-action:focus-visible {
+  border-color: var(--opportunity-line);
+  color: var(--opportunity);
+}
+
+.watchlist-signal-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.watchlist-signal-card {
+  display: grid;
+  gap: 6px;
+  min-height: 92px;
+  padding: 11px;
+}
+
+.watchlist-signal-card b {
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 25px;
+  line-height: 1;
+}
+
+.watchlist-signal-card.opportunity {
+  border-color: var(--opportunity-line);
+}
+
+.watchlist-signal-card.health {
+  border-color: var(--health-line);
+}
+
+.watchlist-signal-card.info {
+  border-color: var(--info-line);
+}
+
+.watchlist-signal-card.agent {
+  border-color: var(--agent-line);
+}
+
+.watchlist-monitor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(310px, 0.65fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.watchlist-evidence-panel,
+.watchlist-cluster-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 12px;
+}
+
+.watchlist-extraction-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.watchlist-section-head {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.watchlist-section-head h3 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.watchlist-evidence-stream,
+.watchlist-cluster-list,
+.watchlist-risk-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watchlist-evidence-stream li {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.watchlist-evidence-time {
+  display: flex;
+  justify-content: flex-end;
+  border-right: 1px solid var(--line);
+  padding: 10px 9px 0 0;
+}
+
+.watchlist-evidence-card {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  background: rgba(18, 23, 19, 0.72);
+  padding: 10px;
+}
+
+.watchlist-evidence-card > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.watchlist-evidence-card a,
+.watchlist-evidence-card b {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-evidence-card a {
+  text-decoration: none;
+}
+
+.watchlist-evidence-card a:hover {
+  color: var(--opportunity);
+}
+
+.watchlist-evidence-card p {
+  color: var(--bone-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.watchlist-cluster-list a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  background: rgba(7, 10, 10, 0.74);
+  padding: 9px;
+  color: var(--bone-2);
+  text-decoration: none;
+}
+
+.watchlist-cluster-list a:hover,
+.watchlist-cluster-list a:focus-visible {
+  border-color: var(--info-line);
+  background: rgba(123, 181, 216, 0.08);
+}
+
+.watchlist-cluster-list b {
+  overflow: hidden;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watchlist-cluster-list span {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.watchlist-risk-list li {
+  border: 1px solid var(--risk-line);
+  color: var(--risk-ink);
+  background: var(--risk-soft);
+  padding: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1120px) {
+  .watchlist-monitor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .watchlist-extraction-panel {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 840px) {
+  .watchlist-monitor-hero {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .watchlist-monitor-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .watchlist-signal-strip,
+  .watchlist-extraction-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 580px) {
+  .watchlist-page {
+    padding: 8px;
+  }
+
+  .watchlist-signal-strip,
+  .watchlist-extraction-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .watchlist-evidence-stream li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .watchlist-evidence-time {
+    justify-content: flex-start;
+    border-right: 0;
+    padding: 0;
+  }
+
+  .watchlist-monitor-title h2 {
+    font-size: 22px;
+  }
+}

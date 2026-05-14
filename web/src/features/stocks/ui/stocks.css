@@ -1,0 +1,136 @@
+.stocks-radar-panel {
+  min-height: calc(100vh - 46px);
+}
+
+.stocks-radar-toolbar .stocks-health {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.stocks-radar-toolbar .stocks-health b {
+  color: var(--bone-2);
+}
+
+.stocks-radar-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.stock-radar-head,
+.stock-radar-row {
+  grid-template-columns:
+    minmax(118px, 1.1fr)
+    minmax(92px, 0.72fr)
+    minmax(96px, 0.76fr)
+    minmax(108px, 0.9fr)
+    minmax(96px, 0.82fr)
+    minmax(96px, 0.78fr)
+    minmax(102px, 0.78fr);
+  min-width: 760px;
+}
+
+.stock-radar-row {
+  min-height: 46px;
+  height: auto;
+  align-items: center;
+}
+
+.stock-token-cell .token-symbol {
+  color: var(--opportunity);
+}
+
+.stock-latest-cell b,
+.stock-quote-cell b {
+  overflow: hidden;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-quote-cell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 5px;
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  line-height: 1.05;
+}
+
+.stock-quote-cell small {
+  grid-column: 2;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stock-quote-cell.ready svg {
+  color: var(--ash);
+}
+
+.stock-quote-cell.unavailable b,
+.stock-quote-cell.unavailable svg {
+  color: var(--opportunity);
+}
+
+.stock-move-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.stock-move-line svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 1279px) {
+  .stocks-radar-toolbar .stocks-health {
+    overflow-x: auto;
+  }
+
+  .stocks-radar-toolbar {
+    flex-wrap: wrap;
+    align-items: stretch;
+    padding: 8px 14px;
+  }
+
+  .stocks-radar-controls {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .stock-radar-head,
+  .stock-radar-row {
+    grid-template-columns:
+      minmax(118px, 1fr)
+      minmax(72px, 0.6fr)
+      minmax(88px, 0.7fr)
+      minmax(92px, 0.72fr)
+      minmax(88px, 0.68fr);
+    min-width: 560px;
+  }
+
+  .stock-radar-head > :nth-child(3),
+  .stock-radar-row > :nth-child(3),
+  .stock-radar-head > :nth-child(4),
+  .stock-radar-row > :nth-child(4) {
+    display: none;
+  }
+}

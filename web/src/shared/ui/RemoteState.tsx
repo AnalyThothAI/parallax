@@ -1,6 +1,8 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 
+import "./shared.css";
+
 type SkeletonRowsProps = {
   count?: number;
   label: string;

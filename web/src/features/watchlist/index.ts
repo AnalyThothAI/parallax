@@ -1,5 +1,5 @@
 export { WatchlistPage } from "./ui/WatchlistPage";
-export { buildWatchlistAccountCases } from "./model/watchlistCase";
+export { buildWatchlistAccountCases, normalizeWatchlistHandle } from "./model/watchlistCase";
 export { buildWatchlistRows } from "./model/watchlistRows";
 export type { WatchlistAccountCase } from "./model/watchlistCase";
 export type { WatchlistRow } from "./model/watchlistRows";

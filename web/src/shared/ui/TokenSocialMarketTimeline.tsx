@@ -20,6 +20,8 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef } from "react";
 
+import "./shared.css";
+
 type MarketOverlay = TokenSocialTimelineData["market_overlay"] | Record<string, unknown>;
 
 type TokenSocialMarketTimelineProps = {
@@ -99,7 +101,9 @@ export function TokenSocialMarketTimeline({
             social posts
           </span>
           <b>
-            {chartData.latestPrice === null ? "price -" : formatTokenPriceUsd(chartData.latestPrice)}
+            {chartData.latestPrice === null
+              ? "price -"
+              : formatTokenPriceUsd(chartData.latestPrice)}
           </b>
         </div>
         <TimelineChart data={chartData} />

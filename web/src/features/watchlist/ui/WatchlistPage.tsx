@@ -8,6 +8,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import type { WatchlistAccountCase } from "../model/watchlistCase";
 import { normalizeWatchlistHandle } from "../model/watchlistCase";
+import "./watchlist.css";
 
 type WatchlistPageProps = {
   accountCases: WatchlistAccountCase[];

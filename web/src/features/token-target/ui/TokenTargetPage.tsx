@@ -1,7 +1,5 @@
 import { getAuthToken } from "@lib/api/client";
-import {
-  shortAddress,
-} from "@lib/format";
+import { shortAddress } from "@lib/format";
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "@lib/tokenRadar";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
@@ -27,6 +25,7 @@ import {
 } from "../state/tokenTargetRouteState";
 
 import { TokenTargetCaseSummary } from "./TokenTargetCaseSummary";
+import "./tokenTarget.css";
 
 const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken"]);
 

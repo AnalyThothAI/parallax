@@ -1,11 +1,10 @@
+import type { MobileTask } from "@features/cockpit";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { signalLabPath, watchlistPath } from "@shared/routing/paths";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import type { MobileTask } from "../cockpit/model/mobileTask";
 
 import {
   getNotifications,

@@ -7,6 +7,7 @@ import { useSignalLabPage } from "../useSignalLabPage";
 
 import { SignalLabInspector } from "./SignalLabInspector";
 import { SignalLabWorkbench } from "./SignalLabWorkbench";
+import "./signalLab.css";
 
 type SignalLabPageProps = {
   selectedAccountEventId?: string | null;

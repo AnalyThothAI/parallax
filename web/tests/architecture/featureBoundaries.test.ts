@@ -1,0 +1,39 @@
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, extname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+const webRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
+const srcRoot = join(webRoot, "src");
+const sourceExtensions = new Set([".ts", ".tsx"]);
+const featureNames = "(cockpit|live|notifications|search|signal-lab|stocks|token-target|watchlist)";
+
+describe("feature boundaries", () => {
+  it("does not import another feature internals by relative path", () => {
+    const offenders = collectFiles(join(srcRoot, "features"))
+      .filter((path) => sourceExtensions.has(extname(path)))
+      .flatMap((path) => {
+        const relativePath = relative(webRoot, path);
+        const text = readFileSync(path, "utf8");
+        const matches = [
+          ...text.matchAll(
+            new RegExp(
+              `(?:\\.\\./)+${featureNames}/(?:api|model|state|ui|tokenSearchRoute)(?:/|["'])`,
+              "g",
+            ),
+          ),
+        ];
+        return matches.map((match) => `${relativePath}: ${match[0]}`);
+      });
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+function collectFiles(root: string): string[] {
+  return readdirSync(root).flatMap((entry) => {
+    const path = join(root, entry);
+    return statSync(path).isDirectory() ? collectFiles(path) : [path];
+  });
+}

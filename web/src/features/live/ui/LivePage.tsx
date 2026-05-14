@@ -5,6 +5,7 @@ import { Outlet } from "react-router-dom";
 import type { LiveSignalTapeItem } from "../liveTapeModel";
 
 import { LiveSignalTape } from "./LiveSignalTape";
+import "./live.css";
 
 type LivePageProps = {
   liveSignalTapeItems: LiveSignalTapeItem[];
