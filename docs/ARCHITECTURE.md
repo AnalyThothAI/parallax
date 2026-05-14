@@ -6,12 +6,14 @@ The service is organised around domain packages, explicit integration adapters, 
 
 ```
 GMGN public stream
-  → domains/ingestion
-  → domains/evidence
-  → domains/token_intel
-  → domains/social_enrichment
-  → domains/closed_loop_harness
-  → domains/notifications and domains/pulse_lab
+  → domains/ingestion           (raw frame normalisation, snapshot gate)
+  → domains/evidence            (transactional facts: events, evidence, intents, resolutions, asset identity)
+  → domains/asset_market        (background workers: event_anchor and decision_latest observations, profile refresh, discovery)
+  → domains/token_intel         (token_radar_rows projection, scoring, search read model)
+  → domains/social_enrichment   (watched-event extraction)
+  → domains/closed_loop_harness (signal seeds, settlement, outcomes)
+  → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
+  → domains/notifications       (rules, delivery)
   → app/surfaces/api + app/surfaces/cli
 ```
 
@@ -20,11 +22,77 @@ decision changes, update the nearest architecture / contract / reliability
 document in the same change. A fresh agent must not need chat history to know
 where token identity is extracted, resolved, refreshed, scored, and served.
 
+## Architecture Invariants (Kappa/CQRS)
+
+These nine invariants govern how data flows through the service. Code that
+violates them is wrong even if tests pass; tests that depend on a violation
+are wrong too.
+
+1. **Facts-first persistence.** `events`, `event_entities`, `token_evidence`,
+   `token_intents`, `token_intent_lookup_keys`, `token_intent_resolutions`,
+   `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
+   and `price_observations` are the business fact tables. Every other
+   persisted table is a derived read model that can be rebuilt from these
+   facts.
+2. **One material market fact type.** Market data from any provider is
+   normalised into a `MarketObservation`
+   (`domains/asset_market/types/market_observation.py`) before persistence;
+   provider raw frames are inputs, not facts.
+3. **Two market time roles.** `MarketContext.event_anchor` serves event-time
+   and back-testing; `MarketContext.decision_latest` serves current
+   decision, UI, and Signal Pulse. The two roles are persisted in distinct
+   partitions (`observation_kind`) of `price_observations` and must never
+   overwrite each other.
+4. **One writer per read model.** Each derived read model has exactly one
+   runtime writer: `token_radar_rows` is written only by
+   `TokenRadarProjectionWorker`; `pulse_candidates`, `pulse_agent_runs`,
+   `pulse_agent_run_steps` are written only by `PulseCandidateWorker`. New
+   read models must declare their single writer in the owning module's
+   ARCHITECTURE.md.
+5. **Wake is not truth.** PostgreSQL `NOTIFY` channels
+   (`market_observation_written`, `resolution_updated`,
+   `token_radar_updated`) carry hint payloads only; consumers re-read DB on
+   wake. Every listener must have a bounded `interval_seconds` catch-up so
+   a missed `NOTIFY` cannot stall the pipeline.
+6. **No runtime compatibility layer.** Hard cuts delete the old runtime
+   path. No `_overlay_*`, no `fallback_to_v2_snapshot`, no "if missing fall
+   back to the old field". Migration code and rollback docs may reference
+   removed names; runtime, public API, and frontend code may not.
+7. **Material observation write budget.** `LivePriceGateway` persists a
+   `decision_latest` row only when `should_persist_live_observation`
+   returns `True` (`first_seen` / `heartbeat` /
+   `significant_price_change` / `gate_field_change` /
+   `provider_state_change`). Every other valid frame updates the in-process
+   cache and may fan out over WS, but it does not become a fact.
+8. **Observable IO state.** Each WS provider exposes a connection state
+   (`disconnected | connecting | authenticating | subscribed | streaming |
+   failed`) with a `last_state_change_at_ms`. The snapshot gate exposes
+   outcome counters (`immediate_complete | debounced_complete |
+   debounced_timeout | non_tw_channel`). Both surface through
+   `/api/status`.
+9. **Audit ledger truth.** Every Signal Pulse decision must be replayable
+   from `pulse_agent_runs` and `pulse_agent_run_steps`. Insufficient data
+   finishes as an abstain decision with the audit row written; no path may
+   return a decision without an audit row, and no path may invent a
+   confidence or display status to avoid abstaining.
+
+Cross-cutting primitives that implement these invariants:
+
+- `MarketObservation`, `MarketContext`, `MarketReadiness` — value types in
+  `domains/asset_market/types/market_observation.py`; the only market fact
+  contract across domains.
+- `WakeBus`, `WakeListener` — composition-root primitives in
+  `app/runtime/wake_bus.py`; the only place that owns
+  `LISTEN/NOTIFY` mechanics. Domain workers receive these by injection.
+- `should_persist_live_observation` — single decision function in
+  `domains/asset_market/services/live_observation_policy.py`; the live
+  write budget gate.
+
 ## Package Roots
 
 | Root | Responsibility |
 |------|----------------|
-| `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/` wires domains; `app/surfaces/{api,cli}/` translate public inputs and outputs. |
+| `app/` | Composition root plus HTTP, WebSocket, and CLI surfaces. `app/runtime/` wires domains; `app/surfaces/{api,cli}/` translate public inputs and outputs. `app/runtime/wake_bus.py` owns the `WakeBus` / `WakeListener` `LISTEN`/`NOTIFY` mechanics injected into domain workers. |
 | `domains/` | Product domains. Each domain owns its repositories, queries, services / scoring, read models, and runtime workers. |
 | `integrations/` | External adapters for GMGN, OKX, and OpenAI Agents. They translate third-party API shapes but do not own product decisions. |
 | `platform/` | Config, PostgreSQL infrastructure (client, migrations, audit, Alembic), logging, and runtime paths. Platform never imports product domains. |
@@ -57,7 +125,7 @@ direction is still enforced by the package rules below.
 |--------|------|
 | `domains/ingestion/` | GMGN public-stream frame handling, snapshot gate, handle filtering, raw public-stream normalisation, collector status. |
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
-| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile facts, anchor price observations, live price gateway, discovery, and CEX route sync. |
+| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile facts, `price_observations` (`event_anchor` and `decision_latest` roles via `MarketObservation`/`MarketContext`/`MarketReadiness`), live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
@@ -73,6 +141,8 @@ own maps next to the code they describe, and this file links to them.
 | Module | File | Covers |
 |--------|------|--------|
 | Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
+| Asset market and material observations | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketObservation` schema, anchor / live / profile / discovery workers, material observation write budget, provider capability model. |
+| Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 
 When a subsystem needs more than a short row here, add
 `src/gmgn_twitter_intel/domains/<domain>/ARCHITECTURE.md` and link it from this
