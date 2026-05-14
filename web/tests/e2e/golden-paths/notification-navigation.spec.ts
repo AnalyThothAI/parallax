@@ -10,7 +10,5 @@ test("notification click navigates into Signal Pulse context", async ({ page }) 
   await page.getByRole("button", { name: /open BNB pulse/i }).click();
 
   await expect(page).toHaveURL(/\/signal-lab\?q=BNB/);
-  await expect(
-    page.getByText("Review agent memos by candidate stage, gate, source, and next action."),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Signal Pulse" })).toBeVisible();
 });

@@ -56,7 +56,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
   const scope = liveRoute.scope;
   const signalLabOverviewData = signalLabCompact.overviewData;
   const signalLabPulseData = signalLabCompact.pulseData;
-  const signalLabPulseTotal = signalLabCompact.signalPulseTotal;
   const signalPulseColdLoading = signalLabCompact.signalPulseColdLoading;
   const status = statusQuery.data?.data ?? null;
   const statusError = statusQuery.isError;
@@ -160,7 +159,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
   };
   const sideRailProps = {
     tokenItemsCount: tokenItems.length,
-    signalLabPulseTotal,
     scope,
     onScopeChange: liveRoute.updateScope,
     handles,
@@ -168,7 +166,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
     onWindowChange: liveRoute.updateWindow,
     decisionCounts,
     watchlistRows,
-    onMobileTaskChange: selection.handleMobileTaskChange,
   };
   const mobileProps = {
     mobileTask: selection.mobileTask,
@@ -187,7 +184,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
     <SearchShell notifications={notificationProps} topbar={topbarProps} onHotkey={handleHotkey} />
   );
 
-  const livePageElement = (
+  const livePageElement = (children?: ReactNode) => (
     <LiveRoute
       liveSignalTapeItems={liveSignalTapeItems}
       isRecentLoading={isRecentLoading}
@@ -197,9 +194,10 @@ export function AppRoutes({ session }: { session: AppSession }) {
       signalLabPulseData={signalLabPulseData ?? null}
       signalPulseLoading={signalPulseColdLoading}
       selectedPulseItemId={selection.selectedPulseItemId}
-      onOpenLab={selection.onOpenLab}
       onSelectPulse={selection.selectPulseItem}
-    />
+    >
+      {children}
+    </LiveRoute>
   );
 
   const liveRadarElement = (
@@ -220,16 +218,6 @@ export function AppRoutes({ session }: { session: AppSession }) {
   return (
     <Routes>
       <Route element={cockpitShellElement}>
-        <Route element={livePageElement}>
-          <Route
-            index
-            element={
-              <LiveMarketSubscription targets={marketTargets}>
-                {liveRadarElement}
-              </LiveMarketSubscription>
-            }
-          />
-        </Route>
         <Route path="token/:targetType/:targetId" element={<TokenTargetRoute />} />
         <Route
           path="stocks"
@@ -244,6 +232,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
           }
         />
         <Route path="watchlist" element={<WatchlistRoute accountCases={watchlistAccountCases} />} />
+        <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
         <Route
           path="signal-lab"
           element={
@@ -254,7 +243,12 @@ export function AppRoutes({ session }: { session: AppSession }) {
             />
           }
         />
-        <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
+        <Route
+          index
+          element={livePageElement(
+            <LiveMarketSubscription targets={marketTargets}>{liveRadarElement}</LiveMarketSubscription>,
+          )}
+        />
       </Route>
       <Route element={searchShellElement}>
         <Route path="search" element={<SearchRoute />} />

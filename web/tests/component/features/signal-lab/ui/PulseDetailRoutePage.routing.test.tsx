@@ -44,6 +44,7 @@ describe("PulseDetailRoutePage", () => {
     await waitFor(() => {
       expect(screen.getAllByText(/\$PEPE|cand-1/).length).toBeGreaterThan(0);
     });
+    expect(screen.getByRole("link", { name: "返回列表" })).toHaveAttribute("href", "/signal-lab");
   });
 
   it("renders in-page 404 when candidate is missing", async () => {

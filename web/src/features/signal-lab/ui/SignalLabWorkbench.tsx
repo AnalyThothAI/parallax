@@ -10,28 +10,28 @@ import { RemoteState, SkeletonRows } from "@shared/ui/RemoteState";
 import clsx from "clsx";
 import { useId } from "react";
 
-import { SignalPulseList } from "./SignalLabPulse";
+import { SignalPulseQueue } from "./SignalPulseQueue";
 
 const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; description: string }> = [
   {
     status: "trade_candidate",
-    label: "Trade candidate",
-    description: "Actionable setup with enough social and market context.",
+    label: "交易候选",
+    description: "热度和市场状态足够进入详情核验。",
   },
   {
     status: "token_watch",
-    label: "Token watch",
-    description: "Token-specific signal that still needs confirmation.",
+    label: "代币观察",
+    description: "标的热度出现，但还缺少确认。",
   },
   {
     status: "theme_watch",
-    label: "Theme watch",
-    description: "Narrative or cluster worth monitoring.",
+    label: "主题观察",
+    description: "叙事或账号簇值得继续看。",
   },
   {
     status: "risk_rejected_high_info",
-    label: "Rejected high info",
-    description: "Informative but rejected by gates.",
+    label: "已拒绝",
+    description: "信息量高，但被风控条件拦下。",
   },
 ];
 
@@ -98,17 +98,16 @@ export function SignalLabWorkbench({
       <header className="signal-lab-workbench-head">
         <div>
           <h2>Signal Pulse</h2>
-          <p>Review agent memos by candidate stage, gate, source, and next action.</p>
         </div>
         <div className="signal-lab-workbench-state">
           <span>
-            window <b>{windowLabel}</b>
+            窗口 <b>{windowLabel}</b>
           </span>
           <span>
-            candidates <b>{health?.candidate_count ?? totalPulse}</b>
+            候选 <b>{health?.candidate_count ?? totalPulse}</b>
           </span>
           <span>
-            shown <b>{items.length}</b>
+            当前 <b>{items.length}</b>
           </span>
         </div>
       </header>
@@ -128,32 +127,32 @@ export function SignalLabWorkbench({
         ))}
       </div>
 
-      <div className="signal-filter-bar" aria-label="Signal Pulse queue filters">
+      <div className="signal-filter-bar" aria-label="Signal Pulse candidate filters">
         <div className="filter-cell signal-stage-filter">
-          <span>Status</span>
+          <span>状态</span>
           <b>
             {statusFilter === "all"
-              ? "All pulse"
+              ? "全部候选"
               : PULSE_STATUSES.find((item) => item.status === statusFilter)?.label}
           </b>
         </div>
         <FilterField
-          label="Source"
+          label="来源账号"
           ariaLabel="Signal Pulse source filter"
           value={handleFilter}
           placeholder="@cz_binance"
           onChange={onHandleChange}
         />
         <FilterField
-          label="Symbol/target"
+          label="标的"
           ariaLabel="Signal Pulse identity filter"
           value={searchFilter}
-          placeholder="BNB, token:SOL, asset:..."
+          placeholder="BNB, token:SOL"
           onChange={onSearchChange}
         />
         <div className="filter-cell signal-sort-cell">
-          <span>Sort</span>
-          <b>Updated</b>
+          <span>排序</span>
+          <b>最新</b>
         </div>
         <button
           className="signal-clear-filters"
@@ -161,17 +160,17 @@ export function SignalLabWorkbench({
           type="button"
           onClick={onClearFilters}
         >
-          Reset
+          重置
         </button>
       </div>
 
-      <section className="signal-chain-workbench-list">
+      <section className="signal-pulse-workbench-list">
         <header>
-          <h3>{showAccountEvents ? "Watched account events" : "Candidate queue"}</h3>
+          <h3>{showAccountEvents ? "账号事件" : "候选列表"}</h3>
           <span>
             {showAccountEvents
-              ? `${accountEvents.length} posts · account lens`
-              : `${items.length} shown · ${statusLabel}`}
+              ? `${accountEvents.length} 条 · 账号视角`
+              : `${items.length} 条 · ${statusLabel}`}
           </span>
         </header>
         {showAccountEvents ? (
@@ -187,7 +186,7 @@ export function SignalLabWorkbench({
             onClearFilters={onClearFilters}
           />
         ) : (
-          <SignalPulseList
+          <SignalPulseQueue
             isLoading={isLoading}
             items={items}
             selectedItemId={selectedItemId}
@@ -201,7 +200,7 @@ export function SignalLabWorkbench({
             type="button"
             onClick={onLoadMore}
           >
-            {isFetchingNextPage ? "Loading" : "Load more"}
+            {isFetchingNextPage ? "加载中" : "加载更多"}
           </button>
         ) : null}
       </section>
@@ -237,7 +236,7 @@ function AccountEventList({
             key={item.event.event_id}
           >
             <button
-              aria-label={`open watched post ${title}`}
+              aria-label={`查看关注账号事件 ${title}`}
               className="signal-chain-select"
               type="button"
               onClick={() => onSelect(item)}
@@ -247,7 +246,7 @@ function AccountEventList({
               </span>
               <span className="signal-chain-main">
                 <strong>@{eventHandle(item.event)}</strong>
-                <em>watched · {formatRelativeTime(item.event.received_at_ms)} ago</em>
+                <em>关注账号 · {formatRelativeTime(item.event.received_at_ms)} 前</em>
                 <p>{title}</p>
                 <span className="signal-chain-chipline">
                   {chips.slice(0, 4).map((chip) => (
@@ -257,7 +256,7 @@ function AccountEventList({
               </span>
               <span className="signal-chain-score">
                 <b>{chips.length || "-"}</b>
-                <small>{item.alerts.length ? "alerts" : "entities"}</small>
+                <small>{item.alerts.length ? "预警" : "实体"}</small>
               </span>
               <span className="signal-chain-time">
                 {formatRelativeTime(item.event.received_at_ms)}
@@ -279,13 +278,11 @@ function SignalLabEmptyState({
 }) {
   return (
     <RemoteState.Empty
-      title={
-        hasActiveFilters ? "No matching Signal Pulse items" : "No Signal Pulse items in this window"
-      }
+      title={hasActiveFilters ? "没有匹配的 Signal Pulse 候选" : "当前窗口没有 Signal Pulse 候选"}
       action={
         hasActiveFilters ? (
           <button type="button" onClick={onClearFilters}>
-            Clear filters
+            清除筛选
           </button>
         ) : null
       }
@@ -312,7 +309,7 @@ function accountEventChips(item: LivePayload): string[] {
 }
 
 function labelForStatus(status: SignalPulseStatusFilter): string {
-  if (status === "all") return "all statuses";
+  if (status === "all") return "全部状态";
   return PULSE_STATUSES.find((item) => item.status === status)?.label ?? status;
 }
 

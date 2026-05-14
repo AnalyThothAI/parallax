@@ -1,13 +1,7 @@
 import { requiredMobileTaskForPathname, useCockpitStore, type MobileTask } from "@features/cockpit";
 import { tokenSearchPath } from "@features/search";
 import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
-import {
-  livePath,
-  searchPath,
-  signalLabPath,
-  signalLabPulsePath,
-  tokenTargetPath,
-} from "@shared/routing/paths";
+import { livePath, searchPath, signalLabPulsePath, tokenTargetPath } from "@shared/routing/paths";
 import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -77,7 +71,7 @@ export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
     setSelectedSignal({ kind: "pulse", item });
     setSelectedTapeEventId(item.candidate_id);
     setMobileTask("lab");
-    navigate(item.candidate_id ? signalLabPulsePath(item.candidate_id) : signalLabPath());
+    navigate(signalLabPulsePath(item.candidate_id));
   };
 
   const selectAccountEvent = (item: LivePayload) => {
@@ -128,16 +122,10 @@ export function useLiveSelection({ scope, windowKey }: UseLiveSelectionArgs) {
     }
   };
 
-  const onOpenLab = () => {
-    navigate(signalLabPath());
-    setMobileTask("lab");
-  };
-
   return {
     handleMobileTaskChange,
     handleTapeSelect,
     mobileTask,
-    onOpenLab,
     openTokenSearchPage,
     selectAccountEvent,
     selectPulseItem,

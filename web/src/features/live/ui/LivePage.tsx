@@ -1,5 +1,6 @@
 import { SignalLabPulse } from "@features/signal-lab";
 import type { SignalPulseData, SignalPulseItem } from "@lib/types";
+import type { ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 
 import type { LiveSignalTapeItem } from "../liveTapeModel";
@@ -16,14 +17,14 @@ type LivePageProps = {
   signalLabPulseData: SignalPulseData | null;
   signalPulseLoading: boolean;
   selectedPulseItemId: string | null;
-  onOpenLab: () => void;
+  children?: ReactNode;
   onSelectPulse: (item: SignalPulseItem) => void;
 };
 
 /**
  * LivePage frames the live cockpit: it renders the routed top region above a persistent
  * bottom-deck (tape + signal-lab compact pulse). Token Radar rows open the item route; compact
- * pulse rows open the Signal Pulse route.
+ * pulse rows open the Signal Pulse detail route.
  */
 export function LivePage({
   liveSignalTapeItems,
@@ -34,12 +35,12 @@ export function LivePage({
   signalLabPulseData,
   signalPulseLoading,
   selectedPulseItemId,
-  onOpenLab,
+  children,
   onSelectPulse,
 }: LivePageProps) {
   return (
     <div data-testid="live-page" className="live-page">
-      <Outlet />
+      {children ?? <Outlet />}
 
       <div className="bottom-deck">
         <LiveSignalTape
@@ -56,7 +57,6 @@ export function LivePage({
           isLoading={signalPulseLoading}
           mobileTaskPanel="lab"
           selectedItemId={selectedPulseItemId}
-          onOpenLab={onOpenLab}
           onSelect={onSelectPulse}
         />
       </div>

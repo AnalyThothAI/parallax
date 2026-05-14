@@ -14,7 +14,7 @@ describe("MobileTaskNav", () => {
 
     expect(screen.getByRole("navigation", { name: "mobile cockpit tasks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByRole("button", { name: "Detail" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lab" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Tape" }));
 

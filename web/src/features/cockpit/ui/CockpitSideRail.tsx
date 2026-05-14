@@ -2,19 +2,16 @@ import { WatchlistNotificationDot } from "@features/notifications";
 import type { WatchlistRow } from "@features/watchlist";
 import { compactNumber, formatRelativeTime } from "@lib/format";
 import type { Decision, ScopeKey, WindowKey } from "@lib/types";
-import { signalLabPath, stocksPath, watchlistPath } from "@shared/routing/paths";
+import { stocksPath, watchlistPath } from "@shared/routing/paths";
 import clsx from "clsx";
 import { UserRound } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link, useMatch, useNavigate, useSearchParams } from "react-router-dom";
 
-import type { MobileTask } from "../model/mobileTask";
-
 type DecisionCounts = Record<Decision, number>;
 
 export type CockpitSideRailProps = {
   tokenItemsCount: number;
-  signalLabPulseTotal: number;
   scope: ScopeKey;
   onScopeChange: (scope: ScopeKey) => void;
   handles: string;
@@ -22,12 +19,10 @@ export type CockpitSideRailProps = {
   onWindowChange: (window: WindowKey) => void;
   decisionCounts: DecisionCounts;
   watchlistRows: WatchlistRow[];
-  onMobileTaskChange: (task: MobileTask) => void;
 };
 
 export function CockpitSideRail({
   tokenItemsCount,
-  signalLabPulseTotal,
   scope,
   onScopeChange,
   handles,
@@ -35,13 +30,11 @@ export function CockpitSideRail({
   onWindowChange: _onWindowChange,
   decisionCounts,
   watchlistRows,
-  onMobileTaskChange,
 }: CockpitSideRailProps) {
   const navigate = useNavigate();
   const liveRouteMatch = useMatch({ path: "/", end: true });
   const stockRouteMatch = useMatch("/stocks/*");
   const watchlistRouteMatch = useMatch("/watchlist/*");
-  const labRouteMatch = useMatch("/signal-lab/*");
   const [searchParams] = useSearchParams();
   const activeWatchHandle = watchlistRouteMatch ? (searchParams.get("handle") ?? "") : "";
 
@@ -67,16 +60,6 @@ export function CockpitSideRail({
           label="Watchlist"
           value={watchlistRows.length}
           onClick={() => navigate(watchlistPath())}
-        />
-        <RailButton
-          active={Boolean(labRouteMatch)}
-          index="4"
-          label="Signal Pulse"
-          value={signalLabPulseTotal}
-          onClick={() => {
-            navigate(signalLabPath());
-            onMobileTaskChange("lab");
-          }}
         />
       </RailSection>
 

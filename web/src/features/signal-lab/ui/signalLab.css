@@ -1,41 +1,44 @@
 .signal-lab-pulse {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
+}
+
+.signal-lab-pulse > header {
+  gap: 12px;
+}
+
+.signal-lab-pulse > header > div:first-child {
+  flex: 0 0 auto;
 }
 
 .signal-attention-summary {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 22px;
-  border-bottom: 1px solid var(--line-soft);
-  background: #080c0c;
-  padding: 0 10px;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  border-bottom: 0;
+  background: transparent;
+  padding: 0;
 }
 
-.signal-attention-summary span {
+.signal-lab-pulse .signal-attention-summary span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
   color: var(--dim);
   font-family: var(--mono);
   font-size: 9px;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
 
-.signal-attention-summary b {
+.signal-lab-pulse .signal-attention-summary b {
   color: var(--opportunity);
   font-weight: 800;
-}
-
-.text-action {
-  height: 22px;
-  border: 1px solid var(--opportunity-line);
-  border-radius: 4px;
-  color: var(--opportunity);
-  background: var(--opportunity-soft);
-  padding: 0 8px;
-  font-family: var(--mono);
-  font-size: 10px;
 }
 
 .signal-chain-list {
@@ -513,69 +516,28 @@
   line-height: 1.35;
 }
 
-.signal-chain-workbench-list {
+.signal-pulse-workbench-list {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   padding: 2px 22px 22px;
 }
 
-.signal-chain-workbench-list > header {
+.signal-pulse-workbench-list > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
 }
 
-.signal-chain-workbench-list h3 {
+.signal-pulse-workbench-list h3 {
   margin: 0;
   color: var(--bone);
   font-family: var(--mono);
   font-size: 12px;
 }
 
-.signal-chain-workbench-list .signal-chain-list {
-  height: 100%;
-  max-height: none;
-}
-
-.signal-chain-workbench-list .signal-chain-select {
-  grid-template-columns: 108px minmax(0, 1fr) 86px;
-  gap: 8px;
-  min-height: 82px;
-  padding: 8px 10px;
-}
-
-.signal-chain-workbench-list .signal-chain-main {
-  gap: 2px;
-}
-
-.signal-chain-workbench-list .signal-chain-main p {
-  -webkit-line-clamp: 1;
-  font-size: 11px;
-  line-height: 1.25;
-}
-
-.signal-chain-workbench-list .signal-chain-chipline {
-  display: flex;
-}
-
-.signal-chain-workbench-list .signal-chain-score b {
-  font-size: 18px;
-}
-
-.signal-chain-workbench-list .signal-chain-score small {
-  max-width: 86px;
-  font-size: 8px;
-}
-
-.signal-chain-workbench-list .signal-chain-twitter-link {
-  width: 22px;
-  height: 22px;
-  margin: 7px 7px 0 0;
-}
-
-.signal-chain-workbench-list header span {
+.signal-pulse-workbench-list header span {
   color: var(--dim);
   font-family: var(--mono);
   font-size: 10px;
@@ -1102,18 +1064,34 @@
 }
 
 .signal-lab-layout-with-detail .signal-stage-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  padding: 16px 20px 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 20px 8px;
 }
 
 .signal-lab-layout-with-detail .signal-stage-grid button {
-  min-height: 92px;
+  min-height: 74px;
+  gap: 5px;
+  padding: 10px 12px;
   background: rgba(18, 23, 19, 0.72);
+}
+
+.signal-lab-layout-with-detail .signal-stage-grid b {
+  font-size: 24px;
+}
+
+.signal-lab-layout-with-detail .signal-stage-grid em {
+  -webkit-line-clamp: 1;
+  font-size: 11px;
 }
 
 .signal-lab-layout-with-detail .signal-filter-bar {
   grid-template-columns: minmax(110px, 0.9fr) minmax(120px, 1fr) minmax(160px, 1.3fr);
-  padding: 10px 20px 14px;
+  padding: 8px 20px 10px;
+}
+
+.signal-lab-layout-with-detail .filter-cell {
+  padding: 8px 10px;
 }
 
 .signal-lab-layout-with-detail .signal-sort-cell,
@@ -1121,7 +1099,7 @@
   display: none;
 }
 
-.signal-chain-workbench-list {
+.signal-pulse-workbench-list {
   padding: 2px 20px 18px;
 }
 
@@ -1169,7 +1147,7 @@
     min-width: 0;
   }
 
-  .signal-chain-workbench-list {
+  .signal-pulse-workbench-list {
     padding: 2px 10px 12px;
   }
 

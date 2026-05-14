@@ -22,7 +22,7 @@ export function PulseDetailRoutePage() {
   if (pulse.isError || !item) {
     return (
       <RouteStatePanel title="Pulse 不存在或已被屏蔽">
-        检查链接，或回到 Signal Pulse 队列选择其他候选。
+        检查链接，或回到 Signal Pulse 列表选择其他候选。
       </RouteStatePanel>
     );
   }
@@ -41,7 +41,7 @@ function PulseDetailActions({ item }: { item: SignalPulseItem }) {
   const subject = item.factor_snapshot.subject.symbol ?? item.symbol ?? item.subject_key;
   return (
     <>
-      <Link to="/signal-lab">← 返回队列</Link>
+      <Link to="/signal-lab">返回列表</Link>
       <Link to={searchPath({ q: subject ? `$${subject.replace(/^\$+/, "")}` : item.subject_key })}>
         搜索情报
       </Link>
