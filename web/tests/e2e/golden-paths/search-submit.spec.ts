@@ -9,8 +9,7 @@ test("topbar search submits to Search Intel route", async ({ page }) => {
   await page.getByRole("button", { name: "检索" }).click();
 
   await expect(page).toHaveURL(/\/search\?q=PEPE\+ignition/);
-  await expect(page.getByRole("heading", { name: "Search Intel" })).toBeVisible();
-  await expect(
-    page.getByLabel("Search Intel controls").getByText("PEPE ignition", { exact: true }),
-  ).toBeVisible();
+  const searchRegion = page.getByRole("region", { name: "Search Intel" });
+  await expect(searchRegion.getByRole("heading", { name: "Search Intel" })).toBeVisible();
+  await expect(searchRegion.getByText("PEPE ignition", { exact: true })).toBeVisible();
 });

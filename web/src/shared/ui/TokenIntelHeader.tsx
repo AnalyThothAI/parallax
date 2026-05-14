@@ -10,6 +10,7 @@ import {
   type ObsidianTone,
 } from "./case-file";
 import type { ObsidianSource } from "./obsidianLanguage";
+import "./shared.css";
 
 export type TokenIntelField = {
   detail?: ReactNode;

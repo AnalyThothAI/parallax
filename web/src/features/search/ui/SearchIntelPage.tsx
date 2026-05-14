@@ -14,6 +14,7 @@ import {
 import { SearchAmbiguousCase } from "./SearchAmbiguousCase";
 import { SearchTokenIntelPage } from "./SearchTokenIntelPage";
 import { SearchTopicCase } from "./SearchTopicCase";
+import "./search.css";
 
 export function SearchIntelPage() {
   const navigate = useNavigate();

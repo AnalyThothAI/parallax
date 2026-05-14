@@ -2,6 +2,8 @@ import { formatReason, formatRisk, formatScore } from "@lib/format";
 import type { ScoreBlock, TimingBlock, TokenFlowItem } from "@lib/types";
 import clsx from "clsx";
 
+import "./shared.css";
+
 type LedgerItem = {
   key: string;
   label: string;

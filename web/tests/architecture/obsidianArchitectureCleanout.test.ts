@@ -55,7 +55,7 @@ describe("Obsidian Desk architecture cleanout", () => {
   });
 
   it("keeps Obsidian component tone colors behind tokens", () => {
-    const obsidianCss = readSource("shared/ui/obsidian.module.css");
+    const obsidianCss = readSource("shared/ui/obsidian.css");
     const hardCodedToneColors = [...obsidianCss.matchAll(/#[0-9a-fA-F]{6}/g)].map(
       (match) => match[0],
     );
@@ -90,12 +90,12 @@ describe("Obsidian Desk architecture cleanout", () => {
   });
 
   it("keeps cockpit shell geometry centralized and route content scrollable", () => {
-    const cockpitCss = readSource("features/cockpit/ui/cockpit.module.css");
+    const cockpitCss = readSource("features/cockpit/ui/cockpit.css");
 
     expect(cockpitCss).toContain("--cockpit-rail-width");
     expect(cockpitCss).toContain("--cockpit-topbar-height");
     expect(cockpitCss).not.toContain("grid-template-columns: 220px");
-    expect(cockpitCss).toMatch(/:global\(\.center-column\)\s*{[^}]*overflow:\s*auto;/s);
+    expect(cockpitCss).toMatch(/\.center-column\s*{[^}]*overflow:\s*auto;/s);
   });
 
   it("keeps shared market timeline from trapping page scroll", () => {

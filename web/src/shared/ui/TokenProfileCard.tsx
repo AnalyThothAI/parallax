@@ -3,6 +3,8 @@ import clsx from "clsx";
 import { ExternalLink, Globe, MessageCircle, Search } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import "./shared.css";
+
 type TokenProfileCardProps = {
   profile?: TokenProfileBlock | null;
   compact?: boolean;

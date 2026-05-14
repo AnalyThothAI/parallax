@@ -25,6 +25,7 @@ import {
 } from "../state/tokenTargetRouteState";
 
 import { TokenTargetCaseSummary } from "./TokenTargetCaseSummary";
+import "./tokenTarget.css";
 
 const VALID_TARGET_TYPES = new Set<TargetRef["target_type"]>(["Asset", "CexToken"]);
 

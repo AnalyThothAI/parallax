@@ -3,7 +3,7 @@ import type { HTMLAttributes, ReactNode } from "react";
 import { useId } from "react";
 
 import type { ObsidianSource, ObsidianTone } from "./obsidianLanguage";
-import "./obsidian.module.css";
+import "./obsidian.css";
 
 export type {
   ObsidianSource,

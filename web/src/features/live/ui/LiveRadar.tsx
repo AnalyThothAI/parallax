@@ -1,6 +1,7 @@
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
 
 import { TokenRadarTable } from "./TokenRadarTable";
+import "./live.css";
 
 type LiveRadarProps = {
   tokenItems: TokenFlowItem[];

@@ -20,6 +20,8 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef } from "react";
 
+import "./shared.css";
+
 type MarketOverlay = TokenSocialTimelineData["market_overlay"] | Record<string, unknown>;
 
 type TokenSocialMarketTimelineProps = {
