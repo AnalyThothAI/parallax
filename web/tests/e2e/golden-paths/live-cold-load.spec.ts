@@ -29,8 +29,8 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
 
   const rowBox = await radarRow.boundingBox();
   expect(rowBox).not.toBeNull();
-  expect(Math.round(rowBox?.height ?? 0)).toBeLessThanOrEqual(100);
-  expect(Math.round(rowBox?.height ?? 0)).toBeGreaterThanOrEqual(76);
+  expect(Math.round(rowBox?.height ?? 0)).toBeLessThanOrEqual(72);
+  expect(Math.round(rowBox?.height ?? 0)).toBeGreaterThanOrEqual(56);
 
   await expect(page.locator(".detail-task-panel")).toHaveCount(0);
   await expect(page.locator(".detail-drawer")).toHaveCount(0);

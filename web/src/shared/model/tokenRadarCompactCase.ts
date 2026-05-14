@@ -4,6 +4,7 @@ import {
   formatRisk,
   formatSignedPercent,
   formatUtcTimestamp,
+  formatUsdCompact,
 } from "@lib/format";
 import type { TokenFlowItem } from "@lib/types";
 
@@ -25,7 +26,7 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
     markTone: tokenCase.decision.tone,
     market: {
       ...tokenCase.market,
-      detail: marketMeta(item, "-"),
+      detail: compactMarketDetail(item),
     },
     marketMove,
     narrative: {
@@ -116,6 +117,23 @@ function compactHolders(item: TokenFlowItem): { detail: string; value: string } 
         : statusLabel(item.market.holder_count_status),
     value: compactNumber(holders),
   };
+}
+
+function compactMarketDetail(item: TokenFlowItem): string {
+  const stats = [
+    item.market.liquidity !== null && item.market.liquidity !== undefined
+      ? `liq ${formatUsdCompact(item.market.liquidity)}`
+      : null,
+    item.market.volume_24h !== null && item.market.volume_24h !== undefined
+      ? `vol ${formatUsdCompact(item.market.volume_24h)}`
+      : null,
+  ].filter((part): part is string => Boolean(part));
+  const health = marketMeta(item, "-");
+  return (
+    [...stats, health === "market data unavailable" ? null : health]
+      .filter((part): part is string => Boolean(part))
+      .join(" · ") || health
+  );
 }
 
 function compactListedAt(item: TokenFlowItem): {

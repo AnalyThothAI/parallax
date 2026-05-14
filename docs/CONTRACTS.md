@@ -45,6 +45,12 @@ Token Radar market contract:
 - `/api/token-radar` rows expose a single `market` block from
   `factor_snapshot_json`. The block contains `event_anchor`, `decision_latest`,
   and `readiness`.
+- `/api/token-radar` rows may expose a `radar` block with projection-row
+  metadata for UI sorting and audit display: `lane`, `rank`, `listed_at_ms`,
+  `computed_at_ms`, and `source_max_received_at_ms`. `listed_at_ms` is derived
+  from retained `token_radar_rows` history for the same projection window,
+  scope, target type, and target id; it is presentation metadata, not an alpha
+  factor.
 - `market.event_anchor` is the event-time observation for the social signal.
   It may be `null` when a provider could not establish an event-time price.
 - `market.decision_latest` is the latest material market observation available

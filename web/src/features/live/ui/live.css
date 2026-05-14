@@ -1471,3 +1471,269 @@
     padding: 0 12px 12px;
   }
 }
+
+/* Token Radar sortable dense table */
+.radar-data-table {
+  display: grid;
+  min-width: 1040px;
+}
+
+.radar-data-table .radar-head,
+.radar-data-table .radar-row {
+  display: grid;
+  grid-template-columns:
+    minmax(258px, 1.28fr) minmax(136px, 0.68fr) minmax(214px, 1fr) minmax(86px, 0.42fr)
+    minmax(168px, 0.78fr) minmax(132px, 0.62fr) 98px;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.radar-data-table .radar-head {
+  position: sticky;
+  top: -12px;
+  z-index: 2;
+  height: 27px;
+  margin: -2px 0 0;
+  border-bottom: 1px solid var(--line);
+  background: #0a0d0d;
+  padding: 0 10px;
+}
+
+.radar-head-cell {
+  min-width: 0;
+}
+
+.radar-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  border: 0;
+  color: var(--dim);
+  background: transparent;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.radar-sort-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-sort-button svg {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  opacity: 0.72;
+}
+
+.radar-sort-button:hover,
+.radar-head-cell[aria-sort="ascending"] .radar-sort-button,
+.radar-head-cell[aria-sort="descending"] .radar-sort-button {
+  color: #ffd184;
+}
+
+.radar-data-table .radar-row {
+  min-height: 58px;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+  color: var(--bone-2);
+  background: rgba(14, 18, 15, 0.72);
+  padding: 7px 10px;
+}
+
+.radar-data-table .radar-row:hover,
+.radar-data-table .radar-row.selected {
+  border-color: var(--line-soft);
+  background: rgba(26, 32, 28, 0.9);
+  box-shadow: inset 3px 0 0 var(--opportunity);
+}
+
+.radar-case-cell {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.radar-case-cell .ods-token-mark,
+.radar-case-cell .radar-token-logo {
+  width: 36px;
+  height: 36px;
+}
+
+.radar-case-copy {
+  display: grid;
+  align-content: center;
+  min-width: 0;
+}
+
+.radar-case-symbol-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.radar-case-button {
+  min-width: 0;
+  border: 0;
+  color: #ffd184;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+.radar-case-button strong {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.radar-case-links {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+}
+
+.radar-case-link {
+  min-height: 18px;
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.radar-case-meta {
+  margin-top: 3px;
+  font-size: 10px;
+}
+
+.radar-data-table .radar-fact {
+  gap: 4px;
+}
+
+.radar-data-table .radar-fact b {
+  font-size: 12px;
+}
+
+.radar-data-table .radar-fact em {
+  -webkit-line-clamp: 1;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.holders-fact b,
+.listed-fact b {
+  color: var(--bone);
+}
+
+.holders-fact,
+.listed-fact,
+.score-cell {
+  justify-self: stretch;
+}
+
+.market-fact {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.radar-data-table .market-fact b,
+.radar-data-table .market-move b {
+  font-size: 12px;
+}
+
+.radar-data-table .market-move {
+  min-width: 54px;
+}
+
+.radar-data-table .market-move svg {
+  width: 12px;
+  height: 12px;
+}
+
+.radar-data-table .score-cell {
+  display: grid;
+  grid-template-columns: 50px 34px;
+  align-content: center;
+  align-items: center;
+  justify-content: end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.radar-data-table .score {
+  min-height: 32px;
+  border-radius: 5px;
+  font-size: 17px;
+}
+
+.radar-data-table .score-cell .row-drilldown-button {
+  width: 34px;
+  height: 32px;
+  border-radius: 5px;
+}
+
+.radar-data-table .score-cell .row-drilldown-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 767px) {
+  .radar-data-table {
+    min-width: 0;
+  }
+
+  .radar-data-table .radar-head {
+    display: none;
+  }
+
+  .radar-data-table .radar-row {
+    grid-template-columns: minmax(0, 1fr) minmax(86px, auto);
+    gap: 8px;
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .radar-case-cell,
+  .narrative-fact,
+  .market-fact {
+    grid-column: 1 / -1;
+  }
+
+  .radar-case-links {
+    overflow-x: auto;
+  }
+
+  .listed-fact {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .radar-data-table .score-cell {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    justify-content: stretch;
+    padding: 0;
+  }
+}
