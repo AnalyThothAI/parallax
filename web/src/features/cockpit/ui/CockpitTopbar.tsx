@@ -89,7 +89,7 @@ export function CockpitTopbar({
         <input
           aria-label="global search"
           id="global-search-input"
-          placeholder="搜索 CA / $TOKEN / @handle / 文本"
+          placeholder="搜索 token / @handle / CA"
           ref={search.inputRef}
           value={searchDraft}
           onChange={(event) => setSearchDraft(event.target.value)}
@@ -99,7 +99,7 @@ export function CockpitTopbar({
 
       <div className="top-stats">
         <span>
-          MATCHED <b>{compactNumber(status.status?.collector.matched_twitter_events)}</b>
+          matched <b>{compactNumber(status.status?.collector.matched_twitter_events)}</b>
         </span>
         <span>
           flow·{stats.windowKey} <b>{compactNumber(stats.tokenItemsCount)}</b>
@@ -121,7 +121,12 @@ export function CockpitTopbar({
         onClick={notifications.onToggleDrawer}
       />
 
-      <IconButton aria-label="刷新" title="刷新" onClick={onRefresh}>
+      <IconButton
+        aria-label="刷新"
+        className="topbar-refresh-button"
+        title="刷新"
+        onClick={onRefresh}
+      >
         <RefreshCw aria-hidden />
       </IconButton>
     </header>
