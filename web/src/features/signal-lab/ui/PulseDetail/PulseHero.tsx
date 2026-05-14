@@ -54,7 +54,9 @@ export function PulseHero({ actions, density, hero }: Props) {
                 data-has={bin.count > 0 ? "true" : "false"}
                 data-peak={isPeak ? "true" : "false"}
                 data-now={isNow ? "true" : "false"}
-                style={{ height: `${bin.count > 0 ? Math.max(8, (bin.count / maxCount) * 100) : 4}%` }}
+                style={{
+                  height: `${bin.count > 0 ? Math.max(8, (bin.count / maxCount) * 100) : 4}%`,
+                }}
                 title={`${bin.count} mentions`}
               />
             );

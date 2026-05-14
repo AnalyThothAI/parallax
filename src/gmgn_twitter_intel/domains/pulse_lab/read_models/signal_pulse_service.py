@@ -7,11 +7,10 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import is_token_factor_sn
 SUMMARY_STATUSES = (
     "trade_candidate",
     "token_watch",
-    "theme_watch",
     "risk_rejected_high_info",
     "blocked_low_information",
 )
-DISPLAY_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
+DISPLAY_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
 
 
@@ -81,7 +80,12 @@ class SignalPulseService:
         return item
 
     def _stages_for(self, run_id: Any) -> dict[str, Any]:
-        empty = {"analyst": None, "critic": None, "judge": None, "research_only_gate": None}
+        empty: dict[str, dict[str, Any] | None] = {
+            "analyst": None,
+            "critic": None,
+            "judge": None,
+            "research_only_gate": None,
+        }
         if not run_id:
             return empty
         try:
@@ -161,6 +165,7 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "score_band": row.get("score_band"),
         "gate_reasons": _list(row.get("gate_reasons_json")),
         "risk_reasons": _list(row.get("risk_reasons_json")),
+        "last_edge_events": _list(row.get("last_edge_events_json")),
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
         "factor_snapshot": factor_snapshot,

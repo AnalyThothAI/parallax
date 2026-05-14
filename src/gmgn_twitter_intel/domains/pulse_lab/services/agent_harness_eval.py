@@ -48,7 +48,6 @@ def build_pulse_deterministic_eval_case(
                 "critic_confidence_ceiling_not_exceeded",
                 "non_abstain_has_evidence_or_residual_risk",
                 "hard_blocked_runs_skip_llm_asset_stages",
-                "source_seed_stays_research_only",
                 "trading_execution_language_absent",
             ],
         },
@@ -58,7 +57,6 @@ def build_pulse_deterministic_eval_case(
 def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
     input_json = _mapping(case.get("input_json"))
     expected_json = _mapping(case.get("expected_json"))
-    context = _mapping(input_json.get("context"))
     completeness = _mapping(input_json.get("completeness"))
     final = _mapping(expected_json.get("final_decision"))
     stages = _list(input_json.get("stage_audits"))
@@ -76,9 +74,6 @@ def grade_pulse_deterministic_eval_case(case: dict[str, Any]) -> dict[str, Any]:
             violations.append("hard_blocked_run_entered_llm_stages")
         if final.get("recommendation") != "abstain":
             violations.append("hard_blocked_run_not_abstain")
-
-    if str(context.get("candidate_type") or "") == "source_seed" and final.get("route") != "research_only":
-        violations.append("source_seed_asset_route")
 
     if final.get("recommendation") != "abstain":
         evidence_ids = _list(final.get("evidence_event_ids"))

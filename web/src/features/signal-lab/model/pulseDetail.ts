@@ -224,7 +224,11 @@ function buildHero(
 ): PulseDetailViewModel["hero"] {
   const subject = item.factor_snapshot.subject;
   const pills: Pill[] = [
-    { id: "score_band", label: scoreBandLabel(item.score_band), tone: scoreBandTone(item.score_band) },
+    {
+      id: "score_band",
+      label: scoreBandLabel(item.score_band),
+      tone: scoreBandTone(item.score_band),
+    },
   ];
   if (item.decision.route) {
     pills.push({ id: "route", label: `${item.decision.route} 路由`, tone: "info" });
@@ -232,7 +236,10 @@ function buildHero(
   if (agent.mismatch) {
     pills.push({ id: "gate_agent_mismatch", label: "策略门 ↔ Agent 失谐", tone: "risk" });
   }
-  if (!item.factor_snapshot.market.event_anchor || item.factor_snapshot.market.readiness.latest_status === "stale") {
+  if (
+    !item.factor_snapshot.market.event_anchor ||
+    item.factor_snapshot.market.readiness.latest_status === "stale"
+  ) {
     pills.push({ id: "market_data_stale", label: "市场数据陈旧", tone: "risk" });
   }
   return {
@@ -313,7 +320,10 @@ function buildBurst(events: SocialEventDetail[], now: number): BurstHistogram {
     if (event.timestamp_ms < startMs || event.timestamp_ms > now) {
       continue;
     }
-    const index = Math.min(HISTOGRAM_BUCKETS - 1, Math.floor((event.timestamp_ms - startMs) / bucketMs));
+    const index = Math.min(
+      HISTOGRAM_BUCKETS - 1,
+      Math.floor((event.timestamp_ms - startMs) / bucketMs),
+    );
     bins[index].count += 1;
   }
   const peakBucketIndex = bins.reduce(
@@ -324,8 +334,7 @@ function buildBurst(events: SocialEventDetail[], now: number): BurstHistogram {
     bins,
     firstEventAt: events[0]?.timestamp_ms ?? null,
     peakBucketIndex,
-    peakAt:
-      bins[peakBucketIndex].count > 0 ? bins[peakBucketIndex].startMs + bucketMs / 2 : null,
+    peakAt: bins[peakBucketIndex].count > 0 ? bins[peakBucketIndex].startMs + bucketMs / 2 : null,
     nowAt: now,
     uniqueAuthors: new Set(events.map((event) => event.author_handle).filter(Boolean)).size,
   };
@@ -381,10 +390,7 @@ function buildTimeline(item: SignalPulseItem, burst: BurstHistogram, now: number
   return nodes;
 }
 
-function buildFamilies(
-  item: SignalPulseItem,
-  topAuthorHandle: string | null,
-): FactorFamilyView[] {
+function buildFamilies(item: SignalPulseItem, topAuthorHandle: string | null): FactorFamilyView[] {
   const order: TokenFactorFamilyKey[] = [
     "social_heat",
     "social_propagation",
@@ -447,13 +453,18 @@ function buildFamily(
   }
   if (id === "social_propagation") {
     const topAuthorShare = typeof facts.top_author_share === "number" ? facts.top_author_share : 0;
-    const topAuthorTone: Tone = topAuthorShare >= 0.7 ? "risk" : topAuthorShare >= 0.5 ? "warn" : "neutral";
+    const topAuthorTone: Tone =
+      topAuthorShare >= 0.7 ? "risk" : topAuthorShare >= 0.5 ? "warn" : "neutral";
     const topAuthorSuffix = topAuthorHandle ? ` ← @${topAuthorHandle}` : "";
     const duplicateShare =
       typeof facts.duplicate_text_share === "number" ? facts.duplicate_text_share : null;
     const watchedCount = num(facts.watched_author_count);
     breakdown.push(
-      { label: "independent authors", value: String(num(facts.independent_authors)), tone: "neutral" },
+      {
+        label: "independent authors",
+        value: String(num(facts.independent_authors)),
+        tone: "neutral",
+      },
       {
         label: "time to 2nd / 3rd author",
         value: `${msToHuman(numOrNull(facts.time_to_second_author_ms))} · ${msToHuman(
@@ -518,7 +529,12 @@ function buildFamily(
       {
         label: "dex floor",
         value: dexFloorStatus ?? "unknown",
-        tone: dexFloorStatus === "ready" || dexFloorStatus === "passed" ? "health" : dexFloorStatus ? "warn" : "neutral",
+        tone:
+          dexFloorStatus === "ready" || dexFloorStatus === "passed"
+            ? "health"
+            : dexFloorStatus
+              ? "warn"
+              : "neutral",
       },
     );
   }
@@ -547,7 +563,13 @@ function buildMarket(item: SignalPulseItem): PulseDetailViewModel["market"] {
   const holders = latest?.holders ?? null;
   const volRatio = marketCap && volume ? volume / marketCap : null;
   const metrics: MarketMetric[] = [
-    { id: "mcap", label: "市值", value: formatUsdCompact(marketCap), subValue: null, tone: "neutral" },
+    {
+      id: "mcap",
+      label: "市值",
+      value: formatUsdCompact(marketCap),
+      subValue: null,
+      tone: "neutral",
+    },
     {
       id: "liq",
       label: liquidity != null && liquidity < LIQ_WARN_MAX ? "流动性 · 偏薄" : "流动性",
@@ -563,7 +585,13 @@ function buildMarket(item: SignalPulseItem): PulseDetailViewModel["market"] {
         volRatio != null && volRatio >= VOL_MCAP_RISK_RATIO ? `${volRatio.toFixed(1)}× 市值` : null,
       tone: volRatio != null && volRatio >= VOL_MCAP_RISK_RATIO ? "risk" : "neutral",
     },
-    { id: "holders", label: "持仓数", value: compactNumber(holders), subValue: null, tone: "neutral" },
+    {
+      id: "holders",
+      label: "持仓数",
+      value: compactNumber(holders),
+      subValue: null,
+      tone: "neutral",
+    },
   ];
   const stale = [];
   if (!item.factor_snapshot.market.event_anchor) {
@@ -583,7 +611,11 @@ function buildEvidence(
   events: SocialEventDetail[],
   burst: BurstHistogram,
 ): EvidenceView {
-  const citedSet = new Set(item.decision.evidence_event_ids?.length ? item.decision.evidence_event_ids : item.evidence_event_ids);
+  const citedSet = new Set(
+    item.decision.evidence_event_ids?.length
+      ? item.decision.evidence_event_ids
+      : item.evidence_event_ids,
+  );
   const authorCounts = new Map<string, number>();
   for (const event of events) {
     const handle = event.author_handle ?? "(unknown)";
@@ -607,7 +639,8 @@ function buildEvidence(
       isEmptyBody: !event.text_clean,
       cited: citedSet.has(event.event_id),
       authorTag,
-      cohortPosition: postCount >= 2 ? `${authorRunIndex(events, event, index)}/${postCount}` : null,
+      cohortPosition:
+        postCount >= 2 ? `${authorRunIndex(events, event, index)}/${postCount}` : null,
       canonicalUrl: event.canonical_url ?? null,
     };
   });
@@ -678,10 +711,9 @@ function bucketGroups(
       return {
         id,
         title: titles[id],
-        rangeLabel: `${formatUtcTimestamp(first, { suffix: false })} ~ ${formatUtcTimestamp(
-          last,
-          { suffix: false },
-        )} UTC`,
+        rangeLabel: `${formatUtcTimestamp(first, { suffix: false })} ~ ${formatUtcTimestamp(last, {
+          suffix: false,
+        })} UTC`,
         defaultExpanded: id === "burst_window" || id === "latest" || groupRows.length <= 5,
         rows: groupRows,
         citedCount: groupRows.filter((row) => row.cited).length,
@@ -867,8 +899,6 @@ function scoreBandLabel(value: string | null | undefined): string {
       return "可交易候选";
     case "token_watch":
       return "代币观察";
-    case "theme_watch":
-      return "主题观察";
     case "risk_rejected_high_info":
       return "高信号但被风控驳回";
     default:
@@ -876,7 +906,11 @@ function scoreBandLabel(value: string | null | undefined): string {
   }
 }
 
-function authorRunIndex(events: SocialEventDetail[], event: SocialEventDetail, index: number): number {
+function authorRunIndex(
+  events: SocialEventDetail[],
+  event: SocialEventDetail,
+  index: number,
+): number {
   let count = 0;
   for (let i = 0; i <= index; i += 1) {
     if (events[i].author_handle === event.author_handle) {

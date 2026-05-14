@@ -5,8 +5,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background:
-    linear-gradient(180deg, rgba(241, 234, 214, 0.032), rgba(241, 234, 214, 0)),
-    var(--slab);
+    linear-gradient(180deg, rgba(241, 234, 214, 0.032), rgba(241, 234, 214, 0)), var(--slab);
   box-shadow: var(--shadow-elevated);
 }
 

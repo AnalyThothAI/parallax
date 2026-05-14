@@ -4,10 +4,10 @@ from gmgn_twitter_intel.domains.pulse_lab.services.agent_routing import compute_
 from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
-def test_source_seed_routes_research_only_without_llm() -> None:
+def test_unresolved_token_target_routes_research_only_without_llm() -> None:
     snapshot = _snapshot(target_id=None, decision_latest=None)
 
-    assert route_decision_context({"candidate_type": "source_seed", "factor_snapshot": snapshot}) == "research_only"
+    assert route_decision_context({"candidate_type": "token_target", "factor_snapshot": snapshot}) == "research_only"
 
     completeness = compute_completeness(snapshot, route="research_only")
     assert completeness.hard_blocked is True

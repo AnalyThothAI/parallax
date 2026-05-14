@@ -137,7 +137,7 @@ export function AppRoutes({ session }: { session: AppSession }) {
       windowKey,
       signalLabSummaryTrade: signalLabOverviewData?.summary.trade_candidate ?? 0,
       signalLabSummaryToken: signalLabOverviewData?.summary.token_watch ?? 0,
-      signalLabSummaryTheme: signalLabOverviewData?.summary.theme_watch ?? 0,
+      signalLabSummaryRisk: signalLabOverviewData?.summary.risk_rejected_high_info ?? 0,
     },
     notifications: {
       summary: notificationsController.notificationSummary,
@@ -246,7 +246,9 @@ export function AppRoutes({ session }: { session: AppSession }) {
         <Route
           index
           element={livePageElement(
-            <LiveMarketSubscription targets={marketTargets}>{liveRadarElement}</LiveMarketSubscription>,
+            <LiveMarketSubscription targets={marketTargets}>
+              {liveRadarElement}
+            </LiveMarketSubscription>,
           )}
         />
       </Route>

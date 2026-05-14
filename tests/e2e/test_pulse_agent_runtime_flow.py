@@ -108,6 +108,7 @@ def test_pulse_agent_runtime_flow_persists_stage_ledger_and_public_decision(e2e_
         assert run["harness_version"] == "pulse-decision-harness-v1"
         assert run["harness_hash"].startswith("sha256:")
         assert run["request_json"]["selected_posts"][0]["event_id"] == "event-e2e-1"
+        assert run["request_json"]["edge_events"] == ["pulse_status_changed", "score_band_crossed"]
         assert run["trace_metadata_json"]["route"] == "meme"
         assert run["trace_metadata_json"]["completeness"]["hard_blocked"] is False
         assert run["trace_metadata_json"]["harness_version"] == "pulse-decision-harness-v1"
@@ -132,12 +133,14 @@ def test_pulse_agent_runtime_flow_persists_stage_ledger_and_public_decision(e2e_
         assert candidate["decision_recommendation"] == "trade_candidate"
         assert candidate["decision_stage_count"] == 3
         assert candidate["decision_json"]["summary_zh"] == "社交扩散与市场事实共振，但仍需观察流动性延续。"
+        assert candidate["last_edge_events_json"] == ["pulse_status_changed", "score_band_crossed"]
         assert "agent_recommendation_json" not in candidate
 
         assert public_item is not None
         assert public_item["decision"]["route"] == "meme"
         assert public_item["decision"]["recommendation"] == "trade_candidate"
         assert public_item["decision"]["stage_count"] == 3
+        assert public_item["last_edge_events"] == ["pulse_status_changed", "score_band_crossed"]
         assert "agent_recommendation" not in public_item
     finally:
         conn.close()
@@ -183,6 +186,14 @@ def _candidate_context() -> PulseCandidateContext:
             }
         ],
         gate_result=None,
+        edge_state={
+            "pulse_status": "trade_candidate",
+            "score_band": "80-89",
+            "hard_risks": [],
+            "recommended_decision": "high_alert",
+            "watched_mentions": 1,
+        },
+        edge_events=("pulse_status_changed", "score_band_crossed"),
         source_event_ids=["event-e2e-1"],
         evidence_event_ids=["event-e2e-1"],
     )

@@ -15,8 +15,9 @@ _SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
 
 
 class NotificationRepository:
-    def __init__(self, conn: Any):
+    def __init__(self, conn: Any, *, running_timeout_ms: int = 300_000):
         self.conn = conn
+        self.running_timeout_ms = int(running_timeout_ms)
 
     def insert_notification(
         self,
@@ -45,10 +46,8 @@ class NotificationRepository:
         normalized_severity = _normalize_severity(severity)
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
         normalized_payload = payload or {}
-        semantic_duplicate = self._pulse_source_status_duplicate(
+        semantic_duplicate = self._pulse_signature_duplicate(
             rule_id=rule_id,
-            source_table=source_table,
-            source_id=source_id,
             payload=normalized_payload,
         )
         if semantic_duplicate is not None:
@@ -137,32 +136,28 @@ class NotificationRepository:
             self.conn.commit()
         return self.notification_by_id(notification_id, subscriber_key=None)
 
-    def _pulse_source_status_duplicate(
+    def _pulse_signature_duplicate(
         self,
         *,
         rule_id: str,
-        source_table: str,
-        source_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any] | None:
-        if rule_id != _SIGNAL_PULSE_RULE_ID or not source_table or not source_id:
+        if rule_id != _SIGNAL_PULSE_RULE_ID:
             return None
-        pulse_status = str(payload.get("pulse_status") or "").strip()
-        if not pulse_status:
+        signature = str(payload.get("notification_signature") or "").strip()
+        if not signature:
             return None
         row = self.conn.execute(
             """
             SELECT *
             FROM notifications
             WHERE rule_id = %s
-              AND source_table = %s
-              AND source_id = %s
-              AND payload_json->>'pulse_status' = %s
+              AND payload_json->>'notification_signature' = %s
             ORDER BY last_seen_at_ms DESC, created_at_ms DESC
             LIMIT 1
             FOR UPDATE
             """,
-            (rule_id, source_table, source_id, pulse_status),
+            (rule_id, signature),
         ).fetchone()
         return dict(row) if row is not None else None
 
@@ -422,14 +417,34 @@ class NotificationRepository:
 
     def claim_next_delivery(self, *, now_ms: int | None = None) -> dict[str, Any] | None:
         now = int(now_ms if now_ms is not None else _now_ms())
+        stale_before = now - self.running_timeout_ms
+        self.conn.execute(
+            """
+            UPDATE notification_deliveries
+            SET status = 'dead',
+                last_error = 'stale_running_timeout',
+                updated_at_ms = %s
+            WHERE status = 'running'
+              AND updated_at_ms < %s
+              AND attempt_count >= max_attempts
+            """,
+            (now, stale_before),
+        )
         row = self.conn.execute(
             """
             WITH picked AS (
               SELECT delivery_id
               FROM notification_deliveries
-              WHERE status IN ('pending', 'failed')
-                AND attempt_count < max_attempts
-                AND next_run_at_ms <= %s
+              WHERE (
+                  status IN ('pending', 'failed')
+                  AND attempt_count < max_attempts
+                  AND next_run_at_ms <= %s
+                )
+                OR (
+                  status = 'running'
+                  AND updated_at_ms < %s
+                  AND attempt_count < max_attempts
+                )
               ORDER BY next_run_at_ms ASC, created_at_ms ASC, delivery_id ASC
               LIMIT 1
               FOR UPDATE SKIP LOCKED
@@ -442,12 +457,21 @@ class NotificationRepository:
                 last_error = NULL
             FROM picked
             WHERE delivery.delivery_id = picked.delivery_id
-              AND delivery.status IN ('pending', 'failed')
-              AND delivery.attempt_count < delivery.max_attempts
-              AND delivery.next_run_at_ms <= %s
+              AND (
+                (
+                  delivery.status IN ('pending', 'failed')
+                  AND delivery.attempt_count < delivery.max_attempts
+                  AND delivery.next_run_at_ms <= %s
+                )
+                OR (
+                  delivery.status = 'running'
+                  AND delivery.updated_at_ms < %s
+                  AND delivery.attempt_count < delivery.max_attempts
+                )
+              )
             RETURNING delivery.*
             """,
-            (now, now, now, now),
+            (now, stale_before, now, now, now, stale_before),
         ).fetchone()
         return dict(row) if row else None
 

@@ -26,7 +26,7 @@ export type CockpitTopbarProps = {
     windowKey: WindowKey;
     signalLabSummaryTrade: number;
     signalLabSummaryToken: number;
-    signalLabSummaryTheme: number;
+    signalLabSummaryRisk: number;
   };
   notifications: {
     summary: NotificationSummary | null;
@@ -111,7 +111,7 @@ export function CockpitTopbar({
           token <b>{compactNumber(stats.signalLabSummaryToken)}</b>
         </span>
         <span>
-          theme <b>{compactNumber(stats.signalLabSummaryTheme)}</b>
+          risk <b>{compactNumber(stats.signalLabSummaryRisk)}</b>
         </span>
       </div>
 

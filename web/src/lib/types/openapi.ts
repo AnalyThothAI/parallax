@@ -395,6 +395,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/social-events/by-ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Social Events By Ids */
+        get: operations["social_events_by_ids_api_social_events_by_ids_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -736,6 +753,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ApiEnvelope[SocialEventsByIdsData] */
+        ApiEnvelope_SocialEventsByIdsData_: {
+            data?: components["schemas"]["SocialEventsByIdsData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ApiEnvelope[StatusData] */
         ApiEnvelope_StatusData_: {
             data?: components["schemas"]["StatusData"] | null;
@@ -1006,12 +1035,88 @@ export interface components {
             recommendation?: {
                 [key: string]: unknown;
             } | null;
+            stages?: components["schemas"]["SignalPulseStages"] | null;
             /** Status */
             status?: string | null;
             /** Target */
             target?: {
                 [key: string]: unknown;
             } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalPulseStagePayload */
+        SignalPulseStagePayload: {
+            /** Attempt Index */
+            attempt_index?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Finished At Ms */
+            finished_at_ms?: number | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Model */
+            model?: string | null;
+            /** Response */
+            response?: {
+                [key: string]: unknown;
+            } | null;
+            /** Route */
+            route?: string | null;
+            /** Stage */
+            stage?: string | null;
+            /** Started At Ms */
+            started_at_ms?: number | null;
+            /** Status */
+            status?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SignalPulseStages */
+        SignalPulseStages: {
+            analyst?: components["schemas"]["SignalPulseStagePayload"] | null;
+            critic?: components["schemas"]["SignalPulseStagePayload"] | null;
+            judge?: components["schemas"]["SignalPulseStagePayload"] | null;
+            research_only_gate?: components["schemas"]["SignalPulseStagePayload"] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SocialEventDetail */
+        SocialEventDetail: {
+            /** Action */
+            action: string;
+            /** Author Followers */
+            author_followers?: number | null;
+            /** Author Handle */
+            author_handle?: string | null;
+            /** Author Name */
+            author_name?: string | null;
+            /**
+             * Author Watched
+             * @default false
+             */
+            author_watched: boolean;
+            /** Canonical Url */
+            canonical_url?: string | null;
+            /** Channel */
+            channel: string;
+            /** Event Id */
+            event_id: string;
+            /** Source Provider */
+            source_provider: string;
+            /** Text Clean */
+            text_clean?: string | null;
+            /** Timestamp Ms */
+            timestamp_ms: number;
+        } & {
+            [key: string]: unknown;
+        };
+        /** SocialEventsByIdsData */
+        SocialEventsByIdsData: {
+            /** Events */
+            events?: components["schemas"]["SocialEventDetail"][];
+            /** Not Found */
+            not_found?: string[];
         } & {
             [key: string]: unknown;
         };
@@ -1881,6 +1986,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_LooseData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    social_events_by_ids_api_social_events_by_ids_get: {
+        parameters: {
+            query?: {
+                ids?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_SocialEventsByIdsData_"];
                 };
             };
             /** @description Validation Error */

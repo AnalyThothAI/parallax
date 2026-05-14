@@ -9,7 +9,6 @@ from gmgn_twitter_intel.domains.pulse_lab.runtime.pulse_candidate_worker import 
     PulseCandidateWorker,
     _asset_candidate_id,
     _asset_trigger_metrics,
-    _source_seed_factor_snapshot,
 )
 from gmgn_twitter_intel.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
 from gmgn_twitter_intel.domains.pulse_lab.types.agent_decision import FinalDecision, PulseStageFailure, StageRunAudit
@@ -66,6 +65,7 @@ def test_asset_context_uses_factor_snapshot_and_no_legacy_runtime_context() -> N
         target_id="asset-1",
     )
     assert job["context_json"]["factor_snapshot"] == snapshot
+    assert job["context_json"]["edge_events"] == ["pulse_status_changed"]
     assert job["context_json"]["selected_posts"]
     assert "radar_score" not in job["context_json"]
     assert "market_context" not in job["context_json"]
@@ -129,13 +129,14 @@ def test_worker_persists_factor_snapshot_gate_and_decision_only() -> None:
     assert upsert["decision_json"]["recommendation"] == "watchlist"
     assert upsert["decision_route"] == "meme"
     assert upsert["decision_recommendation"] == "watchlist"
+    assert upsert["last_edge_events_json"] == ["pulse_status_changed"]
     assert "agent_recommendation_json" not in upsert
     assert "radar_score_json" not in upsert
     assert "market_context_json" not in upsert
     assert "thesis_json" not in upsert
 
 
-def test_source_seed_without_target_short_circuits_before_provider_pipeline() -> None:
+def test_worker_does_not_scan_unresolved_social_events() -> None:
     repos = FakeRepos()
     repos.harness.social_events = [_source_event()]
     client = FakeClient()
@@ -144,18 +145,12 @@ def test_source_seed_without_target_short_circuits_before_provider_pipeline() ->
     scan = worker.scan_triggers_once(now_ms=NOW_MS)
     run = worker.process_due_jobs_once(now_ms=NOW_MS)
 
-    assert scan["source_enqueued"] == 1
-    assert run["processed"] == 1
-    upsert = repos.pulse.candidate_upserts[0]
-    assert upsert["candidate_type"] == "source_seed"
-    assert upsert["pulse_status"] == "blocked_low_information"
-    assert upsert["gate_json"]["blocked_reasons"] == ["identity_unresolved"]
-    assert upsert["gate_json"]["max_recommendation"] == "ignore"
-    assert upsert["decision_recommendation"] == "abstain"
-    assert upsert["decision_abstain_reason"] == "research_only_no_resolved_target"
+    assert scan["source_seen"] == 0
+    assert scan["source_enqueued"] == 0
+    assert run["processed"] == 0
+    assert repos.pulse.jobs == []
+    assert repos.pulse.candidate_upserts == []
     assert client.run_calls == 0
-    assert "hard_gates" not in upsert["factor_snapshot_json"]
-    assert upsert["factor_snapshot_json"]["gates"]["blocked_reasons"] == ["identity_unresolved"]
 
 
 def test_worker_trigger_metrics_use_v3_families_and_gates() -> None:
@@ -175,31 +170,50 @@ def test_worker_trigger_metrics_use_v3_families_and_gates() -> None:
     }
 
 
-def test_source_seed_factor_snapshot_is_v3_without_legacy_hard_gates() -> None:
-    snapshot = _source_seed_factor_snapshot(_source_event())
+def test_worker_suppresses_unchanged_edge_state_without_cooldown_compatibility() -> None:
+    repos = FakeRepos()
+    snapshot = _factor_snapshot(rank_score=82)
+    repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
+    repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
+    candidate_id = _asset_candidate_id(
+        candidate_type="token_target",
+        window="1h",
+        scope="all",
+        target_type="Asset",
+        target_id="asset-1",
+    )
+    repos.pulse.edge_states[candidate_id] = {
+        "candidate_id": candidate_id,
+        "last_processed_state_json": {
+            "candidate_id": candidate_id,
+            "candidate_type": "token_target",
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "window": "1h",
+            "scope": "all",
+            "pulse_version": "signal-pulse-v3-factor-snapshot",
+            "gate_version": "pulse-factor-gate-v2-edge-state",
+            "pulse_status": "trade_candidate",
+            "verdict": "trade_candidate",
+            "score_band": "high_conviction",
+            "candidate_score_bucket": "80-89",
+            "rank_score_bucket": "80-89",
+            "recommended_decision": "high_alert",
+            "watched_confirmation": True,
+            "independent_author_count_bucket": "6-10",
+            "hard_risks": [],
+            "trigger_signature": "ignored-by-edge",
+            "timeline_signature": "ignored-by-edge",
+        },
+    }
+    worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
-    assert snapshot["schema_version"] == "token_factor_snapshot_v3_social_attention"
-    assert set(snapshot) == {
-        "schema_version",
-        "subject",
-        "market",
-        "gates",
-        "data_health",
-        "families",
-        "normalization",
-        "composite",
-        "provenance",
-    }
-    assert "hard_gates" not in snapshot
-    assert snapshot["market"]["decision_latest"] is None
-    assert snapshot["market"]["readiness"]["latest_status"] == "missing"
-    assert snapshot["gates"]["blocked_reasons"] == ["identity_unresolved"]
-    assert set(snapshot["families"]) == {
-        "social_heat",
-        "social_propagation",
-        "semantic_catalyst",
-        "timing_risk",
-    }
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["asset_seen"] == 1
+    assert result["asset_enqueued"] == 0
+    assert result["asset_skipped"] == 1
+    assert repos.pulse.jobs == []
 
 
 def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
@@ -225,9 +239,9 @@ def test_worker_can_be_woken_by_token_radar_update_before_interval() -> None:
     assert wake_listener.listen_calls >= 1
 
 
-def test_legacy_previous_candidate_gate_json_does_not_bypass_cooldown() -> None:
+def test_edge_budget_caps_candidate_enqueues_per_hour() -> None:
     repos = FakeRepos()
-    snapshot = _factor_snapshot(rank_score=50)
+    snapshot = _factor_snapshot(rank_score=82)
     repos.token_radar.rows = [_radar_row(factor_snapshot_json=snapshot)]
     repos.token_targets.rows = [_timeline_row("event-1", NOW_MS - 1_000)]
     candidate_id = _asset_candidate_id(
@@ -237,25 +251,7 @@ def test_legacy_previous_candidate_gate_json_does_not_bypass_cooldown() -> None:
         target_type="Asset",
         target_id="asset-1",
     )
-    repos.pulse.candidates[candidate_id] = {
-        "candidate_id": candidate_id,
-        "pulse_status": "token_watch",
-        "verdict": "token_watch",
-        "trigger_signature": "old-trigger",
-        "timeline_signature": "old-timeline",
-        "updated_at_ms": NOW_MS - 1_000,
-        "factor_snapshot_json": {
-            "schema_version": "token_factor_snapshot_v1",
-            "hard_gates": {"eligible_for_high_alert": True, "blocked_reasons": []},
-            "composite": {"rank_score": 45},
-        },
-        "gate_json": {
-            "watched_confirmation": False,
-            "independent_author_count": 0,
-            "hard_risks": [],
-            "trade_candidate_eligible": False,
-        },
-    }
+    repos.pulse.budget_claims[(candidate_id, NOW_MS // 3_600_000 * 3_600_000)] = 3
     worker = PulseCandidateWorker(repository_session=lambda: _session(repos), decision_client=FakeClient())
 
     result = worker.scan_triggers_once(now_ms=NOW_MS)
@@ -356,6 +352,8 @@ class FakePulse:
     def __init__(self) -> None:
         self.jobs: list[dict[str, Any]] = []
         self.candidates: dict[str, dict[str, Any]] = {}
+        self.edge_states: dict[str, dict[str, Any]] = {}
+        self.budget_claims: dict[tuple[str, int], int] = {}
         self.agent_runs: list[dict[str, Any]] = []
         self.agent_run_steps: list[dict[str, Any]] = []
         self.finished_runs: list[dict[str, Any]] = []
@@ -375,6 +373,53 @@ class FakePulse:
             if job["candidate_id"] == candidate_id:
                 return job
         return None
+
+    def record_edge_observation(self, **kwargs: Any) -> dict[str, Any]:
+        candidate_id = kwargs["candidate_id"]
+        row = self.edge_states.get(candidate_id, {"candidate_id": candidate_id, "last_processed_state_json": {}})
+        row = {
+            **row,
+            "latest_observed_state_json": kwargs["current_state_json"],
+            "last_edge_signature": kwargs["edge_signature"],
+            "observed_at_ms": kwargs["observed_at_ms"],
+        }
+        self.edge_states[candidate_id] = row
+        return row
+
+    def claim_edge_budget(self, **kwargs: Any) -> bool:
+        key = (kwargs["candidate_id"], kwargs["hour_bucket_ms"])
+        count = self.budget_claims.get(key, 0)
+        if count >= kwargs.get("max_enqueues", 3):
+            return False
+        self.budget_claims[key] = count + 1
+        return True
+
+    def mark_edge_job_enqueued(self, **kwargs: Any) -> dict[str, Any]:
+        candidate_id = kwargs["candidate_id"]
+        row = self.edge_states.get(candidate_id, {"candidate_id": candidate_id})
+        row = {
+            **row,
+            "last_processed_state_json": kwargs["processed_state_json"],
+            "last_edge_events_json": kwargs["edge_events_json"],
+            "last_job_id": kwargs["job_id"],
+            "last_processed_at_ms": kwargs["processed_at_ms"],
+        }
+        self.edge_states[candidate_id] = row
+        return row
+
+    def mark_edge_budget_rejected(self, **kwargs: Any) -> dict[str, Any]:
+        candidate_id = kwargs["candidate_id"]
+        row = self.edge_states.get(candidate_id, {"candidate_id": candidate_id})
+        row = {**row, "last_edge_events_json": kwargs["edge_events_json"], "updated_at_ms": kwargs["rejected_at_ms"]}
+        self.edge_states[candidate_id] = row
+        return row
+
+    def mark_edge_run_finished(self, **kwargs: Any) -> dict[str, Any]:
+        candidate_id = kwargs["candidate_id"]
+        row = self.edge_states.get(candidate_id, {"candidate_id": candidate_id})
+        row = {**row, "last_agent_run_id": kwargs["agent_run_id"], "updated_at_ms": kwargs["finished_at_ms"]}
+        self.edge_states[candidate_id] = row
+        return row
 
     def enqueue_job(self, **kwargs: Any) -> dict[str, Any]:
         job = {

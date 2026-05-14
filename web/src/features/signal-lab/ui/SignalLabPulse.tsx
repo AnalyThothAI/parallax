@@ -31,7 +31,6 @@ export function SignalLabPulse({
         <div className="signal-attention-summary" aria-label="signal pulse summary">
           <SummaryPill label="候选" value={summary?.trade_candidate ?? 0} />
           <SummaryPill label="代币" value={summary?.token_watch ?? 0} />
-          <SummaryPill label="主题" value={summary?.theme_watch ?? 0} />
           <SummaryPill label="拒绝" value={summary?.risk_rejected_high_info ?? 0} />
         </div>
       </header>

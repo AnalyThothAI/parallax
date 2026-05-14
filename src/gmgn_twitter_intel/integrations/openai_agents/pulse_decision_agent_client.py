@@ -80,8 +80,6 @@ class _JsonOutputSchema(AgentOutputSchemaBase):
         return self._schema.validate_json(candidate)
 
 
-
-
 class OpenAIAgentsPulseDecisionClient:
     provider = "openai"
 

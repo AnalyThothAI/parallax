@@ -844,7 +844,7 @@ notifications:
       channels: ["in_app"]
       window: "1h"
       scopes: ["all", "matched"]
-      statuses: ["trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"]
+      statuses: ["trade_candidate", "token_watch", "risk_rejected_high_info"]
       cooldown_seconds: 0
   channels: {{}}
 """
@@ -923,7 +923,7 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "channels": ("in_app",),
             "window": "1h",
             "scopes": ("all", "matched"),
-            "statuses": ("trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"),
+            "statuses": ("trade_candidate", "token_watch", "risk_rejected_high_info"),
             "cooldown_seconds": 0,
         },
     }

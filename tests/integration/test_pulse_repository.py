@@ -45,6 +45,67 @@ def test_enqueue_job_and_claim_due_job_marks_running(tmp_path) -> None:
     assert claimed["updated_at_ms"] == 1_000
 
 
+def test_edge_state_budget_and_candidate_last_edge_events_are_persisted(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = PulseRepository(conn)
+        current_state = {
+            "candidate_id": "candidate-edge",
+            "candidate_type": "token_target",
+            "pulse_status": "token_watch",
+            "score_band": "watch",
+            "watched_confirmation": True,
+            "hard_risks": [],
+        }
+
+        observed = repo.record_edge_observation(
+            candidate_id="candidate-edge",
+            current_state_json=current_state,
+            edge_signature="sha256:first",
+            observed_at_ms=1_700_000_000_000,
+        )
+        first_budget = repo.claim_edge_budget(
+            candidate_id="candidate-edge",
+            hour_bucket_ms=1_699_999_200_000,
+            now_ms=1_700_000_000_000,
+            max_enqueues=2,
+        )
+        second_budget = repo.claim_edge_budget(
+            candidate_id="candidate-edge",
+            hour_bucket_ms=1_699_999_200_000,
+            now_ms=1_700_000_100_000,
+            max_enqueues=2,
+        )
+        third_budget = repo.claim_edge_budget(
+            candidate_id="candidate-edge",
+            hour_bucket_ms=1_699_999_200_000,
+            now_ms=1_700_000_200_000,
+            max_enqueues=2,
+        )
+        repo.mark_edge_job_enqueued(
+            candidate_id="candidate-edge",
+            processed_state_json=current_state,
+            edge_events_json=["pulse_status_changed"],
+            job_id="job-edge",
+            processed_at_ms=1_700_000_000_123,
+            commit=True,
+        )
+        edge = repo.edge_state_by_candidate("candidate-edge")
+    finally:
+        conn.close()
+
+    assert observed["last_processed_state_json"] == {}
+    assert first_budget is True
+    assert second_budget is True
+    assert third_budget is False
+    assert edge is not None
+    assert edge["latest_observed_state_json"] == current_state
+    assert edge["last_processed_state_json"] == current_state
+    assert edge["last_edge_events_json"] == ["pulse_status_changed"]
+    assert edge["last_job_id"] == "job-edge"
+
+
 def test_enqueue_job_preserves_active_retry_state_on_signature_churn(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
@@ -304,7 +365,7 @@ def test_insert_agent_run_and_finish_agent_run_store_audit_json(tmp_path) -> Non
             trace_metadata_json={"candidate_id": "candidate-run"},
             usage_json={"input_tokens": 10},
             status="running",
-            outcome="pending",
+            outcome="running",
             decision_route="meme",
             decision_stage_count=0,
             request_json={"messages": [{"role": "user", "content": "inspect"}]},
@@ -407,7 +468,7 @@ def test_insert_agent_run_stores_harness_identity(tmp_path) -> None:
             harness_version="pulse-decision-harness-v1",
             harness_hash="sha256:harness-run",
             status="running",
-            outcome="pending",
+            outcome="running",
             decision_route="meme",
             decision_stage_count=0,
             request_json={"candidate_id": "candidate-harness-run"},
@@ -453,7 +514,7 @@ def test_agent_run_steps_round_trip(tmp_path) -> None:
             harness_hash="sha256:harness-step",
             input_hash="input-hash",
             status="running",
-            outcome="pending",
+            outcome="running",
             decision_route="meme",
             decision_stage_count=0,
             request_json={"target": "asset:sol"},
@@ -834,27 +895,15 @@ def test_list_candidates_ignores_malformed_structured_cursor(tmp_path) -> None:
     assert [item["candidate_id"] for item in non_ascii["items"]] == ["candidate-cursor"]
 
 
-def test_list_candidates_preserves_source_seed_theme_and_risk_enum_semantics(tmp_path) -> None:
+def test_list_candidates_preserves_token_target_risk_enum_semantics(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         repo = PulseRepository(conn)
         repo.upsert_candidate(
             **_candidate_payload(
-                "candidate-theme-source",
-                candidate_type="source_seed",
-                pulse_status="theme_watch",
-                verdict="theme_watch",
-                score_band="speculative",
-                social_phase="seed",
-                narrative_type="ecosystem_spillover",
-                updated_at_ms=3_000,
-            )
-        )
-        repo.upsert_candidate(
-            **_candidate_payload(
-                "candidate-risk-source",
-                candidate_type="source_seed",
+                "candidate-risk-token",
+                candidate_type="token_target",
                 pulse_status="risk_rejected_high_info",
                 verdict="risk_rejected_high_info",
                 score_band="speculative",
@@ -864,35 +913,11 @@ def test_list_candidates_preserves_source_seed_theme_and_risk_enum_semantics(tmp
             )
         )
 
-        theme = repo.list_candidates(window="1h", scope="global", status="theme_watch", limit=10)
         risk = repo.list_candidates(window="1h", scope="global", status="risk_rejected_high_info", limit=10)
     finally:
         conn.close()
 
-    assert theme["next_cursor"] is None
     assert risk["next_cursor"] is None
-    assert [
-        {
-            "candidate_id": item["candidate_id"],
-            "candidate_type": item["candidate_type"],
-            "pulse_status": item["pulse_status"],
-            "verdict": item["verdict"],
-            "score_band": item["score_band"],
-            "social_phase": item["social_phase"],
-            "narrative_type": item["narrative_type"],
-        }
-        for item in theme["items"]
-    ] == [
-        {
-            "candidate_id": "candidate-theme-source",
-            "candidate_type": "source_seed",
-            "pulse_status": "theme_watch",
-            "verdict": "theme_watch",
-            "score_band": "speculative",
-            "social_phase": "seed",
-            "narrative_type": "ecosystem_spillover",
-        }
-    ]
     assert [
         {
             "candidate_id": item["candidate_id"],
@@ -906,8 +931,8 @@ def test_list_candidates_preserves_source_seed_theme_and_risk_enum_semantics(tmp
         for item in risk["items"]
     ] == [
         {
-            "candidate_id": "candidate-risk-source",
-            "candidate_type": "source_seed",
+            "candidate_id": "candidate-risk-token",
+            "candidate_type": "token_target",
             "pulse_status": "risk_rejected_high_info",
             "verdict": "risk_rejected_high_info",
             "score_band": "speculative",
@@ -1121,7 +1146,6 @@ class FakePulseSummaryConn:
                     "candidate_count": 1,
                     "trade_candidate_count": 0,
                     "token_watch_count": 1,
-                    "theme_watch_count": 0,
                     "risk_rejected_high_info_count": 0,
                     "blocked_low_information_status_count": 0,
                     "blocked_low_information_count": 0,

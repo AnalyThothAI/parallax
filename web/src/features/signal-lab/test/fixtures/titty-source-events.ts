@@ -27,8 +27,7 @@ export const tittySourceEventsFixture: SocialEventDetail[] = [
     author_name: "Cache",
     author_followers: 2718,
     author_watched: false,
-    text_clean:
-      "solana:gTi4ZMMM2M7vQqZeetyQpWpjFr57zFZ7MCu4krypump New @MoontokListing - LSGO",
+    text_clean: "solana:gTi4ZMMM2M7vQqZeetyQpWpjFr57zFZ7MCu4krypump New @MoontokListing - LSGO",
     canonical_url: null,
   },
   {
@@ -54,8 +53,7 @@ export const tittySourceEventsFixture: SocialEventDetail[] = [
     author_name: "Cache",
     author_followers: 2719,
     author_watched: false,
-    text_clean:
-      "100x Boost For solana:gTi4ZMMM2M7vQqZeetyQpWpjFr57zFZ7MCu4krypump at 150k MC",
+    text_clean: "100x Boost For solana:gTi4ZMMM2M7vQqZeetyQpWpjFr57zFZ7MCu4krypump at 150k MC",
     canonical_url: null,
   },
   {

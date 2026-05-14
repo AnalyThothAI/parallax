@@ -21,7 +21,6 @@ const SIGNAL_LAB_STATUSES: SignalPulseStatusFilter[] = [
   "all",
   "trade_candidate",
   "token_watch",
-  "theme_watch",
   "risk_rejected_high_info",
 ];
 

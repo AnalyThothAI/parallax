@@ -797,6 +797,52 @@
         "title": "ApiEnvelope[SignalPulseItem]",
         "type": "object"
       },
+      "ApiEnvelope_SocialEventsByIdsData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SocialEventsByIdsData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[SocialEventsByIdsData]",
+        "type": "object"
+      },
       "ApiEnvelope_StatusData_": {
         "additionalProperties": true,
         "properties": {
@@ -1511,6 +1557,16 @@
             ],
             "title": "Recommendation"
           },
+          "stages": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStages"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "status": {
             "anyOf": [
               {
@@ -1536,6 +1592,286 @@
           }
         },
         "title": "SignalPulseItem",
+        "type": "object"
+      },
+      "SignalPulseStagePayload": {
+        "additionalProperties": true,
+        "properties": {
+          "attempt_index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Index"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At Ms"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "response": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "started_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At Ms"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "SignalPulseStagePayload",
+        "type": "object"
+      },
+      "SignalPulseStages": {
+        "additionalProperties": true,
+        "properties": {
+          "analyst": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "critic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "research_only_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SignalPulseStagePayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "SignalPulseStages",
+        "type": "object"
+      },
+      "SocialEventDetail": {
+        "additionalProperties": true,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "author_followers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Followers"
+          },
+          "author_handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Handle"
+          },
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_watched": {
+            "default": false,
+            "title": "Author Watched",
+            "type": "boolean"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "source_provider": {
+            "title": "Source Provider",
+            "type": "string"
+          },
+          "text_clean": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Clean"
+          },
+          "timestamp_ms": {
+            "title": "Timestamp Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "event_id",
+          "timestamp_ms",
+          "source_provider",
+          "channel",
+          "action"
+        ],
+        "title": "SocialEventDetail",
+        "type": "object"
+      },
+      "SocialEventsByIdsData": {
+        "additionalProperties": true,
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/SocialEventDetail"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "not_found": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Not Found",
+            "type": "array"
+          }
+        },
+        "title": "SocialEventsByIdsData",
         "type": "object"
       },
       "StatusData": {
@@ -3311,6 +3647,49 @@
           }
         },
         "summary": "Social Events",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/social-events/by-ids": {
+      "get": {
+        "operationId": "social_events_by_ids_api_social_events_by_ids_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ids",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Ids",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_SocialEventsByIdsData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Social Events By Ids",
         "tags": [
           "api"
         ]

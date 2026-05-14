@@ -17,17 +17,10 @@ MAX_SIGNAL_PULSE_NOTIFICATION_PAGES = 5
 SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
 DEFAULT_SIGNAL_PULSE_WINDOW = "1h"
 DEFAULT_SIGNAL_PULSE_SCOPES = ("all", "matched")
-DEFAULT_SIGNAL_PULSE_STATUSES = ("trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info")
+DEFAULT_SIGNAL_PULSE_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
 SIGNAL_PULSE_SEVERITY = {
     "trade_candidate": "critical",
-    "theme_watch": "warning",
     "risk_rejected_high_info": "warning",
-}
-SIGNAL_PULSE_COOLDOWN_MS = {
-    "trade_candidate": 15 * 60_000,
-    "token_watch": 30 * 60_000,
-    "theme_watch": 2 * 60 * 60_000,
-    "risk_rejected_high_info": 60 * 60_000,
 }
 ALPHA_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst", "timing_risk")
 
@@ -369,7 +362,7 @@ class NotificationRuleEngine:
         seen: set[str] = set()
         window = rule.window or DEFAULT_SIGNAL_PULSE_WINDOW
         scopes = rule.scopes or DEFAULT_SIGNAL_PULSE_SCOPES
-        statuses = set(rule.statuses or DEFAULT_SIGNAL_PULSE_STATUSES)
+        statuses = set(rule.statuses or DEFAULT_SIGNAL_PULSE_STATUSES) & set(DEFAULT_SIGNAL_PULSE_STATUSES)
         for scope in scopes:
             cursor = None
             for _ in range(MAX_SIGNAL_PULSE_NOTIFICATION_PAGES):
@@ -408,8 +401,6 @@ class NotificationRuleEngine:
                 continue
             candidate_id = str(row.get("candidate_id") or "")
             occurrence_at_ms = _int(row.get("updated_at_ms") or now_ms)
-            cooldown_ms = max(0, int(rule.cooldown_seconds)) * 1000 or SIGNAL_PULSE_COOLDOWN_MS[status]
-            bucket = occurrence_at_ms // cooldown_ms
             signature = _pulse_notification_signature(row)
             payload = _pulse_payload(row, notification_signature=signature)
             symbol = _symbol(row.get("symbol"))
@@ -417,7 +408,7 @@ class NotificationRuleEngine:
             title_subject = f"${symbol}" if symbol else subject
             candidates.append(
                 NotificationCandidate(
-                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{candidate_id}:{status}:{bucket}",
+                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{candidate_id}:{signature}",
                     rule_id=SIGNAL_PULSE_RULE_ID,
                     severity=severity,
                     title=f"{title_subject} {status.replace('_', ' ')}",
@@ -509,6 +500,7 @@ def _alert_dedup_key(
 def _pulse_notification_signature(row: dict[str, Any]) -> str:
     evidence_ids = _list(row.get("evidence_event_ids_json"))
     source_ids = _list(row.get("source_event_ids_json"))
+    edge_events = _list(row.get("last_edge_events_json"))
     factor_snapshot = _dict(row.get("factor_snapshot_json"))
     payload = {
         "pulse_version": row.get("pulse_version"),
@@ -517,6 +509,7 @@ def _pulse_notification_signature(row: dict[str, Any]) -> str:
         "score_band": row.get("score_band"),
         "gates": _dict(factor_snapshot.get("gates")),
         "decision": _pulse_decision(row),
+        "edge_events": edge_events,
         "factor_snapshot_fingerprint": _short_hash(factor_snapshot),
         "latest_evidence_event_id_bucket": _event_id_bucket([*evidence_ids, *source_ids]),
         "source_event_fingerprint": _short_hash(_stable_list(source_ids)),
@@ -537,6 +530,7 @@ def _pulse_payload(row: dict[str, Any], *, notification_signature: str) -> dict[
         "factor_snapshot": factor_snapshot,
         "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
         "source_event_ids": _list(row.get("source_event_ids_json")),
+        "edge_events": _list(row.get("last_edge_events_json")),
         "candidate_score": row.get("candidate_score"),
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
@@ -605,7 +599,7 @@ def _has_resolved_pulse_target(row: dict[str, Any], factor_snapshot: dict[str, A
     subject = _dict(factor_snapshot.get("subject"))
     target_type = str(row.get("target_type") or subject.get("target_type") or "").strip()
     target_id = str(row.get("target_id") or subject.get("target_id") or "").strip()
-    return bool(target_type and target_id and target_type not in {"source_seed", "SourceSeed", "unresolved"})
+    return bool(target_type and target_id and target_type.lower() != "unresolved")
 
 
 def _market_fact_line(snapshot: dict[str, Any]) -> str:

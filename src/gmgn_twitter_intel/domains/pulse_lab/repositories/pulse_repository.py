@@ -9,9 +9,9 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-DISPLAY_PULSE_STATUSES = ("trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info")
+DISPLAY_PULSE_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
 SUMMARY_PULSE_STATUSES = (*DISPLAY_PULSE_STATUSES, "blocked_low_information")
-DISPLAY_PULSE_STATUS_SQL = "('trade_candidate', 'token_watch', 'theme_watch', 'risk_rejected_high_info')"
+DISPLAY_PULSE_STATUS_SQL = "('trade_candidate', 'token_watch', 'risk_rejected_high_info')"
 
 
 class PulseRepository:
@@ -38,7 +38,6 @@ class PulseRepository:
         attempt_count: int = 0,
         max_attempts: int = 3,
         next_run_at_ms: int | None = None,
-        cooldown_until_ms: int = 0,
         last_error: str | None = None,
         now_ms: int | None = None,
         commit: bool = True,
@@ -51,10 +50,10 @@ class PulseRepository:
             INSERT INTO pulse_agent_jobs(
               job_id, candidate_id, candidate_type, subject_key, target_type, target_id,
               "window", scope, trigger_signature, timeline_signature, context_json, priority, status,
-              attempt_count, max_attempts, next_run_at_ms, cooldown_until_ms, last_error,
+              attempt_count, max_attempts, next_run_at_ms, last_error,
               created_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
               subject_key = excluded.subject_key,
@@ -100,7 +99,6 @@ class PulseRepository:
                 THEN pulse_agent_jobs.next_run_at_ms
                 ELSE excluded.next_run_at_ms
               END,
-              cooldown_until_ms = excluded.cooldown_until_ms,
               last_error = CASE
                 WHEN pulse_agent_jobs.status IN ('pending', 'running', 'failed')
                  AND pulse_agent_jobs.attempt_count < pulse_agent_jobs.max_attempts
@@ -127,7 +125,6 @@ class PulseRepository:
                 int(attempt_count),
                 max(1, int(max_attempts)),
                 run_at,
-                int(cooldown_until_ms),
                 last_error,
                 now,
                 now,
@@ -161,7 +158,6 @@ class PulseRepository:
                   status IN ('pending', 'failed')
                   AND attempt_count < max_attempts
                   AND next_run_at_ms <= %s
-                  AND cooldown_until_ms <= %s
                 )
                 OR (
                   status = 'running'
@@ -184,7 +180,6 @@ class PulseRepository:
                   job.status IN ('pending', 'failed')
                   AND job.attempt_count < job.max_attempts
                   AND job.next_run_at_ms <= %s
-                  AND job.cooldown_until_ms <= %s
                 )
                 OR (
                   job.status = 'running'
@@ -194,7 +189,7 @@ class PulseRepository:
               )
             RETURNING job.*
             """,
-            (now, now, stale_before, now, now, now, stale_before),
+            (now, stale_before, now, now, stale_before),
         ).fetchone()
         return _optional_row(row)
 
@@ -263,6 +258,163 @@ class PulseRepository:
         ).fetchone()
         return _optional_row(row)
 
+    def edge_state_by_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM pulse_candidate_edge_state
+            WHERE candidate_id = %s
+            """,
+            (candidate_id,),
+        ).fetchone()
+        return _optional_row(row)
+
+    def record_edge_observation(
+        self,
+        *,
+        candidate_id: str,
+        current_state_json: dict[str, Any],
+        edge_signature: str,
+        observed_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        observed = int(observed_at_ms)
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_candidate_edge_state(
+              candidate_id, latest_observed_state_json, last_processed_state_json,
+              last_edge_events_json, last_edge_signature, observed_at_ms,
+              created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, '{}'::jsonb, '[]'::jsonb, %s, %s, %s, %s)
+            ON CONFLICT(candidate_id) DO UPDATE SET
+              latest_observed_state_json = excluded.latest_observed_state_json,
+              last_edge_signature = excluded.last_edge_signature,
+              observed_at_ms = excluded.observed_at_ms,
+              updated_at_ms = excluded.updated_at_ms
+            RETURNING *
+            """,
+            (candidate_id, _json(current_state_json), edge_signature, observed, observed, observed),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+
+    def claim_edge_budget(
+        self,
+        *,
+        candidate_id: str,
+        hour_bucket_ms: int,
+        now_ms: int,
+        max_enqueues: int = 3,
+        commit: bool = True,
+    ) -> bool:
+        now = int(now_ms)
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_candidate_run_budget(
+              candidate_id, hour_bucket_ms, enqueue_count, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, 1, %s, %s)
+            ON CONFLICT(candidate_id, hour_bucket_ms) DO UPDATE SET
+              enqueue_count = pulse_candidate_run_budget.enqueue_count + 1,
+              updated_at_ms = excluded.updated_at_ms
+            WHERE pulse_candidate_run_budget.enqueue_count < %s
+            RETURNING enqueue_count
+            """,
+            (candidate_id, int(hour_bucket_ms), now, now, max(1, int(max_enqueues))),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return row is not None
+
+    def mark_edge_job_enqueued(
+        self,
+        *,
+        candidate_id: str,
+        processed_state_json: dict[str, Any],
+        edge_events_json: list[Any],
+        job_id: str,
+        processed_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any]:
+        processed = int(processed_at_ms)
+        row = self.conn.execute(
+            """
+            INSERT INTO pulse_candidate_edge_state(
+              candidate_id, latest_observed_state_json, last_processed_state_json,
+              last_edge_events_json, last_job_id, observed_at_ms,
+              last_processed_at_ms, created_at_ms, updated_at_ms
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(candidate_id) DO UPDATE SET
+              last_processed_state_json = excluded.last_processed_state_json,
+              last_edge_events_json = excluded.last_edge_events_json,
+              last_job_id = excluded.last_job_id,
+              last_processed_at_ms = excluded.last_processed_at_ms,
+              updated_at_ms = excluded.updated_at_ms
+            RETURNING *
+            """,
+            (
+                candidate_id,
+                _json(processed_state_json),
+                _json(processed_state_json),
+                _json(edge_events_json),
+                job_id,
+                processed,
+                processed,
+                processed,
+                processed,
+            ),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _row(row)
+
+    def mark_edge_budget_rejected(
+        self,
+        *,
+        candidate_id: str,
+        edge_events_json: list[Any],
+        rejected_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            UPDATE pulse_candidate_edge_state
+            SET last_edge_events_json = %s,
+                updated_at_ms = %s
+            WHERE candidate_id = %s
+            RETURNING *
+            """,
+            (_json(edge_events_json), int(rejected_at_ms), candidate_id),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _optional_row(row)
+
+    def mark_edge_run_finished(
+        self,
+        *,
+        candidate_id: str,
+        agent_run_id: str,
+        finished_at_ms: int,
+        commit: bool = True,
+    ) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            UPDATE pulse_candidate_edge_state
+            SET last_agent_run_id = %s,
+                updated_at_ms = %s
+            WHERE candidate_id = %s
+            RETURNING *
+            """,
+            (agent_run_id, int(finished_at_ms), candidate_id),
+        ).fetchone()
+        if commit:
+            self.conn.commit()
+        return _optional_row(row)
+
     def insert_agent_run(
         self,
         *,
@@ -287,7 +439,7 @@ class PulseRepository:
         usage_json: dict[str, Any] | None = None,
         latency_ms: int = 0,
         status: str = "running",
-        outcome: str = "pending",
+        outcome: str = "running",
         decision_route: str = "research_only",
         decision_stage_count: int = 0,
         response_json: dict[str, Any] | None = None,
@@ -371,6 +523,9 @@ class PulseRepository:
         now = int(finished_at_ms if finished_at_ms is not None else _now_ms())
         latency_ms = max(0, now - int(existing["started_at_ms"]))
         next_usage = usage_json if usage_json is not None else _decode_json_value(existing["usage_json"])
+        resolved_outcome = outcome or (
+            "failed" if status == "failed" else "completed" if status == "done" else "running"
+        )
         row = self.conn.execute(
             """
             UPDATE pulse_agent_runs
@@ -380,7 +535,7 @@ class PulseRepository:
                 output_hash = COALESCE(%s, output_hash),
                 usage_json = %s,
                 latency_ms = %s,
-                outcome = COALESCE(%s, outcome),
+                outcome = %s,
                 decision_route = COALESCE(%s, decision_route),
                 decision_stage_count = COALESCE(%s, decision_stage_count),
                 finished_at_ms = %s
@@ -394,7 +549,7 @@ class PulseRepository:
                 output_hash,
                 _json(next_usage or {}),
                 latency_ms,
-                outcome,
+                resolved_outcome,
                 decision_route,
                 max(0, int(decision_stage_count)) if decision_stage_count is not None else None,
                 now,
@@ -440,6 +595,7 @@ class PulseRepository:
         risk_reasons_json: list[Any] | None = None,
         evidence_event_ids_json: list[Any] | None = None,
         source_event_ids_json: list[Any] | None = None,
+        last_edge_events_json: list[Any] | None = None,
         agent_run_id: str | None = None,
         created_at_ms: int | None = None,
         updated_at_ms: int | None = None,
@@ -456,14 +612,14 @@ class PulseRepository:
               factor_snapshot_json, gate_json, decision_route, decision_recommendation,
               decision_confidence, decision_abstain_reason, decision_stage_count, decision_json,
               gate_reasons_json, risk_reasons_json, evidence_event_ids_json, source_event_ids_json,
-              agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
+              last_edge_events_json, agent_run_id, pulse_version, gate_version, prompt_version, schema_version,
               created_at_ms, updated_at_ms
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT(candidate_id) DO UPDATE SET
               candidate_type = excluded.candidate_type,
@@ -493,6 +649,7 @@ class PulseRepository:
               risk_reasons_json = excluded.risk_reasons_json,
               evidence_event_ids_json = excluded.evidence_event_ids_json,
               source_event_ids_json = excluded.source_event_ids_json,
+              last_edge_events_json = excluded.last_edge_events_json,
               agent_run_id = excluded.agent_run_id,
               pulse_version = excluded.pulse_version,
               gate_version = excluded.gate_version,
@@ -530,6 +687,7 @@ class PulseRepository:
                 _json(risk_reasons_json or []),
                 _json(evidence_event_ids_json or []),
                 _json(source_event_ids_json or []),
+                _json(last_edge_events_json or []),
                 agent_run_id,
                 pulse_version,
                 gate_version,
@@ -903,7 +1061,6 @@ class PulseRepository:
               COUNT(*) AS candidate_count,
               COUNT(*) FILTER (WHERE pulse_status = 'trade_candidate') AS trade_candidate_count,
               COUNT(*) FILTER (WHERE pulse_status = 'token_watch') AS token_watch_count,
-              COUNT(*) FILTER (WHERE pulse_status = 'theme_watch') AS theme_watch_count,
               COUNT(*) FILTER (WHERE pulse_status = 'risk_rejected_high_info') AS risk_rejected_high_info_count,
               COUNT(*) FILTER (WHERE pulse_status = 'blocked_low_information') AS blocked_low_information_status_count,
               COUNT(*) FILTER (WHERE decision_route = 'cex') AS decision_route_cex_count,
@@ -976,7 +1133,6 @@ class PulseRepository:
         summary = {
             "trade_candidate": int(row.get("trade_candidate_count") or 0),
             "token_watch": int(row.get("token_watch_count") or 0),
-            "theme_watch": int(row.get("theme_watch_count") or 0),
             "risk_rejected_high_info": int(row.get("risk_rejected_high_info_count") or 0),
             "blocked_low_information": int(row.get("blocked_low_information_status_count") or 0),
         }

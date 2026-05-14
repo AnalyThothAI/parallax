@@ -1030,11 +1030,7 @@ export type TokenSocialTimelineData = {
   next_cursor?: string | null;
 };
 
-export type SignalPulseStatus =
-  | "trade_candidate"
-  | "token_watch"
-  | "theme_watch"
-  | "risk_rejected_high_info";
+export type SignalPulseStatus = "trade_candidate" | "token_watch" | "risk_rejected_high_info";
 export type SignalPulseStatusFilter = "all" | SignalPulseStatus;
 
 export type SignalPulseQuery = {
@@ -1190,6 +1186,7 @@ export type SignalPulseItem = {
   narrative_type?: string | null;
   candidate_score?: number | null;
   score_band?: string | null;
+  last_edge_events: string[];
   evidence_event_ids: string[];
   source_event_ids: string[];
   factor_snapshot: TokenFactorSnapshot;

@@ -21,10 +21,9 @@ describe("useSourceEvents", () => {
       data: { events: [], not_found: [] },
     } as never);
 
-    const { result } = renderHook(
-      () => useSourceEvents({ token: "secret", ids: ["b", "a"] }),
-      { wrapper: wrapper() },
-    );
+    const { result } = renderHook(() => useSourceEvents({ token: "secret", ids: ["b", "a"] }), {
+      wrapper: wrapper(),
+    });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(spy).toHaveBeenCalledWith(

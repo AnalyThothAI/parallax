@@ -59,8 +59,7 @@ class FakePulse:
             rows = [
                 item
                 for item in rows
-                if item.get("pulse_status")
-                in {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
+                if item.get("pulse_status") in {"trade_candidate", "token_watch", "risk_rejected_high_info"}
                 and item.get("verdict") != "blocked_low_information"
             ]
         limit = int(kwargs.get("limit") or len(rows))
@@ -482,7 +481,6 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
         [
             pulse_candidate("trade", status="trade_candidate", score_band="high_conviction", symbol="PEPE"),
             pulse_candidate("watch", status="token_watch", score_band="watch", symbol="BONK"),
-            pulse_candidate("theme", status="theme_watch", score_band="speculative", symbol=None),
             pulse_candidate("risk", status="risk_rejected_high_info", score_band="blocked", risks=["chase_risk"]),
             pulse_candidate("blocked", status="blocked_low_information", score_band="blocked"),
         ]
@@ -493,11 +491,10 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     ]
 
     assert {item.source_table for item in candidates} == {"pulse_candidates"}
-    assert {item.source_id for item in candidates} == {"trade", "watch", "theme", "risk"}
+    assert {item.source_id for item in candidates} == {"trade", "watch", "risk"}
     assert {item.source_id: item.severity for item in candidates} == {
         "trade": "critical",
         "watch": "high",
-        "theme": "warning",
         "risk": "warning",
     }
     assert all(item.source_id != "blocked" for item in candidates)
@@ -512,13 +509,14 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert "kind" not in candidates[0].payload
 
 
-def test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature():
+def test_signal_pulse_dedup_key_uses_candidate_edge_signature():
     watch_row = pulse_candidate("watch", status="token_watch", updated_at_ms=NOW_MS, evidence_ids=["event-1"])
     changed_signature_row = pulse_candidate(
         "watch",
         status="token_watch",
         updated_at_ms=NOW_MS + 60_000,
         evidence_ids=["event-1", "event-2"],
+        edge_events=["score_band_crossed"],
     )
     trade_row = pulse_candidate("watch", status="trade_candidate", updated_at_ms=NOW_MS)
 
@@ -527,9 +525,9 @@ def test_signal_pulse_dedup_key_uses_candidate_status_bucket_not_signature():
     trade = _only_pulse_notification(trade_row)
 
     assert watch.payload["notification_signature"] != changed_signature.payload["notification_signature"]
-    assert watch.dedup_key == changed_signature.dedup_key
-    assert watch.dedup_key == f"signal_pulse_candidate:watch:token_watch:{NOW_MS // (30 * 60_000)}"
-    assert trade.dedup_key == f"signal_pulse_candidate:watch:trade_candidate:{NOW_MS // (15 * 60_000)}"
+    assert watch.dedup_key != changed_signature.dedup_key
+    assert watch.dedup_key == f"signal_pulse_candidate:watch:{watch.payload['notification_signature']}"
+    assert trade.dedup_key == f"signal_pulse_candidate:watch:{trade.payload['notification_signature']}"
 
 
 def test_signal_pulse_signature_changes_on_meaningful_state_changes():
@@ -549,6 +547,9 @@ def test_signal_pulse_signature_changes_on_meaningful_state_changes():
         "recommendation": _only_pulse_notification(
             pulse_candidate("watch", recommendation_summary="新增独立作者确认")
         ).payload["notification_signature"],
+        "edge_events": _only_pulse_notification(pulse_candidate("watch", edge_events=["hard_risk_added"])).payload[
+            "notification_signature"
+        ],
         "new_source": _only_pulse_notification(
             pulse_candidate("watch", evidence_ids=["event-1", "event-9"], source_ids=["event-1", "event-9"])
         ).payload["notification_signature"],
@@ -597,21 +598,7 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
         candidate_score=90,
         radar_score={"heat": {"score": 90}},
     )
-    source_seed_row = {
-        **pulse_candidate(
-            "pulse-source-seed",
-            window="5m",
-            scope="all",
-            status="theme_watch",
-            symbol=None,
-            candidate_score=80,
-            radar_score={},
-        ),
-        "candidate_type": "source_seed",
-        "target_type": None,
-        "target_id": None,
-    }
-    pulse = FakePulse([hot_row, cold_row, low_score_row, ignored_scope_row, source_seed_row])
+    pulse = FakePulse([hot_row, cold_row, low_score_row, ignored_scope_row])
     notifications = NotificationsConfig(
         rules={
             "signal_pulse_candidate": {
@@ -619,7 +606,7 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
                 "channels": ["in_app", "pushdeer"],
                 "window": "5m",
                 "scopes": ["all"],
-                "statuses": ["token_watch", "theme_watch"],
+                "statuses": ["token_watch"],
                 "cooldown_seconds": 120,
             }
         }
@@ -632,10 +619,9 @@ def test_signal_pulse_candidate_rule_uses_window_scope_status_without_downstream
         "pulse-hot",
         "pulse-cold",
         "pulse-low-score",
-        "pulse-source-seed",
     ]
     assert pulse_candidates[0].channels == ("in_app", "pushdeer")
-    assert pulse_candidates[0].dedup_key.endswith(f":{NOW_MS // 120_000}")
+    assert pulse_candidates[0].dedup_key.startswith("signal_pulse_candidate:pulse-hot:sha256:")
     assert pulse.calls == [
         {
             "window": "5m",
@@ -799,6 +785,7 @@ def pulse_candidate(
     recommendation_summary: str = "社交与链上事实支持继续观察。",
     evidence_ids: list[str] | None = None,
     source_ids: list[str] | None = None,
+    edge_events: list[str] | None = None,
     updated_at_ms: int = NOW_MS,
 ) -> dict:
     resolved_blocked_reasons = (
@@ -878,7 +865,8 @@ def pulse_candidate(
         "gate_reasons_json": ["trade_gate_incomplete"],
         "evidence_event_ids_json": evidence_ids or ["event-1"],
         "source_event_ids_json": source_ids or ["event-1"],
-        "pulse_version": "signal-pulse-v2-agent-thesis",
+        "last_edge_events_json": edge_events or ["pulse_status_changed"],
+        "pulse_version": "signal-pulse-v3-factor-snapshot",
         "created_at_ms": updated_at_ms - 60_000,
         "updated_at_ms": updated_at_ms,
     }

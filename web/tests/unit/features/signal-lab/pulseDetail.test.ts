@@ -2,7 +2,11 @@ import {
   buildPulseDetailView,
   GATE_AGENT_MISMATCH_CONFIDENCE,
 } from "@features/signal-lab/model/pulseDetail";
-import { tittyPulseFixture, tittySourceEventsFixture, TITTY_NOW_MS } from "@features/signal-lab/test/fixtures";
+import {
+  tittyPulseFixture,
+  tittySourceEventsFixture,
+  TITTY_NOW_MS,
+} from "@features/signal-lab/test/fixtures";
 import { describe, expect, it } from "vitest";
 
 describe("buildPulseDetailView", () => {

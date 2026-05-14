@@ -494,12 +494,6 @@
 | `event_id` | `TEXT` | False | `None` |
 | `provider` | `TEXT` | False | `None` |
 | `model` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `request_json` | `JSONB` | False | `None` |
-| `response_json` | `JSONB` | True | `None` |
-| `error` | `TEXT` | True | `None` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | False | `None` |
 | `backend` | `TEXT` | False | `'openai_agents_sdk'::text` |
 | `sdk_trace_id` | `TEXT` | True | `None` |
 | `workflow_name` | `TEXT` | True | `None` |
@@ -512,6 +506,12 @@
 | `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
 | `usage_json` | `JSONB` | False | `'{}'::jsonb` |
 | `latency_ms` | `BIGINT` | False | `0` |
+| `status` | `TEXT` | False | `None` |
+| `request_json` | `JSONB` | False | `None` |
+| `response_json` | `JSONB` | True | `None` |
+| `error` | `TEXT` | True | `None` |
+| `started_at_ms` | `BIGINT` | False | `None` |
+| `finished_at_ms` | `BIGINT` | False | `None` |
 
 ## `notification_deliveries`
 
@@ -850,6 +850,49 @@
 | `first_seen_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `pulse_agent_eval_cases`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `eval_case_id` | `TEXT` | False | `None` |
+| `source_run_id` | `TEXT` | False | `None` |
+| `harness_hash` | `TEXT` | False | `None` |
+| `eval_type` | `TEXT` | False | `None` |
+| `route` | `TEXT` | False | `None` |
+| `recommendation` | `TEXT` | False | `None` |
+| `input_json` | `JSONB` | False | `'{}'::jsonb` |
+| `expected_json` | `JSONB` | False | `'{}'::jsonb` |
+| `rubric_json` | `JSONB` | False | `'{}'::jsonb` |
+| `status` | `TEXT` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
+## `pulse_agent_eval_results`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `eval_result_id` | `TEXT` | False | `None` |
+| `eval_case_id` | `TEXT` | False | `None` |
+| `harness_hash` | `TEXT` | False | `None` |
+| `status` | `TEXT` | False | `None` |
+| `score` | `DOUBLE PRECISION` | False | `None` |
+| `grader_version` | `TEXT` | False | `None` |
+| `details_json` | `JSONB` | False | `'{}'::jsonb` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
+## `pulse_agent_harness_versions`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `harness_hash` | `TEXT` | False | `None` |
+| `harness_version` | `TEXT` | False | `None` |
+| `strategy` | `TEXT` | False | `None` |
+| `provider` | `TEXT` | False | `None` |
+| `model` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `manifest_json` | `JSONB` | False | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+
 ## `pulse_agent_jobs`
 
 | Column | Type | Nullable | Default |
@@ -870,7 +913,6 @@
 | `attempt_count` | `BIGINT` | False | `0` |
 | `max_attempts` | `BIGINT` | False | `3` |
 | `next_run_at_ms` | `BIGINT` | False | `None` |
-| `cooldown_until_ms` | `BIGINT` | False | `0` |
 | `last_error` | `TEXT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
@@ -927,9 +969,37 @@
 | `error` | `TEXT` | True | `None` |
 | `started_at_ms` | `BIGINT` | False | `None` |
 | `finished_at_ms` | `BIGINT` | False | `None` |
-| `outcome` | `TEXT` | False | `'pending'::text` |
+| `outcome` | `TEXT` | False | `'running'::text` |
 | `decision_route` | `TEXT` | False | `'research_only'::text` |
 | `decision_stage_count` | `BIGINT` | False | `0` |
+| `harness_version` | `TEXT` | False | `'pulse-decision-harness-v1'::text` |
+| `harness_hash` | `TEXT` | False | `'sha256:unversioned'::text` |
+
+## `pulse_candidate_edge_state`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `candidate_id` | `TEXT` | False | `None` |
+| `latest_observed_state_json` | `JSONB` | False | `'{}'::jsonb` |
+| `last_processed_state_json` | `JSONB` | False | `'{}'::jsonb` |
+| `last_edge_events_json` | `JSONB` | False | `'[]'::jsonb` |
+| `last_edge_signature` | `TEXT` | True | `None` |
+| `last_job_id` | `TEXT` | True | `None` |
+| `last_agent_run_id` | `TEXT` | True | `None` |
+| `observed_at_ms` | `BIGINT` | False | `None` |
+| `last_processed_at_ms` | `BIGINT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `pulse_candidate_run_budget`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `candidate_id` | `TEXT` | False | `None` |
+| `hour_bucket_ms` | `BIGINT` | False | `None` |
+| `enqueue_count` | `BIGINT` | False | `0` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `pulse_candidates`
 
@@ -970,6 +1040,7 @@
 | `decision_abstain_reason` | `TEXT` | True | `None` |
 | `decision_stage_count` | `BIGINT` | False | `0` |
 | `decision_json` | `JSONB` | False | `'{}'::jsonb` |
+| `last_edge_events_json` | `JSONB` | False | `'[]'::jsonb` |
 
 ## `pulse_playbook_outcomes`
 
@@ -1324,7 +1395,7 @@
 | `target_json` | `JSONB` | False | `'{}'::jsonb` |
 | `price_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
-| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v1'::text` |
+| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v3_social_attention'::text` |
 
 ## `token_score_evaluations`
 

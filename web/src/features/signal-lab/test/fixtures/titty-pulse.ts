@@ -74,11 +74,7 @@ const stages: SignalPulseStages = {
         "TITTY has strong social heat but shallow liquidity, concentrated marketing, and missing qualitative catalyst data.",
       abstain_reason: null,
       recommendation: "trade_candidate",
-      residual_risks: [
-        "thin liquidity",
-        "marketing concentration",
-        "unknown holder distribution",
-      ],
+      residual_risks: ["thin liquidity", "marketing concentration", "unknown holder distribution"],
       invalidation_conditions: [
         "liquidity drops by more than 20%",
         "social heat score falls below 50",
@@ -105,6 +101,7 @@ export const tittyPulseFixture: SignalPulseItem = {
   narrative_type: "direct_token",
   candidate_score: 82,
   score_band: "high_conviction",
+  last_edge_events: ["pulse_status_changed"],
   evidence_event_ids: evidenceIds,
   source_event_ids: evidenceIds,
   factor_snapshot: tittyFactorSnapshot(),

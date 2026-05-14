@@ -36,7 +36,6 @@ describe("SignalLabPulse", () => {
             summary: {
               trade_candidate: 1,
               token_watch: 0,
-              theme_watch: 0,
               risk_rejected_high_info: 0,
               blocked_low_information: 0,
             },
@@ -54,10 +53,18 @@ describe("SignalLabPulse", () => {
     expect(screen.queryByText("打开队列")).not.toBeInTheDocument();
     const header = screen.getByRole("heading", { name: "Signal Pulse" }).closest("header");
     expect(header).not.toBeNull();
-    expect(within(header!).getByText((_, node) => node?.textContent === "候选 1")).toBeInTheDocument();
-    expect(within(header!).getByText((_, node) => node?.textContent === "代币 0")).toBeInTheDocument();
-    expect(within(header!).getByText((_, node) => node?.textContent === "主题 0")).toBeInTheDocument();
-    expect(within(header!).getByText((_, node) => node?.textContent === "拒绝 0")).toBeInTheDocument();
+    expect(
+      within(header!).getByText((_, node) => node?.textContent === "候选 1"),
+    ).toBeInTheDocument();
+    expect(
+      within(header!).getByText((_, node) => node?.textContent === "代币 0"),
+    ).toBeInTheDocument();
+    expect(
+      within(header!).getByText((_, node) => node?.textContent === "主题 0"),
+    ).toBeInTheDocument();
+    expect(
+      within(header!).getByText((_, node) => node?.textContent === "拒绝 0"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /TITTY/ }));
 

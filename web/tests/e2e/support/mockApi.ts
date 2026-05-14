@@ -351,7 +351,7 @@ function signalPulseData(url: URL) {
       q: url.searchParams.get("q") ?? "",
     },
     health: { returned_count: 1 },
-    summary: { trade_candidate: 1, token_watch: 0, theme_watch: 0, risk_rejected_high_info: 0 },
+    summary: { trade_candidate: 1, token_watch: 0, risk_rejected_high_info: 0 },
     items: [item],
     returned_count: 1,
     has_more: false,
@@ -388,6 +388,7 @@ function pulseItem() {
     narrative_type: "direct_token",
     candidate_score: 88,
     score_band: "trade",
+    last_edge_events: ["pulse_status_changed"],
     evidence_event_ids: ["event-upeg-1", "event-upeg-2"],
     source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3"],
     factor_snapshot: {

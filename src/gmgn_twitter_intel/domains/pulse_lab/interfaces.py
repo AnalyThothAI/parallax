@@ -5,25 +5,23 @@ from typing import Literal
 PULSE_VERSION = "signal-pulse-v3-factor-snapshot"
 PULSE_DECISION_SCHEMA_VERSION = "pulse_decision_v1"
 PULSE_DECISION_PROMPT_VERSION = "pulse-decision-v1"
-PULSE_GATE_VERSION = "pulse-factor-gate-v1"
+PULSE_GATE_VERSION = "pulse-factor-gate-v2-edge-state"
 PULSE_PLAYBOOK_VERSION = "shadow-playbook-v1"
 BACKEND = "openai_agents_sdk"
 WORKFLOW_NAME = "gmgn-twitter-intel.pulse_decision"
 AGENT_NAME = "PulseDecisionPipeline"
 
-CANDIDATE_TYPES = {"source_seed", "token_target"}
+CANDIDATE_TYPES = {"token_target"}
 TARGET_TYPES = {"Asset", "CexToken"}
 PULSE_STATUSES = {
     "trade_candidate",
     "token_watch",
-    "theme_watch",
     "risk_rejected_high_info",
     "blocked_low_information",
 }
 DISPLAY_PULSE_STATUSES = {
     "trade_candidate",
     "token_watch",
-    "theme_watch",
     "risk_rejected_high_info",
 }
 SOCIAL_PHASES = {"seed", "ignition", "expansion", "concentration", "chase", "unknown"}
@@ -39,16 +37,15 @@ NARRATIVE_TYPES = {
 }
 SCORE_BANDS = {"high_conviction", "watch", "speculative", "blocked"}
 
-CandidateType = Literal["source_seed", "token_target"]
+CandidateType = Literal["token_target"]
 TargetType = Literal["Asset", "CexToken"]
 PulseStatus = Literal[
     "trade_candidate",
     "token_watch",
-    "theme_watch",
     "risk_rejected_high_info",
     "blocked_low_information",
 ]
-DisplayPulseStatus = Literal["trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"]
+DisplayPulseStatus = Literal["trade_candidate", "token_watch", "risk_rejected_high_info"]
 SocialPhase = Literal["seed", "ignition", "expansion", "concentration", "chase", "unknown"]
 NarrativeType = Literal[
     "direct_token",

@@ -62,7 +62,6 @@ function signalPulseTotal(summary?: SignalPulseData["summary"]): number {
   return (
     Number(summary.trade_candidate ?? 0) +
     Number(summary.token_watch ?? 0) +
-    Number(summary.theme_watch ?? 0) +
     Number(summary.risk_rejected_high_info ?? 0)
   );
 }

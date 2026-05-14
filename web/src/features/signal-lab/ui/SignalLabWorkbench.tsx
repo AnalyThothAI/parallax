@@ -24,11 +24,6 @@ const PULSE_STATUSES: Array<{ status: SignalPulseStatus; label: string; descript
     description: "标的热度出现，但还缺少确认。",
   },
   {
-    status: "theme_watch",
-    label: "主题观察",
-    description: "叙事或账号簇值得继续看。",
-  },
-  {
     status: "risk_rejected_high_info",
     label: "已拒绝",
     description: "信息量高，但被风控条件拦下。",

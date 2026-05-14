@@ -20,8 +20,6 @@ class CompletenessResult:
 
 
 def route_decision_context(context: dict[str, Any]) -> DecisionRoute:
-    if str(context.get("candidate_type") or "").strip() == "source_seed":
-        return "research_only"
     snapshot = _mapping(context.get("factor_snapshot"))
     subject = _mapping(snapshot.get("subject"))
     target_id = str(subject.get("target_id") or "").strip()

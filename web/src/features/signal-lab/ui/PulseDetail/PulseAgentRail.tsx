@@ -1,11 +1,6 @@
 import type { ReactNode } from "react";
 
-import type {
-  AgentRailView,
-  AnalystView,
-  CriticView,
-  JudgeView,
-} from "../../model/pulseDetail";
+import type { AgentRailView, AnalystView, CriticView, JudgeView } from "../../model/pulseDetail";
 
 import styles from "./PulseAgentRail.module.css";
 
@@ -36,32 +31,17 @@ export function PulseAgentRail({ agent }: Props) {
           subtitle="确定性"
           status={agent.researchOnlyGate?.status ?? "skipped"}
         >
-          <Metric
-            label="弃判原因"
-            value={agent.researchOnlyGate?.abstainReason || "（未设置）"}
-          />
+          <Metric label="弃判原因" value={agent.researchOnlyGate?.abstainReason || "（未设置）"} />
         </StageCard>
       ) : (
         <>
-          <StageCard
-            title="阶段 1 · 分析"
-            tone="info"
-            status={agent.analyst?.status ?? "skipped"}
-          >
+          <StageCard title="阶段 1 · 分析" tone="info" status={agent.analyst?.status ?? "skipped"}>
             <AnalystBody analyst={agent.analyst} />
           </StageCard>
-          <StageCard
-            title="阶段 2 · 评审"
-            tone="warn"
-            status={agent.critic?.status ?? "skipped"}
-          >
+          <StageCard title="阶段 2 · 评审" tone="warn" status={agent.critic?.status ?? "skipped"}>
             <CriticBody critic={agent.critic} />
           </StageCard>
-          <StageCard
-            title="阶段 3 · 终裁"
-            tone="agent"
-            status={agent.judge?.status ?? "skipped"}
-          >
+          <StageCard title="阶段 3 · 终裁" tone="agent" status={agent.judge?.status ?? "skipped"}>
             <JudgeBody judge={agent.judge} />
           </StageCard>
         </>

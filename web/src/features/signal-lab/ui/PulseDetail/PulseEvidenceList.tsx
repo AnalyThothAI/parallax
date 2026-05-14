@@ -33,7 +33,8 @@ export function PulseEvidenceList({ evidence }: Props) {
         <div>
           <h2>原始推文</h2>
           <p>
-            {evidence.totalCount} 条 · 已引用 {evidence.citedCount} 条 · {evidence.totalUniqueAuthors} 位作者
+            {evidence.totalCount} 条 · 已引用 {evidence.citedCount} 条 ·{" "}
+            {evidence.totalUniqueAuthors} 位作者
           </p>
         </div>
       </header>
@@ -58,9 +59,7 @@ export function PulseEvidenceList({ evidence }: Props) {
         <AuthorChips
           chips={evidence.authorChips}
           activeHandle={handleFilter}
-          onToggle={(handle) =>
-            setHandleFilter((current) => (current === handle ? null : handle))
-          }
+          onToggle={(handle) => setHandleFilter((current) => (current === handle ? null : handle))}
           totalUnique={evidence.totalUniqueAuthors}
         />
         <label className={styles.sort}>
@@ -105,9 +104,16 @@ export function PulseEvidenceList({ evidence }: Props) {
 function EvidenceRowItem({ row }: { row: EvidenceRow }) {
   const tweetUrl = row.canonicalUrl;
   return (
-    <article data-cited={row.cited ? "true" : "false"} data-empty={row.isEmptyBody ? "true" : "false"}>
+    <article
+      data-cited={row.cited ? "true" : "false"}
+      data-empty={row.isEmptyBody ? "true" : "false"}
+    >
       <div className={styles.rowMeta}>
-        {row.cited ? <span className={styles.star} aria-label="agent cited">★</span> : null}
+        {row.cited ? (
+          <span className={styles.star} aria-label="agent cited">
+            ★
+          </span>
+        ) : null}
         {tweetUrl ? (
           <a className={styles.authorLink} href={tweetUrl} target="_blank" rel="noreferrer">
             @{row.handle}
@@ -119,7 +125,13 @@ function EvidenceRowItem({ row }: { row: EvidenceRow }) {
         {row.cohortPosition ? <span className={styles.position}>{row.cohortPosition}</span> : null}
         <time>{row.timestampLabel}</time>
         {tweetUrl ? (
-          <a className={styles.openLink} href={tweetUrl} target="_blank" rel="noreferrer" aria-label="open tweet">
+          <a
+            className={styles.openLink}
+            href={tweetUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="open tweet"
+          >
             ↗
           </a>
         ) : null}
@@ -202,7 +214,8 @@ function Concentration({ evidence }: { evidence: EvidenceView }) {
       <header>
         <span>作者集中度</span>
         <span>
-          头部作者占比 {Math.round(evidence.concentration.topAuthorShare * 100)}% · 共 {segments.length} 位
+          头部作者占比 {Math.round(evidence.concentration.topAuthorShare * 100)}% · 共{" "}
+          {segments.length} 位
         </span>
       </header>
       <div className={styles.concentrationBar}>
@@ -220,11 +233,13 @@ function Concentration({ evidence }: { evidence: EvidenceView }) {
       <ul className={styles.concentrationLegend}>
         {segments.slice(0, 4).map((segment) => (
           <li key={segment.handle} data-tone={segment.tone}>
-            <span aria-hidden />
-            @{segment.handle} · {segment.count}/{total} ({Math.round(segment.share * 100)}%)
+            <span aria-hidden />@{segment.handle} · {segment.count}/{total} (
+            {Math.round(segment.share * 100)}%)
           </li>
         ))}
-        {segments.length > 4 ? <li className={styles.legendMore}>+{segments.length - 4} more</li> : null}
+        {segments.length > 4 ? (
+          <li className={styles.legendMore}>+{segments.length - 4} more</li>
+        ) : null}
       </ul>
     </section>
   );

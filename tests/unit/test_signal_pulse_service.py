@@ -23,7 +23,6 @@ class FakePulseRepository:
             "summary": {
                 "trade_candidate": 0,
                 "token_watch": 0,
-                "theme_watch": 0,
                 "risk_rejected_high_info": 0,
                 "blocked_low_information": 0,
             },
@@ -113,7 +112,6 @@ def test_signal_pulse_empty_state_uses_pulse_candidates_only() -> None:
     assert result["summary"] == {
         "trade_candidate": 0,
         "token_watch": 0,
-        "theme_watch": 0,
         "risk_rejected_high_info": 0,
         "blocked_low_information": 0,
         "decision_route_counts": {},
@@ -172,7 +170,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "summary": {
                 "trade_candidate": 1,
                 "token_watch": 1,
-                "theme_watch": 0,
                 "risk_rejected_high_info": 0,
                 "blocked_low_information": 1,
             },
@@ -206,7 +203,6 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
     assert result["summary"] == {
         "trade_candidate": 1,
         "token_watch": 1,
-        "theme_watch": 0,
         "risk_rejected_high_info": 0,
         "blocked_low_information": 1,
         "decision_route_counts": {},
@@ -250,6 +246,7 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
             "score_band": "watch",
             "gate_reasons": ["fresh_attention"],
             "risk_reasons": ["thin_liquidity"],
+            "last_edge_events": ["pulse_status_changed"],
             "evidence_event_ids": ["event-1"],
             "source_event_ids": ["event-1"],
             "factor_snapshot": _factor_snapshot(market_status="fresh"),
@@ -322,7 +319,6 @@ def test_signal_pulse_uses_aggregate_for_summary_and_market_rate_independent_of_
             "summary": {
                 "trade_candidate": 1,
                 "token_watch": 1,
-                "theme_watch": 0,
                 "risk_rejected_high_info": 0,
                 "blocked_low_information": 1,
             },
@@ -408,6 +404,7 @@ def _candidate_row(
         },
         "gate_reasons_json": ["fresh_attention"],
         "risk_reasons_json": ["thin_liquidity"],
+        "last_edge_events_json": ["pulse_status_changed"],
         "evidence_event_ids_json": ["event-1"],
         "source_event_ids_json": ["event-1"],
         "agent_run_id": "run-1",
@@ -603,7 +600,6 @@ def test_summary_counts_decision_routes_and_abstain_reasons() -> None:
             "summary": {
                 "trade_candidate": 1,
                 "token_watch": 2,
-                "theme_watch": 0,
                 "risk_rejected_high_info": 0,
                 "blocked_low_information": 1,
             },

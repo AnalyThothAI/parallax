@@ -39,7 +39,7 @@ ALERT_TYPES = {"account_token", "token"}
 JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
-SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "theme_watch", "risk_rejected_high_info"}
+SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 
 
 class ApiUnauthorized(Exception):
@@ -505,9 +505,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             )
             watched = _watched_handle_set(repos, handles)
             events_payload = [
-                _social_event_detail(records[event_id], watched)
-                for event_id in raw
-                if event_id in records
+                _social_event_detail(records[event_id], watched) for event_id in raw if event_id in records
             ]
             not_found = [event_id for event_id in raw if event_id not in records]
         return _json({"ok": True, "data": {"events": events_payload, "not_found": not_found}})
@@ -764,9 +762,7 @@ def _watched_handle_set(repos: Any, handles: list[str]) -> set[str]:
     except Exception:
         return set()
     return {
-        handle
-        for handle, profile in profiles.items()
-        if (profile or {}).get("watched_status") in {"active", "watched"}
+        handle for handle, profile in profiles.items() if (profile or {}).get("watched_status") in {"active", "watched"}
     }
 
 

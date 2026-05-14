@@ -208,6 +208,7 @@ function pulse(options: {
     window: "1h",
     scope: "all",
     pulse_status: "token_watch",
+    last_edge_events: ["pulse_status_changed"],
     evidence_event_ids: [],
     source_event_ids: [],
     factor_snapshot: {

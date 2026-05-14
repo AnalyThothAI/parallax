@@ -183,10 +183,7 @@ def test_json_output_schema_disables_strict() -> None:
 
 def test_json_output_schema_parses_plain_json_object() -> None:
     schema = _JsonOutputSchema(AnalystOpinion)
-    raw = (
-        '{"route":"meme","recommendation":"watchlist","confidence":0.5,'
-        '"summary_zh":"x","evidence":["event-1"]}'
-    )
+    raw = '{"route":"meme","recommendation":"watchlist","confidence":0.5,"summary_zh":"x","evidence":["event-1"]}'
     result = schema.validate_json(raw)
     assert result.route == "meme"
     assert result.recommendation == "watchlist"

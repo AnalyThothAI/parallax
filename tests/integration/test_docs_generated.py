@@ -12,7 +12,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 GENERATED = REPO_ROOT / "docs" / "generated"
 AUTO_GENERATED = {"db-schema.md", "cli-help.md", "score-versions.md", "ws-protocol.md"}
-GENERATED_REPORTS = {"duplicate-token-audit.md", "duplicate-token-audit-applied.md"}
+GENERATED_REPORTS = {"duplicate-token-audit.md", "duplicate-token-audit-applied.md", "frontend-test-ownership.md"}
 EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS
 HEADER_MARKER = "AUTO-GENERATED"
 

@@ -166,11 +166,11 @@ def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path)
     assert rows[0]["payload_json"]["event_id"] == "event-2"
 
 
-def test_insert_notification_suppresses_same_pulse_source_status_with_different_key(tmp_path):
+def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
     repo = repository(tmp_path)
 
-    old_key = repo.insert_notification(
-        dedup_key="signal_pulse_candidate:pulse-1:sha256:old-signature",
+    first = repo.insert_notification(
+        dedup_key="signal_pulse_candidate:pulse-1:sha256:first",
         rule_id="signal_pulse_candidate",
         severity="high",
         title="$SLOP token watch",
@@ -181,11 +181,16 @@ def test_insert_notification_suppresses_same_pulse_source_status_with_different_
         source_table="pulse_candidates",
         source_id="pulse-1",
         occurrence_at_ms=1_700_000_000_000,
-        payload={"candidate_id": "pulse-1", "pulse_status": "token_watch", "symbol": "SLOP"},
+        payload={
+            "candidate_id": "pulse-1",
+            "pulse_status": "token_watch",
+            "symbol": "SLOP",
+            "notification_signature": "sha256:first",
+        },
         channels=["in_app", "pushdeer"],
     )
-    same_source_status = repo.insert_notification(
-        dedup_key="signal_pulse_candidate:pulse-1:token_watch:944444",
+    same_signature = repo.insert_notification(
+        dedup_key="signal_pulse_candidate:pulse-1:sha256:first",
         rule_id="signal_pulse_candidate",
         severity="high",
         title="$SLOP token watch",
@@ -196,16 +201,43 @@ def test_insert_notification_suppresses_same_pulse_source_status_with_different_
         source_table="pulse_candidates",
         source_id="pulse-1",
         occurrence_at_ms=1_700_000_060_000,
-        payload={"candidate_id": "pulse-1", "pulse_status": "token_watch", "symbol": "SLOP"},
+        payload={
+            "candidate_id": "pulse-1",
+            "pulse_status": "token_watch",
+            "symbol": "SLOP",
+            "notification_signature": "sha256:first",
+        },
+        channels=["in_app", "pushdeer"],
+    )
+    changed_signature = repo.insert_notification(
+        dedup_key="signal_pulse_candidate:pulse-1:sha256:second",
+        rule_id="signal_pulse_candidate",
+        severity="high",
+        title="$SLOP token watch",
+        body="Signal Pulse",
+        entity_type="pulse_candidate",
+        entity_key="pulse_candidate:pulse-1",
+        symbol="SLOP",
+        source_table="pulse_candidates",
+        source_id="pulse-1",
+        occurrence_at_ms=1_700_000_120_000,
+        payload={
+            "candidate_id": "pulse-1",
+            "pulse_status": "token_watch",
+            "symbol": "SLOP",
+            "notification_signature": "sha256:second",
+        },
         channels=["in_app", "pushdeer"],
     )
 
     rows = repo.list_notifications(limit=10, rule_id="signal_pulse_candidate")
 
-    assert old_key is not None
-    assert same_source_status is None
-    assert len(rows) == 1
-    assert rows[0]["dedup_key"] == "signal_pulse_candidate:pulse-1:sha256:old-signature"
+    assert first is not None
+    assert same_signature is None
+    assert changed_signature is not None
+    assert len(rows) == 2
+    assert rows[0]["dedup_key"] == "signal_pulse_candidate:pulse-1:sha256:second"
+    assert rows[1]["dedup_key"] == "signal_pulse_candidate:pulse-1:sha256:first"
     assert rows[0]["occurrence_count"] == 1
 
 
@@ -374,3 +406,46 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
 
     assert claimed is not None
     assert claimed["delivery_id"] == available["delivery_id"]
+
+
+def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
+    repo = repository(tmp_path)
+    notification = repo.insert_notification(
+        dedup_key="delivery:stale",
+        rule_id="hot_quality_token_5m",
+        severity="high",
+        title="stale",
+        body="stale",
+        entity_type="token",
+        entity_key="token:eth:stale",
+        source_table="token_flow",
+        source_id="token:eth:stale",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={},
+        channels=["pushdeer"],
+    )
+    assert notification is not None
+    delivery = repo.enqueue_delivery(
+        notification_id=notification["notification_id"],
+        channel_id="pushdeer",
+        provider="apprise",
+        max_attempts=5,
+        next_run_at_ms=1_700_000_000_000,
+    )
+    assert delivery is not None
+    repo.conn.execute(
+        """
+        UPDATE notification_deliveries
+        SET status = 'running', attempt_count = 1, updated_at_ms = 1_700_000_000_000
+        WHERE delivery_id = %s
+        """,
+        (delivery["delivery_id"],),
+    )
+    repo.conn.commit()
+
+    claimed = NotificationRepository(repo.conn, running_timeout_ms=1_000).claim_next_delivery(now_ms=1_700_000_002_000)
+
+    assert claimed is not None
+    assert claimed["delivery_id"] == delivery["delivery_id"]
+    assert claimed["status"] == "running"
+    assert claimed["attempt_count"] == 2

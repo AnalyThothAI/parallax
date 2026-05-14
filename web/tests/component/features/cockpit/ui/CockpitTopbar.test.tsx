@@ -24,7 +24,7 @@ describe("CockpitTopbar", () => {
             windowKey: "1h",
             signalLabSummaryTrade: 1,
             signalLabSummaryToken: 2,
-            signalLabSummaryTheme: 0,
+            signalLabSummaryRisk: 0,
           }}
           notifications={{ summary: null, drawerOpen: false, onToggleDrawer: vi.fn() }}
           onRefresh={vi.fn()}

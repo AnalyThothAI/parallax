@@ -253,6 +253,7 @@ class FakeSignalPulseRepository:
                     "gate_json": _pulse_gate(score=0.84),
                     "gate_reasons_json": ["fresh_attention"],
                     "risk_reasons_json": [],
+                    "last_edge_events_json": ["pulse_status_changed"],
                     "evidence_event_ids_json": ["event-fake"],
                     "source_event_ids_json": ["event-fake"],
                     "agent_run_id": "run-fake",
@@ -273,7 +274,6 @@ class FakeSignalPulseRepository:
             "summary": {
                 "trade_candidate": 0,
                 "token_watch": 1,
-                "theme_watch": 0,
                 "risk_rejected_high_info": 0,
                 "blocked_low_information": 0,
             },
@@ -920,7 +920,6 @@ def test_api_exposes_signal_pulse_empty_contract_after_hard_cut(tmp_path):
     assert data["summary"] == {
         "trade_candidate": 0,
         "token_watch": 0,
-        "theme_watch": 0,
         "risk_rejected_high_info": 0,
         "blocked_low_information": 0,
         "decision_route_counts": {"cex": 0, "meme": 0, "research_only": 0},
@@ -1522,7 +1521,7 @@ def test_api_signal_pulse_by_id_returns_stages(tmp_path):
                 harness_hash="harness-hash",
                 input_hash="input-hash",
                 status="ok",
-                outcome="trade_candidate",
+                outcome="completed",
                 decision_route="meme",
                 decision_stage_count=3,
             )
