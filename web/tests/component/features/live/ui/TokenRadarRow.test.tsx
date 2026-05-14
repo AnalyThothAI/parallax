@@ -184,7 +184,88 @@ describe("TokenRadarRow", () => {
       expect(screen.queryByText(label)).not.toBeInTheDocument();
     }
   });
+
+  it("renders holder and listed-at columns for ranked rows", () => {
+    const item = withRadarMeta(mixedFreshnessToken(), {
+      listed_at_ms: 1_778_420_000_000,
+      rank: 4,
+    });
+
+    render(
+      <TokenRadarTable
+        error={null}
+        isLoading={false}
+        items={[item]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onOpenSearch={vi.fn()}
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /sort by holders/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sort by listed/i })).toBeInTheDocument();
+    expect(screen.getByText("52K")).toBeInTheDocument();
+    expect(screen.getByText("#4")).toBeInTheDocument();
+    expect(screen.getByText(/2026-/)).toBeInTheDocument();
+  });
+
+  it("uses score ranking as the default table sort", () => {
+    const low = withRadarMeta(
+      {
+        ...mixedFreshnessToken(),
+        identity: { ...mixedFreshnessToken().identity, symbol: "LOW" },
+        opportunity: { ...mixedFreshnessToken().opportunity, score: 12 },
+      },
+      { listed_at_ms: 1_778_420_000_000, rank: 12 },
+    );
+    const high = withRadarMeta(
+      {
+        ...mixedFreshnessToken(),
+        identity: { ...mixedFreshnessToken().identity, symbol: "HIGH" },
+        opportunity: { ...mixedFreshnessToken().opportunity, score: 91 },
+      },
+      { listed_at_ms: 1_778_421_000_000, rank: 1 },
+    );
+    const { container } = render(
+      <TokenRadarTable
+        error={null}
+        isLoading={false}
+        items={[low, high]}
+        scope="all"
+        selectedKey={null}
+        windowKey="1h"
+        onOpenSearch={vi.fn()}
+        onScopeChange={vi.fn()}
+        onSelect={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    const rows = Array.from(container.querySelectorAll(".radar-row"));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("$HIGH");
+    expect(rows[1]).toHaveTextContent("$LOW");
+  });
 });
+
+function withRadarMeta(
+  item: TokenFlowItem,
+  radar: Pick<NonNullable<TokenFlowItem["radar"]>, "listed_at_ms" | "rank">,
+): TokenFlowItem {
+  return {
+    ...item,
+    radar: {
+      lane: "resolved",
+      computed_at_ms: 1_778_426_440_000,
+      source_max_received_at_ms: 1_778_426_100_000,
+      ...radar,
+    },
+  } as TokenFlowItem;
+}
 
 function mixedFreshnessToken(): TokenFlowItem {
   const item = unresolvedSymbolOnly();

@@ -84,6 +84,7 @@ export type {
   TokenPostSortMode,
   TokenPostsData,
   TokenProfileBlock,
+  TokenRadarRowMeta,
   TokenReference,
   TokenResolutionRecord,
   TokenSocialTimelineData,

@@ -107,6 +107,17 @@ export function tokenRadarRowToTokenItem(
   >;
   const familyScores = recordValue(composite.family_scores);
   const provenance = recordValue(snapshot.provenance);
+  const radar = recordValue(row.radar);
+  const radarMeta = {
+    lane: optionalString(radar.lane),
+    rank: optionalNullableNumber(radar.rank),
+    listed_at_ms: optionalNullableNumber(radar.listed_at_ms),
+    computed_at_ms:
+      optionalNullableNumber(radar.computed_at_ms) ??
+      optionalNullableNumber(provenance.computed_at_ms),
+    source_max_received_at_ms: optionalNullableNumber(radar.source_max_received_at_ms),
+  };
+  const hasRadarMeta = Object.values(radarMeta).some((value) => value !== null);
   const mentions5m = requiredNumber(
     attention.mentions_5m,
     "factor_snapshot.social_heat.mentions_5m",
@@ -413,6 +424,7 @@ export function tokenRadarRowToTokenItem(
     factor_data_health: dataHealth,
     factor_gates: gates,
     factor_normalization: normalization,
+    radar: hasRadarMeta ? radarMeta : undefined,
     evidence_total_count: sourceEventIds.length,
     posts_query: {
       target_type: stringValue(subject.target_type) ?? target.target_type ?? null,

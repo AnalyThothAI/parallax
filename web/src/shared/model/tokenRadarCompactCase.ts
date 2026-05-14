@@ -1,4 +1,10 @@
-import { compactNumber, formatReason, formatRisk, formatSignedPercent } from "@lib/format";
+import {
+  compactNumber,
+  formatReason,
+  formatRisk,
+  formatSignedPercent,
+  formatUtcTimestamp,
+} from "@lib/format";
 import type { TokenFlowItem } from "@lib/types";
 
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
@@ -12,7 +18,9 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
 
   return {
     externalLinks: compactExternalLinks(item, tokenCase.actions),
+    holders: compactHolders(item),
     label: tokenCase.label,
+    listed: compactListedAt(item),
     logoUrl: item.profile?.identity?.logo_url ?? null,
     markTone: tokenCase.decision.tone,
     market: {
@@ -99,6 +107,31 @@ function compactMarketMove(item: TokenFlowItem): {
   };
 }
 
+function compactHolders(item: TokenFlowItem): { detail: string; value: string } {
+  const holders = item.market.holder_count;
+  return {
+    detail:
+      holders === null || holders === undefined
+        ? "holder data unavailable"
+        : statusLabel(item.market.holder_count_status),
+    value: compactNumber(holders),
+  };
+}
+
+function compactListedAt(item: TokenFlowItem): {
+  detail: string;
+  timestampMs: number | null;
+  value: string;
+} {
+  const listedAtMs =
+    item.radar?.listed_at_ms ?? item.radar?.computed_at_ms ?? item.flow.window_end_ms ?? null;
+  return {
+    detail: item.radar?.rank ? `#${item.radar.rank}` : "rank -",
+    timestampMs: listedAtMs,
+    value: formatUtcTimestamp(listedAtMs, { suffix: false }),
+  };
+}
+
 function compactWhyNowTitle(item: TokenFlowItem): string {
   return `${phaseLabel(item.propagation.phase)} · ${compactNumber(
     item.discussion_quality.informative_post_count,
@@ -151,4 +184,11 @@ function twitterHref(value?: string | null): string | null {
 function cleanText(value?: string | null): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
+}
+
+function statusLabel(value?: string | null): string {
+  if (!value || value === "live" || value === "ready" || value === "fresh") {
+    return "holder count";
+  }
+  return value.replaceAll("_", " ");
 }
