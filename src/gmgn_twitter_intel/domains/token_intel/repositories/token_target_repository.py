@@ -9,6 +9,90 @@ class TokenTargetRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
+    def target_identity(self, *, target_type: str, target_id: str) -> dict[str, Any] | None:
+        if target_type == "Asset":
+            row = self.conn.execute(
+                """
+                SELECT
+                  'Asset' AS target_type,
+                  registry_assets.asset_id AS target_id,
+                  COALESCE(asset_identity_current.canonical_symbol, price_feeds.base_symbol) AS symbol,
+                  asset_identity_current.canonical_name AS name,
+                  registry_assets.chain_id,
+                  registry_assets.address,
+                  registry_assets.status,
+                  price_feeds.pricefeed_id,
+                  price_feeds.provider,
+                  price_feeds.native_market_id,
+                  price_feeds.quote_symbol,
+                  price_feeds.feed_type
+                FROM registry_assets
+                LEFT JOIN asset_identity_current
+                  ON asset_identity_current.asset_id = registry_assets.asset_id
+                LEFT JOIN LATERAL (
+                  SELECT *
+                  FROM price_feeds
+                  WHERE price_feeds.subject_type = 'Asset'
+                    AND price_feeds.subject_id = registry_assets.asset_id
+                    AND price_feeds.status IN ('candidate', 'canonical')
+                  ORDER BY
+                    CASE WHEN price_feeds.status = 'canonical' THEN 0 ELSE 1 END,
+                    price_feeds.updated_at_ms DESC,
+                    price_feeds.pricefeed_id ASC
+                  LIMIT 1
+                ) price_feeds ON true
+                WHERE registry_assets.asset_id = %s
+                """,
+                [target_id],
+            ).fetchone()
+            return _target_identity_payload(target_type=target_type, row=row)
+        if target_type == "CexToken":
+            row = self.conn.execute(
+                """
+                SELECT
+                  'CexToken' AS target_type,
+                  cex_tokens.cex_token_id AS target_id,
+                  cex_tokens.base_symbol AS symbol,
+                  NULL AS name,
+                  NULL AS chain_id,
+                  NULL AS address,
+                  cex_tokens.status,
+                  price_feeds.pricefeed_id,
+                  price_feeds.provider,
+                  price_feeds.native_market_id,
+                  price_feeds.quote_symbol,
+                  price_feeds.feed_type
+                FROM cex_tokens
+                LEFT JOIN LATERAL (
+                  SELECT *
+                  FROM price_feeds
+                  WHERE price_feeds.subject_type = 'CexToken'
+                    AND price_feeds.subject_id = cex_tokens.cex_token_id
+                    AND price_feeds.feed_type LIKE 'cex_%'
+                    AND price_feeds.status IN ('candidate', 'canonical')
+                  ORDER BY
+                    CASE
+                      WHEN price_feeds.feed_type = 'cex_spot' THEN 0
+                      WHEN price_feeds.feed_type = 'cex_swap' THEN 1
+                      ELSE 2
+                    END,
+                    CASE
+                      WHEN price_feeds.quote_symbol = 'USDT' THEN 0
+                      WHEN price_feeds.quote_symbol = 'USD' THEN 1
+                      WHEN price_feeds.quote_symbol = 'USDC' THEN 2
+                      ELSE 9
+                    END,
+                    price_feeds.updated_at_ms DESC,
+                    price_feeds.native_market_id ASC
+                  LIMIT 1
+                ) price_feeds ON true
+                WHERE cex_tokens.cex_token_id = %s
+                """,
+                [target_id],
+            ).fetchone()
+            return _target_identity_payload(target_type=target_type, row=row)
+        return None
+
     def timeline_rows(
         self,
         *,
@@ -162,4 +246,26 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
         **row,
         "symbol": row.get("asset_symbol") or row.get("cex_base_symbol") or row.get("pricefeed_base_symbol"),
+    }
+
+
+def _target_identity_payload(*, target_type: str, row: Any) -> dict[str, Any] | None:
+    if row is None:
+        return None
+    row_dict = dict(row)
+    return {
+        "target_type": target_type,
+        "target_id": row_dict.get("target_id"),
+        "symbol": row_dict.get("symbol"),
+        "name": row_dict.get("name"),
+        "chain_id": row_dict.get("chain_id"),
+        "address": row_dict.get("address"),
+        "status": row_dict.get("status") or "resolved",
+        "source": "registry_assets" if target_type == "Asset" else "cex_tokens",
+        "reason": "TARGET_ID",
+        "pricefeed_id": row_dict.get("pricefeed_id"),
+        "provider": row_dict.get("provider"),
+        "native_market_id": row_dict.get("native_market_id"),
+        "quote_symbol": row_dict.get("quote_symbol"),
+        "feed_type": row_dict.get("feed_type"),
     }
