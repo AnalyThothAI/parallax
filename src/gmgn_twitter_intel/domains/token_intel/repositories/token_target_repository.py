@@ -68,7 +68,7 @@ class TokenTargetRepository:
                   FROM price_feeds
                   WHERE price_feeds.subject_type = 'CexToken'
                     AND price_feeds.subject_id = cex_tokens.cex_token_id
-                    AND price_feeds.feed_type LIKE 'cex_%'
+                    AND price_feeds.feed_type LIKE 'cex_%%'
                     AND price_feeds.status IN ('candidate', 'canonical')
                   ORDER BY
                     CASE

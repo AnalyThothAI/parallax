@@ -197,6 +197,32 @@ def test_token_target_repository_target_identity_maps_asset_row():
     assert conn.params == [TARGET_ID]
 
 
+def test_token_target_repository_target_identity_escapes_cex_feed_like_pattern():
+    conn = FakeConn(
+        row={
+            "target_type": "CexToken",
+            "target_id": "cex_token:BTC",
+            "symbol": "BTC",
+            "name": None,
+            "chain_id": None,
+            "address": None,
+            "status": "canonical",
+            "pricefeed_id": "pricefeed:okx:BTC-USDT",
+            "provider": "okx",
+            "native_market_id": "BTC-USDT",
+            "quote_symbol": "USDT",
+            "feed_type": "cex_spot",
+        }
+    )
+    repo = TokenTargetRepository(conn)
+
+    result = repo.target_identity(target_type="CexToken", target_id="cex_token:BTC")
+
+    assert result["source"] == "cex_tokens"
+    assert "price_feeds.feed_type LIKE 'cex_%%'" in conn.sql
+    assert conn.params == ["cex_token:BTC"]
+
+
 class FakeTargets:
     def __init__(self, *, rows, identity=None):
         self.rows = rows
