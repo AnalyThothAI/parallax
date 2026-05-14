@@ -231,7 +231,10 @@ export function AppRoutes({ session }: { session: AppSession }) {
             />
           }
         />
-        <Route path="watchlist" element={<WatchlistRoute accountCases={watchlistAccountCases} />} />
+        <Route
+          path="watchlist"
+          element={<WatchlistRoute accountCases={watchlistAccountCases} token={token ?? ""} />}
+        />
         <Route path="signal-lab/pulse/:candidateId" element={<SignalLabPulseRoute />} />
         <Route
           path="signal-lab"

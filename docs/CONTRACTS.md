@@ -19,6 +19,17 @@ The only application config source.
   `pulse_agent_gate_high_info_rejection_min`, and
   `pulse_agent_gate_high_conviction_min`. Older heat / quality / propagation /
   tradeability / timing Pulse threshold keys are rejected.
+- `llm.watchlist_handle_summary_*` — optional Watchlist handle topic-summary
+  worker config. Current knobs are `watchlist_handle_summary_enabled`,
+  `watchlist_handle_summary_model`, `watchlist_handle_summary_signal_threshold`,
+  `watchlist_handle_summary_time_threshold_ms`,
+  `watchlist_handle_summary_min_interval_ms`,
+  `watchlist_handle_summary_poll_interval_seconds`,
+  `watchlist_handle_summary_concurrency`,
+  `watchlist_handle_summary_input_limit`,
+  `watchlist_handle_summary_window_days`,
+  `watchlist_handle_summary_lease_ms`, and
+  `watchlist_handle_summary_max_attempts`.
 - Optional market-related groups (OKX, GMGN OpenAPI, Marketlane) for identity
   discovery, route sync, anchor-price lookup, the process-local live price
   gateway, and request-time US equity quote snapshots.
@@ -97,6 +108,30 @@ US Stocks radar contract:
   request-time `quote` snapshot from Marketlane. Quote lookup is per-row: a quote
   failure returns `quote.status = "unavailable"` and does not fail the whole
   response.
+
+Watchlist handle intel contract:
+
+- `/api/watchlist/handle/{handle}/summary` is authenticated. `{handle}` must
+  match `^[A-Za-z0-9_.-]{1,64}$` after trimming `@`; unconfigured handles return
+  `404 {"error":"handle_not_found"}`. The response exposes `handle`, `status`
+  (`ready` or `not_ready`), `generated_at_ms`, `staleness_ms`, `is_stale`,
+  `pending_recompute`, total `signal_count`, `input_event_count`,
+  `signal_count_at_generation`, `model`, `summary_zh`, and `topics[]`. Topic
+  items use `title`, `description`, `event_count`, `top_event_ids`, `symbols`,
+  and `confidence`.
+- `/api/watchlist/handle/{handle}/timeline` is authenticated and accepts
+  `scope=signal|all`, `limit` (default 30, maximum 100), and cursor. `signal`
+  returns only events with a persisted `social_event_extraction.is_signal_event
+  = true`; `all` returns the source stream for that handle with social-event
+  extraction attached when it exists. Invalid limit values return FastAPI 422.
+  Invalid cursors return `400 {"error":"invalid_cursor"}`.
+- Timeline pages are ordered by `(received_at_ms DESC, event_id DESC)` and use a
+  base64url cursor encoding those two fields. Clients must treat the cursor as
+  opaque. Timeline items include the source event, optional `social_event`, and
+  current `token_resolutions` in the same shape exposed by `/api/recent`.
+- The Watchlist page renders `summary_zh` and `social_event.summary_zh` as the
+  primary text. Raw tweet text remains available as event detail; frontend code
+  must not reconstruct summaries from the original tweet body.
 
 Search V2 contract:
 

@@ -91,5 +91,11 @@ export type {
   TokenTimelineStage,
   TokenTimelinePost,
   TradeabilityBlock,
+  WatchlistHandleSummaryData,
+  WatchlistHandleTimelineData,
+  WatchlistSocialEvent,
+  WatchlistTimelineItem,
+  WatchlistTimelineScope,
+  WatchlistTopic,
   WindowKey,
 } from "./frontend-contracts";

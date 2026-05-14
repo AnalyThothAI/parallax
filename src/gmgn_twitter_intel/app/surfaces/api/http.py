@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Callable
@@ -32,6 +33,11 @@ from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_servi
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_social_timeline_service import (
     TokenTargetSocialTimelineService,
 )
+from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import (
+    HandleSummaryTriggerConfig,
+    WatchlistHandleReadService,
+)
+from gmgn_twitter_intel.domains.watchlist_intel.types import WatchlistTimelineCursorError, normalize_watchlist_handle
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
 SCOPES = {"all", "matched"}
@@ -40,6 +46,7 @@ JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
 HORIZONS = {"6h", "24h"}
 SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
+WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
 
 
 class ApiUnauthorized(Exception):
@@ -117,6 +124,68 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
                 },
             }
         )
+
+    @router.get(
+        "/watchlist/handle/{handle}/summary",
+        response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandleSummaryData],
+    )
+    async def watchlist_handle_summary(request: Request, handle: str) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        try:
+            normalized_handle = normalize_watchlist_handle(handle)
+        except ValueError:
+            raise ApiBadRequest("invalid_handle", field="handle") from None
+        try:
+            def read_summary() -> dict[str, Any]:
+                with runtime.repositories() as repos:
+                    return WatchlistHandleReadService(
+                        repository=repos.watchlist_intel,
+                        config=_watchlist_handle_summary_config(runtime),
+                    ).summary(
+                        handle=normalized_handle,
+                        configured_handles=tuple(runtime.settings.handles),
+                        now_ms=_now_ms(),
+                    )
+
+            data = await asyncio.to_thread(read_summary)
+        except LookupError:
+            return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
+        return _json({"ok": True, "data": data})
+
+    @router.get(
+        "/watchlist/handle/{handle}/timeline",
+        response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandleTimelineData],
+    )
+    async def watchlist_handle_timeline(
+        request: Request,
+        handle: str,
+        scope: Annotated[str, Query()] = "signal",
+        limit: Annotated[int, Query(ge=1, le=100)] = 30,
+        cursor: Annotated[str, Query()] = "",
+    ) -> JSONResponse:
+        runtime = _authenticated_runtime(request)
+        try:
+            normalized_handle = normalize_watchlist_handle(handle)
+        except ValueError:
+            raise ApiBadRequest("invalid_handle", field="handle") from None
+        parsed_scope = _watchlist_timeline_scope(scope)
+        try:
+            def read_timeline() -> dict[str, Any]:
+                with runtime.repositories() as repos:
+                    return WatchlistHandleReadService(repository=repos.watchlist_intel).timeline(
+                        handle=normalized_handle,
+                        configured_handles=tuple(runtime.settings.handles),
+                        scope=parsed_scope,
+                        cursor=cursor or None,
+                        limit=limit,
+                    )
+
+            data = await asyncio.to_thread(read_timeline)
+        except LookupError:
+            return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
+        except WatchlistTimelineCursorError:
+            return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
+        return _json({"ok": True, "data": data})
 
     @router.get("/search", response_model=api_schemas.ApiEnvelope[api_schemas.SearchData])
     def search(
@@ -743,6 +812,19 @@ def _payload_for_event(repos: Any, event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _watchlist_handle_summary_config(runtime: Any) -> HandleSummaryTriggerConfig:
+    settings = runtime.settings
+    defaults = HandleSummaryTriggerConfig()
+    return HandleSummaryTriggerConfig(
+        signal_threshold=getattr(settings, "watchlist_handle_summary_signal_threshold", defaults.signal_threshold),
+        time_threshold_ms=getattr(settings, "watchlist_handle_summary_time_threshold_ms", defaults.time_threshold_ms),
+        min_interval_ms=getattr(settings, "watchlist_handle_summary_min_interval_ms", defaults.min_interval_ms),
+        input_limit=getattr(settings, "watchlist_handle_summary_input_limit", defaults.input_limit),
+        window_days=getattr(settings, "watchlist_handle_summary_window_days", defaults.window_days),
+        max_attempts=getattr(settings, "watchlist_handle_summary_max_attempts", defaults.max_attempts),
+    )
+
+
 def _watched_handle_set(repos: Any, handles: list[str]) -> set[str]:
     if not handles:
         return set()
@@ -898,6 +980,12 @@ def _signal_lab_pulse_data(
 
 def _scope(value: str) -> str:
     return value if value in SCOPES else "matched"
+
+
+def _watchlist_timeline_scope(value: str) -> str:
+    if value in WATCHLIST_TIMELINE_SCOPES:
+        return value
+    raise ApiBadRequest("invalid_scope", field="scope")
 
 
 def _window(value: str) -> str:

@@ -54,6 +54,8 @@ from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJEC
 from gmgn_twitter_intel.domains.token_intel.interfaces import SignalRepository
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
+from gmgn_twitter_intel.domains.watchlist_intel.runtime.handle_summary_worker import HandleSummaryWorker
+from gmgn_twitter_intel.domains.watchlist_intel.services.handle_summary_service import HandleSummaryTriggerConfig
 from gmgn_twitter_intel.platform.config.settings import Settings, load_settings
 from gmgn_twitter_intel.platform.db.postgres_client import create_pool, postgres_health_check, with_password_from_file
 from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_version
@@ -94,6 +96,7 @@ class CliRuntime:
     stock_quote_provider: object | None = None
     token_radar_projection_worker: TokenRadarProjectionWorker | None = None
     pulse_candidate_worker: PulseCandidateWorker | None = None
+    watchlist_handle_summary_worker: HandleSummaryWorker | None = None
     wake_bus: WakeBus | None = None
     wake_listener: WakeListener | None = None
     collector_task: asyncio.Task | None = None
@@ -108,6 +111,7 @@ class CliRuntime:
     live_price_gateway_task: asyncio.Task | None = None
     token_radar_projection_task: asyncio.Task | None = None
     pulse_candidate_task: asyncio.Task | None = None
+    watchlist_handle_summary_task: asyncio.Task | None = None
 
     def repositories(self):
         return repository_session(self.api_db_pool)
@@ -363,6 +367,27 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             ),
             wake_listener=runtime.wake_listener,
         )
+    if (
+        settings.watchlist_handle_summary_enabled
+        and settings.watchlist_handle_summary_configured
+        and providers.watchlist_intel.summary_provider is not None
+    ):
+        runtime.watchlist_handle_summary_worker = HandleSummaryWorker(
+            provider=providers.watchlist_intel.summary_provider,
+            repository_session=lambda: repository_session(worker_db_pool),
+            handles=settings.handles,
+            poll_interval=settings.watchlist_handle_summary_poll_interval_seconds,
+            concurrency=settings.watchlist_handle_summary_concurrency,
+            lease_ms=settings.watchlist_handle_summary_lease_ms,
+            config=HandleSummaryTriggerConfig(
+                signal_threshold=settings.watchlist_handle_summary_signal_threshold,
+                time_threshold_ms=settings.watchlist_handle_summary_time_threshold_ms,
+                min_interval_ms=settings.watchlist_handle_summary_min_interval_ms,
+                input_limit=settings.watchlist_handle_summary_input_limit,
+                window_days=settings.watchlist_handle_summary_window_days,
+                max_attempts=settings.watchlist_handle_summary_max_attempts,
+            ),
+        )
     if settings.notifications.enabled:
         runtime.notification_worker = NotificationWorker(
             repository_session=lambda: repository_session(worker_db_pool),
@@ -429,6 +454,16 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
             repository_session=lambda: repository_session(worker_db_pool),
             poll_interval=settings.enrichment_poll_interval,
             concurrency=settings.enrichment_concurrency,
+            watchlist_summary_config=HandleSummaryTriggerConfig(
+                signal_threshold=settings.watchlist_handle_summary_signal_threshold,
+                time_threshold_ms=settings.watchlist_handle_summary_time_threshold_ms,
+                min_interval_ms=settings.watchlist_handle_summary_min_interval_ms,
+                input_limit=settings.watchlist_handle_summary_input_limit,
+                window_days=settings.watchlist_handle_summary_window_days,
+                max_attempts=settings.watchlist_handle_summary_max_attempts,
+            )
+            if settings.watchlist_handle_summary_enabled
+            else None,
         )
     if start_collector:
         factory = providers.ingestion.upstream_client_factory
@@ -471,6 +506,8 @@ def _start_runtime_tasks(runtime: CliRuntime) -> None:
         runtime.token_radar_projection_task = asyncio.create_task(runtime.token_radar_projection_worker.run())
     if runtime.pulse_candidate_worker is not None and runtime.pulse_candidate_task is None:
         runtime.pulse_candidate_task = asyncio.create_task(runtime.pulse_candidate_worker.run())
+    if runtime.watchlist_handle_summary_worker is not None and runtime.watchlist_handle_summary_task is None:
+        runtime.watchlist_handle_summary_task = asyncio.create_task(runtime.watchlist_handle_summary_worker.run())
     if runtime.start_collector:
         if runtime.collector_task is None:
             runtime.collector_task = asyncio.create_task(runtime.collector.run())
@@ -499,6 +536,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.token_radar_projection_worker.stop()
     if runtime.pulse_candidate_worker is not None:
         runtime.pulse_candidate_worker.stop()
+    if runtime.watchlist_handle_summary_worker is not None:
+        runtime.watchlist_handle_summary_worker.stop()
     token_radar_projection_task = runtime.token_radar_projection_task
     tasks = [
         task
@@ -514,6 +553,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
             runtime.resolution_refresh_task,
             runtime.live_price_gateway_task,
             runtime.pulse_candidate_task,
+            runtime.watchlist_handle_summary_task,
         )
         if task is not None
     ]
@@ -540,6 +580,8 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.token_radar_projection_worker.close()
     if runtime.pulse_candidate_worker is not None:
         await runtime.pulse_candidate_worker.aclose()
+    if runtime.watchlist_handle_summary_worker is not None:
+        await runtime.watchlist_handle_summary_worker.aclose()
     _close_db_pools(runtime.api_db_pool, runtime.worker_db_pool, runtime.wake_db_pool)
 
 
@@ -611,6 +653,27 @@ def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tup
             "last_run_at_ms": runtime.pulse_candidate_worker.last_run_at_ms if runtime.pulse_candidate_worker else None,
             "last_result": runtime.pulse_candidate_worker.last_result if runtime.pulse_candidate_worker else None,
             "last_error": runtime.pulse_candidate_worker.last_error if runtime.pulse_candidate_worker else None,
+        },
+        "watchlist_handle_summary": {
+            "enabled": runtime.settings.watchlist_handle_summary_enabled,
+            "configured": runtime.settings.watchlist_handle_summary_configured,
+            "worker_running": _task_running(runtime.watchlist_handle_summary_task),
+            "model": runtime.settings.watchlist_handle_summary_model,
+            "concurrency": runtime.settings.watchlist_handle_summary_concurrency,
+            "interval_seconds": runtime.settings.watchlist_handle_summary_poll_interval_seconds,
+            "max_attempts": runtime.settings.watchlist_handle_summary_max_attempts,
+            "last_started_at_ms": runtime.watchlist_handle_summary_worker.last_started_at_ms
+            if runtime.watchlist_handle_summary_worker
+            else None,
+            "last_run_at_ms": runtime.watchlist_handle_summary_worker.last_run_at_ms
+            if runtime.watchlist_handle_summary_worker
+            else None,
+            "last_result": runtime.watchlist_handle_summary_worker.last_result
+            if runtime.watchlist_handle_summary_worker
+            else None,
+            "last_error": runtime.watchlist_handle_summary_worker.last_error
+            if runtime.watchlist_handle_summary_worker
+            else None,
         },
         "anchor_price": {
             "worker_running": _task_running(runtime.anchor_price_task),
@@ -696,6 +759,10 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("token_radar_projection_worker_stopped")
     if runtime.pulse_candidate_worker is not None and not _task_running(runtime.pulse_candidate_task):
         reasons.append("pulse_candidate_worker_stopped")
+    if runtime.watchlist_handle_summary_worker is not None and not _task_running(
+        runtime.watchlist_handle_summary_task
+    ):
+        reasons.append("watchlist_handle_summary_worker_stopped")
     return reasons
 
 

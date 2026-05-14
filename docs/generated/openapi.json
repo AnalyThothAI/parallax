@@ -1073,6 +1073,98 @@
         "title": "ApiEnvelope[TokenRadarData]",
         "type": "object"
       },
+      "ApiEnvelope_WatchlistHandleSummaryData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchlistHandleSummaryData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[WatchlistHandleSummaryData]",
+        "type": "object"
+      },
+      "ApiEnvelope_WatchlistHandleTimelineData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WatchlistHandleTimelineData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[WatchlistHandleTimelineData]",
+        "type": "object"
+      },
       "BootstrapData": {
         "additionalProperties": true,
         "properties": {
@@ -1977,6 +2069,18 @@
               }
             ],
             "title": "Token Radar Projection"
+          },
+          "watchlist_handle_summary": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watchlist Handle Summary"
           }
         },
         "required": [
@@ -2315,6 +2419,135 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WatchlistHandleSummaryData": {
+        "additionalProperties": true,
+        "properties": {
+          "generated_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At Ms"
+          },
+          "handle": {
+            "title": "Handle",
+            "type": "string"
+          },
+          "input_event_count": {
+            "default": 0,
+            "title": "Input Event Count",
+            "type": "integer"
+          },
+          "is_stale": {
+            "default": false,
+            "title": "Is Stale",
+            "type": "boolean"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "pending_recompute": {
+            "default": false,
+            "title": "Pending Recompute",
+            "type": "boolean"
+          },
+          "signal_count": {
+            "default": 0,
+            "title": "Signal Count",
+            "type": "integer"
+          },
+          "signal_count_at_generation": {
+            "default": 0,
+            "title": "Signal Count At Generation",
+            "type": "integer"
+          },
+          "staleness_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Staleness Ms"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary_zh": {
+            "default": "",
+            "title": "Summary Zh",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Topics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "handle",
+          "status"
+        ],
+        "title": "WatchlistHandleSummaryData",
+        "type": "object"
+      },
+      "WatchlistHandleTimelineData": {
+        "additionalProperties": true,
+        "properties": {
+          "has_more": {
+            "default": false,
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "query": {
+            "additionalProperties": true,
+            "title": "Query",
+            "type": "object"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "WatchlistHandleTimelineData",
         "type": "object"
       }
     }
@@ -4043,6 +4276,122 @@
           }
         },
         "summary": "Token Radar",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/watchlist/handle/{handle}/summary": {
+      "get": {
+        "operationId": "watchlist_handle_summary_api_watchlist_handle__handle__summary_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handle",
+            "required": true,
+            "schema": {
+              "title": "Handle",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_WatchlistHandleSummaryData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Watchlist Handle Summary",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/watchlist/handle/{handle}/timeline": {
+      "get": {
+        "operationId": "watchlist_handle_timeline_api_watchlist_handle__handle__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "handle",
+            "required": true,
+            "schema": {
+              "title": "Handle",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "signal",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Cursor",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_WatchlistHandleTimelineData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Watchlist Handle Timeline",
         "tags": [
           "api"
         ]

@@ -29,6 +29,9 @@ CORE_TABLES = (
     "harness_snapshots",
     "notifications",
     "token_score_evaluations",
+    "watchlist_handle_summary_jobs",
+    "watchlist_handle_summaries",
+    "watchlist_handle_summary_runs",
 )
 
 PROJECTION_TABLES = (

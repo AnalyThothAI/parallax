@@ -49,6 +49,17 @@ llm:
   pulse_agent_gate_token_watch_min: 45
   pulse_agent_gate_high_info_rejection_min: 30
   pulse_agent_gate_high_conviction_min: 78
+  watchlist_handle_summary_enabled: true
+  watchlist_handle_summary_model:
+  watchlist_handle_summary_signal_threshold: 10
+  watchlist_handle_summary_time_threshold_ms: 1800000
+  watchlist_handle_summary_min_interval_ms: 300000
+  watchlist_handle_summary_poll_interval_seconds: 2
+  watchlist_handle_summary_concurrency: 1
+  watchlist_handle_summary_input_limit: 80
+  watchlist_handle_summary_window_days: 7
+  watchlist_handle_summary_lease_ms: 120000
+  watchlist_handle_summary_max_attempts: 3
 
 gmgn:
   api_key:

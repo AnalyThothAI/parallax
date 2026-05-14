@@ -13,6 +13,7 @@ GMGN public stream
   → domains/social_enrichment   (watched-event extraction)
   → domains/closed_loop_harness (signal seeds, settlement, outcomes)
   → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
+  → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/notifications       (rules, delivery)
   → app/surfaces/api + app/surfaces/cli
 ```
@@ -135,6 +136,7 @@ direction is still enforced by the package rules below.
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
+| `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
 | `domains/account_quality/` | Account-quality snapshots, account-quality read service, account-alert read service. |
 
 ## Module Architecture Documents
@@ -181,7 +183,7 @@ Raw SQL (`conn.execute(...)`) lives ONLY in `repositories/`, `queries/`, `platfo
 
 Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
 
-Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, and `pulse_lab`. Do not add empty provider files.
+Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `social_enrichment`, `pulse_lab`, and `watchlist_intel`. Do not add empty provider files.
 
 CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.
 

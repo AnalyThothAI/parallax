@@ -1203,3 +1203,39 @@
     min-height: 0;
   }
 }
+
+@media (max-width: 767px) {
+  .cockpit-shell {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) 32px 32px;
+    grid-auto-rows: auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .top-stats {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    max-width: 100%;
+  }
+
+  .searchbar {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .topbar > .notification-bell {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  .topbar-refresh-button {
+    grid-column: 3;
+    grid-row: 3;
+  }
+}
