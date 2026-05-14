@@ -41,7 +41,9 @@ Known-failing baseline tests: none in the targeted baseline.
 
 ### Storage / migrations
 
-Add `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0039_pulse_worker_edge_notifications_hard_cut.py`.
+Add `src/gmgn_twitter_intel/platform/db/alembic/versions/20260514_0041_pulse_worker_edge_notifications_hard_cut.py`.
+
+The hard-cut migration runs after `20260514_0040_repair_pulse_agent_job_cooldown.py`; `0040` repairs old deployments that still miss `cooldown_until_ms`, and `0041` immediately removes that field from the final runtime schema.
 
 Upgrade must:
 
