@@ -15,4 +15,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE pulse_agent_runs ALTER COLUMN outcome SET DEFAULT 'running'")
+    op.execute("ALTER TABLE pulse_agent_runs ALTER COLUMN outcome DROP DEFAULT")
