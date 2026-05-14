@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./e2e/golden-paths",
+  testDir: "./tests/e2e/golden-paths",
   fullyParallel: false,
   reporter: "list",
   use: {

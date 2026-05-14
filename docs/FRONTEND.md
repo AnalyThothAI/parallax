@@ -2,7 +2,7 @@
 
 > **Scope.** Owns the `web/` architecture, layer responsibilities, component conventions, and the UI verification gate. Backend layer boundaries live in `ARCHITECTURE.md`; public HTTP/WebSocket contracts live in `CONTRACTS.md`; install and run commands live in `SETUP.md`.
 
-## Layer Map (`web/src/`)
+## Source Layer Map (`web/src/`)
 
 | Directory | Responsibility |
 |-----------|----------------|
@@ -20,9 +20,24 @@
 | `lib/env/` | Runtime environment parsing. |
 | `lib/types/` | Generated OpenAPI types and compatibility UI payload types. |
 | `styles/` | Global Tailwind import, design tokens, and base element styles only. Feature/page selectors belong beside their feature as CSS modules. |
-| `test/` | Vitest setup, MSW handlers, and shared test fixtures. |
 
 Do not add new code under old `api/`, `store/`, or `components/` roots. Public feature imports should come from `@features/<name>`; deep imports across feature internals are blocked by lint and grep gates.
+
+## Test Map (`web/tests/`)
+
+`web/src/` contains production frontend code only. Frontend Vitest, React Testing Library, MSW, fixtures, architecture gates, and Playwright specs live under `web/tests/`. Repository-root `tests/` remains the Python/FastAPI pytest tree.
+
+| Directory | Responsibility |
+|-----------|----------------|
+| `unit/` | Pure model, state, mapper, and library tests that mirror production source paths. |
+| `component/` | Focused React component, hook, and feature API hook tests. |
+| `routes/` | App and route integration tests that render `App` or route shells. |
+| `architecture/` | Static source gates for import boundaries, CSS ownership, test placement, and dead compatibility code. |
+| `fixtures/` | Shared frontend test fixtures. |
+| `msw/` | MSW server, handlers, and named API scenarios. |
+| `render/` | React Testing Library render wrappers and route render harnesses. |
+| `socket/` | Socket snapshot and subscription test utilities. |
+| `e2e/golden-paths/` | Playwright browser golden paths. |
 
 ## Conventions
 

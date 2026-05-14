@@ -1,7 +1,5 @@
 import { getAuthToken } from "@lib/api/client";
-import {
-  shortAddress,
-} from "@lib/format";
+import { shortAddress } from "@lib/format";
 import { OBSERVATION_WINDOWS } from "@lib/observationWindows";
 import { tokenRadarRowToTokenItem } from "@lib/tokenRadar";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";

@@ -99,7 +99,9 @@ export function TokenSocialMarketTimeline({
             social posts
           </span>
           <b>
-            {chartData.latestPrice === null ? "price -" : formatTokenPriceUsd(chartData.latestPrice)}
+            {chartData.latestPrice === null
+              ? "price -"
+              : formatTokenPriceUsd(chartData.latestPrice)}
           </b>
         </div>
         <TimelineChart data={chartData} />
