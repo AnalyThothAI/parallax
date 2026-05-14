@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import inspect
 from typing import Any
 
 from gmgn_twitter_intel.domains.token_intel.queries.stocks_radar_query import StocksRadarQuery
@@ -14,7 +12,7 @@ class StocksRadarService:
         self.stock_rows_query = stock_rows_query or StocksRadarQuery(conn)
         self.quote_provider = quote_provider
 
-    async def stocks_radar(
+    def stocks_radar(
         self,
         *,
         window: str,
@@ -30,7 +28,7 @@ class StocksRadarService:
             scope=scope,
             limit=parsed_limit,
         )
-        quotes = await self._quote_snapshots([str(row["symbol"]) for row in rows])
+        quotes = self._quote_snapshots([str(row["symbol"]) for row in rows])
         items = [
             _public_row(row, quote=quotes.get(str(row["symbol"])) or _unavailable_quote("missing_quote"))
             for row in rows
@@ -55,7 +53,7 @@ class StocksRadarService:
             },
         }
 
-    async def _quote_snapshots(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+    def _quote_snapshots(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
         unique_symbols = []
         seen: set[str] = set()
         for symbol in symbols:
@@ -69,17 +67,14 @@ class StocksRadarService:
             return {symbol: _unavailable_quote("provider_not_configured") for symbol in unique_symbols}
         quote_provider = self.quote_provider
 
-        async def quote_one(symbol: str) -> tuple[str, dict[str, Any]]:
+        def quote_one(symbol: str) -> tuple[str, dict[str, Any]]:
             try:
-                raw = quote_provider.quote(symbol)
-                payload = await raw if inspect.isawaitable(raw) else raw
-                quote = _mapping(payload)
+                quote = _mapping(quote_provider.quote(symbol))
                 return symbol, _normalized_quote(quote)
             except Exception as exc:
                 return symbol, _unavailable_quote(type(exc).__name__)
 
-        pairs = await asyncio.gather(*(quote_one(symbol) for symbol in unique_symbols))
-        return dict(pairs)
+        return dict(quote_one(symbol) for symbol in unique_symbols)
 
 
 def _public_row(row: dict[str, Any], *, quote: dict[str, Any]) -> dict[str, Any]:

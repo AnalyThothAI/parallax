@@ -28,6 +28,12 @@ def stop_runtime(runtime) -> None:
     asyncio.run(app_module._stop_runtime(runtime))
 
 
+def close_runtime_pools(runtime) -> None:
+    runtime.api_db_pool.close()
+    runtime.worker_db_pool.close()
+    runtime.wake_db_pool.close()
+
+
 def test_healthz_and_readyz_return_status(tmp_path):
     settings = make_settings(tmp_path)
     app = create_app(
@@ -68,7 +74,7 @@ def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
     runtime = _build_runtime(settings, start_collector=False)
 
     try:
-        with runtime.db_pool.connection() as conn:
+        with runtime.api_db_pool.connection() as conn:
             status = postgres_health_check(conn)
     finally:
         stop_runtime(runtime)
@@ -111,7 +117,7 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
     try:
         payload, status_code = _readiness_payload(runtime, now_ms=12_001)
     finally:
-        runtime.db_pool.close()
+        close_runtime_pools(runtime)
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -121,12 +127,12 @@ def test_readiness_marks_started_collector_without_frames_unhealthy(tmp_path):
 def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
     settings = make_settings(tmp_path)
     runtime = _build_runtime(settings, start_collector=False)
-    runtime.db_pool.close()
+    runtime.api_db_pool.close()
 
     try:
         payload, status_code = _readiness_payload(runtime)
     finally:
-        pass
+        stop_runtime(runtime)
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -150,13 +156,13 @@ def test_watchdog_reasons_do_not_probe_database(tmp_path):
     runtime.notification_task = RunningTask()
     runtime.token_radar_projection_task = RunningTask()
     runtime.collector.status.started_at_ms = 1_000
-    runtime.db_pool.close()
+    runtime.api_db_pool.close()
 
     try:
         assert hasattr(app_module, "_watchdog_unhealthy_reasons")
         reasons = app_module._watchdog_unhealthy_reasons(runtime, now_ms=12_001)
     finally:
-        pass
+        close_runtime_pools(runtime)
 
     assert reasons == ["no_upstream_frames"]
 
@@ -219,7 +225,7 @@ def test_build_runtime_creates_pulse_worker_when_enabled_and_configured(monkeypa
         assert runtime.pulse_candidate_worker.decision_client.model == "gpt-pulse"
         assert runtime.pulse_candidate_worker.batch_size == settings.pulse_agent_batch_size
     finally:
-        runtime.db_pool.close()
+        stop_runtime(runtime)
 
 
 def test_start_runtime_tasks_starts_pulse_worker_task():
@@ -302,7 +308,6 @@ def test_stop_runtime_closes_pulse_worker_client():
     async def scenario():
         runtime = _minimal_runtime()
         runtime.collector = SimpleNamespace(stop=_noop_async)
-        runtime.db_pool = SimpleNamespace(close=lambda: None)
         runtime.pulse_candidate_worker = FakePulseWorker()
 
         await app_module._stop_runtime(runtime)
@@ -398,5 +403,7 @@ def _minimal_runtime():
         pulse_candidate_worker=None,
         pulse_candidate_task=None,
         supervisor_task=None,
-        db_pool=SimpleNamespace(close=lambda: None),
+        api_db_pool=SimpleNamespace(close=lambda: None),
+        worker_db_pool=SimpleNamespace(close=lambda: None),
+        wake_db_pool=SimpleNamespace(close=lambda: None),
     )

@@ -6,6 +6,17 @@
 
 One ASGI worker. Multiple workers duplicate the upstream collector. If collector and API must scale separately, split them into distinct processes.
 
+## PostgreSQL pool isolation
+
+The service uses separate PostgreSQL pools for HTTP/WebSocket reads, background
+workers, and wake listeners. API routes are synchronous FastAPI handlers because
+the repository layer uses synchronous psycopg; FastAPI runs those handlers in
+its worker threadpool. Do not add per-endpoint `asyncio.to_thread(...)` wrappers
+or direct `runtime.repositories()` calls inside async HTTP handlers. If an API
+path needs synchronous repository access, make the route synchronous. If it
+needs async streaming, keep synchronous repository work outside the event loop
+through a dedicated read model boundary.
+
 ## Foreground-only run model
 
 `~/.gmgn-twitter-intel/config.yaml` is the only application config source. There is no macOS LaunchAgent, systemd unit, or `service` subcommand — run via foreground CLI or Docker Compose.

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-
 from gmgn_twitter_intel.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 
 
@@ -73,13 +71,11 @@ def test_stocks_radar_normalizes_quotes_and_keeps_failed_quote_rows():
         ]
     )
 
-    data = asyncio.run(
-        StocksRadarService(conn=conn, quote_provider=FakeQuoteProvider()).stocks_radar(
-            window="1h",
-            limit=10,
-            scope="all",
-            now_ms=1_778_600_100_000,
-        )
+    data = StocksRadarService(conn=conn, quote_provider=FakeQuoteProvider()).stocks_radar(
+        window="1h",
+        limit=10,
+        scope="all",
+        now_ms=1_778_600_100_000,
     )
 
     assert data["health"] == {

@@ -660,7 +660,7 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
 
 def test_stocks_radar_returns_us_equity_market_instruments_with_partial_quotes(tmp_path):
     class FakeStockQuoteProvider:
-        async def quote(self, symbol: str):
+        def quote(self, symbol: str):
             if symbol == "RKLB":
                 raise RuntimeError("quote unavailable")
             return {

@@ -84,6 +84,10 @@ Cross-cutting primitives that implement these invariants:
 - `WakeBus`, `WakeListener` — composition-root primitives in
   `app/runtime/wake_bus.py`; the only place that owns
   `LISTEN/NOTIFY` mechanics. Domain workers receive these by injection.
+- `api_db_pool`, `worker_db_pool`, `wake_db_pool` — composition-root PostgreSQL
+  pools in `app/runtime/app.py`. HTTP/WebSocket reads use the API pool,
+  background workers use the worker pool, and `LISTEN/NOTIFY` uses the wake
+  pool so read traffic cannot be starved by projection or listener work.
 - `should_persist_live_observation` — single decision function in
   `domains/asset_market/services/live_observation_policy.py`; the live
   write budget gate.

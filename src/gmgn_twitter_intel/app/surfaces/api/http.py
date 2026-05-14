@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from collections.abc import Callable
@@ -69,7 +68,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     router = APIRouter(prefix="/api", tags=["api"])
 
     @router.get("/bootstrap", response_model=api_schemas.ApiEnvelope[api_schemas.BootstrapData])
-    async def bootstrap(request: Request) -> JSONResponse:
+    def bootstrap(request: Request) -> JSONResponse:
         runtime = _runtime(request)
         return _json(
             {
@@ -83,13 +82,13 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         )
 
     @router.get("/status", response_model=api_schemas.ApiEnvelope[api_schemas.StatusData])
-    async def status(request: Request) -> JSONResponse:
+    def status(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        payload, status_code = await asyncio.to_thread(readiness_payload, runtime)
+        payload, status_code = readiness_payload(runtime)
         return _json({"ok": payload.get("ok", status_code < 500), "data": payload}, status_code=status_code)
 
     @router.get("/recent", response_model=api_schemas.ApiEnvelope[api_schemas.RecentData])
-    async def recent(
+    def recent(
         request: Request,
         limit: Annotated[int, Query()] = 20,
         handles: Annotated[str, Query()] = "",
@@ -100,8 +99,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         parsed_scope = _scope(scope)
-        data = await asyncio.to_thread(
-            _recent_data,
+        data = _recent_data(
             runtime,
             limit=_limit(limit),
             handles=_handle_set(handles),
@@ -121,7 +119,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         )
 
     @router.get("/search", response_model=api_schemas.ApiEnvelope[api_schemas.SearchData])
-    async def search(
+    def search(
         request: Request,
         q: Annotated[str, Query()] = "",
         limit: Annotated[int, Query()] = 20,
@@ -163,7 +161,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/search/inspect",
         response_model=api_schemas.ApiEnvelope[api_schemas.SearchInspectData],
     )
-    async def search_inspect(
+    def search_inspect(
         request: Request,
         q: Annotated[str, Query()] = "",
         window: Annotated[str, Query()] = "24h",
@@ -191,7 +189,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/token-radar", response_model=api_schemas.ApiEnvelope[api_schemas.TokenRadarData])
-    async def token_radar(
+    def token_radar(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         limit: Annotated[int, Query()] = 20,
@@ -200,8 +198,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         runtime = _authenticated_runtime(request)
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
-        data = await asyncio.to_thread(
-            _token_radar_data,
+        data = _token_radar_data(
             runtime,
             window=parsed_window,
             limit=_limit(limit),
@@ -211,7 +208,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, **data}})
 
     @router.get("/stocks-radar", response_model=api_schemas.ApiEnvelope[api_schemas.StocksRadarData])
-    async def stocks_radar(
+    def stocks_radar(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         limit: Annotated[int, Query()] = 20,
@@ -221,7 +218,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_window = _window(window)
         parsed_scope = _scope(scope)
         with runtime.repositories() as repos:
-            data = await StocksRadarService(
+            data = StocksRadarService(
                 conn=repos.conn,
                 quote_provider=getattr(runtime, "stock_quote_provider", None),
             ).stocks_radar(
@@ -233,7 +230,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/live-market", response_model=api_schemas.ApiEnvelope[api_schemas.LiveMarketData])
-    async def live_market(
+    def live_market(
         request: Request,
         target_type: Annotated[str, Query()] = "",
         target_id: Annotated[str, Query()] = "",
@@ -250,7 +247,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": snapshot})
 
     @router.get("/target-posts", response_model=api_schemas.ApiEnvelope[api_schemas.TargetPostsData])
-    async def target_posts(
+    def target_posts(
         request: Request,
         target_type: Annotated[str, Query()] = "",
         target_id: Annotated[str, Query()] = "",
@@ -291,7 +288,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/target-social-timeline",
         response_model=api_schemas.ApiEnvelope[api_schemas.TargetSocialTimelineData],
     )
-    async def target_social_timeline(
+    def target_social_timeline(
         request: Request,
         target_type: Annotated[str, Query()] = "",
         target_id: Annotated[str, Query()] = "",
@@ -326,7 +323,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/account-alerts",
         response_model=api_schemas.ApiEnvelope[api_schemas.AccountAlertsData],
     )
-    async def account_alerts(
+    def account_alerts(
         request: Request,
         window: Annotated[str, Query()] = "24h",
         limit: Annotated[int, Query()] = 50,
@@ -358,7 +355,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/account-quality",
         response_model=api_schemas.ApiEnvelope[api_schemas.AccountQualityData],
     )
-    async def account_quality(
+    def account_quality(
         request: Request,
         handles: Annotated[str, Query()] = "",
     ) -> JSONResponse:
@@ -374,15 +371,14 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/notifications",
         response_model=api_schemas.ApiEnvelope[api_schemas.NotificationsData],
     )
-    async def notifications(
+    def notifications(
         request: Request,
         limit: Annotated[int, Query()] = 50,
         unread_only: Annotated[bool, Query()] = False,
         rule_id: Annotated[str, Query()] = "",
     ) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = await asyncio.to_thread(
-            _notifications_data,
+        data = _notifications_data(
             runtime,
             limit=_limit(limit, maximum=500),
             unread_only=bool(unread_only),
@@ -400,16 +396,16 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/notification-summary",
         response_model=api_schemas.ApiEnvelope[api_schemas.NotificationSummary],
     )
-    async def notification_summary(request: Request) -> JSONResponse:
+    def notification_summary(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        data = await asyncio.to_thread(_notification_summary_data, runtime, subscriber_key="local")
+        data = _notification_summary_data(runtime, subscriber_key="local")
         return _json({"ok": True, "data": data})
 
     @router.get(
         "/notification-deliveries",
         response_model=api_schemas.ApiEnvelope[api_schemas.NotificationDeliveriesData],
     )
-    async def notification_deliveries(
+    def notification_deliveries(
         request: Request,
         limit: Annotated[int, Query()] = 50,
         status: Annotated[str | None, Query()] = None,
@@ -433,7 +429,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/notifications/{notification_id}/read",
         response_model=api_schemas.ApiEnvelope[api_schemas.NotificationReadData],
     )
-    async def mark_notification_read(request: Request, notification_id: str) -> JSONResponse:
+    def mark_notification_read(request: Request, notification_id: str) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
             updated = repos.notifications.mark_read(notification_id=notification_id, subscriber_key="local")
@@ -443,14 +439,14 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/notifications/read-all",
         response_model=api_schemas.ApiEnvelope[api_schemas.NotificationReadAllData],
     )
-    async def mark_all_notifications_read(request: Request) -> JSONResponse:
+    def mark_all_notifications_read(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
             updated_count = repos.notifications.mark_all_read(subscriber_key="local")
         return _json({"ok": True, "data": {"updated_count": updated_count}})
 
     @router.get("/social-events", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def social_events(
+    def social_events(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         limit: Annotated[int, Query()] = 50,
@@ -471,7 +467,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/social-events/by-ids",
         response_model=api_schemas.ApiEnvelope[api_schemas.SocialEventsByIdsData],
     )
-    async def social_events_by_ids(
+    def social_events_by_ids(
         request: Request,
         ids: Annotated[str, Query()] = "",
     ) -> JSONResponse:
@@ -504,7 +500,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": {"events": events_payload, "not_found": not_found}})
 
     @router.get("/attention-seeds", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def attention_seeds(
+    def attention_seeds(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         limit: Annotated[int, Query()] = 50,
@@ -520,7 +516,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-snapshots", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def harness_snapshots(
+    def harness_snapshots(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         horizon: Annotated[str, Query()] = "6h",
@@ -538,7 +534,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-outcomes", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def harness_outcomes(
+    def harness_outcomes(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         horizon: Annotated[str, Query()] = "6h",
@@ -556,7 +552,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-credits", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def harness_credits(
+    def harness_credits(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         horizon: Annotated[str, Query()] = "6h",
@@ -577,7 +573,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/signal-lab/pulse",
         response_model=api_schemas.ApiEnvelope[api_schemas.SignalPulseData],
     )
-    async def signal_lab_pulse(
+    def signal_lab_pulse(
         request: Request,
         window: Annotated[str, Query()] = "1h",
         scope: Annotated[str, Query()] = "all",
@@ -592,8 +588,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         parsed_scope = _scope(scope)
         parsed_limit = _limit(limit, maximum=500)
         parsed_status = _signal_pulse_status(status)
-        data = await asyncio.to_thread(
-            _signal_lab_pulse_data,
+        data = _signal_lab_pulse_data(
             runtime,
             window=parsed_window,
             scope=parsed_scope,
@@ -610,7 +605,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/signal-lab/pulse/{candidate_id}",
         response_model=api_schemas.ApiEnvelope[api_schemas.SignalPulseItem],
     )
-    async def signal_lab_pulse_by_id(
+    def signal_lab_pulse_by_id(
         request: Request,
         candidate_id: str,
     ) -> JSONResponse:
@@ -633,7 +628,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-weights", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def harness_weights(
+    def harness_weights(
         request: Request,
         horizon: Annotated[str, Query()] = "",
         limit: Annotated[int, Query()] = 100,
@@ -647,7 +642,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         return _json({"ok": True, "data": data})
 
     @router.get("/harness-health", response_model=api_schemas.ApiEnvelope[api_schemas.LooseData])
-    async def harness_health(request: Request) -> JSONResponse:
+    def harness_health(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         with runtime.repositories() as repos:
             job_counts = repos.enrichment.job_counts()
@@ -666,7 +661,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/harness-score-buckets",
         response_model=api_schemas.ApiEnvelope[api_schemas.LooseData],
     )
-    async def harness_score_buckets(
+    def harness_score_buckets(
         request: Request,
         horizon: Annotated[str, Query()] = "",
     ) -> JSONResponse:
@@ -681,7 +676,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/enrichment-jobs",
         response_model=api_schemas.ApiEnvelope[api_schemas.EnrichmentJobsData],
     )
-    async def enrichment_jobs(
+    def enrichment_jobs(
         request: Request,
         limit: Annotated[int, Query()] = 50,
         status: Annotated[str | None, Query()] = None,

@@ -63,7 +63,9 @@ from gmgn_twitter_intel.platform.db.postgres_migrations import latest_migration_
 class CliRuntime:
     settings: Settings
     providers: WiredProviders
-    db_pool: object
+    api_db_pool: object
+    worker_db_pool: object
+    wake_db_pool: object
     evidence: object
     entities: object
     signals: object
@@ -108,7 +110,7 @@ class CliRuntime:
     pulse_candidate_task: asyncio.Task | None = None
 
     def repositories(self):
-        return repository_session(self.db_pool)
+        return repository_session(self.api_db_pool)
 
 
 def create_app(
@@ -141,13 +143,13 @@ def create_app(
     app.include_router(create_api_router(_readiness_payload))
 
     @app.get("/healthz", response_class=PlainTextResponse)
-    async def healthz() -> str:
+    def healthz() -> str:
         return "ok\n"
 
     @app.get("/readyz", response_model=StatusData)
-    async def readyz() -> JSONResponse:
+    def readyz() -> JSONResponse:
         runtime = app.state.service
-        payload, status_code = await asyncio.to_thread(_readiness_payload, runtime)
+        payload, status_code = _readiness_payload(runtime)
         return JSONResponse(payload, status_code=status_code)
 
     @app.websocket("/ws")
@@ -211,15 +213,15 @@ def _frontend_dist_dir(frontend_dist: str | Path | None = None) -> Path | None:
 
 
 class _PooledIngestStore:
-    def __init__(self, db_pool: object):
-        self.db_pool = db_pool
+    def __init__(self, worker_db_pool: object):
+        self.worker_db_pool = worker_db_pool
 
     def insert_raw_frame(self, **kwargs) -> bool:
-        with repository_session(self.db_pool) as repos:
+        with repository_session(self.worker_db_pool) as repos:
             return repos.evidence.insert_raw_frame(**kwargs)
 
     def ingest_event(self, event, *, is_watched: bool):
-        with repository_session(self.db_pool) as repos:
+        with repository_session(self.worker_db_pool) as repos:
             ingest = IngestService(
                 evidence=repos.evidence,
                 entities=repos.entities,
@@ -232,39 +234,74 @@ class _PooledIngestStore:
             return ingest.ingest_event(event, is_watched=is_watched)
 
 
+def _create_runtime_db_pools(settings: Settings) -> tuple[object, object, object]:
+    api_pool_max = max(2, int(settings.postgres_pool_max_size))
+    worker_pool_max = max(2, int(settings.postgres_pool_max_size))
+    wake_pool_max = 3
+    created: list[object] = []
+    try:
+        api_db_pool = _create_runtime_db_pool(settings, min_size=1, max_size=api_pool_max)
+        created.append(api_db_pool)
+        worker_db_pool = _create_runtime_db_pool(
+            settings,
+            min_size=settings.postgres_pool_min_size,
+            max_size=worker_pool_max,
+        )
+        created.append(worker_db_pool)
+        wake_db_pool = _create_runtime_db_pool(settings, min_size=1, max_size=wake_pool_max)
+    except Exception:
+        _close_db_pools(*created)
+        raise
+    return api_db_pool, worker_db_pool, wake_db_pool
+
+
+def _create_runtime_db_pool(settings: Settings, *, min_size: int, max_size: int) -> object:
+    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
+    return create_pool(
+        dsn,
+        min_size=max(0, min(int(min_size), int(max_size))),
+        max_size=max(1, int(max_size)),
+        connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
+    )
+
+
+def _close_db_pools(*pools: object) -> None:
+    for pool in pools:
+        close = getattr(pool, "close", None)
+        if close:
+            close()
+
+
 def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     if not settings.ws_token:
         raise ValueError("ws_token is required in config.yaml")
-    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
-    db_pool = create_pool(
-        dsn,
-        min_size=settings.postgres_pool_min_size,
-        max_size=settings.postgres_pool_max_size,
-        connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
-    )
-    with db_pool.connection() as conn:
-        startup_db = postgres_health_check(conn, expected_migration_version=latest_migration_version())
-    if not startup_db.get("ok"):
-        db_pool.close()
-        raise RuntimeError(f"postgres health check failed: {startup_db}")
+    api_db_pool, worker_db_pool, wake_db_pool = _create_runtime_db_pools(settings)
+    try:
+        with api_db_pool.connection() as conn:
+            startup_db = postgres_health_check(conn, expected_migration_version=latest_migration_version())
+        if not startup_db.get("ok"):
+            raise RuntimeError(f"postgres health check failed: {startup_db}")
+    except Exception:
+        _close_db_pools(api_db_pool, worker_db_pool, wake_db_pool)
+        raise
     providers = wire_providers(settings, start_collector=start_collector)
-    evidence = PooledRepository(db_pool, EvidenceRepository)
-    entities = PooledRepository(db_pool, EntityRepository)
-    signals = PooledRepository(db_pool, SignalRepository)
-    assets = PooledRepository(db_pool, AssetRepository)
-    enrichment = PooledRepository(db_pool, EnrichmentRepository)
-    harness = PooledRepository(db_pool, HarnessRepository)
-    notifications = PooledRepository(db_pool, NotificationRepository)
+    evidence = PooledRepository(api_db_pool, EvidenceRepository)
+    entities = PooledRepository(api_db_pool, EntityRepository)
+    signals = PooledRepository(api_db_pool, SignalRepository)
+    assets = PooledRepository(api_db_pool, AssetRepository)
+    enrichment = PooledRepository(api_db_pool, EnrichmentRepository)
+    harness = PooledRepository(api_db_pool, HarnessRepository)
+    notifications = PooledRepository(api_db_pool, NotificationRepository)
     read_evidence = evidence
     read_entities = entities
     read_signals = signals
     read_enrichment = enrichment
     read_harness = harness
     read_notifications = notifications
-    ingest = _PooledIngestStore(db_pool)
+    ingest = _PooledIngestStore(worker_db_pool)
     hub = PublicWebSocketHub(
         token=settings.ws_token,
-        repository_session=lambda: repository_session(db_pool),
+        repository_session=lambda: repository_session(api_db_pool),
         default_replay_limit=settings.replay_limit,
     )
     collector = CollectorService(
@@ -276,7 +313,9 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
     runtime = CliRuntime(
         settings=settings,
         providers=providers,
-        db_pool=db_pool,
+        api_db_pool=api_db_pool,
+        worker_db_pool=worker_db_pool,
+        wake_db_pool=wake_db_pool,
         evidence=evidence,
         entities=entities,
         signals=signals,
@@ -296,20 +335,20 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         start_collector=start_collector,
         stock_quote_provider=providers.marketlane.stock_quote_provider,
     )
-    runtime.wake_bus = WakeBus(db_pool.connection)
-    runtime.wake_listener = WakeListener(db_pool.connection)
+    runtime.wake_bus = WakeBus(wake_db_pool.connection)
+    runtime.wake_listener = WakeListener(wake_db_pool.connection)
     runtime.harness_ops_worker = HarnessOpsWorker(
-        repository_session=lambda: repository_session(db_pool),
+        repository_session=lambda: repository_session(worker_db_pool),
     )
     runtime.token_radar_projection_worker = TokenRadarProjectionWorker(
-        repository_session=lambda: repository_session(db_pool),
+        repository_session=lambda: repository_session(worker_db_pool),
         wake_bus=runtime.wake_bus,
         wake_listener=runtime.wake_listener,
     )
     if settings.pulse_agent_enabled and settings.pulse_agent_configured:
         runtime.pulse_candidate_worker = PulseCandidateWorker(
             decision_client=providers.pulse_lab.decision_provider,
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             poll_interval=settings.pulse_agent_interval_seconds,
             batch_size=settings.pulse_agent_batch_size,
             max_attempts=settings.pulse_agent_max_attempts,
@@ -326,7 +365,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         )
     if settings.notifications.enabled:
         runtime.notification_worker = NotificationWorker(
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             rule_engine_factory=lambda repos: _notification_rule_engine(settings, repos),
             publisher=hub,
             delivery_channels=settings.notifications.channels,
@@ -338,7 +377,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         ):
             runtime.notification_delivery_worker = NotificationDeliveryWorker(
                 channels=settings.notifications.channels,
-                repository_session=lambda: repository_session(db_pool),
+                repository_session=lambda: repository_session(worker_db_pool),
                 poll_interval=settings.notifications.poll_interval_seconds,
             )
     if start_collector and (
@@ -347,13 +386,13 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         runtime.anchor_price_worker = AnchorPriceWorker(
             cex_market=providers.asset_market.message_cex_market,
             dex_quote_market=providers.asset_market.dex_quote_market,
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             wake_bus=runtime.wake_bus,
         )
     if start_collector and providers.asset_market.dex_profile_market is not None:
         runtime.asset_profile_refresh_worker = AssetProfileRefreshWorker(
             dex_profile_market=providers.asset_market.dex_profile_market,
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             interval_seconds=60.0,
             limit=50,
         )
@@ -361,7 +400,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         runtime.resolution_refresh_worker = ResolutionRefreshWorker(
             dex_discovery_market=providers.asset_market.dex_discovery_market,
             dex_quote_market=providers.asset_market.dex_quote_market,
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             chain_ids=providers.asset_market.discovery_chain_ids,
             interval_seconds=30.0,
             wake_bus=runtime.wake_bus,
@@ -372,7 +411,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         runtime.live_price_gateway = LivePriceGateway(
             stream_provider=providers.asset_market.stream_dex_market,
             cex_market=providers.asset_market.message_cex_market,
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             subscription_limit=settings.okx_dex_ws_subscription_limit,
             hot_target_ttl_seconds=settings.okx_dex_ws_hot_target_ttl_seconds,
@@ -387,7 +426,7 @@ def _build_runtime(settings: Settings, *, start_collector: bool) -> CliRuntime:
         runtime.enrichment_worker = EnrichmentWorker(
             client=providers.social_enrichment.event_enrichment,
             publisher=hub,
-            repository_session=lambda: repository_session(db_pool),
+            repository_session=lambda: repository_session(worker_db_pool),
             poll_interval=settings.enrichment_poll_interval,
             concurrency=settings.enrichment_concurrency,
         )
@@ -501,7 +540,7 @@ async def _stop_runtime(runtime: CliRuntime) -> None:
         runtime.token_radar_projection_worker.close()
     if runtime.pulse_candidate_worker is not None:
         await runtime.pulse_candidate_worker.aclose()
-    runtime.db_pool.close()
+    _close_db_pools(runtime.api_db_pool, runtime.worker_db_pool, runtime.wake_db_pool)
 
 
 def _readiness_payload(runtime: CliRuntime, *, now_ms: int | None = None) -> tuple[dict, int]:
@@ -682,7 +721,7 @@ def _collector_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[st
 
 def _db_status(runtime: CliRuntime) -> dict[str, object]:
     try:
-        with runtime.db_pool.connection() as conn:
+        with runtime.api_db_pool.connection() as conn:
             return postgres_health_check(conn, expected_migration_version=latest_migration_version())
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "detail": str(exc)}
