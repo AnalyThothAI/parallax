@@ -405,8 +405,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
     )
     async def notification_summary(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        with runtime.repositories() as repos:
-            data = repos.notifications.summary(subscriber_key="local")
+        data = await asyncio.to_thread(_notification_summary_data, runtime, subscriber_key="local")
         return _json({"ok": True, "data": data})
 
     @router.get(
@@ -850,6 +849,11 @@ def _token_radar_data(
             scope=scope,
             now_ms=now_ms,
         )
+
+
+def _notification_summary_data(runtime: Any, *, subscriber_key: str) -> dict[str, Any]:
+    with runtime.repositories() as repos:
+        return repos.notifications.summary(subscriber_key=subscriber_key)
 
 
 def _scope(value: str) -> str:

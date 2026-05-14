@@ -6,7 +6,7 @@ def test_home_hot_read_routes_offload_blocking_read_models() -> None:
     source = Path("src/gmgn_twitter_intel/app/surfaces/api/http.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
 
-    for function_name in ("recent", "token_radar"):
+    for function_name in ("recent", "token_radar", "notification_summary"):
         route = next(
             node for node in ast.walk(tree) if isinstance(node, ast.AsyncFunctionDef) and node.name == function_name
         )
