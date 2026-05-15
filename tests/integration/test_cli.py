@@ -479,7 +479,7 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
             token_radar_projection=SimpleNamespace(
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
-                wakes_on=("market_observation_written",),
+                wakes_on=("market_tick_written",),
             )
         )
     )

@@ -366,23 +366,18 @@ class CollectorWorkerSettings(PerWorkerSettings):
     stale_timeout_seconds: float = Field(default=180.0, ge=0)
 
 
-class AnchorPriceWorkerSettings(PerWorkerSettings):
+class MarketTickStreamWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=5.0, ge=0)
+    subscription_limit: int = Field(default=100, ge=1)
+
+
+class MarketTickPollWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=15.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
-    statement_timeout_seconds: float = Field(default=120.0, ge=0)
 
 
 class LivePriceGatewayWorkerSettings(PerWorkerSettings):
-    mode: Literal["continuous"] = "continuous"
-    interval_seconds: float = Field(default=30.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    subscription_limit: int = Field(default=100, ge=1)
-    hot_target_ttl_seconds: float = Field(default=300.0, ge=0)
-    reconnect_delay_seconds: float = Field(default=3.0, ge=0)
-    cex_poll_interval_seconds: float = Field(default=30.0, ge=0)
-    live_observation_heartbeat_seconds: float = Field(default=60.0, gt=0)
-    live_observation_min_price_change_pct: float = Field(default=0.005, ge=0)
-    live_observation_min_write_interval_seconds: float = Field(default=5.0, ge=0)
+    interval_seconds: float = Field(default=2.0, ge=0)
 
 
 class ResolutionRefreshWorkerSettings(PerWorkerSettings):
@@ -404,10 +399,10 @@ class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
 
 
 class TokenCaptureTierWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=10.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    ws_limit: int = Field(default=50, ge=0)
-    poll_limit: int = Field(default=200, ge=0)
+    interval_seconds: float = Field(default=30.0, ge=0)
+    batch_size: int = Field(default=500, ge=1)
+    ws_limit: int = Field(default=100, ge=0)
+    poll_limit: int = Field(default=500, ge=0)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026051503
 
@@ -417,7 +412,7 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=100, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026051501
-    wakes_on: tuple[str, ...] = ("market_observation_written", "resolution_updated")
+    wakes_on: tuple[str, ...] = ("market_tick_written", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
     scopes: tuple[str, ...] = ("all", "matched")
     hot_windows: tuple[str, ...] = ("5m",)
@@ -509,11 +504,12 @@ class WorkersSettings(BaseModel):
 
     defaults: WorkerDefaults = Field(default_factory=WorkerDefaults)
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
-    anchor_price: AnchorPriceWorkerSettings = Field(default_factory=AnchorPriceWorkerSettings)
+    market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
+    market_tick_poll: MarketTickPollWorkerSettings = Field(default_factory=MarketTickPollWorkerSettings)
+    token_capture_tier: TokenCaptureTierWorkerSettings = Field(default_factory=TokenCaptureTierWorkerSettings)
     live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
     resolution_refresh: ResolutionRefreshWorkerSettings = Field(default_factory=ResolutionRefreshWorkerSettings)
     asset_profile_refresh: AssetProfileRefreshWorkerSettings = Field(default_factory=AssetProfileRefreshWorkerSettings)
-    token_capture_tier: TokenCaptureTierWorkerSettings = Field(default_factory=TokenCaptureTierWorkerSettings)
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
     )
@@ -960,23 +956,25 @@ collector:
   snapshot_timeout_seconds: 0.5
   watchdog_interval_seconds: 30.0
   stale_timeout_seconds: 180.0
-anchor_price:
+market_tick_stream:
   enabled: true
   interval_seconds: 5.0
+  subscription_limit: 100
+market_tick_poll:
+  enabled: true
+  interval_seconds: 15.0
   batch_size: 100
+token_capture_tier:
+  enabled: true
+  interval_seconds: 30.0
+  batch_size: 500
+  ws_limit: 100
+  poll_limit: 500
   statement_timeout_seconds: 120.0
+  advisory_lock_key: 2026051503
 live_price_gateway:
   enabled: true
-  mode: "continuous"
-  interval_seconds: 30.0
-  batch_size: 100
-  subscription_limit: 100
-  hot_target_ttl_seconds: 300.0
-  reconnect_delay_seconds: 3.0
-  cex_poll_interval_seconds: 30.0
-  live_observation_heartbeat_seconds: 60.0
-  live_observation_min_price_change_pct: 0.005
-  live_observation_min_write_interval_seconds: 5.0
+  interval_seconds: 2.0
 resolution_refresh:
   enabled: true
   interval_seconds: 30.0
@@ -988,21 +986,13 @@ asset_profile_refresh:
   interval_seconds: 60.0
   batch_size: 50
   statement_timeout_seconds: 120.0
-token_capture_tier:
-  enabled: true
-  interval_seconds: 10.0
-  batch_size: 100
-  ws_limit: 50
-  poll_limit: 200
-  statement_timeout_seconds: 120.0
-  advisory_lock_key: 2026051503
 token_radar_projection:
   enabled: true
   interval_seconds: 10.0
   batch_size: 100
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026051501
-  wakes_on: ["market_observation_written", "resolution_updated"]
+  wakes_on: ["market_tick_written", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]
   scopes: ["all", "matched"]
   hot_windows: ["5m"]

@@ -96,7 +96,7 @@ def test_okx_dex_ws_market_uses_worker_subscription_limit(monkeypatch) -> None:
                     "dex_passphrase": "okx-passphrase",
                 }
             },
-            workers={"live_price_gateway": {"subscription_limit": 37}},
+            workers={"market_tick_stream": {"subscription_limit": 37}},
         )
     )
 

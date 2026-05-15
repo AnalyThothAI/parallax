@@ -277,7 +277,7 @@ def _settings(**overrides):
         "batch_size": 100,
         "statement_timeout_seconds": 120.0,
         "advisory_lock_key": 2026051501,
-        "wakes_on": ("market_observation_written", "resolution_updated"),
+        "wakes_on": ("market_tick_written", "resolution_updated"),
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),
         "hot_windows": ("5m",),

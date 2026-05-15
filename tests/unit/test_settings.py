@@ -78,13 +78,15 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
     assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
-    assert settings.workers.live_price_gateway.subscription_limit == 100
-    assert settings.workers.live_price_gateway.hot_target_ttl_seconds == 300
-    assert settings.workers.live_price_gateway.reconnect_delay_seconds == 3
+    assert not hasattr(settings.workers, "anchor_price")
+    assert settings.workers.market_tick_stream.subscription_limit == 100
+    assert settings.workers.market_tick_poll.interval_seconds == 15
+    assert settings.workers.token_capture_tier.batch_size == 500
+    assert settings.workers.token_capture_tier.ws_limit == 100
+    assert settings.workers.token_capture_tier.poll_limit == 500
+    assert settings.workers.live_price_gateway.interval_seconds == 2
+    assert not hasattr(settings.workers.live_price_gateway, "subscription_limit")
     assert settings.okx_dex_ws_configured is False
-    assert settings.workers.live_price_gateway.live_observation_heartbeat_seconds == 60
-    assert settings.workers.live_price_gateway.live_observation_min_price_change_pct == 0.005
-    assert settings.workers.live_price_gateway.live_observation_min_write_interval_seconds == 5
 
 
 def test_load_settings_rejects_missing_ws_token_by_default(tmp_path, monkeypatch):

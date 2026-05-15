@@ -17,25 +17,26 @@ delivery — every listener has a bounded `interval_seconds` catch-up from
 ## Worker Inventory
 
 <!-- worker-inventory-keys:
-collector, anchor_price, live_price_gateway, resolution_refresh,
-asset_profile_refresh, token_capture_tier, token_radar_projection,
-pulse_candidate, enrichment, handle_summary, harness_ops,
-notification_rule, notification_delivery
+collector, token_capture_tier, market_tick_stream, market_tick_poll,
+live_price_gateway, resolution_refresh, asset_profile_refresh,
+token_radar_projection, pulse_candidate, enrichment, handle_summary,
+harness_ops, notification_rule, notification_delivery
 -->
 
 | Worker | Owner | File | Reads | Writes | Wake-in | Wake-out | Catch-up |
 |--------|-------|------|-------|--------|---------|----------|----------|
 | `collector` (`CollectorService`) | `ingestion` | `domains/ingestion/runtime/collector_service.py` | GMGN public stream (WS) | none direct; calls `IngestService` per frame | provider-driven (WS) | none | continuous WS |
-| `anchor_price` (`AnchorPriceWorker`) | `asset_market` | `domains/asset_market/runtime/anchor_price_worker.py` | pending intents, anchor providers | `price_observations(kind='event_anchor')` | poll | `market_observation_written` | `interval_seconds` |
-| `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | OKX DEX WS, OKX CEX quote | `price_observations(kind='decision_latest')` (only when `should_persist_live_observation` returns `True`) | provider-driven (WS + poll) | `market_observation_written` (on persisted observation only) | continuous WS + provider poll |
+| `token_capture_tier` (`TokenCaptureTierWorker`) | `asset_market` | `domains/asset_market/runtime/token_capture_tier_worker.py` | active Token Radar live market targets | `token_capture_tier` | poll | none | `interval_seconds` |
+| `market_tick_stream` (`MarketTickStreamWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_stream_worker.py` | `token_capture_tier(tier=1)`, OKX DEX WS | `market_ticks(source_tier='tier1_ws')` | provider-driven (WS) | `market_tick_written` | bounded stream cycle |
+| `market_tick_poll` (`MarketTickPollWorker`) | `asset_market` | `domains/asset_market/runtime/market_tick_poll_worker.py` | `token_capture_tier(tier=2)`, OKX DEX/CEX REST quotes | `market_ticks(source_tier='tier2_poll')` | poll | `market_tick_written` | `interval_seconds` |
+| `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | OKX DEX WS, OKX CEX quote | in-process latest cache and WebSocket fan-out only | provider-driven (WS + poll) | none | continuous WS + provider poll |
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, GMGN exact-token profile | `asset_profiles` | poll | none | `interval_seconds` |
-| `token_capture_tier` (`TokenCaptureTierWorker`) | `asset_market` | `domains/asset_market/runtime/token_capture_tier_worker.py` | active Token Radar live market targets | `token_capture_tier` | poll | none | `interval_seconds` |
-| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `price_observations`, `asset_identity_current` | `token_radar_rows`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_observation_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
+| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `market_ticks`, `enriched_events`, `asset_identity_current` | `token_radar_rows`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_tick_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope, gate fields, route policy | `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_agent_runs`, `pulse_agent_run_steps` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |
 | `handle_summary` (`HandleSummaryWorker`) | `watchlist_intel` | `domains/watchlist_intel/runtime/handle_summary_worker.py` | due `watchlist_handle_summary_jobs`, handle signal events | `watchlist_handle_summaries`, `watchlist_handle_summary_runs`, job status | poll | none | `interval_seconds` |
-| `harness_ops` (`HarnessOpsWorker`) | `closed_loop_harness` | `domains/closed_loop_harness/runtime/harness_ops_worker.py` | due signal seeds, market observations | `asset_signal_snapshots`, `asset_signal_outcomes`, `pulse_playbook_snapshots`, `pulse_playbook_outcomes` | poll | none | `interval_seconds` |
+| `harness_ops` (`HarnessOpsWorker`) | `closed_loop_harness` | `domains/closed_loop_harness/runtime/harness_ops_worker.py` | due signal seeds, market facts | `asset_signal_snapshots`, `asset_signal_outcomes`, `pulse_playbook_snapshots`, `pulse_playbook_outcomes` | poll | none | `interval_seconds` |
 | `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | notification rule evaluations | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending deliveries | delivery rows | poll | none | `interval_seconds` |
 
@@ -51,7 +52,7 @@ and not a `WorkerBase` subclass.
 
 | Channel | Emitter | Listener | Hint payload |
 |---------|---------|----------|--------------|
-| `market_observation_written` | `AnchorPriceWorker`, `LivePriceGateway` | `TokenRadarProjectionWorker` | `{target_type, target_id}` |
+| `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker` | `TokenRadarProjectionWorker` | `{target_type, target_id}` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` | `{lookup_keys: [...]}` |
 | `token_radar_updated` | `TokenRadarProjectionWorker` | `PulseCandidateWorker` | `{window, scope}` |
 

@@ -592,7 +592,7 @@ def _okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapt
             api_key=settings.okx_dex_api_key or "",
             secret_key=settings.okx_dex_secret_key or "",
             passphrase=settings.okx_dex_passphrase or "",
-            subscription_limit=settings.workers.live_price_gateway.subscription_limit,
+            subscription_limit=settings.workers.market_tick_stream.subscription_limit,
         )
     )
 

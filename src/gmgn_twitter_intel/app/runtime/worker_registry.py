@@ -2,16 +2,19 @@ from __future__ import annotations
 
 CANONICAL_WORKER_CLASSES = {
     "collector": "gmgn_twitter_intel.domains.ingestion.runtime.collector_service.CollectorService",
-    "anchor_price": "gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker.AnchorPriceWorker",
+    "token_capture_tier": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
+    ),
+    "market_tick_stream": (
+        "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker.MarketTickStreamWorker"
+    ),
+    "market_tick_poll": "gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker.MarketTickPollWorker",
     "live_price_gateway": "gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway.LivePriceGateway",
     "resolution_refresh": (
         "gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker.ResolutionRefreshWorker"
     ),
     "asset_profile_refresh": (
         "gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker.AssetProfileRefreshWorker"
-    ),
-    "token_capture_tier": (
-        "gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker.TokenCaptureTierWorker"
     ),
     "token_radar_projection": (
         "gmgn_twitter_intel.domains.token_intel.runtime.token_radar_projection_worker.TokenRadarProjectionWorker"
@@ -29,17 +32,18 @@ CANONICAL_WORKER_CLASSES = {
 CANONICAL_WORKER_NAMES = tuple(CANONICAL_WORKER_CLASSES)
 
 WORKER_START_PRIORITY = {
-    "token_radar_projection": 10,
-    "pulse_candidate": 10,
-    "anchor_price": 20,
+    "collector": 10,
     "token_capture_tier": 20,
-    "resolution_refresh": 20,
-    "asset_profile_refresh": 20,
-    "harness_ops": 20,
-    "enrichment": 30,
-    "handle_summary": 30,
-    "notification_rule": 40,
-    "notification_delivery": 40,
+    "market_tick_stream": 30,
+    "market_tick_poll": 40,
     "live_price_gateway": 50,
-    "collector": 60,
+    "resolution_refresh": 60,
+    "asset_profile_refresh": 70,
+    "token_radar_projection": 80,
+    "pulse_candidate": 90,
+    "enrichment": 100,
+    "handle_summary": 110,
+    "harness_ops": 120,
+    "notification_rule": 130,
+    "notification_delivery": 140,
 }

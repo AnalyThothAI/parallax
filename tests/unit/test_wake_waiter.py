@@ -52,12 +52,12 @@ class FakePool:
 
 def test_wait_listens_on_configured_channels_and_returns_true_on_notify() -> None:
     conn = FakeConn(notifications=[object()])
-    waiter = WakeWaiter(FakePool(conn), channels=("market_observation_written", "resolution_updated"))
+    waiter = WakeWaiter(FakePool(conn), channels=("market_tick_written", "resolution_updated"))
 
     assert waiter.wait(timeout=0.5) is True
 
     assert conn.executed == [
-        ("LISTEN market_observation_written", None),
+        ("LISTEN market_tick_written", None),
         ("LISTEN resolution_updated", None),
     ]
     assert conn.commits == 1

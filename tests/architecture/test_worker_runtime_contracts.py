@@ -258,6 +258,9 @@ def test_wake_bus_is_emit_only() -> None:
     text = (SRC / "app/runtime/wake_bus.py").read_text(encoding="utf-8")
 
     assert not hasattr(wake_bus, "WakeListener")
+    assert not hasattr(wake_bus.WakeBus, "notify_market_observation_written")
+    assert "market_observation_written" not in text
+    assert "notify_market_tick_written" in text
     assert "LISTEN" not in text
 
 

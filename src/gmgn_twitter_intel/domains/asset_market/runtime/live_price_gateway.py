@@ -5,12 +5,16 @@ import inspect
 import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.market_field_facts import PROVIDER_OKX_DEX_WS_PRICE_INFO
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexMarketFactUpdate, DexMarketStreamTarget
+
+DEFAULT_LIVE_TARGET_LIMIT = 100
+DEFAULT_LIVE_TARGET_TTL_SECONDS = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,27 +68,27 @@ class LivePriceGateway(WorkerBase):
     def __init__(
         self,
         *,
-        name: str,
-        settings: Any,
-        db: Any,
-        telemetry: Any,
+        pool_bundle: Any,
+        providers: Any,
+        interval_seconds: float,
         projection_version: str,
-        stream_provider: Any | None = None,
-        cex_market: Any | None = None,
         on_live_market_update: Callable[[dict[str, Any]], Any] | None = None,
-        wake_bus: Any | None = None,
+        clock: Callable[[], int] | None = None,
+        name: str = "live_price_gateway",
+        telemetry: Any | None = None,
     ) -> None:
-        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
-        self.stream_provider = stream_provider
-        self.cex_market = cex_market
+        interval = max(0.001, float(interval_seconds))
+        settings = SimpleNamespace(enabled=True, interval_seconds=interval, timeout_seconds=120.0)
+        super().__init__(name=name, settings=settings, db=pool_bundle, telemetry=telemetry or object())
+        self.stream_provider = getattr(providers, "stream_dex_market", None)
+        self.cex_market = getattr(providers, "message_cex_market", None)
         self.projection_version = projection_version
-        self.subscription_limit = max(1, int(getattr(settings, "subscription_limit", 100)))
-        self.hot_target_ttl_seconds = max(1.0, float(getattr(settings, "hot_target_ttl_seconds", 300.0)))
-        self.live_stale_after_ms = int(self.hot_target_ttl_seconds * 1000)
-        self.cex_poll_interval_seconds = max(0.001, float(getattr(settings, "cex_poll_interval_seconds", 30.0)))
-        self.reconnect_delay_seconds = max(0.001, float(getattr(settings, "reconnect_delay_seconds", 3.0)))
+        self.target_limit = DEFAULT_LIVE_TARGET_LIMIT
+        self.target_ttl_seconds = DEFAULT_LIVE_TARGET_TTL_SECONDS
+        self.live_stale_after_ms = int(self.target_ttl_seconds * 1000)
+        self.cycle_interval_seconds = interval
         self.on_live_market_update = on_live_market_update
-        del wake_bus
+        self.clock = clock or _now_ms
         self._cache: dict[tuple[str, str], LiveMarketSnapshot] = {}
 
     async def run(self) -> None:
@@ -95,7 +99,7 @@ class LivePriceGateway(WorkerBase):
         try:
             await self.on_start()
             while not self._stop_event.is_set() or run_once_task is not None:
-                self.last_started_at_ms = _now_ms()
+                self.last_started_at_ms = int(self.clock())
                 started = time.perf_counter()
                 if run_once_task is None:
                     run_once_task = self._create_run_once_task()
@@ -111,20 +115,14 @@ class LivePriceGateway(WorkerBase):
                         run_once_task = None
                     self.last_error = str(exc)
                     self._record_failed_iteration(started)
-                    await self._sleep(self.reconnect_delay_seconds)
+                    await self._sleep(self.cycle_interval_seconds)
                     continue
                 self.last_error = None
                 self.last_result = result
                 self._record_successful_iteration(started, result)
                 if self._stop_event.is_set():
                     break
-                delay_seconds = (
-                    self.reconnect_delay_seconds
-                    if self.stream_provider is not None
-                    and int(result.notes.get("result", {}).get("dex_targets_selected") or 0) > 0
-                    else self.cex_poll_interval_seconds
-                )
-                await self._sleep(delay_seconds)
+                await self._sleep(self.cycle_interval_seconds)
         finally:
             await self._cancel_run_once_task(run_once_task)
             self.running = False
@@ -138,7 +136,7 @@ class LivePriceGateway(WorkerBase):
         )
 
     async def _run_cycle(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        received_at_ms = int(now_ms if now_ms is not None else _now_ms())
+        received_at_ms = int(now_ms if now_ms is not None else self.clock())
         result = {
             "targets_selected": 0,
             "dex_targets_selected": 0,
@@ -167,7 +165,7 @@ class LivePriceGateway(WorkerBase):
         return result
 
     def snapshot(self, *, target_type: str, target_id: str, now_ms: int | None = None) -> dict[str, Any]:
-        observed_now_ms = int(now_ms if now_ms is not None else _now_ms())
+        observed_now_ms = int(now_ms if now_ms is not None else self.clock())
         key = (str(target_type), str(target_id))
         snapshot = self._cache.get(key)
         if snapshot is None:
@@ -202,12 +200,12 @@ class LivePriceGateway(WorkerBase):
             remaining -= step
 
     def _active_targets(self, *, now_ms: int) -> list[dict[str, Any]]:
-        since_ms = int(now_ms) - int(self.hot_target_ttl_seconds * 1000)
+        since_ms = int(now_ms) - int(self.target_ttl_seconds * 1000)
         with self.db.worker_session(self.name) as repos:
             targets: Sequence[Mapping[str, Any]] = repos.registry.active_live_market_targets(
                 projection_version=self.projection_version,
                 since_ms=since_ms,
-                limit=self.subscription_limit,
+                limit=self.target_limit,
             )
         return [dict(target) for target in targets]
 
@@ -267,7 +265,7 @@ class LivePriceGateway(WorkerBase):
                 await close()
 
     def _dex_stream_cycle_seconds(self) -> float:
-        return max(0.1, min(self.hot_target_ttl_seconds, self.cex_poll_interval_seconds, 30.0))
+        return max(0.1, min(self.target_ttl_seconds, self.cycle_interval_seconds, 30.0))
 
     def _payload_from_dex(
         self,

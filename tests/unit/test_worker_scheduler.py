@@ -94,11 +94,19 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
         run_order: list[str] = []
         workers = {
             "collector": FakeWorker("collector"),
+            "token_capture_tier": FakeWorker("token_capture_tier"),
+            "market_tick_stream": FakeWorker("market_tick_stream"),
+            "market_tick_poll": FakeWorker("market_tick_poll"),
+            "resolution_refresh": FakeWorker("resolution_refresh"),
+            "asset_profile_refresh": FakeWorker("asset_profile_refresh"),
             "enrichment": FakeWorker("enrichment"),
+            "handle_summary": FakeWorker("handle_summary"),
+            "harness_ops": FakeWorker("harness_ops"),
+            "pulse_candidate": FakeWorker("pulse_candidate"),
             "token_radar_projection": FakeWorker("token_radar_projection"),
             "notification_rule": FakeWorker("notification_rule"),
+            "notification_delivery": FakeWorker("notification_delivery"),
             "live_price_gateway": FakeWorker("live_price_gateway"),
-            "anchor_price": FakeWorker("anchor_price"),
         }
         for worker in workers.values():
             worker.run_order = run_order
@@ -108,20 +116,36 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
         await asyncio.gather(*(worker.started_event.wait() for worker in workers.values()))
 
         assert run_order == [
-            "token_radar_projection",
-            "anchor_price",
-            "enrichment",
-            "notification_rule",
-            "live_price_gateway",
             "collector",
+            "token_capture_tier",
+            "market_tick_stream",
+            "market_tick_poll",
+            "live_price_gateway",
+            "resolution_refresh",
+            "asset_profile_refresh",
+            "token_radar_projection",
+            "pulse_candidate",
+            "enrichment",
+            "handle_summary",
+            "harness_ops",
+            "notification_rule",
+            "notification_delivery",
         ]
         assert [task.get_name() for task in scheduler.tasks.values()] == [
-            "worker:token_radar_projection",
-            "worker:anchor_price",
-            "worker:enrichment",
-            "worker:notification_rule",
-            "worker:live_price_gateway",
             "worker:collector",
+            "worker:token_capture_tier",
+            "worker:market_tick_stream",
+            "worker:market_tick_poll",
+            "worker:live_price_gateway",
+            "worker:resolution_refresh",
+            "worker:asset_profile_refresh",
+            "worker:token_radar_projection",
+            "worker:pulse_candidate",
+            "worker:enrichment",
+            "worker:handle_summary",
+            "worker:harness_ops",
+            "worker:notification_rule",
+            "worker:notification_delivery",
         ]
         await scheduler.stop()
 
@@ -157,10 +181,10 @@ def test_scheduler_starts_configured_enrichment_concurrency_with_canonical_statu
 
 def test_scheduler_keeps_disabled_workers_in_status_without_starting_them() -> None:
     async def scenario() -> None:
-        enabled = FakeWorker("anchor_price")
+        enabled = FakeWorker("market_tick_stream")
         disabled = FakeWorker("collector", enabled=False)
         scheduler = WorkerScheduler(
-            workers={"collector": disabled, "anchor_price": enabled},
+            workers={"collector": disabled, "market_tick_stream": enabled},
             db=FakeDB(),
             stop_timeout_seconds=0.1,
         )
@@ -168,7 +192,7 @@ def test_scheduler_keeps_disabled_workers_in_status_without_starting_them() -> N
         await scheduler.start()
         await enabled.started_event.wait()
 
-        assert list(scheduler.tasks) == ["anchor_price"]
+        assert list(scheduler.tasks) == ["market_tick_stream"]
         assert disabled.started_event.is_set() is False
         assert scheduler.status_payload()["collector"]["enabled"] is False
         await scheduler.stop()
@@ -199,10 +223,10 @@ def test_scheduler_stop_stops_workers_cancels_stubborn_tasks_closes_workers_then
 def test_scheduler_stop_collects_stop_errors_but_closes_other_workers_and_pools() -> None:
     async def scenario() -> None:
         db = FakeDB()
-        failing = FakeWorker("anchor_price", fail_stop=True)
+        failing = FakeWorker("market_tick_poll", fail_stop=True)
         other = FakeWorker("collector")
         scheduler = WorkerScheduler(
-            workers={"anchor_price": failing, "collector": other},
+            workers={"market_tick_poll": failing, "collector": other},
             db=db,
             stop_timeout_seconds=0.01,
         )
@@ -212,7 +236,7 @@ def test_scheduler_stop_collects_stop_errors_but_closes_other_workers_and_pools(
         with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
             await scheduler.stop()
 
-        assert any("anchor_price stop failed" in str(error) for error in excinfo.value.exceptions)
+        assert any("market_tick_poll stop failed" in str(error) for error in excinfo.value.exceptions)
         assert failing.stopped == 1
         assert other.stopped == 1
         assert failing.closed == 1

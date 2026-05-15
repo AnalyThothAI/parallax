@@ -23,9 +23,10 @@ from gmgn_twitter_intel.app.surfaces.api.ws import PublicWebSocketHub
 from gmgn_twitter_intel.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from gmgn_twitter_intel.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
-from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import AnchorPriceWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
+from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
@@ -277,11 +278,31 @@ def _construct_workers(
         constructed["token_capture_tier"] = TokenCaptureTierWorker(
             name="token_capture_tier",
             settings=workers.token_capture_tier,
-            db=db,
+            pool_bundle=db,
             telemetry=telemetry,
             batch_size=workers.token_capture_tier.batch_size,
             ws_limit=workers.token_capture_tier.ws_limit,
             poll_limit=workers.token_capture_tier.poll_limit,
+        )
+    if workers.market_tick_stream.enabled and stream_dex_market is not None:
+        constructed["market_tick_stream"] = MarketTickStreamWorker(
+            name="market_tick_stream",
+            settings=workers.market_tick_stream,
+            pool_bundle=db,
+            telemetry=telemetry,
+            stream_dex_market=stream_dex_market,
+            wake_emitter=wake_bus,
+            subscription_limit=workers.market_tick_stream.subscription_limit,
+        )
+    if workers.market_tick_poll.enabled and (message_cex_market is not None or dex_quote_market is not None):
+        constructed["market_tick_poll"] = MarketTickPollWorker(
+            name="market_tick_poll",
+            settings=workers.market_tick_poll,
+            pool_bundle=db,
+            telemetry=telemetry,
+            providers=asset_market,
+            wake_emitter=wake_bus,
+            batch_size=workers.market_tick_poll.batch_size,
         )
     if workers.pulse_candidate.enabled and settings.pulse_agent_configured:
         worker_name = "pulse_candidate"
@@ -334,16 +355,6 @@ def _construct_workers(
             channels=settings.notifications.channels,
             wake_waiter=delivery_wake,
         )
-    if workers.anchor_price.enabled and (message_cex_market is not None or dex_quote_market is not None):
-        constructed["anchor_price"] = AnchorPriceWorker(
-            name="anchor_price",
-            settings=workers.anchor_price,
-            db=db,
-            telemetry=telemetry,
-            cex_market=message_cex_market,
-            dex_quote_market=dex_quote_market,
-            wake_bus=wake_bus,
-        )
     if workers.asset_profile_refresh.enabled and dex_profile_market is not None:
         constructed["asset_profile_refresh"] = AssetProfileRefreshWorker(
             name="asset_profile_refresh",
@@ -366,14 +377,12 @@ def _construct_workers(
     if workers.live_price_gateway.enabled and (stream_dex_market is not None or message_cex_market is not None):
         constructed["live_price_gateway"] = LivePriceGateway(
             name="live_price_gateway",
-            settings=workers.live_price_gateway,
-            db=db,
+            pool_bundle=db,
             telemetry=telemetry,
-            stream_provider=stream_dex_market,
-            cex_market=message_cex_market,
+            providers=asset_market,
+            interval_seconds=workers.live_price_gateway.interval_seconds,
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             on_live_market_update=hub.publish,
-            wake_bus=wake_bus,
         )
     if workers.enrichment.enabled and settings.llm_configured:
         constructed["enrichment"] = EnrichmentWorker(

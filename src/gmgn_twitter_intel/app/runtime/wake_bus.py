@@ -9,15 +9,6 @@ class WakeBus:
     def __init__(self, conn_factory: Callable[[], Any]) -> None:
         self._conn_factory = conn_factory
 
-    def notify_market_observation_written(self, *, target_type: str, target_id: str) -> None:
-        self._notify(
-            "market_observation_written",
-            {
-                "target_type": str(target_type),
-                "target_id": str(target_id),
-            },
-        )
-
     def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
         self._notify(
             "market_tick_written",

@@ -29,14 +29,12 @@ def test_live_price_gateway_publishes_every_live_frame_without_material_writes()
     )
     published: list[dict] = []
     gateway = LivePriceGateway(
-        name="live_price_gateway",
-        settings=worker_settings(),
-        db=db,
-        telemetry=object(),
-        stream_provider=stream_provider,
-        cex_market=None,
+        pool_bundle=db,
+        providers=SimpleNamespace(stream_dex_market=stream_provider, message_cex_market=None),
+        interval_seconds=0.1,
         projection_version="token-radar-v12-anchor-live-hard-cut",
         on_live_market_update=published.append,
+        clock=lambda: 1_778_000_000_000,
     )
 
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_000_000))
@@ -57,21 +55,6 @@ class FakeStreamProvider:
     async def stream_price_info(self, targets):
         for update in self.updates:
             yield update
-
-
-def worker_settings(**overrides):
-    values = {
-        "enabled": True,
-        "interval_seconds": 30.0,
-        "timeout_seconds": 120.0,
-        "subscription_limit": 10,
-        "hot_target_ttl_seconds": 60.0,
-        "reconnect_delay_seconds": 0.1,
-        "cex_poll_interval_seconds": 30.0,
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
-
 
 class FakeDB:
     def __init__(self) -> None:

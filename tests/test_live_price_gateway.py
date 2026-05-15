@@ -11,7 +11,6 @@ from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import L
 
 def test_live_price_gateway_caches_and_publishes_without_market_fact_writes():
     db = FakeDB()
-    wake_bus = ForbiddenWakeBus()
     stream_provider = FakeStreamProvider(
         [
             DexMarketFactUpdate(
@@ -24,16 +23,11 @@ def test_live_price_gateway_caches_and_publishes_without_market_fact_writes():
         ]
     )
     published: list[dict] = []
-    gateway = LivePriceGateway(
-        name="live_price_gateway",
-        settings=worker_settings(),
+    gateway = live_gateway(
         db=db,
-        telemetry=object(),
         stream_provider=stream_provider,
-        cex_market=None,
         projection_version="token-radar-v12-anchor-live-hard-cut",
         on_live_market_update=published.append,
-        wake_bus=wake_bus,
     )
 
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_000_000))
@@ -43,7 +37,6 @@ def test_live_price_gateway_caches_and_publishes_without_market_fact_writes():
     assert result.processed == 1
     assert result.notes["result"]["live_market_updates_published"] == 1
     db.repos.assert_no_market_fact_access()
-    assert wake_bus.touched is False
     assert published[0]["type"] == "live_market_update"
     assert published[0]["market"]["decision_latest"]["price_usd"] == 0.42
     assert published[0]["market"]["decision_latest"]["source"] == "decision_latest"
@@ -57,13 +50,9 @@ def test_live_price_gateway_caches_and_publishes_without_market_fact_writes():
 def test_live_price_gateway_does_not_block_event_loop_while_selecting_targets():
     db = FakeDB()
     db.repos.registry.sleep_seconds = 0.3
-    gateway = LivePriceGateway(
-        name="live_price_gateway",
-        settings=worker_settings(reconnect_delay_seconds=0.1),
+    gateway = live_gateway(
         db=db,
-        telemetry=object(),
-        stream_provider=None,
-        cex_market=None,
+        interval_seconds=0.1,
         projection_version="token-radar-v12-anchor-live-hard-cut",
     )
 
@@ -80,13 +69,9 @@ def test_live_price_gateway_does_not_block_event_loop_while_selecting_targets():
 
 def test_live_price_gateway_run_paces_empty_stream_cycles():
     db = FakeDB()
-    gateway = LivePriceGateway(
-        name="live_price_gateway",
-        settings=worker_settings(cex_poll_interval_seconds=0.1, reconnect_delay_seconds=0.01),
+    gateway = live_gateway(
         db=db,
-        telemetry=object(),
-        stream_provider=None,
-        cex_market=None,
+        interval_seconds=0.1,
         projection_version="token-radar-v12-anchor-live-hard-cut",
     )
 
@@ -103,13 +88,10 @@ def test_live_price_gateway_run_paces_empty_stream_cycles():
 def test_live_price_gateway_bounds_dex_stream_cycle_when_no_updates_arrive():
     db = FakeDB()
     stream_provider = BlockingStreamProvider()
-    gateway = LivePriceGateway(
-        name="live_price_gateway",
-        settings=worker_settings(cex_poll_interval_seconds=1, reconnect_delay_seconds=0.1),
+    gateway = live_gateway(
         db=db,
-        telemetry=object(),
         stream_provider=stream_provider,
-        cex_market=None,
+        interval_seconds=0.1,
         projection_version="token-radar-v12-anchor-live-hard-cut",
     )
 
@@ -134,13 +116,9 @@ def test_live_price_gateway_publishes_every_valid_live_update_without_debounce()
         ],
     )
     published: list[dict] = []
-    gateway = LivePriceGateway(
-        name="live_price_gateway",
-        settings=worker_settings(),
+    gateway = live_gateway(
         db=db,
-        telemetry=object(),
         stream_provider=stream_provider,
-        cex_market=None,
         projection_version="token-radar-v12-anchor-live-hard-cut",
         on_live_market_update=published.append,
     )
@@ -193,18 +171,23 @@ class BlockingStreamProvider:
             self.closed = True
 
 
-def worker_settings(**overrides):
-    values = {
-        "enabled": True,
-        "interval_seconds": 30.0,
-        "timeout_seconds": 120.0,
-        "subscription_limit": 10,
-        "hot_target_ttl_seconds": 60.0,
-        "reconnect_delay_seconds": 0.1,
-        "cex_poll_interval_seconds": 30.0,
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
+def live_gateway(
+    *,
+    db,
+    stream_provider=None,
+    cex_market=None,
+    interval_seconds=0.1,
+    projection_version="token-radar-v12-anchor-live-hard-cut",
+    on_live_market_update=None,
+):
+    return LivePriceGateway(
+        pool_bundle=db,
+        providers=SimpleNamespace(stream_dex_market=stream_provider, message_cex_market=cex_market),
+        interval_seconds=interval_seconds,
+        projection_version=projection_version,
+        on_live_market_update=on_live_market_update,
+        clock=lambda: 1_778_000_000_000,
+    )
 
 
 class FakeDB:
@@ -273,12 +256,3 @@ class ForbiddenRepository:
     def __getattr__(self, method_name: str):
         self.touched = True
         raise AssertionError(f"LivePriceGateway must not touch {self.name}.{method_name}")
-
-
-class ForbiddenWakeBus:
-    def __init__(self) -> None:
-        self.touched = False
-
-    def __getattr__(self, method_name: str):
-        self.touched = True
-        raise AssertionError(f"LivePriceGateway must not touch wake bus method {method_name}")
