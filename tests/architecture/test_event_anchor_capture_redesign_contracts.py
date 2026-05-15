@@ -13,7 +13,20 @@ ALEMBIC_VERSIONS = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
 SUPERPOWERS_DOCS = ROOT / "docs/superpowers"
 
 SCANNED_SUFFIXES = {".html", ".md", ".py", ".sql", ".toml", ".ts", ".tsx", ".yaml", ".yml"}
-SKIPPED_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
+SKIPPED_DIRS = {
+    ".codex",
+    ".codex-merge-backup-20260513-frontend-hard-cut",
+    ".git",
+    ".mypy_cache",
+    ".playwright-mcp",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".superpowers",
+    ".venv",
+    ".worktrees",
+    "__pycache__",
+    "node_modules",
+}
 BANNED_RUNTIME_STRINGS = (
     "".join(("Anchor", "Price", "Worker")),
     "_".join(("anchor", "price")),
