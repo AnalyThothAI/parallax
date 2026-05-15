@@ -42,4 +42,25 @@ describe("buildTokenCaseViewModel", () => {
 
     expect(vm.timeline.items.every((item) => item.isWatched)).toBe(true);
   });
+
+  it("keeps stale market snapshots in a degraded market state", () => {
+    const dossier = tokenCaseFixture();
+    const vm = buildTokenCaseViewModel({
+      dossier: {
+        ...dossier,
+        market_live: {
+          ...dossier.market_live,
+          status: "stale",
+          price_usd: 0.00042,
+          error: null,
+        },
+      },
+      route: { window: "1h", scope: "all", postSort: "recent" },
+      posts: dossier.posts,
+    });
+
+    expect(vm.market.status).toBe("stale");
+    expect(vm.market.tone).toBe("warn");
+    expect(vm.market.emptyTitle).toBe("Live market stale");
+  });
 });

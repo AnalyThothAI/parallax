@@ -1,0 +1,72 @@
+import { canSeedTokenCasePosts } from "@features/token-case/api/useTokenCase";
+import type { TokenCasePostsData } from "@lib/types";
+import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
+import { describe, expect, it } from "vitest";
+
+const target = {
+  target_type: "Asset" as const,
+  target_id: "asset:solana:token:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+};
+
+describe("useTokenCase post seeding", () => {
+  it("seeds only when the dossier first page matches the requested server query", () => {
+    const initialPosts = tokenCaseFixture().posts;
+
+    expect(
+      canSeedTokenCasePosts({
+        initialPosts,
+        target,
+        window: "1h",
+        scope: "all",
+        range: "current_window",
+        serverSort: "recent",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not seed catalyst queries from the dossier recent page", () => {
+    const initialPosts = tokenCaseFixture().posts;
+
+    expect(
+      canSeedTokenCasePosts({
+        initialPosts,
+        target,
+        window: "1h",
+        scope: "all",
+        range: "current_window",
+        serverSort: "catalyst",
+      }),
+    ).toBe(false);
+  });
+
+  it("treats internal matched and public watched scopes as the same seed scope", () => {
+    const initialPosts: TokenCasePostsData = {
+      ...tokenCaseFixture().posts,
+      query: { ...tokenCaseFixture().posts.query, scope: "matched" },
+    };
+
+    expect(
+      canSeedTokenCasePosts({
+        initialPosts,
+        target,
+        window: "1h",
+        scope: "watched",
+        range: "current_window",
+        serverSort: "recent",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not seed before the dossier first page exists", () => {
+    expect(
+      canSeedTokenCasePosts({
+        initialPosts: null,
+        target,
+        window: "1h",
+        scope: "all",
+        range: "current_window",
+        serverSort: "recent",
+      }),
+    ).toBe(false);
+  });
+});

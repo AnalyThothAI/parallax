@@ -304,6 +304,17 @@ function searchInspectData(): SearchInspectData {
           },
         ],
       },
+      market_live: {
+        status: "missing",
+        target_type: "Asset",
+        target_id: "asset:solana:rkc",
+        price_usd: null,
+        market_cap_usd: null,
+        liquidity_usd: null,
+        holders: null,
+        observed_at_ms: null,
+        provider: null,
+      },
       radar_item: null,
       profile: {
         status: "ready",

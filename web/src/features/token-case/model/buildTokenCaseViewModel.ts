@@ -1,5 +1,5 @@
 import { compactNumber, formatTokenPriceUsd, formatUsdCompact, shortAddress } from "@lib/format";
-import type { TokenCaseDossier, TokenPostItem, TokenPostsData } from "@lib/types";
+import type { TokenCaseDossier, TokenCasePostsData, TokenPostItem } from "@lib/types";
 import type {
   TokenCaseMarketView,
   TokenCasePostEvent,
@@ -12,7 +12,7 @@ import type { TokenCaseRouteState } from "../state/tokenCaseRouteState";
 export type BuildTokenCaseViewModelArgs = {
   dossier: TokenCaseDossier;
   route: TokenCaseRouteState;
-  posts?: TokenPostsData | null;
+  posts?: TokenCasePostsData | null;
   isLoadingPosts?: boolean;
   isFetchingNextPage?: boolean;
 };
@@ -176,13 +176,13 @@ function buildPostEvent(post: TokenPostItem): TokenCasePostEvent {
 }
 
 function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
-  const live = dossier.market_live ?? { status: "missing" };
+  const live = dossier.market_live;
   const status = stringValue(live.status) ?? "missing";
   const price = numberValue(live.price_usd);
   const marketCap = numberValue(live.market_cap_usd);
   const liquidity = numberValue(live.liquidity_usd);
   const holders = numberValue(live.holders);
-  const ready = status === "ready" || price !== null || marketCap !== null || liquidity !== null;
+  const ready = status === "ready" || status === "live";
   return {
     status,
     provider: stringValue(live.provider),
@@ -191,7 +191,7 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
     liquidityLabel: liquidity === null ? "-" : formatUsdCompact(liquidity),
     holdersLabel: holders === null ? "-" : compactNumber(holders),
     observedAtLabel: numberValue(live.observed_at_ms) ? timeAgoLabel(Number(live.observed_at_ms)) : null,
-    emptyTitle: ready ? null : "Live market unavailable",
+    emptyTitle: ready ? null : status === "stale" ? "Live market stale" : "Live market unavailable",
     emptyDetail: ready
       ? null
       : stringValue(live.error) ?? "No live market snapshot has been attached to this dossier yet.",

@@ -51,6 +51,22 @@ describe("buildSearchCaseView", () => {
     ]);
   });
 
+  it("falls back to the timeline market overlay for dossier-shaped token results", () => {
+    const data = searchInspectFixture();
+    delete data.token_result!.market_overlay;
+    data.token_result!.timeline.market_overlay = {
+      chain_id: "solana",
+      address: "FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+      provider: "timeline_overlay",
+    };
+
+    const view = buildSearchCaseView(data);
+    const summary = buildSearchRadarSummary(data.token_result!);
+
+    expect(view.subtitle).toContain("solana");
+    expect(summary.marketVenue).toBe("solana");
+  });
+
   it("builds topic buckets outside the route component", () => {
     const buckets = buildTopicBuckets([
       searchItem("e1", 1_700_000_000_000),
@@ -116,6 +132,17 @@ function searchInspectFixture(): SearchInspectData {
           price_usd: 0.0078,
           provider: "okx_dex_ws_price_info",
         },
+      },
+      market_live: {
+        status: "missing",
+        target_type: "Asset",
+        target_id: "asset:solana:rkc",
+        price_usd: null,
+        market_cap_usd: null,
+        liquidity_usd: null,
+        holders: null,
+        observed_at_ms: null,
+        provider: null,
       },
       posts: {
         has_more: false,

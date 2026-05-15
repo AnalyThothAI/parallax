@@ -33,7 +33,7 @@ export function buildSearchRadarSummary(result: SearchTokenResult): SearchRadarS
   const eventAnchor = asRecord(market.event_anchor);
   const decisionLatest = asRecord(market.decision_latest);
   const readiness = asRecord(market.readiness);
-  const marketOverlay = asRecord(result.market_overlay);
+  const marketOverlay = asRecord(result.market_overlay ?? result.timeline.market_overlay);
   const firstBucketPrice = result.timeline.buckets.find((bucket) => bucket.price?.price_usd)?.price;
   const candleClose = latestCandleClose(marketOverlay.candles);
   const isDexMarket =

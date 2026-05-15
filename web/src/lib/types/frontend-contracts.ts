@@ -6,6 +6,7 @@ export type ApiResponse<T> = {
 
 export type WindowKey = "5m" | "1h" | "4h" | "24h";
 export type ScopeKey = "matched" | "all";
+export type TokenCaseApiScope = ScopeKey | "watched";
 export type Decision = "driver" | "watch" | "investigate" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
 export type TokenDetailTab = "timeline" | "posts" | "score" | "lab" | "accounts";
@@ -291,18 +292,35 @@ export type LiveMarketSnapshot = MarketObservationSnapshot & {
   [key: string]: unknown;
 };
 
+export type TokenCasePostsQuery = Omit<TokenPostsQuery, "scope"> & {
+  scope: TokenCaseApiScope;
+};
+
+export type TokenCasePostsData = Omit<TokenPostsData, "query"> & {
+  query: TokenCasePostsQuery;
+};
+
+export type TokenCaseSocialTimelineQuery = Omit<TokenSocialTimelineQuery, "scope"> & {
+  scope: TokenCaseApiScope;
+};
+
+export type TokenCaseSocialTimelineData = Omit<TokenSocialTimelineData, "query"> & {
+  query: TokenCaseSocialTimelineQuery;
+};
+
 export type TokenCaseDossier = {
   target: SearchTargetCandidate;
   profile?: TokenProfileBlock | null;
-  timeline: TokenSocialTimelineData;
-  posts: TokenPostsData;
+  timeline: TokenCaseSocialTimelineData;
+  posts: TokenCasePostsData;
   agent_brief: SearchAgentBrief;
-  market_live?: LiveMarketSnapshot | null;
+  market_live: LiveMarketSnapshot;
+};
+
+export type SearchTokenResult = TokenCaseDossier & {
   radar_item?: Record<string, unknown> | null;
   market_overlay?: (Record<string, unknown> & TokenTimelineMarketOverlay) | null;
 };
-
-export type SearchTokenResult = TokenCaseDossier;
 
 export type SearchTopicResult = {
   summary: {
@@ -780,7 +798,7 @@ export type TokenPostsQuery = {
   target_type?: string | null;
   target_id?: string | null;
   window: WindowKey;
-  scope: ScopeKey;
+  scope: TokenCaseApiScope;
   range: TokenPostRange;
   sort?: TokenPostServerSort;
 };
@@ -789,7 +807,7 @@ export type TokenSocialTimelineParams = {
   target_type?: string | null;
   target_id?: string | null;
   window: WindowKey;
-  scope: ScopeKey;
+  scope: TokenCaseApiScope;
 };
 
 export type TokenSocialTimelineQuery = TokenSocialTimelineParams & {

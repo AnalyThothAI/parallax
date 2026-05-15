@@ -1,5 +1,12 @@
 import { getApi } from "@lib/api/client";
-import type { TokenCaseDossier, TokenPostRange, TokenPostsData, WindowKey } from "@lib/types";
+import type {
+  TokenCaseApiScope,
+  TokenCaseDossier,
+  TokenCasePostsData,
+  TokenPostRange,
+  TokenPostServerSort,
+  WindowKey,
+} from "@lib/types";
 import type { TokenCaseScope, TokenCaseSort } from "@shared/model/tokenCaseViewModel";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
@@ -19,7 +26,7 @@ type UseTokenCaseArgs = {
 type UseTokenCasePostsArgs = UseTokenCaseArgs & {
   postSort: TokenCaseSort;
   range?: TokenPostRange;
-  initialPosts?: TokenPostsData | null;
+  initialPosts?: TokenCasePostsData | null;
 };
 
 export function useTokenCase({
@@ -58,6 +65,17 @@ export function useTokenCasePosts({
   initialPosts = null,
 }: UseTokenCasePostsArgs) {
   const serverSort = postSort === "catalyst" ? "catalyst" : "recent";
+  const apiScope = tokenCaseScopeToApiScope(scope);
+  const seedPosts = canSeedTokenCasePosts({
+    initialPosts,
+    target,
+    window,
+    scope: apiScope,
+    range,
+    serverSort,
+  })
+    ? initialPosts
+    : null;
   const queryKey = queryKeys.targetPosts(
     target ? targetRefKey(target) : null,
     window,
@@ -70,13 +88,13 @@ export function useTokenCasePosts({
   return useInfiniteQuery({
     queryKey,
     queryFn: async ({ pageParam }) => {
-      const response = await getApi<TokenPostsData>("/api/target-posts", {
+      const response = await getApi<TokenCasePostsData>("/api/target-posts", {
         token,
         params: {
           target_type: target?.target_type,
           target_id: target?.target_id,
           window,
-          scope: tokenCaseScopeToApiScope(scope),
+          scope: apiScope,
           range,
           sort: serverSort,
           limit: postsLimit,
@@ -85,21 +103,24 @@ export function useTokenCasePosts({
       });
       return response.data;
     },
-    initialData: initialPosts
+    initialData: seedPosts
       ? {
-          pages: [initialPosts],
+          pages: [seedPosts],
           pageParams: [""],
         }
       : undefined,
     initialPageParam: "",
     getNextPageParam: (lastPage) =>
       lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
-    enabled: Boolean(token && target),
+    enabled: Boolean(token && target && seedPosts),
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     staleTime: 15_000,
   });
 }
 
-export function mergeTokenCasePostPages(pages?: TokenPostsData[]): TokenPostsData | null {
+export function mergeTokenCasePostPages(pages?: TokenCasePostsData[]): TokenCasePostsData | null {
   if (!pages?.length) {
     return null;
   }
@@ -112,4 +133,37 @@ export function mergeTokenCasePostPages(pages?: TokenPostsData[]): TokenPostsDat
     next_cursor: last.next_cursor,
     items: pages.flatMap((page) => page.items),
   };
+}
+
+export function canSeedTokenCasePosts({
+  initialPosts,
+  target,
+  window,
+  scope,
+  range,
+  serverSort,
+}: {
+  initialPosts?: TokenCasePostsData | null;
+  target: TargetRef | null;
+  window: WindowKey;
+  scope: TokenCaseApiScope;
+  range: TokenPostRange;
+  serverSort: TokenPostServerSort;
+}): boolean {
+  if (!initialPosts || !target) {
+    return false;
+  }
+  const query = initialPosts.query;
+  return (
+    query.target_type === target.target_type &&
+    query.target_id === target.target_id &&
+    query.window === window &&
+    tokenCaseScopeKey(query.scope) === tokenCaseScopeKey(scope) &&
+    query.range === range &&
+    (query.sort ?? "recent") === serverSort
+  );
+}
+
+function tokenCaseScopeKey(scope: TokenCaseApiScope): TokenCaseScope {
+  return scope === "matched" ? "watched" : scope;
 }
