@@ -491,7 +491,7 @@ def test_api_search_rejects_malformed_cursor(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_cursor"}
 
 
-def test_api_status_exposes_anchor_and_live_market_status(tmp_path):
+def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -504,7 +504,14 @@ def test_api_status_exposes_anchor_and_live_market_status(tmp_path):
     assert "resolution_refresh" not in data
     assert "token_radar_projection" not in data
     workers = data["workers"]
-    for name in ("anchor_price", "live_price_gateway", "resolution_refresh", "token_radar_projection"):
+    for name in (
+        "token_capture_tier",
+        "market_tick_stream",
+        "market_tick_poll",
+        "live_price_gateway",
+        "resolution_refresh",
+        "token_radar_projection",
+    ):
         assert set(workers[name]) >= {
             "enabled",
             "running",

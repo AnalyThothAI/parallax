@@ -198,7 +198,9 @@ def test_healthz_readyz_and_metrics_return_status(tmp_path):
         "notifications",
         "token_radar_projection",
         "watchlist_handle_summary",
-        "anchor_price",
+        "market_tick_stream",
+        "market_tick_poll",
+        "token_capture_tier",
         "asset_profile_refresh",
         "resolution_refresh",
         "live_price_gateway",
@@ -490,7 +492,9 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
         ws_token="secret",
         storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
         workers={
-            "anchor_price": {"enabled": True},
+            "market_tick_stream": {"enabled": True},
+            "market_tick_poll": {"enabled": True},
+            "token_capture_tier": {"enabled": True},
             "asset_profile_refresh": {"enabled": True},
             "resolution_refresh": {"enabled": True},
             "live_price_gateway": {"enabled": True},
@@ -505,7 +509,14 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
 
     try:
         assert runtime.workers["collector"].status_payload()["enabled"] is False
-        for name in ("anchor_price", "asset_profile_refresh", "resolution_refresh", "live_price_gateway"):
+        for name in (
+            "market_tick_stream",
+            "market_tick_poll",
+            "token_capture_tier",
+            "asset_profile_refresh",
+            "resolution_refresh",
+            "live_price_gateway",
+        ):
             assert runtime.workers[name].status_payload()["enabled"] is True
     finally:
         close_runtime(runtime)
