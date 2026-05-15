@@ -101,8 +101,10 @@ def test_ingest_chain_ca_from_gmgn_url_writes_exact_registry_asset(tmp_path):
     assert resolution["target_type"] == "Asset"
     assert resolution["target_id"] == f"asset:eip155:1:erc20:{address}"
     assert asset["asset_id"] == resolution["target_id"]
+    assert len(identity_evidence) == 1
     assert identity_evidence[0]["evidence_kind"] == "tweet_contract_mention"
     assert identity_evidence[0]["confidence"] == "mention_only"
+    assert identity_evidence[0]["source_event_id"] == "event-upic"
 
 
 def test_ingest_unknown_chain_ca_is_retained_as_unresolved_asset(tmp_path):

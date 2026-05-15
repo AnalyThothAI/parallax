@@ -391,29 +391,10 @@ class IngestService:
             address_hint = getattr(intent, "address_hint", None)
             if not chain_hint or not address_hint:
                 continue
-            asset = self.registry.upsert_chain_asset(
+            self.registry.upsert_chain_asset(
                 chain_id=str(chain_hint),
                 address=str(address_hint),
                 observed_at_ms=event.received_at_ms,
-                commit=False,
-            )
-            self.identity_evidence.upsert_identity_evidence(
-                asset_id=str(asset["asset_id"]),
-                evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
-                provider="twitter",
-                lookup_mode="tweet_mention",
-                chain_id=str(asset["chain_id"]),
-                address=str(asset["address"]),
-                symbol=getattr(intent, "display_symbol", None),
-                name=None,
-                decimals=None,
-                confidence=CONFIDENCE_MENTION_ONLY,
-                observed_at_ms=event.received_at_ms,
-                commit=False,
-            )
-            self.identity_evidence.recompute_current_identity(
-                str(asset["asset_id"]),
-                now_ms=event.received_at_ms,
                 commit=False,
             )
 

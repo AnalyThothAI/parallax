@@ -44,6 +44,15 @@ def test_ingest_chain_event_commits_enriched_event_and_market_tick_together(tmp_
         event_row = conn.execute("SELECT * FROM events WHERE event_id = %s", (event.event_id,)).fetchone()
         enriched_rows = conn.execute("SELECT * FROM enriched_events WHERE event_id = %s", (event.event_id,)).fetchall()
         market_rows = conn.execute("SELECT * FROM market_ticks").fetchall()
+        identity_rows = conn.execute(
+            """
+            SELECT *
+            FROM asset_identity_evidence
+            WHERE source_event_id = %s
+              AND evidence_kind = 'tweet_contract_mention'
+            """,
+            (event.event_id,),
+        ).fetchall()
     finally:
         conn.close()
 
@@ -56,6 +65,7 @@ def test_ingest_chain_event_commits_enriched_event_and_market_tick_together(tmp_
     assert enriched_rows[0]["target_type"] == "chain_token"
     assert enriched_rows[0]["target_id"] == "eip155:1:0x6982508145454ce325ddbe47a25d4ec3d2311933"
     assert market_rows[0]["target_type"] == "chain_token"
+    assert len(identity_rows) == 1
 
 
 def test_ingest_chain_event_with_null_price_writes_unavailable_capture_without_tick(tmp_path) -> None:
