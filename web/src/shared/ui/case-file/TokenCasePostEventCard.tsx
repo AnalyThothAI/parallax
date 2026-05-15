@@ -22,7 +22,7 @@ export function TokenCasePostEventCard({ item }: TokenCasePostEventCardProps) {
             {item.role ? <span>{item.role}</span> : null}
           </div>
           {item.url ? (
-            <a href={item.url} target="_blank" rel="noreferrer">
+            <a href={item.url} target="_blank" rel="noreferrer" aria-label={`Open X post by ${handle}`}>
               X
             </a>
           ) : null}

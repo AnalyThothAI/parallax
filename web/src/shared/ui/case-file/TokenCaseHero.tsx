@@ -67,7 +67,13 @@ export function TokenCaseHero({
         </div>
         <nav className={styles.actions} aria-label="Token links">
           {hero.actions.map((action) => (
-            <a key={`${action.label}-${action.href}`} href={action.href} data-tone={action.tone}>
+            <a
+              key={`${action.label}-${action.href}`}
+              href={action.href}
+              data-tone={action.tone}
+              target="_blank"
+              rel="noreferrer"
+            >
               {action.label}
             </a>
           ))}
