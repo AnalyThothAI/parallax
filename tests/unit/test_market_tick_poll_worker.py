@@ -172,7 +172,8 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
     assert wake.market_tick_notifications == []
-    assert dex_provider.saw_in_session == [False, False]
+    assert dex_provider.saw_in_session == [False]
+    assert dex_provider.requests == [("solana", "missing"), ("solana", "failing")]
     assert cex_provider.saw_in_session == [False, False]
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -55,6 +56,9 @@ class MarketTickPollWorker(WorkerBase):
         self.clock = clock or _now_ms
 
     async def run_once(self) -> WorkerResult:
+        return await asyncio.to_thread(self._run_once_sync)
+
+    def _run_once_sync(self) -> WorkerResult:
         rows = self._list_tier2_rows()
         targets = _poll_targets(rows)
 
@@ -88,20 +92,40 @@ class MarketTickPollWorker(WorkerBase):
             skipped_reasons["dex_provider_unavailable"] += len(targets)
             return []
 
+        requests = [DexTokenQuoteRequest(chain_id=target.chain_id, address=target.address) for target in targets]
+        try:
+            quotes = provider.token_quotes(requests)
+        except Exception as exc:
+            reason = _provider_error_reason(exc)
+            skipped_reasons[reason] += len(targets)
+            for target in targets:
+                self.logger.bind(
+                    target_type="chain_token",
+                    target_id=target.target_id,
+                    reason=reason,
+                ).warning("market tick poll quote skipped")
+            return []
+
+        quotes_by_key = {_target_key(quote.chain_id, quote.address): quote for quote in quotes}
         ticks: list[MarketTick] = []
         for target in targets:
-            try:
-                quotes = provider.token_quotes([DexTokenQuoteRequest(chain_id=target.chain_id, address=target.address)])
-            except Exception as exc:
-                skipped_reasons[_provider_error_reason(exc)] += 1
-                continue
-            quote = _first_quote_for_target(quotes, target=target)
+            quote = quotes_by_key.get(_target_key(target.chain_id, target.address))
             if quote is None:
                 skipped_reasons["dex_quote_unavailable"] += 1
+                self.logger.bind(
+                    target_type="chain_token",
+                    target_id=target.target_id,
+                    reason="dex_quote_unavailable",
+                ).warning("market tick poll quote skipped")
                 continue
             tick = _tick_from_dex_quote(quote, target=target, received_at_ms=int(self.clock()))
             if tick is None:
                 skipped_reasons["invalid_price"] += 1
+                self.logger.bind(
+                    target_type="chain_token",
+                    target_id=target.target_id,
+                    reason="invalid_price",
+                ).warning("market tick poll quote skipped")
                 continue
             ticks.append(tick)
         return ticks
@@ -117,14 +141,30 @@ class MarketTickPollWorker(WorkerBase):
             try:
                 ticker = provider.ticker(inst_id=target.instrument)
             except Exception as exc:
-                skipped_reasons[_provider_error_reason(exc)] += 1
+                reason = _provider_error_reason(exc)
+                skipped_reasons[reason] += 1
+                self.logger.bind(
+                    target_type="cex_symbol",
+                    target_id=target.target_id,
+                    reason=reason,
+                ).warning("market tick poll quote skipped")
                 continue
             if ticker is None:
                 skipped_reasons["cex_quote_unavailable"] += 1
+                self.logger.bind(
+                    target_type="cex_symbol",
+                    target_id=target.target_id,
+                    reason="cex_quote_unavailable",
+                ).warning("market tick poll quote skipped")
                 continue
             tick = _tick_from_cex_ticker(ticker, target=target, received_at_ms=int(self.clock()))
             if tick is None:
                 skipped_reasons["invalid_price"] += 1
+                self.logger.bind(
+                    target_type="cex_symbol",
+                    target_id=target.target_id,
+                    reason="invalid_price",
+                ).warning("market tick poll quote skipped")
                 continue
             ticks.append(tick)
         return ticks
@@ -213,13 +253,6 @@ def _cex_target(target_id: str) -> _CexTarget | None:
     if not exchange or not instrument or ":" in instrument:
         return None
     return _CexTarget(target_id=target_id, exchange=exchange, instrument=instrument)
-
-
-def _first_quote_for_target(quotes: list[DexTokenQuote], *, target: _ChainTarget) -> DexTokenQuote | None:
-    for quote in quotes:
-        if _target_key(quote.chain_id, quote.address) == _target_key(target.chain_id, target.address):
-            return quote
-    return None
 
 
 def _tick_from_dex_quote(
