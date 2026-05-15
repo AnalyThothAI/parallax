@@ -52,11 +52,11 @@ contract. It contains:
   snapshot version accepted by readers.
 - `subject` — deterministic target identity selected by the resolver and asset
   identity ledger, plus target-market identity facts.
-- `market` — market context for the social signal. It contains explicit
-  `event_anchor`, `decision_latest`, and `readiness` roles. `event_anchor`
-  describes the event-time observation; `decision_latest` describes the latest
-  material observation available to ranking, UI, and Signal Pulse. Market remains
-  context and gate input, not an alpha family.
+- `market` — public market context for the social signal. It contains
+  compatibility-shaped `event_anchor`, `decision_latest`, and `readiness`
+  response keys generated from `enriched_events` and `market_ticks`; those names
+  are not internal market DB concepts or worker/runtime semantics. Market
+  remains context and gate input, not an alpha family.
 - `gates` — deterministic blockers, risk reasons, high-alert eligibility, and
   maximum decision. Identity readiness, CEX native-market identity, DEX
   market-cap / liquidity / holder floors, and market freshness are gates or
@@ -78,7 +78,8 @@ fallbacks. Legacy score-centered JSON fields, v1 snapshot fields, and old
 current-market refresh snapshots are not runtime fallback sources. `profile`
 comes from the asset-level `asset_profiles` read model and is intentionally
 outside the scoring snapshot. Signal Lab Pulse decisions consume v3 factor
-snapshots, `market.decision_latest`, and deterministic gates.
+snapshots, the public `market.decision_latest` response key, and deterministic
+gates.
 
 Historical `token_radar_rows` are retained by `computed_at_ms` so
 `TokenFactorEvaluationService` can settle forward returns point-in-time. Latest
@@ -143,6 +144,6 @@ Update this file in the same change when any of these move:
 - entity extraction inputs that affect token evidence;
 - token evidence, intent construction, lookup key, or resolver policy;
 - discovery admission, retained candidate, or reprocess behavior;
-- market observation semantics used by Token Radar;
+- market tick semantics used by Token Radar;
 - projection windows, source query joins, factor families, gates, market
   freshness SLOs, evaluation horizons, or persisted radar row shape.

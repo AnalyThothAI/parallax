@@ -22,8 +22,8 @@ settings. It must not contain worker runtime knobs.
   default model, Pulse model override, Watchlist handle-summary model
   override, timeout, and tracing/export settings.
 - Optional market-related groups (OKX, GMGN OpenAPI, Marketlane) for identity
-  discovery, route sync, anchor-price lookup, the process-local live price
-  gateway, and request-time US equity quote snapshots.
+  discovery, route sync, market tick capture, cache-only live price fan-out,
+  and request-time US equity quote snapshots.
 
 Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`,
 `lease_ms`, `max_attempts`, advisory-lock, timeout, wake-channel, Pulse
@@ -35,8 +35,8 @@ trigger/gate, and Watchlist summary queue/gate settings are rejected from
 `workers.yaml` is the only source for worker runtime knobs. It contains
 `defaults` plus one block per canonical worker key:
 
-`collector`, `anchor_price`, `live_price_gateway`,
-`resolution_refresh`, `asset_profile_refresh`,
+`collector`, `token_capture_tier`, `market_tick_stream`, `market_tick_poll`,
+`live_price_gateway`, `resolution_refresh`, `asset_profile_refresh`,
 `token_radar_projection`, `pulse_candidate`, `enrichment`,
 `handle_summary`, `harness_ops`, `notification_rule`, and
 `notification_delivery`.
@@ -81,18 +81,23 @@ Token Radar market contract:
 - `/api/token-radar` rows expose a single `market` block from
   `factor_snapshot_json`. The block contains `event_anchor`, `decision_latest`,
   and `readiness`.
+- `market.event_anchor` and `market.decision_latest` are compatibility-shaped
+  public response keys generated from `enriched_events` and `market_ticks`.
+  They are not internal market concepts, DB tables, worker names, or provider
+  runtime semantics.
 - `/api/token-radar` rows may expose a `radar` block with projection-row
   metadata for UI sorting and audit display: `lane`, `rank`, `listed_at_ms`,
   `computed_at_ms`, and `source_max_received_at_ms`. `listed_at_ms` is derived
   from retained `token_radar_rows` history for the same projection window,
   scope, target type, and target id; it is presentation metadata, not an alpha
   factor.
-- `market.event_anchor` is the event-time observation for the social signal.
-  It may be `null` when a provider could not establish an event-time price.
-- `market.decision_latest` is the latest material market observation available
-  to ranking, UI, and Signal Pulse. Provider raw frames are not public facts and
-  are not serialized into Token Radar rows unless they became material
-  observations.
+- `market.event_anchor` is the event-time response object for the social signal.
+  It may be `null` when inline capture could not establish an event-adjacent
+  tick.
+- `market.decision_latest` is the latest response object available to ranking,
+  UI, and Signal Pulse from persisted market ticks. Provider raw frames are not
+  public facts and are not serialized into Token Radar rows unless they became
+  `market_ticks`.
 - `market.readiness` carries `anchor_status`, `latest_status`,
   `dex_floor_status`, `missing_fields`, and `stale_fields`. Consumers must treat
   missing, stale, or below-floor market state as data health / gate context, not
@@ -101,17 +106,19 @@ Token Radar market contract:
   `live_market`, or `current_market` fields. Readers must not reconstruct those
   fields from factor families, process-local caches, or provider refresh rows.
 - `/api/live-market?target_type=Asset|CexToken&target_id=...` returns the latest
-  material `market.decision_latest` shape when available, or
+  cache-backed `market.decision_latest` response shape when available, or
   `{"target_type":"...","target_id":"...","status":"unsupported|missing"}`
   when live pricing is unavailable for that process/target.
 - `/ws` live market messages use `type="live_market_update"` and carry a
-  material `market.decision_latest` payload shape for subscribed market targets.
+  cache-backed `market.decision_latest` payload shape for subscribed market targets.
   Clients patch the Token Radar row's `market.decision_latest`; they do not patch
-  old top-level `live_market`.
+  old top-level `live_market`. This WebSocket path is presentation fan-out, not
+  fact persistence.
 - GMGN social payload token snapshots are identity evidence only. The normalized
   token snapshot carries address / chain / symbol metadata. Embedded price /
-  market-cap values are not written during ingest; `event_anchor` observations
-  are written by the anchor worker using provider payloads or delayed lookup.
+  market-cap values are not used as market facts by themselves; ingest inline
+  capture writes Tier 3 ticks and `enriched_events` rows in the event
+  transaction.
 - Resolved DEX asset rows may expose a top-level `profile` block. Profile facts
   come from the persisted `asset_profiles` read model, not request-time provider
   calls and not `factor_snapshot_json`. `profile.status` is one of `ready`,
@@ -256,7 +263,7 @@ Signal Pulse `decision` blocks are the runtime contract for agent output:
   "abstain_reason": null,
   "stage_count": 3,
   "summary_zh": "社交热度有效，但 DEX floor 仍需继续确认。",
-  "invalidation_conditions": ["decision_latest 失效或 liquidity 跌破 floor"],
+  "invalidation_conditions": ["market response stale or liquidity below floor"],
   "residual_risks": ["单一 KOL 驱动，缺少多源确认"],
   "evidence_event_ids": ["event-1"]
 }
@@ -275,8 +282,10 @@ v1/v2 shapes and reject legacy gate blocks. The v3 contract separates:
   reasons. Identity, market freshness, CEX native-market identity, DEX holder /
   liquidity / market-cap floors, and data availability live here or in
   `data_health`; they do not score alpha.
-- `market`: explicit market context with `event_anchor`, `decision_latest`, and
-  `readiness`. It remains context/gate input, not an alpha family.
+- `market`: explicit public market context with compatibility-shaped
+  `event_anchor`, `decision_latest`, and `readiness` response keys generated
+  from `enriched_events` and `market_ticks`. It remains context/gate input, not
+  an alpha family.
 - `data_health`: explicit readiness for identity, market, social, and alpha.
 - `families`: social attention families only: `social_heat`,
   `social_propagation`, `semantic_catalyst`, and `timing_risk`.

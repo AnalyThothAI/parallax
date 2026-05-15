@@ -44,7 +44,10 @@ harness_ops, notification_rule, notification_delivery
 on the facts its transaction writes (`events`, `event_entities`,
 `token_evidence`, `token_intents`, `token_intent_lookup_keys`,
 `token_intent_resolutions`, `registry_assets`,
-`asset_identity_evidence`, `asset_identity_current`). It is a
+`asset_identity_evidence`, `asset_identity_current`, `market_ticks`,
+and `enriched_events`). Inline event capture writes Tier 3
+`market_ticks(source_tier='tier3_inline')` and enriched event rows in
+the ingest transaction. It is a
 transactional service called by `collector`, not a long-running worker
 and not a `WorkerBase` subclass.
 
@@ -56,8 +59,11 @@ and not a `WorkerBase` subclass.
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` | `{lookup_keys: [...]}` |
 | `token_radar_updated` | `TokenRadarProjectionWorker` | `PulseCandidateWorker` | `{window, scope}` |
 
-Wake payloads are hints; consumers re-read DB on wake. `DBPoolBundle`
-owns wake emission and listener construction through its wake pool.
+Wake payloads are hints; consumers re-read DB on wake and catch up on
+their configured `interval_seconds` cadence. `market_tick_written`
+only wakes the projection; persisted `market_ticks` remain the source
+of correctness. `DBPoolBundle` owns wake emission and listener
+construction through its wake pool.
 Adding a new channel means adding the emitter call, listing the channel
 in the listening worker's `workers.yaml` `wakes_on`, and preserving the
 worker's bounded catch-up loop.

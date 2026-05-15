@@ -8,7 +8,7 @@ The service is organised around domain packages, explicit integration adapters, 
 GMGN public stream
   → domains/ingestion           (raw frame normalisation, snapshot gate)
   → domains/evidence            (transactional facts: events, evidence, intents, resolutions, asset identity)
-  → domains/asset_market        (background workers: event_anchor and decision_latest observations, profile refresh, discovery)
+  → domains/asset_market        (market tick capture, capture-tier projection, profile refresh, discovery)
   → domains/token_intel         (token_radar_rows projection, scoring, search read model)
   → domains/social_enrichment   (watched-event extraction)
   → domains/closed_loop_harness (signal seeds, settlement, outcomes)
@@ -32,26 +32,28 @@ are wrong too.
 1. **Facts-first persistence.** `events`, `event_entities`, `token_evidence`,
    `token_intents`, `token_intent_lookup_keys`, `token_intent_resolutions`,
    `registry_assets`, `asset_identity_evidence`, `asset_identity_current`,
-   and `price_observations` are the business fact tables. Every other
+   `market_ticks`, and `enriched_events` are the business fact tables. Every other
    persisted table is a derived read model that can be rebuilt from these
    facts.
-2. **One material market fact type.** Market data from any provider is
-   normalised into a `MarketObservation`
-   (`domains/asset_market/types/market_observation.py`) before persistence;
-   provider raw frames are inputs, not facts.
-3. **Two market time roles.** `MarketContext.event_anchor` serves event-time
-   and back-testing; `MarketContext.decision_latest` serves current
-   decision, UI, and Signal Pulse. The two roles are persisted in distinct
-   partitions (`observation_kind`) of `price_observations` and must never
-   overwrite each other.
+2. **Append-only market tick facts.** Market data from any provider is
+   normalised into `MarketTick`
+   (`domains/asset_market/types/market_tick.py`) before persistence.
+   `market_ticks` are append-only provider tick facts; provider raw frames
+   are inputs, not facts.
+3. **Event projections are committed with events.** `enriched_events` rows
+   are event projection rows committed in the same ingest transaction as
+   `events`. Inline ingest capture writes Tier 3 `market_ticks` and the
+   corresponding enriched event rows; downstream readers do not reconstruct
+   event market context from provider frames.
 4. **One writer per read model.** Each derived read model has exactly one
    runtime writer: `token_radar_rows` is written only by
-   `TokenRadarProjectionWorker`; `pulse_candidates`, `pulse_agent_runs`,
+   `TokenRadarProjectionWorker`; `token_capture_tier` is written only by
+   `TokenCaptureTierWorker`; `pulse_candidates`, `pulse_agent_runs`,
    `pulse_agent_run_steps` are written only by `PulseCandidateWorker`. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md.
 5. **Wake is not truth.** PostgreSQL `NOTIFY` channels
-   (`market_observation_written`, `resolution_updated`,
+   (`market_tick_written`, `resolution_updated`,
    `token_radar_updated`) carry hint payloads only; consumers re-read DB on
    wake. Every listener must have a bounded `interval_seconds` catch-up so
    a missed `NOTIFY` cannot stall the pipeline.
@@ -59,12 +61,10 @@ are wrong too.
    path. No `_overlay_*`, no `fallback_to_v2_snapshot`, no "if missing fall
    back to the old field". Migration code and rollback docs may reference
    removed names; runtime, public API, and frontend code may not.
-7. **Material observation write budget.** `LivePriceGateway` persists a
-   `decision_latest` row only when `should_persist_live_observation`
-   returns `True` (`first_seen` / `heartbeat` /
-   `significant_price_change` / `gate_field_change` /
-   `provider_state_change`). Every other valid frame updates the in-process
-   cache and may fan out over WS, but it does not become a fact.
+7. **Capture lanes own market persistence.** `MarketTickStreamWorker` writes
+   Tier 1 WebSocket ticks, `MarketTickPollWorker` writes Tier 2 REST ticks,
+   and ingest inline capture writes Tier 3 ticks. `LivePriceGateway` is
+   cache/publish only; it never writes market facts.
 8. **Observable IO state.** Each WS provider exposes a connection state
    (`disconnected | connecting | authenticating | subscribed | streaming |
    failed`) with a `last_state_change_at_ms`. The snapshot gate exposes
@@ -79,9 +79,13 @@ are wrong too.
 
 Cross-cutting primitives that implement these invariants:
 
-- `MarketObservation`, `MarketContext`, `MarketReadiness` — value types in
-  `domains/asset_market/types/market_observation.py`; the only market fact
-  contract across domains.
+- `MarketTick` — value type in
+  `domains/asset_market/types/market_tick.py`; the append-only provider
+  tick fact contract across domains.
+- `enriched_events` — event projection rows written with `events` so
+  social-signal context can be replayed without provider calls.
+- `token_capture_tier` — rebuildable capture-control projection with
+  `TokenCaptureTierWorker` as its only runtime writer.
 - `runtime.bootstrap()` — composition entry point that builds
   `DBPoolBundle`, provider wiring, repositories, the canonical worker
   map, `WorkerScheduler`, API/WebSocket surfaces, readiness dependencies,
@@ -96,9 +100,6 @@ Cross-cutting primitives that implement these invariants:
   `DBPoolBundle.wake_emitter()` and `DBPoolBundle.wake_listener()`.
   Domain workers receive wake dependencies by injection and never call
   `pg_notify` directly.
-- `should_persist_live_observation` — single decision function in
-  `domains/asset_market/services/live_observation_policy.py`; the live
-  write budget gate.
 
 ## Package Roots
 
@@ -137,7 +138,7 @@ direction is still enforced by the package rules below.
 |--------|------|
 | `domains/ingestion/` | GMGN public-stream frame handling, snapshot gate, handle filtering, raw public-stream normalisation, collector status. |
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
-| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile facts, `price_observations` (`event_anchor` and `decision_latest` roles via `MarketObservation`/`MarketContext`/`MarketReadiness`), live price gateway, discovery, and CEX route sync. |
+| `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile facts, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model, token-target views, Token Radar feature aggregation, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, audit queries, signal alerts. |
 | `domains/social_enrichment/` | Watched-event gate, social-event extraction schema, OpenAI Agents enrichment lifecycle, enrichment worker. |
 | `domains/closed_loop_harness/` | Social-event harness extraction, attention seeds, snapshots, settlement, outcomes, credits, weights, harness health, ops worker, score-bucket read models. |
@@ -153,8 +154,8 @@ own maps next to the code they describe, and this file links to them.
 
 | Module | File | Covers |
 |--------|------|--------|
-| Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market observations, radar projection, and hard identity boundaries. |
-| Asset market and material observations | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketObservation` schema, anchor / live / profile / discovery workers, material observation write budget, provider capability model. |
+| Token Radar and token identity | [`src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
+| Asset market and market tick capture | [`src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | Signal Pulse pipeline | [`src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md`](../src/gmgn_twitter_intel/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 
 When a subsystem needs more than a short row here, add

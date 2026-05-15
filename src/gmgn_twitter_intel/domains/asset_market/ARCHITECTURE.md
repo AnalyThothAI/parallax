@@ -33,6 +33,9 @@ or read-model projection.
 market fact contract. All providers normalise into this frozen value
 type before any persistence call.
 
+- `market_ticks` are append-only provider tick facts. Rows are not updated
+  into a current-market table, and provider frames that never become ticks are
+  not business facts.
 - `target_type` is `chain_token` or `cex_symbol`.
 - `target_id` is the deterministic market target key, such as
   `solana:<address>` or `okx:<symbol>-USDT`.
@@ -48,11 +51,16 @@ type before any persistence call.
 ## Capture Roles
 
 - Inline event capture answers "what market sample was observed close to
-  this event commit?"
+  this event commit?" It writes Tier 3 ticks and the event projection rows
+  committed with `events`.
 - Tier 1 stream capture keeps the hottest live targets fresh with OKX DEX
-  WebSocket samples.
+  WebSocket samples. `MarketTickStreamWorker` writes these ticks as
+  `market_ticks(source_tier='tier1_ws')`.
 - Tier 2 poll capture keeps the broader active set fresh through OKX DEX
-  and CEX quote providers.
+  and CEX quote providers. `MarketTickPollWorker` writes these ticks as
+  `market_ticks(source_tier='tier2_poll')`.
+- `token_capture_tier` is a rebuildable projection with one runtime writer:
+  `TokenCaptureTierWorker`.
 - LivePriceGateway is presentation-only cache and WebSocket fan-out; it
   is not a fact writer.
 
@@ -81,10 +89,11 @@ receive provider protocols by injection and may not import
 | `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker` | `TokenRadarProjectionWorker` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` |
 
-Wake mechanics are composed in `app/runtime/bootstrap.py` through
-`DBPoolBundle.wake_emitter()` and `wake_listener()`. Asset Market
-workers receive wake dependencies by injection; they never call
-`pg_notify` directly. See `../../../../docs/WORKERS.md` for the
+`market_tick_written` is a wake hint; listeners re-read the database and catch
+up by their configured interval. Wake mechanics are composed in
+`app/runtime/bootstrap.py` through `DBPoolBundle.wake_emitter()` and
+`wake_listener()`. Asset Market workers receive wake dependencies by injection;
+they never call `pg_notify` directly. See `../../../../docs/WORKERS.md` for the
 cross-domain inventory.
 
 ## Hard Boundaries

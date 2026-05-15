@@ -69,23 +69,23 @@ include secrets, cookies, auth headers, raw `.env` values, or private provider
 credentials. Rows with insufficient data finish as abstain decisions instead of
 inventing confidence or a display status.
 
-## Material observation write budget
+## Market tick capture lanes
 
-Live market frames are persisted to `price_observations(kind='decision_latest')`
-only through
-`domains/asset_market/services/live_observation_policy.should_persist_live_observation`.
-Persistence triggers are exactly `first_seen`, `heartbeat`,
-`significant_price_change`, `gate_field_change`, and
-`provider_state_change`. Every other valid frame may update the in-process
-cache and fan out over WS, but it is not a fact. The synthetic flat-market
-budget is `100 targets × 5 fps × 10 minutes → ≤ 1500 persisted rows`, guarded
-by `tests/benchmark/test_live_observation_write_budget.py`. Tightening the
-thresholds is a config change; loosening them requires a benchmark update in
-the same commit.
+`market_ticks` are append-only provider tick facts. Runtime persistence is
+owned by three capture lanes: `MarketTickStreamWorker` writes Tier 1 WebSocket
+ticks, `MarketTickPollWorker` writes Tier 2 REST ticks, and ingest inline
+capture writes Tier 3 ticks while committing the matching `enriched_events`
+rows with `events`. `token_capture_tier` is a rebuildable projection with
+`TokenCaptureTierWorker` as its only runtime writer; it controls stream, poll,
+and inline-only capture assignment, but it is not a market fact.
+
+`LivePriceGateway` is cache/publish only. It may maintain process-local latest
+state and fan out WebSocket updates, but it must not write market facts or
+become a correctness dependency for projections.
 
 ## Wake hints and catch-up
 
-PostgreSQL `NOTIFY` channels (`market_observation_written`,
+PostgreSQL `NOTIFY` channels (`market_tick_written`,
 `resolution_updated`, `token_radar_updated`) are wake hints, not delivery
 guarantees. Every listener
 (`TokenRadarProjectionWorker`, `PulseCandidateWorker`, future workers) runs
@@ -109,8 +109,8 @@ Streaming providers (OKX DEX WS, GMGN direct WS, and any future streaming
 source) expose a connection state with a `last_state_change_at_ms` and
 publish it through `/api/status`. State values are `disconnected`,
 `connecting`, `authenticating`, `subscribed`, `streaming`, and `failed`.
-Workers must treat `provider_state_change=true` as a `first_seen`-equivalent
-budget trigger so the first fresh frame after recovery is persisted.
+Capture workers must expose provider state changes through status payloads so
+operators can tell the difference between stale markets and stale projections.
 
 ## Snapshot gate observability
 
