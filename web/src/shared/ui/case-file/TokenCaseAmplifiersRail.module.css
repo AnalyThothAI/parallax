@@ -1,0 +1,64 @@
+.rail {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--slab) 94%, var(--void));
+  padding: 12px;
+}
+
+.rail header {
+  display: grid;
+  gap: 3px;
+}
+
+.rail header span,
+.list span,
+.list small {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.rail h2 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.list {
+  display: grid;
+  gap: 7px;
+}
+
+.list article {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  background: var(--slab-2);
+  padding: 9px;
+}
+
+.list b {
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.list small {
+  color: var(--ash);
+  text-transform: none;
+}
+
+.list p {
+  margin: 0;
+  border: 1px dashed var(--line-soft);
+  color: var(--ash);
+  font-size: 12px;
+  padding: 9px;
+}

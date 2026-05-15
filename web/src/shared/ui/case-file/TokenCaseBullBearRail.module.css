@@ -1,0 +1,92 @@
+.rail {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--slab) 94%, var(--void));
+  padding: 12px;
+}
+
+.rail header {
+  display: grid;
+  gap: 3px;
+}
+
+.rail header span {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.rail h2,
+.thesis h3 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.rail h2 {
+  font-size: 15px;
+}
+
+.empty {
+  margin: 0;
+  border: 1px dashed var(--line-soft);
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 9px;
+}
+
+.thesis {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  background: var(--slab-2);
+  padding: 10px;
+}
+
+.thesis[data-tone="health"] {
+  border-color: var(--health-line);
+  background: var(--health-soft);
+}
+
+.thesis[data-tone="risk"] {
+  border-color: var(--risk-line);
+  background: var(--risk-soft);
+}
+
+.thesis[data-tone="info"],
+.thesis[data-tone="agent"] {
+  border-color: var(--info-line);
+  background: var(--info-soft);
+}
+
+.thesis[data-tone="warn"],
+.thesis[data-tone="opportunity"] {
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
+}
+
+.thesis h3 {
+  font-size: 13px;
+}
+
+.thesis p {
+  margin: 0;
+  color: var(--bone-2);
+  font-size: 13px;
+  line-height: 1.48;
+}
+
+.thesis ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.45;
+}

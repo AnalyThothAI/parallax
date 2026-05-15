@@ -1,0 +1,167 @@
+.hero {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--slab) 94%, var(--void));
+  padding: 14px;
+}
+
+.mark {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--health-line);
+  border-radius: 6px;
+  background: var(--health-soft);
+  color: var(--health);
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.titleBlock {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.kicker,
+.metaRow,
+.segmented button,
+.actions a {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.kicker {
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.titleBlock h1 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: clamp(22px, 3.6vw, 30px);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.titleBlock p {
+  margin: 0;
+  color: var(--ash);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.metaRow {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--dim);
+}
+
+.metaRow code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: var(--slab-2);
+  color: var(--bone-2);
+  padding: 2px 6px;
+  font-family: var(--mono);
+}
+
+.controls {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.segmented {
+  display: flex;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--void);
+  padding: 3px;
+}
+
+.segmented button {
+  min-width: 0;
+  min-height: 28px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--health-soft);
+  color: var(--health);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.actions a {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--slab-2);
+  color: var(--bone-2);
+  padding: 0 9px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.actions a[data-tone="info"] {
+  border-color: var(--info-line);
+  background: var(--info-soft);
+  color: var(--info);
+}
+
+.actions a[data-tone="opportunity"] {
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
+  color: var(--opportunity);
+}
+
+@media (max-width: 820px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .controls {
+    justify-items: stretch;
+  }
+
+  .segmented,
+  .actions {
+    justify-content: flex-start;
+  }
+}

@@ -20,3 +20,6 @@ export type {
   ObsidianStringField,
   ObsidianTone,
 } from "../obsidianLanguage";
+
+export { TokenCasePanel } from "./TokenCasePanel";
+export type { TokenCasePanelProps } from "./TokenCasePanel";

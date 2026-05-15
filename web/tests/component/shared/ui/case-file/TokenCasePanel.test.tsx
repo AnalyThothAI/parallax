@@ -1,0 +1,36 @@
+import { buildTokenCaseViewModel } from "@features/token-case";
+import { TokenCasePanel } from "@shared/ui/case-file";
+import { render, screen } from "@testing-library/react";
+import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
+import { describe, expect, it, vi } from "vitest";
+
+describe("TokenCasePanel", () => {
+  it("renders the shared token case anatomy", () => {
+    const vm = buildTokenCaseViewModel({
+      dossier: tokenCaseFixture(),
+      route: { window: "1h", scope: "all", postSort: "catalyst" },
+    });
+
+    render(
+      <TokenCasePanel
+        vm={vm}
+        onLoadMorePosts={vi.fn()}
+        onScopeChange={vi.fn()}
+        onTimelineSortChange={vi.fn()}
+        onWindowChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("region", { name: /Token case/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /\$HANSA/i })).toBeInTheDocument();
+    expect(screen.getByText("Propagation Summary")).toBeInTheDocument();
+    expect(screen.getByText("Mention Timeline")).toBeInTheDocument();
+    expect(screen.getByText("Live Market")).toBeInTheDocument();
+    expect(screen.getByText("Bull · 多头")).toBeInTheDocument();
+    expect(screen.getByText("Bear · 空头")).toBeInTheDocument();
+    expect(screen.getByText("Key Amplifiers")).toBeInTheDocument();
+    expect(screen.getByText("Data Gaps")).toBeInTheDocument();
+    expect(screen.getAllByText(/PQ/)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/原文/)[0]).toBeInTheDocument();
+  });
+});
