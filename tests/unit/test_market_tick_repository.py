@@ -5,8 +5,51 @@ from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.repositories.market_tick_repository import (
     MarketTickRepository,
+    market_tick_id,
 )
 from gmgn_twitter_intel.domains.asset_market.types import MarketTick
+
+
+def test_market_tick_id_is_deterministic_from_dedupe_key() -> None:
+    tick_id = market_tick_id(
+        target_type="chain_token",
+        target_id="solana:abc",
+        source_provider="okx_dex_ws",
+        observed_at_ms=1_700_000_000_000,
+    )
+
+    assert tick_id.startswith("market_tick:")
+    assert tick_id == market_tick_id(
+        target_type="chain_token",
+        target_id="solana:abc",
+        source_provider="okx_dex_ws",
+        observed_at_ms=1_700_000_000_000,
+    )
+    assert tick_id != market_tick_id(
+        target_type="chain_token",
+        target_id="solana:abc",
+        source_provider="okx_dex_ws",
+        observed_at_ms=1_700_000_000_001,
+    )
+    assert tick_id != market_tick_id(
+        target_type="chain_token",
+        target_id="solana:abc",
+        source_provider="okx_dex_rest",
+        observed_at_ms=1_700_000_000_000,
+    )
+
+
+def test_insert_tick_rejects_non_deterministic_tick_id() -> None:
+    conn = _ScriptedConnection([])
+
+    try:
+        MarketTickRepository(conn).insert_tick(_tick(tick_id="tick-1"))
+    except ValueError as exc:
+        assert "market tick id must be deterministic" in str(exc)
+    else:
+        raise AssertionError("expected insert_tick to reject a mismatched tick_id")
+
+    assert conn.sql == []
 
 
 def test_insert_market_tick_is_idempotent_without_update() -> None:
@@ -14,8 +57,8 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
     tick = _tick()
 
     repository = MarketTickRepository(conn)
-    assert repository.insert_tick(tick) == "tick-1"
-    assert repository.insert_tick(tick) == "tick-1"
+    assert repository.insert_tick(tick) == tick.tick_id
+    assert repository.insert_tick(tick) == tick.tick_id
 
     sql = "\n".join(conn.sql)
     assert "INSERT INTO market_ticks" in sql
@@ -23,14 +66,19 @@ def test_insert_market_tick_is_idempotent_without_update() -> None:
     assert "UPDATE market_ticks" not in sql
     assert conn.commits == 0
     assert len(conn.params) == 2
-    assert conn.params[0]["tick_id"] == "tick-1"
+    assert conn.params[0]["tick_id"] == tick.tick_id
     assert conn.params[0]["raw_payload_json"].obj == {"pair": "abc"}
 
 
 def test_insert_ticks_returns_attempted_count() -> None:
     conn = _ScriptedConnection([])
 
-    count = MarketTickRepository(conn).insert_ticks([_tick(tick_id="tick-1"), _tick(tick_id="tick-2")])
+    count = MarketTickRepository(conn).insert_ticks(
+        [
+            _tick(observed_at_ms=1_700_000_000_000),
+            _tick(observed_at_ms=1_700_000_000_001),
+        ]
+    )
 
     assert count == 2
     assert len(conn.sql) == 2
@@ -120,7 +168,13 @@ class _ScriptedConnection:
         self.commits += 1
 
 
-def _tick(*, tick_id: str = "tick-1") -> MarketTick:
+def _tick(*, tick_id: str | None = None, observed_at_ms: int = 1_700_000_000_000) -> MarketTick:
+    tick_id = tick_id or market_tick_id(
+        target_type="chain_token",
+        target_id="solana:abc",
+        source_provider="okx_dex_ws",
+        observed_at_ms=observed_at_ms,
+    )
     return MarketTick(
         tick_id=tick_id,
         target_type="chain_token",
@@ -132,7 +186,7 @@ def _tick(*, tick_id: str = "tick-1") -> MarketTick:
         pricefeed_id="pf-1",
         source_tier="tier1_ws",
         source_provider="okx_dex_ws",
-        observed_at_ms=1_700_000_000_000,
+        observed_at_ms=observed_at_ms,
         received_at_ms=1_700_000_000_100,
         price_usd=Decimal("1.23"),
         liquidity_usd=Decimal("1000"),
