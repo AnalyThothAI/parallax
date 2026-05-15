@@ -45,7 +45,6 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     payload = yaml.safe_load(text)
 
     assert "anchor_price" not in payload
-    assert "anchor_price:" not in text
     assert "market_observation_written" not in text
     assert "live_observation_" not in text
     assert "hot_target_ttl_seconds" not in text

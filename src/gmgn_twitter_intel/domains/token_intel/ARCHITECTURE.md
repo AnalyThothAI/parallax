@@ -17,8 +17,10 @@ GMGN frame
       → token_intents + token_intent_lookup_keys
       → token_intent_resolutions
       → registry_assets + asset_identity_evidence/current
-  → ResolutionRefreshWorker + AnchorPriceWorker write refreshed identity / event_anchor facts
-  → LivePriceGateway writes material decision_latest facts
+      → enriched_events + inline market_ticks
+  → TokenCaptureTierWorker ranks active market targets
+  → MarketTickStreamWorker / MarketTickPollWorker refresh hot market_ticks
+  → LivePriceGateway fans out cache-only live market updates
   → TokenRadarProjectionWorker
       → token_radar_rows.factor_snapshot_json
   → read models / Signal Pulse / notifications
@@ -37,8 +39,8 @@ GMGN frame
 | Asset identity ledger | `../asset_market/identity_evidence_policy.py`, `../asset_market/repositories/identity_evidence_repository.py` | `asset_identity_evidence`, `asset_identity_current` | Tweet CA mentions, GMGN payloads, OKX symbol candidates, and OKX exact address hits are separate evidence kinds. One deterministic policy selects current canonical symbol/name/confidence. |
 | Discovery and reprocess | `../asset_market/runtime/resolution_refresh_worker.py`, `../asset_market/repositories/discovery_repository.py` | `token_discovery_results`, `registry_assets`, `asset_identity_evidence/current` | Recent NIL / AMBIGUOUS symbol and address lookup keys are refreshed through OKX DEX, then affected intents are reprocessed. Symbol search writes bounded candidate evidence; exact address lookup writes exact evidence. Successful refresh wakes downstream fact readers; it does not inline Token Radar projection. |
 | Asset profile facts | `../asset_market/runtime/asset_profile_refresh_worker.py`, `../asset_market/services/asset_profile_refresh.py`, `../asset_market/repositories/asset_profile_repository.py`, `../asset_market/read_models/token_profile_read_model.py` | `asset_profiles` | Resolved DEX assets are enriched through the GMGN exact-token profile role after deterministic resolution. Profile facts are asset-level current facts and never resolver evidence, ranking factors, or `factor_snapshot_json` fields. Public read models consume persisted profile facts through `TokenProfileReadModel`; API and frontend code do not call providers. |
-| Market observations | `../asset_market/runtime/{anchor_price_worker.py,live_price_gateway.py}`, `../asset_market/services/{anchor_price_observation.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `price_observations` | AnchorPriceWorker writes `event_anchor` observations for resolved social signals. CEX route sync maintains token/feed routing without refreshing prices. LivePriceGateway may receive high-frequency provider frames, but only material `decision_latest` observations are persisted; raw frames are not business facts. |
-| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, and `price_observations` roles, then emits `token_factor_snapshot_v3_social_attention`. TokenRadarProjectionWorker is the only runtime writer for `token_radar_rows`; wake notifications are hints and missed notifications are covered by periodic catch-up. |
+| Market facts | `../asset_market/runtime/{token_capture_tier_worker.py,market_tick_stream_worker.py,market_tick_poll_worker.py,live_price_gateway.py}`, `../asset_market/services/{event_market_capture.py,asset_market_sync.py}` | `cex_tokens`, `price_feeds`, `market_ticks`, `enriched_events`, `token_capture_tier` | Ingest writes inline event-adjacent market ticks. Capture-tier projection assigns active targets to stream, poll, or inline-only. Stream and poll workers refresh hot market ticks. CEX route sync maintains token/feed routing without refreshing prices. LivePriceGateway may receive high-frequency provider frames, but it is cache-only and does not persist facts. |
+| Radar projection | `runtime/token_radar_projection_worker.py`, `services/token_radar_projection.py`, `scoring/factor_snapshot.py`, `scoring/cross_section_normalizer.py`, `scoring/factor_diagnostics.py`, `queries/token_radar_source_query.py` | `token_radar_rows.factor_snapshot_json`, `token_score_evaluations`, `projection_runs`, `projection_offsets` | Projection rebuilds 5m / 1h / 4h / 24h windows for `all` and `matched` scopes, joins current resolutions with events, account profiles, enrichment labels, registry address identity, `asset_identity_current`, `enriched_events`, and `market_ticks`, then emits `token_factor_snapshot_v3_social_attention`. TokenRadarProjectionWorker is the only runtime writer for `token_radar_rows`; wake notifications are hints and missed notifications are covered by periodic catch-up. |
 | Search read model | `read_models/search_service.py`, `queries/search_events_query.py`, `services/query_parser.py`, `services/search_aliases.py` | `events.search_tsv`, `token_intent_resolutions`, `cex_tokens`, `registry_assets`, `asset_identity_current` | Search resolves query intent against current production identity first, retrieves target / lexical / trigram route hits, fuses them into cursor pages, and never performs provider calls, extraction, resolution mutation, scoring projection, or legacy `assets / asset_aliases / asset_venues` identity reads. |
 
 ## Factor Snapshot Contract
@@ -71,7 +73,7 @@ contract. It contains:
 
 Token Radar current runtime explanation source is `factor_snapshot_json`.
 The market block is the single product-facing market contract; public readers do
-not reconstruct old top-level `anchor_price` or process-local `live_market`
+not reconstruct legacy top-level market fields or process-local live market
 fallbacks. Legacy score-centered JSON fields, v1 snapshot fields, and old
 current-market refresh snapshots are not runtime fallback sources. `profile`
 comes from the asset-level `asset_profiles` read model and is intentionally
