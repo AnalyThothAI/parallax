@@ -204,7 +204,7 @@ def _existing_capture(
             target_id=req.target_id,
             t_event_ms=int(req.event_ms),
             tick_id=_clean_str(row.get("tick_id")) or None,
-            tick_lag_ms=max(0, req.event_ms - observed_at_ms) if observed_at_ms is not None else None,
+            tick_lag_ms=_tick_lag_ms(observed_at_ms=observed_at_ms, event_ms=req.event_ms),
             capture_method=cast(Any, _clean_str(row.get("source_tier")) or "unavailable"),
             capture_reason="fresh_tick",
             created_at_ms=created_at_ms,
@@ -246,7 +246,7 @@ def _capture(
         target_id=req.target_id,
         t_event_ms=int(req.event_ms),
         tick_id=tick.tick_id,
-        tick_lag_ms=max(0, tick.observed_at_ms - int(req.event_ms)),
+        tick_lag_ms=_tick_lag_ms(observed_at_ms=tick.observed_at_ms, event_ms=req.event_ms),
         capture_method=tick.source_tier,
         capture_reason=reason,
         created_at_ms=created_at_ms,
@@ -356,7 +356,19 @@ def _positive_decimal(value: Any) -> Decimal | None:
 
 
 def _optional_decimal(value: Any) -> Decimal | None:
-    return None if value is None else _decimal(value)
+    if value is None:
+        return None
+    try:
+        decimal = _decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return decimal if decimal.is_finite() else None
+
+
+def _tick_lag_ms(*, observed_at_ms: int | None, event_ms: int) -> int | None:
+    if observed_at_ms is None:
+        return None
+    return abs(int(observed_at_ms) - int(event_ms))
 
 
 def _int_or_none(value: Any) -> int | None:
