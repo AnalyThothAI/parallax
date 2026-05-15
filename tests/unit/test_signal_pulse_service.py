@@ -780,6 +780,55 @@ def test_signal_pulse_fact_card_reads_market_facts_from_factor_snapshot_market()
     assert "market_context_json" not in item
 
 
+def test_signal_pulse_fact_card_prefers_decision_latest_and_ignores_top_level_market_fields() -> None:
+    row = _candidate_row(
+        "candidate-latest-market",
+        pulse_status="token_watch",
+        verdict="token_watch",
+        market_status="fresh",
+    )
+    row["price_usd"] = 999_000_000
+    row["market_cap_usd"] = 999_000_000
+    row["liquidity_usd"] = 999_000_000
+    row["holders"] = 999_000_000
+    row["volume_24h_usd"] = 999_000_000
+    market = row["factor_snapshot_json"]["market"]
+    market["event_anchor"] = {
+        **market["event_anchor"],
+        "price_usd": None,
+        "market_cap_usd": None,
+        "liquidity_usd": None,
+        "holders": None,
+        "volume_24h_usd": None,
+    }
+    market["decision_latest"] = {
+        **market["decision_latest"],
+        "price_usd": 0.84,
+        "market_cap_usd": 25_000_000,
+        "liquidity_usd": 1_640_000,
+        "holders": 28_400,
+        "volume_24h_usd": 4_600_000,
+    }
+
+    pulse = FakePulseRepository(pages={None: {"items": [row], "next_cursor": None}})
+    item = SignalPulseService(pulse=pulse).pulse(
+        window="1h",
+        scope="all",
+        status=None,
+        handle=None,
+        q=None,
+        limit=20,
+        cursor=None,
+        agent_worker_running=True,
+    )["items"][0]
+
+    assert item["fact_card"]["price_usd"] == 0.84
+    assert item["fact_card"]["market_cap_usd"] == 25_000_000
+    assert item["fact_card"]["liquidity_usd"] == 1_640_000
+    assert item["fact_card"]["holders"] == 28_400
+    assert item["fact_card"]["volume_24h_usd"] == 4_600_000
+
+
 def test_signal_pulse_rejects_v1_factor_snapshot_with_hard_gates() -> None:
     row = _candidate_row(
         "candidate-v1",

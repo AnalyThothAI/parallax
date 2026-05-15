@@ -102,7 +102,7 @@ Token Radar market contract:
   `dex_floor_status`, `missing_fields`, and `stale_fields`. Consumers must treat
   missing, stale, or below-floor market state as data health / gate context, not
   as positive alpha.
-- `/api/token-radar` rows do not expose old top-level anchor price,
+- `/api/token-radar` rows do not expose old top-level market payload,
   `live_market`, or `current_market` fields. Readers must not reconstruct those
   fields from factor families, process-local caches, or provider refresh rows.
 - `/api/live-market?target_type=Asset|CexToken&target_id=...` returns the latest

@@ -171,7 +171,7 @@ def pulse_item_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "factor_snapshot": factor_snapshot,
         "decision": _decision(row),
         "gate": gate,
-        "fact_card": _fact_card(row=row, factor_snapshot=factor_snapshot, gate=gate),
+        "fact_card": _fact_card(factor_snapshot=factor_snapshot, gate=gate),
         "agent_run_id": row.get("agent_run_id"),
         "pulse_version": row.get("pulse_version"),
         "gate_version": row.get("gate_version"),
@@ -211,7 +211,7 @@ def _valid_factor_snapshot(value: Any) -> bool:
     return is_token_factor_snapshot(value)
 
 
-def _fact_card(*, row: dict[str, Any], factor_snapshot: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
+def _fact_card(*, factor_snapshot: dict[str, Any], gate: dict[str, Any]) -> dict[str, Any]:
     subject = _dict(factor_snapshot.get("subject"))
     data_health = _dict(factor_snapshot.get("data_health"))
     composite = _dict(factor_snapshot.get("composite"))
@@ -229,7 +229,7 @@ def _fact_card(*, row: dict[str, Any], factor_snapshot: dict[str, Any], gate: di
         "watched_mentions": attention_facts.get("watched_mentions"),
         "eligible_for_high_alert": gate.get("eligible_for_high_alert"),
         "blocked_reasons": _list(gate.get("blocked_reasons")),
-        **_row_market_facts(row),
+        **_market_facts(factor_snapshot),
     }
 
 
@@ -250,18 +250,16 @@ def _family_facts(snapshot: dict[str, Any], family: str) -> dict[str, Any]:
 _MISSING = object()
 
 
-def _row_market_facts(row: dict[str, Any]) -> dict[str, Any]:
-    market = _dict(_dict(row.get("factor_snapshot_json")).get("market"))
+def _market_facts(snapshot: dict[str, Any]) -> dict[str, Any]:
+    market = _dict(snapshot.get("market"))
     anchor = _dict(market.get("event_anchor"))
     latest = _dict(market.get("decision_latest"))
     facts: dict[str, Any] = {}
     for key in ("price_usd", "market_cap_usd", "liquidity_usd", "holders", "volume_24h_usd"):
-        value = anchor.get(key, _MISSING)
-        if value is _MISSING:
-            value = latest.get(key, _MISSING)
-        if value is _MISSING and key in row:
-            value = row.get(key)
-        if value is not _MISSING:
+        value = latest.get(key, _MISSING)
+        if value is _MISSING or value is None:
+            value = anchor.get(key, _MISSING)
+        if value is not _MISSING and value is not None:
             facts[key] = value
     return facts
 

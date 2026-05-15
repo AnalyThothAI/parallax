@@ -12,7 +12,7 @@ LATEST_MIGRATION = (
 ALEMBIC_VERSIONS = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
 SUPERPOWERS_DOCS = ROOT / "docs/superpowers"
 
-SCANNED_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".sql"}
+SCANNED_SUFFIXES = {".html", ".md", ".py", ".sql", ".toml", ".yaml", ".yml"}
 SKIPPED_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
 BANNED_RUNTIME_STRINGS = (
     "".join(("Anchor", "Price", "Worker")),
@@ -20,6 +20,8 @@ BANNED_RUNTIME_STRINGS = (
     "_".join(("price", "observations")),
     "_".join(("market", "observation", "written")),
     "_".join(("message", "anchor")),
+    " ".join(("message", "anchor")),
+    " ".join(("anchor", "price")),
     "_".join(("should", "persist", "live", "observation")),
 )
 

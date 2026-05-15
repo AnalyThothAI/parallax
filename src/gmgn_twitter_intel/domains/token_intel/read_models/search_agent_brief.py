@@ -258,7 +258,7 @@ def _propagation_summary(*, symbol: str, phases: list[dict[str, Any]]) -> str:
 
 
 def _token_data_gaps(*, timeline: dict[str, Any]) -> list[str]:
-    gaps = ["缺真实 OHLC/K 线，只能展示 message anchor price"]
+    gaps = ["缺真实 OHLC/K 线，只能展示事件市场 tick 与最新 tick"]
     if not timeline.get("market_overlay"):
         gaps.append("缺市场 overlay")
     gaps.extend(["缺 holders", "缺合约风险和项目方资料"])
