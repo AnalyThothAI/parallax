@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from collections.abc import Callable
@@ -134,26 +133,22 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/watchlist/handle/{handle}/summary",
         response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandleSummaryData],
     )
-    async def watchlist_handle_summary(request: Request, handle: str) -> JSONResponse:
+    def watchlist_handle_summary(request: Request, handle: str) -> JSONResponse:
         runtime = _authenticated_runtime(request)
         try:
             normalized_handle = normalize_watchlist_handle(handle)
         except ValueError:
             raise ApiBadRequest("invalid_handle", field="handle") from None
         try:
-
-            def read_summary() -> dict[str, Any]:
-                with runtime.repositories() as repos:
-                    return WatchlistHandleReadService(
-                        repository=repos.watchlist_intel,
-                        config=_watchlist_handle_summary_config(runtime),
-                    ).summary(
-                        handle=normalized_handle,
-                        configured_handles=tuple(runtime.settings.handles),
-                        now_ms=_now_ms(),
-                    )
-
-            data = await asyncio.to_thread(read_summary)
+            with runtime.repositories() as repos:
+                data = WatchlistHandleReadService(
+                    repository=repos.watchlist_intel,
+                    config=_watchlist_handle_summary_config(runtime),
+                ).summary(
+                    handle=normalized_handle,
+                    configured_handles=tuple(runtime.settings.handles),
+                    now_ms=_now_ms(),
+                )
         except LookupError:
             return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
         return _json({"ok": True, "data": data})
@@ -162,7 +157,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         "/watchlist/handle/{handle}/timeline",
         response_model=api_schemas.ApiEnvelope[api_schemas.WatchlistHandleTimelineData],
     )
-    async def watchlist_handle_timeline(
+    def watchlist_handle_timeline(
         request: Request,
         handle: str,
         scope: Annotated[str, Query()] = "signal",
@@ -176,18 +171,14 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             raise ApiBadRequest("invalid_handle", field="handle") from None
         parsed_scope = _watchlist_timeline_scope(scope)
         try:
-
-            def read_timeline() -> dict[str, Any]:
-                with runtime.repositories() as repos:
-                    return WatchlistHandleReadService(repository=repos.watchlist_intel).timeline(
-                        handle=normalized_handle,
-                        configured_handles=tuple(runtime.settings.handles),
-                        scope=parsed_scope,
-                        cursor=cursor or None,
-                        limit=limit,
-                    )
-
-            data = await asyncio.to_thread(read_timeline)
+            with runtime.repositories() as repos:
+                data = WatchlistHandleReadService(repository=repos.watchlist_intel).timeline(
+                    handle=normalized_handle,
+                    configured_handles=tuple(runtime.settings.handles),
+                    scope=parsed_scope,
+                    cursor=cursor or None,
+                    limit=limit,
+                )
         except LookupError:
             return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
         except WatchlistTimelineCursorError:
