@@ -42,19 +42,19 @@ export function TokenCasePanel({
       <TokenCaseMetricStrip metrics={vm.metrics} />
       <TokenCasePropagationSummary propagation={vm.propagation} />
       <div className={styles.workspace}>
-        <main className={styles.mainColumn}>
+        <div className={styles.mainColumn}>
           <TokenCaseTimeline
             timeline={vm.timeline}
             onLoadMorePosts={onLoadMorePosts}
             onTimelineSortChange={onTimelineSortChange}
           />
-        </main>
-        <aside className={styles.sideRail} aria-label="Token case side rail">
+        </div>
+        <div className={styles.sideRail} aria-label="Token case side rail">
           <TokenCaseMarketRail market={vm.market} />
           <TokenCaseBullBearRail bullBear={vm.bullBear} />
           <TokenCaseAmplifiersRail amplifiers={vm.amplifiers} />
           <TokenCaseDataGapsRail dataGaps={vm.dataGaps} />
-        </aside>
+        </div>
       </div>
     </section>
   );

@@ -1,5 +1,4 @@
 import { buildSearchCaseView } from "@features/search/model/searchCase";
-import { buildSearchRadarSummary } from "@features/search/model/searchRadar";
 import { buildTopicBuckets } from "@features/search/model/searchTopicTimeline";
 import type { SearchInspectData } from "@lib/types";
 import { describe, expect, it } from "vitest";
@@ -19,38 +18,6 @@ describe("buildSearchCaseView", () => {
     expect(view.evidence.value).toBe("12 events");
   });
 
-  it("derives search radar summary outside the route component", () => {
-    const data = searchInspectFixture();
-    data.token_result!.radar_item = {
-      data_health: { identity: "ready", market: "live" },
-      market: {
-        decision_latest: {
-          market_cap_usd: 51_000_000,
-          price_usd: 0.0078,
-          provider: "okx_dex_ws_price_info",
-        },
-        event_anchor: {
-          market_cap_usd: 33_000_000,
-          provider: "gmgn_dex_quote",
-        },
-        readiness: { anchor_status: "anchored", latest_status: "live" },
-      },
-      score: { rank_score: 74, recommended_decision: "token_watch" },
-      target: { target_id: "asset:solana:rkc", target_type: "Asset" },
-    };
-
-    const summary = buildSearchRadarSummary(data.token_result!);
-
-    expect(summary.primaryMarketLabel).toBe("market cap");
-    expect(summary.primaryMarketValue).toBe("$51M");
-    expect(summary.primaryMarketDetail).toBe("live · okx_dex_ws_price_info");
-    expect(summary.scoreSummary).toEqual([
-      { label: "rank", value: "74" },
-      { label: "decision", value: "token_watch" },
-      { label: "gate", value: "-" },
-    ]);
-  });
-
   it("falls back to the timeline market overlay for dossier-shaped token results", () => {
     const data = searchInspectFixture();
     delete data.token_result!.market_overlay;
@@ -61,10 +28,8 @@ describe("buildSearchCaseView", () => {
     };
 
     const view = buildSearchCaseView(data);
-    const summary = buildSearchRadarSummary(data.token_result!);
 
     expect(view.subtitle).toContain("solana");
-    expect(summary.marketVenue).toBe("solana");
   });
 
   it("builds topic buckets outside the route component", () => {

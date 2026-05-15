@@ -1,5 +1,5 @@
-import { TokenTargetPage } from "@features/token-target";
+import { TokenCaseRoute } from "@features/token-case";
 
 export function TokenTargetRoute() {
-  return <TokenTargetPage />;
+  return <TokenCaseRoute />;
 }

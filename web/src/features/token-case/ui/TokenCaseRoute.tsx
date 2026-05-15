@@ -1,0 +1,105 @@
+import { getAuthToken } from "@lib/api/client";
+import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
+import { RemoteState } from "@shared/ui/RemoteState";
+import { TokenCasePanel } from "@shared/ui/case-file";
+import { useMemo } from "react";
+import { useParams, useSearchParams } from "react-router-dom";
+
+import type { TargetRef } from "../../../domain/tokenTarget";
+import {
+  mergeTokenCasePostPages,
+  useTokenCase,
+  useTokenCasePosts,
+} from "../api/useTokenCase";
+import { buildTokenCaseViewModel } from "../model/buildTokenCaseViewModel";
+import {
+  parseTokenCaseRouteState,
+  serializeTokenCaseRouteState,
+  type TokenCaseRouteState,
+} from "../state/tokenCaseRouteState";
+
+export function TokenCaseRoute() {
+  const { targetType, targetId } = useParams<{ targetType: string; targetId: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const routeState = parseTokenCaseRouteState(searchParams);
+  const target = useMemo(() => parseTarget(targetType, targetId), [targetId, targetType]);
+  const token = getAuthToken() ?? "";
+  const dossierQuery = useTokenCase({
+    token,
+    target,
+    window: routeState.window,
+    scope: routeState.scope,
+    postsLimit: 24,
+  });
+  const dossier = dossierQuery.data?.data ?? null;
+  const initialPosts = dossierQuery.isPending ? undefined : dossier?.posts ?? null;
+  const postsQuery = useTokenCasePosts({
+    token,
+    target,
+    window: routeState.window,
+    scope: routeState.scope,
+    postsLimit: 24,
+    postSort: routeState.postSort,
+    initialPosts,
+  });
+  const mergedPosts = mergeTokenCasePostPages(postsQuery.data?.pages);
+  const subscribedTargets = useMemo(() => (target ? [target] : []), [target]);
+  useMarketSubscription(subscribedTargets);
+
+  const updateRoute = (patch: Partial<TokenCaseRouteState>) => {
+    setSearchParams(serializeTokenCaseRouteState({ ...routeState, ...patch }));
+  };
+
+  if (!target) {
+    return (
+      <RemoteState.Empty
+        title="Token case target missing"
+        hint="Asset and CexToken routes are supported."
+      />
+    );
+  }
+  if (!token) {
+    return <RemoteState.Loading layout="route" rows={4} label="loading token case session" />;
+  }
+  if (dossierQuery.isError) {
+    return <RemoteState.Error error={dossierQuery.error} />;
+  }
+  if (dossierQuery.isPending) {
+    return <RemoteState.Loading layout="route" rows={5} label="loading token case" />;
+  }
+  if (!dossier) {
+    return <RemoteState.Empty title="Token case unavailable" />;
+  }
+
+  const vm = buildTokenCaseViewModel({
+    dossier,
+    route: routeState,
+    posts: mergedPosts,
+    isLoadingPosts: postsQuery.isLoading,
+    isFetchingNextPage: postsQuery.isFetchingNextPage,
+  });
+
+  return (
+    <TokenCasePanel
+      vm={vm}
+      onWindowChange={(window) => updateRoute({ window })}
+      onScopeChange={(scope) => updateRoute({ scope })}
+      onTimelineSortChange={(postSort) => updateRoute({ postSort })}
+      onLoadMorePosts={() => {
+        if (postsQuery.hasNextPage) {
+          void postsQuery.fetchNextPage();
+        }
+      }}
+    />
+  );
+}
+
+function parseTarget(
+  targetType: string | undefined,
+  targetId: string | undefined,
+): TargetRef | null {
+  if ((targetType !== "Asset" && targetType !== "CexToken") || !targetId) {
+    return null;
+  }
+  return { target_type: targetType, target_id: targetId };
+}
