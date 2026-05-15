@@ -1,4 +1,10 @@
-import type { ApiResponse, AssetFlowData, AssetFlowRow, LiveMarketUpdatePayload } from "@lib/types";
+import type {
+  ApiResponse,
+  AssetFlowData,
+  AssetFlowRow,
+  LiveMarketUpdatePayload,
+  TokenCaseDossier,
+} from "@lib/types";
 import type { QueryClient } from "@tanstack/react-query";
 
 import { queryKeys } from "./queryKeys";
@@ -15,6 +21,32 @@ export function patchTokenRadarLiveMarketUpdate(
       }
       const data = patchAssetFlowData(response.data, update);
       return data === response.data ? response : { ...response, data };
+    },
+  );
+}
+
+export function patchTokenCaseLiveMarketUpdate(
+  queryClient: QueryClient,
+  update: LiveMarketUpdatePayload,
+) {
+  queryClient.setQueriesData<ApiResponse<TokenCaseDossier>>(
+    { queryKey: queryKeys.tokenCaseRoot() },
+    (response) => {
+      if (!response?.data || !tokenCaseMatchesMarketUpdate(response.data, update)) {
+        return response;
+      }
+      return {
+        ...response,
+        data: {
+          ...response.data,
+          market_live: {
+            status: "ready",
+            target_type: update.target_type,
+            target_id: update.target_id,
+            ...update.market.decision_latest,
+          },
+        },
+      };
     },
   );
 }
@@ -69,5 +101,14 @@ function assetFlowRowMatchesMarketUpdate(
 ): boolean {
   return (
     row.target?.target_type === update.target_type && row.target?.target_id === update.target_id
+  );
+}
+
+function tokenCaseMatchesMarketUpdate(
+  dossier: TokenCaseDossier,
+  update: LiveMarketUpdatePayload,
+): boolean {
+  return (
+    dossier.target.target_type === update.target_type && dossier.target.target_id === update.target_id
   );
 }

@@ -5,6 +5,7 @@ import type {
   TokenPostServerSort,
   WindowKey,
 } from "@lib/types";
+import type { TokenCaseScope } from "@shared/model/tokenCaseViewModel";
 
 export const queryKeys = {
   bootstrap: () => ["bootstrap"] as const,
@@ -13,6 +14,13 @@ export const queryKeys = {
   tokenRadarRoot: () => ["token-radar"] as const,
   tokenRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
     ["token-radar", window, scope, limit] as const,
+  tokenCaseRoot: () => ["token-case"] as const,
+  tokenCase: (
+    targetKey: string | null,
+    window: WindowKey,
+    scope: TokenCaseScope,
+    postsLimit: number,
+  ) => ["token-case", targetKey, window, scope, postsLimit] as const,
   signalLabOverview: (window: WindowKey, scope: ScopeKey) =>
     ["signal-lab-overview", window, scope] as const,
   signalPulseCompact: (scope: ScopeKey, window: WindowKey) =>
@@ -39,7 +47,7 @@ export const queryKeys = {
   targetPosts: (
     targetKey: string | null,
     window: WindowKey,
-    scope: ScopeKey,
+    scope: ScopeKey | TokenCaseScope,
     range: TokenPostRange,
     sort: TokenPostServerSort,
     limit: number,

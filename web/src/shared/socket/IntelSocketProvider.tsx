@@ -1,6 +1,9 @@
 import { websocketUrl } from "@lib/api/client";
 import type { LiveMarketUpdatePayload, LivePayload, NotificationLivePayload } from "@lib/types";
-import { patchTokenRadarLiveMarketUpdate } from "@shared/query/patchMarketUpdate";
+import {
+  patchTokenCaseLiveMarketUpdate,
+  patchTokenRadarLiveMarketUpdate,
+} from "@shared/query/patchMarketUpdate";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReconnectingWebSocket from "reconnecting-websocket";
@@ -117,7 +120,9 @@ export function IntelSocketProvider({
         return;
       }
       if (payload.type === "live_market_update") {
-        patchTokenRadarLiveMarketUpdate(queryClient, payload as LiveMarketUpdatePayload);
+        const update = payload as LiveMarketUpdatePayload;
+        patchTokenRadarLiveMarketUpdate(queryClient, update);
+        patchTokenCaseLiveMarketUpdate(queryClient, update);
       }
     });
 

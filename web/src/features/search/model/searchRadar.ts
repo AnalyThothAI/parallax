@@ -35,7 +35,7 @@ export function buildSearchRadarSummary(result: SearchTokenResult): SearchRadarS
   const readiness = asRecord(market.readiness);
   const marketOverlay = asRecord(result.market_overlay);
   const firstBucketPrice = result.timeline.buckets.find((bucket) => bucket.price?.price_usd)?.price;
-  const candleClose = latestCandleClose(result.market_overlay.candles);
+  const candleClose = latestCandleClose(marketOverlay.candles);
   const isDexMarket =
     result.target.target_type === "Asset" || stringValue(radarTarget.target_type) === "Asset";
   const latestMarketCap = numberValue(decisionLatest.market_cap_usd);

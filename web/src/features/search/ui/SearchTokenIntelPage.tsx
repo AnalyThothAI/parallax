@@ -32,7 +32,7 @@ export function SearchTokenIntelPage({
   const radar = useMemo(() => buildSearchRadarSummary(result), [result]);
   const title = tokenTitle(result);
   const caseLabel = tokenCaseLabel(result);
-  const subtitle = targetIdentityLine(result.target, result.market_overlay);
+  const subtitle = targetIdentityLine(result.target, result.market_overlay ?? {});
   const radarTone = radar.radarStatusLabel === "radar row" ? "info" : "neutral";
   const marketTone = radar.primaryMarketTone === "positive" ? "health" : "neutral";
 
@@ -101,7 +101,7 @@ export function SearchTokenIntelPage({
         <div className="search-primary-stack">
           <SearchTimelinePanel
             activeStageId={selectedStageId}
-            marketOverlay={result.market_overlay}
+            marketOverlay={result.market_overlay ?? {}}
             timeline={result.timeline}
             onStageSelect={setSelectedStageId}
           />

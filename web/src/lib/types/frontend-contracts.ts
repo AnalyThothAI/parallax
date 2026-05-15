@@ -282,23 +282,27 @@ export type TokenProfileBlock = {
   } | null;
 };
 
-export type SearchTokenResult = {
+export type LiveMarketSnapshot = MarketObservationSnapshot & {
+  status?: "ready" | "missing" | "unsupported" | "error" | "stale" | string | null;
+  error?: string | null;
+  message?: string | null;
+  stale?: boolean | null;
+  readiness?: Partial<MarketReadiness> | null;
+  [key: string]: unknown;
+};
+
+export type TokenCaseDossier = {
   target: SearchTargetCandidate;
+  profile?: TokenProfileBlock | null;
   timeline: TokenSocialTimelineData;
   posts: TokenPostsData;
-  profile?: TokenProfileBlock | null;
-  radar_item?: Record<string, unknown> | null;
-  market_overlay: Record<string, unknown> &
-    TokenTimelineMarketOverlay & {
-      price_series_type: "anchor_line" | "ohlc" | string;
-      candle_status?: string | null;
-      candle_source?: string | null;
-      candle_bar?: string | null;
-      candle_error?: string | null;
-      candles?: MarketCandle[];
-    };
   agent_brief: SearchAgentBrief;
+  market_live?: LiveMarketSnapshot | null;
+  radar_item?: Record<string, unknown> | null;
+  market_overlay?: (Record<string, unknown> & TokenTimelineMarketOverlay) | null;
 };
+
+export type SearchTokenResult = TokenCaseDossier;
 
 export type SearchTopicResult = {
   summary: {
