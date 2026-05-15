@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import inspect
-import json
 import time
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -13,14 +11,6 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.market_field_facts import PROVIDER_OKX_DEX_WS_PRICE_INFO
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexMarketFactUpdate, DexMarketStreamTarget
-from gmgn_twitter_intel.domains.asset_market.services.live_observation_policy import (
-    should_persist_live_observation,
-)
-from gmgn_twitter_intel.domains.asset_market.types import (
-    MarketObservation,
-    MarketTargetRef,
-    market_observation_to_dict,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +58,6 @@ class LiveMarketSnapshot:
 @dataclass(frozen=True, slots=True)
 class LiveMarketEmit:
     payload: dict[str, Any]
-    persisted: bool
 
 
 class LivePriceGateway(WorkerBase):
@@ -95,20 +84,8 @@ class LivePriceGateway(WorkerBase):
         self.cex_poll_interval_seconds = max(0.001, float(getattr(settings, "cex_poll_interval_seconds", 30.0)))
         self.reconnect_delay_seconds = max(0.001, float(getattr(settings, "reconnect_delay_seconds", 3.0)))
         self.on_live_market_update = on_live_market_update
-        self.wake_bus = wake_bus
-        self.live_observation_heartbeat_ms = int(
-            max(0.0, float(getattr(settings, "live_observation_heartbeat_seconds", 60.0))) * 1000
-        )
-        self.live_observation_min_price_change_pct = max(
-            0.0, float(getattr(settings, "live_observation_min_price_change_pct", 0.005))
-        )
-        self.live_observation_min_write_interval_ms = int(
-            max(0.0, float(getattr(settings, "live_observation_min_write_interval_seconds", 5.0))) * 1000
-        )
+        del wake_bus
         self._cache: dict[tuple[str, str], LiveMarketSnapshot] = {}
-        self._live_observation_reason_counts: dict[str, int] = {}
-        self._stream_provider_state_epoch: tuple[str | None, int | None] | None = None
-        self._provider_state_changed_for_next_frame = False
 
     async def run(self) -> None:
         if not self.enabled:
@@ -156,23 +133,18 @@ class LivePriceGateway(WorkerBase):
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await self._run_cycle(now_ms=now_ms)
         return WorkerResult(
-            processed=int(result.get("observations_written") or 0),
-            notes={
-                "result": result,
-                "live_observation_reasons": dict(self._live_observation_reason_counts),
-            },
+            processed=int(result.get("live_market_updates_published") or 0),
+            notes={"result": result},
         )
 
     async def _run_cycle(self, *, now_ms: int | None = None) -> dict[str, Any]:
         received_at_ms = int(now_ms if now_ms is not None else _now_ms())
-        self._live_observation_reason_counts = {}
         result = {
             "targets_selected": 0,
             "dex_targets_selected": 0,
             "cex_targets_selected": 0,
             "updates_received": 0,
             "cex_quotes_received": 0,
-            "observations_written": 0,
             "live_market_updates_published": 0,
         }
         targets = await asyncio.to_thread(self._active_targets, now_ms=received_at_ms)
@@ -184,16 +156,12 @@ class LivePriceGateway(WorkerBase):
         cex_payloads = await asyncio.to_thread(self._poll_cex, cex_targets, received_at_ms=received_at_ms)
         for payload in cex_payloads:
             result["cex_quotes_received"] += 1
-            if payload.persisted:
-                result["observations_written"] += 1
-                await self._publish(payload.payload)
-                result["live_market_updates_published"] += 1
+            await self._publish(payload.payload)
+            result["live_market_updates_published"] += 1
         async for payload in self._stream_dex(dex_targets, received_at_ms=received_at_ms):
             result["updates_received"] += 1
-            if payload.persisted:
-                result["observations_written"] += 1
-                await self._publish(payload.payload)
-                result["live_market_updates_published"] += 1
+            await self._publish(payload.payload)
+            result["live_market_updates_published"] += 1
             if self._stop_event.is_set():
                 break
         return result
@@ -280,7 +248,6 @@ class LivePriceGateway(WorkerBase):
         stream = self.stream_provider.stream_price_info(stream_targets)
         iterator = stream.__aiter__()
         deadline = time.monotonic() + self._dex_stream_cycle_seconds()
-        self._record_stream_provider_state()
         try:
             while not self._stop_event.is_set():
                 remaining_seconds = deadline - time.monotonic()
@@ -293,7 +260,6 @@ class LivePriceGateway(WorkerBase):
                 target = target_by_key.get(_target_key(update.chain_id, update.address))
                 if target is None:
                     continue
-                self._record_stream_provider_state()
                 yield self._payload_from_dex(update, target=target, received_at_ms=received_at_ms)
         finally:
             close = getattr(iterator, "aclose", None)
@@ -328,9 +294,7 @@ class LivePriceGateway(WorkerBase):
         )
         return self._store_payload(
             snapshot,
-            observed_now_ms=received_at_ms,
             pricefeed_id=target.pricefeed_id,
-            raw_payload=update.raw,
         )
 
     def _payload_from_cex(self, ticker: CexTicker, *, target: dict[str, Any], received_at_ms: int) -> LiveMarketEmit:
@@ -354,96 +318,26 @@ class LivePriceGateway(WorkerBase):
         )
         return self._store_payload(
             snapshot,
-            observed_now_ms=received_at_ms,
             pricefeed_id=str(target.get("pricefeed_id") or "") or None,
-            raw_payload=ticker.raw,
         )
 
     def _store_payload(
         self,
         snapshot: LiveMarketSnapshot,
         *,
-        observed_now_ms: int,
         pricefeed_id: str | None,
-        raw_payload: dict[str, Any] | None,
     ) -> LiveMarketEmit:
         self._cache[(snapshot.target_type, snapshot.target_id)] = snapshot
-        observation = _observation_from_snapshot(snapshot, pricefeed_id=pricefeed_id, raw_payload=raw_payload)
-        persisted = self._persist_material_observation(observation)
         return LiveMarketEmit(
-            persisted=persisted,
             payload={
                 "type": "live_market_update",
                 "provider": snapshot.provider,
                 "target_type": snapshot.target_type,
                 "target_id": snapshot.target_id,
                 "observed_at_ms": snapshot.observed_at_ms,
-                "market": {"decision_latest": market_observation_to_dict(observation)},
+                "market": {"decision_latest": _decision_latest_payload(snapshot, pricefeed_id=pricefeed_id)},
             },
         )
-
-    def _persist_material_observation(self, observation: MarketObservation) -> bool:
-        now_ms = int(observation.observed_at_ms)
-        provider_state_changed = self._provider_state_changed_for_next_frame
-        self._provider_state_changed_for_next_frame = False
-        with self.db.worker_session(self.name) as repos:
-            previous = repos.price_observations.latest_for_target(
-                target_type=observation.target.target_type,
-                target_id=observation.target.target_id,
-                now_ms=now_ms,
-                max_age_ms=None,
-            )
-            decision = should_persist_live_observation(
-                previous=previous,
-                candidate=observation,
-                now_ms=now_ms,
-                heartbeat_ms=self.live_observation_heartbeat_ms,
-                min_price_change_pct=self.live_observation_min_price_change_pct,
-                min_write_interval_ms=self.live_observation_min_write_interval_ms,
-                provider_state_changed=provider_state_changed,
-            )
-            self._record_live_observation_reason(decision.reason)
-            if not decision.should_persist:
-                return False
-            repos.price_observations.insert_market_observation(
-                observation,
-                observation_kind="decision_latest",
-                source_event_id=None,
-                source_intent_id=None,
-                source_resolution_id=None,
-                event_received_at_ms=None,
-                commit=True,
-            )
-        if self.wake_bus is not None:
-            self.wake_bus.notify_market_observation_written(
-                target_type=observation.target.target_type,
-                target_id=observation.target.target_id,
-            )
-        return True
-
-    def _record_stream_provider_state(self) -> None:
-        payload_method = getattr(self.stream_provider, "connection_state_payload", None)
-        if payload_method is None:
-            return
-        try:
-            payload = payload_method()
-        except Exception:
-            return
-        if not isinstance(payload, dict):
-            return
-        epoch = (
-            str(payload.get("state")) if payload.get("state") is not None else None,
-            int(payload["last_state_change_at_ms"]) if payload.get("last_state_change_at_ms") is not None else None,
-        )
-        if self._stream_provider_state_epoch is None:
-            self._stream_provider_state_epoch = epoch
-            return
-        if epoch != self._stream_provider_state_epoch:
-            self._stream_provider_state_epoch = epoch
-            self._provider_state_changed_for_next_frame = True
-
-    def _record_live_observation_reason(self, reason: str) -> None:
-        self._live_observation_reason_counts[reason] = self._live_observation_reason_counts.get(reason, 0) + 1
 
     async def _publish(self, payload: dict[str, Any]) -> None:
         if self.on_live_market_update is None:
@@ -481,35 +375,28 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _observation_from_snapshot(
+def _decision_latest_payload(
     snapshot: LiveMarketSnapshot,
     *,
     pricefeed_id: str | None,
-    raw_payload: dict[str, Any] | None,
-) -> MarketObservation:
+) -> dict[str, Any]:
     observed_at_ms = int(snapshot.observed_at_ms if snapshot.observed_at_ms is not None else _now_ms())
-    return MarketObservation(
-        target=MarketTargetRef(target_type=snapshot.target_type, target_id=snapshot.target_id),
-        observed_at_ms=observed_at_ms,
-        received_at_ms=snapshot.received_at_ms,
-        source="decision_latest",
-        provider=snapshot.provider,
-        pricefeed_id=pricefeed_id,
-        price_usd=snapshot.price_usd,
-        price_quote=snapshot.price_quote,
-        quote_symbol=snapshot.quote_symbol,
-        price_basis=snapshot.price_basis,
-        market_cap_usd=snapshot.market_cap_usd,
-        liquidity_usd=snapshot.liquidity_usd,
-        holders=snapshot.holders,
-        volume_24h_usd=snapshot.volume_24h_usd,
-        open_interest_usd=None,
-        raw_payload_hash=_payload_hash(raw_payload),
-    )
-
-
-def _payload_hash(payload: dict[str, Any] | None) -> str | None:
-    if not payload:
-        return None
-    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return {
+        "target_type": snapshot.target_type,
+        "target_id": snapshot.target_id,
+        "observed_at_ms": observed_at_ms,
+        "received_at_ms": snapshot.received_at_ms,
+        "source": "decision_latest",
+        "provider": snapshot.provider,
+        "pricefeed_id": pricefeed_id,
+        "price_usd": snapshot.price_usd,
+        "price_quote": snapshot.price_quote,
+        "quote_symbol": snapshot.quote_symbol,
+        "price_basis": snapshot.price_basis,
+        "market_cap_usd": snapshot.market_cap_usd,
+        "liquidity_usd": snapshot.liquidity_usd,
+        "holders": snapshot.holders,
+        "volume_24h_usd": snapshot.volume_24h_usd,
+        "open_interest_usd": None,
+        "raw_payload_hash": None,
+    }

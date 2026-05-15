@@ -9,8 +9,9 @@ from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdat
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 
 
-def test_live_price_gateway_persists_and_publishes_first_material_update():
+def test_live_price_gateway_caches_and_publishes_without_market_fact_writes():
     db = FakeDB()
+    wake_bus = ForbiddenWakeBus()
     stream_provider = FakeStreamProvider(
         [
             DexMarketFactUpdate(
@@ -32,6 +33,7 @@ def test_live_price_gateway_persists_and_publishes_first_material_update():
         cex_market=None,
         projection_version="token-radar-v12-anchor-live-hard-cut",
         on_live_market_update=published.append,
+        wake_bus=wake_bus,
     )
 
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_000_000))
@@ -39,7 +41,9 @@ def test_live_price_gateway_persists_and_publishes_first_material_update():
     assert isinstance(result, WorkerResult)
     assert result.notes["result"]["updates_received"] == 1
     assert result.processed == 1
-    assert len(db.repos.price_observations.calls) == 1
+    assert result.notes["result"]["live_market_updates_published"] == 1
+    db.repos.assert_no_market_fact_access()
+    assert wake_bus.touched is False
     assert published[0]["type"] == "live_market_update"
     assert published[0]["market"]["decision_latest"]["price_usd"] == 0.42
     assert published[0]["market"]["decision_latest"]["source"] == "decision_latest"
@@ -116,10 +120,8 @@ def test_live_price_gateway_bounds_dex_stream_cycle_when_no_updates_arrive():
     assert stream_provider.closed is True
 
 
-def test_live_price_gateway_persists_first_frame_after_provider_state_change():
+def test_live_price_gateway_publishes_every_valid_live_update_without_debounce():
     db = FakeDB()
-    previous = db.repos.price_observations.seed_previous(observed_at_ms=1_778_000_000_000, price_usd=1.0)
-    assert previous.price_usd == 1.0
     stream_provider = FakeStreamProvider(
         [
             DexMarketFactUpdate(
@@ -130,11 +132,8 @@ def test_live_price_gateway_persists_first_frame_after_provider_state_change():
                 raw={"price": "1.0001"},
             )
         ],
-        state_payloads=[
-            {"state": "subscribed", "last_state_change_at_ms": 111},
-            {"state": "streaming", "last_state_change_at_ms": 222},
-        ],
     )
+    published: list[dict] = []
     gateway = LivePriceGateway(
         name="live_price_gateway",
         settings=worker_settings(),
@@ -143,12 +142,16 @@ def test_live_price_gateway_persists_first_frame_after_provider_state_change():
         stream_provider=stream_provider,
         cex_market=None,
         projection_version="token-radar-v12-anchor-live-hard-cut",
+        on_live_market_update=published.append,
     )
 
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_001_000))
 
     assert result.processed == 1
-    assert result.notes["live_observation_reasons"]["provider_state_change"] == 1
+    assert result.notes["result"]["live_market_updates_published"] == 1
+    assert len(published) == 1
+    assert published[0]["market"]["decision_latest"]["price_usd"] == 1.0001
+    db.repos.assert_no_market_fact_access()
 
 
 class FakeStreamProvider:
@@ -199,9 +202,6 @@ def worker_settings(**overrides):
         "hot_target_ttl_seconds": 60.0,
         "reconnect_delay_seconds": 0.1,
         "cex_poll_interval_seconds": 30.0,
-        "live_observation_heartbeat_seconds": 60.0,
-        "live_observation_min_price_change_pct": 0.005,
-        "live_observation_min_write_interval_seconds": 5.0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -231,7 +231,14 @@ class FakeSession:
 class FakeRepos:
     def __init__(self) -> None:
         self.registry = FakeRegistry()
-        self.price_observations = FakePriceObservations()
+        self.price_observations = ForbiddenRepository("price_observations")
+        self.market_ticks = ForbiddenRepository("market_ticks")
+        self.enriched_events = ForbiddenRepository("enriched_events")
+
+    def assert_no_market_fact_access(self) -> None:
+        assert self.price_observations.touched is False
+        assert self.market_ticks.touched is False
+        assert self.enriched_events.touched is False
 
 
 class FakeRegistry:
@@ -258,59 +265,20 @@ class FakeRegistry:
         ]
 
 
-class FakePriceObservations:
+class ForbiddenRepository:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.touched = False
+
+    def __getattr__(self, method_name: str):
+        self.touched = True
+        raise AssertionError(f"LivePriceGateway must not touch {self.name}.{method_name}")
+
+
+class ForbiddenWakeBus:
     def __init__(self) -> None:
-        self.calls: list[dict] = []
-        self.latest = {}
+        self.touched = False
 
-    def seed_previous(self, *, observed_at_ms: int, price_usd: float):
-        from gmgn_twitter_intel.domains.asset_market.types import MarketObservation, MarketTargetRef
-
-        observation = MarketObservation(
-            target=MarketTargetRef(target_type="Asset", target_id="asset:solana:token:abc"),
-            observed_at_ms=observed_at_ms,
-            received_at_ms=observed_at_ms,
-            source="decision_latest",
-            provider="okx_dex_ws_price_info",
-            pricefeed_id=None,
-            price_usd=price_usd,
-            price_quote=None,
-            quote_symbol="USD",
-            price_basis="usd",
-            market_cap_usd=None,
-            liquidity_usd=None,
-            holders=None,
-            volume_24h_usd=None,
-            open_interest_usd=None,
-            raw_payload_hash=None,
-        )
-        self.latest[(observation.target.target_type, observation.target.target_id)] = observation
-        return observation
-
-    def latest_for_target(self, *, target_type, target_id, now_ms, max_age_ms):
-        return self.latest.get((target_type, target_id))
-
-    def insert_market_observation(
-        self,
-        observation,
-        *,
-        observation_kind,
-        source_event_id,
-        source_intent_id,
-        source_resolution_id,
-        event_received_at_ms,
-        commit,
-    ):
-        self.calls.append(
-            {
-                "observation": observation,
-                "observation_kind": observation_kind,
-                "source_event_id": source_event_id,
-                "source_intent_id": source_intent_id,
-                "source_resolution_id": source_resolution_id,
-                "event_received_at_ms": event_received_at_ms,
-                "commit": commit,
-            }
-        )
-        self.latest[(observation.target.target_type, observation.target.target_id)] = observation
-        return "observation-id"
+    def __getattr__(self, method_name: str):
+        self.touched = True
+        raise AssertionError(f"LivePriceGateway must not touch wake bus method {method_name}")

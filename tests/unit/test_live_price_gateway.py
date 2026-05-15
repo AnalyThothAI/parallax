@@ -7,7 +7,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdat
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 
 
-def test_live_price_gateway_persists_only_material_decision_latest_frames():
+def test_live_price_gateway_publishes_every_live_frame_without_material_writes():
     db = FakeDB()
     stream_provider = FakeStreamProvider(
         [
@@ -42,12 +42,12 @@ def test_live_price_gateway_persists_only_material_decision_latest_frames():
     result = asyncio.run(gateway.run_once(now_ms=1_778_000_000_000))
 
     assert result.notes["result"]["updates_received"] == 2
-    assert result.processed == 1
-    assert len(db.repos.price_observations.calls) == 1
-    assert db.repos.price_observations.calls[0]["observation_kind"] == "decision_latest"
-    assert result.notes["live_observation_reasons"]["first_seen"] == 1
-    assert result.notes["live_observation_reasons"]["debounced"] == 1
+    assert result.processed == 2
+    assert result.notes["result"]["live_market_updates_published"] == 2
+    db.repos.assert_no_market_fact_access()
+    assert len(published) == 2
     assert published[0]["market"]["decision_latest"]["price_usd"] == 1.0
+    assert published[1]["market"]["decision_latest"]["price_usd"] == 1.0001
 
 
 class FakeStreamProvider:
@@ -68,9 +68,6 @@ def worker_settings(**overrides):
         "hot_target_ttl_seconds": 60.0,
         "reconnect_delay_seconds": 0.1,
         "cex_poll_interval_seconds": 30.0,
-        "live_observation_heartbeat_seconds": 60.0,
-        "live_observation_min_price_change_pct": 0.005,
-        "live_observation_min_write_interval_seconds": 5.0,
     }
     values.update(overrides)
     return SimpleNamespace(**values)
@@ -98,7 +95,14 @@ class FakeSession:
 class FakeRepos:
     def __init__(self) -> None:
         self.registry = FakeRegistry()
-        self.price_observations = FakePriceObservations()
+        self.price_observations = ForbiddenRepository("price_observations")
+        self.market_ticks = ForbiddenRepository("market_ticks")
+        self.enriched_events = ForbiddenRepository("enriched_events")
+
+    def assert_no_market_fact_access(self) -> None:
+        assert self.price_observations.touched is False
+        assert self.market_ticks.touched is False
+        assert self.enriched_events.touched is False
 
 
 class FakeRegistry:
@@ -116,25 +120,11 @@ class FakeRegistry:
         ]
 
 
-class FakePriceObservations:
-    def __init__(self) -> None:
-        self.calls: list[dict] = []
-        self.latest = {}
+class ForbiddenRepository:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.touched = False
 
-    def latest_for_target(self, *, target_type, target_id, now_ms, max_age_ms):
-        return self.latest.get((target_type, target_id))
-
-    def insert_market_observation(
-        self,
-        observation,
-        *,
-        observation_kind,
-        source_event_id,
-        source_intent_id,
-        source_resolution_id,
-        event_received_at_ms,
-        commit,
-    ):
-        self.calls.append({"observation": observation, "observation_kind": observation_kind, "commit": commit})
-        self.latest[(observation.target.target_type, observation.target.target_id)] = observation
-        return "observation-id"
+    def __getattr__(self, method_name: str):
+        self.touched = True
+        raise AssertionError(f"LivePriceGateway must not touch {self.name}.{method_name}")
