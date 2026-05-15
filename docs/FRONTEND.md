@@ -44,8 +44,9 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 - **Data ownership.** Feature API hooks own server reads/writes. Feature UI and routes must not call `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set*` directly.
 - **URL state.** Shareable filters such as `window`, `scope`, handles, search query, selected target, and radar sort live in route-state helpers. Local stores are only for interaction state that should not survive hard reloads.
 - **Socket lifecycle.** `shared/socket` owns authentication, notification/event streams, and ref-counted market-target subscriptions. Routes register only the market targets they currently need; leaving Token Radar releases radar market targets while preserving global notification subscription.
-- **Search route.** `/search` reuses the cockpit topbar but owns its search-local rail, filters, resolver candidates, and selected result. Topbar submit navigates to `/search?q=<query>`.
-- **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>`; token-target audit routes own persistent target inspection.
+- **Search route.** `/search` reuses the cockpit topbar but owns its search-local rail, filters, resolver candidates, and selected result. Topbar submit navigates to `/search?q=<query>`. Token search results render the shared Token Case panel directly from `/api/search/inspect`; they do not fetch `/api/token-case` again.
+- **Token Case route.** `features/token-case` owns persistent `/token/:targetType/:targetId` inspection. The route parses `window`, `scope`, and timeline sort from the URL, fetches `/api/token-case`, seeds `/api/target-posts` from the dossier's first page, and subscribes only the active target for live market updates.
+- **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>` for resolver context, while explicit token links may route to the Token Case dossier when a canonical target id is already known.
 - **Remote state.** Loading, empty, stale, and error surfaces should use `RemoteState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **Accessibility.** Icon-only controls use `IconButton` with an explicit `aria-label`; route status regions use polite live regions; form controls need visible or screen-reader labels. `jsx-a11y/recommended` is enforced as an error gate.
@@ -71,7 +72,7 @@ Production bundles ship inside the same Docker image as the Python service and a
 
 Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
-1. Hard-reload `/`, `/search`, `/signal-lab`, `/stocks`, and `/token/:targetType/:targetId` with representative query params.
+1. Hard-reload `/`, `/search`, `/signal-lab`, `/stocks`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
 3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
 4. Confirm no failing `/api/*` requests in the browser session.

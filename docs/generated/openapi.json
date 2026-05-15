@@ -1027,6 +1027,52 @@
         "title": "ApiEnvelope[TargetSocialTimelineData]",
         "type": "object"
       },
+      "ApiEnvelope_TokenCaseData_": {
+        "additionalProperties": true,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenCaseData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[TokenCaseData]",
+        "type": "object"
+      },
       "ApiEnvelope_TokenRadarData_": {
         "additionalProperties": true,
         "properties": {
@@ -1377,6 +1423,18 @@
       "SearchInspectData": {
         "additionalProperties": true,
         "properties": {
+          "ambiguous_result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ambiguous Result"
+          },
           "error": {
             "anyOf": [
               {
@@ -2235,6 +2293,57 @@
           "query"
         ],
         "title": "TargetSocialTimelineData",
+        "type": "object"
+      },
+      "TokenCaseData": {
+        "additionalProperties": true,
+        "properties": {
+          "agent_brief": {
+            "additionalProperties": true,
+            "title": "Agent Brief",
+            "type": "object"
+          },
+          "market_live": {
+            "additionalProperties": true,
+            "title": "Market Live",
+            "type": "object"
+          },
+          "posts": {
+            "additionalProperties": true,
+            "title": "Posts",
+            "type": "object"
+          },
+          "profile": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile"
+          },
+          "target": {
+            "additionalProperties": true,
+            "title": "Target",
+            "type": "object"
+          },
+          "timeline": {
+            "additionalProperties": true,
+            "title": "Timeline",
+            "type": "object"
+          }
+        },
+        "required": [
+          "target",
+          "timeline",
+          "posts",
+          "agent_brief",
+          "market_live"
+        ],
+        "title": "TokenCaseData",
         "type": "object"
       },
       "TokenRadarData": {
@@ -3980,6 +4089,89 @@
           }
         },
         "summary": "Target Social Timeline",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/token-case": {
+      "get": {
+        "operationId": "token_case_api_token_case_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "target_type",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Target Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "target_id",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "window",
+            "required": false,
+            "schema": {
+              "default": "1h",
+              "title": "Window",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "posts_limit",
+            "required": false,
+            "schema": {
+              "default": 24,
+              "title": "Posts Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_TokenCaseData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Token Case",
         "tags": [
           "api"
         ]

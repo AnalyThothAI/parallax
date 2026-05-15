@@ -6,11 +6,7 @@ import { useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 
 import type { TargetRef } from "../../../domain/tokenTarget";
-import {
-  mergeTokenCasePostPages,
-  useTokenCase,
-  useTokenCasePosts,
-} from "../api/useTokenCase";
+import { mergeTokenCasePostPages, useTokenCase, useTokenCasePosts } from "../api/useTokenCase";
 import { buildTokenCaseViewModel } from "../model/buildTokenCaseViewModel";
 import {
   parseTokenCaseRouteState,
@@ -32,7 +28,7 @@ export function TokenCaseRoute() {
     postsLimit: 24,
   });
   const dossier = dossierQuery.data?.data ?? null;
-  const initialPosts = dossierQuery.isPending ? undefined : dossier?.posts ?? null;
+  const initialPosts = dossierQuery.isPending ? undefined : (dossier?.posts ?? null);
   const postsQuery = useTokenCasePosts({
     token,
     target,

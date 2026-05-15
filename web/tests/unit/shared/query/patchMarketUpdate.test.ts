@@ -88,7 +88,10 @@ describe("liveMarketUpdatePatch", () => {
         target_id: "asset:solana:token:other",
       },
     });
-    queryClient.setQueryData(["token-case", "Asset:asset:solana:token:abc", "1h", "all", 24], matching);
+    queryClient.setQueryData(
+      ["token-case", "Asset:asset:solana:token:abc", "1h", "all", 24],
+      matching,
+    );
     queryClient.setQueryData(
       ["token-case", "Asset:asset:solana:token:other", "1h", "all", 24],
       unrelated,

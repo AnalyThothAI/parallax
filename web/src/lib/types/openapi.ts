@@ -480,6 +480,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/token-case": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Token Case */
+        get: operations["token_case_api_token_case_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/token-radar": {
         parameters: {
             query?: never;
@@ -813,6 +830,18 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ApiEnvelope[TokenCaseData] */
+        ApiEnvelope_TokenCaseData_: {
+            data?: components["schemas"]["TokenCaseData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        } & {
+            [key: string]: unknown;
+        };
         /** ApiEnvelope[TokenRadarData] */
         ApiEnvelope_TokenRadarData_: {
             data?: components["schemas"]["TokenRadarData"] | null;
@@ -977,6 +1006,10 @@ export interface components {
         };
         /** SearchInspectData */
         SearchInspectData: {
+            /** Ambiguous Result */
+            ambiguous_result?: {
+                [key: string]: unknown;
+            } | null;
             /** Error */
             error?: string | null;
             /** Query */
@@ -1243,6 +1276,35 @@ export interface components {
             summary?: {
                 [key: string]: unknown;
             } | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** TokenCaseData */
+        TokenCaseData: {
+            /** Agent Brief */
+            agent_brief: {
+                [key: string]: unknown;
+            };
+            /** Market Live */
+            market_live: {
+                [key: string]: unknown;
+            };
+            /** Posts */
+            posts: {
+                [key: string]: unknown;
+            };
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Target */
+            target: {
+                [key: string]: unknown;
+            };
+            /** Timeline */
+            timeline: {
+                [key: string]: unknown;
+            };
         } & {
             [key: string]: unknown;
         };
@@ -2144,6 +2206,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_TargetSocialTimelineData_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    token_case_api_token_case_get: {
+        parameters: {
+            query?: {
+                target_type?: string;
+                target_id?: string;
+                window?: string;
+                scope?: string;
+                posts_limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiEnvelope_TokenCaseData_"];
                 };
             };
             /** @description Validation Error */

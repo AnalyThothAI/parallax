@@ -28,12 +28,11 @@ export function buildTokenCaseViewModel({
   const profileIdentity = dossier.profile?.identity;
   const symbol = cleanText(profileIdentity?.symbol) ?? cleanText(target.symbol);
   const name = cleanText(profileIdentity?.name);
-  const title = symbol ? `$${symbol}${name && name !== symbol ? ` · ${name}` : ""}` : shortId(target.target_id);
+  const title = symbol
+    ? `$${symbol}${name && name !== symbol ? ` · ${name}` : ""}`
+    : shortId(target.target_id);
   const mergedPosts = posts ?? dossier.posts;
-  const timelineItems = sortTimelineItems(
-    mergedPosts.items.map(buildPostEvent),
-    route.postSort,
-  );
+  const timelineItems = sortTimelineItems(mergedPosts.items.map(buildPostEvent), route.postSort);
   const visibleTimelineItems =
     route.postSort === "watched" ? timelineItems.filter((item) => item.isWatched) : timelineItems;
   const dataGaps = dossier.agent_brief.project_summary.data_gaps.filter(Boolean);
@@ -59,7 +58,9 @@ export function buildTokenCaseViewModel({
       logoUrl: cleanText(profileIdentity?.logo_url),
       title,
       subtitle: heroSubtitle(dossier),
-      contractLabel: target.address ? `${target.chain_id ?? "chain"} · ${shortAddress(target.address)}` : null,
+      contractLabel: target.address
+        ? `${target.chain_id ?? "chain"} · ${shortAddress(target.address)}`
+        : null,
       actions: heroActions(dossier),
     },
     metrics: [
@@ -95,9 +96,18 @@ export function buildTokenCaseViewModel({
     propagation: {
       summaryZh: dossier.agent_brief.propagation.summary_zh,
       statusPills: [
-        { label: dossier.agent_brief.project_summary.current_state, tone: phaseTone(dossier.timeline.summary.phase) },
-        { label: `${compactNumber(dossier.timeline.summary.effective_authors)} effective authors`, tone: "info" },
-        { label: `top ${Math.round(dossier.timeline.summary.top_author_share * 100)}%`, tone: "neutral" },
+        {
+          label: dossier.agent_brief.project_summary.current_state,
+          tone: phaseTone(dossier.timeline.summary.phase),
+        },
+        {
+          label: `${compactNumber(dossier.timeline.summary.effective_authors)} effective authors`,
+          tone: "info",
+        },
+        {
+          label: `top ${Math.round(dossier.timeline.summary.top_author_share * 100)}%`,
+          tone: "neutral",
+        },
       ],
       stages: dossier.agent_brief.propagation.phases.slice(0, 3).map((phase, index) => {
         const stage = dossier.timeline.stages[index];
@@ -106,7 +116,9 @@ export function buildTokenCaseViewModel({
           phase: phaseLabel(phase.phase),
           count: stage?.people.posts ?? phase.tweets,
           authors: stage?.people.authors ?? phase.authors,
-          leadAccount: phase.lead_accounts[0] ? `@${phase.lead_accounts[0].replace(/^@+/, "")}` : null,
+          leadAccount: phase.lead_accounts[0]
+            ? `@${phase.lead_accounts[0].replace(/^@+/, "")}`
+            : null,
           readZh: phase.read_zh,
           tone: phaseTone(phase.phase),
         };
@@ -190,11 +202,14 @@ function buildMarketView(dossier: TokenCaseDossier): TokenCaseMarketView {
     marketCapLabel: marketCap === null ? "-" : formatUsdCompact(marketCap),
     liquidityLabel: liquidity === null ? "-" : formatUsdCompact(liquidity),
     holdersLabel: holders === null ? "-" : compactNumber(holders),
-    observedAtLabel: numberValue(live.observed_at_ms) ? timeAgoLabel(Number(live.observed_at_ms)) : null,
+    observedAtLabel: numberValue(live.observed_at_ms)
+      ? timeAgoLabel(Number(live.observed_at_ms))
+      : null,
     emptyTitle: ready ? null : status === "stale" ? "Live market stale" : "Live market unavailable",
     emptyDetail: ready
       ? null
-      : stringValue(live.error) ?? "No live market snapshot has been attached to this dossier yet.",
+      : (stringValue(live.error) ??
+        "No live market snapshot has been attached to this dossier yet."),
     tone: ready ? "health" : "warn",
   };
 }
@@ -204,7 +219,9 @@ function sortTimelineItems(
   sort: TokenCaseRouteState["postSort"],
 ): TokenCasePostEvent[] {
   if (sort === "catalyst") {
-    return [...items].sort((left, right) => (right.quality.score ?? -1) - (left.quality.score ?? -1));
+    return [...items].sort(
+      (left, right) => (right.quality.score ?? -1) - (left.quality.score ?? -1),
+    );
   }
   return items;
 }
@@ -212,7 +229,10 @@ function sortTimelineItems(
 function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseTone }> {
   const pills: Array<{ label: string; tone: TokenCaseTone }> = [];
   const score = numberValue(post.post_quality.score);
-  pills.push({ label: score === null ? "PQ -" : `PQ ${Math.round(score)}`, tone: scoreTone(score) });
+  pills.push({
+    label: score === null ? "PQ -" : `PQ ${Math.round(score)}`,
+    tone: scoreTone(score),
+  });
   if (post.attribution_status) {
     pills.push({ label: post.attribution_status.replaceAll("_", " "), tone: "info" });
   }

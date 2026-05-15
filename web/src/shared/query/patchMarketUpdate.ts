@@ -109,6 +109,7 @@ function tokenCaseMatchesMarketUpdate(
   update: LiveMarketUpdatePayload,
 ): boolean {
   return (
-    dossier.target.target_type === update.target_type && dossier.target.target_id === update.target_id
+    dossier.target.target_type === update.target_type &&
+    dossier.target.target_id === update.target_id
   );
 }

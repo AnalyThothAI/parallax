@@ -95,7 +95,8 @@ export function tokenCaseFixture(): TokenCaseDossier {
       generated_by: "deterministic",
       project_summary: {
         one_liner: "HANSA is moving from scanner discovery into broader Solana timeline chatter.",
-        summary_zh: "HANSA 在观察名单账号和独立扫描账号之间同步扩散，当前更像早期传播案例而不是成熟共识。",
+        summary_zh:
+          "HANSA 在观察名单账号和独立扫描账号之间同步扩散，当前更像早期传播案例而不是成熟共识。",
         current_state: "expansion",
         data_gaps: ["live market snapshot missing", "official liquidity route not confirmed"],
         evidence_event_ids: ["event-hansa-1", "event-hansa-2"],
@@ -150,14 +151,21 @@ export function tokenCaseFixture(): TokenCaseDossier {
       bull_bear: {
         stance: "watch",
         bull: {
-          thesis_zh: "传播来自多个独立账号且 watched 账号参与，若市场数据补齐，可能进入更高质量 watch。",
+          thesis_zh:
+            "传播来自多个独立账号且 watched 账号参与，若市场数据补齐，可能进入更高质量 watch。",
           evidence_event_ids: ["event-hansa-1", "event-hansa-3"],
-          triggers_zh: ["market cap and liquidity become ready", "watched account follow-up appears"],
+          triggers_zh: [
+            "market cap and liquidity become ready",
+            "watched account follow-up appears",
+          ],
         },
         bear: {
           thesis_zh: "当前缺少可靠实时市场与官方路由，传播仍可能只是 scanner 噪声。",
           evidence_event_ids: ["event-hansa-2"],
-          invalidations_zh: ["liquidity remains missing", "follow-up authors collapse to one cluster"],
+          invalidations_zh: [
+            "liquidity remains missing",
+            "follow-up authors collapse to one cluster",
+          ],
         },
       },
     },
@@ -192,8 +200,20 @@ export function tokenCasePostsFixture(): TokenPostsData {
     has_more: true,
     next_cursor: "cursor-hansa-3",
     items: [
-      post("event-hansa-3", "solwatch", "Expansion leg forming on $HANSA. CA still needs market confirmation.", 82, true),
-      post("event-hansa-2", "scannerjoe", "$HANSA scanner pickup. Watching independent follow-through.", 74, false),
+      post(
+        "event-hansa-3",
+        "solwatch",
+        "Expansion leg forming on $HANSA. CA still needs market confirmation.",
+        82,
+        true,
+      ),
+      post(
+        "event-hansa-2",
+        "scannerjoe",
+        "$HANSA scanner pickup. Watching independent follow-through.",
+        74,
+        false,
+      ),
       post("event-hansa-1", "earlyape", "First $HANSA mention with contract evidence.", 91, true),
     ],
   };
@@ -232,13 +252,7 @@ function stage(
   };
 }
 
-function post(
-  eventId: string,
-  handle: string,
-  text: string,
-  quality: number,
-  watched: boolean,
-) {
+function post(eventId: string, handle: string, text: string, quality: number, watched: boolean) {
   return {
     event_id: eventId,
     tweet_id: eventId.replace("event-", "tweet-"),

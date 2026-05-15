@@ -29,13 +29,7 @@ type UseTokenCasePostsArgs = UseTokenCaseArgs & {
   initialPosts?: TokenCasePostsData | null;
 };
 
-export function useTokenCase({
-  token,
-  target,
-  window,
-  scope,
-  postsLimit = 24,
-}: UseTokenCaseArgs) {
+export function useTokenCase({ token, target, window, scope, postsLimit = 24 }: UseTokenCaseArgs) {
   return useQuery({
     queryKey: queryKeys.tokenCase(target ? targetRefKey(target) : null, window, scope, postsLimit),
     queryFn: () =>

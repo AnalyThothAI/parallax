@@ -64,7 +64,9 @@ describe("SearchIntelPage", () => {
         }),
       );
     });
-    expect(apiMock.getApi.mock.calls.filter(([path]) => path === "/api/token-case")).toHaveLength(0);
+    expect(apiMock.getApi.mock.calls.filter(([path]) => path === "/api/token-case")).toHaveLength(
+      0,
+    );
     expect(await axe(container)).toHaveNoViolations();
   }, 10_000);
 
@@ -109,7 +111,6 @@ describe("SearchIntelPage", () => {
     expect(within(compare as HTMLElement).getByText("$RKC")).toBeInTheDocument();
     expect(within(compare as HTMLElement).getByText("$ROCKY")).toBeInTheDocument();
   });
-
 });
 
 function requiredTokenResult(data: SearchInspectData) {

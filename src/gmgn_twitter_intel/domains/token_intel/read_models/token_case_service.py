@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from .search_agent_brief import build_token_agent_brief
 from .token_target_posts_service import TokenTargetPostsService
@@ -79,7 +79,7 @@ class TokenCaseService:
         snapshot = self.live_price_gateway.snapshot(target_type=target_type, target_id=target_id, now_ms=now_ms)
         if snapshot is None:
             return _market_snapshot(target_type=target_type, target_id=target_id, status="missing")
-        return snapshot
+        return cast(dict[str, Any], snapshot)
 
 
 def _market_snapshot(*, target_type: str, target_id: str, status: str) -> dict[str, Any]:
