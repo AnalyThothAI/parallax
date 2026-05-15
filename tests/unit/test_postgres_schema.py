@@ -66,6 +66,9 @@ PULSE_FACTOR_CONTRACT_CLEANUP_MIGRATION = Path(
 US_EQUITY_SYMBOL_UNIVERSE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260512_0034_us_equity_symbol_universe.py"
 )
+EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION = Path(
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
+)
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
 
 
@@ -225,6 +228,28 @@ def test_us_equity_symbol_universe_migration_adds_market_instrument_lookup_table
     assert "market_instrument_id TEXT NOT NULL UNIQUE" in text
     assert "raw_payload_json JSONB NOT NULL DEFAULT '{}'::jsonb" in text
     assert "idx_us_equity_symbols_active_lookup" in text
+
+
+def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> None:
+    text = EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION.read_text()
+
+    assert 'revision = "20260515_0046"' in text
+    assert 'down_revision = "20260514_0045"' in text
+    for table_name in ("market_ticks", "token_capture_tier", "enriched_events"):
+        assert f"CREATE TABLE IF NOT EXISTS {table_name}" in text
+    for index_name in (
+        "idx_market_ticks_dedupe",
+        "idx_market_ticks_target_observed",
+        "idx_market_ticks_received",
+        "idx_enriched_events_event",
+        "idx_enriched_events_target_time",
+        "idx_enriched_events_tick",
+    ):
+        assert index_name in text
+    assert "CREATE OR REPLACE FUNCTION forbid_market_fact_update()" in text
+    assert "BEFORE UPDATE ON market_ticks" in text
+    assert "BEFORE UPDATE ON enriched_events" in text
+    assert "DROP TABLE IF EXISTS price_observations CASCADE" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:
