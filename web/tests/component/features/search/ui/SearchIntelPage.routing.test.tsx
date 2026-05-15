@@ -48,6 +48,7 @@ describe("SearchIntelPage", () => {
     expect(await screen.findByText("Propagation Summary")).toBeInTheDocument();
     expect(screen.getByText("Mention Timeline")).toBeInTheDocument();
     expect(screen.getByText("Live Market")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
     expect(screen.getAllByText(/Runtime narrative/).length).toBeGreaterThan(0);
     expect(screen.queryByRole("navigation", { name: "Search sections" })).not.toBeInTheDocument();
     expect(screen.queryByText("candidates")).not.toBeInTheDocument();
@@ -215,7 +216,7 @@ function searchInspectData(): SearchInspectData {
         score_window: { window: "24h" },
         total_count: tokenResult.posts.total_count,
         returned_count: tokenResult.posts.returned_count,
-        has_more: false,
+        has_more: true,
         items: tokenResult.posts.items.map((item) => ({
           ...item,
           text: item.event_id === "event-hansa-3" ? "Runtime narrative validates $RKC" : item.text,

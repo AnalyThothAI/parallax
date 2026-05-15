@@ -20,6 +20,14 @@ export function SearchTokenIntelPage({
   onRouteChange,
 }: SearchTokenIntelPageProps) {
   const [postSort, setPostSort] = useState<TokenCaseSort>("recent");
+  const searchPosts = useMemo(
+    () => ({
+      ...result.posts,
+      has_more: false,
+      next_cursor: null,
+    }),
+    [result.posts],
+  );
   const vm = useMemo(
     () =>
       buildTokenCaseViewModel({
@@ -29,11 +37,11 @@ export function SearchTokenIntelPage({
           scope: tokenCaseScopeFromSearchScope(routeState.scope),
           postSort,
         },
-        posts: result.posts,
+        posts: searchPosts,
         isLoadingPosts: false,
         isFetchingNextPage: false,
       }),
-    [postSort, result, routeState.scope, routeState.window],
+    [postSort, result, routeState.scope, routeState.window, searchPosts],
   );
 
   return (

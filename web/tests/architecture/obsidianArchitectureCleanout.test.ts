@@ -132,16 +132,25 @@ describe("Obsidian Desk architecture cleanout", () => {
   });
 
   it("removes the old token-target feature and shared audit components", () => {
+    expect(existsSync(join(srcRoot, "features/token-target"))).toBe(false);
+
     const deletedFiles = [
       "features/token-target/index.ts",
       "features/token-target/api/useTokenTargetQueries.ts",
+      "features/token-target/model/.gitkeep",
       "features/token-target/state/tokenTargetRouteState.ts",
+      "features/token-target/state/.gitkeep",
       "features/token-target/ui/TokenTargetCaseSummary.tsx",
       "features/token-target/ui/TokenTargetPage.tsx",
       "features/token-target/ui/tokenTarget.css",
+      "features/token-target/ui/.gitkeep",
       "shared/ui/TokenSocialMarketTimeline.tsx",
       "shared/ui/TokenPostsPanel.tsx",
       "shared/ui/ScoreLedger.tsx",
+      "shared/ui/TokenIntelHeader.tsx",
+      "features/search/model/searchRadar.ts",
+      "features/search/ui/SearchRadarPanel.tsx",
+      "features/search/ui/SearchTimelinePanel.tsx",
     ].filter((path) => existsSync(join(srcRoot, path)));
 
     const deletedTests = [
