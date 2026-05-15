@@ -549,11 +549,15 @@ def test_source_rows_does_not_read_historical_price_observations():
 
     TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
+    assert "price_observations" not in conn.sql
+    assert "enriched_events" in conn.sql
+    assert "market_ticks" in conn.sql
+    assert "market_target" in conn.sql
     assert "latest_feed_price" not in conn.sql
     assert "latest_subject_price" not in conn.sql
     assert "LEFT JOIN LATERAL" in conn.sql
-    assert "event_price_observation" in conn.sql
-    assert "decision_latest_observation" in conn.sql
+    assert "event_price_capture" in conn.sql
+    assert "decision_latest_tick" in conn.sql
     assert "token_market_price_" + "baselines" not in conn.sql
     assert "message_event_price" not in conn.sql
     assert "event_history_price" not in conn.sql

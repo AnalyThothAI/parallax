@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
@@ -165,7 +165,7 @@ class IngestService:
         )
         return [
             resolver.resolve(
-                intent,
+                self._intent_with_prepared_chain_hint(intent),
                 prepared.evidence_inputs,
                 decision_time_ms=prepared.event_ms,
                 persist=persist,
@@ -391,12 +391,42 @@ class IngestService:
             address_hint = getattr(intent, "address_hint", None)
             if not chain_hint or not address_hint:
                 continue
-            self.registry.upsert_chain_asset(
+            asset = self.registry.upsert_chain_asset(
                 chain_id=str(chain_hint),
                 address=str(address_hint),
                 observed_at_ms=event.received_at_ms,
                 commit=False,
             )
+            self.identity_evidence.upsert_identity_evidence(
+                asset_id=str(asset["asset_id"]),
+                evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
+                provider="twitter",
+                lookup_mode="tweet_mention",
+                chain_id=str(asset["chain_id"]),
+                address=str(asset["address"]),
+                symbol=getattr(intent, "display_symbol", None),
+                name=None,
+                decimals=None,
+                confidence=CONFIDENCE_MENTION_ONLY,
+                observed_at_ms=event.received_at_ms,
+                commit=False,
+            )
+            self.identity_evidence.recompute_current_identity(
+                str(asset["asset_id"]),
+                now_ms=event.received_at_ms,
+                commit=False,
+            )
+
+    def _intent_with_prepared_chain_hint(self, intent: Any) -> Any:
+        if getattr(intent, "chain_hint", None) or not getattr(intent, "address_hint", None):
+            return intent
+        rows = self.registry.find_assets_by_address(
+            chain_id=None,
+            address=str(intent.address_hint),
+        )
+        if len(rows) != 1 or not rows[0].get("chain_id"):
+            return intent
+        return replace(intent, chain_hint=str(rows[0]["chain_id"]))
 
     def _upsert_chain_intent_registry(self, event: TwitterEvent, intents: list[Any]) -> None:
         for intent in intents:

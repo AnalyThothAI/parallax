@@ -56,7 +56,8 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
     )
 
     hanta = next(row for row in rows if row["intent_json"]["display_symbol"] == "HANTA")
-    assert hanta["decision"] == "investigate"
+    assert hanta["lane"] == "attention"
+    assert hanta["decision"] == "discard"
     factor_snapshot = hanta["factor_snapshot_json"]
     assert factor_snapshot["market"]["event_anchor"] is None
     assert factor_snapshot["market"]["decision_latest"] is None
@@ -84,7 +85,7 @@ def test_address_like_payload_symbol_does_not_mask_missing_real_symbol(tmp_path)
     )
 
     assert result.token_resolutions[0]["resolution_status"] == "EXACT"
-    assert rows[0]["resolution_json"]["status"] == "EXACT"
+    assert rows[0]["target_type"] == "Asset"
     assert rows[0]["asset_json"]["symbol"] is None
     assert rows[0]["asset_json"]["address"] == address
 
@@ -109,8 +110,10 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
 
     assert result.token_resolutions[0]["resolution_status"] == "EXACT"
     assert rows[0]["asset_json"]["symbol"] == "PEPE"
-    resolution = result.token_resolutions[0]
-    assert repos.price_observations.event_anchor_for_resolution(resolution_id=resolution["resolution_id"]) is None
+    enriched_events = repos.enriched_events.list_by_event_id(event.event_id)
+    assert enriched_events
+    assert {item["capture_method"] for item in enriched_events} == {"unavailable"}
+    assert all(item["tick_id"] is None for item in enriched_events)
     factor_snapshot = rows[0]["factor_snapshot_json"]
     assert factor_snapshot["market"]["event_anchor"] is None
     assert factor_snapshot["market"]["decision_latest"] is None

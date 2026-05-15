@@ -4,7 +4,15 @@ import time
 from dataclasses import replace
 
 from gmgn_twitter_intel.app.runtime.repository_session import repositories_for_connection
+from gmgn_twitter_intel.domains.asset_market.interfaces import (
+    CONFIDENCE_PROVIDER_EXACT,
+    EVIDENCE_GMGN_PAYLOAD_EXACT,
+)
 from gmgn_twitter_intel.domains.asset_market.repositories.asset_repository import AssetRepository
+from gmgn_twitter_intel.domains.asset_market.repositories.identity_evidence_repository import (
+    IdentityEvidenceRepository,
+)
+from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
 from gmgn_twitter_intel.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from gmgn_twitter_intel.domains.evidence.services.ingest_service import IngestService
 from gmgn_twitter_intel.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
@@ -97,12 +105,31 @@ def open_token_radar_runtime(tmp_path):
 
 
 def insert_base_versa_asset(assets: AssetRepository, *, observed_at_ms: int | None = None) -> None:
-    assets.upsert_dex_asset(
-        chain="base",
+    now_ms = observed_at_ms if observed_at_ms is not None else int(time.time() * 1000)
+    registry = RegistryRepository(assets.conn)
+    identity = IdentityEvidenceRepository(assets.conn)
+    asset = registry.upsert_chain_asset(
+        chain_id="base",
         address=VERSA_BASE_CA,
-        symbol="VERSA",
-        event_id=None,
-        observed_at_ms=observed_at_ms if observed_at_ms is not None else int(time.time() * 1000),
-        provider="fixture",
-        commit=True,
+        observed_at_ms=now_ms,
+        status="canonical",
+        commit=False,
     )
+    identity.upsert_identity_evidence(
+        asset_id=str(asset["asset_id"]),
+        evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
+        provider="fixture",
+        lookup_mode="exact_address",
+        chain_id=str(asset["chain_id"]),
+        address=str(asset["address"]),
+        symbol="VERSA",
+        confidence=CONFIDENCE_PROVIDER_EXACT,
+        observed_at_ms=now_ms,
+        commit=False,
+    )
+    identity.recompute_current_identity(
+        str(asset["asset_id"]),
+        now_ms=now_ms,
+        commit=False,
+    )
+    assets.conn.commit()

@@ -154,14 +154,14 @@ class TokenTargetRepository:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol,
               price_feeds.feed_type,
-              message_price.observation_id AS price_observation_id,
-              message_price.provider AS price_provider,
+              message_price.tick_id AS price_observation_id,
+              message_price.source_provider AS price_provider,
               message_price.observed_at_ms AS price_observed_at_ms,
               message_price.price_usd,
-              message_price.price_quote,
-              message_price.quote_symbol AS price_quote_symbol,
-              message_price.observation_kind AS price_observation_kind,
-              message_price.observation_lag_ms AS price_observation_lag_ms,
+              NULL::numeric AS price_quote,
+              NULL::text AS price_quote_symbol,
+              message_price.capture_method AS price_observation_kind,
+              message_price.tick_lag_ms AS price_observation_lag_ms,
               row_number() OVER (
                 PARTITION BY events.event_id
                 ORDER BY
@@ -213,20 +213,20 @@ class TokenTargetRepository:
             LEFT JOIN price_feeds
               ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
             LEFT JOIN LATERAL (
-              SELECT *
-              FROM price_observations
-              WHERE price_observations.source_event_id = events.event_id
-                AND price_observations.source_resolution_id = tir.resolution_id
-                AND price_observations.subject_type = tir.target_type
-                AND price_observations.subject_id = tir.target_id
-                AND (
-                  COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id) IS NULL
-                  OR price_observations.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
-                )
-                AND price_observations.observation_kind = 'message_anchor'
+              SELECT
+                enriched_events.tick_id,
+                enriched_events.capture_method,
+                enriched_events.tick_lag_ms,
+                market_ticks.source_provider,
+                market_ticks.observed_at_ms,
+                market_ticks.price_usd
+              FROM enriched_events
+              LEFT JOIN market_ticks ON market_ticks.tick_id = enriched_events.tick_id
+              WHERE enriched_events.event_id = events.event_id
+                AND enriched_events.intent_id = tir.intent_id
+                AND enriched_events.resolution_id = tir.resolution_id
               ORDER BY
-                price_observations.observed_at_ms DESC,
-                price_observations.observation_id DESC
+                enriched_events.created_at_ms DESC
               LIMIT 1
             ) message_price ON true
             WHERE {" AND ".join(clauses)}
