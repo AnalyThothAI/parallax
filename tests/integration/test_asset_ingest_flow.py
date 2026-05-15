@@ -63,10 +63,12 @@ def test_ingest_gmgn_payload_writes_identity_without_market_observation(tmp_path
         resolution = next(item for item in result.token_resolutions if item["resolution_status"] == "EXACT")
         asset = repos.registry.find_assets_by_address(chain_id="eth", address=address)[0]
         identity_evidence = repos.identity_evidence.list_identity_evidence(asset["asset_id"])
-        market = repos.price_observations.latest_for_subject(
-            subject_type="Asset",
-            subject_id=resolution["target_id"],
-            at_or_before_ms=event.received_at_ms,
+        enriched_events = repos.enriched_events.list_by_event_id(event.event_id)
+        market_tick = repos.market_ticks.latest_at_or_before(
+            target_type="chain_token",
+            target_id=f"eip155:1:{address}",
+            at_ms=event.received_at_ms,
+            max_lag_ms=60_000,
         )
     finally:
         conn.close()
@@ -75,7 +77,10 @@ def test_ingest_gmgn_payload_writes_identity_without_market_observation(tmp_path
     assert resolution["target_type"] == "Asset"
     assert resolution["target_id"] == f"asset:eip155:1:erc20:{address}"
     assert any(item["evidence_kind"] == "gmgn_payload_exact" for item in identity_evidence)
-    assert market is None
+    assert market_tick is None
+    assert enriched_events[0]["target_type"] == "chain_token"
+    assert enriched_events[0]["target_id"] == f"eip155:1:{address}"
+    assert enriched_events[0]["capture_method"] == "unavailable"
 
 
 def test_ingest_chain_ca_from_gmgn_url_writes_exact_registry_asset(tmp_path):

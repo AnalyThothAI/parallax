@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from dataclasses import dataclass
 from typing import Any
 
 from gmgn_twitter_intel.domains.asset_market.interfaces import (
@@ -10,9 +11,12 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_TWEET_CONTRACT_MENTION,
+    EnrichedEventRepository,
     IdentityEvidenceRepository,
+    MarketTickRepository,
     RegistryRepository,
 )
+from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
 from gmgn_twitter_intel.domains.evidence.interfaces import (
     TextSurface,
     TwitterEvent,
@@ -34,6 +38,21 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     build_token_evidence,
     build_token_intents,
 )
+from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import (
+    token_intent_resolution_id,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedIngest:
+    raw_event: TwitterEvent
+    event_id: str
+    event_ms: int
+    event_row: dict[str, Any]
+    entities: list[Any]
+    evidence_inputs: list[Any]
+    intents: list[Any]
+    is_watched: bool
 
 
 class IngestService:
@@ -47,6 +66,11 @@ class IngestService:
         registry: RegistryRepository | None = None,
         identity_evidence: IdentityEvidenceRepository | None = None,
         token_intent_lookup: TokenIntentLookupRepository | None = None,
+        token_evidence: TokenEvidenceRepository | None = None,
+        token_intents: TokenIntentRepository | None = None,
+        intent_resolutions: IntentResolutionRepository | None = None,
+        market_ticks: MarketTickRepository | None = None,
+        enriched_events: EnrichedEventRepository | None = None,
     ) -> None:
         self.evidence = evidence
         self.entities = entities
@@ -55,92 +79,164 @@ class IngestService:
         self.registry = registry or RegistryRepository(evidence.conn)
         self.identity_evidence = identity_evidence or IdentityEvidenceRepository(evidence.conn)
         self.token_intent_lookup = token_intent_lookup or TokenIntentLookupRepository(evidence.conn)
+        self.token_evidence = token_evidence or TokenEvidenceRepository(evidence.conn)
+        self.token_intents = token_intents or TokenIntentRepository(evidence.conn)
+        self.intent_resolutions = intent_resolutions or IntentResolutionRepository(evidence.conn)
+        self.market_ticks = market_ticks or MarketTickRepository(evidence.conn)
+        self.enriched_events = enriched_events or EnrichedEventRepository(evidence.conn)
 
     def insert_raw_frame(self, **kwargs: Any) -> bool:
         result: bool = self.evidence.insert_raw_frame(**kwargs)
         return result
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
+        prepared = self.prepare_event(event, is_watched=is_watched)
+        if self.event_already_exists(prepared):
+            return self.duplicate_result(prepared)
+        self.prepare_registry_for_resolution(prepared)
+        decisions = self.resolve_prepared(prepared, persist=False)
+        captures = [
+            _unavailable_capture(prepared, market_resolution, reason="missing_capture_service")
+            for decision in decisions
+            if (market_resolution := self.market_resolution_for_decision(decision)) is not None
+        ]
+        return self.commit_prepared_event(prepared, resolutions=decisions, captures=captures)
+
+    @staticmethod
+    def prepare_event(event: TwitterEvent, *, is_watched: bool) -> PreparedIngest:
         extracted = extract_entities_from_surfaces(_event_surfaces(event))
+        evidence_inputs = build_token_evidence(
+            event_id=event.event_id,
+            entities=extracted,
+            token_snapshot=event.token_snapshot,
+            created_at_ms=event.received_at_ms,
+        )
+        intent_inputs = build_token_intents(
+            event_id=event.event_id,
+            evidence=evidence_inputs,
+            created_at_ms=event.received_at_ms,
+        )
+        return PreparedIngest(
+            raw_event=event,
+            event_id=event.event_id,
+            event_ms=event.received_at_ms,
+            event_row=event_to_row(event, is_watched=is_watched, now_ms=_now_ms()),
+            entities=extracted,
+            evidence_inputs=evidence_inputs,
+            intents=intent_inputs,
+            is_watched=is_watched,
+        )
+
+    def event_already_exists(self, prepared: PreparedIngest) -> bool:
+        row = self.evidence.conn.execute(
+            """
+            SELECT 1 AS found
+            FROM events
+            WHERE event_id = %s OR logical_dedup_key = %s
+            LIMIT 1
+            """,
+            (prepared.event_id, prepared.event_row["logical_dedup_key"]),
+        ).fetchone()
+        return bool(row)
+
+    def duplicate_result(self, prepared: PreparedIngest) -> IngestedEvent:
+        return IngestedEvent(
+            event=prepared.raw_event,
+            entities=[],
+            alerts=[],
+            token_intents=[],
+            token_resolutions=[],
+            inserted=False,
+        )
+
+    def prepare_registry_for_resolution(self, prepared: PreparedIngest) -> None:
+        self._upsert_gmgn_payload_registry_asset(prepared.raw_event)
+        self._upsert_chain_intent_registry_assets(prepared.raw_event, prepared.intents)
+
+    def resolve_prepared(
+        self,
+        prepared: PreparedIngest,
+        *,
+        persist: bool = False,
+    ) -> list[TokenIntentResolutionDecision]:
+        resolver = TokenIntentResolver(
+            registry=self.registry,
+            resolutions=self.intent_resolutions,
+        )
+        return [
+            resolver.resolve(
+                intent,
+                prepared.evidence_inputs,
+                decision_time_ms=prepared.event_ms,
+                persist=persist,
+                commit=False,
+            )
+            for intent in prepared.intents
+        ]
+
+    def commit_prepared_event(
+        self,
+        prepared: PreparedIngest,
+        *,
+        resolutions: list[Any],
+        captures: list[Any],
+    ) -> IngestedEvent:
         with self.evidence.unit_of_work():
-            row = event_to_row(event, is_watched=is_watched, now_ms=_now_ms())
-            inserted = self.evidence.insert_event_without_commit(row)
+            inserted = self.evidence.insert_event_without_commit(prepared.event_row)
             if not inserted:
-                return IngestedEvent(
-                    event=event,
-                    entities=[],
-                    alerts=[],
-                    token_intents=[],
-                    token_resolutions=[],
-                    inserted=False,
-                )
-            self.entities.insert_event_entities(event, extracted, is_watched=is_watched, commit=False)
-            evidence_inputs = build_token_evidence(
-                event_id=event.event_id,
-                entities=extracted,
-                token_snapshot=event.token_snapshot,
-                created_at_ms=event.received_at_ms,
+                return self.duplicate_result(prepared)
+            self.entities.insert_event_entities(
+                prepared.raw_event,
+                prepared.entities,
+                is_watched=prepared.is_watched,
+                commit=False,
             )
-            token_evidence_repo = TokenEvidenceRepository(self.evidence.conn)
-            token_intent_repo = TokenIntentRepository(self.evidence.conn)
-            intent_resolution_repo = IntentResolutionRepository(self.evidence.conn)
-            self._upsert_gmgn_payload_registry(event)
-            token_evidence_repo.insert_many(evidence_inputs, commit=False)
-            intent_inputs = build_token_intents(
-                event_id=event.event_id,
-                evidence=evidence_inputs,
-                created_at_ms=event.received_at_ms,
-            )
-            token_intents = token_intent_repo.insert_many(intent_inputs, commit=False)
-            self._upsert_chain_intent_registry(event, intent_inputs)
-            resolver = TokenIntentResolver(
-                registry=self.registry,
-                resolutions=intent_resolution_repo,
-            )
-            decisions = [
-                resolver.resolve(
-                    intent,
-                    evidence_inputs,
-                    decision_time_ms=event.received_at_ms,
-                    persist=True,
-                    commit=False,
-                )
-                for intent in intent_inputs
-            ]
-            for decision in decisions:
-                intent = next((item for item in intent_inputs if item.intent_id == decision.intent_id), None)
+            self.token_evidence.insert_many(prepared.evidence_inputs, commit=False)
+            token_intents = self.token_intents.insert_many(prepared.intents, commit=False)
+            self._upsert_gmgn_payload_registry(prepared.raw_event)
+            self._upsert_chain_intent_registry(prepared.raw_event, prepared.intents)
+            for decision in resolutions:
+                self.intent_resolutions.insert_resolution(decision, commit=False)
+                decision_intent_id = _decision_value(decision, "intent_id")
+                intent = next((item for item in prepared.intents if item.intent_id == decision_intent_id), None)
                 self.token_intent_lookup.replace_lookup_keys(
-                    intent_id=decision.intent_id,
-                    event_id=decision.event_id,
-                    keys=decision.lookup_keys,
+                    intent_id=decision_intent_id,
+                    event_id=_decision_value(decision, "event_id"),
+                    keys=_decision_value(decision, "lookup_keys") or [],
                     source_evidence_id=getattr(intent, "primary_evidence_id", None),
-                    created_at_ms=event.received_at_ms,
+                    created_at_ms=prepared.event_ms,
                     commit=False,
                 )
-            token_resolutions = intent_resolution_repo.resolutions_for_event(event.event_id)
+            for item in captures:
+                tick = getattr(item, "tick", None)
+                capture = getattr(item, "capture", item)
+                if tick is not None:
+                    self.market_ticks.insert_tick(tick)
+                self.enriched_events.insert_capture(capture)
+            token_resolutions = self.intent_resolutions.resolutions_for_event(prepared.event_id)
             alerts = self._insert_token_alerts(
-                event,
-                decisions,
-                resolutions=intent_resolution_repo,
-                intents_by_id={item.intent_id: item for item in intent_inputs},
-                is_watched=is_watched,
+                prepared.raw_event,
+                resolutions,
+                resolutions=self.intent_resolutions,
+                intents_by_id={item.intent_id: item for item in prepared.intents},
+                is_watched=prepared.is_watched,
             )
             enrichment_job_id = None
             enrichment_priority = watched_social_event_priority(
-                event=event,
-                entities=extracted,
+                event=prepared.raw_event,
+                entities=prepared.entities,
                 token_resolutions=token_resolutions,
             )
-            if is_watched and enrichment_priority is not None:
+            if prepared.is_watched and enrichment_priority is not None:
                 enrichment_job_id = self.enrichment.enqueue_watched_event(
-                    event_id=event.event_id,
-                    received_at_ms=event.received_at_ms,
+                    event_id=prepared.event_id,
+                    received_at_ms=prepared.event_ms,
                     priority=enrichment_priority,
                     commit=False,
                 )
         return IngestedEvent(
-            event=event,
-            entities=[_entity_payload(entity) for entity in extracted],
+            event=prepared.raw_event,
+            entities=[_entity_payload(entity) for entity in prepared.entities],
             alerts=alerts,
             token_intents=token_intents,
             token_resolutions=token_resolutions,
@@ -148,18 +244,110 @@ class IngestService:
             enrichment_job_id=enrichment_job_id,
         )
 
+    def market_resolution_for_decision(self, decision: Any) -> dict[str, Any] | None:
+        target_type = _decision_value(decision, "target_type")
+        target_id = _decision_value(decision, "target_id")
+        if not target_type or not target_id:
+            return None
+        resolution_id = token_intent_resolution_id(decision)
+        if target_type == "Asset":
+            row = self.registry.conn.execute(
+                """
+                SELECT chain_id, address
+                FROM registry_assets
+                WHERE asset_id = %s
+                """,
+                (target_id,),
+            ).fetchone()
+            if not row or not row.get("chain_id") or not row.get("address"):
+                return None
+            chain_id = str(row["chain_id"])
+            address = str(row["address"])
+            return {
+                "event_id": _decision_value(decision, "event_id"),
+                "intent_id": _decision_value(decision, "intent_id"),
+                "resolution_id": resolution_id,
+                "target_type": "chain_token",
+                "target_id": f"{chain_id}:{address}",
+                "chain_id": chain_id,
+                "token_address": address,
+                "address": address,
+            }
+        if target_type == "CexToken":
+            pricefeed = self._cex_pricefeed_for_decision(decision)
+            if not pricefeed:
+                return None
+            provider = str(pricefeed.get("provider") or "").strip().lower()
+            native_market_id = str(pricefeed.get("native_market_id") or "").strip().upper()
+            if not provider or not native_market_id:
+                return None
+            return {
+                "event_id": _decision_value(decision, "event_id"),
+                "intent_id": _decision_value(decision, "intent_id"),
+                "resolution_id": resolution_id,
+                "target_type": "cex_symbol",
+                "target_id": f"{provider}:{native_market_id}",
+                "exchange": provider,
+                "provider": provider,
+                "instrument": native_market_id,
+                "native_market_id": native_market_id,
+                "pricefeed_id": pricefeed.get("pricefeed_id"),
+            }
+        return None
+
+    def _cex_pricefeed_for_decision(self, decision: Any) -> dict[str, Any] | None:
+        target_id = _decision_value(decision, "target_id")
+        pricefeed_id = _decision_value(decision, "pricefeed_id")
+        if pricefeed_id:
+            row = self.registry.conn.execute(
+                """
+                SELECT *
+                FROM price_feeds
+                WHERE pricefeed_id = %s
+                  AND subject_type = 'CexToken'
+                  AND subject_id = %s
+                  AND feed_type LIKE 'cex_%%'
+                  AND status IN ('candidate', 'canonical')
+                """,
+                (pricefeed_id, target_id),
+            ).fetchone()
+            if row:
+                return dict(row)
+        row = self.registry.conn.execute(
+            """
+            SELECT *
+            FROM price_feeds
+            WHERE subject_type = 'CexToken'
+              AND subject_id = %s
+              AND feed_type LIKE 'cex_%%'
+              AND status IN ('candidate', 'canonical')
+            ORDER BY
+              CASE
+                WHEN feed_type = 'cex_spot' THEN 0
+                WHEN feed_type = 'cex_swap' THEN 1
+                ELSE 2
+              END,
+              CASE
+                WHEN quote_symbol = 'USDT' THEN 0
+                WHEN quote_symbol = 'USD' THEN 1
+                WHEN quote_symbol = 'USDC' THEN 2
+                ELSE 9
+              END,
+              updated_at_ms DESC,
+              native_market_id ASC
+            LIMIT 1
+            """,
+            (target_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def _upsert_gmgn_payload_registry(self, event: TwitterEvent) -> dict[str, Any] | None:
+        asset = self._upsert_gmgn_payload_registry_asset(event)
+        if asset is None:
+            return None
         snapshot = event.token_snapshot
         if snapshot is None:
             return None
-        if not snapshot.address or not snapshot.chain:
-            return None
-        asset = self.registry.upsert_chain_asset(
-            chain_id=snapshot.chain,
-            address=snapshot.address,
-            observed_at_ms=event.received_at_ms,
-            commit=False,
-        )
         self.identity_evidence.upsert_identity_evidence(
             asset_id=str(asset["asset_id"]),
             evidence_kind=EVIDENCE_GMGN_PAYLOAD_EXACT,
@@ -182,6 +370,33 @@ class IngestService:
             commit=False,
         )
         return asset
+
+    def _upsert_gmgn_payload_registry_asset(self, event: TwitterEvent) -> dict[str, Any] | None:
+        snapshot = event.token_snapshot
+        if snapshot is None:
+            return None
+        if not snapshot.address or not snapshot.chain:
+            return None
+        asset = self.registry.upsert_chain_asset(
+            chain_id=snapshot.chain,
+            address=snapshot.address,
+            observed_at_ms=event.received_at_ms,
+            commit=False,
+        )
+        return asset
+
+    def _upsert_chain_intent_registry_assets(self, event: TwitterEvent, intents: list[Any]) -> None:
+        for intent in intents:
+            chain_hint = getattr(intent, "chain_hint", None)
+            address_hint = getattr(intent, "address_hint", None)
+            if not chain_hint or not address_hint:
+                continue
+            self.registry.upsert_chain_asset(
+                chain_id=str(chain_hint),
+                address=str(address_hint),
+                observed_at_ms=event.received_at_ms,
+                commit=False,
+            )
 
     def _upsert_chain_intent_registry(self, event: TwitterEvent, intents: list[Any]) -> None:
         for intent in intents:
@@ -311,9 +526,36 @@ def _now_ms() -> int:
 
 def _alert_value(intent: Any, decision: TokenIntentResolutionDecision) -> str:
     value = getattr(intent, "display_symbol", None) or getattr(intent, "address_hint", None)
-    return str(value or decision.target_id)
+    return str(value or _decision_value(decision, "target_id"))
 
 
 def _payload_hash(payload: dict[str, Any]) -> str:
     raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _decision_value(decision: Any, key: str) -> Any:
+    if isinstance(decision, dict):
+        return decision.get(key)
+    return getattr(decision, key)
+
+
+def _unavailable_capture(
+    prepared: PreparedIngest,
+    market_resolution: dict[str, Any],
+    *,
+    reason: str,
+) -> EnrichedEventCapture:
+    return EnrichedEventCapture(
+        event_id=prepared.event_id,
+        intent_id=str(market_resolution["intent_id"]),
+        resolution_id=str(market_resolution["resolution_id"]),
+        target_type=market_resolution["target_type"],
+        target_id=str(market_resolution["target_id"]),
+        t_event_ms=prepared.event_ms,
+        tick_id=None,
+        tick_lag_ms=None,
+        capture_method="unavailable",
+        capture_reason=reason,
+        created_at_ms=_now_ms(),
+    )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, fields, is_dataclass
@@ -26,6 +27,10 @@ from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import 
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
+    EventMarketCaptureService,
+    TickLookup,
+)
 from gmgn_twitter_intel.domains.closed_loop_harness.interfaces import HarnessRepository, HarnessService
 from gmgn_twitter_intel.domains.closed_loop_harness.runtime.harness_ops_worker import HarnessOpsWorker
 from gmgn_twitter_intel.domains.evidence.repositories.entity_repository import EntityRepository
@@ -158,7 +163,7 @@ def _assemble_runtime(
     enrichment = PooledRepository(db.api_pool, EnrichmentRepository)
     harness = PooledRepository(db.api_pool, HarnessRepository)
     notifications = PooledRepository(db.api_pool, NotificationRepository)
-    ingest = _PooledIngestStore(db)
+    ingest = _PooledIngestStore(db, providers=providers.asset_market)
     hub = PublicWebSocketHub(
         token=settings.ws_token,
         repository_session=db.api_session,
@@ -403,25 +408,95 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
 
 
 class _PooledIngestStore:
-    def __init__(self, db: DBPoolBundle):
+    def __init__(
+        self,
+        db: DBPoolBundle,
+        *,
+        providers: Any,
+        now_ms: Any = None,
+    ):
         self.db = db
+        self._capture_service = EventMarketCaptureService(
+            providers=providers,
+            now_ms=now_ms or _now_ms,
+        )
 
     def insert_raw_frame(self, **kwargs) -> bool:
         with self.db.worker_session("collector") as repos:
             return repos.evidence.insert_raw_frame(**kwargs)
 
     def ingest_event(self, event: Any, *, is_watched: bool):
+        prepared = IngestService.prepare_event(event, is_watched=is_watched)
+        market_resolutions: list[dict[str, Any]] = []
+        prefetched_ticks: dict[tuple[str, str], Any] = {}
+        resolutions: list[Any] = []
         with self.db.worker_session("collector") as repos:
-            ingest = IngestService(
-                evidence=repos.evidence,
-                entities=repos.entities,
-                signals=repos.signals,
-                enrichment=repos.enrichment,
-                registry=repos.registry,
-                identity_evidence=repos.identity_evidence,
-                token_intent_lookup=repos.token_intent_lookup,
+            ingest = _ingest_service_for_repos(repos)
+            if ingest.event_already_exists(prepared):
+                return ingest.duplicate_result(prepared)
+            ingest.prepare_registry_for_resolution(prepared)
+            resolutions = ingest.resolve_prepared(prepared, persist=False)
+            for decision in resolutions:
+                market_resolution = ingest.market_resolution_for_decision(decision)
+                if market_resolution is None:
+                    continue
+                market_resolutions.append(market_resolution)
+                prefetched_ticks[(market_resolution["target_type"], market_resolution["target_id"])] = (
+                    repos.market_ticks.latest_at_or_before(
+                        target_type=market_resolution["target_type"],
+                        target_id=market_resolution["target_id"],
+                        at_ms=_prepared_value(prepared, "event_ms"),
+                        max_lag_ms=60_000,
+                    )
+                )
+
+        tick_lookup = TickLookup(
+            latest_at_or_before=lambda target_type, target_id, _at_ms, _max_lag_ms: prefetched_ticks.get(
+                (target_type, target_id)
             )
-            return ingest.ingest_event(event, is_watched=is_watched)
+        )
+        captures = [
+            self._capture_service.capture_for_event(
+                event_id=market_resolution["event_id"],
+                intent_id=market_resolution["intent_id"],
+                resolution_id=market_resolution["resolution_id"],
+                resolution=market_resolution,
+                event_ms=_prepared_value(prepared, "event_ms"),
+                tick_lookup=tick_lookup,
+            )
+            for market_resolution in market_resolutions
+        ]
+
+        with self.db.worker_session("collector") as repos:
+            ingest = _ingest_service_for_repos(repos)
+            return ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=captures)
+
+
+def _ingest_service_for_repos(repos: Any) -> IngestService:
+    return IngestService(
+        evidence=repos.evidence,
+        entities=repos.entities,
+        signals=repos.signals,
+        enrichment=repos.enrichment,
+        registry=repos.registry,
+        identity_evidence=repos.identity_evidence,
+        token_intent_lookup=repos.token_intent_lookup,
+        token_evidence=getattr(repos, "token_evidence", None),
+        token_intents=getattr(repos, "token_intents", None),
+        intent_resolutions=getattr(repos, "intent_resolutions", None),
+        market_ticks=getattr(repos, "market_ticks", None),
+        enriched_events=getattr(repos, "enriched_events", None),
+    )
+
+
+def _prepared_value(prepared: Any, key: str) -> Any:
+    if isinstance(prepared, dict):
+        return prepared[key]
+    return getattr(prepared, key)
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
 
 
 class _DisabledWorker(WorkerBase):

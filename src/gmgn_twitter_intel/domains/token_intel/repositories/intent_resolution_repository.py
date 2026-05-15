@@ -12,14 +12,7 @@ class IntentResolutionRepository:
 
     def insert_resolution(self, decision: Any, *, commit: bool = True) -> dict[str, Any]:
         payload = _payload(decision)
-        resolution_id = _stable_id(
-            "token-intent-resolution",
-            str(payload["intent_id"]),
-            str(payload.get("target_type") or ""),
-            str(payload.get("target_id") or ""),
-            str(payload.get("pricefeed_id") or ""),
-            str(payload["decision_time_ms"]),
-        )
+        resolution_id = token_intent_resolution_id(payload)
         self.conn.execute(
             "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
             (payload["intent_id"],),
@@ -150,6 +143,18 @@ def _payload(item: Any) -> dict[str, Any]:
     if isinstance(item, dict):
         return dict(item)
     return {slot: getattr(item, slot) for slot in item.__slots__}
+
+
+def token_intent_resolution_id(item: Any) -> str:
+    payload = _payload(item)
+    return _stable_id(
+        "token-intent-resolution",
+        str(payload["intent_id"]),
+        str(payload.get("target_type") or ""),
+        str(payload.get("target_id") or ""),
+        str(payload.get("pricefeed_id") or ""),
+        str(payload["decision_time_ms"]),
+    )
 
 
 def _stable_id(*parts: str) -> str:
