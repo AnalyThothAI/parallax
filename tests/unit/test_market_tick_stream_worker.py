@@ -4,11 +4,26 @@ import asyncio
 from decimal import Decimal
 from types import SimpleNamespace
 
+import pytest
+
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdate
-from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import MarketTickStreamWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import (
+    ADVISORY_LOCK_KEY,
+    MarketTickStreamWorker,
+)
 from gmgn_twitter_intel.domains.asset_market.types import market_tick_id
+
+
+def test_market_tick_stream_worker_uses_single_writer_lock() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [])
+    worker = MarketTickStreamWorker(pool_bundle=FakeDB(state, repos), stream_dex_market=FakeDexMarketStream(state, []))
+
+    assert ADVISORY_LOCK_KEY == 2026051504
+    assert worker.SINGLE_WRITER_KEY == ADVISORY_LOCK_KEY
+    assert worker._advisory_lock_key() == ADVISORY_LOCK_KEY
 
 
 def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_and_notifies() -> None:
@@ -122,6 +137,8 @@ def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> 
             DexMarketFactUpdate(chain_id="solana", address="TokenA", observed_at_ms=2, price_usd=0),
             DexMarketFactUpdate(chain_id="solana", address="TokenA", observed_at_ms=3, price_usd=-1),
             DexMarketFactUpdate(chain_id="solana", address="TokenA", observed_at_ms=4, price_usd="not-a-price"),
+            DexMarketFactUpdate(chain_id="solana", address="TokenA", observed_at_ms=5, price_usd=float("nan")),
+            DexMarketFactUpdate(chain_id="solana", address="TokenA", observed_at_ms=6, price_usd=float("inf")),
         ],
     )
     wake = FakeWakeEmitter()
@@ -135,11 +152,44 @@ def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> 
     result = asyncio.run(worker.run_once())
 
     assert result.processed == 0
-    assert result.skipped == 4
+    assert result.skipped == 6
     assert stream.saw_in_session == [False]
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
     assert wake.market_tick_notifications == []
+
+
+def test_market_tick_stream_worker_flushes_collected_ticks_before_stream_error_surfaces() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
+    db = FakeDB(state, repos)
+    stream = FailingDexMarketStream(
+        state,
+        [
+            DexMarketFactUpdate(
+                chain_id="solana",
+                address="TokenA",
+                observed_at_ms=1_800_000_000_001,
+                price_usd=12.34,
+            )
+        ],
+    )
+    wake = FakeWakeEmitter()
+    worker = MarketTickStreamWorker(
+        pool_bundle=db,
+        stream_dex_market=stream,
+        wake_emitter=wake,
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    with pytest.raises(RuntimeError, match="socket dropped"):
+        asyncio.run(worker.run_once())
+
+    assert stream.saw_in_session == [False]
+    assert len(repos.market_ticks.inserted) == 1
+    assert repos.conn.commit_count == 1
+    assert wake.channels == ["market_tick_written"]
+    assert wake.market_tick_notifications == [{"target_type": "chain_token", "target_id": "solana:TokenA"}]
 
 
 def test_market_tick_stream_worker_bounds_stream_cycle_and_closes_iterator() -> None:
@@ -272,6 +322,19 @@ class FakeDexMarketStream:
         self.saw_in_session.append(self.state.in_session)
         for update in self.updates:
             yield update
+
+
+class FailingDexMarketStream:
+    def __init__(self, state: FakeSessionState, updates: list[DexMarketFactUpdate]) -> None:
+        self.state = state
+        self.updates = updates
+        self.saw_in_session: list[bool] = []
+
+    async def stream_price_info(self, targets):
+        self.saw_in_session.append(self.state.in_session)
+        for update in self.updates:
+            yield update
+        raise RuntimeError("socket dropped")
 
 
 class NeverYieldDexMarketStream:

@@ -18,9 +18,11 @@ SOURCE_TIER = "tier1_ws"
 SOURCE_PROVIDER = "okx_dex_ws"
 DEFAULT_SUBSCRIPTION_LIMIT = 50
 DEFAULT_STREAM_CYCLE_SECONDS = 30.0
+ADVISORY_LOCK_KEY = 2026051504
 
 
 class MarketTickStreamWorker(WorkerBase):
+    SINGLE_WRITER_KEY = ADVISORY_LOCK_KEY
     worker_name = "market_tick_stream"
 
     def __init__(
@@ -81,22 +83,17 @@ class MarketTickStreamWorker(WorkerBase):
                 notes={"targets_selected": len(rows), "stream_targets": 0},
             )
 
-        ticks, skipped_frames = await self._collect_ticks(targets)
-        inserted = 0
-        if ticks:
-            inserted = self._insert_ticks(ticks)
-            for tick in ticks:
-                _emit_wake(self.wake_emitter, target_type=tick.target_type, target_id=tick.target_id)
+        stream_result = await self._stream_and_persist_ticks(targets)
 
         return WorkerResult(
-            processed=inserted,
-            skipped=skipped_targets + skipped_frames,
+            processed=stream_result.inserted,
+            skipped=skipped_targets + stream_result.skipped,
             notes={
                 "targets_selected": len(rows),
                 "stream_targets": len(targets),
-                "ticks_attempted": len(ticks),
-                "ticks_inserted": inserted,
-                "invalid_frames": skipped_frames,
+                "ticks_attempted": stream_result.attempted,
+                "ticks_inserted": stream_result.inserted,
+                "invalid_frames": stream_result.skipped,
             },
         )
 
@@ -105,7 +102,7 @@ class MarketTickStreamWorker(WorkerBase):
             rows = repos.token_capture_tiers.list_by_tier(1, limit=self.subscription_limit)
         return [dict(row) for row in rows]
 
-    async def _collect_ticks(self, targets: list[DexMarketStreamTarget]) -> tuple[list[MarketTick], int]:
+    async def _stream_and_persist_ticks(self, targets: list[DexMarketStreamTarget]) -> _StreamPersistResult:
         target_by_key = {_target_key(target.chain_id, target.address): target for target in targets}
         ticks: list[MarketTick] = []
         skipped = 0
@@ -129,11 +126,24 @@ class MarketTickStreamWorker(WorkerBase):
                     skipped += 1
                     continue
                 ticks.append(tick)
+        except Exception:
+            self._persist_ticks(ticks)
+            raise
         finally:
             close = getattr(iterator, "aclose", None)
             if close is not None:
                 await close()
-        return ticks, skipped
+        inserted = self._persist_ticks(ticks)
+        return _StreamPersistResult(inserted=inserted, attempted=len(ticks), skipped=skipped)
+
+    def _persist_ticks(self, ticks: Iterable[MarketTick]) -> int:
+        materialized = list(ticks)
+        if not materialized:
+            return 0
+        inserted = self._insert_ticks(materialized)
+        for tick in materialized:
+            _emit_wake(self.wake_emitter, target_type=tick.target_type, target_id=tick.target_id)
+        return inserted
 
     def _insert_ticks(self, ticks: Iterable[MarketTick]) -> int:
         materialized = list(ticks)
@@ -147,6 +157,13 @@ class MarketTickStreamWorker(WorkerBase):
 class _TargetParts:
     chain_id: str
     address: str
+
+
+@dataclass(frozen=True, slots=True)
+class _StreamPersistResult:
+    inserted: int
+    attempted: int
+    skipped: int
 
 
 def _stream_targets(rows: list[Mapping[str, Any]], *, limit: int) -> tuple[list[DexMarketStreamTarget], int]:
@@ -248,9 +265,12 @@ def _decimal_or_none(value: Any) -> Decimal | None:
     if value is None:
         return None
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
     except (InvalidOperation, ValueError):
         return None
+    if not result.is_finite():
+        return None
+    return result
 
 
 def _target_key(chain_id: str, address: str) -> tuple[str, str]:
