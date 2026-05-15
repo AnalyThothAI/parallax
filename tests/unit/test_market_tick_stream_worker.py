@@ -10,20 +10,18 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.providers import DexMarketFactUpdate
 from gmgn_twitter_intel.domains.asset_market.runtime.market_tick_stream_worker import (
-    ADVISORY_LOCK_KEY,
     MarketTickStreamWorker,
 )
 from gmgn_twitter_intel.domains.asset_market.types import market_tick_id
 
 
-def test_market_tick_stream_worker_uses_single_writer_lock() -> None:
+def test_market_tick_stream_worker_is_not_single_writer_locked() -> None:
     state = FakeSessionState()
     repos = FakeRepos(state, [])
     worker = MarketTickStreamWorker(pool_bundle=FakeDB(state, repos), stream_dex_market=FakeDexMarketStream(state, []))
 
-    assert ADVISORY_LOCK_KEY == 2026051504
-    assert worker.SINGLE_WRITER_KEY == ADVISORY_LOCK_KEY
-    assert worker._advisory_lock_key() == ADVISORY_LOCK_KEY
+    assert worker.SINGLE_WRITER_KEY is None
+    assert worker._advisory_lock_key() is None
 
 
 def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_and_notifies() -> None:

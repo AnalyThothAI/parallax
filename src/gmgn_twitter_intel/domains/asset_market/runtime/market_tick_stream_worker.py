@@ -18,11 +18,9 @@ SOURCE_TIER = "tier1_ws"
 SOURCE_PROVIDER = "okx_dex_ws"
 DEFAULT_SUBSCRIPTION_LIMIT = 50
 DEFAULT_STREAM_CYCLE_SECONDS = 30.0
-ADVISORY_LOCK_KEY = 2026051504
 
 
 class MarketTickStreamWorker(WorkerBase):
-    SINGLE_WRITER_KEY = ADVISORY_LOCK_KEY
     worker_name = "market_tick_stream"
 
     def __init__(
