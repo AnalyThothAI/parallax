@@ -1,5 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
+import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
 
 const NOW = 1_777_746_300_000;
 const ADDRESS = "0x6982508145454Ce325dDbE47a25d4ec3d2311933";
@@ -20,13 +21,13 @@ export async function installMockApi(page: Page) {
     if (path === "/api/status") return fulfill(route, statusData());
     if (path === "/api/recent") return fulfill(route, recentData());
     if (path === "/api/token-radar") return fulfill(route, tokenRadarData(url));
-    if (path === "/api/search/inspect")
-      return fulfill(route, searchInspectData(url.searchParams.get("q") ?? ""));
+    if (path === "/api/token-case") return fulfill(route, tokenCaseData(url));
+    if (path === "/api/search/inspect") return fulfill(route, searchInspectData(url));
     if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
     if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
     if (path === "/api/social-events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
-    if (path === "/api/target-posts") return fulfill(route, postsData());
+    if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
     if (path === "/api/account-quality") return fulfill(route, accountQualityData());
     if (path === "/api/notification-summary") return fulfill(route, notificationSummary());
     if (path === "/api/notifications") return fulfill(route, notificationsData());
@@ -325,7 +326,105 @@ function family(score: number, weight: number, facts: Record<string, unknown>) {
   };
 }
 
-function searchInspectData(query: string) {
+function tokenCaseData(url: URL) {
+  const dossier = tokenCaseFixture();
+  const targetType = url.searchParams.get("target_type") ?? dossier.target.target_type;
+  const targetId = url.searchParams.get("target_id") ?? dossier.target.target_id;
+  const window = url.searchParams.get("window") ?? dossier.timeline.query.window;
+  const scope = url.searchParams.get("scope") ?? dossier.timeline.query.scope;
+  return {
+    ...dossier,
+    target: { ...dossier.target, target_type: targetType, target_id: targetId },
+    timeline: {
+      ...dossier.timeline,
+      query: {
+        ...dossier.timeline.query,
+        target_type: targetType,
+        target_id: targetId,
+        window,
+        scope,
+      },
+    },
+    posts: {
+      ...dossier.posts,
+      query: {
+        ...dossier.posts.query,
+        target_type: targetType,
+        target_id: targetId,
+        window,
+        scope,
+      },
+    },
+    market_live: {
+      ...dossier.market_live,
+      target_type: targetType,
+      target_id: targetId,
+    },
+  };
+}
+
+function targetPostsData(url: URL) {
+  const targetId = url.searchParams.get("target_id") ?? "";
+  if (targetId.includes("FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump")) {
+    return tokenCasePostsData(url);
+  }
+  return postsData();
+}
+
+function tokenCasePostsData(url: URL) {
+  const posts = tokenCasePostsFixture();
+  const cursor = url.searchParams.get("cursor");
+  const targetType = url.searchParams.get("target_type") ?? posts.query.target_type;
+  const targetId = url.searchParams.get("target_id") ?? posts.query.target_id;
+  const window = url.searchParams.get("window") ?? posts.query.window;
+  const scope = url.searchParams.get("scope") ?? posts.query.scope;
+  const sort = url.searchParams.get("sort") ?? posts.query.sort ?? "recent";
+  const nextItem = {
+    ...posts.items[0],
+    event_id: "event-hansa-4",
+    tweet_id: "tweet-hansa-4",
+    handle: "marketdesk",
+    author_handle: "marketdesk",
+    text: "Follow-up page adds fresh HANSA context after the first dossier page.",
+    url: "https://x.com/marketdesk/status/event-hansa-4",
+    is_watched: false,
+    is_first_seen_by_watched_for_token: false,
+  };
+  const items = cursor ? [nextItem] : posts.items;
+  return {
+    ...posts,
+    query: { ...posts.query, target_type: targetType, target_id: targetId, window, scope, sort },
+    returned_count: items.length,
+    total_count: posts.total_count + 1,
+    has_more: false,
+    next_cursor: null,
+    items,
+  };
+}
+
+function searchInspectData(url: URL) {
+  const query = url.searchParams.get("q") ?? "";
+  if (query.toLowerCase().includes("hansa")) {
+    const dossier = tokenCaseData(url);
+    return {
+      query: {
+        q: query,
+        normalized_q: query.toLowerCase(),
+        window: url.searchParams.get("window") ?? "24h",
+        scope: url.searchParams.get("scope") ?? "all",
+        result_kind: "token_result",
+      },
+      resolver: {
+        confidence: 0.98,
+        target_candidates: [dossier.target],
+        selected_target: dossier.target,
+        reasons: ["e2e_token_case_fixture"],
+      },
+      token_result: { ...dossier, radar_item: null, market_overlay: null },
+      ambiguous_result: null,
+      topic_result: null,
+    };
+  }
   return {
     query: {
       q: query,

@@ -40,12 +40,12 @@ export function SearchAmbiguousCase({
         </div>
       </section>
 
-      <div className="search-content-grid">
-        <div className="search-primary-stack">
+      <div className="search-result-grid">
+        <div className="search-result-primary">
           <SearchTopicTimeline items={result.items} />
           <SearchTwitterResults title="Ambiguous Evidence" items={result.items} />
         </div>
-        <div className="search-insight-stack">
+        <div className="search-result-insights">
           <SearchAgentBrief brief={result.agent_brief} />
         </div>
       </div>

@@ -140,13 +140,13 @@ function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): Se
     narrative: agentNarrative(result.agent_brief.project_summary.one_liner),
     resolver: resolverFact(data),
     resultKind: data.query.result_kind,
-    subtitle: identityLine(target, asRecord(result.market_overlay)),
+    subtitle: identityLine(target, searchMarketOverlay(result)),
     title: target.symbol ? `$${target.symbol}` : shortTarget(target.target_id),
   };
 }
 
 function marketFact(result: SearchTokenResult): SearchCaseFact {
-  const overlay = asRecord(result.market_overlay);
+  const overlay = searchMarketOverlay(result);
   const decisionLatest = asRecord(overlay.decision_latest);
   const radar = asRecord(result.radar_item);
   const market = asRecord(radar.market);
@@ -167,6 +167,10 @@ function marketFact(result: SearchTokenResult): SearchCaseFact {
         : formatUsdCompact(marketCap)
       : formatTokenPriceUsd(price),
   };
+}
+
+function searchMarketOverlay(result: SearchTokenResult): Record<string, unknown> {
+  return asRecord(result.market_overlay ?? result.timeline.market_overlay);
 }
 
 function resolverFact(data: SearchInspectData): SearchCaseFact {

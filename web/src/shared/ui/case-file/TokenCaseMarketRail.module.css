@@ -1,0 +1,118 @@
+.rail {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--slab) 94%, var(--void));
+  padding: 12px;
+}
+
+.rail header {
+  display: grid;
+  gap: 3px;
+}
+
+.rail header span,
+.priceBlock span,
+.facts dt,
+.readiness span {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.rail h2 {
+  margin: 0;
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 15px;
+  letter-spacing: 0;
+}
+
+.priceBlock {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--line-soft);
+  background: var(--slab-2);
+  padding: 10px;
+}
+
+.priceBlock[data-tone="health"] {
+  border-color: var(--health-line);
+  background: var(--health-soft);
+}
+
+.priceBlock[data-tone="warn"],
+.priceBlock[data-tone="opportunity"] {
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
+}
+
+.priceBlock b {
+  color: var(--bone);
+  font-family: var(--mono);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.priceBlock p,
+.detail {
+  margin: 0;
+  color: var(--ash);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.facts div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  padding: 8px;
+}
+
+.facts dd {
+  margin: 0;
+  color: var(--bone-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.readiness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.readiness span {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 4px 7px;
+}
+
+.readiness span[data-ready="true"] {
+  border-color: var(--health-line);
+  background: var(--health-soft);
+  color: var(--health);
+}
+
+.readiness span[data-ready="false"] {
+  border-color: var(--opportunity-line);
+  background: var(--opportunity-soft);
+  color: var(--opportunity);
+}
+
+@media (max-width: 420px) {
+  .facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -98,13 +98,6 @@ describe("Obsidian Desk architecture cleanout", () => {
     expect(cockpitCss).toMatch(/\.center-column\s*{[^}]*overflow:\s*auto;/s);
   });
 
-  it("keeps shared market timeline from trapping page scroll", () => {
-    const timeline = readSource("shared/ui/TokenSocialMarketTimeline.tsx");
-
-    expect(timeline).toContain("handleScroll: false");
-    expect(timeline).toContain("handleScale: false");
-  });
-
   it("does not keep dead timeline compatibility selectors after shared timeline reuse", () => {
     const forbidden = [
       /stage-tape/,
@@ -138,14 +131,61 @@ describe("Obsidian Desk architecture cleanout", () => {
     expect(notificationsController).toContain("watchlistPath");
   });
 
-  it("keeps token-target independent from live feature internals", () => {
-    const tokenTargetFiles = collectFiles(join(srcRoot, "features/token-target"))
-      .filter((path) => sourceExtensions.has(extname(path)))
-      .filter((path) => !relative(srcRoot, path).startsWith("features/token-target/ui/__tests__"))
-      .filter((path) => readFileSync(path, "utf8").includes("@features/live"))
-      .map((path) => relative(webRoot, path));
+  it("removes the old token-target feature and shared audit components", () => {
+    expect(existsSync(join(srcRoot, "features/token-target"))).toBe(false);
 
-    expect(tokenTargetFiles).toEqual([]);
+    const deletedFiles = [
+      "features/token-target/index.ts",
+      "features/token-target/api/useTokenTargetQueries.ts",
+      "features/token-target/model/.gitkeep",
+      "features/token-target/state/tokenTargetRouteState.ts",
+      "features/token-target/state/.gitkeep",
+      "features/token-target/ui/TokenTargetCaseSummary.tsx",
+      "features/token-target/ui/TokenTargetPage.tsx",
+      "features/token-target/ui/tokenTarget.css",
+      "features/token-target/ui/.gitkeep",
+      "shared/ui/TokenSocialMarketTimeline.tsx",
+      "shared/ui/TokenPostsPanel.tsx",
+      "shared/ui/ScoreLedger.tsx",
+      "shared/ui/TokenIntelHeader.tsx",
+      "features/search/model/searchRadar.ts",
+      "features/search/ui/SearchRadarPanel.tsx",
+      "features/search/ui/SearchTimelinePanel.tsx",
+    ].filter((path) => existsSync(join(srcRoot, path)));
+
+    const deletedTests = [
+      "component/features/token-target/ui/TokenTargetPage.routing.test.tsx",
+      "unit/features/token-target/state/tokenTargetRouteState.test.ts",
+      "component/shared/ui/ScoreLedger.test.tsx",
+    ].filter((path) => existsSync(join(webRoot, "tests", path)));
+
+    expect([...deletedFiles, ...deletedTests]).toEqual([]);
+  });
+
+  it("keeps token routes hard-cut to the token-case feature", () => {
+    const tokenTargetRoute = readSource("routes/token-target.route.tsx");
+
+    expect(tokenTargetRoute).toContain('from "@features/token-case"');
+    expect(tokenTargetRoute).not.toContain("@features/token-target");
+  });
+
+  it("keeps Search token_result free of deleted layout stack selectors", () => {
+    const forbiddenSelectors = [
+      "search-content-grid",
+      "search-primary-stack",
+      "search-insight-stack",
+    ];
+    const offenders = collectFiles(srcRoot)
+      .filter((path) => sourceExtensions.has(extname(path)))
+      .filter((path) => relative(srcRoot, path) !== "test/obsidianArchitectureCleanout.test.ts")
+      .flatMap((path) => {
+        const text = readFileSync(path, "utf8");
+        return forbiddenSelectors
+          .filter((selector) => text.includes(selector))
+          .map((selector) => `${relative(webRoot, path)}: ${selector}`);
+      });
+
+    expect(offenders).toEqual([]);
   });
 
   it("removes the legacy selected sidecar and its drawer-only components", () => {

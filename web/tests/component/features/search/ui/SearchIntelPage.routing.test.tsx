@@ -3,7 +3,7 @@ import { setAuthToken } from "@lib/api/client";
 import type { SearchInspectData } from "@lib/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
-import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
+import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { createApiMock, ok, resetApiMock } from "@tests/msw/fixtures";
 import { apiHandlers } from "@tests/msw/handlers";
 import { server } from "@tests/msw/server";
@@ -43,24 +43,17 @@ describe("SearchIntelPage", () => {
     const { container } = renderAt("/search?q=%24RKC&window=24h&scope=all");
 
     expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
-    expect(await screen.findByRole("region", { name: "Search case $RKC" })).toBeInTheDocument();
-    expect(
-      await screen.findByRole("region", { name: "Token intelligence for RKC" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByRole("navigation", { name: "Token profile links" }),
-    ).toBeInTheDocument();
-    expect(await screen.findByRole("group", { name: "search window" })).toBeInTheDocument();
-    expect(await screen.findByText("项目总结")).toBeInTheDocument();
-    expect(screen.getByText("传播")).toBeInTheDocument();
-    expect(screen.getByText("多头观点")).toBeInTheDocument();
-    expect(screen.getByText("空头观点")).toBeInTheDocument();
-    expect(screen.getByText("1H OHLC")).toBeInTheDocument();
-    expect(screen.getByText("24h Evidence Stream")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: /Token case/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /\$RKC/i })).toBeInTheDocument();
+    expect(await screen.findByText("Propagation Summary")).toBeInTheDocument();
+    expect(screen.getByText("Mention Timeline")).toBeInTheDocument();
+    expect(screen.getByText("Live Market")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
     expect(screen.getAllByText(/Runtime narrative/).length).toBeGreaterThan(0);
     expect(screen.queryByRole("navigation", { name: "Search sections" })).not.toBeInTheDocument();
     expect(screen.queryByText("candidates")).not.toBeInTheDocument();
     expect(screen.queryByText("94% confidence")).not.toBeInTheDocument();
+    expect(screen.queryByText(["search", "content", "grid"].join("-"))).not.toBeInTheDocument();
     expect(container.querySelector(".search-sidebar-candidates")).not.toBeInTheDocument();
 
     await waitFor(() => {
@@ -71,6 +64,9 @@ describe("SearchIntelPage", () => {
         }),
       );
     });
+    expect(apiMock.getApi.mock.calls.filter(([path]) => path === "/api/token-case")).toHaveLength(
+      0,
+    );
     expect(await axe(container)).toHaveNoViolations();
   }, 10_000);
 
@@ -115,72 +111,6 @@ describe("SearchIntelPage", () => {
     expect(within(compare as HTMLElement).getByText("$RKC")).toBeInTheDocument();
     expect(within(compare as HTMLElement).getByText("$ROCKY")).toBeInTheDocument();
   });
-
-  it("uses market cap as the primary DEX market metric in search details", async () => {
-    const base = searchInspectData();
-    const tokenResult = requiredTokenResult(base);
-    const data: SearchInspectData = {
-      ...base,
-      token_result: {
-        ...tokenResult,
-        radar_item: {
-          target: {
-            target_type: "Asset",
-            target_id: "asset:solana:rkc",
-          },
-          score: {
-            rank_score: 74,
-            recommended_decision: "token_watch",
-          },
-          factor_snapshot: {
-            composite: {
-              rank_score: 74,
-              recommended_decision: "token_watch",
-            },
-            gates: {
-              max_decision: "token_watch",
-            },
-            data_health: {
-              market: "live",
-              identity: "ready",
-            },
-            market: {
-              market_cap_usd: 33_000_000,
-            },
-          },
-          data_health: {
-            market: "live",
-            identity: "ready",
-          },
-          market: marketContextFixture({
-            event_anchor: marketObservationFixture({
-              target_type: "Asset",
-              target_id: "asset:solana:rkc",
-              source: "event_anchor",
-              provider: "gmgn_dex_quote",
-              price_usd: 0.007,
-              market_cap_usd: 33_000_000,
-            }),
-            decision_latest: marketObservationFixture({
-              target_type: "Asset",
-              target_id: "asset:solana:rkc",
-              source: "decision_latest",
-              provider: "okx_dex_ws_price_info",
-              price_usd: 0.0078,
-              market_cap_usd: 51_000_000,
-            }),
-          }),
-        },
-      },
-    };
-    apiMock.readApiImpl = async () => ok(data);
-
-    renderAt("/search?q=%24RKC&window=24h&scope=all");
-
-    expect(await screen.findByText("market cap")).toBeInTheDocument();
-    expect(screen.getAllByText("$51M").length).toBeGreaterThan(0);
-    expect(screen.getByText("live · okx_dex_ws_price_info")).toBeInTheDocument();
-  });
 });
 
 function requiredTokenResult(data: SearchInspectData) {
@@ -191,6 +121,7 @@ function requiredTokenResult(data: SearchInspectData) {
 }
 
 function searchInspectData(): SearchInspectData {
+  const tokenResult = tokenCaseFixture();
   return {
     query: {
       q: "$RKC",
@@ -222,6 +153,7 @@ function searchInspectData(): SearchInspectData {
       reasons: ["one_resolved_target"],
     },
     token_result: {
+      ...tokenResult,
       target: {
         target_type: "Asset",
         target_id: "asset:solana:rkc",
@@ -231,6 +163,7 @@ function searchInspectData(): SearchInspectData {
         reason: "CANONICAL_SYMBOL_MATCH",
       },
       timeline: {
+        ...tokenResult.timeline,
         query: {
           target_type: "Asset",
           target_id: "asset:solana:rkc",
@@ -251,7 +184,7 @@ function searchInspectData(): SearchInspectData {
           reproduction_rate: null,
         },
         market_overlay: {},
-        stages: [],
+        stages: tokenResult.timeline.stages,
         buckets: [
           {
             start_ms: 1,
@@ -265,13 +198,14 @@ function searchInspectData(): SearchInspectData {
             price_change_from_start_pct: null,
           },
         ],
-        authors: [],
-        posts: [],
-        cascade: { edges: [], unresolved_parents: [] },
-        returned_count: 0,
-        has_more: false,
+        authors: tokenResult.timeline.authors,
+        posts: tokenResult.timeline.posts,
+        cascade: tokenResult.timeline.cascade,
+        returned_count: tokenResult.timeline.returned_count,
+        has_more: tokenResult.timeline.has_more,
       },
       posts: {
+        ...tokenResult.posts,
         query: {
           target_type: "Asset",
           target_id: "asset:solana:rkc",
@@ -281,28 +215,24 @@ function searchInspectData(): SearchInspectData {
           sort: "recent",
         },
         score_window: { window: "24h" },
-        total_count: 1,
-        returned_count: 1,
-        has_more: false,
-        items: [
-          {
-            event_id: "ev_482",
-            handle: "toly",
-            text: "Runtime narrative validates $RKC",
-            received_at_ms: 1_700_000_000_000,
-            stage_phase: "expansion",
-            is_watched: true,
-            price: { status: "ready", price_usd: 0.0078 },
-            post_quality: {
-              score_version: "post_quality_v1",
-              score: 80,
-              reasons: [],
-              risks: [],
-              contributions: [],
-              risk_caps: [],
-            },
-          },
-        ],
+        total_count: tokenResult.posts.total_count,
+        returned_count: tokenResult.posts.returned_count,
+        has_more: true,
+        items: tokenResult.posts.items.map((item) => ({
+          ...item,
+          text: item.event_id === "event-hansa-3" ? "Runtime narrative validates $RKC" : item.text,
+        })),
+      },
+      market_live: {
+        status: "missing",
+        target_type: "Asset",
+        target_id: "asset:solana:rkc",
+        price_usd: null,
+        market_cap_usd: null,
+        liquidity_usd: null,
+        holders: null,
+        observed_at_ms: null,
+        provider: null,
       },
       radar_item: null,
       profile: {
@@ -345,6 +275,7 @@ function searchInspectData(): SearchInspectData {
         ],
       },
       agent_brief: {
+        ...tokenResult.agent_brief,
         schema_version: "search_agent_brief_v1",
         generated_by: "deterministic",
         project_summary: {

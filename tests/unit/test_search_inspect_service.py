@@ -19,17 +19,21 @@ def test_search_inspect_returns_token_result_with_agent_brief_and_posts():
         token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("ev_1", phase_text="$BTC first social wave")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
+        live_price_gateway=FakeLivePriceGateway(),
     )
 
     result = service.inspect("$BTC", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
 
     assert result["query"]["result_kind"] == "token_result"
     assert result["resolver"]["selected_target"]["target_id"] == "cex_token:BTC"
+    assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "agent_brief", "market_live"]
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
-    assert result["token_result"]["market_overlay"]["price_series_type"] == "anchor_line"
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert result["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
+    assert result["token_result"]["market_live"]["status"] == "ready"
+    assert "radar_item" not in result["token_result"]
+    assert "market_overlay" not in result["token_result"]
 
 
 def test_search_inspect_returns_topic_result_for_keyword_query():
@@ -124,6 +128,27 @@ class FakeTargets:
     def __init__(self, *, rows):
         self.rows = rows
 
+    def target_identity(self, *, target_type, target_id):
+        for row in self.rows:
+            if row["target_type"] == target_type and row["target_id"] == target_id:
+                return {
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "symbol": row["symbol"],
+                    "name": None,
+                    "chain_id": row.get("chain_id"),
+                    "address": row.get("address"),
+                    "status": "resolved",
+                    "source": "test",
+                    "reason": "TARGET_ID",
+                    "pricefeed_id": row.get("pricefeed_id"),
+                    "provider": row.get("provider"),
+                    "native_market_id": row.get("native_market_id"),
+                    "quote_symbol": row.get("quote_symbol"),
+                    "feed_type": row.get("feed_type"),
+                }
+        return None
+
     def timeline_rows(self, *, target_type, target_id, since_ms, watched_only, limit, cursor=None):
         return [
             row
@@ -159,6 +184,21 @@ class FakeProfiles:
 
     def profiles_for_targets(self, targets):
         return {}
+
+
+class FakeLivePriceGateway:
+    def snapshot(self, *, target_type, target_id, now_ms=None):
+        return {
+            "target_type": target_type,
+            "target_id": target_id,
+            "status": "ready",
+            "price_usd": 70_000,
+            "market_cap_usd": None,
+            "liquidity_usd": None,
+            "holders": None,
+            "observed_at_ms": now_ms,
+            "provider": "test",
+        }
 
 
 def hit(
@@ -205,6 +245,8 @@ def target_row(event_id: str, *, phase_text: str) -> dict:
         "target_type": "CexToken",
         "target_id": "cex_token:BTC",
         "symbol": "BTC",
+        "chain_id": None,
+        "address": None,
         "author_handle": "alice",
         "text": phase_text,
         "text_clean": phase_text,
@@ -216,7 +258,11 @@ def target_row(event_id: str, *, phase_text: str) -> dict:
         "reference_json": None,
         "price_observation_id": "price:ev_1",
         "price_provider": "okx_cex",
+        "provider": "okx",
+        "native_market_id": "BTC-USDT",
         "pricefeed_id": "pricefeed:okx:BTC-USDT",
+        "quote_symbol": "USDT",
+        "feed_type": "cex_spot",
         "price_usd": 70_000,
         "price_quote": 70_000,
         "price_quote_symbol": "USDT",

@@ -2,19 +2,26 @@ from __future__ import annotations
 
 from typing import Any
 
-from .asset_flow_service import AssetFlowService
-from .search_agent_brief import build_token_agent_brief, build_topic_agent_brief
+from .search_agent_brief import build_topic_agent_brief
 from .search_service import SearchService
-from .token_target_posts_service import TokenTargetPostsService
-from .token_target_social_timeline_service import TokenTargetSocialTimelineService
+from .token_case_service import TokenCaseService
 
 
 class SearchInspectService:
-    def __init__(self, *, search_query: Any, token_radar: Any, targets: Any, profiles: Any) -> None:
+    def __init__(
+        self,
+        *,
+        search_query: Any,
+        token_radar: Any,
+        targets: Any,
+        profiles: Any,
+        live_price_gateway: Any | None = None,
+    ) -> None:
         self.search_query = search_query
         self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
+        self.live_price_gateway = live_price_gateway
 
     def inspect(
         self,
@@ -90,46 +97,18 @@ class SearchInspectService:
     ) -> dict[str, Any]:
         target_type = str(selected["target_type"])
         target_id = str(selected["target_id"])
-        timeline = TokenTargetSocialTimelineService(targets=self.targets).timeline(
+        return TokenCaseService(
+            targets=self.targets,
+            profiles=self.profiles,
+            live_price_gateway=self.live_price_gateway,
+        ).dossier(
             target_type=target_type,
             target_id=target_id,
             window=window,
             scope=scope,
-            limit=min(max(1, int(limit)), 200),
+            posts_limit=min(max(1, int(limit)), 50),
             now_ms=now_ms,
         )
-        posts = TokenTargetPostsService(targets=self.targets).target_posts(
-            target_type=target_type,
-            target_id=target_id,
-            window=window,
-            scope=scope,
-            post_range="current_window",
-            sort="recent",
-            limit=min(max(1, int(limit)), 200),
-            now_ms=now_ms,
-        )
-        radar = AssetFlowService(token_radar=self.token_radar, profiles=self.profiles).asset_flow(
-            window=window,
-            scope=scope,
-            limit=96,
-            now_ms=now_ms,
-        )
-        radar_item = _radar_item(radar=radar, selected=selected)
-        profile = self.profiles.profile_for_target(target_type=target_type, target_id=target_id)
-        return {
-            "target": selected,
-            "profile": profile,
-            "timeline": timeline,
-            "posts": posts,
-            "radar_item": radar_item,
-            "market_overlay": _market_overlay(timeline.get("market_overlay")),
-            "agent_brief": build_token_agent_brief(
-                target=selected,
-                timeline=timeline,
-                posts=posts,
-                radar_item=radar_item,
-            ),
-        }
 
     def _topic_result(self, *, query: str, items: list[dict[str, Any]]) -> dict[str, Any]:
         return {
@@ -173,27 +152,6 @@ def _resolver_reasons(*, result_kind: str, candidates: list[dict[str, Any]]) -> 
     return ["empty_query"]
 
 
-def _market_overlay(value: Any) -> dict[str, Any]:
-    overlay = dict(value) if isinstance(value, dict) else {"status": "missing"}
-    overlay["price_series_type"] = "anchor_line"
-    return overlay
-
-
-def _radar_item(*, radar: dict[str, Any], selected: dict[str, Any]) -> dict[str, Any] | None:
-    for row in [*_list(radar.get("targets")), *_list(radar.get("attention"))]:
-        if not isinstance(row, dict):
-            continue
-        row_dict: dict[str, Any] = dict(row)
-        target = row_dict.get("target")
-        if not isinstance(target, dict):
-            continue
-        if target.get("target_type") == selected.get("target_type") and target.get("target_id") == selected.get(
-            "target_id"
-        ):
-            return row_dict
-    return None
-
-
 def _topic_summary(items: list[dict[str, Any]]) -> dict[str, int]:
     authors = {
         str(_dict(item.get("event")).get("author_handle") or "")
@@ -205,7 +163,3 @@ def _topic_summary(items: list[dict[str, Any]]) -> dict[str, int]:
 
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []

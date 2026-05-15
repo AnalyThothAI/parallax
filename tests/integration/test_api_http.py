@@ -381,6 +381,34 @@ def rebuild_token_radar(client: TestClient, *, now_ms: int | None = None) -> Non
     worker.rebuild_once(now_ms=now_ms if now_ms is not None else int(time.time() * 1000))
 
 
+def seed_resolved_asset_with_event(
+    client: TestClient,
+    *,
+    symbol: str = "HANSA",
+    address: str = PEPE,
+    event_id: str = "event-token-case-1",
+    now_ms: int | None = None,
+) -> dict[str, object]:
+    event = make_token_event(
+        event_id,
+        symbol=symbol,
+        address=address,
+        text=f"${symbol} ignition {address}",
+        received_at_ms=now_ms if now_ms is not None else int(time.time() * 1000),
+    )
+    client.app.state.service.ingest.ingest_event(event, is_watched=True)
+    search = client.get(
+        "/api/search",
+        params={"q": f"${symbol}", "limit": 5, "window": "24h"},
+        headers={"Authorization": "Bearer secret"},
+    )
+    assert search.status_code == 200
+    candidates = search.json()["data"]["target_candidates"]
+    resolved = [candidate for candidate in candidates if candidate["status"] == "resolved"]
+    assert len(resolved) == 1
+    return resolved[0]
+
+
 def test_api_bootstrap_exposes_frontend_runtime_config_without_token(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
@@ -532,7 +560,9 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert inspect_data["token_result"]["posts"]["items"][0]["event_id"] == "event-1"
     assert inspect_data["token_result"]["profile"]["status"] == "pending"
     assert inspect_data["token_result"]["profile"]["provider"] == "gmgn_dex_profile"
-    assert inspect_data["token_result"]["market_overlay"]["price_series_type"] == "anchor_line"
+    assert inspect_data["token_result"]["market_live"]["status"] in {"missing", "unsupported", "ready"}
+    assert "market_overlay" not in inspect_data["token_result"]
+    assert "radar_item" not in inspect_data["token_result"]
     assert inspect_data["token_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
 
     assert asset_flow.status_code == 200
@@ -1230,6 +1260,106 @@ def test_api_live_market_returns_unsupported_without_live_gateway(tmp_path):
     assert data["status"] == "unsupported"
     assert missing.status_code == 400
     assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
+
+
+def test_api_token_case_returns_dossier_for_resolved_asset(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        target = seed_resolved_asset_with_event(client, symbol="HANSA")
+        response = client.get(
+            "/api/token-case",
+            params={
+                "target_type": target["target_type"],
+                "target_id": target["target_id"],
+                "window": "24h",
+                "scope": "all",
+                "posts_limit": 2,
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["data"]["target"]["target_type"] == "Asset"
+    assert "market_live" in body["data"]
+    assert "radar_item" not in body["data"]
+    assert "market_overlay" not in body["data"]
+    assert body["data"]["posts"]["items"][0]["post_quality"]["contributions"]
+
+
+def test_api_token_case_returns_404_when_target_not_found(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/token-case",
+            params={"target_type": "Asset", "target_id": "asset:solana:token:missing"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"ok": False, "error": "target_not_found"}
+
+
+def test_api_token_case_requires_auth(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get("/api/token-case", params={"target_type": "Asset", "target_id": "asset:x"})
+
+    assert response.status_code == 401
+    assert response.json() == {"ok": False, "error": "unauthorized"}
+
+
+def test_api_token_case_rejects_invalid_window_and_scope(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        bad_window = client.get(
+            "/api/token-case",
+            params={"target_type": "Asset", "target_id": "asset:x", "window": "7d"},
+            headers={"Authorization": "Bearer secret"},
+        )
+        bad_scope = client.get(
+            "/api/token-case",
+            params={"target_type": "Asset", "target_id": "asset:x", "scope": "private"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert bad_window.status_code == 400
+    assert bad_window.json() == {"ok": False, "error": "invalid_window", "field": "window"}
+    assert bad_scope.status_code == 400
+    assert bad_scope.json() == {"ok": False, "error": "invalid_scope", "field": "scope"}
+
+
+def test_api_token_case_matches_search_inspect_token_result_shape(tmp_path, monkeypatch):
+    now_ms = 1_778_562_000_000
+    monkeypatch.setattr("gmgn_twitter_intel.app.surfaces.api.http._now_ms", lambda: now_ms)
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        target = seed_resolved_asset_with_event(client, symbol="HANSA", now_ms=now_ms - 60_000)
+        token_case = client.get(
+            "/api/token-case",
+            params={
+                "target_type": target["target_type"],
+                "target_id": target["target_id"],
+                "window": "24h",
+                "scope": "all",
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+        inspect = client.get(
+            "/api/search/inspect",
+            params={"q": "$HANSA", "window": "24h", "scope": "all"},
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert token_case.status_code == 200
+    assert inspect.status_code == 200
+    assert inspect.json()["data"]["token_result"] == token_case.json()["data"]
 
 
 def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(tmp_path):

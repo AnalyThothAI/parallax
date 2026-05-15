@@ -1,9 +1,17 @@
-import type { ApiResponse, AssetFlowData, AssetFlowRow, LiveMarketUpdatePayload } from "@lib/types";
+import type {
+  ApiResponse,
+  AssetFlowData,
+  AssetFlowRow,
+  LiveMarketUpdatePayload,
+  TokenCaseDossier,
+} from "@lib/types";
 import {
   patchAssetFlowData,
+  patchTokenCaseLiveMarketUpdate,
   patchTokenRadarLiveMarketUpdate,
 } from "@shared/query/patchMarketUpdate";
 import { QueryClient } from "@tanstack/react-query";
+import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { describe, expect, it } from "vitest";
 
 describe("liveMarketUpdatePatch", () => {
@@ -69,9 +77,57 @@ describe("liveMarketUpdatePatch", () => {
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "matched"]),
     ).toBe(unrelated);
   });
+
+  it("patches matching token-case dossier live market snapshots", () => {
+    const queryClient = new QueryClient();
+    const matching = apiResponse(tokenCaseFixture());
+    const unrelated = apiResponse({
+      ...tokenCaseFixture(),
+      target: {
+        ...tokenCaseFixture().target,
+        target_id: "asset:solana:token:other",
+      },
+    });
+    queryClient.setQueryData(
+      ["token-case", "Asset:asset:solana:token:abc", "1h", "all", 24],
+      matching,
+    );
+    queryClient.setQueryData(
+      ["token-case", "Asset:asset:solana:token:other", "1h", "all", 24],
+      unrelated,
+    );
+
+    patchTokenCaseLiveMarketUpdate(
+      queryClient,
+      liveMarketUpdate(
+        "Asset",
+        "asset:solana:token:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+        123,
+      ),
+    );
+
+    expect(
+      queryClient.getQueryData<ApiResponse<TokenCaseDossier>>([
+        "token-case",
+        "Asset:asset:solana:token:abc",
+        "1h",
+        "all",
+        24,
+      ])?.data.market_live?.price_usd,
+    ).toBe(123);
+    expect(
+      queryClient.getQueryData<ApiResponse<TokenCaseDossier>>([
+        "token-case",
+        "Asset:asset:solana:token:other",
+        "1h",
+        "all",
+        24,
+      ]),
+    ).toBe(unrelated);
+  });
 });
 
-function apiResponse(data: AssetFlowData): ApiResponse<AssetFlowData> {
+function apiResponse<T>(data: T): ApiResponse<T> {
   return { ok: true, data };
 }
 

@@ -1,5 +1,4 @@
 import { buildSearchCaseView } from "@features/search/model/searchCase";
-import { buildSearchRadarSummary } from "@features/search/model/searchRadar";
 import { buildTopicBuckets } from "@features/search/model/searchTopicTimeline";
 import type { SearchInspectData } from "@lib/types";
 import { describe, expect, it } from "vitest";
@@ -19,36 +18,18 @@ describe("buildSearchCaseView", () => {
     expect(view.evidence.value).toBe("12 events");
   });
 
-  it("derives search radar summary outside the route component", () => {
+  it("falls back to the timeline market overlay for dossier-shaped token results", () => {
     const data = searchInspectFixture();
-    data.token_result!.radar_item = {
-      data_health: { identity: "ready", market: "live" },
-      market: {
-        decision_latest: {
-          market_cap_usd: 51_000_000,
-          price_usd: 0.0078,
-          provider: "okx_dex_ws_price_info",
-        },
-        event_anchor: {
-          market_cap_usd: 33_000_000,
-          provider: "gmgn_dex_quote",
-        },
-        readiness: { anchor_status: "anchored", latest_status: "live" },
-      },
-      score: { rank_score: 74, recommended_decision: "token_watch" },
-      target: { target_id: "asset:solana:rkc", target_type: "Asset" },
+    delete data.token_result!.market_overlay;
+    data.token_result!.timeline.market_overlay = {
+      chain_id: "solana",
+      address: "FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+      provider: "timeline_overlay",
     };
 
-    const summary = buildSearchRadarSummary(data.token_result!);
+    const view = buildSearchCaseView(data);
 
-    expect(summary.primaryMarketLabel).toBe("market cap");
-    expect(summary.primaryMarketValue).toBe("$51M");
-    expect(summary.primaryMarketDetail).toBe("live · okx_dex_ws_price_info");
-    expect(summary.scoreSummary).toEqual([
-      { label: "rank", value: "74" },
-      { label: "decision", value: "token_watch" },
-      { label: "gate", value: "-" },
-    ]);
+    expect(view.subtitle).toContain("solana");
   });
 
   it("builds topic buckets outside the route component", () => {
@@ -116,6 +97,17 @@ function searchInspectFixture(): SearchInspectData {
           price_usd: 0.0078,
           provider: "okx_dex_ws_price_info",
         },
+      },
+      market_live: {
+        status: "missing",
+        target_type: "Asset",
+        target_id: "asset:solana:rkc",
+        price_usd: null,
+        market_cap_usd: null,
+        liquidity_usd: null,
+        holders: null,
+        observed_at_ms: null,
+        provider: null,
       },
       posts: {
         has_more: false,

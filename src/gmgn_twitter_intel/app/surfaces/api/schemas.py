@@ -56,7 +56,17 @@ class SearchInspectData(ApiSchema):
     resolver: JsonObject | None = None
     token_result: JsonObject | None = None
     topic_result: JsonObject | None = None
+    ambiguous_result: JsonObject | None = None
     error: str | None = None
+
+
+class TokenCaseData(ApiSchema):
+    target: JsonObject
+    profile: JsonObject | None = None
+    timeline: JsonObject
+    posts: JsonObject
+    agent_brief: JsonObject
+    market_live: JsonObject
 
 
 class TokenRadarData(ApiSchema):

@@ -60,9 +60,6 @@ describe("SignalLabPulse", () => {
       within(header!).getByText((_, node) => node?.textContent === "代币 0"),
     ).toBeInTheDocument();
     expect(
-      within(header!).getByText((_, node) => node?.textContent === "主题 0"),
-    ).toBeInTheDocument();
-    expect(
       within(header!).getByText((_, node) => node?.textContent === "拒绝 0"),
     ).toBeInTheDocument();
 

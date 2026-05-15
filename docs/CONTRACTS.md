@@ -155,9 +155,9 @@ Search V2 contract:
     `ambiguous_result`, or `empty_result`.
   - `data.resolver`: confidence, target candidates, selected target when there
     is exactly one resolved target, and deterministic resolver reasons.
-  - `data.token_result`: target, `target-social-timeline`, `target-posts`,
-    matched radar row when available, profile block when the selected target is
-    a resolved DEX asset, market overlay, and `agent_brief`.
+  - `data.token_result`: the same token case dossier shape as `/api/token-case`
+    for the selected target. The Search page renders this payload directly and
+    must not issue a second `/api/token-case` request for the same result.
   - `data.topic_result`: 24h search items, post/author summary, and
     `agent_brief`.
   - `data.ambiguous_result`: candidates plus topic evidence; callers must not
@@ -165,21 +165,39 @@ Search V2 contract:
 - `agent_brief.schema_version` is `search_agent_brief_v1`. The brief has three
   product sections: project/topic summary, propagation, and bull/bear views.
   It is deterministic in the first release and must cite visible evidence ids.
-- Market overlay is enriched by the asset-market layer when provider candles
-  are available:
-  - `price_series_type = "ohlc"` with `candle_status = "ready"`,
-    `candle_source`, `candle_bar`, and `candles[]` rows shaped as
-    `{time_ms, open, high, low, close, volume, volume_quote, volume_usd,
-    confirmed}`.
-  - `price_series_type = "anchor_line"` with `candle_status` such as
-    `unsupported`, `missing_market_id`, `missing_identity`, `empty`, or
-    `error` when provider OHLC cannot be fetched.
-  - The UI must never synthesize candlesticks from sparse message-anchor
-    prices.
 - `token_result.profile` uses the same `TokenProfileBlock` contract as
   `/api/token-radar` rows. Search Inspect continues to return timeline, posts,
-  market overlay, and deterministic brief when profile facts are pending,
+  live market status, and deterministic brief when profile facts are pending,
   missing, or errored.
+
+### Token Case Dossier
+
+- `/api/token-case` accepts authenticated `target_type`, `target_id`, `window`,
+  `scope`, and `posts_limit`.
+- `target_type` supports `Asset` and `CexToken`. Missing or unsupported target
+  references return a structured bad request or `target_not_found`.
+- `scope` is the Token Case UI contract: `all` for all public mentions and
+  `watched` for watched-account mentions. The backend also normalizes
+  `matched` to the watched scope for callers that still speak radar/search
+  terminology.
+- Response shape:
+  - `data.target`: canonical resolved target identity.
+  - `data.profile`: persisted token profile block when available, otherwise a
+    status block such as `pending`, `missing`, `unsupported`, or `error`.
+  - `data.timeline`: target social timeline for the requested window/scope,
+    with propagation stages, authors, posts, cascade metadata, and a normalized
+    query block.
+  - `data.posts`: the initial recent post page for the same target/window/scope.
+    Additional pages use `/api/target-posts` with the returned `next_cursor`.
+  - `data.agent_brief`: deterministic `search_agent_brief_v1` project summary,
+    propagation read, and bull/bear sections over visible evidence.
+  - `data.market_live`: request-time/process-local live market snapshot with
+    `status` (`ready`, `live`, `missing`, `unsupported`, `stale`, or `error`),
+    provider metadata, and nullable price, market-cap, liquidity, holder, and
+    observation fields.
+- Token Case responses do not expose Token Radar score audit blocks. Ranking
+  facts remain owned by `/api/token-radar`; dossier pages show evidence,
+  propagation, profile, and live market readiness.
 
 ## CLI
 
