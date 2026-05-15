@@ -759,9 +759,7 @@ def _watchdog_unhealthy_reasons(runtime: CliRuntime, *, now_ms: int) -> list[str
         reasons.append("token_radar_projection_worker_stopped")
     if runtime.pulse_candidate_worker is not None and not _task_running(runtime.pulse_candidate_task):
         reasons.append("pulse_candidate_worker_stopped")
-    if runtime.watchlist_handle_summary_worker is not None and not _task_running(
-        runtime.watchlist_handle_summary_task
-    ):
+    if runtime.watchlist_handle_summary_worker is not None and not _task_running(runtime.watchlist_handle_summary_task):
         reasons.append("watchlist_handle_summary_worker_stopped")
     return reasons
 

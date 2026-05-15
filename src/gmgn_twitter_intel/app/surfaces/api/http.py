@@ -141,6 +141,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
         except ValueError:
             raise ApiBadRequest("invalid_handle", field="handle") from None
         try:
+
             def read_summary() -> dict[str, Any]:
                 with runtime.repositories() as repos:
                     return WatchlistHandleReadService(
@@ -175,6 +176,7 @@ def create_api_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], i
             raise ApiBadRequest("invalid_handle", field="handle") from None
         parsed_scope = _watchlist_timeline_scope(scope)
         try:
+
             def read_timeline() -> dict[str, Any]:
                 with runtime.repositories() as repos:
                     return WatchlistHandleReadService(repository=repos.watchlist_intel).timeline(
