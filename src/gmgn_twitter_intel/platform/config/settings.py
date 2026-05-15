@@ -409,6 +409,7 @@ class TokenCaptureTierWorkerSettings(PerWorkerSettings):
     ws_limit: int = Field(default=50, ge=0)
     poll_limit: int = Field(default=200, ge=0)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
+    advisory_lock_key: int = 2026051503
 
 
 class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
@@ -994,6 +995,7 @@ token_capture_tier:
   ws_limit: 50
   poll_limit: 200
   statement_timeout_seconds: 120.0
+  advisory_lock_key: 2026051503
 token_radar_projection:
   enabled: true
   interval_seconds: 10.0

@@ -17,9 +17,11 @@ RECENCY_SCORE_KEYS = ("computed_at_ms", "source_max_received_at_ms")
 DEFAULT_BATCH_SIZE = 100
 DEFAULT_WS_LIMIT = 50
 DEFAULT_POLL_LIMIT = 200
+ADVISORY_LOCK_KEY = 2026051503
 
 
 class TokenCaptureTierWorker(WorkerBase):
+    SINGLE_WRITER_KEY = ADVISORY_LOCK_KEY
     worker_name = "token_capture_tier"
 
     def __init__(

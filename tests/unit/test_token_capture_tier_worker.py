@@ -9,6 +9,7 @@ from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
 from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import (
+    ADVISORY_LOCK_KEY,
     TokenCaptureTierWorker,
     project_once,
 )
@@ -135,6 +136,14 @@ def test_worker_run_once_returns_worker_result_processed_count() -> None:
     assert db.session_names == ["token_capture_tier"]
 
 
+def test_worker_exposes_single_writer_advisory_lock_key() -> None:
+    worker = TokenCaptureTierWorker(db=FakeDB(FakeRepos([])), telemetry=object())
+
+    assert ADVISORY_LOCK_KEY == 2026051503
+    assert worker.SINGLE_WRITER_KEY == ADVISORY_LOCK_KEY
+    assert worker._advisory_lock_key() == ADVISORY_LOCK_KEY
+
+
 def test_worker_has_no_provider_dependency_slots() -> None:
     worker = TokenCaptureTierWorker(db=FakeDB(FakeRepos([])), telemetry=object())
 
@@ -150,6 +159,7 @@ def test_default_workers_yaml_includes_token_capture_tier_settings() -> None:
     assert workers.token_capture_tier.batch_size == 100
     assert workers.token_capture_tier.ws_limit == 50
     assert workers.token_capture_tier.poll_limit == 200
+    assert workers.token_capture_tier.advisory_lock_key == ADVISORY_LOCK_KEY
 
 
 def test_registry_active_live_market_targets_projects_rank_score_from_factor_snapshot() -> None:
