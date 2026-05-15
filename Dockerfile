@@ -9,6 +9,8 @@ RUN --mount=type=cache,target=/root/.npm \
     set -eu; \
     for attempt in 1 2 3 4 5; do \
         npm ci \
+            --no-audit \
+            --prefer-offline \
             --fetch-retries=6 \
             --fetch-retry-factor=2 \
             --fetch-retry-mintimeout=10000 \
