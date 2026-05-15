@@ -18,7 +18,7 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
         [
             tier_row(
                 target_type="chain_token",
-                target_id="solana:So11111111111111111111111111111111111111112",
+                target_id="eip155:1:0xAbC",
                 pricefeed_id="pf-1",
             )
         ],
@@ -28,8 +28,8 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
         state,
         [
             DexMarketFactUpdate(
-                chain_id="solana",
-                address="So11111111111111111111111111111111111111112",
+                chain_id="eip155:1",
+                address="0xabc",
                 observed_at_ms=1_800_000_000_001,
                 price_usd=123.45,
                 market_cap_usd=456.7,
@@ -58,17 +58,17 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert repos.token_capture_tiers.calls == [{"tier": 1, "limit": 10}]
     assert stream.saw_in_session == [False]
     assert len(stream.targets) == 1
-    assert stream.targets[0].chain_id == "solana"
-    assert stream.targets[0].address == "So11111111111111111111111111111111111111112"
+    assert stream.targets[0].chain_id == "eip155:1"
+    assert stream.targets[0].address == "0xAbC"
     assert stream.targets[0].subject_type == "chain_token"
-    assert stream.targets[0].subject_id == "solana:So11111111111111111111111111111111111111112"
+    assert stream.targets[0].subject_id == "eip155:1:0xAbC"
     assert stream.targets[0].pricefeed_id == "pf-1"
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 1
     tick = repos.market_ticks.inserted[0]
     assert tick.tick_id == market_tick_id(
         target_type="chain_token",
-        target_id="solana:So11111111111111111111111111111111111111112",
+        target_id="eip155:1:0xAbC",
         source_provider="okx_dex_ws",
         observed_at_ms=1_800_000_000_001,
     )
@@ -79,10 +79,11 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert tick.liquidity_usd == Decimal("89.01")
     assert tick.volume_24h_usd == Decimal("234.56")
     assert tick.raw_payload_json == {"source": "fake"}
-    assert wake.market_notifications == [
+    assert wake.channels == ["market_tick_written"]
+    assert wake.market_tick_notifications == [
         {
             "target_type": "chain_token",
-            "target_id": "solana:So11111111111111111111111111111111111111112",
+            "target_id": "eip155:1:0xAbC",
         }
     ]
 
@@ -107,7 +108,7 @@ def test_market_tick_stream_worker_skips_cex_symbol_tier1_targets() -> None:
     assert result.skipped == 1
     assert stream.targets == []
     assert repos.market_ticks.inserted == []
-    assert wake.market_notifications == []
+    assert wake.market_tick_notifications == []
 
 
 def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> None:
@@ -138,7 +139,29 @@ def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> 
     assert stream.saw_in_session == [False]
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
-    assert wake.market_notifications == []
+    assert wake.market_tick_notifications == []
+
+
+def test_market_tick_stream_worker_bounds_stream_cycle_and_closes_iterator() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(state, [tier_row(target_type="chain_token", target_id="solana:TokenA")])
+    db = FakeDB(state, repos)
+    stream = NeverYieldDexMarketStream(state)
+    worker = MarketTickStreamWorker(
+        pool_bundle=db,
+        stream_dex_market=stream,
+        stream_cycle_seconds=0.001,
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 0
+    assert result.skipped == 0
+    assert result.notes["stream_targets"] == 1
+    assert stream.saw_in_session == [False]
+    assert stream.closed is True
+    assert repos.market_ticks.inserted == []
 
 
 def test_market_tick_stream_worker_result_when_no_stream_provider() -> None:
@@ -251,12 +274,34 @@ class FakeDexMarketStream:
             yield update
 
 
+class NeverYieldDexMarketStream:
+    def __init__(self, state: FakeSessionState) -> None:
+        self.state = state
+        self.saw_in_session: list[bool] = []
+        self.closed = False
+
+    async def stream_price_info(self, targets):
+        self.saw_in_session.append(self.state.in_session)
+        try:
+            while True:
+                await asyncio.sleep(60)
+        finally:
+            self.closed = True
+        if False:
+            yield
+
+
 class FakeWakeEmitter:
     def __init__(self) -> None:
-        self.market_notifications: list[dict[str, str]] = []
+        self.channels: list[str] = []
+        self.market_tick_notifications: list[dict[str, str]] = []
+
+    def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
+        self.channels.append("market_tick_written")
+        self.market_tick_notifications.append({"target_type": target_type, "target_id": target_id})
 
     def notify_market_observation_written(self, *, target_type: str, target_id: str) -> None:
-        self.market_notifications.append({"target_type": target_type, "target_id": target_id})
+        raise AssertionError("market_tick_stream must not emit legacy market observation wakes")
 
 
 def worker_settings(**overrides):
