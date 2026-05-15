@@ -24,15 +24,6 @@ from .repositories.market_repository import MarketRepository
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
 from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
-from .types import (
-    MarketContext,
-    MarketObservation,
-    MarketReadiness,
-    MarketTargetRef,
-    market_context_to_dict,
-    market_observation_from_row,
-    market_observation_to_dict,
-)
 
 __all__ = [
     "CONFIDENCE_MANUAL",
@@ -52,16 +43,9 @@ __all__ = [
     "DiscoveryRepository",
     "EnrichedEventRepository",
     "IdentityEvidenceRepository",
-    "MarketContext",
-    "MarketObservation",
-    "MarketReadiness",
     "MarketRepository",
-    "MarketTargetRef",
     "MarketTickRepository",
     "RegistryRepository",
     "TokenCaptureTierRepository",
-    "market_context_to_dict",
-    "market_observation_from_row",
-    "market_observation_to_dict",
     "select_current_identity",
 ]

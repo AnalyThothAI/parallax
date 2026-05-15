@@ -8,7 +8,7 @@ Router for coding agents (Codex, Cursor, generic LLM tooling). Project-wide rule
 
 The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`,
 `token_intents`, `token_intent_resolutions`, `asset_identity_*`,
-`price_observations`) are the only business truth. Derived read models
+`market_ticks`, `enriched_events`) are the only business truth. Derived read models
 (`token_radar_rows`, `pulse_candidates`, ...) each have exactly one
 runtime writer and are rebuildable. `NOTIFY` is a wake hint; every
 listener re-reads DB and runs a bounded `interval_seconds` catch-up.

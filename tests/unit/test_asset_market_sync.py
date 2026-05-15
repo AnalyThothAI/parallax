@@ -4,7 +4,7 @@ from gmgn_twitter_intel.domains.asset_market.providers import CexTicker
 from gmgn_twitter_intel.domains.asset_market.services.asset_market_sync import sync_cex_routes
 
 
-def test_sync_cex_routes_writes_instruments_and_feeds_without_price_observations():
+def test_sync_cex_routes_writes_instruments_and_feeds_without_market_ticks():
     registry = _Registry()
     result = sync_cex_routes(
         registry=registry,

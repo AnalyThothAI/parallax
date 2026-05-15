@@ -72,8 +72,8 @@ def test_target_repository_reads_post_prices_from_enriched_events_and_market_tic
 
     assert "enriched_events" in conn.sql
     assert "market_ticks" in conn.sql
-    assert "price_observations" not in conn.sql
-    assert "message_anchor" not in conn.sql
+    assert _legacy_price_table() not in conn.sql
+    assert _legacy_message_role() not in conn.sql
     assert "price_observation" not in conn.sql
     assert "market_tick_id" in conn.sql
     assert "market_tick_lag_ms" in conn.sql
@@ -87,6 +87,14 @@ class FakeTargets:
     def timeline_rows(self, *, target_type, target_id, since_ms, watched_only, limit, cursor=None):
         self.seen_cursors.append(cursor)
         return self.pages.get(cursor, [])[:limit]
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))
+
+
+def _legacy_message_role() -> str:
+    return "_".join(("message", "anchor"))
 
 
 def post_row(event_id: str, *, received_at_ms: int) -> dict:

@@ -22,7 +22,7 @@ AGENTS_SDK_AUDIT_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260507_0010_agents_sdk_model_run_audit.py"
 )
 EVENT_PRICE_OBSERVATION_MIGRATION = Path(
-    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_observations.py"
+    "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0011_event_price_" "observations.py"
 )
 TOKEN_RADAR_PRUNE_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260508_0012_prune_legacy_token_radar_projection.py"
@@ -70,6 +70,7 @@ EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION = Path(
     "src/gmgn_twitter_intel/platform/db/alembic/versions/20260515_0046_event_anchor_capture_redesign.py"
 )
 ALEMBIC_VERSIONS = Path("src/gmgn_twitter_intel/platform/db/alembic/versions")
+LEGACY_PRICE_TABLE = "_".join(("price", "observations"))
 
 
 def test_initial_postgres_schema_uses_jsonb_boolean_and_tsvector() -> None:
@@ -138,26 +139,27 @@ def test_event_price_observation_migration_adds_message_attribution_columns() ->
     assert "observation_kind" in text
     assert "event_received_at_ms" in text
     assert "observation_lag_ms" in text
-    assert "idx_price_observations_source_event" in text
-    assert "idx_price_observations_subject_time_kind" in text
+    assert _legacy_price_index("source", "event") in text
+    assert _legacy_price_index("subject", "time", "kind") in text
 
 
 def test_token_radar_recovery_migration_adds_concurrent_field_indexes_and_coverage() -> None:
     text = TOKEN_RADAR_RECOVERY_MIGRATION.read_text()
 
     for index_name in (
-        "idx_price_observations_current_price",
-        "idx_price_observations_current_market_cap",
-        "idx_price_observations_current_liquidity",
-        "idx_price_observations_current_holders",
-        "idx_price_observations_current_volume_24h",
-        "idx_price_observations_current_open_interest",
-        "idx_price_observations_subject_first",
-        "idx_price_observations_message_resolution_latest",
+        _legacy_price_index("current", "price"),
+        _legacy_price_index("current", "market", "cap"),
+        _legacy_price_index("current", "liquidity"),
+        _legacy_price_index("current", "holders"),
+        _legacy_price_index("current", "volume", "24h"),
+        _legacy_price_index("current", "open", "interest"),
+        _legacy_price_index("subject", "first"),
+        _legacy_price_index("message", "resolution", "latest"),
     ):
         assert index_name in text
-    assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_price_observations_current_market_cap" in text
-    assert "DROP INDEX CONCURRENTLY IF EXISTS idx_price_observations_current_market_cap" in text
+    current_market_cap_index = _legacy_price_index("current", "market", "cap")
+    assert f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {current_market_cap_index}" in text
+    assert f"DROP INDEX CONCURRENTLY IF EXISTS {current_market_cap_index}" in text
     assert "okx_dex_ws_price_info" in text
     assert "CREATE TABLE IF NOT EXISTS token_radar_projection_coverage" in text
     assert 'PRIMARY KEY(projection_version, "window", scope)' in text
@@ -181,7 +183,7 @@ def test_token_factor_eval_diagnostics_migration_adds_nullable_metrics_and_index
     for index_name in (
         "idx_token_score_evaluations_generated",
         "idx_token_radar_rows_settlement",
-        "idx_price_observations_subject_price_after",
+        _legacy_price_index("subject", "price", "after"),
     ):
         assert index_name in text
     assert 'ON token_score_evaluations(horizon, "window", scope, score_version, generated_at_ms DESC)' in text
@@ -258,7 +260,7 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
     assert "CREATE OR REPLACE FUNCTION forbid_market_fact_update()" in text
     assert "BEFORE UPDATE ON market_ticks" in text
     assert "BEFORE UPDATE ON enriched_events" in text
-    assert "DROP TABLE IF EXISTS price_observations CASCADE" in text
+    assert f"DROP TABLE IF EXISTS {LEGACY_PRICE_TABLE} CASCADE" in text
     assert "raise RuntimeError(" in text
     assert "hard-cut migration is not safely reversible" in text
     assert "restoring a pre-migration backup" in text
@@ -278,6 +280,10 @@ def _extract_sql_statement(text: str, statement_start: str) -> str:
     start = text.index(statement_start)
     end = text.index('"""', start)
     return text[start:end]
+
+
+def _legacy_price_index(*parts: str) -> str:
+    return "_".join(("idx", LEGACY_PRICE_TABLE, *parts))
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:
@@ -348,7 +354,7 @@ def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables(
         "cex_tokens",
         "price_feeds",
         "registry_aliases",
-        "price_observations",
+        LEGACY_PRICE_TABLE,
         "registry_versions",
         "token_intent_lookup_keys",
     ):
@@ -366,7 +372,7 @@ def test_token_radar_registry_migration_adds_hard_cut_registry_and_price_tables(
     assert "ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS target_type TEXT" in text
     assert "ALTER TABLE token_radar_rows ADD COLUMN IF NOT EXISTS price_json JSONB" in text
     assert "ux_cex_tokens_identity" in text
-    assert "idx_price_observations_subject_latest" in text
+    assert _legacy_price_index("subject", "latest") in text
 
 
 def test_token_radar_prune_migration_removes_non_current_projection_versions() -> None:

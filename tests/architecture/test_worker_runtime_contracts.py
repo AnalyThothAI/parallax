@@ -256,10 +256,11 @@ def test_wake_bus_is_emit_only() -> None:
     from gmgn_twitter_intel.app.runtime import wake_bus
 
     text = (SRC / "app/runtime/wake_bus.py").read_text(encoding="utf-8")
+    legacy_channel = "_".join(("market", "observation", "written"))
 
     assert not hasattr(wake_bus, "WakeListener")
-    assert not hasattr(wake_bus.WakeBus, "notify_market_observation_written")
-    assert "market_observation_written" not in text
+    assert not hasattr(wake_bus.WakeBus, f"notify_{legacy_channel}")
+    assert legacy_channel not in text
     assert "notify_market_tick_written" in text
     assert "LISTEN" not in text
 

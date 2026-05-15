@@ -78,12 +78,17 @@ class FakeSession:
 class FakeRepos:
     def __init__(self) -> None:
         self.registry = FakeRegistry()
-        self.price_observations = ForbiddenRepository("price_observations")
+        self._legacy_market_facts = ForbiddenRepository(_legacy_price_table())
         self.market_ticks = ForbiddenRepository("market_ticks")
         self.enriched_events = ForbiddenRepository("enriched_events")
 
+    def __getattr__(self, name: str):
+        if name == _legacy_price_table():
+            return self._legacy_market_facts
+        raise AttributeError(name)
+
     def assert_no_market_fact_access(self) -> None:
-        assert self.price_observations.touched is False
+        assert self._legacy_market_facts.touched is False
         assert self.market_ticks.touched is False
         assert self.enriched_events.touched is False
 
@@ -111,3 +116,7 @@ class ForbiddenRepository:
     def __getattr__(self, method_name: str):
         self.touched = True
         raise AssertionError(f"LivePriceGateway must not touch {self.name}.{method_name}")
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))

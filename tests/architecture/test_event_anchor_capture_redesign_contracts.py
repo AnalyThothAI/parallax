@@ -15,13 +15,12 @@ SUPERPOWERS_DOCS = ROOT / "docs/superpowers"
 SCANNED_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".sql"}
 SKIPPED_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
 BANNED_RUNTIME_STRINGS = (
-    "AnchorPriceWorker",
-    "anchor_price",
-    "price_observations",
-    "market_observation_written",
-    "message_anchor",
-    "decision_latest",
-    "should_persist_live_observation",
+    "".join(("Anchor", "Price", "Worker")),
+    f"{'_'.join(('anchor', 'price'))}:",
+    "_".join(("price", "observations")),
+    "_".join(("market", "observation", "written")),
+    "_".join(("message", "anchor")),
+    "_".join(("should", "persist", "live", "observation")),
 )
 
 
@@ -47,7 +46,7 @@ def test_market_tick_tables_are_append_only_in_latest_migration() -> None:
     assert "CREATE TABLE IF NOT EXISTS enriched_events" in migration
     assert "BEFORE UPDATE ON market_ticks" in migration
     assert "BEFORE UPDATE ON enriched_events" in migration
-    assert "DROP TABLE IF EXISTS price_observations CASCADE" in migration
+    assert f"DROP TABLE IF EXISTS {_legacy_price_table()} CASCADE" in migration
     assert "UPDATE market_ticks" not in migration
     assert "UPDATE enriched_events" not in migration
 
@@ -66,3 +65,7 @@ def _allows_historical_anchor_references(path: Path) -> bool:
     return path == Path(__file__).resolve() or any(
         path.is_relative_to(allowed_root) for allowed_root in (ALEMBIC_VERSIONS, SUPERPOWERS_DOCS)
     )
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))

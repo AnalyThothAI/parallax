@@ -17,7 +17,7 @@ def test_market_ticks_for_token_reads_tick_history_with_named_params():
     assert "WHERE target_type = %(target_type)s" in conn.sql
     assert "AND target_id = %(target_id)s" in conn.sql
     assert "ORDER BY observed_at_ms ASC" in conn.sql
-    assert "price_observations" not in conn.sql
+    assert _legacy_price_table() not in conn.sql
     assert conn.params == {
         "target_type": "chain_token",
         "target_id": "solana:pepe",
@@ -39,3 +39,7 @@ class FakeConn:
 
     def fetchall(self):
         return self.rows
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))

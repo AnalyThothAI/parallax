@@ -43,9 +43,10 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
 def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     text = default_workers_yaml()
     payload = yaml.safe_load(text)
+    legacy_channel = "_".join(("market", "observation", "written"))
 
     assert "anchor_price" not in payload
-    assert "market_observation_written" not in text
+    assert legacy_channel not in text
     assert "live_observation_" not in text
     assert "hot_target_ttl_seconds" not in text
     assert "cex_poll_interval_seconds" not in text

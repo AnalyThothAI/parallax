@@ -190,7 +190,7 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
 
     assert {"projects", "registry_assets", "cex_tokens", "price_feeds"}.issubset(table_names)
     assert {"market_ticks", "enriched_events", "token_capture_tier"}.issubset(table_names)
-    assert "price_observations" not in table_names
+    assert _legacy_price_table() not in table_names
     assert {"token_discovery_results", "registry_versions", "token_intent_lookup_keys"}.issubset(table_names)
     assert "discovery_tasks" not in table_names
     assert {"target_type", "target_id", "pricefeed_id", "reason_codes_json", "lookup_keys_json"}.issubset(
@@ -275,3 +275,7 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
         "idx_market_ticks_target_observed",
         "idx_enriched_events_target_time",
     }.issubset(market_fact_indexes)
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))

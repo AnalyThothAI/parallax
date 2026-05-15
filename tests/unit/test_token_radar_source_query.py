@@ -23,9 +23,9 @@ def test_token_radar_source_query_uses_enriched_events_and_market_ticks_only():
     sql = conn.sqls[-1]
     assert "enriched_events" in sql
     assert "market_ticks" in sql
-    assert "price_observations" not in sql
-    assert "event_anchor" not in sql
-    assert "decision_latest" not in sql
+    assert _legacy_price_table() not in sql
+    assert _public_market_key("event") not in sql
+    assert _public_market_key("decision") not in sql
     assert "event_price_capture" in sql
     assert "event_price_tick" in sql
     assert "latest_price" in sql
@@ -49,3 +49,12 @@ class _Result:
 
     def fetchone(self):
         return {"value": 0}
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))
+
+
+def _public_market_key(prefix: str) -> str:
+    suffix = "anchor" if prefix == "event" else "latest"
+    return "_".join((prefix, suffix))

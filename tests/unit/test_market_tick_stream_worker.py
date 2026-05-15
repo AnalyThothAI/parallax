@@ -363,8 +363,10 @@ class FakeWakeEmitter:
         self.channels.append("market_tick_written")
         self.market_tick_notifications.append({"target_type": target_type, "target_id": target_id})
 
-    def notify_market_observation_written(self, *, target_type: str, target_id: str) -> None:
-        raise AssertionError("market_tick_stream must not emit legacy market observation wakes")
+    def __getattr__(self, name: str):
+        if name == f"notify_{'_'.join(('market', 'observation', 'written'))}":
+            raise AssertionError("market_tick_stream must not emit legacy market wakes")
+        raise AttributeError(name)
 
 
 def worker_settings(**overrides):

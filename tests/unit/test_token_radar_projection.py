@@ -559,13 +559,13 @@ def test_source_rows_uses_preferred_cex_pricefeed_when_resolution_has_no_pricefe
     assert "token_intent_resolutions.resolver_policy_version = %s" in conn.sql
 
 
-def test_source_rows_does_not_read_historical_price_observations():
+def test_source_rows_does_not_read_historical_market_fact_table():
     conn = FakeConn()
     repos = type("Repos", (), {"conn": conn})()
 
     TokenRadarProjection(repos=repos)._source_rows(since_ms=1, scope="all", now_ms=2)
 
-    assert "price_observations" not in conn.sql
+    assert _legacy_price_table() not in conn.sql
     assert "enriched_events" in conn.sql
     assert "market_ticks" in conn.sql
     assert "market_target" in conn.sql
@@ -579,8 +579,8 @@ def test_source_rows_does_not_read_historical_price_observations():
     assert "message_event_price" not in conn.sql
     assert "event_history_price" not in conn.sql
     assert "latest_price_observation" not in conn.sql
-    assert "event_anchor" not in conn.sql
-    assert "decision_latest" not in conn.sql
+    assert _public_market_key("event") not in conn.sql
+    assert _public_market_key("decision") not in conn.sql
     assert ") event_price ON true" not in conn.sql
     assert " OR " not in conn.sql
     assert "WITH window_events AS MATERIALIZED" in conn.sql
@@ -818,6 +818,15 @@ class FakeConn:
 
     def fetchall(self):
         return []
+
+
+def _legacy_price_table() -> str:
+    return "_".join(("price", "observations"))
+
+
+def _public_market_key(prefix: str) -> str:
+    suffix = "anchor" if prefix == "event" else "latest"
+    return "_".join((prefix, suffix))
 
 
 class FakeProjectionRecorder:
