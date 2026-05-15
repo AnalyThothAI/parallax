@@ -5,6 +5,8 @@ import inspect
 from decimal import Decimal
 from typing import Any
 
+import pytest
+
 from gmgn_twitter_intel.app.runtime.providers_wiring import AssetMarketProviders
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuote
 from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
@@ -118,6 +120,48 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
     assert result.capture.capture_reason == "inline_quote"
 
 
+@pytest.mark.parametrize(
+    ("target_id", "expected_chain", "expected_address"),
+    [
+        ("solana:ABC111", "solana", "ABC111"),
+        ("eip155:1:0xabc", "eip155:1", "0xabc"),
+    ],
+)
+def test_inline_dex_quote_parses_chain_and_address_from_target_id(
+    target_id: str,
+    expected_chain: str,
+    expected_address: str,
+) -> None:
+    provider = RecordingDexQuoteProvider(
+        [
+            DexTokenQuote(
+                chain_id=expected_chain,
+                address=expected_address,
+                observed_at_ms=EVENT_MS + 100,
+                price_usd=1.23,
+                raw={},
+            )
+        ]
+    )
+
+    result = EventMarketCaptureService(
+        providers=AssetMarketProviders(dex_quote_market=provider),
+        now_ms=lambda: NOW_MS,
+    ).capture_for_event(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={"target_type": "chain_token", "target_id": target_id},
+        event_ms=EVENT_MS,
+        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
+    )
+
+    assert [(item.chain_id, item.address) for item in provider.calls[0]] == [(expected_chain, expected_address)]
+    assert result.tick is not None
+    assert result.tick.chain == expected_chain
+    assert result.tick.token_address == expected_address
+
+
 def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
     provider = RecordingCexMarketProvider(
         CexTicker(
@@ -174,6 +218,36 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
     assert result.capture.tick_lag_ms == 50
 
 
+def test_inline_cex_ticker_parses_exchange_and_instrument_from_target_id() -> None:
+    provider = RecordingCexMarketProvider(
+        CexTicker(
+            inst_id="PEPE-USDT",
+            inst_type="SPOT",
+            last_price=0.0000123,
+            volume_24h=None,
+            open_interest=None,
+            raw={"ts": str(EVENT_MS + 25)},
+        )
+    )
+
+    result = EventMarketCaptureService(
+        providers=AssetMarketProviders(message_cex_market=provider),
+        now_ms=lambda: NOW_MS,
+    ).capture_for_event(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={"target_type": "cex_symbol", "target_id": "okx:PEPE-USDT"},
+        event_ms=EVENT_MS,
+        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
+    )
+
+    assert provider.calls == ["PEPE-USDT"]
+    assert result.tick is not None
+    assert result.tick.exchange == "okx"
+    assert result.tick.instrument == "PEPE-USDT"
+
+
 def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
     no_quote_result = EventMarketCaptureService(
         providers=AssetMarketProviders(dex_quote_market=RecordingDexQuoteProvider([])),
@@ -228,6 +302,112 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
     assert null_price_result.tick is None
     assert null_price_result.capture.capture_method == "unavailable"
     assert null_price_result.capture.capture_reason == "no_market_data"
+
+
+@pytest.mark.parametrize("price_usd", [0.0, -1.0, float("nan"), float("inf"), "not-a-number"])
+def test_inline_dex_invalid_price_is_unavailable(price_usd: Any) -> None:
+    result = EventMarketCaptureService(
+        providers=AssetMarketProviders(
+            dex_quote_market=RecordingDexQuoteProvider(
+                [
+                    DexTokenQuote(
+                        chain_id="solana",
+                        address="ABC111",
+                        observed_at_ms=EVENT_MS,
+                        price_usd=price_usd,
+                        raw={},
+                    )
+                ]
+            )
+        ),
+        now_ms=lambda: NOW_MS,
+    ).capture_for_event(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={
+            "target_type": "chain_token",
+            "target_id": "solana:ABC111",
+            "chain_id": "solana",
+            "token_address": "ABC111",
+        },
+        event_ms=EVENT_MS,
+        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
+    )
+
+    assert result.tick is None
+    assert result.capture.capture_method == "unavailable"
+    assert result.capture.capture_reason == "no_market_data"
+
+
+@pytest.mark.parametrize("last_price", [0.0, -1.0, float("nan"), float("inf"), "not-a-number"])
+def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
+    result = EventMarketCaptureService(
+        providers=AssetMarketProviders(
+            message_cex_market=RecordingCexMarketProvider(
+                CexTicker(
+                    inst_id="BTC-USDT",
+                    inst_type="SPOT",
+                    last_price=last_price,
+                    volume_24h=None,
+                    open_interest=None,
+                    raw={},
+                )
+            )
+        ),
+        now_ms=lambda: NOW_MS,
+    ).capture_for_event(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={
+            "target_type": "cex_symbol",
+            "target_id": "OKX:BTC-USDT",
+            "exchange": "OKX",
+            "instrument": "BTC-USDT",
+        },
+        event_ms=EVENT_MS,
+        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
+    )
+
+    assert result.tick is None
+    assert result.capture.capture_method == "unavailable"
+    assert result.capture.capture_reason == "no_market_data"
+
+
+def test_inline_dex_provider_timestamp_before_event_preserves_capture_with_zero_lag() -> None:
+    result = EventMarketCaptureService(
+        providers=AssetMarketProviders(
+            dex_quote_market=RecordingDexQuoteProvider(
+                [
+                    DexTokenQuote(
+                        chain_id="solana",
+                        address="ABC111",
+                        observed_at_ms=EVENT_MS - 1_000,
+                        price_usd=1.23,
+                        raw={},
+                    )
+                ]
+            )
+        ),
+        now_ms=lambda: NOW_MS,
+    ).capture_for_event(
+        event_id="event-1",
+        intent_id="intent-1",
+        resolution_id="resolution-1",
+        resolution={
+            "target_type": "chain_token",
+            "target_id": "solana:ABC111",
+            "chain_id": "solana",
+            "token_address": "ABC111",
+        },
+        event_ms=EVENT_MS,
+        tick_lookup=RecordingTickLookup(row=None).as_tick_lookup(),
+    )
+
+    assert result.tick is not None
+    assert result.tick.observed_at_ms == EVENT_MS - 1_000
+    assert result.capture.tick_lag_ms == 0
 
 
 def test_provider_exception_maps_to_unavailable_without_raising() -> None:

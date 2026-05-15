@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from gmgn_twitter_intel.domains.asset_market.providers import CexTicker, DexTokenQuoteRequest
@@ -81,8 +81,7 @@ def _capture_chain_token(
     provider = providers.dex_quote_market
     if provider is None:
         return _unavailable(req, reason="missing_provider", created_at_ms=now_ms())
-    chain_id = _clean_str(resolution.get("chain_id")) or _clean_str(resolution.get("chain"))
-    address = _clean_str(resolution.get("token_address")) or _clean_str(resolution.get("address"))
+    chain_id, address = _chain_token_market_key(resolution, target_id=req.target_id)
     if not chain_id or not address:
         return _unavailable(req, reason="missing_market_key", created_at_ms=now_ms())
 
@@ -93,16 +92,18 @@ def _capture_chain_token(
     if not quotes:
         return _unavailable(req, reason="provider_no_quote", created_at_ms=now_ms())
     quote = quotes[0]
-    if quote.price_usd is None:
+    price_usd = _positive_decimal(quote.price_usd)
+    if price_usd is None:
         return _unavailable(req, reason="no_market_data", created_at_ms=now_ms())
 
     created_at_ms = now_ms()
+    observed_at_ms = int(quote.observed_at_ms or created_at_ms)
     tick = MarketTick(
         tick_id=market_tick_id(
             target_type=req.target_type,
             target_id=req.target_id,
             source_provider="okx_dex_rest",
-            observed_at_ms=int(quote.observed_at_ms or created_at_ms),
+            observed_at_ms=observed_at_ms,
         ),
         target_type=req.target_type,
         target_id=req.target_id,
@@ -113,9 +114,9 @@ def _capture_chain_token(
         pricefeed_id=None,
         source_tier="tier3_inline",
         source_provider="okx_dex_rest",
-        observed_at_ms=int(quote.observed_at_ms or created_at_ms),
+        observed_at_ms=observed_at_ms,
         received_at_ms=created_at_ms,
-        price_usd=_decimal(quote.price_usd),
+        price_usd=price_usd,
         liquidity_usd=_optional_decimal(quote.liquidity_usd),
         volume_24h_usd=_optional_decimal(quote.volume_24h_usd),
         market_cap_usd=_optional_decimal(quote.market_cap_usd),
@@ -138,7 +139,7 @@ def _capture_cex_symbol(
     provider = providers.message_cex_market
     if provider is None:
         return _unavailable(req, reason="missing_provider", created_at_ms=now_ms())
-    instrument = _clean_str(resolution.get("instrument")) or _clean_str(resolution.get("native_market_id"))
+    exchange, instrument = _cex_market_key(resolution, target_id=req.target_id)
     if not instrument:
         return _unavailable(req, reason="missing_market_key", created_at_ms=now_ms())
 
@@ -148,7 +149,8 @@ def _capture_cex_symbol(
         return _unavailable(req, reason=_provider_error_reason(exc), created_at_ms=now_ms())
     if ticker is None:
         return _unavailable(req, reason="provider_no_quote", created_at_ms=now_ms())
-    if ticker.last_price is None:
+    price_usd = _positive_decimal(ticker.last_price)
+    if price_usd is None:
         return _unavailable(req, reason="no_market_data", created_at_ms=now_ms())
 
     created_at_ms = now_ms()
@@ -164,14 +166,14 @@ def _capture_cex_symbol(
         target_id=req.target_id,
         chain=None,
         token_address=None,
-        exchange=_clean_str(resolution.get("exchange")) or None,
+        exchange=exchange or None,
         instrument=instrument,
         pricefeed_id=None,
         source_tier="tier3_inline",
         source_provider="okx_cex_rest",
         observed_at_ms=observed_at_ms,
         received_at_ms=created_at_ms,
-        price_usd=_decimal(ticker.last_price),
+        price_usd=price_usd,
         liquidity_usd=None,
         volume_24h_usd=_optional_decimal(ticker.volume_24h),
         market_cap_usd=None,
@@ -202,7 +204,7 @@ def _existing_capture(
             target_id=req.target_id,
             t_event_ms=int(req.event_ms),
             tick_id=_clean_str(row.get("tick_id")) or None,
-            tick_lag_ms=req.event_ms - observed_at_ms if observed_at_ms is not None else None,
+            tick_lag_ms=max(0, req.event_ms - observed_at_ms) if observed_at_ms is not None else None,
             capture_method=cast(Any, _clean_str(row.get("source_tier")) or "unavailable"),
             capture_reason="fresh_tick",
             created_at_ms=created_at_ms,
@@ -244,7 +246,7 @@ def _capture(
         target_id=req.target_id,
         t_event_ms=int(req.event_ms),
         tick_id=tick.tick_id,
-        tick_lag_ms=tick.observed_at_ms - int(req.event_ms),
+        tick_lag_ms=max(0, tick.observed_at_ms - int(req.event_ms)),
         capture_method=tick.source_tier,
         capture_reason=reason,
         created_at_ms=created_at_ms,
@@ -295,6 +297,34 @@ def _ticker_observed_at_ms(ticker: CexTicker) -> int | None:
     return None
 
 
+def _chain_token_market_key(resolution: Mapping[str, Any], *, target_id: str) -> tuple[str, str]:
+    chain_id = _clean_str(resolution.get("chain_id")) or _clean_str(resolution.get("chain"))
+    address = _clean_str(resolution.get("token_address")) or _clean_str(resolution.get("address"))
+    parsed_chain_id, parsed_address = _parse_chain_token_target_id(target_id)
+    return chain_id or parsed_chain_id, address or parsed_address
+
+
+def _parse_chain_token_target_id(target_id: str) -> tuple[str, str]:
+    chain_id, separator, address = target_id.rpartition(":")
+    if not separator:
+        return "", ""
+    return chain_id.strip(), address.strip()
+
+
+def _cex_market_key(resolution: Mapping[str, Any], *, target_id: str) -> tuple[str, str]:
+    exchange = _clean_str(resolution.get("exchange"))
+    instrument = _clean_str(resolution.get("instrument")) or _clean_str(resolution.get("native_market_id"))
+    parsed_exchange, parsed_instrument = _parse_cex_symbol_target_id(target_id)
+    return exchange or parsed_exchange, instrument or parsed_instrument
+
+
+def _parse_cex_symbol_target_id(target_id: str) -> tuple[str, str]:
+    exchange, separator, instrument = target_id.partition(":")
+    if not separator:
+        return "", ""
+    return exchange.strip(), instrument.strip()
+
+
 def _provider_error_reason(exc: Exception) -> str:
     if isinstance(exc, TimeoutError):
         return "provider_timeout"
@@ -313,6 +343,16 @@ def _target_type(value: Any) -> TargetType | None:
 
 def _decimal(value: Any) -> Decimal:
     return Decimal(str(value))
+
+
+def _positive_decimal(value: Any) -> Decimal | None:
+    try:
+        decimal = _decimal(value)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    if not decimal.is_finite() or decimal <= 0:
+        return None
+    return decimal
 
 
 def _optional_decimal(value: Any) -> Decimal | None:
