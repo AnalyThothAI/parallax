@@ -532,6 +532,9 @@ export type MarketContext = {
   event_anchor: MarketObservationSnapshot | null;
   decision_latest: MarketObservationSnapshot | null;
   readiness: MarketReadiness;
+  capture_method?: string | null;
+  capture_reason?: string | null;
+  tick_lag_ms?: number | null;
 };
 
 export type TokenRadarRowMeta = {

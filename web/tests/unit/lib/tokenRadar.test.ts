@@ -86,6 +86,22 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.market.snapshot_received_at_ms).toBe(1_778_426_440_000);
   });
 
+  it("accepts nullable event capture metadata in factor snapshot market", () => {
+    const row = productionFactorSnapshotRow();
+    row.market = {
+      ...row.market,
+      capture_method: null,
+      capture_reason: null,
+      tick_lag_ms: null,
+    };
+    row.factor_snapshot.market = row.market;
+
+    const item = tokenRadarRowToTokenItem(row, "1h", "all");
+
+    expect(item.market.price).toBe(35.42);
+    expect(item.market.market_status).toBe("live");
+  });
+
   it("preserves token profile facts from asset flow rows", () => {
     const profile = {
       status: "ready",

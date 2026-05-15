@@ -20,7 +20,9 @@ const ALPHA_FAMILIES: TokenFactorFamilyKey[] = [
 ];
 const FAMILY_KEYS = new Set(["raw_score", "score", "weight", "data_health", "facts", "factors"]);
 const PROVENANCE_KEYS = new Set(["source_event_ids", "computed_at_ms"]);
-const MARKET_KEYS = new Set(["event_anchor", "decision_latest", "readiness"]);
+const MARKET_REQUIRED_KEYS = new Set(["event_anchor", "decision_latest", "readiness"]);
+const MARKET_OPTIONAL_KEYS = new Set(["capture_method", "capture_reason", "tick_lag_ms"]);
+const MARKET_KEYS = new Set([...MARKET_REQUIRED_KEYS, ...MARKET_OPTIONAL_KEYS]);
 const MARKET_READINESS_KEYS = new Set([
   "anchor_status",
   "latest_status",
@@ -70,11 +72,23 @@ export function requireTokenFactorSnapshot(
   }
 
   const market = value.market as Record<string, unknown>;
-  requireExactKeys(market, MARKET_KEYS, `${fieldName}.market`);
+  requireAllowedKeys(market, MARKET_REQUIRED_KEYS, MARKET_KEYS, `${fieldName}.market`);
   for (const key of ["event_anchor", "decision_latest"] as const) {
     if (market[key] !== null && !isRecord(market[key])) {
       throw new Error(`token_factor_snapshot_contract:${fieldName}.market.${key}`);
     }
+  }
+  for (const key of ["capture_method", "capture_reason"] as const) {
+    if (market[key] !== undefined && market[key] !== null && typeof market[key] !== "string") {
+      throw new Error(`token_factor_snapshot_contract:${fieldName}.market.${key}`);
+    }
+  }
+  if (
+    market.tick_lag_ms !== undefined &&
+    market.tick_lag_ms !== null &&
+    (typeof market.tick_lag_ms !== "number" || !Number.isFinite(market.tick_lag_ms))
+  ) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.market.tick_lag_ms`);
   }
   if (!isRecord(market.readiness)) {
     throw new Error(`token_factor_snapshot_contract:${fieldName}.market.readiness`);
@@ -154,6 +168,23 @@ function requireExactKeys(
 ): void {
   const keys = Object.keys(value);
   const missing = [...allowed].find((key) => !keys.includes(key));
+  if (missing) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.${missing}`);
+  }
+  const extra = keys.find((key) => !allowed.has(key));
+  if (extra) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.${extra}`);
+  }
+}
+
+function requireAllowedKeys(
+  value: Record<string, unknown>,
+  required: Set<string>,
+  allowed: Set<string>,
+  fieldName: string,
+): void {
+  const keys = Object.keys(value);
+  const missing = [...required].find((key) => !keys.includes(key));
   if (missing) {
     throw new Error(`token_factor_snapshot_contract:${fieldName}.${missing}`);
   }
