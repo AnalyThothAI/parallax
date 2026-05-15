@@ -27,6 +27,7 @@ from gmgn_twitter_intel.domains.asset_market.runtime.anchor_price_worker import 
 from gmgn_twitter_intel.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from gmgn_twitter_intel.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
 from gmgn_twitter_intel.domains.asset_market.runtime.resolution_refresh_worker import ResolutionRefreshWorker
+from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import TokenCaptureTierWorker
 from gmgn_twitter_intel.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
     TickLookup,
@@ -271,6 +272,16 @@ def _construct_workers(
             telemetry=telemetry,
             wake_bus=wake_bus,
             wake_waiter=db.wake_listener(worker_name, workers.token_radar_projection.wakes_on),
+        )
+    if workers.token_capture_tier.enabled:
+        constructed["token_capture_tier"] = TokenCaptureTierWorker(
+            name="token_capture_tier",
+            settings=workers.token_capture_tier,
+            db=db,
+            telemetry=telemetry,
+            batch_size=workers.token_capture_tier.batch_size,
+            ws_limit=workers.token_capture_tier.ws_limit,
+            poll_limit=workers.token_capture_tier.poll_limit,
         )
     if workers.pulse_candidate.enabled and settings.pulse_agent_configured:
         worker_name = "pulse_candidate"

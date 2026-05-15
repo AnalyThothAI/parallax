@@ -18,9 +18,9 @@ delivery — every listener has a bounded `interval_seconds` catch-up from
 
 <!-- worker-inventory-keys:
 collector, anchor_price, live_price_gateway, resolution_refresh,
-asset_profile_refresh, token_radar_projection, pulse_candidate,
-enrichment, handle_summary, harness_ops, notification_rule,
-notification_delivery
+asset_profile_refresh, token_capture_tier, token_radar_projection,
+pulse_candidate, enrichment, handle_summary, harness_ops,
+notification_rule, notification_delivery
 -->
 
 | Worker | Owner | File | Reads | Writes | Wake-in | Wake-out | Catch-up |
@@ -30,6 +30,7 @@ notification_delivery
 | `live_price_gateway` (`LivePriceGateway`) | `asset_market` | `domains/asset_market/runtime/live_price_gateway.py` | OKX DEX WS, OKX CEX quote | `price_observations(kind='decision_latest')` (only when `should_persist_live_observation` returns `True`) | provider-driven (WS + poll) | `market_observation_written` (on persisted observation only) | continuous WS + provider poll |
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | NIL / AMBIGUOUS lookup keys, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results` | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | resolved DEX assets due for refresh, GMGN exact-token profile | `asset_profiles` | poll | none | `interval_seconds` |
+| `token_capture_tier` (`TokenCaptureTierWorker`) | `asset_market` | `domains/asset_market/runtime/token_capture_tier_worker.py` | active Token Radar live market targets | `token_capture_tier` | poll | none | `interval_seconds` |
 | `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | facts via `token_radar_source_query`, `price_observations`, `asset_identity_current` | `token_radar_rows`, `projection_runs`, `projection_offsets`, `token_score_evaluations` | `market_observation_written`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | `token_radar_rows` latest per target/window/scope, gate fields, route policy | `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_agent_runs`, `pulse_agent_run_steps` | `token_radar_updated` | none | `interval_seconds` |
 | `enrichment` (`EnrichmentWorker`) | `social_enrichment` | `domains/social_enrichment/runtime/enrichment_worker.py` | watched events queue, OpenAI Agents enrichment | enrichment label rows, `model_run` audit, outbound watchlist summary enqueue hook | poll | none | `interval_seconds` |

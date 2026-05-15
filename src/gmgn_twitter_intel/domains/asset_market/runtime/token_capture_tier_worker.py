@@ -43,9 +43,9 @@ class TokenCaptureTierWorker(WorkerBase):
             db=pool_bundle or db,
             telemetry=telemetry or object(),
         )
-        self.batch_size = max(1, int(batch_size or getattr(resolved_settings, "batch_size", DEFAULT_BATCH_SIZE)))
-        self.ws_limit = max(0, int(ws_limit))
-        self.poll_limit = max(0, int(poll_limit))
+        self.batch_size = max(1, int(getattr(resolved_settings, "batch_size", batch_size)))
+        self.ws_limit = max(0, int(getattr(resolved_settings, "ws_limit", ws_limit)))
+        self.poll_limit = max(0, int(getattr(resolved_settings, "poll_limit", poll_limit)))
         self.clock = clock or _now_ms
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:

@@ -335,7 +335,9 @@ class RegistryRepository:
                 token_radar_rows.target_id,
                 token_radar_rows.pricefeed_id,
                 token_radar_rows.computed_at_ms,
-                token_radar_rows.source_max_received_at_ms
+                token_radar_rows.source_max_received_at_ms,
+                NULLIF(token_radar_rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
+                  AS rank_score
               FROM token_radar_rows
               WHERE token_radar_rows.projection_version = %s
                 AND token_radar_rows.target_type IN ('Asset', 'CexToken')
@@ -353,7 +355,9 @@ class RegistryRepository:
                 NULL::text AS quote_symbol,
                 'okx' AS provider,
                 active_targets.computed_at_ms,
-                active_targets.source_max_received_at_ms
+                active_targets.source_max_received_at_ms,
+                active_targets.rank_score,
+                active_targets.rank_score AS score
               FROM active_targets
               JOIN registry_assets ON registry_assets.asset_id = active_targets.target_id
               WHERE active_targets.target_type = 'Asset'
@@ -370,7 +374,9 @@ class RegistryRepository:
                 COALESCE(selected_pricefeed.quote_symbol, preferred_pricefeed.quote_symbol) AS quote_symbol,
                 COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider, 'okx') AS provider,
                 active_targets.computed_at_ms,
-                active_targets.source_max_received_at_ms
+                active_targets.source_max_received_at_ms,
+                active_targets.rank_score,
+                active_targets.rank_score AS score
               FROM active_targets
               JOIN cex_tokens ON cex_tokens.cex_token_id = active_targets.target_id
               LEFT JOIN price_feeds selected_pricefeed
@@ -412,10 +418,12 @@ class RegistryRepository:
               quote_symbol,
               provider,
               computed_at_ms,
-              source_max_received_at_ms
+              source_max_received_at_ms,
+              rank_score,
+              score
             FROM live_targets
             WHERE target_type = 'Asset' OR native_market_id IS NOT NULL
-            ORDER BY computed_at_ms DESC, target_type, target_id
+            ORDER BY score DESC NULLS LAST, computed_at_ms DESC, target_type, target_id
             LIMIT %s
             """,
             (projection_version, int(since_ms), max(0, int(limit))),

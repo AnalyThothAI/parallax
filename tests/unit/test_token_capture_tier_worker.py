@@ -3,13 +3,17 @@ from __future__ import annotations
 import asyncio
 from decimal import Decimal
 
+import yaml
+
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
+from gmgn_twitter_intel.domains.asset_market.repositories.registry_repository import RegistryRepository
 from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker import (
     TokenCaptureTierWorker,
     project_once,
 )
 from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
+from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
 
 
 def test_project_once_promotes_hottest_targets_to_tier1_ws_subscribed() -> None:
@@ -139,6 +143,32 @@ def test_worker_has_no_provider_dependency_slots() -> None:
     assert not hasattr(worker, "stream_provider")
 
 
+def test_default_workers_yaml_includes_token_capture_tier_settings() -> None:
+    workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
+
+    assert workers.token_capture_tier.enabled is True
+    assert workers.token_capture_tier.batch_size == 100
+    assert workers.token_capture_tier.ws_limit == 50
+    assert workers.token_capture_tier.poll_limit == 200
+
+
+def test_registry_active_live_market_targets_projects_rank_score_from_factor_snapshot() -> None:
+    conn = CapturingConn()
+
+    rows = RegistryRepository(conn).active_live_market_targets(
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        since_ms=1_800_000_000_000 - WINDOW_MS["24h"],
+        limit=25,
+    )
+
+    assert rows == []
+    assert "factor_snapshot_json" in conn.sql
+    assert "composite" in conn.sql
+    assert "rank_score" in conn.sql
+    assert "AS score" in conn.sql
+    assert "AS rank_score" in conn.sql
+
+
 def tier(target_type: str, target_id: str, tier_value: int, reason: str, score: str) -> dict[str, object]:
     return {
         "target_type": target_type,
@@ -202,3 +232,19 @@ class FakeSession:
 
     def __exit__(self, exc_type, exc, tb) -> bool:
         return False
+
+
+class CapturingConn:
+    def __init__(self) -> None:
+        self.sql = ""
+        self.params: tuple[object, ...] = ()
+
+    def execute(self, sql: str, params: tuple[object, ...]):
+        self.sql = sql
+        self.params = params
+        return EmptyRows()
+
+
+class EmptyRows:
+    def fetchall(self) -> list[dict[str, object]]:
+        return []

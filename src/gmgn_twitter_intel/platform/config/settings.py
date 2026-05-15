@@ -403,6 +403,14 @@ class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
 
 
+class TokenCaptureTierWorkerSettings(PerWorkerSettings):
+    interval_seconds: float = Field(default=10.0, ge=0)
+    batch_size: int = Field(default=100, ge=1)
+    ws_limit: int = Field(default=50, ge=0)
+    poll_limit: int = Field(default=200, ge=0)
+    statement_timeout_seconds: float = Field(default=120.0, ge=0)
+
+
 class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
@@ -504,6 +512,7 @@ class WorkersSettings(BaseModel):
     live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
     resolution_refresh: ResolutionRefreshWorkerSettings = Field(default_factory=ResolutionRefreshWorkerSettings)
     asset_profile_refresh: AssetProfileRefreshWorkerSettings = Field(default_factory=AssetProfileRefreshWorkerSettings)
+    token_capture_tier: TokenCaptureTierWorkerSettings = Field(default_factory=TokenCaptureTierWorkerSettings)
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
     )
@@ -977,6 +986,13 @@ asset_profile_refresh:
   enabled: true
   interval_seconds: 60.0
   batch_size: 50
+  statement_timeout_seconds: 120.0
+token_capture_tier:
+  enabled: true
+  interval_seconds: 10.0
+  batch_size: 100
+  ws_limit: 50
+  poll_limit: 200
   statement_timeout_seconds: 120.0
 token_radar_projection:
   enabled: true
