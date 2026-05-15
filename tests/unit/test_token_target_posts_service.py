@@ -111,7 +111,7 @@ def post_row(event_id: str, *, received_at_ms: int) -> dict:
         "price_usd": Decimal("70000"),
         "price_quote": Decimal("70000"),
         "price_quote_symbol": "USDT",
-        "price_observed_at_ms": received_at_ms + 1_000,
+        "market_tick_observed_at_ms": received_at_ms + 1_000,
         "market_tick_lag_ms": 1_000,
         "market_capture_method": "tier1_ws",
     }

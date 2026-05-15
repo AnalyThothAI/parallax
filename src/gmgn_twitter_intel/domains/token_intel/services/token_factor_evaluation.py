@@ -104,15 +104,16 @@ def settle_token_factor_scores(
 def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_at_ms: int) -> dict[str, Any]:
     snapshot = _mapping(row.get("factor_snapshot_json"))
     subject = _mapping(snapshot.get("subject"))
-    target_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
-    target_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
+    subject_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
+    subject_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
+    market_target_type, market_target_id = _market_tick_target(row=row, subject=subject)
     computed_at_ms = int(row.get("computed_at_ms") or 0)
     rank_score = _rank_score(snapshot)
     family_scores = _family_scores(snapshot)
     base = {
         "row_id": row.get("row_id"),
-        "subject_type": target_type,
-        "subject_id": target_id,
+        "subject_type": subject_type,
+        "subject_id": subject_id,
         "computed_at_ms": computed_at_ms,
         "rank_score": rank_score,
         "family_scores": family_scores,
@@ -120,11 +121,13 @@ def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_a
         "status": "unsettled",
         "actual_return": None,
     }
-    if not target_type or not target_id:
+    if not subject_type or not subject_id:
         return {**base, "reason": "missing_subject"}
+    if not market_target_type or not market_target_id:
+        return {**base, "reason": "missing_market_target"}
     entry = repos.market_ticks.latest_at_or_before(
-        target_type=target_type,
-        target_id=target_id,
+        target_type=market_target_type,
+        target_id=market_target_id,
         at_ms=computed_at_ms,
         max_lag_ms=ENTRY_MAX_LAG_MS,
     )
@@ -132,8 +135,8 @@ def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_a
     if entry_price is None:
         return {**base, "reason": "missing_entry_price"}
     exit_row = repos.market_ticks.first_between(
-        target_type=target_type,
-        target_id=target_id,
+        target_type=market_target_type,
+        target_id=market_target_id,
         start_ms=computed_at_ms + int(horizon_ms),
         end_ms=int(generated_at_ms),
     )
@@ -149,6 +152,26 @@ def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_a
         "actual_return": actual_return,
         "directional_hit": actual_return > 0,
     }
+
+
+def _market_tick_target(*, row: dict[str, Any], subject: dict[str, Any]) -> tuple[str | None, str | None]:
+    subject_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
+    subject_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
+    if subject_type in {"chain_token", "cex_symbol"} and subject_id:
+        return subject_type, subject_id
+
+    target = _mapping(row.get("target_json"))
+    if subject_type == "Asset":
+        chain = _clean(subject.get("chain") or target.get("chain") or target.get("chain_id"))
+        address = _clean(subject.get("address") or target.get("address") or target.get("asset_address"))
+        if chain and address:
+            return "chain_token", f"{chain}:{address}"
+    if subject_type == "CexToken":
+        provider = _clean(target.get("provider") or target.get("pricefeed_provider"))
+        native_market_id = _clean(target.get("native_market_id") or target.get("instrument"))
+        if provider and native_market_id:
+            return "cex_symbol", f"{provider}:{native_market_id}"
+    return None, None
 
 
 def _bucket_summary(
@@ -316,6 +339,10 @@ def _mapping(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
     return {str(key): item for key, item in value.items()}
+
+
+def _clean(value: Any) -> str:
+    return str(value or "").strip()
 
 
 def _ranks(values: list[float]) -> list[float]:

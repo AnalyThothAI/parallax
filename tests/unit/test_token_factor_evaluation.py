@@ -24,10 +24,10 @@ def test_settle_token_factor_scores_writes_deterministic_bucket_summaries():
     repos = FakeRepos(
         rows=rows,
         prices={
-            ("Asset", "asset:a"): (100.0, 90.0),
-            ("Asset", "asset:b"): (100.0, 120.0),
-            ("Asset", "asset:c"): (100.0, 150.0),
-            ("Asset", "asset:d"): (100.0, None),
+            market_key("a"): (100.0, 90.0),
+            market_key("b"): (100.0, 120.0),
+            market_key("c"): (100.0, 150.0),
+            market_key("d"): (100.0, None),
         },
     )
 
@@ -62,34 +62,35 @@ def test_settle_token_factor_scores_writes_deterministic_bucket_summaries():
     assert by_label["0-19"]["score_stddev"] == 0.0
     assert by_label["80-100"]["diagnostics_json"]["unsettled_reasons"] == {"missing_exit_price": 1}
     assert by_label["80-100"]["diagnostics_json"]["bucket_unsettled_reasons"] == {"missing_exit_price": 1}
+    max_lag_ms = 24 * 60 * 60 * 1000
     assert repos.market_ticks.latest_calls == [
-        {"target_type": "Asset", "target_id": "asset:a", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
-        {"target_type": "Asset", "target_id": "asset:b", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
-        {"target_type": "Asset", "target_id": "asset:c", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
-        {"target_type": "Asset", "target_id": "asset:d", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
+        {"target_type": "chain_token", "target_id": market_target_id("a"), "at_ms": base_ms, "max_lag_ms": max_lag_ms},
+        {"target_type": "chain_token", "target_id": market_target_id("b"), "at_ms": base_ms, "max_lag_ms": max_lag_ms},
+        {"target_type": "chain_token", "target_id": market_target_id("c"), "at_ms": base_ms, "max_lag_ms": max_lag_ms},
+        {"target_type": "chain_token", "target_id": market_target_id("d"), "at_ms": base_ms, "max_lag_ms": max_lag_ms},
     ]
     assert repos.market_ticks.bounded_exit_calls == [
         {
-            "target_type": "Asset",
-            "target_id": "asset:a",
+            "target_type": "chain_token",
+            "target_id": market_target_id("a"),
             "start_ms": base_ms + horizon_ms,
             "end_ms": base_ms + horizon_ms + 1,
         },
         {
-            "target_type": "Asset",
-            "target_id": "asset:b",
+            "target_type": "chain_token",
+            "target_id": market_target_id("b"),
             "start_ms": base_ms + horizon_ms,
             "end_ms": base_ms + horizon_ms + 1,
         },
         {
-            "target_type": "Asset",
-            "target_id": "asset:c",
+            "target_type": "chain_token",
+            "target_id": market_target_id("c"),
             "start_ms": base_ms + horizon_ms,
             "end_ms": base_ms + horizon_ms + 1,
         },
         {
-            "target_type": "Asset",
-            "target_id": "asset:d",
+            "target_type": "chain_token",
+            "target_id": market_target_id("d"),
             "start_ms": base_ms + horizon_ms,
             "end_ms": base_ms + horizon_ms + 1,
         },
@@ -111,12 +112,12 @@ def test_settle_token_factor_scores_computes_daily_icir_when_daily_ics_vary():
     repos = FakeRepos(
         rows=rows,
         prices={
-            ("Asset", "asset:a"): (100.0, 110.0),
-            ("Asset", "asset:b"): (100.0, 120.0),
-            ("Asset", "asset:c"): (100.0, 130.0),
-            ("Asset", "asset:d"): (100.0, 130.0),
-            ("Asset", "asset:e"): (100.0, 120.0),
-            ("Asset", "asset:f"): (100.0, 110.0),
+            market_key("a"): (100.0, 110.0),
+            market_key("b"): (100.0, 120.0),
+            market_key("c"): (100.0, 130.0),
+            market_key("d"): (100.0, 130.0),
+            market_key("e"): (100.0, 120.0),
+            market_key("f"): (100.0, 110.0),
         },
     )
 
@@ -174,9 +175,9 @@ def test_settle_token_factor_scores_records_family_rank_ic_diagnostics():
     repos = FakeRepos(
         rows=rows,
         prices={
-            ("Asset", "asset:a"): (100.0, 90.0),
-            ("Asset", "asset:b"): (100.0, 100.0),
-            ("Asset", "asset:c"): (100.0, 110.0),
+            market_key("a"): (100.0, 90.0),
+            market_key("b"): (100.0, 100.0),
+            market_key("c"): (100.0, 110.0),
         },
     )
 
@@ -295,9 +296,22 @@ def radar_row(suffix: str, *, score: int, computed_at_ms: int, family_scores: di
         "scope": "all",
         "computed_at_ms": computed_at_ms,
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
+        "target_json": {
+            "target_type": "Asset",
+            "target_id": f"asset:{suffix}",
+            "symbol": suffix.upper(),
+            "chain_id": "eip155:1",
+            "address": f"0x{suffix}",
+        },
         "factor_snapshot_json": {
             "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-            "subject": {"target_type": "Asset", "target_id": f"asset:{suffix}", "symbol": suffix.upper()},
+            "subject": {
+                "target_type": "Asset",
+                "target_id": f"asset:{suffix}",
+                "symbol": suffix.upper(),
+                "chain": "eip155:1",
+                "address": f"0x{suffix}",
+            },
             "families": {},
             "gates": {},
             "data_health": {},
@@ -306,6 +320,14 @@ def radar_row(suffix: str, *, score: int, computed_at_ms: int, family_scores: di
             "provenance": {"computed_at_ms": computed_at_ms},
         },
     }
+
+
+def market_key(suffix: str) -> tuple[str, str]:
+    return ("chain_token", market_target_id(suffix))
+
+
+def market_target_id(suffix: str) -> str:
+    return f"eip155:1:0x{suffix}"
 
 
 class FakeRepos:

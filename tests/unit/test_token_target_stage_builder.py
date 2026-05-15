@@ -21,7 +21,7 @@ def test_stage_builder_splits_seed_ignition_expansion_and_chase():
     assert [stage["phase"] for stage in result.stages] == ["seed", "ignition", "expansion", "chase"]
     assert result.stages[0]["representative_event_ids"] == ["event-1"]
     assert result.stages[-1]["price"]["delta_pct"] == pytest.approx(0.565217, rel=0.0001)
-    assert result.stages[-1]["price"]["market_tick_ids"] == ["tick:event-5"]
+    assert result.stages[-1]["price"]["observation_ids"] == ["tick:event-5"]
     assert result.annotations["event-1"]["author_role"] == "watched"
     assert result.annotations["event-2"]["author_role"] == "early_amplifier"
     assert result.annotations["event-5"]["price_delta_from_previous_post_pct"] == pytest.approx(0.565217, rel=0.0001)
