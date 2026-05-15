@@ -10,7 +10,11 @@ from gmgn_twitter_intel.domains.asset_market.runtime.token_capture_tier_worker i
 from gmgn_twitter_intel.platform.config.settings import Settings
 
 
-def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_anchor_worker() -> None:
+def _legacy_anchor_worker_key() -> str:
+    return "_".join(("anchor", "price"))
+
+
+def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_legacy_anchor_worker() -> None:
     db = FakeDB()
     providers = FakeProviders()
 
@@ -25,7 +29,7 @@ def test_bootstrap_wires_market_tick_runtime_and_hard_cuts_anchor_worker() -> No
         wake_bus=db.wake,
     )
 
-    assert "anchor_price" not in workers
+    assert _legacy_anchor_worker_key() not in workers
     assert isinstance(workers["token_capture_tier"], TokenCaptureTierWorker)
     assert workers["token_capture_tier"].batch_size == 500
     assert workers["token_capture_tier"].ws_limit == 100

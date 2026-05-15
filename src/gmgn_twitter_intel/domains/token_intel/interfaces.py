@@ -10,7 +10,10 @@ from gmgn_twitter_intel.domains.token_intel._constants import (
     WINDOW_MS,
 )
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_stage_builder import build_token_target_stages
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
+from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import (
+    IntentResolutionRepository,
+    token_intent_resolution_id,
+)
 from gmgn_twitter_intel.domains.token_intel.repositories.signal_repository import SignalAlert, SignalRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
 from gmgn_twitter_intel.domains.token_intel.repositories.token_intent_lookup_repository import (
@@ -65,4 +68,5 @@ __all__ = [
     "require_token_factor_snapshot",
     "safe_float",
     "safe_int",
+    "token_intent_resolution_id",
 ]

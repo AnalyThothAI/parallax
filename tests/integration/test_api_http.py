@@ -499,7 +499,7 @@ def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
 
     assert response.status_code == 200
     data = response.json()["data"]
-    assert "anchor_price" not in data
+    assert "_".join(("anchor", "price")) not in data
     assert "live_price_gateway" not in data
     assert "resolution_refresh" not in data
     assert "token_radar_projection" not in data

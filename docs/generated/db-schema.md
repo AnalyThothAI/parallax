@@ -1250,7 +1250,7 @@
 | `target_json` | `JSONB` | False | `'{}'::jsonb` |
 | `price_json` | `JSONB` | False | `'{}'::jsonb` |
 | `factor_snapshot_json` | `JSONB` | False | `'{}'::jsonb` |
-| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v1'::text` |
+| `factor_version` | `TEXT` | False | `'token_factor_snapshot_v3_social_attention'::text` |
 
 ## `token_score_evaluations`
 

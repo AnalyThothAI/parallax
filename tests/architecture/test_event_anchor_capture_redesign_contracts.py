@@ -16,7 +16,7 @@ SCANNED_SUFFIXES = {".py", ".md", ".yaml", ".yml", ".toml", ".sql"}
 SKIPPED_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
 BANNED_RUNTIME_STRINGS = (
     "".join(("Anchor", "Price", "Worker")),
-    f"{'_'.join(('anchor', 'price'))}:",
+    "_".join(("anchor", "price")),
     "_".join(("price", "observations")),
     "_".join(("market", "observation", "written")),
     "_".join(("message", "anchor")),

@@ -15,6 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "gmgn_twitter_intel"
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
 
+
+def _legacy_anchor_worker_key() -> str:
+    return "_".join(("anchor", "price"))
+
+
 EXPECTED_WORKERS = {
     "collector": "gmgn_twitter_intel.domains.ingestion.runtime.collector_service.CollectorService",
     "market_tick_stream": (
@@ -69,7 +74,7 @@ OLD_RUNTIME_SETTINGS = {
     "watchlist_handle_summary_poll_interval_seconds",
     "notification_worker_interval_seconds",
     "notification_delivery_interval_seconds",
-    "anchor_price_interval_seconds",
+    f"{_legacy_anchor_worker_key()}_interval_seconds",
     "resolution_refresh_interval_seconds",
     "asset_profile_refresh_interval_seconds",
     "cex_sync_interval_seconds",

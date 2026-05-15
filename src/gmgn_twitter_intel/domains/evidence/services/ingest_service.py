@@ -11,12 +11,12 @@ from gmgn_twitter_intel.domains.asset_market.interfaces import (
     CONFIDENCE_PROVIDER_EXACT,
     EVIDENCE_GMGN_PAYLOAD_EXACT,
     EVIDENCE_TWEET_CONTRACT_MENTION,
+    EnrichedEventCapture,
     EnrichedEventRepository,
     IdentityEvidenceRepository,
     MarketTickRepository,
     RegistryRepository,
 )
-from gmgn_twitter_intel.domains.asset_market.types import EnrichedEventCapture
 from gmgn_twitter_intel.domains.evidence.interfaces import (
     TextSurface,
     TwitterEvent,
@@ -37,8 +37,6 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TokenIntentResolver,
     build_token_evidence,
     build_token_intents,
-)
-from gmgn_twitter_intel.domains.token_intel.repositories.intent_resolution_repository import (
     token_intent_resolution_id,
 )
 
@@ -128,16 +126,10 @@ class IngestService:
         )
 
     def event_already_exists(self, prepared: PreparedIngest) -> bool:
-        row = self.evidence.conn.execute(
-            """
-            SELECT 1 AS found
-            FROM events
-            WHERE event_id = %s OR logical_dedup_key = %s
-            LIMIT 1
-            """,
-            (prepared.event_id, prepared.event_row["logical_dedup_key"]),
-        ).fetchone()
-        return bool(row)
+        return self.evidence.event_exists(
+            event_id=prepared.event_id,
+            logical_dedup_key=str(prepared.event_row["logical_dedup_key"]),
+        )
 
     def duplicate_result(self, prepared: PreparedIngest) -> IngestedEvent:
         return IngestedEvent(
@@ -251,27 +243,14 @@ class IngestService:
             return None
         resolution_id = token_intent_resolution_id(decision)
         if target_type == "Asset":
-            row = self.registry.conn.execute(
-                """
-                SELECT chain_id, address
-                FROM registry_assets
-                WHERE asset_id = %s
-                """,
-                (target_id,),
-            ).fetchone()
-            if not row or not row.get("chain_id") or not row.get("address"):
+            target = self.registry.chain_token_market_target(str(target_id))
+            if target is None:
                 return None
-            chain_id = str(row["chain_id"])
-            address = str(row["address"])
             return {
                 "event_id": _decision_value(decision, "event_id"),
                 "intent_id": _decision_value(decision, "intent_id"),
                 "resolution_id": resolution_id,
-                "target_type": "chain_token",
-                "target_id": f"{chain_id}:{address}",
-                "chain_id": chain_id,
-                "token_address": address,
-                "address": address,
+                **target,
             }
         if target_type == "CexToken":
             pricefeed = self._cex_pricefeed_for_decision(decision)
@@ -298,48 +277,10 @@ class IngestService:
     def _cex_pricefeed_for_decision(self, decision: Any) -> dict[str, Any] | None:
         target_id = _decision_value(decision, "target_id")
         pricefeed_id = _decision_value(decision, "pricefeed_id")
-        if pricefeed_id:
-            row = self.registry.conn.execute(
-                """
-                SELECT *
-                FROM price_feeds
-                WHERE pricefeed_id = %s
-                  AND subject_type = 'CexToken'
-                  AND subject_id = %s
-                  AND feed_type LIKE 'cex_%%'
-                  AND status IN ('candidate', 'canonical')
-                """,
-                (pricefeed_id, target_id),
-            ).fetchone()
-            if row:
-                return dict(row)
-        row = self.registry.conn.execute(
-            """
-            SELECT *
-            FROM price_feeds
-            WHERE subject_type = 'CexToken'
-              AND subject_id = %s
-              AND feed_type LIKE 'cex_%%'
-              AND status IN ('candidate', 'canonical')
-            ORDER BY
-              CASE
-                WHEN feed_type = 'cex_spot' THEN 0
-                WHEN feed_type = 'cex_swap' THEN 1
-                ELSE 2
-              END,
-              CASE
-                WHEN quote_symbol = 'USDT' THEN 0
-                WHEN quote_symbol = 'USD' THEN 1
-                WHEN quote_symbol = 'USDC' THEN 2
-                ELSE 9
-              END,
-              updated_at_ms DESC,
-              native_market_id ASC
-            LIMIT 1
-            """,
-            (target_id,),
-        ).fetchone()
-        return dict(row) if row else None
+        return self.registry.cex_pricefeed_for_token(
+            cex_token_id=str(target_id),
+            pricefeed_id=str(pricefeed_id) if pricefeed_id else None,
+        )
 
     def _upsert_gmgn_payload_registry(self, event: TwitterEvent) -> dict[str, Any] | None:
         asset = self._upsert_gmgn_payload_registry_asset(event)

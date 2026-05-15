@@ -251,10 +251,14 @@ _MISSING = object()
 
 
 def _row_market_facts(row: dict[str, Any]) -> dict[str, Any]:
-    anchor = _dict(row.get("anchor_price"))
+    market = _dict(_dict(row.get("factor_snapshot_json")).get("market"))
+    anchor = _dict(market.get("event_anchor"))
+    latest = _dict(market.get("decision_latest"))
     facts: dict[str, Any] = {}
     for key in ("price_usd", "market_cap_usd", "liquidity_usd", "holders", "volume_24h_usd"):
         value = anchor.get(key, _MISSING)
+        if value is _MISSING:
+            value = latest.get(key, _MISSING)
         if value is _MISSING and key in row:
             value = row.get(key)
         if value is not _MISSING:

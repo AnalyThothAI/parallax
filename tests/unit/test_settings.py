@@ -15,6 +15,10 @@ from gmgn_twitter_intel.platform.config.settings import (
 from gmgn_twitter_intel.platform.paths.runtime_paths import app_home, config_path, workers_config_path
 
 
+def _legacy_anchor_worker_key() -> str:
+    return "_".join(("anchor", "price"))
+
+
 def write_config(home, payload, *, write_workers=True):
     app_dir = home / ".gmgn-twitter-intel"
     app_dir.mkdir(parents=True, exist_ok=True)
@@ -78,7 +82,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
     assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
     assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
-    assert not hasattr(settings.workers, "anchor_price")
+    assert not hasattr(settings.workers, _legacy_anchor_worker_key())
     assert settings.workers.market_tick_stream.subscription_limit == 100
     assert settings.workers.market_tick_poll.interval_seconds == 15
     assert settings.workers.token_capture_tier.batch_size == 500

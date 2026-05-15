@@ -13,6 +13,12 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         """
+        ALTER TABLE token_radar_rows
+          ALTER COLUMN factor_version SET DEFAULT 'token_factor_snapshot_v3_social_attention'
+        """
+    )
+    op.execute(
+        """
         CREATE TABLE IF NOT EXISTS market_ticks (
           tick_id TEXT PRIMARY KEY,
           target_type TEXT NOT NULL CHECK (target_type IN ('chain_token', 'cex_symbol')),

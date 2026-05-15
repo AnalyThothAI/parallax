@@ -80,6 +80,18 @@ class EvidenceRepository:
         )
         return bool(cursor.rowcount != 0)
 
+    def event_exists(self, *, event_id: str, logical_dedup_key: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT 1 AS found
+            FROM events
+            WHERE event_id = %s OR logical_dedup_key = %s
+            LIMIT 1
+            """,
+            (event_id, logical_dedup_key),
+        ).fetchone()
+        return bool(row)
+
     def recent_events(
         self,
         *,

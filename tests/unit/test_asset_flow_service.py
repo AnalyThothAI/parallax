@@ -7,6 +7,10 @@ from gmgn_twitter_intel.domains.token_intel.interfaces import (
 from gmgn_twitter_intel.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 
 
+def _legacy_market_key(*parts: str) -> str:
+    return "_".join(parts)
+
+
 def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     service = asset_flow_service(
         rows=[
@@ -29,7 +33,7 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     assert btc["market"]["event_anchor"]["price_usd"] == 70_000.0
     assert btc["market"]["decision_latest"]["price_usd"] == 70_000.0
     assert btc["market"]["readiness"]["anchor_status"] == "ready"
-    assert "anchor_price" not in btc
+    assert _legacy_market_key("anchor", "price") not in btc
     assert "live_market" not in btc
     assert "current_market" not in btc
     assert result["attention"] == []

@@ -278,6 +278,11 @@ def test_signal_pulse_transforms_rows_excludes_blocked_and_preserves_cursor() ->
                     "timing_risk": 65,
                 },
                 "market_status": "ready",
+                "price_usd": 0.42,
+                "market_cap_usd": 12_500_000,
+                "liquidity_usd": 820_000,
+                "holders": 14_200,
+                "volume_24h_usd": 2_300_000,
                 "mentions_1h": 9,
                 "unique_authors": 4,
                 "watched_mentions": 1,
@@ -736,19 +741,13 @@ def test_signal_pulse_fact_card_does_not_fallback_to_legacy_market_context() -> 
     assert "market_context_json" not in item
 
 
-def test_signal_pulse_fact_card_reads_market_facts_from_anchor_row_only() -> None:
+def test_signal_pulse_fact_card_reads_market_facts_from_factor_snapshot_market() -> None:
     row = _candidate_row(
         "candidate-anchor-market",
         pulse_status="token_watch",
         verdict="token_watch",
         market_status="fresh",
     )
-    row["anchor_price"] = {
-        "market_cap_usd": 12_500_000,
-        "liquidity_usd": 820_000,
-        "holders": 14_200,
-        "volume_24h_usd": 2_300_000,
-    }
     row["market_context_json"] = {
         "market_cap_usd": 999_000_000,
         "liquidity_usd": 999_000_000,

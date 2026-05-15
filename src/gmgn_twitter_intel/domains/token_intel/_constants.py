@@ -6,7 +6,7 @@ from __future__ import annotations
 TOKEN_RADAR_PROJECTION_NAME = "token-radar"
 TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v13-social-attention"
 TOKEN_RADAR_RESOLVER_POLICY_VERSION = "token_radar_v5_identity_resolver"
-TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+anchor_price"
+TOKEN_RADAR_SOURCE_TABLE = "token_intent_resolutions+asset_identity_current+enriched_events+market_ticks"
 TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v3_social_attention"
 TOKEN_RADAR_FACTOR_FAMILIES = (
     "social_heat",

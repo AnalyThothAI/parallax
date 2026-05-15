@@ -24,6 +24,7 @@ from .repositories.market_repository import MarketRepository
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
 from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
+from .types import EnrichedEventCapture
 
 __all__ = [
     "CONFIDENCE_MANUAL",
@@ -41,6 +42,7 @@ __all__ = [
     "AssetProfileRepository",
     "AssetRepository",
     "DiscoveryRepository",
+    "EnrichedEventCapture",
     "EnrichedEventRepository",
     "IdentityEvidenceRepository",
     "MarketRepository",

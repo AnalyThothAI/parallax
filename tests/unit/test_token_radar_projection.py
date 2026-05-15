@@ -55,7 +55,9 @@ def test_token_radar_projection_uses_factor_snapshot_contract():
         "semantic_catalyst",
         "timing_risk",
     )
-    assert TOKEN_RADAR_SOURCE_TABLE == "token_intent_resolutions+asset_identity_current+anchor_price"
+    assert TOKEN_RADAR_SOURCE_TABLE == (
+        "token_intent_resolutions+asset_identity_current+enriched_events+market_ticks"
+    )
     assert PROJECTION_VERSION == TOKEN_RADAR_PROJECTION_VERSION
 
 
@@ -425,7 +427,7 @@ def test_projection_does_not_call_current_market_repository(monkeypatch):
     assert token_radar.rows[0]["market_json"] == {}
 
 
-def test_projection_marks_market_missing_when_anchor_price_has_not_arrived(monkeypatch):
+def test_projection_marks_market_missing_when_event_market_tick_has_not_arrived(monkeypatch):
     recorder = FakeProjectionRecorder()
     token_radar = FakeTokenRadar()
     repos = type("Repos", (), {"conn": object(), "token_radar": token_radar})()
@@ -499,7 +501,7 @@ def test_projection_market_uses_event_capture_and_latest_market_tick_fields():
         "missing_fields": [],
         "stale_fields": [],
     }
-    assert "anchor_price_" + "usd" not in market
+    assert "_".join(("anchor", "price", "usd")) not in market
     assert "live_price_persisted" not in market
 
 

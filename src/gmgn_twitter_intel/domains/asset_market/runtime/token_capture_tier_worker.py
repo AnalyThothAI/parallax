@@ -10,7 +10,7 @@ from typing import Any
 
 from gmgn_twitter_intel.app.runtime.worker_base import WorkerBase
 from gmgn_twitter_intel.app.runtime.worker_result import WorkerResult
-from gmgn_twitter_intel.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
+from gmgn_twitter_intel.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 
 SCORE_KEYS = ("score", "rank_score", "composite_rank_score")
 RECENCY_SCORE_KEYS = ("computed_at_ms", "source_max_received_at_ms")

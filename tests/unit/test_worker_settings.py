@@ -6,12 +6,16 @@ from gmgn_twitter_intel.app.runtime.worker_registry import CANONICAL_WORKER_NAME
 from gmgn_twitter_intel.platform.config.settings import WorkersSettings, default_workers_yaml
 
 
+def _legacy_anchor_worker_key() -> str:
+    return "_".join(("anchor", "price"))
+
+
 def test_default_workers_yaml_contains_canonical_worker_defaults():
     payload = yaml.safe_load(default_workers_yaml())
     settings = WorkersSettings(**payload)
 
     assert set(payload) - {"defaults"} == set(CANONICAL_WORKER_NAMES)
-    assert "anchor_price" not in payload
+    assert _legacy_anchor_worker_key() not in payload
     assert settings.defaults.enabled is True
     assert settings.defaults.interval_seconds == 5
     assert settings.defaults.backoff.kind == "exponential"
@@ -45,7 +49,7 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     payload = yaml.safe_load(text)
     legacy_channel = "_".join(("market", "observation", "written"))
 
-    assert "anchor_price" not in payload
+    assert _legacy_anchor_worker_key() not in payload
     assert legacy_channel not in text
     assert "live_observation_" not in text
     assert "hot_target_ttl_seconds" not in text
@@ -60,9 +64,9 @@ def test_worker_settings_reject_unknown_worker_key():
         WorkersSettings(**payload)
 
 
-def test_worker_settings_reject_legacy_anchor_price_worker_key():
+def test_worker_settings_reject_legacy_anchor_worker_key():
     payload = yaml.safe_load(default_workers_yaml())
-    payload["anchor_price"] = {"enabled": True}
+    payload[_legacy_anchor_worker_key()] = {"enabled": True}
 
     with pytest.raises(ValidationError):
         WorkersSettings(**payload)

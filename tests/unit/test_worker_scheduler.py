@@ -251,10 +251,10 @@ def test_scheduler_stop_collects_stop_errors_but_closes_other_workers_and_pools(
 def test_scheduler_stop_collects_close_errors_but_closes_other_workers_and_pools() -> None:
     async def scenario() -> None:
         db = FakeDB()
-        failing = FakeWorker("anchor_price", fail_close=True)
+        failing = FakeWorker("market_tick_poll", fail_close=True)
         other = FakeWorker("collector")
         scheduler = WorkerScheduler(
-            workers={"anchor_price": failing, "collector": other},
+            workers={"market_tick_poll": failing, "collector": other},
             db=db,
             stop_timeout_seconds=0.01,
         )
@@ -264,7 +264,7 @@ def test_scheduler_stop_collects_close_errors_but_closes_other_workers_and_pools
         with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
             await scheduler.stop()
 
-        assert any("anchor_price close failed" in str(error) for error in excinfo.value.exceptions)
+        assert any("market_tick_poll close failed" in str(error) for error in excinfo.value.exceptions)
         assert failing.stopped == 1
         assert other.stopped == 1
         assert failing.closed == 1
@@ -278,13 +278,13 @@ def test_scheduler_stop_collects_close_errors_but_closes_other_workers_and_pools
 
 def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_only() -> None:
     async def scenario() -> None:
-        healthy = FakeWorker("anchor_price")
+        healthy = FakeWorker("market_tick_poll")
         stopped = FakeWorker("collector", exit_immediately=True)
         errored = FakeWorker("enrichment", fail_run=True)
         disabled = FakeWorker("pulse_candidate", enabled=False, fail_run=True)
         scheduler = WorkerScheduler(
             workers={
-                "anchor_price": healthy,
+                "market_tick_poll": healthy,
                 "collector": stopped,
                 "enrichment": errored,
                 "pulse_candidate": disabled,

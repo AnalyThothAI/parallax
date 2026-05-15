@@ -260,6 +260,7 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
     assert "CREATE OR REPLACE FUNCTION forbid_market_fact_update()" in text
     assert "BEFORE UPDATE ON market_ticks" in text
     assert "BEFORE UPDATE ON enriched_events" in text
+    assert "ALTER COLUMN factor_version SET DEFAULT 'token_factor_snapshot_v3_social_attention'" in text
     assert f"DROP TABLE IF EXISTS {LEGACY_PRICE_TABLE} CASCADE" in text
     assert "raise RuntimeError(" in text
     assert "hard-cut migration is not safely reversible" in text

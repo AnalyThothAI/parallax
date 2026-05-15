@@ -222,6 +222,76 @@ class RegistryRepository:
         ).fetchone()
         return dict(row) if row else None
 
+    def chain_token_market_target(self, asset_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            """
+            SELECT chain_id, address
+            FROM registry_assets
+            WHERE asset_id = %s
+            """,
+            (asset_id,),
+        ).fetchone()
+        if not row or not row.get("chain_id") or not row.get("address"):
+            return None
+        chain_id = str(row["chain_id"])
+        address = str(row["address"])
+        return {
+            "target_type": "chain_token",
+            "target_id": f"{chain_id}:{address}",
+            "chain_id": chain_id,
+            "token_address": address,
+            "address": address,
+        }
+
+    def cex_pricefeed_for_token(
+        self,
+        *,
+        cex_token_id: str,
+        pricefeed_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if pricefeed_id:
+            row = self.conn.execute(
+                """
+                SELECT *
+                FROM price_feeds
+                WHERE pricefeed_id = %s
+                  AND subject_type = 'CexToken'
+                  AND subject_id = %s
+                  AND feed_type LIKE 'cex_%%'
+                  AND status IN ('candidate', 'canonical')
+                """,
+                (pricefeed_id, cex_token_id),
+            ).fetchone()
+            if row:
+                return dict(row)
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM price_feeds
+            WHERE subject_type = 'CexToken'
+              AND subject_id = %s
+              AND feed_type LIKE 'cex_%%'
+              AND status IN ('candidate', 'canonical')
+            ORDER BY
+              CASE
+                WHEN feed_type = 'cex_spot' THEN 0
+                WHEN feed_type = 'cex_swap' THEN 1
+                ELSE 2
+              END,
+              CASE
+                WHEN quote_symbol = 'USDT' THEN 0
+                WHEN quote_symbol = 'USD' THEN 1
+                WHEN quote_symbol = 'USDC' THEN 2
+                ELSE 9
+              END,
+              updated_at_ms DESC,
+              native_market_id ASC
+            LIMIT 1
+            """,
+            (cex_token_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
     def deactivate_missing_us_equity_symbols(
         self,
         *,
