@@ -232,6 +232,8 @@ def test_us_equity_symbol_universe_migration_adds_market_instrument_lookup_table
 
 def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> None:
     text = EVENT_ANCHOR_CAPTURE_REDESIGN_MIGRATION.read_text()
+    normalized_text = " ".join(text.split())
+    dedupe_index = _extract_sql_statement(text, "CREATE UNIQUE INDEX IF NOT EXISTS idx_market_ticks_dedupe")
 
     assert 'revision = "20260515_0046"' in text
     assert 'down_revision = "20260514_0045"' in text
@@ -245,10 +247,8 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
         "idx_enriched_events_tick",
     ):
         assert index_name in text
-    assert (
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_market_ticks_dedupe\n"
-        "          ON market_ticks(target_type, target_id, source_provider, observed_at_ms)"
-    ) in text
+    assert "ON market_ticks(target_type, target_id, source_provider, observed_at_ms)" in normalized_text
+    assert "received_at_ms" not in dedupe_index
     assert "event_id TEXT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE" in text
     assert "intent_id TEXT NOT NULL REFERENCES token_intents(intent_id) ON DELETE CASCADE" in text
     assert (
@@ -259,6 +259,9 @@ def test_event_anchor_capture_redesign_migration_adds_market_tick_tables() -> No
     assert "BEFORE UPDATE ON market_ticks" in text
     assert "BEFORE UPDATE ON enriched_events" in text
     assert "DROP TABLE IF EXISTS price_observations CASCADE" in text
+    assert "raise RuntimeError(" in text
+    assert "hard-cut migration is not safely reversible" in text
+    assert "restoring a pre-migration backup" in text
 
 
 def test_projection_migration_adds_pg_only_read_model_tables() -> None:
@@ -269,6 +272,12 @@ def test_projection_migration_adds_pg_only_read_model_tables() -> None:
     assert "CREATE TABLE IF NOT EXISTS projection_dirty_ranges" in text
     assert "FOR UPDATE SKIP LOCKED" not in text
     assert "sqlite" not in text.lower()
+
+
+def _extract_sql_statement(text: str, statement_start: str) -> str:
+    start = text.index(statement_start)
+    end = text.index('"""', start)
+    return text[start:end]
 
 
 def test_asset_migration_adds_identity_resolution_tables() -> None:

@@ -164,7 +164,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TABLE IF EXISTS enriched_events")
-    op.execute("DROP TABLE IF EXISTS token_capture_tier")
-    op.execute("DROP TABLE IF EXISTS market_ticks")
-    op.execute("DROP FUNCTION IF EXISTS forbid_market_fact_update()")
+    raise RuntimeError(
+        "20260515_0046 hard-cut migration is not safely reversible; "
+        "rollback requires restoring a pre-migration backup."
+    )
