@@ -154,14 +154,14 @@ class TokenTargetRepository:
               price_feeds.base_symbol AS pricefeed_base_symbol,
               price_feeds.quote_symbol,
               price_feeds.feed_type,
-              message_price.tick_id AS price_observation_id,
-              message_price.source_provider AS price_provider,
-              message_price.observed_at_ms AS price_observed_at_ms,
-              message_price.price_usd,
+              event_tick.tick_id AS market_tick_id,
+              event_tick.source_provider AS market_tick_provider,
+              event_tick.observed_at_ms AS market_tick_observed_at_ms,
+              event_tick.price_usd,
               NULL::numeric AS price_quote,
               NULL::text AS price_quote_symbol,
-              message_price.capture_method AS price_observation_kind,
-              message_price.tick_lag_ms AS price_observation_lag_ms,
+              event_market_capture.capture_method AS market_capture_method,
+              event_market_capture.tick_lag_ms AS market_tick_lag_ms,
               row_number() OVER (
                 PARTITION BY events.event_id
                 ORDER BY
@@ -212,23 +212,12 @@ class TokenTargetRepository:
             ) preferred_price_feed ON true
             LEFT JOIN price_feeds
               ON price_feeds.pricefeed_id = COALESCE(tir.pricefeed_id, preferred_price_feed.pricefeed_id)
-            LEFT JOIN LATERAL (
-              SELECT
-                enriched_events.tick_id,
-                enriched_events.capture_method,
-                enriched_events.tick_lag_ms,
-                market_ticks.source_provider,
-                market_ticks.observed_at_ms,
-                market_ticks.price_usd
-              FROM enriched_events
-              LEFT JOIN market_ticks ON market_ticks.tick_id = enriched_events.tick_id
-              WHERE enriched_events.event_id = events.event_id
-                AND enriched_events.intent_id = tir.intent_id
-                AND enriched_events.resolution_id = tir.resolution_id
-              ORDER BY
-                enriched_events.created_at_ms DESC
-              LIMIT 1
-            ) message_price ON true
+            LEFT JOIN enriched_events event_market_capture
+              ON event_market_capture.event_id = events.event_id
+             AND event_market_capture.intent_id = tir.intent_id
+             AND event_market_capture.resolution_id = tir.resolution_id
+            LEFT JOIN market_ticks event_tick
+              ON event_tick.tick_id = event_market_capture.tick_id
             WHERE {" AND ".join(clauses)}
             )
             SELECT *

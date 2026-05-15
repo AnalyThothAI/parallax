@@ -85,7 +85,7 @@ def _stage(segment: dict[str, Any], *, ordered: list[dict[str, Any]], index: int
             "start_price": price_start,
             "end_price": price_end,
             "delta_pct": _price_delta(price_start, price_end),
-            "observation_ids": _price_observation_ids(rows),
+            "market_tick_ids": _market_tick_ids(rows),
             "max_observation_lag_ms": _max_price_lag(rows),
         },
         "risks": _stage_risks(rows, segment["phase"]),
@@ -168,7 +168,7 @@ def _trigger_reason(phase: str) -> str:
     }.get(phase, "stage_transition")
 
 
-def _price_observation_ids(rows: list[dict[str, Any]]) -> list[str]:
+def _market_tick_ids(rows: list[dict[str, Any]]) -> list[str]:
     ids: list[str] = []
     for row in rows:
         observation_id = message_price_payload(row).get("observation_id")

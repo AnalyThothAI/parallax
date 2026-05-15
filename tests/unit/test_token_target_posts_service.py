@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from gmgn_twitter_intel.domains.token_intel.read_models.token_target_posts_service import TokenTargetPostsService
+from gmgn_twitter_intel.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
 
 
 def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
@@ -58,6 +59,26 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
     assert [item["event_id"] for item in second["items"]] == ["event-1"]
 
 
+def test_target_repository_reads_post_prices_from_enriched_events_and_market_ticks():
+    conn = FakeConn(rows=[])
+
+    TokenTargetRepository(conn).timeline_rows(
+        target_type="Asset",
+        target_id="asset:pepe",
+        since_ms=1_700_000_000_000,
+        watched_only=False,
+        limit=25,
+    )
+
+    assert "enriched_events" in conn.sql
+    assert "market_ticks" in conn.sql
+    assert "price_observations" not in conn.sql
+    assert "message_anchor" not in conn.sql
+    assert "price_observation" not in conn.sql
+    assert "market_tick_id" in conn.sql
+    assert "market_tick_lag_ms" in conn.sql
+
+
 class FakeTargets:
     def __init__(self, *, pages):
         self.pages = pages
@@ -84,13 +105,28 @@ def post_row(event_id: str, *, received_at_ms: int) -> dict:
         "attribution_status": "EXACT",
         "confidence": Decimal("0.95"),
         "reference_json": None,
-        "price_observation_id": f"price:{event_id}",
-        "price_provider": "okx_cex",
+        "market_tick_id": f"tick:{event_id}",
+        "market_tick_provider": "okx_cex",
         "pricefeed_id": "pricefeed:okx:BTC-USDT",
         "price_usd": Decimal("70000"),
         "price_quote": Decimal("70000"),
         "price_quote_symbol": "USDT",
         "price_observed_at_ms": received_at_ms + 1_000,
-        "price_observation_lag_ms": 1_000,
-        "price_observation_kind": "message_anchor",
+        "market_tick_lag_ms": 1_000,
+        "market_capture_method": "tier1_ws",
     }
+
+
+class FakeConn:
+    def __init__(self, *, rows):
+        self.rows = rows
+        self.sql = ""
+        self.params = ()
+
+    def execute(self, sql, params=None):
+        self.sql = str(sql)
+        self.params = params or ()
+        return self
+
+    def fetchall(self):
+        return self.rows

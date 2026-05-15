@@ -16,6 +16,7 @@ HORIZON_MS = {
     "6h": 6 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
 }
+ENTRY_MAX_LAG_MS = HORIZON_MS["24h"]
 
 BUCKETS = (
     ("0-19", 0, 19),
@@ -103,15 +104,15 @@ def settle_token_factor_scores(
 def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_at_ms: int) -> dict[str, Any]:
     snapshot = _mapping(row.get("factor_snapshot_json"))
     subject = _mapping(snapshot.get("subject"))
-    subject_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
-    subject_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
+    target_type = str(subject.get("target_type") or row.get("target_type") or "").strip()
+    target_id = str(subject.get("target_id") or row.get("target_id") or "").strip()
     computed_at_ms = int(row.get("computed_at_ms") or 0)
     rank_score = _rank_score(snapshot)
     family_scores = _family_scores(snapshot)
     base = {
         "row_id": row.get("row_id"),
-        "subject_type": subject_type,
-        "subject_id": subject_id,
+        "subject_type": target_type,
+        "subject_id": target_id,
         "computed_at_ms": computed_at_ms,
         "rank_score": rank_score,
         "family_scores": family_scores,
@@ -119,21 +120,22 @@ def _settle_row(row: dict[str, Any], *, repos: Any, horizon_ms: int, generated_a
         "status": "unsettled",
         "actual_return": None,
     }
-    if not subject_type or not subject_id:
+    if not target_type or not target_id:
         return {**base, "reason": "missing_subject"}
-    entry = repos.price_observations.latest_price_for_subject_at_or_before(
-        subject_type=subject_type,
-        subject_id=subject_id,
-        at_or_before_ms=computed_at_ms,
+    entry = repos.market_ticks.latest_at_or_before(
+        target_type=target_type,
+        target_id=target_id,
+        at_ms=computed_at_ms,
+        max_lag_ms=ENTRY_MAX_LAG_MS,
     )
     entry_price = _positive_price(entry)
     if entry_price is None:
         return {**base, "reason": "missing_entry_price"}
-    exit_row = repos.price_observations.first_price_for_subject_between(
-        subject_type=subject_type,
-        subject_id=subject_id,
-        at_or_after_ms=computed_at_ms + int(horizon_ms),
-        at_or_before_ms=int(generated_at_ms),
+    exit_row = repos.market_ticks.first_between(
+        target_type=target_type,
+        target_id=target_id,
+        start_ms=computed_at_ms + int(horizon_ms),
+        end_ms=int(generated_at_ms),
     )
     exit_price = _price(exit_row)
     if exit_price is None:

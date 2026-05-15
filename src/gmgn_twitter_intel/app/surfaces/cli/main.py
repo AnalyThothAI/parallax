@@ -1152,7 +1152,7 @@ def _audit_token_radar(repos, *, window: str, scope: str, limit: int, now_ms: in
         scope=scope,
     )
     source_max_resolution_ms = _source_query.max_resolution_ms()
-    source_max_price_observed_at_ms = _source_query.max_price_observed_at_ms()
+    source_max_market_tick_observed_at_ms = _source_query.max_market_tick_observed_at_ms()
     return {
         "window": window,
         "scope": scope,
@@ -1162,7 +1162,7 @@ def _audit_token_radar(repos, *, window: str, scope: str, limit: int, now_ms: in
             now_ms=now_ms,
             source_current_window_rows=source_current_window_rows,
             source_max_resolution_ms=source_max_resolution_ms,
-            source_max_price_observed_at_ms=source_max_price_observed_at_ms,
+            source_max_market_tick_observed_at_ms=source_max_market_tick_observed_at_ms,
         ),
     }
 
@@ -1173,7 +1173,7 @@ def _audit_token_radar_rows(
     now_ms: int,
     source_current_window_rows: int,
     source_max_resolution_ms: int | None,
-    source_max_price_observed_at_ms: int | None,
+    source_max_market_tick_observed_at_ms: int | None,
 ) -> dict:
     violations: list[dict] = []
     required = set(TOKEN_RADAR_FACTOR_FAMILIES)
@@ -1256,9 +1256,9 @@ def _audit_token_radar_rows(
         if row.get("decision") == "high_alert" and gates.get("eligible_for_high_alert") is not True:
             violations.append({"row": index, "code": "high_alert_without_gate_eligibility"})
     social_lag_ms = max(0, int(now_ms) - int(source_max_resolution_ms)) if source_max_resolution_ms else None
-    market_lag_ms = (
-        max(0, int(now_ms) - int(source_max_price_observed_at_ms)) if source_max_price_observed_at_ms else None
-    )
+    market_lag_ms = None
+    if source_max_market_tick_observed_at_ms:
+        market_lag_ms = max(0, int(now_ms) - int(source_max_market_tick_observed_at_ms))
     return {
         "ok": not violations,
         "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
@@ -1266,7 +1266,7 @@ def _audit_token_radar_rows(
         "violations": violations,
         "source_current_window_rows": source_current_window_rows,
         "source_max_resolution_ms": source_max_resolution_ms,
-        "source_max_price_observed_at_ms": source_max_price_observed_at_ms,
+        "source_max_market_tick_observed_at_ms": source_max_market_tick_observed_at_ms,
         "social_lag_ms": social_lag_ms,
         "market_lag_ms": market_lag_ms,
     }

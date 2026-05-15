@@ -21,7 +21,7 @@ def test_stage_builder_splits_seed_ignition_expansion_and_chase():
     assert [stage["phase"] for stage in result.stages] == ["seed", "ignition", "expansion", "chase"]
     assert result.stages[0]["representative_event_ids"] == ["event-1"]
     assert result.stages[-1]["price"]["delta_pct"] == pytest.approx(0.565217, rel=0.0001)
-    assert result.stages[-1]["price"]["observation_ids"] == ["price:event-5"]
+    assert result.stages[-1]["price"]["market_tick_ids"] == ["tick:event-5"]
     assert result.annotations["event-1"]["author_role"] == "watched"
     assert result.annotations["event-2"]["author_role"] == "early_amplifier"
     assert result.annotations["event-5"]["price_delta_from_previous_post_pct"] == pytest.approx(0.565217, rel=0.0001)
@@ -47,14 +47,14 @@ def row(event_id: str, handle: str, received_at_ms: int, *, watched: bool = Fals
         "author_handle": handle,
         "is_watched": watched,
         "received_at_ms": received_at_ms,
-        "price_observation_id": f"price:{event_id}",
-        "price_provider": "okx_dex_price",
+        "market_tick_id": f"tick:{event_id}",
+        "market_tick_provider": "okx_dex_price",
         "pricefeed_id": "pricefeed:test",
         "price_usd": Decimal(price),
         "price_quote": None,
         "price_quote_symbol": None,
         "quote_symbol": "USDT",
-        "price_observed_at_ms": received_at_ms,
-        "price_observation_lag_ms": 0,
-        "price_observation_kind": "message_anchor",
+        "market_tick_observed_at_ms": received_at_ms,
+        "market_tick_lag_ms": 0,
+        "market_capture_method": "tier1_ws",
     }

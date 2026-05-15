@@ -22,15 +22,16 @@ class AccountQualityService:
         for row in rows:
             handle = str(row["handle"])
             token_id = str(row["target_id"])
-            target_type = str(row["target_type"])
+            market_target_type = str(row.get("market_target_type") or "")
+            market_target_id = str(row.get("market_target_id") or "")
             first_mention_ms = int(row["first_mention_ms"])
             latest_mention_ms = int(row["latest_mention_ms"])
             mention_count = int(row["mention_count"])
             follower_max = _int_or_none(row.get("follower_max"))
             watched_status = "watched" if int(row.get("watched_count") or 0) else "public"
             outcome = self._token_outcome(
-                target_type=target_type,
-                target_id=token_id,
+                target_type=market_target_type,
+                target_id=market_target_id,
                 first_mention_ms=first_mention_ms,
             )
             self.repository.upsert_profile(
@@ -89,7 +90,9 @@ class AccountQualityService:
         )
 
     def _token_outcome(self, *, target_type: str, target_id: str, first_mention_ms: int) -> dict[str, Any]:
-        rows = self.repository.price_observations_for_token(
+        if not target_type or not target_id:
+            return _empty_outcome("insufficient_market_history")
+        rows = self.repository.market_ticks_for_token(
             target_type=target_type,
             target_id=target_id,
             first_mention_ms=first_mention_ms,

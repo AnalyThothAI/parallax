@@ -605,7 +605,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
-    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "UNIQUE_BY_CONTEXT"
+    assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "EXACT"
 
 
 def test_token_radar_public_payload_keeps_targetless_rows_in_diagnostics(tmp_path):

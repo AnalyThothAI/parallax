@@ -244,6 +244,28 @@ class AccountQualityRepository:
               SELECT
                 tir.target_type,
                 tir.target_id,
+                CASE
+                  WHEN tir.target_type = 'Asset'
+                    AND registry_assets.chain_id IS NOT NULL
+                    AND registry_assets.address IS NOT NULL
+                    THEN 'chain_token'
+                  WHEN tir.target_type = 'CexToken'
+                    AND price_feeds.provider IS NOT NULL
+                    AND price_feeds.native_market_id IS NOT NULL
+                    THEN 'cex_symbol'
+                  ELSE NULL
+                END AS market_target_type,
+                CASE
+                  WHEN tir.target_type = 'Asset'
+                    AND registry_assets.chain_id IS NOT NULL
+                    AND registry_assets.address IS NOT NULL
+                    THEN registry_assets.chain_id || ':' || registry_assets.address
+                  WHEN tir.target_type = 'CexToken'
+                    AND price_feeds.provider IS NOT NULL
+                    AND price_feeds.native_market_id IS NOT NULL
+                    THEN price_feeds.provider || ':' || price_feeds.native_market_id
+                  ELSE NULL
+                END AS market_target_id,
                 lower(events.author_handle) AS handle,
                 tir.event_id,
                 events.received_at_ms,
@@ -251,6 +273,33 @@ class AccountQualityRepository:
                 events.is_watched
               FROM token_intent_resolutions tir
               JOIN events ON events.event_id = tir.event_id
+              LEFT JOIN registry_assets
+                ON tir.target_type = 'Asset'
+               AND registry_assets.asset_id = tir.target_id
+              LEFT JOIN LATERAL (
+                SELECT *
+                FROM price_feeds
+                WHERE tir.target_type = 'CexToken'
+                  AND price_feeds.subject_type = 'CexToken'
+                  AND price_feeds.subject_id = tir.target_id
+                  AND price_feeds.feed_type LIKE 'cex_%%'
+                  AND price_feeds.status IN ('candidate', 'canonical')
+                ORDER BY
+                  CASE
+                    WHEN price_feeds.feed_type = 'cex_spot' THEN 0
+                    WHEN price_feeds.feed_type = 'cex_swap' THEN 1
+                    ELSE 2
+                  END,
+                  CASE
+                    WHEN price_feeds.quote_symbol = 'USDT' THEN 0
+                    WHEN price_feeds.quote_symbol = 'USD' THEN 1
+                    WHEN price_feeds.quote_symbol = 'USDC' THEN 2
+                    ELSE 9
+                  END,
+                  price_feeds.updated_at_ms DESC,
+                  price_feeds.native_market_id ASC
+                LIMIT 1
+              ) price_feeds ON true
               WHERE tir.target_type IN ('Asset', 'CexToken')
                 AND tir.target_id IS NOT NULL
                 AND tir.is_current = true
@@ -268,6 +317,8 @@ class AccountQualityRepository:
               f.handle,
               f.target_type,
               f.target_id,
+              f.market_target_type,
+              f.market_target_id,
               MIN(f.received_at_ms) AS first_mention_ms,
               MAX(f.received_at_ms) AS latest_mention_ms,
               COUNT(DISTINCT f.event_id) AS mention_count,
@@ -278,7 +329,7 @@ class AccountQualityRepository:
             JOIN token_first tf
               ON tf.target_type = f.target_type
              AND tf.target_id = f.target_id
-            GROUP BY f.handle, f.target_type, f.target_id
+            GROUP BY f.handle, f.target_type, f.target_id, f.market_target_type, f.market_target_id
             ORDER BY first_mention_ms DESC, f.handle, f.target_type, f.target_id
             LIMIT %s
             """,
@@ -286,7 +337,7 @@ class AccountQualityRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def price_observations_for_token(
+    def market_ticks_for_token(
         self,
         *,
         target_type: str,
@@ -296,17 +347,22 @@ class AccountQualityRepository:
         rows = self.conn.execute(
             """
             SELECT
-              COALESCE(price_usd, price_quote) AS price,
+              price_usd AS price,
               observed_at_ms AS received_at_ms
-            FROM price_observations
-            WHERE subject_type = %s
-              AND subject_id = %s
-              AND observed_at_ms >= %s
-              AND observed_at_ms <= %s
-              AND COALESCE(price_usd, price_quote) IS NOT NULL
+            FROM market_ticks
+            WHERE target_type = %(target_type)s
+              AND target_id = %(target_id)s
+              AND observed_at_ms >= %(start_ms)s
+              AND observed_at_ms <= %(end_ms)s
+              AND price_usd IS NOT NULL
             ORDER BY observed_at_ms ASC
             """,
-            (target_type, target_id, first_mention_ms, first_mention_ms + 24 * 60 * 60_000),
+            {
+                "target_type": target_type,
+                "target_id": target_id,
+                "start_ms": first_mention_ms,
+                "end_ms": first_mention_ms + 24 * 60 * 60_000,
+            },
         ).fetchall()
         return [dict(row) for row in rows]
 

@@ -62,36 +62,36 @@ def test_settle_token_factor_scores_writes_deterministic_bucket_summaries():
     assert by_label["0-19"]["score_stddev"] == 0.0
     assert by_label["80-100"]["diagnostics_json"]["unsettled_reasons"] == {"missing_exit_price": 1}
     assert by_label["80-100"]["diagnostics_json"]["bucket_unsettled_reasons"] == {"missing_exit_price": 1}
-    assert repos.price_observations.latest_price_calls == [
-        {"subject_type": "Asset", "subject_id": "asset:a", "at_or_before_ms": base_ms},
-        {"subject_type": "Asset", "subject_id": "asset:b", "at_or_before_ms": base_ms},
-        {"subject_type": "Asset", "subject_id": "asset:c", "at_or_before_ms": base_ms},
-        {"subject_type": "Asset", "subject_id": "asset:d", "at_or_before_ms": base_ms},
+    assert repos.market_ticks.latest_calls == [
+        {"target_type": "Asset", "target_id": "asset:a", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
+        {"target_type": "Asset", "target_id": "asset:b", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
+        {"target_type": "Asset", "target_id": "asset:c", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
+        {"target_type": "Asset", "target_id": "asset:d", "at_ms": base_ms, "max_lag_ms": 24 * 60 * 60 * 1000},
     ]
-    assert repos.price_observations.bounded_exit_calls == [
+    assert repos.market_ticks.bounded_exit_calls == [
         {
-            "subject_type": "Asset",
-            "subject_id": "asset:a",
-            "at_or_after_ms": base_ms + horizon_ms,
-            "at_or_before_ms": base_ms + horizon_ms + 1,
+            "target_type": "Asset",
+            "target_id": "asset:a",
+            "start_ms": base_ms + horizon_ms,
+            "end_ms": base_ms + horizon_ms + 1,
         },
         {
-            "subject_type": "Asset",
-            "subject_id": "asset:b",
-            "at_or_after_ms": base_ms + horizon_ms,
-            "at_or_before_ms": base_ms + horizon_ms + 1,
+            "target_type": "Asset",
+            "target_id": "asset:b",
+            "start_ms": base_ms + horizon_ms,
+            "end_ms": base_ms + horizon_ms + 1,
         },
         {
-            "subject_type": "Asset",
-            "subject_id": "asset:c",
-            "at_or_after_ms": base_ms + horizon_ms,
-            "at_or_before_ms": base_ms + horizon_ms + 1,
+            "target_type": "Asset",
+            "target_id": "asset:c",
+            "start_ms": base_ms + horizon_ms,
+            "end_ms": base_ms + horizon_ms + 1,
         },
         {
-            "subject_type": "Asset",
-            "subject_id": "asset:d",
-            "at_or_after_ms": base_ms + horizon_ms,
-            "at_or_before_ms": base_ms + horizon_ms + 1,
+            "target_type": "Asset",
+            "target_id": "asset:d",
+            "start_ms": base_ms + horizon_ms,
+            "end_ms": base_ms + horizon_ms + 1,
         },
     ]
 
@@ -311,7 +311,7 @@ def radar_row(suffix: str, *, score: int, computed_at_ms: int, family_scores: di
 class FakeRepos:
     def __init__(self, *, rows, prices):
         self.token_factor_evaluations = FakeEvaluationRepository(rows)
-        self.price_observations = FakePriceObservations(prices)
+        self.market_ticks = FakeMarketTicks(prices)
 
 
 class FakeEvaluationRepository:
@@ -334,40 +334,40 @@ class FakeEvaluationRepository:
         raise AssertionError("settlement must batch upsert score evaluations")
 
 
-class FakePriceObservations:
+class FakeMarketTicks:
     def __init__(self, prices):
         self.prices = prices
-        self.latest_price_calls = []
+        self.latest_calls = []
         self.bounded_exit_calls = []
 
-    def latest_price_for_subject_at_or_before(self, *, subject_type, subject_id, at_or_before_ms):
-        self.latest_price_calls.append(
-            {"subject_type": subject_type, "subject_id": subject_id, "at_or_before_ms": at_or_before_ms}
+    def latest_at_or_before(self, *, target_type, target_id, at_ms, max_lag_ms):
+        self.latest_calls.append(
+            {"target_type": target_type, "target_id": target_id, "at_ms": at_ms, "max_lag_ms": max_lag_ms}
         )
-        entry, _ = self.prices.get((subject_type, subject_id), (None, None))
+        entry, _ = self.prices.get((target_type, target_id), (None, None))
         if entry is None:
             return None
-        return {"observation_id": f"entry:{subject_id}", "observed_at_ms": at_or_before_ms, "price_usd": entry}
+        return {"tick_id": f"entry:{target_id}", "observed_at_ms": at_ms, "price_usd": entry}
 
-    def latest_for_subject_at_or_before(self, *, subject_type, subject_id, at_or_before_ms):
-        raise AssertionError("settlement must use latest_price_for_subject_at_or_before")
+    def latest_price_for_subject_at_or_before(self, **kwargs):
+        raise AssertionError("settlement must use latest_at_or_before")
 
-    def first_for_subject_at_or_after(self, *, subject_type, subject_id, at_or_after_ms):
-        raise AssertionError("settlement must use first_price_for_subject_between")
+    def first_for_subject_at_or_after(self, **kwargs):
+        raise AssertionError("settlement must use first_between")
 
-    def first_price_for_subject_between(self, *, subject_type, subject_id, at_or_after_ms, at_or_before_ms):
+    def first_between(self, *, target_type, target_id, start_ms, end_ms):
         self.bounded_exit_calls.append(
             {
-                "subject_type": subject_type,
-                "subject_id": subject_id,
-                "at_or_after_ms": at_or_after_ms,
-                "at_or_before_ms": at_or_before_ms,
+                "target_type": target_type,
+                "target_id": target_id,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
             }
         )
-        _, exit_price = self.prices.get((subject_type, subject_id), (None, None))
+        _, exit_price = self.prices.get((target_type, target_id), (None, None))
         if exit_price is None:
             return None
-        return {"observation_id": f"exit:{subject_id}", "observed_at_ms": at_or_after_ms, "price_usd": exit_price}
+        return {"tick_id": f"exit:{target_id}", "observed_at_ms": start_ms, "price_usd": exit_price}
 
 
 class FakeTransaction:

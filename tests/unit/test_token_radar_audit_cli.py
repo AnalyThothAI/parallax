@@ -23,7 +23,7 @@ def test_audit_token_radar_rows_rejects_legacy_runtime_payload_without_snapshot(
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -50,7 +50,7 @@ def test_audit_token_radar_rows_accepts_factor_snapshot_contract():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is True
@@ -64,7 +64,7 @@ def test_audit_token_radar_rows_rejects_empty_projection_when_sources_exist():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -77,7 +77,7 @@ def test_audit_token_radar_rows_accepts_empty_projection_when_current_scope_is_e
         now_ms=1_700_000_000_000,
         source_current_window_rows=0,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is True
@@ -103,7 +103,7 @@ def test_audit_token_radar_rows_rejects_missing_factor_family_contract():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -130,7 +130,7 @@ def test_audit_token_radar_rows_rejects_extra_old_factor_family_contract():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -157,7 +157,7 @@ def test_audit_token_radar_rows_rejects_hard_gates_key():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -188,7 +188,7 @@ def test_audit_token_radar_rows_rejects_malformed_v3_contract():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -217,7 +217,7 @@ def test_audit_token_radar_rows_rejects_empty_v3_provenance():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -247,7 +247,7 @@ def test_audit_token_radar_rows_rejects_empty_v3_source_event_ids():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -277,7 +277,7 @@ def test_audit_token_radar_rows_rejects_empty_v3_family_block():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -304,7 +304,7 @@ def test_audit_token_radar_rows_rejects_wrong_factor_version():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -333,7 +333,7 @@ def test_audit_token_radar_rows_rejects_high_alert_when_gate_is_not_eligible():
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert audit["ok"] is False
@@ -362,7 +362,7 @@ def test_audit_token_radar_rows_uses_domain_factor_snapshot_version(monkeypatch)
         now_ms=1_700_000_000_000,
         source_current_window_rows=1,
         source_max_resolution_ms=1_699_999_999_000,
-        source_max_price_observed_at_ms=1_699_999_999_500,
+        source_max_market_tick_observed_at_ms=1_699_999_999_500,
     )
 
     assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v3_social_attention"

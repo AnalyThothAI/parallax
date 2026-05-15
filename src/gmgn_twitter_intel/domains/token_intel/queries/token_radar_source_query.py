@@ -265,7 +265,7 @@ class TokenRadarSourceQuery:
         value = row["value"] if row else None
         return int(value) if value is not None else None
 
-    def max_price_observed_at_ms(self) -> int | None:
+    def max_market_tick_observed_at_ms(self) -> int | None:
         row = self.conn.execute("SELECT MAX(observed_at_ms) AS value FROM market_ticks").fetchone()
         value = row["value"] if row else None
         return int(value) if value is not None else None
