@@ -96,20 +96,55 @@ class MarketTickPollWorker(WorkerBase):
         try:
             quotes = provider.token_quotes(requests)
         except Exception as exc:
-            reason = _provider_error_reason(exc)
-            skipped_reasons[reason] += len(targets)
-            for target in targets:
-                self.logger.bind(
-                    target_type="chain_token",
-                    target_id=target.target_id,
-                    reason=reason,
-                ).warning("market tick poll quote skipped")
-            return []
+            self.logger.bind(reason=_provider_error_reason(exc), target_count=len(targets)).warning(
+                "market tick poll batch quote failed; retrying individually"
+            )
+            return self._poll_chain_targets_individually(provider, targets, skipped_reasons)
 
         quotes_by_key = {_target_key(quote.chain_id, quote.address): quote for quote in quotes}
         ticks: list[MarketTick] = []
         for target in targets:
             quote = quotes_by_key.get(_target_key(target.chain_id, target.address))
+            if quote is None:
+                skipped_reasons["dex_quote_unavailable"] += 1
+                self.logger.bind(
+                    target_type="chain_token",
+                    target_id=target.target_id,
+                    reason="dex_quote_unavailable",
+                ).warning("market tick poll quote skipped")
+                continue
+            tick = _tick_from_dex_quote(quote, target=target, received_at_ms=int(self.clock()))
+            if tick is None:
+                skipped_reasons["invalid_price"] += 1
+                self.logger.bind(
+                    target_type="chain_token",
+                    target_id=target.target_id,
+                    reason="invalid_price",
+                ).warning("market tick poll quote skipped")
+                continue
+            ticks.append(tick)
+        return ticks
+
+    def _poll_chain_targets_individually(
+        self,
+        provider: Any,
+        targets: list[_ChainTarget],
+        skipped_reasons: Counter[str],
+    ) -> list[MarketTick]:
+        ticks: list[MarketTick] = []
+        for target in targets:
+            try:
+                quotes = provider.token_quotes([DexTokenQuoteRequest(chain_id=target.chain_id, address=target.address)])
+            except Exception as exc:
+                reason = _provider_error_reason(exc)
+                skipped_reasons[reason] += 1
+                self.logger.bind(
+                    target_type="chain_token",
+                    target_id=target.target_id,
+                    reason=reason,
+                ).warning("market tick poll quote skipped")
+                continue
+            quote = _quote_for_chain_target(quotes, target=target)
             if quote is None:
                 skipped_reasons["dex_quote_unavailable"] += 1
                 self.logger.bind(
@@ -253,6 +288,14 @@ def _cex_target(target_id: str) -> _CexTarget | None:
     if not exchange or not instrument or ":" in instrument:
         return None
     return _CexTarget(target_id=target_id, exchange=exchange, instrument=instrument)
+
+
+def _quote_for_chain_target(quotes: list[DexTokenQuote], *, target: _ChainTarget) -> DexTokenQuote | None:
+    target_key = _target_key(target.chain_id, target.address)
+    for quote in quotes:
+        if _target_key(quote.chain_id, quote.address) == target_key:
+            return quote
+    return None
 
 
 def _tick_from_dex_quote(

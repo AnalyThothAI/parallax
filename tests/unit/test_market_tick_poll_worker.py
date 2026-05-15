@@ -172,9 +172,62 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
     assert wake.market_tick_notifications == []
-    assert dex_provider.saw_in_session == [False]
-    assert dex_provider.requests == [("solana", "missing"), ("solana", "failing")]
+    assert dex_provider.saw_in_session == [False, False, False]
+    assert dex_provider.requests == [
+        ("solana", "missing"),
+        ("solana", "failing"),
+        ("solana", "missing"),
+        ("solana", "failing"),
+    ]
     assert cex_provider.saw_in_session == [False, False]
+
+
+def test_market_tick_poll_worker_retries_dex_batch_individually_to_preserve_valid_ticks() -> None:
+    state = FakeSessionState()
+    repos = FakeRepos(
+        state,
+        [
+            tier_row(target_type="chain_token", target_id="solana:Good"),
+            tier_row(target_type="chain_token", target_id="solana:Failing"),
+        ],
+    )
+    dex_provider = FakeDexQuoteProvider(
+        state,
+        [
+            DexTokenQuote(
+                chain_id="solana",
+                address="Good",
+                observed_at_ms=1_800_000_000_001,
+                price_usd=7.89,
+                raw={"provider": "dex"},
+            )
+        ],
+        failures={("solana", "Failing"): RuntimeError("dex unavailable")},
+    )
+    wake = FakeWakeEmitter()
+    worker = MarketTickPollWorker(
+        pool_bundle=FakeDB(state, repos),
+        providers=FakeProviders(dex_quote_market=dex_provider, message_cex_market=None),
+        wake_emitter=wake,
+        clock=lambda: 1_800_000_000_100,
+    )
+
+    result = asyncio.run(worker.run_once())
+
+    assert result.processed == 1
+    assert result.skipped == 1
+    assert result.notes["ticks_attempted"] == 1
+    assert len(repos.market_ticks.inserted) == 1
+    assert repos.market_ticks.inserted[0].target_id == "solana:Good"
+    assert repos.market_ticks.inserted[0].source_provider == "okx_dex_rest"
+    assert wake.market_tick_notifications == [{"target_type": "chain_token", "target_id": "solana:Good"}]
+    assert dex_provider.saw_in_session == [False, False, False]
+    assert dex_provider.requests == [
+        ("solana", "Good"),
+        ("solana", "Failing"),
+        ("solana", "Good"),
+        ("solana", "Failing"),
+    ]
 
 
 @pytest.mark.parametrize("bad_price", [None, 0, -1, "not-a-price", float("nan"), float("inf")])
