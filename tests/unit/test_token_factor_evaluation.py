@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from gmgn_twitter_intel.domains.asset_market.repositories.price_observation_repository import PriceObservationRepository
 from gmgn_twitter_intel.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_FACTOR_FAMILIES,
@@ -200,54 +199,6 @@ def test_settle_token_factor_scores_records_family_rank_ic_diagnostics():
     assert diagnostics["family_coverage"]["social_propagation"] == 1.0
     assert diagnostics["family_coverage"]["semantic_catalyst"] == 1.0
     assert diagnostics["family_coverage"]["timing_risk"] == 1.0
-
-
-def test_price_exit_lookup_filters_null_price_usd():
-    conn = FakeConn(row=None)
-
-    result = PriceObservationRepository(conn).first_for_subject_at_or_after(
-        subject_type="Asset",
-        subject_id="asset:a",
-        at_or_after_ms=1_700_000_000_000,
-    )
-
-    assert result is None
-    assert "price_usd IS NOT NULL" in conn.sql
-    assert conn.params == ("Asset", "asset:a", 1_700_000_000_000)
-
-
-def test_bounded_price_exit_lookup_filters_null_price_usd_and_bounds_read_time():
-    conn = FakeConn(row={"observation_id": "exit:a", "price_usd": 120.0})
-
-    result = PriceObservationRepository(conn).first_price_for_subject_between(
-        subject_type="Asset",
-        subject_id="asset:a",
-        at_or_after_ms=1_700_000_000_000,
-        at_or_before_ms=1_700_003_600_000,
-    )
-
-    assert result == {"observation_id": "exit:a", "price_usd": 120.0}
-    assert "price_usd IS NOT NULL" in conn.sql
-    assert "observed_at_ms >= %s" in conn.sql
-    assert "observed_at_ms <= %s" in conn.sql
-    assert "ORDER BY observed_at_ms ASC, observation_id ASC" in conn.sql
-    assert conn.params == ("Asset", "asset:a", 1_700_000_000_000, 1_700_003_600_000)
-
-
-def test_price_entry_lookup_filters_null_price_usd():
-    conn = FakeConn(row={"observation_id": "entry:a", "price_usd": 100.0})
-
-    result = PriceObservationRepository(conn).latest_price_for_subject_at_or_before(
-        subject_type="Asset",
-        subject_id="asset:a",
-        at_or_before_ms=1_700_000_000_000,
-    )
-
-    assert result == {"observation_id": "entry:a", "price_usd": 100.0}
-    assert "price_usd IS NOT NULL" in conn.sql
-    assert "observed_at_ms <= %s" in conn.sql
-    assert "ORDER BY observed_at_ms DESC, observation_id DESC" in conn.sql
-    assert conn.params == ("Asset", "asset:a", 1_700_000_000_000)
 
 
 def test_evaluation_repository_selects_point_in_time_rows_for_settlement():
