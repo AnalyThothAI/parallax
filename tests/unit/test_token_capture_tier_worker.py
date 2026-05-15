@@ -156,9 +156,9 @@ def test_default_workers_yaml_includes_token_capture_tier_settings() -> None:
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
 
     assert workers.token_capture_tier.enabled is True
-    assert workers.token_capture_tier.batch_size == 100
-    assert workers.token_capture_tier.ws_limit == 50
-    assert workers.token_capture_tier.poll_limit == 200
+    assert workers.token_capture_tier.batch_size == 500
+    assert workers.token_capture_tier.ws_limit == 100
+    assert workers.token_capture_tier.poll_limit == 500
     assert workers.token_capture_tier.advisory_lock_key == ADVISORY_LOCK_KEY
 
 
