@@ -12,7 +12,7 @@ LATEST_MIGRATION = (
 ALEMBIC_VERSIONS = ROOT / "src/gmgn_twitter_intel/platform/db/alembic/versions"
 SUPERPOWERS_DOCS = ROOT / "docs/superpowers"
 
-SCANNED_SUFFIXES = {".html", ".md", ".py", ".sql", ".toml", ".yaml", ".yml"}
+SCANNED_SUFFIXES = {".html", ".md", ".py", ".sql", ".toml", ".ts", ".tsx", ".yaml", ".yml"}
 SKIPPED_DIRS = {".git", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
 BANNED_RUNTIME_STRINGS = (
     "".join(("Anchor", "Price", "Worker")),

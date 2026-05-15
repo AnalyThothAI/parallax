@@ -81,7 +81,9 @@ function statusData() {
       }),
       enrichment: workerStatus({ enabled: true, running: true, queue_depth: 0 }),
       token_radar_projection: workerStatus({ enabled: true, running: true }),
-      anchor_price: workerStatus({ enabled: true, running: true }),
+      token_capture_tier: workerStatus({ enabled: true, running: true }),
+      market_tick_stream: workerStatus({ enabled: false, running: false }),
+      market_tick_poll: workerStatus({ enabled: true, running: true }),
       live_price_gateway: workerStatus({
         enabled: true,
         running: true,
